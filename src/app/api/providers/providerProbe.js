@@ -3,7 +3,7 @@ import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { assertOutboundUrlAllowed, getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
-import { buildNextAuthSessionCookie, extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
+import { buildNextAuthSessionCookie, extractKimiJwt, kimiWebOrigin, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
 import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
 import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse/executors/bedrock.js";
@@ -275,21 +275,24 @@ export function buildRegistryProviderProbe(provider, apiKey, providerSpecificDat
 
   if (cfg.format !== "openai") return null;
 
-  // Kimi Web (www.kimi.com) is a cookie-authed Connect-RPC provider. The user
-  // pastes a full Cookie header; only the extracted `kimi-auth` JWT must reach
-  // the wire — never the raw blob. Probe the same models endpoint the dashboard
-  // discovery route uses so a valid cookie yields 200 and a bad one 401.
+  // Kimi Web (www.kimi.com) is a token-authed Connect-RPC provider. The user
+  // pastes the localStorage token JSON (or a legacy Cookie header); only the
+  // extracted access token reaches the wire — never the raw blob. Probe the
+  // same models endpoint the dashboard discovery route uses: it answers 200
+  // without auth, but 401 for a bad Bearer, so a valid token yields 200.
   if (provider === "kimi-web") {
     const jwt = extractKimiJwt(apiKey);
     if (!jwt) return null;
+    const origin = kimiWebOrigin(apiKey);
     return {
-      url: "https://www.kimi.com/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels",
+      url: `${origin}/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels`,
       options: {
         method: "POST",
         headers: {
           ...KIMI_WEB_DISCOVERY_HEADERS,
+          Origin: origin,
+          Referer: `${origin}/`,
           Authorization: `Bearer ${jwt}`,
-          Cookie: `kimi-auth=${jwt}`,
         },
         body: "{}",
         signal: AbortSignal.timeout(8000),

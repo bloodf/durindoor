@@ -1,11 +1,23 @@
 # syntax=docker/dockerfile:1.7
 ARG NODE_IMAGE=node:20.20.2-alpine
+ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
+ARG APP_VERSION=unknown
+
 FROM ${NODE_IMAGE} AS base
+ARG ALPINE_MIRROR
 WORKDIR /app
+
+# Use the official Alpine mirror by default. A build arg can override it for
+# environments that cannot reach dl-cdn.alpinelinux.org.
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
 
 FROM base AS builder
 
-RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
+# No "apk upgrade": a full distribution upgrade here makes builds less
+# reproducible and is unrelated to installing the build toolchain.
+RUN apk add --no-cache python3 make g++ linux-headers
 
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -16,9 +28,19 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM ${NODE_IMAGE} AS runner
+ARG ALPINE_MIRROR
+ARG APP_VERSION
 WORKDIR /app
 
-LABEL org.opencontainers.image.title="durindoor"
+# The base stage's mirror swap does not reach here: runner starts from
+# ${NODE_IMAGE} directly, so this stage needs its own swap or the apk add
+# below hangs on networks that cannot reach dl-cdn.alpinelinux.org.
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
+
+LABEL org.opencontainers.image.title="durindoor" \
+      org.opencontainers.image.version="${APP_VERSION}"
 
 ENV NODE_ENV=production
 ENV PORT=20128
@@ -64,16 +86,17 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
 # Build with --build-arg CHATGPT_WEB_BROWSER=false to leave the browser out;
 # ChatGPT Web then uses the HTTP transport.
 ARG CHATGPT_WEB_BROWSER=true
-RUN apk --no-cache add gcompat && \
+RUN apk add --no-cache gcompat && \
   if [ "$CHATGPT_WEB_BROWSER" = "true" ]; then \
-    apk --no-cache add chromium nss freetype harfbuzz ttf-freefont xvfb; \
+    apk add --no-cache chromium nss freetype harfbuzz ttf-freefont xvfb; \
   fi
 ENV CHATGPT_WEB_CHROME_PATH=/usr/bin/chromium-browser
 
-# Fix permissions at runtime (handles mounted volumes). When Xvfb is present and
+# Fix permissions at runtime (handles mounted volumes). No "apk upgrade": see
+# the builder stage note above. When Xvfb is present and
 # no DISPLAY is set, start it so the headed ChatGPT Web browser has a screen;
 # DURINDOOR_XVFB=0 turns that off.
-RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
+RUN apk add --no-cache su-exec && \
   printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nif [ -z "$DISPLAY" ] && [ "$DURINDOOR_XVFB" != "0" ] && command -v Xvfb >/dev/null 2>&1; then\n  su-exec node Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &\n  export DISPLAY=:99\nfi\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 

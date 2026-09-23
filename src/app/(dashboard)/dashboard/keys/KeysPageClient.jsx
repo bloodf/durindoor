@@ -186,6 +186,7 @@ export default function KeysPageClient() {
   const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
+  const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
   const [policyCatalog, setPolicyCatalog] = useState([]);
   const [policyCatalogLoading, setPolicyCatalogLoading] = useState(true);
   const [newKeyPolicy, setNewKeyPolicy] = useState(emptyAddKeyPolicy);

@@ -77,6 +77,14 @@ const DEFAULT_SETTINGS = {
   pxpipeTimeoutMs: 15000,
   pxpipeAllowedModels: [],
   providerConcurrencyLimits: {},
+  // Hierarchical concurrency admission: caps in-flight upstream requests
+  // across every provider combined, above the per-provider caps in
+  // providerConcurrencyLimits. 0 = unlimited (no global gate).
+  globalConcurrentRequests: 0,
+  // fallbackStrategy: "quota-weighted" pool-floor split (percent). Accounts
+  // at or below this leftover-quota percent only get drawn from when every
+  // comparable account is already that thin.
+  quotaWeightedFloorPercent: 1,
   // Optional upstream routing overrides. Shape:
   // { [providerId]: { enabled, mode: "native"|"cliproxyapi"|"fallback", cliproxyapiModelMapping } }
   upstreamProxyConfig: {},

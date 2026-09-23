@@ -30,6 +30,7 @@ import { authErrorResponse, errorResponse, unavailableResponse, getClientStatusF
 import { getRequestId, validateProviderRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import { isRoutableProvider } from "../../shared/constants/providers.js";
+import { runWithTransientBackendRetry } from "open-sse/services/transientBackendRetry.js";
 import {
   getComboModelQuotaHealth,
   handleComboChat,
@@ -463,6 +464,19 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     }
   }
 
+  // `auto/*` ids are virtual — synthesised in the catalog, never a stored combo
+  // row — so getComboCanonicalName/resolveRequestedComboName return null for
+  // them and the allowedCombos check above never runs. allowedModels also
+  // can't scope them out: validateModelAccess short-circuits on the `auto/`
+  // prefix. Gate them with an explicit per-key flag instead, so a key scoped
+  // to one narrow lane can't reach every model on the gateway through
+  // `auto/best-coding`. Absent/undefined defaults to allowed (existing keys
+  // keep working); only an explicit `false` denies.
+  if (authenticatedKeyRecord && isAutoComboId(modelStr) && authenticatedKeyRecord.policy?.allowAutoCombos === false) {
+    log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to use auto combos`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: auto combos are not allowed for this API key`);
+  }
+
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
@@ -630,13 +644,22 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     return comboResult;
   }
 
-  // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
-    settings,
-    allowVisionBridge: true,
-    apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
-    apiKeyId: apiKeyAuth.apiKeyId,
-  });
+  // Single model request. Wrapped with a bounded jittered retry on transient
+  // 502/503/504 backend errors (#13143 upstream) — the combo loop above has
+  // its own cooldown/fallback handling already, so this only covers the
+  // direct, non-combo path. Retries only ever see a non-ok error response
+  // constructed before any bytes reach the client, so re-running cannot
+  // double-send a stream.
+  return runWithTransientBackendRetry(
+    () =>
+      handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
+        settings,
+        allowVisionBridge: true,
+        apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
+        apiKeyId: apiKeyAuth.apiKeyId,
+      }),
+    { signal: request?.signal || undefined, source: "single-model" }
+  );
 }
 
 // Resolve custom capabilities for all combo members into a single map keyed
@@ -1165,6 +1188,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         },
         providerThinking,
         providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
+        globalConcurrentRequests: chatSettings.globalConcurrentRequests,
         claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat) ?
         chatSettings.claudeClassifierCompat :
         "off",
@@ -1187,14 +1211,28 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             return refreshedCredentials;
           }
         } : null),
-        // Web-cookie executors (chatgpt-web) hand back a rotated session cookie
-        // as `apiKey`; persist only that, only for cookie connections.
-        onCredentialsRefreshed: async (newCreds) => {
-          const rotated = newCreds?.apiKey;
-          if (activeConnection?.authType !== "cookie" || !isString(rotated) || !rotated) return;
-          if (rotated === refreshedCredentials?.apiKey) return;
-          await updateProviderCredentials(credentials.connectionId, { rotatedApiKey: rotated });
-        },
+        // Non-OAuth sessions that rotate their own credentials report them here.
+        // kimi-web returns a new token pair plus `providerSpecificPatch`; keep it
+        // in the encrypted token columns so the next request and a restart start
+        // from it. Web-cookie executors (chatgpt-web) hand back a rotated session
+        // cookie as `apiKey`; persist only that, only for cookie connections.
+        ...(activeConnection && activeConnection.authType !== "oauth" ? {
+          onCredentialsRefreshed: async (next) => {
+            if (next?.providerSpecificPatch) {
+              await updateProviderCredentials(credentials.connectionId, {
+                accessToken: next.accessToken,
+                refreshToken: next.refreshToken,
+                providerSpecificData: next.providerSpecificPatch,
+                existingProviderSpecificData: activeConnection.providerSpecificData
+              });
+              return;
+            }
+            const rotated = next?.apiKey;
+            if (activeConnection?.authType !== "cookie" || !isString(rotated) || !rotated) return;
+            if (rotated === refreshedCredentials?.apiKey) return;
+            await updateProviderCredentials(credentials.connectionId, { rotatedApiKey: rotated });
+          }
+        } : null),
         onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {
           if (provider === "antigravity" || provider === "agy") {
             clearAntigravity429Strikes(credentials.connectionId, model);

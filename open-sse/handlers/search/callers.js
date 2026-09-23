@@ -179,6 +179,45 @@ function buildTavilyRequest(config, params) {
   };
 }
 
+// Context7 has no bearer requirement (authType "none"): anonymous calls work
+// at a lower rate limit, a configured key just raises the quota.
+function buildContext7Request(config, params) {
+  const qp = new URLSearchParams({ query: params.query });
+  const context7Headers = { Accept: "application/json" };
+  if (params.token) context7Headers.Authorization = `Bearer ${params.token}`;
+  return {
+    url: `${resolveBaseUrl(config, params)}/search?${qp}`,
+    init: {
+      method: "GET",
+      headers: context7Headers
+    }
+  };
+}
+
+function buildNimbleRequest(config, params) {
+  const { includes, excludes } = parseDomainFilter(params.domainFilter);
+  const body = {
+    query: params.query,
+    max_results: params.maxResults,
+    search_depth: "lite",
+    output_format: "plain_text",
+    focus: params.searchType === "news" ? "news" : "general"
+  };
+  if (params.country) body.country = params.country.toUpperCase();
+  if (params.language) body.locale = params.language;
+  if (params.timeRange && params.timeRange !== "any") body.time_range = params.timeRange;
+  if (includes.length) body.include_domains = includes.slice(0, 50);
+  if (excludes.length) body.exclude_domains = excludes.slice(0, 50);
+  return {
+    url: resolveBaseUrl(config, params),
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${params.token}` },
+      body: JSON.stringify(body)
+    }
+  };
+}
+
 function buildGooglePseRequest(config, params) {
   const apiKey = params.token;
   const cx = getProviderSetting(params, "cx");
@@ -385,7 +424,9 @@ const BUILDERS = {
   "searchapi": buildSearchApiRequest,
   "youcom": buildYouComRequest,
   "searxng": buildSearxngRequest,
-  "ollama": buildOllamaRequest
+  "ollama": buildOllamaRequest,
+  "context7": buildContext7Request,
+  "nimble": buildNimbleRequest
 };
 
 /**

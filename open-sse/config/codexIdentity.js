@@ -18,7 +18,7 @@ function nonEmptyString(value) {
   return normalized || null;
 }
 
-function readNamedHeader(headers, name) {
+export function readNamedHeader(headers, name) {
   if (!headers) return "";
   if (headers instanceof Headers) return headers.get(name)?.trim() || "";
   const wanted = name.toLowerCase();

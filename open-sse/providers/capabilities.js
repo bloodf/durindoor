@@ -434,13 +434,15 @@ export const PROVIDER_CAPABILITIES = {
   // Kimi Web (www.kimi.com) consumer chat — OpenAI-shaped transport. The
   // `k2d6-thinking` tier supports reasoning via the OpenAI `reasoning_effort`
   // wire format and can be disabled (`reasoning_effort: "none"`); the plain
-  // `k2d6` tier has no reasoning. Both tiers are toolless until tool mapping
+  // `k2d6` tier has no reasoning. All tiers are toolless until tool mapping
   // exists — the executor folds only system/user/assistant text and never
   // forwards tools/tool_choice or emits tool_calls, so combo or
   // `tool_choice:"required"` routing must not pick Kimi expecting a tool call.
   "kimi-web": {
     "k2d6": { tools: false },
-    "k2d6-thinking": { tools: false, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true }
+    "k2d6-thinking": { tools: false, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
+    // Web K3 takes LOW/HIGH/MAX effort and has no off switch.
+    "k3": { tools: false, vision: false, videoInput: false, reasoning: true, thinkingFormat: "openai-low-high-max", thinkingCanDisable: false }
   },
   // ZenMux Free exposes text streaming through its Anthropic-compatible web
   // endpoint but does not return structured tool_use blocks.

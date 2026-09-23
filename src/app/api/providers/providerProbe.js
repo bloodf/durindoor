@@ -3,7 +3,7 @@ import { PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { assertOutboundUrlAllowed, getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
-import { extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
+import { buildNextAuthSessionCookie, extractKimiJwt, KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth.js";
 import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
 import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse/executors/bedrock.js";
@@ -27,7 +27,55 @@ const SPECIALTY_VALIDATORS = {
   // Ported from OmniRoute #6894 (diegosouzapw#6142, parity with `jules`).
   devin: validateDevinCloudAgentProvider,
   bedrock: validateBedrockSignedProvider,
+  "chatgpt-web": validateChatgptWebSession,
 };
+
+const CHATGPT_SESSION_URL = "https://chatgpt.com/api/auth/session";
+const CHATGPT_WEB_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
+
+/**
+ * ChatGPT Web — exchange the NextAuth session cookie for an access token at
+ * chatgpt.com/api/auth/session, the same call the web app makes. A logged-in
+ * session answers 200 with `accessToken`; an expired or incomplete one (e.g. a
+ * missing `.1` chunk) answers 200 with `{}`. Chunked cookies are sent as
+ * separate `__Secure-next-auth.session-token.N` cookies, never concatenated.
+ */
+export async function validateChatgptWebSession({ apiKey, fetcher = fetch }) {
+  const cookie = buildNextAuthSessionCookie(apiKey);
+  if (!cookie) {
+    return { valid: false, status: null, error: "No __Secure-next-auth.session-token cookie found in the pasted value" };
+  }
+  let response;
+  try {
+    response = await guardedProbeFetch(
+      CHATGPT_SESSION_URL,
+      {
+        method: "GET",
+        headers: { Accept: "application/json", "User-Agent": CHATGPT_WEB_USER_AGENT, Cookie: cookie },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8000),
+      },
+      getProviderValidationGuard(),
+      fetcher,
+    );
+  } catch (err) {
+    if (err instanceof OutboundUrlGuardError) {
+      return { valid: false, status: null, blocked: true, error: err.message };
+    }
+    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+  }
+  if (!response.ok) {
+    return { valid: false, status: response.status, error: `chatgpt.com rejected the session cookie (HTTP ${response.status})` };
+  }
+  const data = await response.json().catch(() => null);
+  if (data?.accessToken) return { valid: true, status: response.status };
+  return {
+    valid: false,
+    status: response.status,
+    error: "Session expired or incomplete - paste every __Secure-next-auth.session-token chunk (.0, .1, ...)",
+  };
+}
 
 /**
  * Devin cloud-agent (Cognition) — list one session with Bearer auth; a 2xx

@@ -10,6 +10,7 @@ import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-t
 import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials } from
@@ -963,13 +964,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }
 
       case "perplexity-web":{
-          let sessionToken = connection.apiKey;
-          if (sessionToken.startsWith("__Secure-next-auth.session-token=")) sessionToken = sessionToken.slice("__Secure-next-auth.session-token=".length);
           const res = await fetchWithConnectionProxy("https://www.perplexity.ai/api/auth/session", {
             method: "GET",
             headers: {
               "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-              Cookie: `__Secure-next-auth.session-token=${sessionToken}`
+              Cookie: buildNextAuthSessionCookie(connection.apiKey)
             }
           }, effectiveProxy);
           if (!res.ok) return { valid: false, error: "Invalid session cookie" };

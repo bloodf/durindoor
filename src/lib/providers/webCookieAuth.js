@@ -89,3 +89,58 @@ export function extractKimiJwt(rawValue) {
 
   return "";
 }
+
+export const NEXT_AUTH_SESSION_COOKIE = "__Secure-next-auth.session-token";
+const NEXT_AUTH_SESSION_FAMILY_RE = /^__Secure-next-auth\.session-token(?:\.(\d+))?$/;
+
+/**
+ * Build the Cookie header for a NextAuth session (chatgpt.com, perplexity.ai)
+ * from whatever the user pasted.
+ *
+ * NextAuth splits a session cookie larger than ~4KB into chunks named
+ * `__Secure-next-auth.session-token.0`, `.1`, ... The server reassembles them
+ * itself, so each chunk is sent back under its own name, ordered by index.
+ *
+ * Accepts:
+ *   - a bare token value (sent as the unchunked cookie)
+ *   - `name=value` for the unchunked cookie or any chunk
+ *   - a full Cookie header (`Cookie:` prefix optional), chunks in any order
+ *
+ * When chunks are present a stale unchunked cookie is dropped. Other pasted
+ * cookies (cf_clearance, __cf_bm, ...) are kept after the session cookies.
+ * Returns "" when no session cookie can be found.
+ * @param {string} rawValue
+ * @returns {string}
+ */
+export function buildNextAuthSessionCookie(rawValue) {
+  const trimmed = stripCookieInputPrefix(rawValue);
+  if (!trimmed) return "";
+
+  const pairs = trimmed.split(";").map((part) => {
+    const eq = part.indexOf("=");
+    return eq < 0 ? null : [part.slice(0, eq).trim(), part.slice(eq + 1).trim()];
+  }).filter((pair) => pair && pair[0] && pair[1]);
+
+  const chunks = [];
+  let single = "";
+  const others = [];
+  for (const [name, value] of pairs) {
+    const match = name.match(NEXT_AUTH_SESSION_FAMILY_RE);
+    if (!match) others.push(`${name}=${value}`);
+    else if (match[1] === undefined) single = value;
+    else chunks.push([Number(match[1]), value]);
+  }
+
+  // No session cookie by name: a single opaque value is the bare token (kept
+  // verbatim, `=` padding included, as stored connections always were); a
+  // multi-cookie header without one is unusable.
+  if (!chunks.length && !single) {
+    if (trimmed.includes(";") || /\s/.test(trimmed)) return "";
+    return `${NEXT_AUTH_SESSION_COOKIE}=${trimmed}`;
+  }
+
+  const session = chunks.length
+    ? chunks.sort((a, b) => a[0] - b[0]).map(([i, v]) => `${NEXT_AUTH_SESSION_COOKIE}.${i}=${v}`)
+    : [`${NEXT_AUTH_SESSION_COOKIE}=${single}`];
+  return [...session, ...others].join("; ");
+}

@@ -21,6 +21,36 @@ import {
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
+// chatgpt.com session cookies are HttpOnly, so no page script (document.cookie,
+// cookieStore) can read them. This console snippet only assembles the chunk
+// values the user copies from DevTools > Application > Cookies into one paste.
+const CHATGPT_WEB_COOKIE_SNIPPET = `(()=>{const p=[];for(let i=0;;i++){const v=prompt(\`Value of __Secure-next-auth.session-token.\${i} (Cancel when done)\`);if(!v)break;p.push(\`__Secure-next-auth.session-token.\${i}=\${v.trim()}\`)}copy(p.join("; "))})()`;
+
+function ChatgptWebCookieSteps() {
+  const [copied, setCopied] = useState(false);
+  const copySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(CHATGPT_WEB_COOKIE_SNIPPET);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2 text-xs text-dd-muted" data-testid="chatgpt-web-cookie-steps">
+      <ol className="list-decimal pl-4 flex flex-col gap-1">
+        <li>Sign in at chatgpt.com, open DevTools, go to Network and reload the page.</li>
+        <li>Select any request to chatgpt.com, find Request Headers, and copy the whole <code>Cookie</code> value. Paste it here.</li>
+        <li>Or open Application, Cookies, https://chatgpt.com, run this snippet in the Console, and paste each <code>__Secure-next-auth.session-token.N</code> value when asked. The result lands on your clipboard.</li>
+      </ol>
+      <pre className="whitespace-pre-wrap break-all rounded bg-dd-surface p-2 font-mono">{CHATGPT_WEB_COOKIE_SNIPPET}</pre>
+      <div>
+        <Button size="sm" variant="secondary" onClick={copySnippet}>{copied ? "Copied" : "Copy snippet"}</Button>
+      </div>
+    </div>
+  );
+}
+
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
@@ -366,6 +396,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             {website ? <> {" "}<a href={website} target="_blank" rel="noopener noreferrer" className="text-dd-accent underline">Open {website.replace(/^https?:\/\//, "")}</a></> : null}
           </p>
         ) : null}
+        {provider === "chatgpt-web" ? <ChatgptWebCookieSteps /> : null}
         {providerRegions ? (
           <Field label="Region">
             <Select

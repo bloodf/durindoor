@@ -12,7 +12,7 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  authHint: "Paste the __Secure-next-auth.session-token cookie value from chatgpt.com.",
+  authHint: "Paste the Cookie header from any chatgpt.com request, or the __Secure-next-auth.session-token value. Chunked .0/.1 session cookies are accepted.",
   serviceKinds: ["llm"],
   hiddenKinds: ["image"],
   transport: {

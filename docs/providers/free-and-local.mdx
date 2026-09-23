@@ -49,6 +49,37 @@ AI Horde is the public anonymous exception. Registry id `aihorde`, alias `horde`
 
 Same paste flow as [Connecting accounts](./connecting-accounts.mdx): Dashboard, Providers, cookie card, cookie value. ChatGPT Web wants `__Secure-next-auth.session-token`. These sessions die when the browser session dies. Fine for a personal box; a poor fit for a shared team gateway.
 
+### ChatGPT Web session cookie
+
+chatgpt.com keeps its NextAuth session in `__Secure-next-auth.session-token`. When the session is larger than about 4KB, NextAuth splits it into chunks named `__Secure-next-auth.session-token.0`, `.1`, and so on, each holding a different part of the value. DurinDoor accepts any of these pastes:
+
+- a bare token value
+- `name=value` for the plain cookie or a chunk
+- the full `Cookie` header, with or without the `Cookie:` prefix, chunks in any order
+
+Chunks are sent back to chatgpt.com under their own names, ordered by index, never concatenated. If a header has both chunks and a plain cookie, the stale plain one is dropped. Other cookies in the paste, such as `cf_clearance`, are kept. The Check button calls `https://chatgpt.com/api/auth/session` with that cookie; a live session returns an `accessToken`, and an expired or incomplete one returns `{}`.
+
+The session cookies are `HttpOnly`. No script on the page can read them: `document.cookie` and `cookieStore.getAll()` both leave them out. Two ways work:
+
+1. DevTools, Network, reload chatgpt.com, select any request to chatgpt.com, and copy the whole `Cookie` request header value. Paste it as is.
+2. DevTools, Application, Cookies, `https://chatgpt.com`. Run this in the Console and paste each chunk's Value when asked. The joined `name=value` string lands on your clipboard (`copy()` is a DevTools console helper). Chrome may ask you to type `allow pasting` first.
+
+```js
+(()=>{const p=[];for(let i=0;;i++){const v=prompt(`Value of __Secure-next-auth.session-token.${i} (Cancel when done)`);if(!v)break;p.push(`__Secure-next-auth.session-token.${i}=${v.trim()}`)}copy(p.join("; "))})()
+```
+
+The add-connection dialog shows the same steps and a copy button for the snippet.
+
+A same-origin `fetch("/api/auth/session")` in the chatgpt.com console does return the short-lived `accessToken`. That token is for the Codex provider (its Bulk import JSON takes `accessToken`, as does `POST /api/oauth/codex/import-token`), not for ChatGPT Web, and it has no refresh token:
+
+```js
+copy((await (await fetch("/api/auth/session")).json()).accessToken)
+```
+
+<Callout type="warn">
+ChatGPT Web chat requests still answer `501 provider_port_pending`: the web executor is not ported yet. The cookie is validated and stored so the connection is ready when it is. DurinDoor does not yet write rotated session chunks from `Set-Cookie` back to the stored connection.
+</Callout>
+
 ## Local device media
 
 `local-device` is a TTS provider (`serviceKinds: ["tts"]`, `authType: "none"`). It synthesizes on the host (macOS or Windows) and returns mp3. Other local media ids include local Whisper (`local-whisper`, default `http://127.0.0.1:11500`) and optional local TTS/STT tools listed on the media-provider pages. Check those pages for voice, format, sample rate, and service URL fields.

@@ -29,7 +29,7 @@ iFlow can take a browser cookie instead of the PKCE path. `POST /api/oauth/iflow
 
 ## Cookie connections
 
-Registry entries with `category: "webCookie"` and `authType: "cookie"` are not OAuth. You paste the cookie the dashboard's auth hint names, for example ChatGPT Web's `__Secure-next-auth.session-token`. The create route stores `authType: "cookie"`. Sessions expire when the upstream account or browser session does. Treat these as personal or experimental unless your team has reviewed the risk.
+Registry entries with `category: "webCookie"` and `authType: "cookie"` are not OAuth. You paste the cookie the dashboard's auth hint names, for example ChatGPT Web's `__Secure-next-auth.session-token` (or its chunked `.0`, `.1` cookies, see [ChatGPT Web](./chatgpt-web.mdx#session-cookie)). The create route stores `authType: "cookie"`. Sessions expire when the upstream account or browser session does. Treat these as personal or experimental unless your team has reviewed the risk.
 
 <Callout type="warn">
 Cookie-backed providers send whatever the upstream web app would send. Do not put them on a shared gateway that other people can drive unless you accept that those people can spend that browser session.

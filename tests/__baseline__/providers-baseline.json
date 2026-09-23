@@ -1819,14 +1819,14 @@
   },
   "qoder-cn": {
     "baseUrl": "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation",
+    "thinkingFormat": "openai",
     "headers": {},
     "timeoutMs": 120000,
     "stallTimeoutMs": 120000,
     "usage": {
       "url": "https://openapi.qoder.com.cn/api/v2/quota/usage"
     },
-    "format": "openai",
-    "clientId": "1c5e33e1-364d-4ce6-b02c-acaa81274a5c"
+    "format": "openai"
   },
   "qoder": {
     "baseUrl": "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",

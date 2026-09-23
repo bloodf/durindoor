@@ -1173,7 +1173,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         proxyOptions,
         requestContext,
         attemptStartedAt: initialAttempt,
-        onProviderAttempt: beginProviderAttempt
+        onProviderAttempt: beginProviderAttempt,
+        // Executors that rotate a stored credential mid-request (chatgpt-web's
+        // session cookie) report it here; the caller decides what to persist.
+        onCredentialsRefreshed
       }), {
         beginQuotaDispatch: quotaReservationActive ?
         () => quotaReservation.beginDispatch() :

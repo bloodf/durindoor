@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection, getProviderConnections, updateProviderConnection } from "@/models";
 import { isObject, isString } from "@/shared/utils/typeChecks";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 const DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1";
 const REGIONS = new Set(["cn", "sgp", "ams", "ru", "in"]);
@@ -78,7 +79,7 @@ export async function POST(request) {
     const existing = (await getProviderConnections({ provider: "xiaomi-mimo" })).find((c) => {
       const psd = c.providerSpecificData || {};
       if (uid && (c.email === `${uid}@xiaomi` || psd.uid === uid)) return true;
-      if (key && (c.apiKey === key || c.accessToken === key)) return true;
+      if (key && (timingSafeCompare(c.apiKey, key) || timingSafeCompare(c.accessToken, key))) return true;
       return sessionOnly && !!mimoUserId && psd.mimoUserId === mimoUserId &&
         (!region || (psd.region || "cn") === region);
     });

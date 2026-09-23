@@ -293,14 +293,15 @@ function stripAll(body) {
   }
 }
 
-// Astra cannot disable reasoning: its published floor is `low`, so an
-// unsupported `minimal` (client-sent, or "none" folded to "minimal" by the
-// thinkingCanDisable:false clamp above) must not leak upstream as-is.
-// Scoped to the exact Astra provider/model rows so no other OpenAI-format
-// model's effort resolution changes.
-const ASTRA_MINIMAL_FLOOR_PROVIDERS = new Set(["openai", "codex", "cx"]);
+// Astra, Sol and Luna cannot disable reasoning: their published floor is
+// `low`, so an unsupported `minimal` (client-sent, or "none" folded to
+// "minimal" by the thinkingCanDisable:false clamp above) must not leak
+// upstream as-is. Scoped to the exact GPT-6 provider/model rows so no other
+// OpenAI-format model's effort resolution changes.
+const GPT_6_MINIMAL_FLOOR_PROVIDERS = new Set(["openai", "codex", "cx"]);
+const GPT_6_MINIMAL_FLOOR_MODELS = new Set(["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]);
 function isAstraMinimalFloorModel(provider, model) {
-  return ASTRA_MINIMAL_FLOOR_PROVIDERS.has(provider) && model === "gpt-6-astra";
+  return GPT_6_MINIMAL_FLOOR_PROVIDERS.has(provider) && GPT_6_MINIMAL_FLOOR_MODELS.has(model);
 }
 
 // Map requested OpenAI effort to a level the model accepts.

@@ -71,7 +71,7 @@ import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
-import { isObject } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -1211,18 +1211,26 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             return refreshedCredentials;
           }
         } : null),
-        // Non-OAuth sessions that rotate their own tokens (kimi-web) come back
-        // from executor.refreshCredentials; keep the new pair in the encrypted
-        // token columns so the next request and a restart start from it.
+        // Non-OAuth sessions that rotate their own credentials report them here.
+        // kimi-web returns a new token pair plus `providerSpecificPatch`; keep it
+        // in the encrypted token columns so the next request and a restart start
+        // from it. Web-cookie executors (chatgpt-web) hand back a rotated session
+        // cookie as `apiKey`; persist only that, only for cookie connections.
         ...(activeConnection && activeConnection.authType !== "oauth" ? {
           onCredentialsRefreshed: async (next) => {
-            if (!next?.providerSpecificPatch) return;
-            await updateProviderCredentials(credentials.connectionId, {
-              accessToken: next.accessToken,
-              refreshToken: next.refreshToken,
-              providerSpecificData: next.providerSpecificPatch,
-              existingProviderSpecificData: activeConnection.providerSpecificData
-            });
+            if (next?.providerSpecificPatch) {
+              await updateProviderCredentials(credentials.connectionId, {
+                accessToken: next.accessToken,
+                refreshToken: next.refreshToken,
+                providerSpecificData: next.providerSpecificPatch,
+                existingProviderSpecificData: activeConnection.providerSpecificData
+              });
+              return;
+            }
+            const rotated = next?.apiKey;
+            if (activeConnection?.authType !== "cookie" || !isString(rotated) || !rotated) return;
+            if (rotated === refreshedCredentials?.apiKey) return;
+            await updateProviderCredentials(credentials.connectionId, { rotatedApiKey: rotated });
           }
         } : null),
         onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {

@@ -30,11 +30,16 @@ const STRIP_RULES = [
 { provider: "opencode", match: /muse/i, drop: ["max_tokens", "max_completion_tokens", "max_output_tokens"] },
 // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
 { provider: "cloudflare-ai", flattenContent: true },
-// Mistral: rejects reasoning_content carried in assistant message history with
-// 422 extra_forbidden. Reasoning models (DeepSeek R1, mimo, o-series, etc.) emit
-// this field on assistant turns; it is only meaningful in streamed responses, not
-// in request bodies. Strip it from every message before forwarding. #1649
-{ provider: "mistral", dropMessageFields: ["reasoning_content"] },
+// Strict OpenAI-compatible validators reject unknown assistant-message fields.
+// Clients that talk to reasoning models (Hermes Agent, and anything following
+// the DeepSeek/Kimi convention) echo the previous turn's reasoning back on every
+// assistant message; Groq answers 400, Mistral 422 extra_forbidden, Cerebras 400
+// wrong_api_format. Reasoning models emit these fields on assistant turns; they
+// are only meaningful in streamed responses, not in request bodies. Providers
+// that *require* the field (DeepSeek, Kimi) are not listed here. #1649 #4220
+{ provider: "groq", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
+{ provider: "mistral", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
+{ provider: "cerebras", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 // Mistral's OpenAI-compatible API validates the body strictly and rejects the
 // Anthropic/Z.ai-native `thinking` object with 422 extra_forbidden. It only
 // accepts `reasoning_effort`, so drop any stray native thinking field that
@@ -122,10 +127,12 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
       if (body.include.length === 0) delete body.include;
     }
     // Drop per-message fields some providers reject in history, e.g. Mistral rejects
-    // assistant reasoning_content with 422 extra_forbidden (#1649).
+    // assistant reasoning_content with 422 extra_forbidden (#1649). Assistant turns
+    // only: that is where clients replay reasoning; a user-authored field is left
+    // alone (#4220).
     if (Array.isArray(rule.dropMessageFields) && Array.isArray(body.messages)) {
       for (const msg of body.messages) {
-        if (!msg || !isObject(msg)) continue;
+        if (!msg || !isObject(msg) || msg.role !== "assistant") continue;
         for (const field of rule.dropMessageFields) {
           if (msg[field] !== undefined) delete msg[field];
         }

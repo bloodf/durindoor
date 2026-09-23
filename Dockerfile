@@ -1,11 +1,23 @@
 # syntax=docker/dockerfile:1.7
 ARG NODE_IMAGE=node:20.20.2-alpine
+ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
+ARG APP_VERSION=unknown
+
 FROM ${NODE_IMAGE} AS base
+ARG ALPINE_MIRROR
 WORKDIR /app
+
+# Use the official Alpine mirror by default. A build arg can override it for
+# environments that cannot reach dl-cdn.alpinelinux.org.
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
 
 FROM base AS builder
 
-RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
+# No "apk upgrade": a full distribution upgrade here makes builds less
+# reproducible and is unrelated to installing the build toolchain.
+RUN apk add --no-cache python3 make g++ linux-headers
 
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -16,9 +28,19 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM ${NODE_IMAGE} AS runner
+ARG ALPINE_MIRROR
+ARG APP_VERSION
 WORKDIR /app
 
-LABEL org.opencontainers.image.title="durindoor"
+# The base stage's mirror swap does not reach here: runner starts from
+# ${NODE_IMAGE} directly, so this stage needs its own swap or the apk add
+# below hangs on networks that cannot reach dl-cdn.alpinelinux.org.
+RUN if [ "$ALPINE_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+      sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories; \
+    fi
+
+LABEL org.opencontainers.image.title="durindoor" \
+      org.opencontainers.image.version="${APP_VERSION}"
 
 ENV NODE_ENV=production
 ENV PORT=20128
@@ -52,8 +74,9 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
   mkdir -p /app/data-home && chown node:node /app/data-home && \
   ln -sf /app/data-home /root/.durindoor 2>/dev/null || true
 
-# Fix permissions at runtime (handles mounted volumes)
-RUN apk --no-cache upgrade && apk --no-cache add su-exec && \
+# Fix permissions at runtime (handles mounted volumes). No "apk upgrade": see
+# the builder stage note above.
+RUN apk add --no-cache su-exec && \
   printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 

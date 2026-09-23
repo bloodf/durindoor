@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleComboChat, resetComboRotation } from "../../open-sse/services/combo.js";
+import {
+  getComboModelQuotaHealth,
+  handleComboChat,
+  resetComboRotation,
+  resetComboScoring,
+} from "../../open-sse/services/combo.js";
 
 const encoder = new TextEncoder();
 const log = { info() {}, warn() {}, error() {}, debug() {} };
@@ -148,6 +153,33 @@ describe("combo empty-stream failover (#3463)", () => {
 
     expect(attempted).toEqual(["p1/first", "p1/first", "p2/second"]);
     expect((await response.json()).choices[0].message.content).toBe("usable");
+  });
+});
+
+describe("combo empty stream with a request-scoped refusal (OmniRoute #14585)", () => {
+  async function smartRun(comboName, errorBody) {
+    resetComboScoring(comboName);
+    const frame = `data: ${JSON.stringify({ error: errorBody })}\n\n`;
+    const response = await handleComboChat({
+      body: { stream: true, messages: [{ role: "user", content: "hi" }] },
+      models: ["p1/first", "p2/second"],
+      handleSingleModel: async (_body, model) => model === "p1/first"
+        ? sseResponse([frame, "data: [DONE]\n\n"])
+        : sseResponse(['data: {"choices":[{"delta":{"content":"other model"}}]}\n\n']),
+      log,
+      comboName,
+      comboStrategy: "smart-scoring",
+    });
+    expect(await response.text()).toContain("other model");
+    return getComboModelQuotaHealth(comboName, "p1/first");
+  }
+
+  it("still falls to the next model but leaves the refused model's score alone", async () => {
+    expect(await smartRun("scoped-refusal", { type: "invalid_request_error", message: "bad" })).toBe("healthy");
+  });
+
+  it("keeps penalizing a transient pre-content error", async () => {
+    expect(await smartRun("transient-error", { type: "server_error", message: "boom" })).toBe("degraded");
   });
 });
 

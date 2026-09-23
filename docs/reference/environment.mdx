@@ -194,6 +194,27 @@ The intercept helper is optional and local. Several of these are set by the mana
 | `MITM_LAUNCH_GATE_FILE` | set by the manager | Launch-gate file path. | `src/mitm/launchGate.js` |
 | `MITM_MANAGER_PID` | set by the manager | Parent pid for the launch gate. | `src/mitm/launchGate.js` |
 
+## ChatGPT Web
+
+See [ChatGPT Web](../providers/chatgpt-web.mdx) for the transports these tune.
+
+| Variable | Default | Purpose | Read in |
+| --- | --- | --- | --- |
+| `DURINDOOR_BROWSER_POOL` | on | `off`, `0` or `false` disables the shared browser pool; ChatGPT Web `auto` then uses HTTP. | `open-sse/services/browserPool.js` |
+| `DURINDOOR_BROWSER_AUTO_INSTALL` | off | `1` runs `playwright install chromium` the first time no browser is found. | `open-sse/services/browserPool.js` |
+| `DURINDOOR_CHATGPT_WEB_HEADLESS` | off | `1` runs the ChatGPT Web browser headless instead of headed off-screen. | `open-sse/utils/chatgptWebExecutorAdapter.js` |
+| `CHATGPT_WEB_CHROME_PATH` | unset (`CHROME_PATH`, then standard install paths) | Chrome or Chromium binary for the browser transport. The Docker image sets `/usr/bin/chromium-browser`. | `open-sse/utils/chatgptWebExecutorAdapter.js` |
+| `OBSCURA_BIN`, `OBSCURA_CDP_ENDPOINT`, `OBSCURA_PORT` | unset | Optional Obscura engine for headless pool contexts. | `open-sse/services/obscura.js` |
+| `DURINDOOR_CHATGPT_TLS_TIMEOUT_MS` | `60000` | HTTP transport request timeout. | `open-sse/services/chatgptTlsClient.js` |
+| `DURINDOOR_CHATGPT_TLS_GRACE_MS` | `10000` | Grace period before a hung tls-client call is abandoned. | `open-sse/services/chatgptTlsClient.js` |
+| `DURINDOOR_CHATGPT_STREAM_FIRST_BYTE_TIMEOUT_MS` | `30000` | HTTP transport wait for the first streamed byte. | `open-sse/services/chatgptTlsClient.js` |
+| `DURINDOOR_CGPT_WEB_PRO_TIMEOUT_MS` | `1200000` | How long the HTTP transport polls for a Pro answer. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_CGPT_WEB_PRO_POLL_INTERVAL_MS` | `4000` | Pro answer poll interval. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_CGPT_WEB_IMAGE_TIMEOUT_MS` | `180000` | Wait for an asynchronous generated image. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_CGPT_WEB_IMAGE_CACHE_MAX_MB` | `10` | In-memory cache for generated images served at `/v1/chatgpt-web/image/<id>`. | `open-sse/services/chatgptImageCache.js` |
+| `DURINDOOR_PUBLIC_BASE_URL` | unset (then `BASE_URL`, `NEXT_PUBLIC_BASE_URL`, request headers, `localhost:$PORT`) | Public origin used in generated image links. | `open-sse/executors/chatgpt-web-http.js` |
+| `DURINDOOR_XVFB` | on in Docker | `0` stops the image entrypoint from starting Xvfb. | `Dockerfile` |
+
 ## Provider debug, sidecars, Azure
 
 | Variable | Default | Purpose | Read in |

@@ -18,6 +18,8 @@ import {
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
+import { CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
+import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
 
 const KIMI_WEB_MODELS_PATH = "/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels";
 
@@ -147,7 +149,12 @@ export const appendCodexReviewModels = (models) => models.flatMap((model) => {
 
 });
 
-export const parseCodexModels = (data) => appendCodexReviewModels(parseOpenAIStyleModels(data));
+// Drop catalog entries the pinned Codex CLI version is too old to call
+// (`minimal_client_version` gate) before expanding review variants.
+// Upstream provenance: diegosouzapw/OmniRoute d5452d03e (#12933).
+export const parseCodexModels = (data) => appendCodexReviewModels(
+  parseOpenAIStyleModels(data).filter((model) => meetsMinimalCodexClientVersion(model?.minimal_client_version))
+);
 
 export const createOpenAIModelsConfig = (url) => ({
   url,
@@ -333,7 +340,7 @@ export const PROVIDER_MODELS_CONFIG = {
     }
   },
   codex: {
-    url: "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0",
+    url: `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLI_VERSION}`,
     method: "GET",
     headers: { "Content-Type": "application/json", "Accept": "application/json" },
     authHeader: "Authorization",

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   acquireSlot,
   releaseSlot,
+  acquireMany,
   getConcurrencyLimit,
   getGateStats,
   _resetGates,
@@ -182,5 +183,51 @@ describe("getGateStats", () => {
     expect(getGateStats()).toEqual({});
 
     await Promise.allSettled([w1, w2]);
+  });
+});
+
+describe("acquireMany (hierarchical global -> provider admission)", () => {
+  it("bypasses every tier with limit 0/null and returns a no-op release", async () => {
+    const release = await acquireMany([{ key: "__global__", limit: 0 }, { key: "p7", limit: null }]);
+    expect(getGateStats()).toEqual({});
+    release();
+    expect(getGateStats()).toEqual({});
+  });
+
+  it("acquires all enabled tiers and releases them together", async () => {
+    const release = await acquireMany([{ key: "__global__", limit: 2 }, { key: "p8", limit: 1 }]);
+    expect(getGateStats().__global__.current).toBe(1);
+    expect(getGateStats().p8.current).toBe(1);
+    release();
+    expect(getGateStats()).toEqual({});
+  });
+
+  it("release is idempotent", async () => {
+    const release = await acquireMany([{ key: "p9", limit: 1 }]);
+    release();
+    release();
+    expect(getGateStats()).toEqual({});
+  });
+
+  it("rolls back an earlier tier when a later tier times out", async () => {
+    await acquireSlot("p10", 1); // saturate the provider tier
+    await expect(
+      acquireMany([{ key: "__global__", limit: 5 }, { key: "p10", limit: 1 }], 20)
+    ).rejects.toBeInstanceOf(ConcurrencyGateTimeoutError);
+    // The global tier was acquired then rolled back — no leaked slot.
+    expect(getGateStats().__global__).toBeUndefined();
+    expect(getGateStats().p10.current).toBe(1); // only the pre-existing holder remains
+    releaseSlot("p10");
+    expect(getGateStats()).toEqual({});
+  });
+
+  it("a saturated global tier blocks admission even when the provider tier is free", async () => {
+    await acquireSlot("__global__", 1); // saturate global
+    await expect(
+      acquireMany([{ key: "__global__", limit: 1 }, { key: "p11", limit: 5 }], 20)
+    ).rejects.toBeInstanceOf(ConcurrencyGateTimeoutError);
+    expect(getGateStats().p11).toBeUndefined();
+    releaseSlot("__global__");
+    expect(getGateStats()).toEqual({});
   });
 });

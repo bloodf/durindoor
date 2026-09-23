@@ -26,8 +26,24 @@ export function mapStainlessArch(archName = arch()) {
 // Anthropic API version (single source — reused across claude-format providers/executors)
 export const ANTHROPIC_API_VERSION = "2023-06-01";
 
-/** Claude Code version shared by transport and cloaked billing fingerprints. */
-export const CLAUDE_CLI_VERSION = "2.1.258";
+/** Pinned Claude Code release; 2.1.280 is the first one Anthropic accepts for Claude Opus 5.5. */
+export const DEFAULT_CLAUDE_CLI_VERSION = "2.1.280";
+const SAFE_CLI_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+
+/**
+ * Resolve the spoofed Claude Code version. `CLAUDE_CODE_CLIENT_VERSION` overrides the pin
+ * so a newer CLI gate can be met without a release; values that are not a safe header token
+ * are ignored.
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {string}
+ */
+export function resolveClaudeCliVersion(env = process.env) {
+  const override = env?.CLAUDE_CODE_CLIENT_VERSION?.trim();
+  return override && SAFE_CLI_VERSION.test(override) ? override : DEFAULT_CLAUDE_CLI_VERSION;
+}
+
+/** Claude Code version shared by transport and cloaked billing fingerprints (read once at load). */
+export const CLAUDE_CLI_VERSION = resolveClaudeCliVersion();
 
 // Shared Claude-compatible API headers (reused across claude-format providers)
 export const CLAUDE_API_HEADERS = {
@@ -35,7 +51,10 @@ export const CLAUDE_API_HEADERS = {
   "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
 };
 
-// Full Claude CLI fingerprint captured from Claude Code 2.1.258.
+// Full Claude CLI fingerprint captured from Claude Code 2.1.258. The version
+// (User-Agent + billing cc_version) is bumped to 2.1.280, the first release
+// that ships Claude Opus 5.5; Anthropic rejects Opus 5.5 from older CLI
+// versions. Every beta flag below is still present in the 2.1.280 bundle.
 // Static stable values (UA, beta flags, package/runtime versions, runtime,
 // language, retry, timeout, API version, dangerous browser header, x-app) are
 // pinned to the captured wire literal. OS and architecture use the live
@@ -61,7 +80,7 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
 
 // Anthropic beta flags for anthropic-compatible-* nodes fronting Anthropic
 // (port of decolua/9router#3797). Derived from the fork's pinned Claude Code
-// 2.1.258 capture above (CLAUDE_CLI_SPOOF_HEADERS); effort-2025-11-24 is a
+// fingerprint above (CLAUDE_CLI_SPOOF_HEADERS); effort-2025-11-24 is a
 // heavy-agent flag and is only sent for opus/sonnet model ids — cheaper models
 // don't need it. `oauth-2025-04-20` is intentionally excluded here: it is an
 // auth-mode flag appended by the claude usage path, not a request capability.
@@ -84,6 +103,36 @@ export function selectAnthropicBeta(model = "") {
   const flags = [...ANTHROPIC_BETA_BASE];
   if (/^claude-(opus|sonnet)/.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
   return flags.join(",");
+}
+
+/**
+ * Client-sent betas that are forwarded per request. Claude Code 2.1.278+ sends
+ * `dangerous-tool-use-2026-09-03` with a `safeguards` body field; Fable 5.1 and
+ * Opus 5.5 need the thinking betas for `thinking.block_binding` / `thinking.display`.
+ * Dropping them turns those body fields into 400s.
+ */
+export const FORWARDABLE_CLIENT_BETAS = new Set([
+  "thinking-binding-controls-2026-08-01",
+  "thinking-display-updates-2026-08-18",
+  "dangerous-tool-use-2026-09-03"
+]);
+
+/**
+ * Add the allowlisted betas the calling client sent to the outbound Anthropic-Beta header.
+ * Other client betas are ignored. Mutates and returns `headers`.
+ * @param {Record<string, string>} headers outbound headers
+ * @param {Record<string, string>|null|undefined} clientHeaders inbound request headers
+ */
+export function mergeForwardableClientBetas(headers, clientHeaders) {
+  const raw = clientHeaders?.["anthropic-beta"] ?? clientHeaders?.["Anthropic-Beta"];
+  if (!isString(raw)) return headers;
+  const wanted = raw.split(",").map((f) => f.trim()).filter((f) => FORWARDABLE_CLIENT_BETAS.has(f));
+  if (wanted.length === 0) return headers;
+  const key = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
+  const flags = new Set((headers[key] || "").split(",").map((f) => f.trim()).filter(Boolean));
+  for (const flag of wanted) flags.add(flag);
+  headers[key] = Array.from(flags).join(",");
+  return headers;
 }
 
 // Kimi Code single-source endpoints and documented membership display names.

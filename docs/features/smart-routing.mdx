@@ -35,6 +35,8 @@ A third strategy, Cache Affinity, pins the same session id to an account via ren
 
 A preferred connection id, when present and still eligible, wins over rotation or cache affinity.
 
+When live quota is trackable, the deterministic quota ranking normally picks the single best-scoring account every time. Setting `fallbackStrategy: "quota-weighted"` (globally or per provider, same field as Round Robin) instead draws randomly among quota-comparable eligible accounts, weighted by leftover quota, so concurrent requests spread out instead of converging on one account. `quotaWeightedFloorPercent` (default 1) keeps accounts at or below that leftover-quota percent out of the draw unless every comparable account is already that thin; then they get pulled in so nothing starves. An exhausted, cooled-down, or below-routing-floor account is never a candidate, same as fill-first. Falls back to fill-first order when nothing is quota-comparable.
+
 ## Translation
 
 Client format is detected from the path and body. OpenAI-shaped requests are the common entry. Direct translator pairs exist where the OpenAI hop would drop fields (thinking blocks, tool ids, non-base64 images, `tool_result.is_error`). Matching source and target skip translation.

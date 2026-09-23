@@ -19,7 +19,7 @@ Open Dashboard, then Providers. Registry cards group OAuth, API key, cookie, fre
 | Credential | Typical providers | Where it is documented |
 | --- | --- | --- |
 | OAuth | Claude Code, Codex, Gemini CLI, GitHub | [Connecting accounts](./connecting-accounts.mdx) |
-| Cookie | ChatGPT Web and other `webCookie` ids | [Connecting accounts](./connecting-accounts.mdx) |
+| Cookie | Grok Web, Kimi Web, and other `webCookie` ids | [Web cookie providers](./web-cookie.mdx) |
 | API key | OpenAI, Anthropic, Groq, Azure | [API key providers](./api-key-providers.mdx) |
 | Compatible node | Your own `/v1` gateway | [OpenAI-compatible nodes](./openai-compatible-nodes.mdx) |
 | Local / no-auth | Ollama, LM Studio, Horde | [Free and local](./free-and-local.mdx) |
@@ -48,5 +48,20 @@ Multiple connections on one provider are the fallback unit. Priority is the fill
   <Card title="OpenAI-compatible nodes" href="/docs/providers/openai-compatible-nodes" description="Custom OpenAI, Anthropic, and embedding endpoints." />
   <Card title="Free and local" href="/docs/providers/free-and-local" description="No-auth, Ollama, LM Studio, cookies, and local devices." />
   <Card title="Local router providers" href="/docs/providers/local-router-providers" description="Self-hosted OpenAI-compatible IDs and metadata-only entries." />
+  <Card title="Web cookie providers" href="/docs/providers/web-cookie" description="Copy a browser session cookie and what each site expects." />
   <Card title="Provider catalog" href="/docs/providers/catalog" description="Generated list of registry ids, auth types, and model counts." />
+</Cards>
+
+## Provider guides
+
+Some providers need more than the generic flow. These pages cover sign-in, imports, quota, and the errors specific to each one.
+
+<Cards>
+  <Card title="Claude Code" href="/docs/providers/claude-code" description="Claude subscription OAuth, the CLI version DurinDoor presents, and 5-hour/weekly quota." />
+  <Card title="OpenAI Codex" href="/docs/providers/codex" description="ChatGPT OAuth on port 1455, bulk import, fingerprint mode, and reauth quarantine." />
+  <Card title="Antigravity" href="/docs/providers/antigravity" description="Google OAuth client variables, project onboarding, the agy id, and MITM mode." />
+  <Card title="Kiro" href="/docs/providers/kiro" description="Builder ID, Identity Center, social login, API key, and IDE token import." />
+  <Card title="Cursor" href="/docs/providers/cursor" description="Import the Cursor IDE session, auto-detect paths, and no refresh." />
+  <Card title="Kimi Web" href="/docs/providers/kimi-web" description="The kimi-auth cookie, two models, and how failures look." />
+  <Card title="Hidden and retired providers" href="/docs/providers/retired" description="Providers you can no longer add and ids with no executor yet." />
 </Cards>

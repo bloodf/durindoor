@@ -133,9 +133,9 @@ describe("claude-settings POST", () => {
     expect(CLI_TOOLS.claude.modelAliases).toContain("sonnet[1m]");
   });
 
-  it("maps Claude defaults to Fable 5.1 without changing Opus", () => {
+  it("maps Claude defaults to Opus 5.5 and Fable 5.1", () => {
     const opus = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "opus");
-    expect(opus.defaultValue).toBe("cc/claude-opus-5");
+    expect(opus.defaultValue).toBe("cc/claude-opus-5-5");
     const sonnet = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "sonnet");
     expect(sonnet.defaultValue).toBe("cc/claude-sonnet-5");
     const fable = CLI_TOOLS.claude.defaultModels.find((m) => m.id === "fable");

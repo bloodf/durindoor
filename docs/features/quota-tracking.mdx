@@ -57,6 +57,12 @@ Opt-in per active Claude or Codex OAuth connection. DurinDoor sends a minimal re
 
 The scheduler uses the same snapshots and tracker. A ping counts as success only after a native Claude `message_stop` or a valid Codex Responses terminal. Empty or truncated 200 streams do not update ping metadata. A request already accepted upstream cannot be recalled.
 
+## Free limit resets (Claude Code)
+
+Claude Code OAuth connections eligible for Anthropic's free "limit reset" program (`cedar_ember`) show their available resets on the same limits view, read-only, as part of the normal usage poll. No extra request is made to see them.
+
+Spending a reset is never automatic. The dashboard only calls the redeem endpoint after you press the reset button and confirm the Durin DS dialog, which states the action is irreversible and names which limits it refills (session, weekly, or a model-scoped weekly window). Redeeming clears the connection's cached quota so the next read shows the refilled limits.
+
 ## Cost
 
 Cost estimates need catalog prices and token counts. Reasoning tokens are a subset of output, not an extra charge. Treat the number as an operational hint. The provider remains the billing authority.

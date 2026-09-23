@@ -97,6 +97,7 @@ export function canDiscoverModels(connection) {
       case "kiro":
         return Boolean(connection.accessToken);
       case "qoder":
+      case "qoder-cn":
         return Boolean(connection.accessToken && connection.providerSpecificData?.userId);
       case "github":
         // copilotModels.js:106 — copilotToken OR accessToken; refreshToken

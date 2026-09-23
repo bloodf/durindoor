@@ -18,6 +18,13 @@ const DEFAULT_SETTINGS = {
   cloudEnabled: false,
   hidePaidModels: false,
   exposeComboOnly: false,
+  /**
+   * OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
+   * /v1/models exposure, mirrored into auto/* combo candidate pools.
+   * Default off (empty arrays); see src/shared/utils/modelExposureList.js.
+   */
+  modelVisibilityAllowlist: [],
+  modelVisibilityDenylist: [],
   tunnelEnabled: false,
   tunnelUrl: "",
   tunnelProvider: "cloudflare",

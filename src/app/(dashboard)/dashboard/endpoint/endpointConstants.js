@@ -15,6 +15,7 @@ export const REACHABLE_MISS_THRESHOLD = 5;
 export const CLIENT_PING_FAST_MS = 10000;
 export const CLIENT_PING_SLOW_MS = 60000;
 export const CLIENT_PING_TIMEOUT_MS = 5000;
+export const KEY_USAGE_POLL_MS = 15000;
 /** Endpoint rows show actual composite service state; settingsEnabled remains toggle intent. */
 export const getCompositeEndpointEnabled = (status) => status?.enabled === true;
 

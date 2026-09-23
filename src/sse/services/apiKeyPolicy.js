@@ -69,7 +69,9 @@ export async function recordApiKeyUsageForResponse(apiKey, response, usage) {
 }
 
 /**
- * Enforce API key policy on a request: model allowlist + token/cost limits.
+ * Enforce API key policy on a request: model allowlist, model access rules,
+ * windowed limits (RPM, daily/monthly tokens, requests, budget) and lifetime
+ * token/cost limits.
  *
  * Call this AFTER the shared credential resolver and pass its resolved key so
  * stale lower-precedence credentials cannot bypass the authenticated key's
@@ -79,9 +81,11 @@ export async function recordApiKeyUsageForResponse(apiKey, response, usage) {
  * @param {Request} request
  * @param {string} modelStr
  * @param {string | null} [apiKey]
+ * @param {{ limits?: boolean }} [options] `limits: false` skips the windowed
+ *   limits (used by count_tokens, which never reaches a provider).
  * @returns {Promise<Response | null>}
  */
-export async function enforceApiKeyModelPolicy(request, modelStr, apiKey) {
+export async function enforceApiKeyModelPolicy(request, modelStr, apiKey, { limits = true } = {}) {
   // Skip policy enforcement for internal dashboard/CLI requests only when the CLI
   // token is genuinely valid. An arbitrary non-empty header should not bypass policy.
   const hasCli = await hasValidCliToken(request);
@@ -110,6 +114,29 @@ export async function enforceApiKeyModelPolicy(request, modelStr, apiKey) {
       HTTP_STATUS.FORBIDDEN,
       `Model "${modelStr}" is not allowed for this API key`
     );
+  }
+
+  // Loaded on demand: both pull in the provider registry and the usage
+  // repository, which most callers of this module never need.
+  if (policy.modelAccess && policy.modelAccess.mode !== "all") {
+    const { getModelAccessCandidateBuilder, isModelAccessAllowed } = await import("./modelAccess.js");
+    const candidatesFor = await getModelAccessCandidateBuilder();
+    if (!isModelAccessAllowed(policy.modelAccess, candidatesFor(modelStr))) {
+      log.warn("AUTH", `Model "${modelStr}" blocked by model access rules for API key "${keyRecord.name}"`);
+      return errorResponse(
+        HTTP_STATUS.FORBIDDEN,
+        `Model "${modelStr}" is not allowed for this API key`
+      );
+    }
+  }
+
+  if (limits && keyRecord.key) {
+    const { enforceApiKeyLimits } = await import("@/lib/apiKeyLimits.js");
+    const limitError = await enforceApiKeyLimits(request, { ...keyRecord, policy });
+    if (limitError) {
+      log.warn("AUTH", `Windowed limit reached for API key "${keyRecord.name}"`);
+      return limitError;
+    }
   }
 
   // Check token/cost limits

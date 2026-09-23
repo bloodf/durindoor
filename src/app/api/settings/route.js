@@ -195,6 +195,17 @@ export async function PATCH(request) {
     // clients can't persist dead config.
     delete body.pxpipeAutoInstall;
 
+    // OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
+    // /v1/models exposure. Same validation shape as pxpipeAllowedModels above.
+    for (const key of ["modelVisibilityAllowlist", "modelVisibilityDenylist"]) {
+      if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+      const raw = body[key];
+      if (!Array.isArray(raw) || raw.some((m) => !isString(m))) {
+        return NextResponse.json({ error: `Invalid ${key}` }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      body[key] = Array.from(new Set(raw.map((m) => m.trim()).filter(Boolean)));
+    }
+
     /** Validate decolua/9router#2895 retry-delay overrides at the settings boundary. */
     if (Object.prototype.hasOwnProperty.call(body, "retryDelayByProvider")) {
       const overrides = body.retryDelayByProvider;

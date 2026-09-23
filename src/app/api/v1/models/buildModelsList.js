@@ -43,6 +43,7 @@ import { projectModelPresentation } from "open-sse/providers/models/presentation
 // deleted in `finally`), so DB/credential changes are observed on the next
 // request and a rejection cannot poison future calls.
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { isModelExposureAllowed } from "../../../../shared/utils/modelExposureList.js";
 const modelsInFlight = new Map();
 
 function kindFilterKey(kindFilter) {
@@ -148,6 +149,24 @@ async function liveResolverOptions(conn) {
 }
 
 
+// Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
+// credentials carry the provider id so qoderModels picks the right region's
+// catalog endpoint.
+async function resolveQoderLiveModels(conn, providerId) {
+  const result = await resolveQoderModels({
+    provider: providerId,
+    accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
+    refreshToken: isString(conn.refreshToken) ? conn.refreshToken : undefined,
+    email: isString(conn.email) ? conn.email : undefined,
+    displayName: isString(conn.displayName) ? conn.displayName : undefined,
+    providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
+  });
+  if (!result?.models?.length) return null;
+  return {
+    models: result.models.map((m) => ({ id: m.id, name: m.name }))
+  };
+}
+
 const LIVE_MODEL_RESOLVERS = {
   anthropic: async (conn, guard) => resolveLiveAnthropicModels(conn, {
     ...(await liveResolverOptions(conn)),
@@ -235,19 +254,8 @@ const LIVE_MODEL_RESOLVERS = {
     });
     return models.length ? { models } : null;
   },
-  qoder: async (conn) => {
-    const result = await resolveQoderModels({
-      accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
-      refreshToken: isString(conn.refreshToken) ? conn.refreshToken : undefined,
-      email: isString(conn.email) ? conn.email : undefined,
-      displayName: isString(conn.displayName) ? conn.displayName : undefined,
-      providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
-    });
-    if (!result?.models?.length) return null;
-    return {
-      models: result.models.map((m) => ({ id: m.id, name: m.name }))
-    };
-  },
+  qoder: (conn) => resolveQoderLiveModels(conn, "qoder"),
+  "qoder-cn": (conn) => resolveQoderLiveModels(conn, "qoder-cn"),
   github: async (conn) => {
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
     const proxyOptions = await resolveConnectionProxyConfig(psd);
@@ -1253,6 +1261,18 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     // already member-filtered above; skip them here so an empty/all-paid combo
     // can't be re-hidden by its bare name (unknown → visible).
     if (hidePaidModels && model.owned_by !== "combo" && isPaidModel(model.id)) continue;
+    // OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
+    // /v1/models exposure. Same backstop shape as hidePaidModels above so
+    // every code path that can push a model entry is covered in one place.
+    // Named combos are exempt (an entry is a bare combo name, not a
+    // provider/model pair); their member pool is filtered separately where
+    // it feeds auto/* resolution (src/sse/services/model.js::getComboModels).
+    if (model.owned_by !== "combo" && model.id.includes("/")) {
+      const slash = model.id.indexOf("/");
+      const provider = model.id.slice(0, slash);
+      const modelId = model.id.slice(slash + 1);
+      if (!isModelExposureAllowed(provider, modelId, settings)) continue;
+    }
     dedupedModels.push(model);
   }
 

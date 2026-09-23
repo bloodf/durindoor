@@ -58,6 +58,7 @@ import {
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { validateChatRequestBody } from "open-sse/translator/validate.js";
@@ -71,7 +72,7 @@ import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
-import { isObject } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -449,6 +450,12 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
       log.warn("AUTH", `API key daily token limit exceeded (${used}/${limit})`);
       return errorResponse(HTTP_STATUS.RATE_LIMITED, `API key daily token limit exceeded (${used}/${limit} tokens)`);
     }
+
+    // Windowed per-key limits are checked once, before combo dispatch, so a
+    // key's own 429 never lowers the shared health score of combo members.
+    // The per-model policy checks below skip this step for the same request.
+    const windowedLimit = await enforceApiKeyLimits(request, authenticatedKeyRecord);
+    if (windowedLimit) return windowedLimit;
   }
 
   if (sourceFormat === FORMATS.CLAUDE) {
@@ -534,7 +541,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   // #6495 / F-4: filter paid members when the toggle is on. The auth ACL check
   // above intentionally calls getComboModels without the flag so combo
   // existence/ACL still see the real, unfiltered member list.
-  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
+  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global. Auto-combo
     // ids (`auto/<family>`) honor the F-2 `comboStrategies[modelStr].strategy`
@@ -716,7 +723,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   if (!modelInfo.provider) {
     const chatSettings = await getSettings();
     // #6495 / F-4: filter paid members when the toggle is on.
-    const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true);
+    const comboModels = await getComboModels(modelStr, chatSettings.hidePaidModels === true, chatSettings);
     if (comboModels) {
       // Resolve the canonical persisted name once so ACL, per-combo strategy
       // lookups, and rotation/scoring keys are stable regardless of the
@@ -1211,18 +1218,26 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             return refreshedCredentials;
           }
         } : null),
-        // Non-OAuth sessions that rotate their own tokens (kimi-web) come back
-        // from executor.refreshCredentials; keep the new pair in the encrypted
-        // token columns so the next request and a restart start from it.
+        // Non-OAuth sessions that rotate their own credentials report them here.
+        // kimi-web returns a new token pair plus `providerSpecificPatch`; keep it
+        // in the encrypted token columns so the next request and a restart start
+        // from it. Web-cookie executors (chatgpt-web) hand back a rotated session
+        // cookie as `apiKey`; persist only that, only for cookie connections.
         ...(activeConnection && activeConnection.authType !== "oauth" ? {
           onCredentialsRefreshed: async (next) => {
-            if (!next?.providerSpecificPatch) return;
-            await updateProviderCredentials(credentials.connectionId, {
-              accessToken: next.accessToken,
-              refreshToken: next.refreshToken,
-              providerSpecificData: next.providerSpecificPatch,
-              existingProviderSpecificData: activeConnection.providerSpecificData
-            });
+            if (next?.providerSpecificPatch) {
+              await updateProviderCredentials(credentials.connectionId, {
+                accessToken: next.accessToken,
+                refreshToken: next.refreshToken,
+                providerSpecificData: next.providerSpecificPatch,
+                existingProviderSpecificData: activeConnection.providerSpecificData
+              });
+              return;
+            }
+            const rotated = next?.apiKey;
+            if (activeConnection?.authType !== "cookie" || !isString(rotated) || !rotated) return;
+            if (rotated === refreshedCredentials?.apiKey) return;
+            await updateProviderCredentials(credentials.connectionId, { rotatedApiKey: rotated });
           }
         } : null),
         onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {

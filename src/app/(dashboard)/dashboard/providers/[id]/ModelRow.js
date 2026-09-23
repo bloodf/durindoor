@@ -8,6 +8,12 @@ const STATUS_TOKENS = {
   default: { border: "border-dd-border", icon: "smart_toy", iconClass: "text-dd-muted" },
 };
 
+// OmniRoute #14356 (port(omniroute)): the edit pencil is available to any
+// caller that supplies `onEdit`, not only rows the caller marks `isCustom`.
+// This lets a registry/synced model row (page.js's built-in model list) open
+// the same capability editor a true custom model uses, so it can carry a
+// context-window (or other capability) override without becoming a fully
+// custom model entry.
 export default function ModelRow({
   model,
   fullModel,
@@ -90,7 +96,7 @@ export default function ModelRow({
             {copied === `model-${model.id}` ? "Copied!" : "Copy"}
           </span>
         </div>
-        {isCustom && onEdit ? (
+        {onEdit ? (
           <IconButton
             label="Edit capabilities"
             variant="ghost"

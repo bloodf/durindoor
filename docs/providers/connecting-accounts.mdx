@@ -97,4 +97,13 @@ Some registry entries set `hidden: true` because the generic add form cannot col
 
 A few OAuth-category providers also accept an API key (`authModes` includes `apikey`). CodeBuddy CN, xAI, and OrcaRouter are in that set. Use Connect for OAuth, or add a key on the same provider page. The OrcaRouter modal shows both as tabs, and either path ends as the same `sk-orca-` key on one connection. The provider page also carries a capability-scoped model picker backed by `GET https://api.orcarouter.ai/v1/models`; when that call fails, the list falls back to a small verified seed and is labelled as offline rather than shown as live discovery.
 
+### Xiaomi MiMo
+
+Xiaomi MiMo takes an `sk-` API key for the cloud API, or a Xiaomi account for the weekly MiMo Desktop quota. Add API Key keeps working as before. Connect opens a modal with two account paths:
+
+- **Local credentials.** When MiMo Desktop is installed on the DurinDoor host, `GET /api/oauth/xiaomi-mimo/auto-import` reads `~/.local/share/mimocode/auth.json` and the Desktop cookie store. That route is local-only and needs dashboard auth. The import stores the key plus the account `passToken`. Desktop locks its cookie database while it runs, so close it first if the token is missing.
+- **Browser login.** No Desktop needed. Pick the account cluster (`cn`, `sgp`, `ams`, `ru`, or `in`). `POST /api/oauth/xiaomi-mimo/login/start` opens the real Xiaomi login page in a popup, served through DurinDoor on your own origin. While the short-lived `dd_mimo_login` cookie is set, `src/proxy.js` forwards non-app paths to `account.xiaomi.com`. Only a request with management access gets through, and the dashboard's own credentials are never forwarded. Once the page yields a `passToken`, the modal saves a session-only connection on that cluster. Non-CN clusters use `MIMO_LOGIN_PROXY` for the login egress when it is set; otherwise a local HTTP proxy on a common port is used if one answers. CN always connects directly.
+
+With a `passToken`, `mimo-v2.6-pro`, `mimo-v2.6-flash`, and `mimo-v2.6-pro-ultraspeed` run on the cluster's account route (`mimo-server-<cluster>.xiaomimimo.com`) and bill the account's weekly quota. DurinDoor swaps the token for a service cookie through MiMo Desktop's two-step `serviceLogin` handshake and caches the cookie for 30 minutes per token and cluster. When the handshake fails, those models fall back to the cloud API with the key. Other models always use the cloud API. The connection test and the usage card use the same handshake.
+
 Drag-reorder on the provider page persists the full connection id list through `PUT /api/providers/reorder`. The body must be exactly that provider's ids, no extras and none missing, or the route returns 409 and writes nothing.

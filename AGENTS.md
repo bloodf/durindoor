@@ -29,6 +29,7 @@ Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX
 - Tests that call `translateRequest` or `translateResponse` must `import "./registerAll.js"` at the top of the file.
 - Role, block, and model strings come from `open-sse/translator/schema/` and `open-sse/config/`. Do not hardcode them.
 - `open-sse/rtk/` compresses `tool_result` bodies in place and fails open: on error it returns null and leaves the body untouched. It skips `is_error` and `status:"error"` results.
+- RTK normally runs on the translated (target-format) body in `chatCore.js`, after `translateRequest`. Cursor is the one exception: its translator (`translator/request/openai-to-cursor.js`) rewrites `role:"tool"` / Claude `tool_result` blocks into plain `<tool_result>` user text, so a post-translate pass has no tool-result shape left to compress. `chatCore.js` runs RTK on the source-format body for `provider === "cursor"` before that rewrite, and skips the post-translate call for that request so the body is never compressed twice.
 
 ## Test workflow
 

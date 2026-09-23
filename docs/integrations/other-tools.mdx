@@ -15,7 +15,7 @@ Production bind is port 20128. `npm run dev` listens on 20127. Remote deployment
 
 ## Dashboard versus auto-configure
 
-**CLI Tools** (`/dashboard/cli-tools`) is the apply and guide path for coding agents. This section documents Claude Code, Codex, Cursor, Cline, Roo, and Continue. The same grid also lists OpenCode, Cowork, Hermes, Droid, Kilo, DeepSeek TUI, jcode, Grok Build, Qwen Code, Open Claw, GitHub Copilot, Amp, and others. Open those cards at `/dashboard/cli-tools/<toolId>`.
+**CLI Tools** (`/dashboard/cli-tools`) is the apply and guide path for coding agents. This section documents Claude Code, Codex, Cursor, Cline, Roo, and Continue. The same grid also lists OpenCode, Cowork, Hermes, Droid, Kilo, DeepSeek TUI, jcode, Grok Build, Pi, Crush, ForgeCode, Smelt, CodeWhale, Qwen Code, Open Claw, GitHub Copilot, Amp, and others. Open those cards at `/dashboard/cli-tools/<toolId>`.
 
 **Auto-configure** (`/dashboard/auto-configure`, `scripts/auto-configure.mjs`, `/api/settings/auto-configure`) probes Headroom, PxPipe, and Firecrawl. It does not write client config files.
 
@@ -54,6 +54,24 @@ Paths: macOS `~/Library/Application Support/Code/User/chatLanguageModels.json`, 
 
 `GET` reports `has9Router` when an entry named `DurinDoor` is present.
 
+## Pi, Crush, ForgeCode, Smelt, and CodeWhale
+
+These cards share one settings form: endpoint, API key, and model. Pi takes a list of models; the others take one default model. Each card calls `/api/cli-tools/<toolId>-settings` (`GET` status, `POST` apply, `DELETE` reset).
+
+| Tool | Card | Config file | What apply writes |
+| --- | --- | --- | --- |
+| Pi | `pi` | `~/.pi/agent/models.json` (or `~/.pi/models.json` if only that exists) | `providers.durindoor` with `api: "openai-completions"` and the model list |
+| Crush | `crush` | `$XDG_CONFIG_HOME/crush/crush.json`, default `~/.config/crush/crush.json` | `providers.durindoor` with `type: "openai-compat"` |
+| ForgeCode | `forge` | `~/.forge/config.toml` | `[openai]` table with `api_key`, `base_url`, `model` |
+| Smelt | `smelt` | `~/.smelt/config.json` | top-level `baseUrl`, `apiKey`, `model`, `_managedBy: "durindoor"` |
+| CodeWhale | `codewhale` | `~/.codewhale/config.toml` | `[openai]` table with `api_key`, `base_url`, `model` |
+
+Other keys in each file are kept. An existing file that cannot be parsed, or is not an object, aborts with `refusing to overwrite it`. Localhost with no pasted key uses `sk_durindoor`. `GET` redacts API keys.
+
+Reset removes only DurinDoor's part: the `durindoor` provider for Pi and Crush, and the endpoint keys or `[openai]` table for Smelt, ForgeCode, and CodeWhale. For those last three, reset only runs when the file carries the DurinDoor marker (`_managedBy` or the `managed by DurinDoor` header) or points at port 20128, so a hand-written `[openai]` table is left alone. A file left empty is deleted. Configs written by 9router (`providers.9router`, `_managedBy: "9router"`, or a `managed by 9Router` header) count as configured, and apply or reset replaces them.
+
+Oh My Pi keeps its guide card and the shipped `omp-extension`; it has no settings route.
+
 ## Agent skills
 
 The skills under `skills/` teach agents how to call a running gateway as an OpenAI-compatible client. They are not the `durindoor` npm launcher.
@@ -85,7 +103,7 @@ DurinDoor exposes compatibility routes including `/v1/chat/completions`, `/v1/re
 
 ## Legacy `9router` labels
 
-Display names and new IDs are DurinDoor. Incoming CLI configs still use the section label `9router` where the tool stores a provider id (Codex `model_provider`, OpenCode `provider.9router`, Grok Build `[model.9router]`). Copilot's written entry is named `DurinDoor`. The HTTP header `X-Msh-Platform: 9router` remains accepted. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
+Display names and new IDs are DurinDoor. Incoming CLI configs still use the section label `9router` where the tool stores a provider id (Codex `model_provider`, OpenCode `provider.9router`, Grok Build `[model.9router]`). Copilot's written entry is named `DurinDoor`. Pi and Crush write `providers.durindoor` and still read an older `providers.9router` entry. The HTTP header `X-Msh-Platform: 9router` remains accepted. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
 
 ## Check it works
 

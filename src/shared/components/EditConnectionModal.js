@@ -17,13 +17,22 @@ import {
   normalizeGooglePseCx } from
 "@/shared/utils/googlePseProviderSpecificData";
 import { buildAwsConnectionEdit } from "@/shared/utils/awsConnectionEdit";
+import PeakHourProtectionEditor, {
+  EMPTY_PEAK_HOUR_PROTECTION,
+  cloneForEdit as clonePeakHourProtectionForEdit,
+  normalizeForSave as normalizePeakHourProtectionForSave,
+  formatPeakHourSummary } from
+"@/shared/components/PeakHourProtectionEditor";
 
 export default function EditConnectionModal({ isOpen, connection, proxyPools, onSave, onClose }) {
   const [formData, setFormData] = useState({
     name: "",
     priority: 1,
-    apiKey: ""
+    apiKey: "",
+    rpd: "",
+    timeoutMs: ""
   });
+  const [peakHourProtection, setPeakHourProtection] = useState(EMPTY_PEAK_HOUR_PROTECTION);
   const [azureData, setAzureData] = useState({
     azureEndpoint: "",
     apiVersion: "2024-10-01-preview",
@@ -48,9 +57,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         name: connection.name || "",
         priority: connection.priority || 1,
         apiKey: "",
-        openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true
+        openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
+        rpd: connection.providerSpecificData?.rateLimitOverrides?.rpd?.toString() ?? "",
+        timeoutMs: connection.providerSpecificData?.timeoutMs?.toString() ?? ""
       });
       setAiCreditLimit(connection.providerSpecificData?.aiCreditLimit?.toString() ?? "");
+      setPeakHourProtection(clonePeakHourProtectionForEdit(connection.providerSpecificData?.peakHourProtection));
       // Load Azure-specific data if present
       if (connection.provider === "azure" && connection.providerSpecificData) {
         setAzureData({
@@ -130,37 +142,50 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     return undefined;
   };
 
+  // Generic overrides apply to every connection regardless of provider, so
+  // they are merged onto whatever the provider-specific branch below returns
+  // (the API route deep-merges providerSpecificData, so a plain object here
+  // is enough — no need to re-spread the branch's own keys).
+  const buildGenericOverrides = () => ({
+    peakHourProtection: normalizePeakHourProtectionForSave(peakHourProtection),
+    rateLimitOverrides: formData.rpd.trim() ? { rpd: Number(formData.rpd) } : null,
+    timeoutMs: formData.timeoutMs.trim() ? Number(formData.timeoutMs) : null
+  });
+
   const buildProviderSpecificData = () => {
+    const generic = buildGenericOverrides();
     if (isAzure) {
       return {
         azureEndpoint: azureData.azureEndpoint,
         apiVersion: azureData.apiVersion,
         deployment: azureData.deployment,
-        organization: azureData.organization
+        organization: azureData.organization,
+        ...generic
       };
     }
     if (requiresAccountId) {
-      return { accountId: cloudflareData.accountId.trim() };
+      return { accountId: cloudflareData.accountId.trim(), ...generic };
     }
     if (isGooglePse) {
-      return buildGooglePseProviderSpecificData(googlePseData.cx, connection?.providerSpecificData);
+      return { ...buildGooglePseProviderSpecificData(googlePseData.cx, connection?.providerSpecificData), ...generic };
     }
     if (isCodexOAuth) {
-      return { ...connection.providerSpecificData, codexFingerprintMode };
+      return { ...connection.providerSpecificData, codexFingerprintMode, ...generic };
     }
     if (usesAwsCredentialForm) {
-      return buildAwsEdit().providerSpecificData;
+      return { ...buildAwsEdit().providerSpecificData, ...generic };
     }
     if (providerRegions) {
-      return buildRegionSpecificData();
+      return { ...(buildRegionSpecificData() || {}), ...generic };
     }
     if (isResponsesConnection) {
       return {
         ...(connection?.providerSpecificData || {}),
-        openaiStoreEnabled: formData.openaiStoreEnabled === true
+        openaiStoreEnabled: formData.openaiStoreEnabled === true,
+        ...generic
       };
     }
-    return undefined;
+    return generic;
   };
   const hasRequiredGooglePseCx = !isGooglePse || !!normalizeGooglePseCx(googlePseData.cx);
 
@@ -297,6 +322,15 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         {usesAwsCredentialForm ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">AWS Credentials</h3><div className="flex flex-col gap-3"><Input label="AWS Profile (SSO)" value={awsData.profile} onChange={(e) => editAwsData({ profile: e.target.value })} placeholder="my-sso-profile" hint={formData.apiKey && awsData.profile.trim() ? "Saving with a new API key clears this profile." : "Takes precedence over any key. Clear it to use static keys or a Bedrock API key."} /><Input label="Access Key ID (static AWS keys only)" value={awsData.accessKeyId} onChange={(e) => editAwsData({ accessKeyId: e.target.value })} placeholder="AKIA..." hint="Put the secret access key in the API Key field. Clear this to use a Bedrock API key." /><Input label="Session Token (temporary ASIA... keys only)" type="password" autoComplete="off" value={awsData.sessionToken} onChange={(e) => editAwsData({ sessionToken: e.target.value })} placeholder="Enter new session token" hint="Leave blank to keep the current token. Changing the access key id replaces it." /></div></section> : null}
         {isResponsesConnection ? <Toggle checked={formData.openaiStoreEnabled === true} onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })} label="OpenAI Responses store" description="Allow this connection to retain Responses API state for continuation." /> : null}
         {requiresAccountId ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">{accountIdProviderLabel}</h3><Input label="Account ID" value={cloudflareData.accountId} onChange={(e) => setCloudflareData({ accountId: e.target.value })} placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."} hint={connection?.provider === "snowflake" ? "Snowflake account identifier, for example org-account" : "Find Account ID in right sidebar of dash.cloudflare.com"} /></section> : null}
+        <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4">
+          <h3 className="mb-3 text-[13px] font-semibold text-dd-text">Rate limits &amp; timeout</h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Input label="Requests per day (RPD)" type="number" min="0" value={formData.rpd} onChange={(e) => setFormData({ ...formData, rpd: e.target.value })} placeholder="Inherit" hint="Blank inherits no daily cap." />
+            <Input label="Upstream timeout (ms)" type="number" min="0" value={formData.timeoutMs} onChange={(e) => setFormData({ ...formData, timeoutMs: e.target.value })} placeholder="Inherit" hint="Blank inherits the provider/global default." />
+          </div>
+        </section>
+        <PeakHourProtectionEditor value={peakHourProtection} onChange={setPeakHourProtection} />
+        {formatPeakHourSummary(peakHourProtection) ? <p className="text-xs text-dd-muted">{formatPeakHourSummary(peakHourProtection)}</p> : null}
         {!isCompatible && !isAzure && !requiresAccountId ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" icon="network_check" onClick={handleTest} loading={testing}>Test Connection</Button>{testResult ? <Badge tone={testResult === "success" ? "success" : "danger"}>{testResult === "success" ? "Valid" : "Failed"}</Badge> : null}</div> : null}
       </div>
     </Modal>);

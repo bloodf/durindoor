@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta } from "../providers/shared.js";
+import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -573,6 +573,9 @@ export class DefaultExecutor extends BaseExecutor {
     const isClaudeModel = isString(model) && /^claude-/.test(model);
     if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
       headers["Anthropic-Beta"] = selectAnthropicBeta(model);
+    }
+    if (this.provider === "claude" || (this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel)) {
+      mergeForwardableClientBetas(headers, requestContext?.clientHeaders);
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams

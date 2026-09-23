@@ -15,7 +15,7 @@ describe("HuggingFace model alias parsing", () => {
 describe("HuggingFace STT dispatch", () => {
   it("exposes a dispatchable sttConfig", () => {
     expect(huggingface.sttConfig).toEqual({
-      baseUrl: "https://api-inference.huggingface.co/models",
+      baseUrl: "https://router.huggingface.co/hf-inference/models",
       authType: "apikey",
       authHeader: "bearer",
       format: "huggingface-asr",

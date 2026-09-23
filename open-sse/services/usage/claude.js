@@ -6,7 +6,7 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "../../providers/shared.js";
+import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS, CLAUDE_CLI_VERSION } from "../../providers/shared.js";
 import { U, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
@@ -16,8 +16,15 @@ const CLAUDE_CONFIG = {
   oauthUsageUrl: U("claude").oauthUrl,
   usageUrl: U("claude").orgUrl,
   settingsUrl: U("claude").settingsUrl,
+  profileUrl: U("claude").profileUrl,
+  resetUrl: U("claude").resetUrl,
   apiVersion: ANTHROPIC_API_VERSION
 };
+
+// Free "limit reset" grants (Anthropic program "cedar_ember") are only
+// surfaced/consumable behind this exact UA; the sdk-cli fingerprint used for
+// Messages/usage traffic elsewhere in this file does not qualify.
+const CEDAR_EMBER_USER_AGENT = `claude-cli/${CLAUDE_CLI_VERSION} (external, cli)`;
 
 // Primary OAuth usage endpoint headers. The shared fingerprint exactly mirrors
 // Messages traffic; this separate OAuth endpoint retains its required beta flag.
@@ -60,7 +67,9 @@ function buildOAuthUsageHeaders(accessToken) {
   return {
     "Authorization": `Bearer ${accessToken}`,
     ...CLAUDE_CLI_SPOOF_HEADERS,
-    "Anthropic-Beta": `${CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]},oauth-2025-04-20`
+    "Anthropic-Beta": `${CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]},oauth-2025-04-20`,
+    // cedar_ember grant eligibility is gated on this exact UA (see const above).
+    "User-Agent": CEDAR_EMBER_USER_AGENT
   };
 }
 
@@ -204,7 +213,8 @@ export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oau
 
 async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = DEFAULT_CLAUDE_PLAN) {
   try {
-    const oauthResponse = await proxyAwareFetch(CLAUDE_CONFIG.oauthUsageUrl, {
+    // cedar_ember=1 adds the "limit reset" grant block (same flag Claude Code sends)
+    const oauthResponse = await proxyAwareFetch(`${CLAUDE_CONFIG.oauthUsageUrl}?cedar_ember=1`, {
       method: "GET",
       headers: buildOAuthUsageHeaders(accessToken)
     }, proxyOptions);
@@ -272,6 +282,7 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = 
       const result = {
         plan,
         extraUsage: data.extra_usage ?? null,
+        resetCredits: parseClaudeResetGrants(data.cedar_ember),
         quotas
       };
       setOAuthCacheEntry(cacheKey, result);
@@ -318,6 +329,81 @@ export function __clearOAuthQuotaCacheForTesting() {
   oauthQuotaCache.clear();
   oauthQuotaInFlight.clear();
   oauthRateLimits.clear();
+}
+
+// Free "limit reset" grants (Anthropic program id "cedar_ember").
+// Shape: { eligible, next_grant_id, grants: [{ id, resets_left, ends_at, paused, clears }] }
+export function parseClaudeResetGrants(block) {
+  if (!block?.eligible || !Array.isArray(block.grants)) return null;
+  const grants = block.grants.filter((g) => g?.id && !g.paused && Number(g.resets_left) > 0);
+  const next = grants.find((g) => g.id === block.next_grant_id) || grants[0] || null;
+  return {
+    availableCount: grants.reduce((sum, g) => sum + Number(g.resets_left), 0),
+    nextGrantId: next?.id || null,
+    expiresAt: next?.ends_at || null,
+    clears: next?.clears || [],
+    cooldownUntil: block.cooldown_until || null,
+    weeklyResetsAt: block.weekly_resets_at || null,
+    grants: block.grants.filter((g) => g?.id).map((g) => ({
+      id: g.id,
+      label: g.label || "",
+      resetsLeft: Number(g.resets_left) || 0,
+      resetsTotal: Number(g.resets_total) || 0,
+      startsAt: g.starts_at || null,
+      endsAt: g.ends_at || null,
+      clears: Array.isArray(g.clears) ? g.clears : [],
+      paused: g.paused === true,
+      usableNow: g.usable_now === true,
+      useRequiresLimit: g.use_requires_limit !== false
+    }))
+  };
+}
+
+/**
+ * Spend one free Claude Code "limit reset" grant. Refills the limits listed
+ * in the grant's `clears`. Irreversible; callers must gate this behind an
+ * explicit, confirmed user action — never call automatically.
+ *
+ * @param {string} accessToken - Claude OAuth access token
+ * @param {string} grantId - id of the grant to redeem (from resetCredits.nextGrantId)
+ * @param {object|null} proxyOptions
+ * @returns {Promise<object>} { ok, status, result, reason, resetsLeft, message }
+ */
+export async function consumeClaudeResetGrant(accessToken, grantId, proxyOptions = null) {
+  if (!accessToken) throw new Error("No Claude access token available. Please re-authorize the connection.");
+  if (!/^[a-z0-9_-]{1,40}$/i.test(grantId || "")) throw new Error("Invalid reset grant id.");
+
+  const headers = {
+    "Authorization": `Bearer ${accessToken}`,
+    "Anthropic-Beta": `${CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]},oauth-2025-04-20`,
+    "Anthropic-Version": CLAUDE_CONFIG.apiVersion,
+    "User-Agent": CEDAR_EMBER_USER_AGENT,
+    "Content-Type": "application/json"
+  };
+
+  const profileRes = await proxyAwareFetch(CLAUDE_CONFIG.profileUrl, { method: "GET", headers }, proxyOptions);
+  const profile = await profileRes.json().catch(() => null);
+  const orgId = profile?.organization?.uuid;
+  if (!profileRes.ok || !orgId) throw new Error(`Cannot resolve Claude organization (${profileRes.status}).`);
+
+  const res = await proxyAwareFetch(CLAUDE_CONFIG.resetUrl.replace("{org_id}", orgId), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ program: "cedar_ember", grant_id: grantId, request_id: crypto.randomUUID() })
+  }, proxyOptions);
+  const data = await res.json().catch(() => null);
+
+  // Force the next read past the cache: it must show the refilled limits.
+  oauthQuotaCache.delete(getOAuthCacheKey(accessToken));
+
+  return {
+    ok: res.ok && data?.result === "reset",
+    status: res.status,
+    result: data?.result || null,
+    reason: data?.reason || null,
+    resetsLeft: data?.resets_left ?? null,
+    message: data?.error?.message || null
+  };
 }
 
 /**

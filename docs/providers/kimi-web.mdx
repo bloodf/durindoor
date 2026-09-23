@@ -1,0 +1,62 @@
+---
+title: Kimi Web
+description: Connect a www.kimi.com or www.kimi.ai session with the localStorage token snippet, the K3 and K2.6 models, token refresh, and how failures look.
+---
+
+Kimi Web (`kimi-web`) talks to the chat backend behind Kimi's web app using your signed-in session. It is listed with the [web cookie providers](./web-cookie.mdx), but Kimi no longer signs requests with a cookie: the web app keeps an `access_token` and a `refresh_token` in localStorage and sends `Authorization: Bearer <access_token>`. To reach Kimi through its API instead, use Kimi (`kimi`, OAuth) or Kimi Coding API Key (`kimi-coding-apikey`).
+
+Kimi runs two deployments with separate auth hosts: www.kimi.com and the international www.kimi.ai. Use whichever one you log in to. DurinDoor sends every request back to the site the tokens came from.
+
+## Connect
+
+<Steps>
+<Step>
+Log in at www.kimi.com or www.kimi.ai.
+</Step>
+<Step>
+Open developer tools, then Console, and run the snippet the connect dialog shows. It has a Copy button:
+
+```js
+copy(JSON.stringify({access_token:localStorage.getItem('access_token'),refresh_token:localStorage.getItem('refresh_token'),origin:location.origin}))
+```
+
+If Chrome refuses to paste into the console, type `allow pasting` first.
+</Step>
+<Step>
+In DurinDoor open **Providers**, then **Kimi Web**, then Add. Paste the copied JSON into **Cookie Value** and save.
+</Step>
+</Steps>
+
+You can also build the JSON by hand from Application, Local Storage. Add `"origin":"https://www.kimi.ai"` if the tokens came from www.kimi.ai. With no `origin`, or one that is not a Kimi site, DurinDoor uses www.kimi.com.
+
+Older pastes still work: a bare access token, or a full Cookie header from www.kimi.com containing `kimi-auth=<JWT>`. Those carry no refresh token, so they stop working when the access token expires.
+
+Save probes the site's model list endpoint with the access token and an 8 second timeout. Only a 2xx answer passes.
+
+## Refresh
+
+Only the access token is sent to Kimi. When Kimi answers 401 and the paste included a refresh token, DurinDoor calls the site's auth host (`auth.kimi.com` or `auth.kimi.ai`, the same refresh call the web app makes) and retries once. The new pair is saved in the connection's encrypted token fields, so later requests and restarts use it.
+
+The saved pair belongs to the paste it came from. Pasting new tokens with **Edit** replaces it. If the refresh token has expired as well, run the snippet again and paste a fresh copy.
+
+## Models
+
+| Model | Name | Reasoning |
+| --- | --- | --- |
+| `kimi-web/k3` | K3 | `low`, `high`, or `max`; default `high`; cannot be turned off |
+| `kimi-web/k2d6` | K2.6 Instant | off |
+| `kimi-web/k2d6-thinking` | K2.6 with reasoning on | kept as an alias; Kimi no longer lists this id |
+
+`reasoning_effort` maps to the nearest tier Kimi offers for that model. None of these models support tool calling. K3 Swarm (`k3-agent-ultra`) and other agent modes are not routed; use Kimi Coding API Key when you need an agent-capable Kimi model.
+
+## Errors
+
+| You see | Meaning |
+| --- | --- |
+| HTTP 400 `Missing Kimi access_token` | No access token was found in the saved value. Run the snippet and paste again. |
+| `Kimi error: ...` with an upstream status | Kimi rejected the call. The token is replaced with `[redacted]` in the message. |
+| HTTP 502 | DurinDoor could not reach the Kimi site. |
+
+A 401 that refresh cannot fix, and any 403, cools the connection down for two minutes like any other provider.
+
+Kimi Web does not report quota. The [Quota Tracker](../features/quota-tracking.mdx) covers the Kimi and Kimi Coding providers, not the web session.

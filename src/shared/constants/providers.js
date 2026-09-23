@@ -39,6 +39,7 @@ function buildProviderEntry(r) {
     ...(r.authModes ? { authModes: r.authModes } : null),
     ...(r.authType ? { authType: r.authType } : null),
     ...(r.authHint ? { authHint: r.authHint } : null),
+    ...(r.authSnippet ? { authSnippet: r.authSnippet } : null),
     ...(r.apiKeyOptionalWith ? { apiKeyOptionalWith: r.apiKeyOptionalWith } : null),
     ...(r.credentialForm ? { credentialForm: r.credentialForm } : null),
     ...(r.aliases ? { aliases: r.aliases } : null),

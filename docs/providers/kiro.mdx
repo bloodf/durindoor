@@ -1,0 +1,69 @@
+---
+title: Kiro
+description: The seven ways to connect a Kiro account, where imported tokens come from, refresh, quota, and the errors Kiro returns.
+---
+
+Kiro (`kiro`, alias `kr`) is Amazon's coding assistant backend. DurinDoor talks to its `generateAssistantResponse` endpoint over AWS event streams. Claude-format requests use a direct `claude:kiro` translator, so thinking blocks and tool ids survive the trip.
+
+The provider page shows a risk notice: this is a subscription session that was not licensed for router use. Use an account you can afford to lose.
+
+## Pick a sign-in method
+
+Open **Providers**, then **Kiro**, then Connect. The modal offers seven methods.
+
+| Method | You provide | Refresh |
+| --- | --- | --- |
+| AWS Builder ID (recommended) | Nothing up front. Device code login at AWS | AWS OIDC, us-east-1 |
+| IAM Identity Center | Start URL (`https://your-org.awsapps.com/start`) and region | AWS OIDC in your region |
+| Google | Browser login, then paste a `kiro://` URL | Kiro auth service |
+| GitHub | Browser login, then paste a `kiro://` URL | Kiro auth service |
+| API Key | A Kiro API key and region (default `us-east-1`) | None; the key is stored for 365 days |
+| Import Token | A refresh token, auto-filled from the Kiro IDE when DurinDoor finds one | Depends on what the token is |
+| CLIProxyAPI JSON | An auth file exported by CLIProxyAPI | The provider's own token endpoint |
+
+### Builder ID and IAM Identity Center
+
+These use a device code. DurinDoor registers an OIDC client at `oidc.<region>.amazonaws.com`, shows a verification URL and code, and polls until you approve it. After login it fetches your `profileArn`. If AWS returns none, the connection is not saved, because every chat call would fail with 403 without it.
+
+### Google and GitHub
+
+Kiro's login only redirects to a `kiro://` address, which a browser cannot open. After you sign in, the browser shows or fails on a `kiro://kiro.kiroAgent/authenticate-success?code=...&state=...` URL. Copy that whole URL from the address bar and paste it into the modal.
+
+### API key
+
+DurinDoor checks the key against Kiro's profile list before saving and stores it with `authType: "api_key"`. It has no refresh token. Requests send the key as Bearer with `tokentype: API_KEY`.
+
+### Import from the Kiro IDE
+
+If the Kiro IDE is signed in on the same machine as DurinDoor, the Import Token method can pre-fill the refresh token from the AWS SSO cache. DurinDoor looks in `~/.aws/sso/cache` for `kiro-auth-token.json` first, then any other JSON file there, and reads client credentials from the matching `<clientIdHash>.json`. If that folder is missing you get `AWS SSO cache not found. Please login to Kiro IDE first.`
+
+The profile ARN is read from `%APPDATA%/Kiro/User/globalStorage/kiro.kiroagent/profile.json` on Windows or `~/.config/Kiro/...` elsewhere. There is no macOS `~/Library` lookup, so an import on a Mac may arrive without a profile ARN. If chat then fails with `profileArn is required`, connect with Builder ID or Identity Center instead; those flows fetch the ARN themselves.
+
+A pasted token that matches the SSO cache is treated as an external identity provider login. One with a client id and secret becomes an IAM Identity Center connection. Anything else is saved as a plain imported token.
+
+### CLIProxyAPI JSON
+
+Use this for Microsoft external identity accounts that CLIProxyAPI already signed in. Paste its JSON; DurinDoor accepts the object directly or under `cliProxyAuth`, `auth`, or `json`.
+
+## Refresh
+
+Before a request the executor re-reads the SSO cache, then refreshes if needed. External identity tokens refresh at their own token endpoint. Connections with a client id and secret refresh through AWS OIDC, in your region for Identity Center and in us-east-1 otherwise. The rest go to Kiro's own refresh endpoint. API key connections never refresh.
+
+## Models and quota
+
+Send `kr/<model>`, for example `kr/claude-opus-4.8`. The registry has about 47 ids, including `-thinking` and `-agentic` variants. `GET /v1/models` is the live list.
+
+The [Quota Tracker](../features/quota-tracking.mdx) reads Kiro's usage limits, for OAuth and API key connections alike. Kiro uses the `any-sufficient` preflight gate: an account stays eligible while any of its pools has room.
+
+## Errors
+
+| You see | Cause | Fix |
+| --- | --- | --- |
+| 402 `ServiceQuotaExceededException`, "Kiro monthly credit limit reached" | Monthly credits are gone | DurinDoor cools the account down until the reset time from the usage call. Add another account or a combo fallback. |
+| 400 "profileArn is required" | Often an Identity Center login outside us-east-1, or Amazon Q Developer Pro not enabled for the user | Check the region and the subscription, then reconnect with Builder ID or Identity Center. |
+
+Kiro does not retry 429 on its own; the request moves on to the next account.
+
+## MITM mode
+
+**MITM Proxy** (`/dashboard/mitm`) can also intercept the Kiro IDE's calls to its us-east-1 runtime hosts and send them through DurinDoor. That is separate from the connection on this page. See [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors) for recovery steps.

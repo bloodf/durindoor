@@ -463,6 +463,19 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     }
   }
 
+  // `auto/*` ids are virtual — synthesised in the catalog, never a stored combo
+  // row — so getComboCanonicalName/resolveRequestedComboName return null for
+  // them and the allowedCombos check above never runs. allowedModels also
+  // can't scope them out: validateModelAccess short-circuits on the `auto/`
+  // prefix. Gate them with an explicit per-key flag instead, so a key scoped
+  // to one narrow lane can't reach every model on the gateway through
+  // `auto/best-coding`. Absent/undefined defaults to allowed (existing keys
+  // keep working); only an explicit `false` denies.
+  if (authenticatedKeyRecord && isAutoComboId(modelStr) && authenticatedKeyRecord.policy?.allowAutoCombos === false) {
+    log.warn("AUTH", `API key "${authenticatedKeyRecord.name}" not allowed to use auto combos`);
+    return errorResponse(HTTP_STATUS.FORBIDDEN, `Access denied: auto combos are not allowed for this API key`);
+  }
+
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
@@ -1165,6 +1178,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         },
         providerThinking,
         providerConcurrencyLimit: chatSettings.providerConcurrencyLimits,
+        globalConcurrentRequests: chatSettings.globalConcurrentRequests,
         claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat) ?
         chatSettings.claudeClassifierCompat :
         "off",

@@ -57,6 +57,8 @@ A key can carry several independent restrictions. Empty means unrestricted for t
 
 `allowedCombos` is a list of combo names. A non-empty list rejects any other combo with HTTP 403. `policy.allowedModels` is an exact-match allowlist of model strings; empty or missing means all models.
 
+`auto/<family>` ids (`auto/glm`, `auto/gemini`, ...) are virtual: they are synthesised in the catalog, not stored as combo rows, so `allowedCombos` and `policy.allowedModels` cannot scope them out. `policy.allowAutoCombos: false` denies every `auto/*` id for that key with HTTP 403; omitted or `true` keeps the existing behavior (allowed).
+
 `policy.maxTokens` and `policy.maxCostUsd` are lifetime caps on that key. `dailyLimitTokens` is a calendar-day token cap that resets at local midnight. `isActive` false keeps the row visible and stops authentication.
 
 Key groups are labels only. Membership never changes what a key can call.

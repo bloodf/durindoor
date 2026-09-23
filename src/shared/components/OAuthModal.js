@@ -23,7 +23,8 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "qoder",
 "grok-cli",
 "ghe-copilot",
-"amazon-q"]
+"amazon-q",
+"muse-code"]
 );
 const FIXED_PORT_PROVIDERS = new Set(["codex", "xai"]);
 const STATELESS_CALLBACK_PROVIDERS = new Set(["cline", "clinepass"]);

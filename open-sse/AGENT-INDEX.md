@@ -45,6 +45,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mimo-free` | MimoFreeExecutor | `./mimo-free.js` |
 | `mimocode` | MimocodeExecutor | `./mimocode.js` |
 | `mmf` | MimoFreeExecutor | `./mimo-free.js` |
+| `muse-code` | MuseCodeExecutor | `./muse-code.js` |
 | `ollama-local` | OllamaLocalExecutor | `./ollama-local.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
 | `opencode-go` | OpenCodeGoExecutor | `./opencode-go.js` |
@@ -236,6 +237,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mistral` |  | apikey | `https://api.mistral.ai/v1/chat/completions` |
 | `mmf` |  | apikey | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
 | `morph` |  | apikey | `https://api.morphllm.com/v1/chat/completions` |
+| `muse-code` | openai-responses | oauth | `https://api.meta.ai/v1/responses` |
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |

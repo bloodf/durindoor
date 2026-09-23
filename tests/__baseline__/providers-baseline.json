@@ -2238,5 +2238,14 @@
       "qHost": "https://q.us-east-1.amazonaws.com",
       "limitsPath": "/getUsageLimits"
     }
+  },
+  "muse-code": {
+    "baseUrl": "https://api.meta.ai/v1/responses",
+    "format": "openai-responses",
+    "headers": {
+      "User-Agent": "muse-build/1.3.0 (interactive; macos-aarch64; build ac7280f2aca67769d1455a8847bb502b617d50f6)"
+    },
+    "clientId": "1031625952748946",
+    "tokenUrl": "https://auth.meta.com/oidc/device/token/"
   }
 }

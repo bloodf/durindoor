@@ -115,6 +115,9 @@ export const OAUTH_TEST_CONFIG = {
   qwen: { checkExpiry: true, refreshable: true },
   kiro: { checkExpiry: true, refreshable: true },
   "amazon-q": { checkExpiry: true, refreshable: true },
+  // A minted Muse key has no expiry; presence is the check, and a dca-only
+  // login is reminted on first use.
+  "muse-code": { tokenExists: true },
   qoder: {
     // Test by hitting Qoder's userinfo endpoint with the device token.
     // refreshable: false because the device-flow refresh endpoint returns

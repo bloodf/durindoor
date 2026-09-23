@@ -53,7 +53,8 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "qoder",
 "grok-cli",
 "ghe-copilot",
-"amazon-q"]
+"amazon-q",
+"muse-code"]
 );
 
 // Device providers whose poll needs the private extraData stored with the flow.
@@ -61,6 +62,7 @@ const EXTRA_DATA_POLL_PROVIDERS = new Set(["kiro", "amazon-q", "ghe-copilot"]);
 
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
+"muse-code",
 "kimi-coding",
 "kilocode",
 "codebuddy-cn"]

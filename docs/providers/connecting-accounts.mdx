@@ -17,11 +17,13 @@ OrcaRouter runs the same PKCE shape out of band. DurinDoor is self-hosted, so it
 
 ## Device code
 
-GitHub, GitHub Enterprise Copilot, Qwen, Kiro, Amazon Q, Grok CLI, Qoder, Kimi Coding, Kilo Code, and CodeBuddy CN request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
+GitHub, GitHub Enterprise Copilot, Qwen, Kiro, Amazon Q, Grok CLI, Qoder, Kimi Coding, Kilo Code, CodeBuddy CN, and Muse Code request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
 
 GitHub Enterprise Copilot (`ghe-copilot`, alias `ghe`) runs the same device flow against your enterprise host. The connect dialog asks for the enterprise URL first; it must be `https`, and only its origin is kept. The device code, token, and user requests go to that host, and the Copilot token mint goes to `{host}/api/v3/copilot_internal/v2/token`. Chat, `/responses`, and Claude's `/v1/messages` then go to the Copilot API host that mint returns in `endpoints.api`, never to `api.githubcopilot.com`. The OAuth client defaults to GitHub's Copilot app; set `GHE_COPILOT_OAUTH_CLIENT_ID` when your GitHub Enterprise Server instance uses its own app. The model list is the GitHub Copilot seed list; live model discovery is not wired for enterprise hosts.
 
 Amazon Q (`amazon-q`, alias `aq`) is the Kiro backend under its own provider id. It signs in with the same AWS Builder ID or IAM Identity Center device flow, refreshes through the same AWS OIDC grant, and serves the Kiro model list, but its connections, cooldowns, and usage stay apart from Kiro's. Kiro's token import, API key, and social login paths are not offered for it.
+
+Muse Code (`muse-code`, alias `mc`) signs in with Meta's device flow at `auth.meta.com`, the same login as `muse login`. The grant returns a durable `dca:` token; DurinDoor mints the subscription inference key from it at `https://api.meta.ai/muse-code/key` and sends requests to `https://api.meta.ai/v1/responses` with that key. If the mint fails at sign-in, the connection is still saved and the key is minted before its first request. The same card also takes a pasted `META_API_KEY` as an API-key connection.
 
 Grok CLI also accepts a pasted `~/.grok/auth.json` object or a bulk import of an array / `accounts` object. Imports stay serial so connection priorities keep the input order.
 
@@ -44,6 +46,8 @@ Cookie-backed providers send whatever the upstream web app would send. Do not pu
 DurinDoor stores `refreshToken` and related metadata on the connection. On request, `open-sse/services/oauthCredentialManager.js` refreshes when the access token is inside the provider's lead window. `open-sse/services/tokenRefresh.js` owns the per-provider grant (Claude JSON, GitHub form post, Google, Codex, Kiro, iFlow, GitLab Duo, and others). A background pass (`src/sse/services/backgroundTokenRefresh.js`) also selects active OAuth connections whose access token expires inside `max(provider lead, BACKGROUND_REFRESH_LEAD_MS)`.
 
 Refresh can fail. Qoder's upstream refresh endpoint returns 403 for this flow; the dashboard tells you to log in again. Cursor, Windsurf, Trae, and imported Devin tokens have no public refresh. An unrecoverable grant (`invalid_grant`, reused refresh token) needs a reconnect.
+
+Muse Code has no refresh grant either. When its key is missing or the API returns 401, `tokenRefresh.js` mints a new key from the stored `dca:` token. Once that token expires or is revoked, sign in again. Pasted `META_API_KEY` connections are never reminted.
 
 OrcaRouter is never refreshed. Its PKCE login issues a durable API key rather than an access/refresh pair, and OrcaRouter publishes no refresh grant, so `tokenRefresh.js` refuses the provider outright instead of falling through to the generic grant. When the relay rejects the key with a 401, or a 403 whose body reads as an auth failure, the exact connection that made that request is taken out of rotation as `reauth_required` (the same quarantine a revoked Codex login gets) until you sign in again or save a new key. Quota and permission 403s stay on the normal cooldown. A late failure that presented a key you have already replaced is ignored. A sign-in whose exchange returns no account id is rejected, so repeat logins always land on the same connection.
 

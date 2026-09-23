@@ -7,6 +7,7 @@ import { ChipotleExecutor } from "./chipotle.js";
 import { GeminiCLIExecutor } from "./gemini-cli.js";
 import { GithubExecutor } from "./github.js";
 import { GheCopilotExecutor } from "./ghe-copilot.js";
+import { MuseCodeExecutor } from "./muse-code.js";
 import { IFlowExecutor } from "./iflow.js";
 import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
@@ -62,6 +63,7 @@ const executors = {
   "gemini-cli": new GeminiCLIExecutor(),
   github: new GithubExecutor(),
   "ghe-copilot": new GheCopilotExecutor(),
+  "muse-code": new MuseCodeExecutor(),
   iflow: new IFlowExecutor(),
   "inner-ai": new InnerAiExecutor(),
   "in-ai": new InnerAiExecutor(), // Alias for inner-ai
@@ -171,6 +173,7 @@ export { ChipotleExecutor } from "./chipotle.js";
 export { GeminiCLIExecutor } from "./gemini-cli.js";
 export { GithubExecutor } from "./github.js";
 export { GheCopilotExecutor } from "./ghe-copilot.js";
+export { MuseCodeExecutor } from "./muse-code.js";
 export { IFlowExecutor } from "./iflow.js";
 export { InnerAiExecutor } from "./inner-ai.js";
 export { QoderExecutor } from "./qoder.js";

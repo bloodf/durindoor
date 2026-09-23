@@ -47,6 +47,7 @@ import {
 import { isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
 import gheCopilot from "./gheCopilotProvider.js";
+import museCode from "./museCodeProvider.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
@@ -1667,7 +1668,8 @@ const PROVIDERS = {
     }
   },
   orcarouter,
-  "ghe-copilot": gheCopilot
+  "ghe-copilot": gheCopilot,
+  "muse-code": museCode
 };
 
 // Amazon Q Developer signs in exactly like Kiro (AWS Builder ID / IAM Identity

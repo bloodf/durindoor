@@ -19,6 +19,7 @@ import {
 "./tokenRefresh/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
+import { refreshMuseCodeToken } from "./museCodeAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
@@ -186,6 +187,8 @@ const REFRESH_HANDLERS = {
   // grant_type=refresh_token to /api/v1/auth/keys. A revoked key must be
   // reauthenticated through the connect flow, not refreshed.
   orcarouter: () => null,
+  // Muse Code has no refresh grant: the stored dca token remints the key.
+  "muse-code": (c, log, p) => refreshMuseCodeToken(c.refreshToken, c.providerSpecificData, log, p),
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };

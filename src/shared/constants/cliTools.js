@@ -88,7 +88,7 @@ export const CLI_TOOLS = {
     modelAliases: ["default", "sonnet", "opus", "fable", "haiku", "opusplan", "opus[1m]", "sonnet[1m]"],
     settingsFile: "~/.claude/settings.json",
     defaultModels: [
-      { id: "opus", name: "Claude Opus", alias: "opus", envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL", defaultValue: "cc/claude-opus-5" },
+      { id: "opus", name: "Claude Opus", alias: "opus", envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL", defaultValue: "cc/claude-opus-5-5" },
       { id: "sonnet", name: "Claude Sonnet", alias: "sonnet", envKey: "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultValue: "cc/claude-sonnet-5" },
       { id: "fable", name: "Claude Fable", alias: "fable", envKey: "ANTHROPIC_DEFAULT_FABLE_MODEL", defaultValue: "cc/claude-fable-5-1" },
       { id: "haiku", name: "Claude Haiku", alias: "haiku", envKey: "ANTHROPIC_DEFAULT_HAIKU_MODEL", defaultValue: "cc/claude-haiku-4-5-20251001" },
@@ -412,6 +412,66 @@ export const CLI_TOOLS = {
 export DURINDOOR_API_KEY={{apiKey}}
 omp`,
     },
+  },
+  pi: {
+    id: "pi",
+    name: "Pi (pi-coding-agent)",
+    image: "/providers/pi.svg",
+    color: "#6366F1",
+    description: "Pi coding agent - minimal, extensible agent harness (pi.dev)",
+    configType: "custom",
+    docsUrl: "https://pi.dev",
+    notes: [
+      { type: "info", text: "Pi uses ~/.pi/agent/models.json. DurinDoor is configured under providers.durindoor as an OpenAI-compatible endpoint." },
+    ],
+  },
+  crush: {
+    id: "crush",
+    name: "Crush",
+    image: "/providers/crush.png",
+    color: "#FB923C",
+    description: "Charm Crush terminal AI coding agent",
+    configType: "custom",
+    docsUrl: "https://github.com/charmbracelet/crush",
+    notes: [
+      { type: "info", text: "Crush uses ~/.config/crush/crush.json. DurinDoor registers as an openai-compat provider named durindoor." },
+    ],
+  },
+  forge: {
+    id: "forge",
+    name: "ForgeCode",
+    image: "/providers/forge.png",
+    color: "#EAB308",
+    description: "Antinomy HQ ForgeCode agent harness",
+    configType: "custom",
+    docsUrl: "https://github.com/antinomyhq/forge",
+    notes: [
+      { type: "info", text: "ForgeCode uses ~/.forge/config.toml. DurinDoor sets the [openai] section with your base URL, API key, and model." },
+    ],
+  },
+  smelt: {
+    id: "smelt",
+    name: "Smelt",
+    image: "/providers/smelt.svg",
+    color: "#EF4444",
+    description: "Smelt terminal AI coding assistant",
+    configType: "custom",
+    docsUrl: "https://github.com/leonardcser/smelt",
+    notes: [
+      { type: "info", text: "Smelt uses ~/.smelt/config.json for its OpenAI-compatible endpoint (baseUrl, apiKey, model)." },
+    ],
+  },
+  codewhale: {
+    id: "codewhale",
+    name: "CodeWhale",
+    image: "/providers/codewhale.svg",
+    color: "#4F46E5",
+    description: "CodeWhale terminal coding agent (successor to DeepSeek TUI)",
+    configType: "custom",
+    docsUrl: "https://github.com/Hmbown/CodeWhale",
+    notes: [
+      { type: "info", text: "CodeWhale uses ~/.codewhale/config.toml. DurinDoor sets the [openai] section with your base URL, API key, and model." },
+    ],
   },
   // HIDDEN: gemini-cli
   // "gemini-cli": {

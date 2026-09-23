@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
 import Select from "@/shared/ui/components/Select.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
@@ -2158,6 +2158,12 @@ export default function ProviderDetailPage() {
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)} /> :
 
+      providerId === "xiaomi-mimo" ?
+      <XiaomiMimoAuthModal
+        isOpen={showOAuthModal}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)} /> :
+
       providerId === "orcarouter" ?
       <OrcaRouterAuthModal
         isOpen={showOAuthModal}
@@ -2258,6 +2264,7 @@ export default function ProviderDetailPage() {
         isAnthropic={isAnthropicCompatible}
         authType={providerInfo?.authType}
         authHint={providerInfo?.authHint}
+        authSnippet={providerInfo?.authSnippet}
         website={providerInfo?.website}
         proxyPools={proxyPools}
         existingConnectionNames={providerApiKeyConnectionNames}

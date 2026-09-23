@@ -128,6 +128,70 @@ export function rankQuotaConnections(connections, decisions, pressure = new Map(
   return ranked;
 }
 
+/**
+ * Weighted draw over positive weights. `r` is expected in `[0, sum(weights))`.
+ * The first cumulative weight strictly greater than `r` wins (half-open), so
+ * `r === 0` cannot land on a leading zero-weight slot. Zero/negative weights
+ * are skipped entirely. Returns null when every weight is non-positive.
+ */
+export function pickWeightedIndex(weights, r) {
+  const positive = [];
+  let sum = 0;
+  for (let i = 0; i < weights.length; i++) {
+    const w = weights[i];
+    if (w > 0) {
+      positive.push({ i, w });
+      sum += w;
+    }
+  }
+  if (positive.length === 0 || sum === 0) return null;
+  let acc = 0;
+  for (const entry of positive) {
+    acc += entry.w;
+    if (acc > r) return entry.i;
+  }
+  return positive[positive.length - 1].i;
+}
+
+/**
+ * Weighted-random pick among quota-ranked, eligible connections instead of
+ * always taking the top score. `rankQuotaConnections` already excludes empty
+ * accounts (an exhausted/cooldown/below-floor connection scores `eligible:
+ * false` and never reaches this pool); this function spreads the remaining
+ * draw across whatever is left, proportional to leftover quota (effectiveRatio),
+ * so concurrent requests don't all converge on the single best-scoring account.
+ *
+ * `floorPercent` splits comparable candidates into a healthy pool (ratio above
+ * the floor) and a thin near-exhausted pool (ratio at or below it, but still
+ * > 0). The healthy pool is used whenever it has any members; the floor pool
+ * only gets drawn from when every comparable account is already thin, so
+ * those accounts still get a small, non-zero share instead of starving.
+ *
+ * Non-comparable pools (nothing trackable) fall back to the caller's
+ * deterministic order, i.e. `ranked[0]`.
+ */
+export function pickQuotaWeightedConnection(ranked, { floorPercent = 1 } = {}) {
+  if (!Array.isArray(ranked) || ranked.length === 0) return null;
+  const comparable = ranked.filter(
+    (candidate) => candidate.quotaDecision?.comparable === true &&
+    Number.isFinite(candidate.quotaDecision.effectiveRatio)
+  );
+  if (comparable.length === 0) return ranked[0]?.value ?? null;
+
+  const floor = Math.max(0, Math.min(100, Number(floorPercent) || 0)) / 100;
+  const healthyPool = comparable.filter((candidate) => candidate.quotaDecision.effectiveRatio > floor);
+  const floorPool = comparable.filter((candidate) => candidate.quotaDecision.effectiveRatio > 0 &&
+  candidate.quotaDecision.effectiveRatio <= floor);
+  const pool = healthyPool.length > 0 ? healthyPool : floorPool.length > 0 ? floorPool : comparable;
+
+  const weights = pool.map((candidate) => Math.max(0, candidate.quotaDecision.effectiveRatio));
+  const sum = weights.reduce((acc, w) => acc + w, 0);
+  const index = sum > 0 ?
+  pickWeightedIndex(weights, Math.random() * sum) :
+  Math.floor(Math.random() * pool.length);
+  return pool[index ?? 0]?.value ?? ranked[0]?.value ?? null;
+}
+
 function decorateAlternatives(profile, config, connectionId, provider) {
   return (profile?.reservationAlternatives || []).map((bundle) => bundle.map((item) => {
     const floor = resolveQuotaRoutingFloor(config, {

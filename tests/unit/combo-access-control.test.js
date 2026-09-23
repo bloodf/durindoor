@@ -190,3 +190,74 @@ describe("per-key combo access control (#2203)", () => {
   });
 
 });
+
+describe("per-key allowAutoCombos gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.extractApiKey.mockReturnValue(API_KEY);
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false });
+    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true });
+    mocks.getApiKeyUsageLimitStatus.mockResolvedValue({ exceeded: false, usedTokens: 0, limitTokens: 0 });
+    mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
+    // `auto/gemini` is a virtual id: no stored combo row, so canonical-name /
+    // getComboModels resolution both miss and the allowedCombos ACL above
+    // never fires for it (mirrors production: resolveRequestedComboName
+    // returns null for auto/* ids).
+    mocks.getComboByName.mockResolvedValue(null);
+    mocks.getComboModels.mockResolvedValue(null);
+    mocks.getComboCanonicalName.mockResolvedValue(null);
+    mocks.getModelInfo.mockImplementation(async (modelStr) => ({ provider: "prov", model: modelStr }));
+    mocks.handleComboChat.mockResolvedValue(new Response("ok", { status: 200 }));
+    mocks.handleFusionChat.mockResolvedValue(new Response("ok", { status: 200 }));
+  });
+
+  it("denies auto/* for a key with allowAutoCombos: false, before the combo engine runs", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue({
+      name: "no-auto-key",
+      allowedCombos: [],
+      policy: { allowAutoCombos: false },
+    });
+
+    const { handleChat } = await import("../../src/sse/handlers/chat.js");
+    const res = await handleChat(makeRequest("auto/gemini"));
+
+    expect(res.status).toBe(403);
+    expect(mocks.handleComboChat).not.toHaveBeenCalled();
+    expect(mocks.handleFusionChat).not.toHaveBeenCalled();
+  });
+
+  it("does not 403 auto/* for a key with no policy (default allowed)", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue({ name: "default-key", allowedCombos: [] });
+
+    const { handleChat } = await import("../../src/sse/handlers/chat.js");
+    const res = await handleChat(makeRequest("auto/gemini"));
+
+    expect(res.status).not.toBe(403);
+  });
+
+  it("does not 403 auto/* for a key with allowAutoCombos: true", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue({
+      name: "auto-key",
+      allowedCombos: [],
+      policy: { allowAutoCombos: true },
+    });
+
+    const { handleChat } = await import("../../src/sse/handlers/chat.js");
+    const res = await handleChat(makeRequest("auto/gemini"));
+
+    expect(res.status).not.toBe(403);
+  });
+
+  it("does not gate a non-auto model even when allowAutoCombos is false", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue({
+      name: "no-auto-key",
+      allowedCombos: [],
+      policy: { allowAutoCombos: false },
+    });
+
+    const { handleChat } = await import("../../src/sse/handlers/chat.js");
+    const res = await handleChat(makeRequest("prov/model-a"));
+
+    expect(res.status, await res.clone().text()).not.toBe(403);
+  });
+});

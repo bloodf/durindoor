@@ -1201,6 +1201,20 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             return refreshedCredentials;
           }
         } : null),
+        // Non-OAuth sessions that rotate their own tokens (kimi-web) come back
+        // from executor.refreshCredentials; keep the new pair in the encrypted
+        // token columns so the next request and a restart start from it.
+        ...(activeConnection && activeConnection.authType !== "oauth" ? {
+          onCredentialsRefreshed: async (next) => {
+            if (!next?.providerSpecificPatch) return;
+            await updateProviderCredentials(credentials.connectionId, {
+              accessToken: next.accessToken,
+              refreshToken: next.refreshToken,
+              providerSpecificData: next.providerSpecificPatch,
+              existingProviderSpecificData: activeConnection.providerSpecificData
+            });
+          }
+        } : null),
         onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {
           if (provider === "antigravity" || provider === "agy") {
             clearAntigravity429Strikes(credentials.connectionId, model);

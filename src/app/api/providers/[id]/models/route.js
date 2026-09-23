@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
-import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
+import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
@@ -165,12 +165,15 @@ export async function GET(request, { params }) {
     if (connection.provider === "qwen") {
       url = resolveQwenModelsUrl(connection);
     }
+    if (connection.provider === "kimi-web") {
+      url = resolveKimiWebModelsUrl(connection);
+    }
     if (config.authQuery) {
       url += `?${config.authQuery}=${token}`;
     }
 
     // Build headers
-    const headers = config.buildHeaders ? config.buildHeaders(token) || {} : { ...config.headers };
+    const headers = config.buildHeaders ? config.buildHeaders(token, connection) || {} : { ...config.headers };
     if (!config.buildHeaders && config.authHeader && !config.authQuery) {
       headers[config.authHeader] = (config.authPrefix || "") + token;
     }

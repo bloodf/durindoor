@@ -1,4 +1,6 @@
 import { AI_PROVIDERS, getProviderByAlias, resolveProviderId } from "../shared/constants/providers.js";
+import { normalizePeakHourProtection } from "./providers/peakHourProtection.js";
+import { MAX_CONNECTION_TIMEOUT_MS } from "./providers/requestTimeout.js";
 
 /**
  * Detect xAI Grok models by id pattern (grok-*, Grok_*, etc).
@@ -6,6 +8,27 @@ import { AI_PROVIDERS, getProviderByAlias, resolveProviderId } from "../shared/c
  * @returns {boolean}
  */
 import { isObject, isString } from "../shared/utils/typeChecks.js";
+
+const RATE_LIMIT_OVERRIDE_KEYS = ["rpd", "minTime"];
+
+/**
+ * Sanitize `providerSpecificData.rateLimitOverrides`, keeping only known
+ * positive-integer overrides. An absent or empty object clears the key so a
+ * stale override cannot silently survive a save that removed it.
+ * @param {unknown} value
+ * @returns {Record<string, number>|null}
+ */
+function normalizeRateLimitOverrides(value) {
+  if (!value || !isObject(value)) return null;
+  const next = {};
+  for (const key of RATE_LIMIT_OVERRIDE_KEYS) {
+    const raw = value[key];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) next[key] = Math.floor(parsed);
+  }
+  return Object.keys(next).length > 0 ? next : null;
+}
 export function isXaiModel(modelId) {
   return isString(modelId) && /^grok[-_]/i.test(modelId.trim());
 }
@@ -100,5 +123,29 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     const baseUrl = String(next.baseUrl || body.baseUrl || body.deploymentUrl || "").trim().replace(/\/+$/, "");
     if (baseUrl) next.baseUrl = baseUrl;
   }
+
+  // Generic, provider-agnostic overrides (port(omniroute): peak-hour protection,
+  // per-connection RPD and upstream timeout — OmniRoute #11622, #12147, #10885).
+  if (Object.hasOwn(next, "peakHourProtection")) {
+    const peakHourProtection = normalizePeakHourProtection(next.peakHourProtection);
+    if (peakHourProtection) next.peakHourProtection = peakHourProtection;else
+    delete next.peakHourProtection;
+  }
+
+  if (Object.hasOwn(next, "rateLimitOverrides")) {
+    const rateLimitOverrides = normalizeRateLimitOverrides(next.rateLimitOverrides);
+    if (rateLimitOverrides) next.rateLimitOverrides = rateLimitOverrides;else
+    delete next.rateLimitOverrides;
+  }
+
+  if (Object.hasOwn(next, "timeoutMs")) {
+    const timeoutMs = Number(next.timeoutMs);
+    if (Number.isInteger(timeoutMs) && timeoutMs >= 1 && timeoutMs <= MAX_CONNECTION_TIMEOUT_MS) {
+      next.timeoutMs = timeoutMs;
+    } else {
+      delete next.timeoutMs;
+    }
+  }
+
   return Object.keys(next).length > 0 ? next : null;
 }

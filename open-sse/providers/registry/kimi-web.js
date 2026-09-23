@@ -11,7 +11,16 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  authHint: "Paste the full Cookie header from www.kimi.com (must contain kimi-auth=<JWT>).",
+  authHint:
+    "Log in at www.kimi.com or www.kimi.ai, open DevTools → Console, run the snippet below and paste the copied JSON " +
+    "(access_token + refresh_token from localStorage, plus the site it came from). A bare access_token or a legacy " +
+    "kimi-auth Cookie header from www.kimi.com also works.",
+  // DevTools console snippet shown with a Copy button in the connect dialog.
+  // Kimi's web app keeps its session in localStorage, so both tokens are
+  // readable from page JS; the output is the JSON `extractKimiTokens` accepts.
+  // `origin` routes the connection to the deployment that issued the tokens.
+  authSnippet:
+    "copy(JSON.stringify({access_token:localStorage.getItem('access_token'),refresh_token:localStorage.getItem('refresh_token'),origin:location.origin}))",
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
@@ -27,5 +36,6 @@ export default {
   models: [
     { id: "k2d6", name: "K2.6 Instant" },
     { id: "k2d6-thinking", name: "K2.6 Thinking", supportsReasoning: true },
+    { id: "k3", name: "K3", supportsReasoning: true },
   ],
 };

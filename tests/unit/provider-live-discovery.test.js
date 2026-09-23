@@ -101,12 +101,13 @@ describe("provider live model discovery", () => {
     expect(live.max_completion_tokens).toBe(33_333);
     expect(models.some((entry) => entry.id.includes("undefined"))).toBe(false);
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api.anthropic.com/v1/models?limit=100",
+      "https://api.anthropic.com/v1/models?limit=1000",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({
           Authorization: "Bearer claude-token",
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "oauth-2025-04-20",
         }),
       }),
     );

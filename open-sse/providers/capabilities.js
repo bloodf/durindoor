@@ -25,7 +25,8 @@
 import { matchPattern } from "./pricing.js";
 import {
   KIRO_GPT_5_6_FAMILY,
-  buildKiroGpt56Variants } from
+  buildKiroGpt56Variants,
+  isKiroFamilyProvider } from
 "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
 import REGISTRY from "./registry/index.js";
@@ -419,6 +420,8 @@ export const PROVIDER_CAPABILITIES = {
   // callers pass either.
   kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
   kr: KIRO_GPT_5_6_PROVIDER_CAPS,
+  "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,
+  aq: KIRO_GPT_5_6_PROVIDER_CAPS,
   // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.
   devin: { devin: { tools: false } },
   // ClinePass proxies through Vercel's OpenAI Chat Completions API, which only
@@ -1151,7 +1154,7 @@ export function getCapabilitiesForModel(provider, model) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[normalizedModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedModel] });
     if (providerCaps?.[capabilityBaseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[capabilityBaseModel] });
-    if (provider === "kiro" || provider === "kr") {
+    if (isKiroFamilyProvider(provider)) {
       const normalized = normalizeModelId(normalizedModel);
       const normalizedBase = normalizeModelId(baseModel);
       if (providerCaps?.[normalized]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalized] });
@@ -1260,7 +1263,7 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
 
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
-    const ids = provider === "kiro" || provider === "kr" ?
+    const ids = isKiroFamilyProvider(provider) ?
     [model, baseModel, capabilityBaseModel, normalizeModelId(model), normalizeModelId(baseModel)] :
     [model, baseModel, capabilityBaseModel];
     for (const id of ids) {

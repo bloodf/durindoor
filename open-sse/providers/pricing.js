@@ -3,7 +3,7 @@ import {
   isFreeModel,
   providerHasFreeModels } from
 "../config/freeModelCatalog.js";
-import { stripKiroSyntheticSuffixes } from "./models/kiroVariants.js";
+import { isKiroFamilyProvider, stripKiroSyntheticSuffixes } from "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
 
 // Pricing rates for AI models — all rates in $/1M tokens
@@ -519,7 +519,7 @@ export function getPricingForModel(provider, model) {
   // Normalize digit-dash-digit ids (gpt-5-6-sol) to the dotted catalog form
   // and retry the canonical lookup on the de-suffixed id before the glob
   // fallback so Sol variants don't fall through to the generic gpt-5.6-* Terra rate.
-  if (provider === "kiro" || provider === "kr") {
+  if (isKiroFamilyProvider(provider)) {
     const suffixStripped = stripKiroSyntheticSuffixes(baseModel);
     const normalized = normalizeModelId(suffixStripped);
     if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];

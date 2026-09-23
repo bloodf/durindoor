@@ -22,7 +22,8 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "codebuddy-cn",
 "qoder",
 "grok-cli",
-"ghe-copilot"]
+"ghe-copilot",
+"amazon-q"]
 );
 const FIXED_PORT_PROVIDERS = new Set(["codex", "xai"]);
 const STATELESS_CALLBACK_PROVIDERS = new Set(["cline", "clinepass"]);
@@ -260,7 +261,7 @@ export default function OAuthModal({
         const request = {
           ...selection,
           ownerId: flow.ownerId,
-          ...(flow.provider === "kiro" && options.idcConfig?.startUrl ?
+          ...((flow.provider === "kiro" || flow.provider === "amazon-q") && options.idcConfig?.startUrl ?
           {
             startUrl: options.idcConfig.startUrl,
             region: options.idcConfig.region,

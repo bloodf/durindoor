@@ -8,6 +8,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | id | executor | source file |
 |---|---|---|
 | `agy` | AntigravityExecutor | `./antigravity.js` |
+| `amazon-q` | KiroExecutor | `./kiro.js` |
 | `antigravity` | AntigravityExecutor | `./antigravity.js` |
 | `aug` | AuggieExecutor | `./auggie.js` |
 | `auggie` | AuggieExecutor | `./auggie.js` |
@@ -84,6 +85,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `alicode` |  | apikey | `https://coding.dashscope.aliyuncs.com/v1/chat/completions` |
 | `alicode-intl` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alitp-intl` |  | apikey | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions` |
+| `amazon-q` | kiro | oauth | `https://runtime.us-east-1.kiro.dev/generateAssistantResponse` |
 | `anthropic` | claude | apikey | `https://api.anthropic.com/v1/messages` |
 | `antigravity` | antigravity | oauth | `` |
 | `api-airforce` |  | apikey | `https://api.airforce/v1/chat/completions` |

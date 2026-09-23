@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 239 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 240 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -21,6 +21,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Alibaba | `alicode` | apikey | 8 | [site](https://bailian.console.aliyun.com) |
 | Alibaba Intl | `alicode-intl` | apikey | 7 | [site](https://modelstudio.console.alibabacloud.com) |
 | Alibaba Token Plan | `alitp-intl` | apikey | 6 | [site](https://www.alibabacloud.com/campaign/ai-landing-page-token) |
+| Amazon Q | `amazon-q` | oauth | 47 | [site](https://aws.amazon.com/q/developer/) |
 | Anthropic | `anthropic` | apikey | 14 | [site](https://console.anthropic.com) |
 | Antigravity | `antigravity` | oauth | 21 | [site](https://antigravity.google) |
 | Api.airforce | `api-airforce` | apikey | 7 | [site](https://api.airforce) |

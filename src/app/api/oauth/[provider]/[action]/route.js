@@ -52,11 +52,12 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "codebuddy-cn",
 "qoder",
 "grok-cli",
-"ghe-copilot"]
+"ghe-copilot",
+"amazon-q"]
 );
 
 // Device providers whose poll needs the private extraData stored with the flow.
-const EXTRA_DATA_POLL_PROVIDERS = new Set(["kiro", "ghe-copilot"]);
+const EXTRA_DATA_POLL_PROVIDERS = new Set(["kiro", "amazon-q", "ghe-copilot"]);
 
 const NO_PKCE_POLL_PROVIDERS = new Set([
 "github",
@@ -322,7 +323,7 @@ async function beginDeviceCode(provider, input) {
   const resolvedProxy = await resolveOAuthProxySelection(proxySelectionInput(input));
   const authData = await generateAuthData(provider, null, undefined, resolvedProxy.proxyOptions);
   let deviceOptions;
-  if (provider === "kiro") {
+  if (provider === "kiro" || provider === "amazon-q") {
     deviceOptions = {
       ...(input.startUrl ? { startUrl: input.startUrl } : null),
       ...(input.region ? { region: input.region } : null),

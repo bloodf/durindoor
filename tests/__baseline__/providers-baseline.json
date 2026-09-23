@@ -2212,5 +2212,31 @@
     },
     "format": "openai",
     "clientId": "Iv1.b507a08c87ecfe98"
+  },
+  "amazon-q": {
+    "baseUrl": "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+    "baseUrls": [
+      "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+      "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+      "https://q.us-east-1.amazonaws.com/generateAssistantResponse"
+    ],
+    "format": "kiro",
+    "retry": {
+      "429": 0
+    },
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/vnd.amazon.eventstream",
+      "X-Amz-Target": "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
+      "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
+      "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0"
+    },
+    "tokenUrl": "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
+    "authUrl": "https://prod.us-east-1.auth.desktop.kiro.dev",
+    "usage": {
+      "cwHost": "https://codewhisperer.us-east-1.amazonaws.com",
+      "qHost": "https://q.us-east-1.amazonaws.com",
+      "limitsPath": "/getUsageLimits"
+    }
   }
 }

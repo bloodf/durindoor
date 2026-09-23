@@ -69,6 +69,7 @@ const executors = {
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),
   kiro: new KiroExecutor(),
+  "amazon-q": new KiroExecutor("amazon-q"),
   kimchi: new KimchiExecutor(),
   "kimi-web": new KimiWebExecutor(),
   codex: new CodexExecutor(),

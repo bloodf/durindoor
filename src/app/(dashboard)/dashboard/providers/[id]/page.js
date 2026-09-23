@@ -2115,9 +2115,10 @@ export default function ProviderDetailPage() {
       {bulkActionModal}
 
       {/* Modals */}
-      {providerId === "kiro" ?
+      {providerId === "kiro" || providerId === "amazon-q" ?
       <KiroOAuthWrapper
         isOpen={showOAuthModal}
+        provider={providerId}
         providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)}

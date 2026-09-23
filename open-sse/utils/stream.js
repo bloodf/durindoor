@@ -24,6 +24,7 @@ import {
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { extractStreamErrorPayload } from "./streamLifecycle.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -476,6 +477,10 @@ export function createSSEStream(options = {}) {
 
   let claudeTerminalSeen = false;
   let upstreamErrorForwarded = false;
+  // Passthrough only: first in-stream error envelope, handed to
+  // onStreamComplete so a request-scoped refusal is not read as an empty
+  // stream that cools the account down (OmniRoute #14585).
+  let passthroughStreamError = null;
   const terminalBody = providerBody || body;
   const upstreamTerminal = createUpstreamTerminalTracker({
     format: targetFormat,
@@ -658,6 +663,7 @@ export function createSSEStream(options = {}) {
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
+              passthroughStreamError ??= extractStreamErrorPayload(parsed);
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -1277,7 +1283,8 @@ export function createSSEStream(options = {}) {
             onStreamComplete({
               ...getAccumulatedCompletion(),
               ...(hadToolCalls ? { hadToolCalls: true } : null),
-              ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
+              ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
+              ...(passthroughStreamError ? { upstreamError: passthroughStreamError } : null)
             }, usage, ttftAt, providerSummary.finalize(usage));
           }
           return;

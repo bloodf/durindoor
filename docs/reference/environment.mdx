@@ -104,13 +104,14 @@ Prefer dashboard proxy settings for day-to-day use. Use process-level vars for c
 
 ## Timeouts and stream bounds
 
-These are read through `process.env[name]` in `open-sse/config/runtimeConfig.js` unless noted. `envMs` keeps a positive integer; invalid values fall back to the default. `SSE_KEEPALIVE_MS` also accepts `0` to disable pings.
+These are read through `process.env[name]` in `open-sse/config/runtimeConfig.js` unless noted. `envMs` keeps a positive integer; invalid values fall back to the default. `SSE_KEEPALIVE_MS` and `STREAM_EARLY_EOF_PEEK_MS` also accept `0` to turn the feature off.
 
 | Variable | Default | Purpose | Read in |
 | --- | --- | --- | --- |
 | `SSE_KEEPALIVE_MS` | `10000` | Claude SSE ping interval during upstream silence. `0` disables. | `open-sse/config/runtimeConfig.js` |
 | `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. | `open-sse/config/runtimeConfig.js` |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `200000` | Time-to-first-token timeout. | `open-sse/config/runtimeConfig.js` |
+| `STREAM_EARLY_EOF_PEEK_MS` | `10000` | How long a direct stream is held for its first content frame. A stream that ends or errors empty inside it retries once on a sibling connection. `0` disables. | `open-sse/config/runtimeConfig.js` |
 | `OLLAMA_LOCAL_CONNECT_TIMEOUT_MS` | `120000` | Connect timeout for Ollama Local. Raise it for slow 70B loads. | `open-sse/config/runtimeConfig.js` |
 | `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. | `open-sse/config/runtimeConfig.js` |
 | `FETCH_CONNECT_TIMEOUT_MS` | `60000` | Abort if upstream headers never arrive. | `open-sse/config/runtimeConfig.js` |

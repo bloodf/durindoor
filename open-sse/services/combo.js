@@ -5,12 +5,13 @@
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse, getClientStatusFromError } from "../utils/error.js";
-import { isLocalStreamLifecycleError } from "../utils/streamLifecycle.js";
+import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../utils/streamLifecycle.js";
+import { peekStreamForContent } from "../utils/streamContentPeek.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
-import { HTTP_STATUS, STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 import { classifyTier } from "./jevClassifier.js";
 import { JEV_STATE_CHAR_BUDGET, JEV_TIER_TO_TASK_LEVEL } from "../config/jev.js";
@@ -21,156 +22,9 @@ import { isBoolean, isFunction, isNumber, isObject, isString } from "../../src/s
 const HARD_CAPS = new Set(["vision", "pdf", "audioInput", "videoInput"]);
 
 const SSE_CONTENT_TYPE = "text/event-stream";
-const COMBO_STREAM_PEEK_MAX_BYTES = 256 * 1024;
 
 function nonEmptyString(value) {
   return isString(value) && value.length > 0;
-}
-
-
-function frameCarriesContent(line) {
-  if (!line.startsWith("data:")) return false;
-  const payload = line.slice(5).trim();
-  if (!payload || payload === "[DONE]") return false;
-
-  let parsed;
-  try {parsed = JSON.parse(payload);} catch {return false;}
-
-
-  const delta = parsed.choices?.[0]?.delta;
-  if (
-  nonEmptyString(delta?.content) ||
-  nonEmptyString(delta?.reasoning_content) ||
-  nonEmptyString(delta?.reasoning) ||
-  delta?.tool_calls?.length > 0 ||
-  delta?.function_call)
-  return true;
-
-  if (parsed.type === "content_block_delta") {
-    const content = parsed.delta;
-    if (
-    nonEmptyString(content?.text) ||
-    nonEmptyString(content?.partial_json) ||
-    nonEmptyString(content?.thinking))
-    return true;
-  }
-  if (parsed.type === "content_block_start" && parsed.content_block?.type === "tool_use") return true;
-
-  if (isString(parsed.type) && parsed.type.endsWith(".delta") && nonEmptyString(parsed.delta)) return true;
-
-  /** Antigravity wraps native Gemini stream members in a response envelope. */
-  const geminiResponse = parsed.response || parsed;
-  const parts = geminiResponse.candidates?.[0]?.content?.parts;
-  if (Array.isArray(parts) && parts.some((part) =>
-  nonEmptyString(part?.text) || part?.functionCall || part?.inlineData))
-  return true;
-
-  return nonEmptyString(parsed.message?.content) ||
-  nonEmptyString(parsed.response) ||
-  parsed.message?.tool_calls?.length > 0;
-}
-
-function replayStream(reader, chunks, upstreamDone) {
-  let index = 0;
-  let finished = false;
-  const finish = (controller) => {
-    if (finished) return;
-    finished = true;
-    try {reader.releaseLock();} catch {}
-    controller.close();
-  };
-
-  return new ReadableStream({
-    async pull(controller) {
-      if (index < chunks.length) {
-        controller.enqueue(chunks[index++]);
-        return;
-      }
-      if (upstreamDone) {
-        finish(controller);
-        return;
-      }
-      try {
-        const { done, value } = await reader.read();
-        if (done) finish(controller);else
-        controller.enqueue(value);
-      } catch (error) {
-        try {reader.releaseLock();} catch {}
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      try {await reader.cancel(reason);} finally {try {reader.releaseLock();} catch {}}
-    }
-  });
-}
-
-/**
- * Inspect a bounded SSE prefix for output before combo success accounting.
- * Consumed bytes replay unchanged before the unread live body; non-SSE bodies
- * are never locked or read. The existing first-chunk timeout bounds providers
- * that emit keepalives indefinitely.
- *
- * @param {Response} response
- * @param {number} [timeoutMs]
- * @returns {Promise<{hasContent:boolean, body:ReadableStream|null}>}
- */
-async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS) {
-  const contentType = (response.headers.get("content-type") || "").toLowerCase();
-  if (!contentType.includes(SSE_CONTENT_TYPE) || !response.body) {
-    return { hasContent: true, body: null };
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  const chunks = [];
-  let bytes = 0;
-  let pending = "";
-  let upstreamDone = false;
-  let timer;
-  const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
-  });
-
-  try {
-    while (bytes < COMBO_STREAM_PEEK_MAX_BYTES) {
-      const next = await Promise.race([reader.read(), timeout]);
-      if (next?.timedOut) break;
-      const { done, value } = next;
-      if (done) {
-        upstreamDone = true;
-        pending += decoder.decode();
-        if (pending.trim() && frameCarriesContent(pending.trim())) {
-          return { hasContent: true, body: replayStream(reader, chunks, true) };
-        }
-        break;
-      }
-
-      chunks.push(value);
-      bytes += value.byteLength;
-      pending += decoder.decode(value, { stream: true });
-      let newline;
-      while ((newline = pending.indexOf("\n")) !== -1) {
-        const line = pending.slice(0, newline).trim();
-        pending = pending.slice(newline + 1);
-        if (frameCarriesContent(line)) {
-          return { hasContent: true, body: replayStream(reader, chunks, false) };
-        }
-      }
-    }
-
-    if (bytes >= COMBO_STREAM_PEEK_MAX_BYTES) {
-      return { hasContent: true, body: replayStream(reader, chunks, upstreamDone) };
-    }
-    try {await reader.cancel("combo stream contained no meaningful frame");} finally {try {reader.releaseLock();} catch {}}
-    return { hasContent: false, body: null };
-  } catch {
-    try {await reader.cancel("combo stream peek failed");} catch {}
-    try {reader.releaseLock();} catch {}
-    return { hasContent: false, body: null };
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 // Prefixes used when flattening tool turns into plain prose for panel models.
@@ -1571,9 +1425,15 @@ export async function handleComboChat({
         let successfulResult = result;
         const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
         if (contentType.includes(SSE_CONTENT_TYPE)) {
-          const { hasContent, body: replayBody } = await peekStreamForContent(result);
+          const { hasContent, body: replayBody, streamError } = await peekStreamForContent(result);
           if (!hasContent) {
-            if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
+            replayBody?.cancel("combo stream contained no meaningful frame").catch(() => {});
+            // A request-scoped refusal (invalid request, context too long) may
+            // still fall to another model, but it says nothing about this
+            // model's health (OmniRoute #14585).
+            if (comboStrategy === "smart-scoring" && !isRequestScopedStreamError(streamError)) {
+              _updateScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
+            }
             releaseFailedAffinity(modelStr, i);
             lastError = "Provider returned an empty stream";
             if (!lastStatus) lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;

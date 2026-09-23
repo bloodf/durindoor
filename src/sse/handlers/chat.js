@@ -28,7 +28,8 @@ import { decodeClaudeCodeModelId } from "../../app/api/v1/models/_claudeCompat.j
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { authErrorResponse, errorResponse, unavailableResponse, getClientStatusFromError } from "open-sse/utils/error.js";
 import { getRequestId, validateProviderRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
-import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
+import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "open-sse/utils/streamLifecycle.js";
+import { peekStreamForContent } from "open-sse/utils/streamContentPeek.js";
 import { isRoutableProvider } from "../../shared/constants/providers.js";
 import { runWithTransientBackendRetry } from "open-sse/services/transientBackendRetry.js";
 import {
@@ -40,7 +41,7 @@ import { getComboRoutingPolicy, mergeComboRouting } from "open-sse/services/comb
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
 import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
-import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
+import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS, STREAM_EARLY_EOF_PEEK_MS } from "open-sse/config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { FORMATS, detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { detectFormat } from "open-sse/services/provider.js";
@@ -669,6 +670,37 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   );
 }
 
+/**
+ * Peek a successful single-model stream for its first content frame
+ * (OmniRoute #13153/#13630). `failed` is true when the stream ended or errored
+ * before any content reached the client and the failure was not
+ * request-scoped (OmniRoute #14585: a sibling would reject the same request).
+ * The returned response always replays the consumed bytes, so passing it on
+ * is identical to the original stream. Content already sent is never retried:
+ * nothing is forwarded until the peek settles.
+ *
+ * This sits inside the account loop, below the transient 5xx retry wrapper
+ * (runWithTransientBackendRetry). The held response is a 200 stream, so an
+ * early EOF never multiplies into whole-request retries.
+ *
+ * @param {Response} response
+ * @param {number} [peekMs] peek window; 0 disables the hold
+ * @returns {Promise<{response: Response, failed: boolean}>}
+ */
+export async function holdForEarlyEof(response, peekMs = STREAM_EARLY_EOF_PEEK_MS) {
+  if (peekMs <= 0) return { response, failed: false };
+  const peek = await peekStreamForContent(response, peekMs);
+  if (!peek.body) return { response, failed: false };
+  const replay = new Response(peek.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
+  const failed = (peek.outcome === "empty" || peek.outcome === "error") &&
+  !isRequestScopedStreamError(peek.streamError);
+  return { response: replay, failed };
+}
+
 // Resolve custom capabilities for all combo members into a single map keyed
 // by the original member string. Falls back to static caps when no custom row.
 export async function resolveComboCapabilitiesMap(members, _depth = 0) {
@@ -966,6 +998,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let totalAttempts = 0;
   let requestReplayConnectionId = null;
   let requestReplayAttempted = false;
+  // Early-EOF sibling failover (OmniRoute #13153/#13630): at most ONE hop per
+  // request. Holds the first attempt's replayable response so an exhausted
+  // sibling pool still returns exactly what the client would have received.
+  let earlyEofOriginal = null;
   const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const upstreamModel = getModelUpstreamId(providerAlias, model);
   const quotaFamily = getModelQuotaFamily(providerAlias, model);
@@ -1010,6 +1046,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
       // All accounts unavailable or provider disabled
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+        if (earlyEofOriginal) return earlyEofOriginal;
         if (credentials?.providerDisabled) {
           log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
           return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -1072,6 +1109,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (priorAttempts >= allowedAttempts || totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
         excludeConnectionIds.add(credentials.connectionId);
         if (totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+          if (earlyEofOriginal) return earlyEofOriginal;
           log.warn("FALLBACK", "Provider fallback attempt bound reached");
           const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
           if (attemptedRateLimit) {
@@ -1278,7 +1316,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
       });
 
-      if (result.success) return result.response;
+      if (result.success) {
+        if (earlyEofOriginal || preferredConnectionId) return result.response;
+        const held = await holdForEarlyEof(result.response);
+        if (!held.failed || requestAborted(request, requestSignal)) return held.response;
+        log.warn("STREAM", `[${provider}/${model}] ACC:${credentials.connectionId.slice(0, 8)} stream ended before any content; trying one sibling`);
+        earlyEofOriginal = held.response;
+        excludeConnectionIds.add(credentials.connectionId);
+        continue;
+      }
       // A client-side abort (named AbortError, or a bare request_signal_aborted /
       // "Client disconnected" / "operation was aborted" that defaulted to 502) is a
       // local stream lifecycle event, NOT a provider failure. Return without cooling

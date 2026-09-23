@@ -42,6 +42,7 @@ import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.j
 import { wireAdaptiveEffort } from "./chatCore/adaptiveEffortWiring.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
+import { classifyStreamAbandonReason } from "../utils/streamLifecycle.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
@@ -1044,7 +1045,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       settleQuota(false, classifyQuotaTerminalReason(error));
-      abandonStreamingDetail?.(error?.message === "stream stall timeout" ? "stall_timeout" : "stream_error");
+      abandonStreamingDetail?.(classifyStreamAbandonReason(error));
     },
     onComplete: () => {
       finishProviderRequest();

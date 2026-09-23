@@ -26,6 +26,7 @@ import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
+import ProviderErrorRulesModal from "./ProviderErrorRulesModal";
 import { updateCompatibleProviderNode } from "./updateCompatibleProviderNode";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
@@ -136,6 +137,9 @@ export default function ProviderDetailPage() {
   const [concurrencyLimit, setConcurrencyLimit] = useState("");
   const [retryDelay, setRetryDelay] = useState("auto");
   const [rpmLimit, setRpmLimit] = useState("");
+  const [egressBucketed, setEgressBucketed] = useState(false);
+  const [errorRules, setErrorRules] = useState([]);
+  const [showErrorRulesModal, setShowErrorRulesModal] = useState(false);
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [autoPingQueue] = useState(() => createLatestIntentQueue({
     write: async (_key, enabled, { connectionId }) => {
@@ -479,6 +483,10 @@ export default function ProviderDetailPage() {
       setRetryDelay(selectedRetryDelay != null ? String(selectedRetryDelay) : "auto");
       const selectedRpm = (settingsData.rpmByProvider || {})[providerId];
       setRpmLimit(selectedRpm != null ? String(selectedRpm) : "");
+      // OmniRoute #10920 / #11104, adapted: egress-bucketed cooldown opt-in and
+      // operator error rules for this provider.
+      setEgressBucketed((settingsData.egressBucketedProviders || []).includes(providerId));
+      setErrorRules((settingsData.providerErrorRules || {})[providerId] || []);
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       autoPingQueue.hydrate(
@@ -668,6 +676,50 @@ export default function ProviderDetailPage() {
     } catch (error) {
       console.log("Error saving RPM limit:", error);
     }
+  };
+
+  /** OmniRoute #10920, adapted: opt this provider into egress-IP-bucketed 429 cooldown. */
+  const saveEgressBucketed = async (checked) => {
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const current = new Set(settingsData.egressBucketedProviders || []);
+      if (checked) current.add(providerId);else current.delete(providerId);
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ egressBucketedProviders: Array.from(current) })
+      });
+    } catch (error) {
+      console.log("Error saving egress-bucketed cooldown:", error);
+    }
+  };
+
+  const handleEgressBucketedChange = (checked) => {
+    setEgressBucketed(checked);
+    saveEgressBucketed(checked);
+  };
+
+  /**
+   * OmniRoute #11104, adapted: persist this provider's operator error rules.
+   * Throws on a non-ok response so the modal can surface the server's
+   * validation message instead of silently discarding the edit.
+   */
+  const saveErrorRules = async (rules) => {
+    const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+    const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+    const updated = { ...(settingsData.providerErrorRules || {}) };
+    if (rules.length > 0) updated[providerId] = rules;else delete updated[providerId];
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerErrorRules: updated })
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || "Failed to save error rules");
+    }
+    setErrorRules(rules);
   };
 
 
@@ -1918,8 +1970,26 @@ export default function ProviderDetailPage() {
                 onChange={(e) => handleConcurrencyLimitChange(e.target.value)}
                 placeholder="∞"
                 className="min-h-11 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none focus:border-dd-accent focus-visible:shadow-dd-focus" />
-              
+
               </div>
+              {/* OmniRoute #10920, adapted: egress-IP-bucketed 429 cooldown opt-in */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-dd-muted font-medium">Egress-Bucketed 429</span>
+                <Toggle
+                ariaLabel="Toggle egress-bucketed 429 cooldown"
+                checked={egressBucketed}
+                onChange={handleEgressBucketedChange} />
+
+              </div>
+              {/* OmniRoute #11104, adapted: operator per-provider error rules */}
+              <Button
+              size="sm"
+              variant="secondary"
+              icon="rule"
+              onClick={() => setShowErrorRulesModal(true)}>
+
+                  Error Rules{errorRules.length > 0 ? ` (${errorRules.length})` : ""}
+                </Button>
             </div>
           </div>
 
@@ -2305,6 +2375,13 @@ export default function ProviderDetailPage() {
         isAnthropic={isAnthropicCompatible} />
 
       }
+      <ProviderErrorRulesModal
+        isOpen={showErrorRulesModal}
+        providerId={providerId}
+        rules={errorRules}
+        onSave={saveErrorRules}
+        onClose={() => setShowErrorRulesModal(false)} />
+
       {(!isCompatible || editingCustomModel) &&
       <AddCustomModelModal
         isOpen={showAddCustomModel || Boolean(editingCustomModel)}

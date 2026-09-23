@@ -2236,6 +2236,7 @@ export default function ProviderDetailPage() {
         isAnthropic={isAnthropicCompatible}
         authType={providerInfo?.authType}
         authHint={providerInfo?.authHint}
+        authSnippet={providerInfo?.authSnippet}
         website={providerInfo?.website}
         proxyPools={proxyPools}
         existingConnectionNames={providerApiKeyConnectionNames}

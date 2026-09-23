@@ -42,6 +42,8 @@ const FORMAT_LEVELS = {
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 // GPT-5.6 patterns must precede broad *codex* so Sol/Terra/Luna keep their matrix.
 const PATTERN_THINKING = [
+  /** Claude Opus 5.5 accepts low..max including xhigh; it rejects disabled thinking and `ultra`. */
+  { pattern: "*claude*opus-5-5*", levels: ["low", "medium", "high", "xhigh", "max"] },
   // Sol/Terra accept max + ultra on the wire.
   { pattern: "*gpt-5.6-sol*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },

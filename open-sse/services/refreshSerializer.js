@@ -34,6 +34,8 @@
  * path pays zero added latency.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 // ponytail: `groupTail` below is a process-local in-memory Map keyed by
 // rotation group. The ceiling is single-process: a multi-process deployment
 // (cluster / worker_threads / separate Node processes behind a load balancer)
@@ -82,6 +84,29 @@ export function getRefreshSpacingMs() {
 // Tail promise per group — each new refresh chains after the previous one.
 const groupTail = new Map();
 
+// Tracks, per ASYNC CALL CHAIN, which rotation groups that chain already
+// holds the lane for. Two independent call paths reach serializeRefresh for
+// the same rotation group: the Codex/Qwen executors' refreshCredentials()
+// delegates to oauthCredentialManager's refreshProviderCredentials(), which
+// calls serializeRefresh itself; and src/shared/services/providerCredentials.js
+// also wraps the whole executor.refreshCredentials() call in serializeRefresh,
+// for providers whose executors do their own refresh with no inner locking.
+// When both wrap the SAME operation (Codex/Qwen), the inner call would queue
+// behind the outer call's own tail — a tail that can only resolve after the
+// inner call returns. That is a guaranteed deadlock, and every sibling
+// connection queued behind it hangs forever too, since their onLaneAcquired
+// never fires and their own caller-side timeout never arms (durindoor#951 —
+// the Codex dashboard page spinning forever).
+//
+// A plain module-level `Set` of held groups is NOT enough: two *unrelated*
+// concurrent connections both refreshing the same group would incorrectly see
+// each other as "already held" and both skip the lane, defeating the whole
+// point of this file. AsyncLocalStorage scopes the held-group set to the
+// await chain actually running inside `laneContext.run()`, so it only reads
+// as "held" for code that is genuinely nested inside an in-flight fn() call —
+// never for a sibling running in a separate, merely-concurrent chain.
+const laneContext = new AsyncLocalStorage();
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Returns the serialization group for a provider, or null when it is not a rotating provider. */
@@ -105,7 +130,8 @@ export function rotationGroupFor(provider) {
  */
 export async function serializeRefresh(provider, fn, { onLaneAcquired = null } = {}) {
   const group = rotationGroupFor(provider);
-  if (!group) {
+  const heldGroups = laneContext.getStore();
+  if (!group || heldGroups?.has(group)) {
     onLaneAcquired?.();
     return fn();
   }
@@ -124,7 +150,9 @@ export async function serializeRefresh(provider, fn, { onLaneAcquired = null } =
 
   try {
     onLaneAcquired?.();
-    return await fn();
+    const nextHeld = new Set(heldGroups);
+    nextHeld.add(group);
+    return await laneContext.run(nextHeld, () => fn());
   } finally {
     // Only pay the settle gap when a sibling is already queued behind us — a
     // lone refresh has nobody to collide with, so it must be released

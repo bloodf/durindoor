@@ -572,7 +572,16 @@ export const PROVIDER_CAPABILITIES = {
   },
 
   oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },
-  "opencode-go": { "ox-alpha-free": OX_ALPHA_CAPABILITIES },
+  "opencode-go": {
+    "ox-alpha-free": OX_ALPHA_CAPABILITIES,
+    // glm-5.3-flash has no exact global entry (only the base "glm-5.3" id
+    // does, with the z.ai-native "zai" thinkingFormat), so without a
+    // provider override it fell through to DEFAULT_CAPABILITIES with no
+    // reasoning at all. OpenCode Go's backend also rejects the z.ai
+    // `thinking` object (400: unknown field "thinking") and wants
+    // reasoning_effort, so the format here must be "openai", not "zai". #4226
+    "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 }
+  },
   ocg: { "ox-alpha-free": OX_ALPHA_CAPABILITIES },
 
   // OpenCode Zen — Big Pickle advertises reasoning in the registry but the

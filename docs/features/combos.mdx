@@ -33,6 +33,10 @@ Client request:
 }
 ```
 
+### Member sort
+
+The dashboard combo editor's Models panel has a sort selector: manual (drag-and-drop, the default), by provider, or by name. Picking a method reorders the visible member list immediately and, for by-provider/by-name, re-applies after adding a new member; it is a one-shot reorder written back into the combo's `models` array on save, not a persisted live mode. Manual order (whatever the panel shows) is always what `strategy: "fallback"` tries first-to-last.
+
 ## Strategies
 
 Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The page default is `fallback`. Global fallback when a combo has no override is `comboStrategy`, also `fallback`.

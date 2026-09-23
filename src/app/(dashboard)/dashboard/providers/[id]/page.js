@@ -1457,7 +1457,10 @@ export default function ProviderDetailPage() {
       customModels,
       modelAliases,
       providerAlias: providerStorageAlias,
-      builtInModels: models,
+      // allModels (not just the static `models` registry) so a kiloFreeModels
+      // row that picks up a capability override is excluded from the custom
+      // list too, matching the row it actually overrides (port(omniroute) #14356).
+      builtInModels: allModels,
       type: "llm"
     });
 
@@ -1497,6 +1500,14 @@ export default function ProviderDetailPage() {
           const existingAlias = Object.entries(modelAliases).find(
             ([, m]) => m === fullModel || m === oldFormatModel
           )?.[0];
+          // OmniRoute #14356 (port(omniroute)): a registry/synced model has no
+          // customModels row by default, so it carries no capability override
+          // (context window, etc). If the operator already saved one, merge it
+          // over the base caps the same way the server's dedup pass does.
+          const customOverride = customModels.find(
+            (m) => m?.id === model.id && m.providerAlias === providerStorageAlias && (m.kind || m.type || "llm") === "llm"
+          );
+          const baseCaps = getCaps(`${providerId}/${model.id}`);
           return (
             <ModelRow
               key={model.id}
@@ -1512,8 +1523,9 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
-              caps={getCaps(`${providerId}/${model.id}`)}
-              thinkingSuffix={resolveThinkingSuffix(model.id)} />);
+              caps={customOverride ? { ...baseCaps, ...customOverride.capabilities } : baseCaps}
+              thinkingSuffix={resolveThinkingSuffix(model.id)}
+              onEdit={() => setEditingCustomModel({ id: model.id, name: model.name, capabilities: customOverride?.capabilities || {} })} />);
 
 
         })}
@@ -2299,7 +2311,17 @@ export default function ProviderDetailPage() {
         providerDisplayAlias={providerDisplayAlias}
         initialModel={editingCustomModel}
         onSave={async (payload) => {
-          if (editingCustomModel) {
+          // OmniRoute #14356 (port(omniroute)): a registry/synced row opens
+          // this same editor with `editingCustomModel` set, but (unlike a
+          // true custom-model edit) has no customModels row yet, so its first
+          // save must go through POST (add), same as a brand-new custom
+          // model. Only branch to update when a row for this id actually
+          // exists; the plain "Add Model" flow (editingCustomModel null)
+          // always adds, unchanged from before.
+          const hasExistingRow = Boolean(editingCustomModel) && customModels.some(
+            (m) => m?.id === payload.id && m.providerAlias === providerStorageAlias && (m.kind || m.type || "llm") === "llm"
+          );
+          if (hasExistingRow) {
             await handleUpdateCustomModel(payload);
           } else {
             await handleAddCustomModel(payload, "llm", providerStorageAlias);

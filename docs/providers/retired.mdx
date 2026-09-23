@@ -1,0 +1,66 @@
+---
+title: Hidden and retired providers
+description: Providers you can no longer add, providers that carry a warning, registry ids with no runnable executor yet, and what happens to connections you already have.
+---
+
+DurinDoor never deletes a provider's registry file just because the provider stopped being useful. Existing connections are left alone. Instead a provider is retired in one of three ways, and each one behaves differently.
+
+| State | Can add new | Existing connections route | How you notice |
+| --- | --- | --- | --- |
+| Hidden | No | Yes | The card is gone from the Providers page |
+| Risk notice | Yes | Yes | A warning banner on the provider page |
+| Not runnable yet | Yes | No | Requests return HTTP 501 |
+
+## Hidden providers
+
+A registry entry with `hidden: true` drops out of the Providers page, the media providers list, and the model picker's no-auth list. `POST /api/providers` answers `Invalid provider`, the same as for an id that does not exist. A connection saved before the provider was hidden keeps working and still shows in `GET /api/providers`. The card for it no longer appears in the dashboard list, so manage or delete it through the [management API](../reference/management-api.mdx) (`/api/providers/{id}`).
+
+Hidden in this build:
+
+| Id | Why |
+| --- | --- |
+| `qwen`, `iflow` | Deprecated; hidden since the v0.4.49 changelog entry |
+| `ollama` | Ollama Cloud was hidden; `ollama-local` is unaffected |
+| `dify` | Needs a per-application endpoint the connection form cannot collect yet |
+| `databricks` | Needs a per-workspace serving endpoint the form cannot store yet |
+| `factory` | Waiting on a correct gateway route |
+| `zed`, `codex-cloud` | Metadata-only rows with no transport and no models |
+| `kimi-coding`, `gitlab`, `mmf` | No reason recorded in the registry |
+| `tortoise`, `coqui`, `playht`, `cartesia` | Speech providers; no reason recorded |
+
+The list comes from `open-sse/providers/registry/`. To check a source checkout:
+
+```bash
+grep -l "hidden: true" open-sse/providers/registry/*.js
+```
+
+Some hidden ids have a visible sibling. Use `kimi-coding-apikey` or `kimi` for Kimi, `gitlab-duo` for GitLab Duo, and `ollama-local` for a local Ollama.
+
+## Providers with a risk notice
+
+These stay addable, but the provider page shows a banner saying the provider uses a subscription or OAuth session that was not licensed for router use, and the account may be restricted:
+
+`claude`, `codex`, `gemini-cli`, `antigravity`, `github`, `kiro`, `qoder-cn`.
+
+The registry marks them `deprecated: true` for display only. Routing, refresh, and quota are unchanged. Per-provider pages: [Claude Code](./claude-code.mdx), [OpenAI Codex](./codex.mdx), [Antigravity](./antigravity.mdx), [Kiro](./kiro.mdx).
+
+## Registry ids with no executor yet
+
+Some ids are in the registry so their card, auth hint, and model list exist, but the executor has not been ported. Any request returns HTTP 501:
+
+```json
+{
+  "error": {
+    "type": "provider_port_pending",
+    "message": "...",
+    "provider": "...",
+    "sourceFiles": ["..."]
+  }
+}
+```
+
+The blocked set is in `open-sse/executors/unsupported-websession.js`. It is mostly [web cookie providers](./web-cookie.mdx#what-each-provider-expects), plus `devin`, which has no chat transport. Saving a credential for one of these does no harm; it will start working when the executor lands.
+
+## Retired models
+
+Models retire more often than providers. When a catalog model passes its shutdown date, requests for it, and for any alias that resolves to it, get HTTP 410 `model_shutdown`. A deprecated model that has not shut down yet only logs a warning. Swap the id in your combos or client config for one from `GET /v1/models`.

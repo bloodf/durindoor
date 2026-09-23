@@ -64,8 +64,10 @@ function githubMonthlyResetMs(status, errorText, provider) {
  * Detect Qoder's permanent account quota signal from structured executor data.
  * Rendered messages are untrusted text and must not widen this trigger (#3331).
  */
+const QODER_QUOTA_PROVIDER_IDS = new Set(["qoder", "qoder-cn"]);
+
 function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
-  if (resolveProviderId(provider) !== "qoder" || Number(status) !== 403) return false;
+  if (!QODER_QUOTA_PROVIDER_IDS.has(resolveProviderId(provider)) || Number(status) !== 403) return false;
   if (errorBody && isObject(errorBody)) {
     return isQoderQuotaExhaustedBody(errorBody?.error?.message);
   }

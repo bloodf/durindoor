@@ -325,6 +325,19 @@ describe("PerplexityWebExecutor.execute", () => {
     expect(capturedOpts.headers.Authorization).toBeUndefined();
   });
 
+  it("sends chunked session cookies under their own names from a pasted header", async () => {
+    const exec = new PerplexityWebExecutor();
+    await exec.execute({
+      model: "pplx-auto",
+      body: { messages: [{ role: "user", content: "hi" }], stream: false },
+      stream: false,
+      credentials: { apiKey: "__Secure-next-auth.session-token.1=B; __Secure-next-auth.session-token.0=A" },
+    });
+    expect(capturedOpts.headers.Cookie).toBe(
+      "__Secure-next-auth.session-token.0=A; __Secure-next-auth.session-token.1=B",
+    );
+  });
+
   it("sends Bearer header when credentials.accessToken provided", async () => {
     const exec = new PerplexityWebExecutor();
     await exec.execute({

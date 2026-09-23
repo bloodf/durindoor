@@ -484,7 +484,24 @@ function getProxyUrl(targetUrl, proxyOptions) {
   return null;
 }
 
-function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
+/**
+ * Pick the proxy for a request made outside proxyAwareFetch (for example the
+ * native tls-client): the connection proxy, then the HTTP(S)_PROXY env,
+ * else direct. Loopback targets always go direct.
+ * @param {string} targetUrl
+ * @param {object|null} [proxyOptions]
+ * @returns {{source: "connection"|"env"|"direct", proxyUrl: string|null}}
+ */
+export function resolveProxyForRequest(targetUrl, proxyOptions = null) {
+  if (isLoopbackTarget(targetUrl)) return { source: "direct", proxyUrl: null };
+  const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
+  if (connectionProxyUrl) return { source: "connection", proxyUrl: connectionProxyUrl };
+  if (proxyOptions?.disableEnvProxy === true) return { source: "direct", proxyUrl: null };
+  const envProxyUrl = normalizeProxyUrl(getEnvProxyUrl(targetUrl));
+  return envProxyUrl ? { source: "env", proxyUrl: envProxyUrl } : { source: "direct", proxyUrl: null };
+}
+
+export function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
   if (isLoopbackTarget(targetUrl)) return null;
   const enabled = proxyOptions?.enabled === true || proxyOptions?.connectionProxyEnabled === true;
   if (!enabled) return null;

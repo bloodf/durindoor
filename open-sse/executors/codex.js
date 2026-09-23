@@ -25,6 +25,8 @@ import {
   withCodexFingerprintCredentials } from
 "../config/codexIdentity.js";
 import { applyCodexAccountHeader } from "../shared/codexAccountId.js";
+import { getCodexClientVersionFromHeaders } from "../config/codexClientVersion.js";
+import { CODEX_CLI_VERSION } from "../config/appConstants.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
 import { cancelAndReleaseReader, releaseReader } from "../utils/streamReader.js";
@@ -613,6 +615,13 @@ export class CodexExecutor extends BaseExecutor {
     headers["session_id"] = requestContext?.sessionId || credentials?.connectionId || "default";
     // Identify client type to Codex backend (matches official codex CLI)
     if (!headers["originator"]) headers["originator"] = "codex_cli_rs";
+    // Forward the caller's own Codex CLI version (Version header + matching
+    // User-Agent) when it sent one, instead of always clamping to our pin —
+    // OpenAI gates some models on client version. Falls back to the pin.
+    const callerVersion = getCodexClientVersionFromHeaders(requestContext?.clientHeaders);
+    const wireVersion = callerVersion || CODEX_CLI_VERSION;
+    headers["Version"] = wireVersion;
+    headers["User-Agent"] = `codex_cli_rs/${wireVersion}`;
     // Responses Lite transport: forward the opt-in header + slim metadata
     // envelope from the immutable request context (never from shared credentials).
     copyResponsesLiteHeaders(headers, requestContext);
@@ -967,6 +976,20 @@ export class CodexExecutor extends BaseExecutor {
     if (modelEffort) {
       // Strip suffix from model name for actual API call
       body.model = effortSplit.model;
+    }
+
+    // Codex only accepts `effort`/`summary` on the reasoning object; any other
+    // client-declared key (e.g. `max_tokens`, `enabled`) is rejected as an
+    // unknown parameter. `enabled: false` without an explicit effort maps to
+    // effort "none" before the whitelist strips it.
+    // Upstream provenance: diegosouzapw/OmniRoute de428cef8 (#14065).
+    if (body.reasoning && isObject(body.reasoning)) {
+      if (body.reasoning.enabled === false && body.reasoning.effort === undefined) {
+        body.reasoning.effort = "none";
+      }
+      for (const key of Object.keys(body.reasoning)) {
+        if (key !== "effort" && key !== "summary") delete body.reasoning[key];
+      }
     }
 
     const isSpark = isCodexSparkModel(body.model);

@@ -148,6 +148,24 @@ async function liveResolverOptions(conn) {
 }
 
 
+// Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
+// credentials carry the provider id so qoderModels picks the right region's
+// catalog endpoint.
+async function resolveQoderLiveModels(conn, providerId) {
+  const result = await resolveQoderModels({
+    provider: providerId,
+    accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
+    refreshToken: isString(conn.refreshToken) ? conn.refreshToken : undefined,
+    email: isString(conn.email) ? conn.email : undefined,
+    displayName: isString(conn.displayName) ? conn.displayName : undefined,
+    providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
+  });
+  if (!result?.models?.length) return null;
+  return {
+    models: result.models.map((m) => ({ id: m.id, name: m.name }))
+  };
+}
+
 const LIVE_MODEL_RESOLVERS = {
   anthropic: async (conn, guard) => resolveLiveAnthropicModels(conn, {
     ...(await liveResolverOptions(conn)),
@@ -235,19 +253,8 @@ const LIVE_MODEL_RESOLVERS = {
     });
     return models.length ? { models } : null;
   },
-  qoder: async (conn) => {
-    const result = await resolveQoderModels({
-      accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
-      refreshToken: isString(conn.refreshToken) ? conn.refreshToken : undefined,
-      email: isString(conn.email) ? conn.email : undefined,
-      displayName: isString(conn.displayName) ? conn.displayName : undefined,
-      providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
-    });
-    if (!result?.models?.length) return null;
-    return {
-      models: result.models.map((m) => ({ id: m.id, name: m.name }))
-    };
-  },
+  qoder: (conn) => resolveQoderLiveModels(conn, "qoder"),
+  "qoder-cn": (conn) => resolveQoderLiveModels(conn, "qoder-cn"),
   github: async (conn) => {
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
     const proxyOptions = await resolveConnectionProxyConfig(psd);

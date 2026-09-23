@@ -52,6 +52,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `pollinations` | PollinationsExecutor | `./pollinations.js` |
 | `puter` | PuterExecutor | `./puter.js` |
 | `qoder` | QoderExecutor | `./qoder.js` |
+| `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
@@ -262,7 +263,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qianfan` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
 | `qiniu` |  | apikey | `https://api.qnaigc.com/v1/chat/completions` |
 | `qoder` |  | oauth | `https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation` |
-| `qoder-cn` |  | free | `https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation` |
+| `qoder-cn` |  | oauth | `https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation` |
 | `qwen` |  | oauth | `https://portal.qwen.ai/v1/chat/completions` |
 | `recraft` |  | apikey | `` |
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |

@@ -1,3 +1,10 @@
+# 4.8.1
+
+## Fixes
+
+- fix(docker): install cmake in the builder so koffi builds on arm64 (#988)
+
+
 # 4.8.0
 
 ## Features

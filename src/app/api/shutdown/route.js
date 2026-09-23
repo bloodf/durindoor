@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { stopMitmForUpdate } from "@/lib/appUpdater";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 export async function POST() {
   if (process.env.NODE_ENV === "production") {
@@ -10,7 +11,7 @@ export async function POST() {
   const secret = process.env.SHUTDOWN_SECRET;
   const authorization = headers().get("authorization");
 
-  if (!secret || authorization !== `Bearer ${secret}`) {
+  if (!secret || !timingSafeCompare(authorization, `Bearer ${secret}`)) {
     return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
   }
 

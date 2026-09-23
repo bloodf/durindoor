@@ -134,10 +134,26 @@ function buildSseResponse(providerResponse, log, onSuccess) {
   });
 }
 
+// Codex image_generation always 403s on a free ChatGPT plan (Plus/Pro/Business
+// required). Reject before dispatch instead of burning a round trip on an
+// account we already know will fail, tagged 403 so combo fails over to the
+// next candidate rather than surfacing a flat 400.
+// Upstream provenance: diegosouzapw/OmniRoute 79b2e92c4 (#11948).
+function assertNotFreePlan(providerSpecificData) {
+  const planType = String(
+    providerSpecificData?.chatgptPlanType || providerSpecificData?.workspacePlanType || ""
+  ).toLowerCase();
+  if (planType !== "free") return;
+  const err = new Error("Codex image_generation is unavailable on free-plan accounts");
+  err.status = 403;
+  throw err;
+}
+
 export default {
   stream: true,
   buildUrl: () => CODEX_RESPONSES_URL,
   buildHeaders: (creds) => {
+    assertNotFreePlan(creds?.providerSpecificData);
     const accountId = resolveCodexAccountId(creds?.providerSpecificData, creds?.idToken);
     const headers = {
       "accept": "text/event-stream, application/json",

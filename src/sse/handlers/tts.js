@@ -65,7 +65,7 @@ async function handleTtsHandler(request) {
   // #6495 / F-4: filter paid members when the toggle is on. Auth ACL check
   // above calls getComboModels without the flag so combo existence/ACL stay
   // against the real member list.
-  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true);
+  const comboModels = await getComboModels(modelStr, settings.hidePaidModels === true, settings);
   if (comboModels) {
     const comboName = (await getComboCanonicalName(modelStr)) || modelStr;
     const combo = isAutoComboId(modelStr) ? null : await getComboForModel(comboName);

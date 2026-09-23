@@ -28,6 +28,10 @@ Catalog lookup order is provider, then exact id, then registry, then pattern, th
 
 AI Horde (`aihorde` / `horde`) never uses the static tables. Limits exist only when custom or live values are present.
 
+### Overriding a synced (registry) model's window
+
+`source: "custom"` above previously required a full custom model row (**Dashboard → Providers → (provider) → Add Model**). A registry-listed model (the built-in catalog row, no separate custom entry) now shows the same pencil, opening the same capability editor. Saving there writes (or updates) a `customModels` row keyed to that provider/model id, so it does not appear twice: the dashboard excludes a custom row whose id matches a built-in model from the "custom models" list, and the server's `buildModelsList` dedup keeps that row's overridden capabilities (including `contextWindow`) over the plain static entry. Clearing the field back to blank keeps the row but drops the override to `null`, which falls back to the catalog value.
+
 ## Known versus the floor
 
 `DEFAULT_CAPABILITIES` is `contextWindow: 200000` and `maxOutput: 64000`. `getCapabilitiesForModel` merges that floor into every unmatched lookup, so an unknown model looks like a 200K model.

@@ -13,6 +13,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
 import { checkFallbackError } from "../services/accountFallback.js";
+import { learnRequestCapFromBody } from "../services/learnedRequestCap.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -1454,6 +1455,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const { cooldownMs, terminal } = checkFallbackError(statusCode, message, 0);
       if (!terminal && Number.isFinite(cooldownMs) && cooldownMs > 0) {
         resetsAtMs = Date.now() + cooldownMs;
+      }
+    }
+    // Some providers (e.g. TokenRouter) state their ceiling in the 429 body
+    // prose instead of rate-limit headers, so rpmLimiter.js never learns it
+    // and keeps racing into the same cap. Learn it here and pace future
+    // selection for this connection under it (#13895 upstream).
+    if (statusCode === HTTP_STATUS.RATE_LIMITED && connectionId) {
+      try {
+        learnRequestCapFromBody(connectionId, errorBody ?? message);
+      } catch {
+        // Learning a pacing hint must never break error handling.
       }
     }
     const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);

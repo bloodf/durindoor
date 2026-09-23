@@ -105,6 +105,7 @@ export default function ProviderDetailPage() {
   // When set, the open OAuth modal replaces this existing connection in place
   // (the Reconnect flow) instead of creating a new row. Cleared on close/success.
   const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
+  const [clearingCooldownId, setClearingCooldownId] = useState(null);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
   const [showImportTokenModal, setShowImportTokenModal] = useState(false);
   const [importTokenValue, setImportTokenValue] = useState("");
@@ -1077,6 +1078,31 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Manually lift a persisted 429 cooldown (port of OmniRoute #12224). The
+  // bench is DurinDoor's own lesson, not upstream truth: a quota can refresh
+  // upstream (daily/weekly reset, provider-side fix) well before our timer
+  // does, and the only automatic clear paths (a successful retest, an
+  // Edit-modal key re-validation) require another upstream round-trip first.
+  const handleClearCooldown = async (id) => {
+    if (!id || clearingCooldownId) return;
+    setClearingCooldownId(id);
+    try {
+      const res = await fetch(`/api/providers/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rateLimitedUntil: null })
+      });
+      if (res.ok) {
+        const { connection } = await res.json();
+        if (connection) setConnections((prev) => replaceUpdatedConnections(prev, [connection]));
+      }
+    } catch (error) {
+      console.log("Error clearing cooldown:", error);
+    } finally {
+      setClearingCooldownId(null);
+    }
+  };
+
   const handleBulkSetConnectionStatus = async (isActive) => {
     const idsToUpdate = [...selectedConnectionIds];
     if (idsToUpdate.length === 0) return;
@@ -1281,6 +1307,8 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
+                onClearCooldown={handleClearCooldown}
+                clearingCooldown={clearingCooldownId === conn.id}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),

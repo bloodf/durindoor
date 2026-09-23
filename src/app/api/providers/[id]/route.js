@@ -206,8 +206,22 @@ export async function PUT(request, { params }) {
       testStatus,
       lastError,
       lastErrorAt,
-      providerSpecificData
+      providerSpecificData,
+      rateLimitedUntil
     } = body;
+
+    // "Clear cooldown" is the only supported use of this field here: the
+    // persisted 429 bench is DurinDoor's own lesson, not upstream truth, and
+    // the dashboard offers a manual way to drop a bench that's gone stale
+    // (quota already refreshed upstream). Only accept an explicit `null` —
+    // letting a caller PUT an arbitrary future value would turn this into an
+    // unaudited way to bench someone else's connection.
+    if (rateLimitedUntil !== undefined && rateLimitedUntil !== null) {
+      return NextResponse.json(
+        { error: "rateLimitedUntil can only be cleared (set to null)" },
+        { status: 400 }
+      );
+    }
 
     // Body validation runs before any connection lookup or DB write, faithful
     // to the source route: an out-of-range priority must 400 with the source's
@@ -284,6 +298,10 @@ export async function PUT(request, { params }) {
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;
     if (lastErrorAt !== undefined) updateData.lastErrorAt = lastErrorAt;
+    if (rateLimitedUntil === null) {
+      updateData.rateLimitedUntil = null;
+      updateData.backoffLevel = 0;
+    }
 
     if (
     shouldMergeProviderSpecificData(

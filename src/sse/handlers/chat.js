@@ -30,6 +30,7 @@ import { authErrorResponse, errorResponse, unavailableResponse, getClientStatusF
 import { getRequestId, validateProviderRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { isLocalStreamLifecycleError } from "open-sse/utils/streamLifecycle.js";
 import { isRoutableProvider } from "../../shared/constants/providers.js";
+import { runWithTransientBackendRetry } from "open-sse/services/transientBackendRetry.js";
 import {
   getComboModelQuotaHealth,
   handleComboChat,
@@ -630,13 +631,22 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     return comboResult;
   }
 
-  // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
-    settings,
-    allowVisionBridge: true,
-    apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
-    apiKeyId: apiKeyAuth.apiKeyId,
-  });
+  // Single model request. Wrapped with a bounded jittered retry on transient
+  // 502/503/504 backend errors (#13143 upstream) — the combo loop above has
+  // its own cooldown/fallback handling already, so this only covers the
+  // direct, non-combo path. Retries only ever see a non-ok error response
+  // constructed before any bytes reach the client, so re-running cannot
+  // double-send a stream.
+  return runWithTransientBackendRetry(
+    () =>
+      handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey, null, null, {
+        settings,
+        allowVisionBridge: true,
+        apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
+        apiKeyId: apiKeyAuth.apiKeyId,
+      }),
+    { signal: request?.signal || undefined, source: "single-model" }
+  );
 }
 
 // Resolve custom capabilities for all combo members into a single map keyed

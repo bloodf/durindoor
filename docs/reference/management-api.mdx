@@ -124,7 +124,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | --- | --- | --- | --- |
 | GET | `/api/usage/chart` | Usage chart buckets for a period | session, CLI, key, loop |
 | GET | `/api/usage/combos` | Combo-attributed usage for a period | session, CLI, key, loop |
-| GET | `/api/usage/history` | Aggregate usage stats (default period) | session, CLI, key, loop |
+| GET | `/api/usage/history` | Paginated usage rows (`limit` up to 200, `offset`, filters) | session, CLI, key, loop |
 | GET | `/api/usage/logs` | Last 200 usage log rows | session, CLI, key, loop |
 | GET | `/api/usage/providers` | Distinct providers from request details | session, CLI, key, loop |
 | GET | `/api/usage/request-details` | Paginated request-detail rows | session, CLI, key, loop |

@@ -33,7 +33,72 @@ export function normalizeApiKeyPolicy(value) {
     normalized[field] = number;
   }
 
+  if (Object.hasOwn(value, "modelAccess")) normalized.modelAccess = normalizeModelAccess(value.modelAccess);
+
+  // Windowed limits: empty, null and 0 all mean "no limit", so they are
+  // dropped rather than stored as null.
+  for (const field of API_KEY_LIMIT_FIELDS) {
+    if (!Object.hasOwn(value, field)) continue;
+    delete normalized[field];
+    const raw = value[field];
+    if (raw == null || raw === "" || Number(raw) === 0) continue;
+    const number = Number(raw);
+    const integer = field !== "monthlyBudget";
+    if (!Number.isFinite(number) || number < 0 || integer && !Number.isSafeInteger(number)) {
+      throw new TypeError(`API-key policy ${field} must be a non-negative ${integer ? "integer" : "number"}`);
+    }
+    normalized[field] = number;
+  }
+
   return normalized;
+}
+
+/**
+ * Per-key limits over a rolling minute, the local calendar day and the local
+ * calendar month. Enforced by src/lib/apiKeyLimits.js. The daily total-token
+ * limit is the older `dailyLimitTokens` column, so it is not repeated here.
+ */
+export const API_KEY_LIMIT_FIELDS = Object.freeze([
+  "rpmLimit",
+  "tpmLimit",
+  "dailyInputTokenLimit",
+  "dailyOutputTokenLimit",
+  "monthlyTokenLimit",
+  "monthlyInputTokenLimit",
+  "monthlyOutputTokenLimit",
+  "monthlyRequestLimit",
+  "monthlyBudget",
+]);
+
+const MODEL_ACCESS_MODES = new Set(["all", "allow", "deny"]);
+const MAX_MODEL_ACCESS_PATTERNS = 200;
+
+/**
+ * `modelAccess` is `{ mode: "all" | "allow" | "deny", patterns: string[] }`.
+ * Patterns are case-insensitive globs where `*` matches anything, `/`
+ * included. `null` clears the rule back to "all".
+ */
+function normalizeModelAccess(value) {
+  if (value == null) return { mode: "all", patterns: [] };
+  if (!isObject(value) || Array.isArray(value) || !MODEL_ACCESS_MODES.has(value.mode)) {
+    throw new TypeError('API-key policy modelAccess.mode must be "all", "allow" or "deny"');
+  }
+  const raw = value.patterns ?? [];
+  if (!Array.isArray(raw) || raw.some((pattern) => !isString(pattern))) {
+    throw new TypeError("API-key policy modelAccess.patterns must be an array of strings");
+  }
+  const seen = new Set();
+  const patterns = [];
+  for (const item of raw) {
+    const pattern = item.trim();
+    if (!pattern || seen.has(pattern.toLowerCase())) continue;
+    seen.add(pattern.toLowerCase());
+    patterns.push(pattern);
+  }
+  if (patterns.length > MAX_MODEL_ACCESS_PATTERNS) {
+    throw new TypeError(`API-key policy modelAccess allows at most ${MAX_MODEL_ACCESS_PATTERNS} patterns`);
+  }
+  return { mode: value.mode, patterns };
 }
 
 export function validateApiKeyPolicy(value) {

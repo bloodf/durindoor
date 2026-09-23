@@ -45,7 +45,7 @@ export function isActivePath(pathname, href, exact = false) {
 }
 
 // const VISIBLE_MEDIA_KINDS = ["embedding", "image", "imageToText", "tts", "stt", "webSearch", "webFetch", "video", "music"];
-export const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt"];
+export const VISIBLE_MEDIA_KINDS = ["embedding", "image", "tts", "stt", "systemone"];
 // Combined entry: webSearch + webFetch share one page at /dashboard/media-providers/web
 export const COMBINED_WEB_ITEM = { id: "web", label: "Web Fetch & Search", icon: "travel_explore", href: "/dashboard/media-providers/web" };
 

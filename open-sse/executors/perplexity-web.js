@@ -6,6 +6,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { buildNextAuthSessionCookie } from "../../src/lib/providers/webCookieAuth.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
@@ -599,7 +600,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
     } else if (credentials.apiKey) {
-      headers["Cookie"] = `__Secure-next-auth.session-token=${credentials.apiKey}`;
+      headers["Cookie"] = buildNextAuthSessionCookie(credentials.apiKey);
     }
 
     log?.info?.("PPLX-WEB", `Query to ${model} (pref=${modelPref}, mode=${pplxMode}), len=${query.length}`);

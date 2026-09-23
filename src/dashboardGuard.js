@@ -3,6 +3,7 @@ import { getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 import {
   CONTROL_PORT_HEADER,
@@ -23,7 +24,7 @@ async function getCliToken() {
 export async function hasValidCliToken(request) {
   const token = request.headers.get(CLI_TOKEN_HEADER);
   if (!token) return false;
-  return token === await getCliToken();
+  return timingSafeCompare(token, await getCliToken());
 }
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).

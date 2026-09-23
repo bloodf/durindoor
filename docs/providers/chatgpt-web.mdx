@@ -1,0 +1,129 @@
+---
+title: ChatGPT Web
+description: Use a chatgpt.com subscription session through DurinDoor, with a browser transport and an HTTP fallback.
+---
+
+ChatGPT Web (`chatgpt-web`, alias `cgpt-web`) sends chat requests through your logged-in chatgpt.com session. You paste the session cookie once; DurinDoor keeps it and writes back the rotated cookie when chatgpt.com issues a new one.
+
+<Callout type="warn">
+This drives the consumer ChatGPT web app, not the OpenAI API. It depends on chatgpt.com's private web endpoints, which change without notice, and on your account's own limits. Use it for a personal gateway.
+</Callout>
+
+## Models
+
+| Id | ChatGPT UI choice |
+| --- | --- |
+| `gpt-5-6` | GPT-5.6 Sol, Instant |
+| `gpt-5-6-thinking` | GPT-5.6 Sol, Thinking; `reasoning_effort` picks the level (alias `gpt-5-6-sol`) |
+| `gpt-5-6-pro` | GPT-5.6 Sol, Pro |
+| `gpt-5.6-luna-free` | GPT-5.6 Luna on a Free account |
+| `gpt-5.6-luna-free-thinking` | GPT-5.6 Luna with Think on |
+| `gpt-5-5-instant` | GPT-5.5, Instant |
+| `gpt-5-5-thinking` | GPT-5.5, Thinking; `reasoning_effort` picks the level (alias `gpt-5-5`) |
+| `gpt-5-5-pro` | GPT-5.5, Pro |
+
+Your plan decides which of these chatgpt.com accepts. A Free account only has the Luna models.
+
+## Session cookie
+
+chatgpt.com keeps its NextAuth session in `__Secure-next-auth.session-token`. When the session is larger than about 4KB, NextAuth splits it into chunks named `__Secure-next-auth.session-token.0`, `.1`, and so on, each holding a different part of the value. DurinDoor accepts any of these pastes:
+
+- a bare token value
+- `name=value` for the plain cookie or a chunk
+- the full `Cookie` header, with or without the `Cookie:` prefix, chunks in any order
+
+Chunks are sent back to chatgpt.com under their own names, ordered by index, never concatenated. If a header has both chunks and a plain cookie, the stale plain one is dropped. Other cookies in the paste, such as `cf_clearance`, are kept. The Check button calls `https://chatgpt.com/api/auth/session` with that cookie; a live session returns an `accessToken`, and an expired or incomplete one returns `{}`.
+
+The session cookies are `HttpOnly`. No script on the page can read them: `document.cookie` and `cookieStore.getAll()` both leave them out. Two ways work:
+
+1. DevTools, Network, reload chatgpt.com, select any request to chatgpt.com, and copy the whole `Cookie` request header value. Paste it as is.
+2. DevTools, Application, Cookies, `https://chatgpt.com`. Run this in the Console and paste each chunk's Value when asked. The joined `name=value` string lands on your clipboard (`copy()` is a DevTools console helper). Chrome may ask you to type `allow pasting` first.
+
+```js
+(()=>{const p=[];for(let i=0;;i++){const v=prompt(`Value of __Secure-next-auth.session-token.${i} (Cancel when done)`);if(!v)break;p.push(`__Secure-next-auth.session-token.${i}=${v.trim()}`)}copy(p.join("; "))})()
+```
+
+The add-connection dialog shows the same steps and a copy button for the snippet.
+
+A same-origin `fetch("/api/auth/session")` in the chatgpt.com console does return the short-lived `accessToken`. That token is for the Codex provider (its Bulk import JSON takes `accessToken`, as does `POST /api/oauth/codex/import-token`), not for ChatGPT Web, and it has no refresh token:
+
+```js
+copy((await (await fetch("/api/auth/session")).json()).accessToken)
+```
+
+## Transports
+
+DurinDoor has two ways to talk to chatgpt.com. The connection's `providerSpecificData.transport` picks one:
+
+| Value | Behavior |
+| --- | --- |
+| `auto` (default) | Browser. HTTP when the request carries `tools`, or when the browser cannot start (no `playwright` package, no Chromium, no display, `DURINDOOR_BROWSER_POOL=off`). |
+| `browser` | Browser only. A missing browser is an error (HTTP 503). |
+| `http` | HTTP only. |
+
+### Browser (primary)
+
+DurinDoor opens chatgpt.com in a pooled Playwright Chromium, loads your cookie into it, and sends the turn through the page's own code. chatgpt.com's scripts handle the access token, Sentinel, proof-of-work and Turnstile, so DurinDoor never solves them itself. One browser context is kept per connection and closed after 10 idle minutes; the whole browser closes after 5 idle minutes.
+
+- Tools are not supported on this path; `auto` sends tool requests to HTTP.
+- Image and file inputs are uploaded through the page (up to 10 attachments, 20 MB per image, 50 MB per file and in total). Remote image URLs are fetched with private and metadata addresses blocked.
+- The browser runs headed, off-screen, because chatgpt.com rejects some headless sessions. Headless is available with `DURINDOOR_CHATGPT_WEB_HEADLESS=1` or the connection's `headless: true`; it may be refused.
+- A connection proxy is applied to the browser context.
+
+### HTTP (fallback)
+
+The HTTP transport calls chatgpt.com's backend directly over `tls-client-node`, which presents a Firefox TLS fingerprint. Per request it exchanges the cookie for an access token at `/api/auth/session` (cached for 5 minutes), warms the session, asks Sentinel for chat requirements, solves the SHA3-512 proof-of-work in Node, and posts the conversation. It supports tool calls through prompt emulation, GPT-5.6 Sol Pro handoff resumes, and generated images, which it caches for 30 minutes and serves from `/v1/chatgpt-web/image/<id>`.
+
+This path cannot solve Turnstile. When Sentinel asks for it, DurinDoor still sends the turn (chatgpt.com sometimes accepts it) and passes a connection's `turnstileToken` if one is set. When Sentinel refuses outright, the request fails with `SENTINEL_BLOCKED`. The browser transport does not have this limit.
+
+`tls-client-node` downloads its native library into `$DATA_DIR/tls-client/bin` on first use. The library is built for glibc; on Alpine it needs `gcompat`, which the Docker image installs.
+
+## Chromium requirement
+
+The browser transport needs Chromium or Chrome on the DurinDoor host. DurinDoor looks for a browser in this order:
+
+1. The connection's `chromeExecutablePath`.
+2. `CHATGPT_WEB_CHROME_PATH`, then `CHROME_PATH`.
+3. Standard Google Chrome and Chromium install paths on macOS, Linux and Windows.
+4. Playwright's own Chromium.
+
+To install Playwright's Chromium:
+
+```bash
+npx playwright install chromium
+```
+
+Set `DURINDOOR_BROWSER_AUTO_INSTALL=1` to have DurinDoor run that install on first use instead. If no browser is found and auto-install is off, `auto` falls back to HTTP and `browser` answers 503 with the command to run.
+
+On a Linux server without a display, run DurinDoor under Xvfb (`xvfb-run -a node custom-server.js`) or switch to headless as above.
+
+### Docker
+
+The image installs Alpine's `chromium`, `xvfb` and `gcompat`, sets `CHATGPT_WEB_CHROME_PATH=/usr/bin/chromium-browser`, and starts Xvfb on `:99` when `DISPLAY` is unset. `DURINDOOR_XVFB=0` skips Xvfb. Build with `--build-arg CHATGPT_WEB_BROWSER=false` for a smaller image without the browser; ChatGPT Web then uses HTTP.
+
+## Environment
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `DURINDOOR_BROWSER_POOL` | on | `off` disables the browser pool. |
+| `DURINDOOR_BROWSER_AUTO_INSTALL` | off | `1` installs Playwright's Chromium on first use. |
+| `DURINDOOR_CHATGPT_WEB_HEADLESS` | off | `1` runs the browser headless. |
+| `CHATGPT_WEB_CHROME_PATH` | unset | Chrome or Chromium binary for the browser transport. |
+| `DURINDOOR_CHATGPT_TLS_TIMEOUT_MS` | 60000 | HTTP transport request timeout. |
+| `DURINDOOR_CHATGPT_STREAM_FIRST_BYTE_TIMEOUT_MS` | 30000 | HTTP transport wait for the first streamed byte. |
+| `DURINDOOR_CGPT_WEB_PRO_TIMEOUT_MS` | 1200000 | How long HTTP waits on a Pro answer. |
+| `DURINDOOR_CGPT_WEB_IMAGE_CACHE_MAX_MB` | 10 | Image cache size for the HTTP transport. |
+| `DURINDOOR_PUBLIC_BASE_URL` | unset | Public URL used in generated image links. |
+
+## Connection settings
+
+These optional `providerSpecificData` fields apply to a ChatGPT Web connection:
+
+| Field | Use |
+| --- | --- |
+| `transport` | `auto`, `browser` or `http`. |
+| `storageState` | A Playwright storage-state JSON (cookies and local storage) to use instead of the pasted cookie. Rotated cookies are not written back for this form. |
+| `chromeExecutablePath` | Browser binary for this connection. |
+| `headless` | `true` or `false`, overriding `DURINDOOR_CHATGPT_WEB_HEADLESS`. |
+| `customUserAgent`, `locale`, `timezone` | Browser context settings. |
+| `turnstileToken` | A Turnstile token for the HTTP transport. |

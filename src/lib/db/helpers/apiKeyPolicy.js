@@ -6,7 +6,7 @@
  * preserved for forward compatibility, while the currently enforced fields
  * are normalized to a single well-defined shape.
  */
-import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../shared/utils/typeChecks.js";
 export function normalizeApiKeyPolicy(value) {
   if (value == null) return null;
   if (!isObject(value) || Array.isArray(value)) {
@@ -19,6 +19,13 @@ export function normalizeApiKeyPolicy(value) {
       throw new TypeError("API-key policy allowedModels must be an array of non-empty strings");
     }
     normalized.allowedModels = [...new Set(value.allowedModels.map((model) => model.trim()))];
+  }
+
+  if (Object.hasOwn(value, "allowAutoCombos")) {
+    if (!isBoolean(value.allowAutoCombos)) {
+      throw new TypeError("API-key policy allowAutoCombos must be a boolean");
+    }
+    normalized.allowAutoCombos = value.allowAutoCombos;
   }
 
   for (const field of ["maxTokens", "maxCostUsd"]) {

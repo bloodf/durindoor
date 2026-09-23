@@ -711,7 +711,15 @@ export function parseQuotaData(provider, data) {
           const imageModels = entries.filter(([k]) => k.includes("image"));
           const otherModels = entries.filter(([k]) => !k.startsWith("gemini-") && !k.startsWith("claude-") && !k.includes("image"));
 
-          if (geminiModels.length > 0) {
+          // Port of upstream be3bc764: retrieveUserQuotaSummary now also surfaces a
+          // family-level 5h "session" row (gemini_session / claude_gpt_session), which
+          // is authoritative for the same sliding window the per-model synthesized row
+          // above approximates. Skip the synthesized row when the session row is
+          // present, so the dashboard doesn't show two rows for the same window.
+          const hasGeminiSession = Boolean(data.quotas.gemini_session);
+          const hasClaudeSession = Boolean(data.quotas.claude_gpt_session);
+
+          if (geminiModels.length > 0 && !hasGeminiSession) {
             const rep = geminiModels.reduce((min, cur) =>
               (cur[1].remainingPercentage ?? 100) < (min[1].remainingPercentage ?? 100) ? cur : min
             )[1];
@@ -725,7 +733,7 @@ export function parseQuotaData(provider, data) {
             });
           }
 
-          if (claudeModels.length > 0) {
+          if (claudeModels.length > 0 && !hasClaudeSession) {
             const rep = claudeModels.reduce((min, cur) =>
               (cur[1].remainingPercentage ?? 100) < (min[1].remainingPercentage ?? 100) ? cur : min
             )[1];
@@ -1022,10 +1030,10 @@ export function parseQuotaData(provider, data) {
       // Fork deviation from upstream f615a83: this catalog has no
       // "gemini-3.8-flash-high"; anchor the grouped Gemini row at the first
       // Gemini text model ("gemini-3.7-flash-high") so it sorts with the family.
-      if (keyA === "gemini") keyA = "gemini-3.7-flash-high";
-      if (keyA === "claude") keyA = "claude-sonnet-4-6";
-      if (keyB === "gemini") keyB = "gemini-3.7-flash-high";
-      if (keyB === "claude") keyB = "claude-sonnet-4-6";
+      if (keyA === "gemini" || keyA === "gemini_session") keyA = "gemini-3.7-flash-high";
+      if (keyA === "claude" || keyA === "claude_gpt_session") keyA = "claude-sonnet-4-6";
+      if (keyB === "gemini" || keyB === "gemini_session") keyB = "gemini-3.7-flash-high";
+      if (keyB === "claude" || keyB === "claude_gpt_session") keyB = "claude-sonnet-4-6";
       const orderA = orderMap.get(keyA) ?? 999;
       const orderB = orderMap.get(keyB) ?? 999;
       return orderA - orderB;

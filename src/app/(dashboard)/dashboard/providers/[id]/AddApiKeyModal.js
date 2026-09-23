@@ -11,6 +11,7 @@ import Field from "@/shared/ui/components/Field.jsx";
 
 import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
 import {
   allocateBulkConnectionName,
@@ -21,7 +22,7 @@ import {
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, authSnippet, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isLocalWhisper = provider === "local-whisper";
@@ -31,6 +32,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const hostFieldLabel = isLocalWhisper ? "Whisper Server URL" : "Ollama Host URL";
   const hostFieldPlaceholder = isLocalWhisper ? "http://127.0.0.1:11500" : "http://localhost:11434";
   const isCookie = authType === "cookie";
+  const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
   const credentialLabel = isCookie ? "Cookie Value" : "API Key";
   const credentialPlaceholder = isCookie ?
@@ -366,6 +368,14 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             {website ? <> {" "}<a href={website} target="_blank" rel="noopener noreferrer" className="text-dd-accent underline">Open {website.replace(/^https?:\/\//, "")}</a></> : null}
           </p>
         ) : null}
+        {isCookie && authSnippet ? (
+          <div className="flex items-start gap-2">
+            <code className="flex-1 text-xs break-all rounded bg-dd-surface-2 p-2" data-testid="auth-snippet">{authSnippet}</code>
+            <Button variant="secondary" size="sm" onClick={() => copy(authSnippet, "auth-snippet")}>
+              {copied === "auth-snippet" ? "Copied!" : "Copy"}
+            </Button>
+          </div>
+        ) : null}
         {providerRegions ? (
           <Field label="Region">
             <Select
@@ -536,6 +546,7 @@ AddApiKeyModal.propTypes = {
   isAnthropic: PropTypes.bool,
   authType: PropTypes.string,
   authHint: PropTypes.string,
+  authSnippet: PropTypes.string,
   website: PropTypes.string,
   proxyPools: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,

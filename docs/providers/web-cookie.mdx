@@ -1,0 +1,87 @@
+---
+title: Web cookie providers
+description: Copy a browser session cookie into DurinDoor, what each cookie provider expects, and what breaks when the session ends.
+---
+
+A web cookie provider reuses the session your browser already has with a chat website. There is no API key. You copy the cookie the site sets after you sign in, paste it into DurinDoor, and DurinDoor sends it the way the web app would.
+
+These providers use `category: "webCookie"` and `authType: "cookie"` in `open-sse/providers/registry/`. On the Providers page they sit in their own group.
+
+<Callout type="warn">
+A session cookie is a full login for that account. Anyone who can send requests through your gateway can spend that session. Keep cookie providers on a personal install, or put them behind scoped DurinDoor keys. See [API key scoping](../operations/api-key-scoping.mdx).
+</Callout>
+
+## Copy the cookie
+
+Copy from a live request, not from the cookie storage view. The storage view can show stale values, and it can miss cookies the site only sends on signed-in requests.
+
+<Steps>
+<Step>
+Sign in to the site in a normal browser window and open a chat so the session is active.
+</Step>
+<Step>
+Open developer tools, then the Network tab. Reload the page and click a request to the site's own domain.
+</Step>
+<Step>
+Under Request Headers, copy the `Cookie` value. Some providers only want one named cookie from that header; the table below says which.
+</Step>
+<Step>
+In DurinDoor open **Providers**, pick the cookie provider, and click Add. The field is labelled **Cookie Value**. The hint under it is the provider's `authHint`.
+</Step>
+<Step>
+Paste and save. Save runs the same probe as **Validate** first.
+</Step>
+</Steps>
+
+You can paste the whole header or just the value. `src/lib/providers/webCookieAuth.js` strips a leading `Cookie:` or `Bearer `, and pulls a single named cookie out of a full header when the provider only needs one.
+
+The field is plain text, not a password field, so the cookie is visible on screen while you type. Once saved, the value is stored in the connection's encrypted `apiKey` column like any other secret.
+
+## What each provider expects
+
+| Provider | Id | Paste |
+| --- | --- | --- |
+| Grok Web | `grok-web` | The `sso=` cookie value (the prefix is optional) |
+| Perplexity Web | `perplexity-web` | The `__Secure-next-auth.session-token` value; chunked `.0`, `.1` cookies are accepted |
+| Copilot Web | `copilot-web` | An `access_token`, or a HAR from a signed-in browser |
+| Microsoft 365 Copilot Web | `copilot-m365-web` | The chathub WebSocket path and `access_token` |
+| ZenMux Free | `zenmux-free` | The full Cookie header; it must include `ctoken=` |
+| Kimi Web | `kimi-web` | Not a cookie: `access_token` and `refresh_token` JSON from localStorage, copied with the dialog's console snippet. See [Kimi Web](./kimi-web.mdx) |
+| ChatGPT Web | `chatgpt-web` | The whole Cookie header from a chatgpt.com request, or the `__Secure-next-auth.session-token` value. Chunked `.0`, `.1` cookies are accepted |
+| HuggingChat | `huggingchat` | The full Cookie header from huggingface.co/chat |
+| T3 Chat Web | `t3-web` | `convex-session-id` plus the Cookie header |
+| Muse Spark Web | `muse-spark-web` | The `ecto_1_sess` value or the full header from meta.ai |
+| Adapta Web | `adapta-web` | The `__client` cookie from agent.adapta.one |
+| Tencent Yuanbao Web | `yuanbao-web` | The Yuanbao session cookie |
+| Suno | `suno` | The Suno session cookie |
+| Udio | `udio` | The Udio session cookie |
+
+{/* chatgpt-web: a browser executor is being ported. Once chat works, drop chatgpt-web from the not-yet-runnable list below and describe how requests are sent. */}
+
+### Chunked session cookies
+
+chatgpt.com and perplexity.ai keep their session in a NextAuth cookie, `__Secure-next-auth.session-token`. When the session grows past about 4KB, NextAuth splits it into `__Secure-next-auth.session-token.0`, `.1`, and so on, each holding a different part. Copy every chunk: pasting the whole Cookie header from the Network tab is the easy way. DurinDoor sends the chunks back under their own names in index order, never joined into one value, and drops a stale unchunked cookie if the header has both. Other cookies in the paste, such as `cf_clearance`, are kept.
+
+These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web the add dialog also offers a console snippet that prompts for each chunk value you copy from Application, Cookies, and puts the joined `name=value` string on your clipboard.
+
+Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `chatgpt-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. The list lives in `open-sse/executors/unsupported-websession.js`. You can save a connection for them, but no request will run until the executor ships.
+
+## Validation
+
+**Validate** posts to `/api/providers/validate` and has a hard 10 second limit. Grok Web, Perplexity Web, Copilot Web, and ZenMux Free have their own probes. ChatGPT Web exchanges the cookie at `chatgpt.com/api/auth/session`, the same call the web app makes: a live session returns an access token, and an expired or incomplete one (a missing `.1` chunk, for example) fails with a message asking for every chunk. Microsoft 365 Copilot Web only checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
+
+A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
+
+## Limits
+
+- Tool calling is usually off. Kimi Web, for example, declares `tools: false` for every model. Use an API or OAuth provider when your client needs tools.
+- The model list is whatever the registry declares for that site, and the site can change or drop models without notice.
+- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx), except Grok Web, which has a usage fetcher but no preflight config.
+
+## When the session ends
+
+Nothing in DurinDoor reads a cookie's expiry, and cookie sessions are not refreshed. You find out when the site rejects it. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
+
+The fix is always the same: sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
+
+Keep one browser profile for the account you hand to DurinDoor, and avoid signing out of it.

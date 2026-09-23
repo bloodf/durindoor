@@ -1,3 +1,5 @@
+import { isString } from "../../shared/utils/typeChecks.js";
+
 /**
  * Static browser headers the www.kimi.com web app sends on its model-discovery
  * and chat endpoints. Shared by the model-discovery route (modelsConfig.js) and
@@ -57,35 +59,78 @@ export function extractCookieValue(rawValue, cookieName) {
   return "";
 }
 
+const JWT_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
 /**
- * Pull the `kimi-auth` JWT out of whatever the user pasted for the
+ * Kimi runs two web deployments, each with its own auth host: www.kimi.com
+ * (auth.kimi.com) and the international www.kimi.ai (auth.kimi.ai). Requests
+ * go back to the deployment that issued the session. The first entry is the default
+ * for pastes that do not say where they came from (every legacy `kimi-auth`
+ * cookie was captured on www.kimi.com).
+ */
+export const KIMI_WEB_ORIGINS = ["https://www.kimi.com", "https://www.kimi.ai"];
+
+/**
+ * Pull the Kimi Web session tokens out of whatever the user pasted for the
  * international Kimi consumer chat (www.kimi.com).
  *
  * Accepts:
- *   - bare JWT
- *   - full Cookie header (`_ga=...; kimi-auth=eyJ...; theme=dark`)
+ *   - JSON `{"access_token":"...","refresh_token":"...","origin":"https://www.kimi.ai"}`
+ *     (the registry `authSnippet`; `origin` is kept only if it is a known Kimi host)
+ *   - bare access-token JWT, optionally JSON-quoted
+ *   - `access_token=...; refresh_token=...` pairs
+ *   - legacy full Cookie header (`_ga=...; kimi-auth=eyJ...; theme=dark`)
  *   - `Cookie:` / `Authorization: Bearer` prefixed forms
  *
- * Returns "" if no JWT can be located.
+ * Missing parts come back as "".
+ * @param {string} rawValue
+ * @returns {{ accessToken: string, refreshToken: string, origin: string }}
+ */
+export function extractKimiTokens(rawValue) {
+  const raw = (rawValue || "").trim();
+  if (raw.startsWith("{") || raw.startsWith("\"")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (isString(parsed)) return extractKimiTokens(parsed);
+      const pick = (v) => isString(v) ? v.trim() : "";
+      const origin = pick(parsed?.origin).replace(/\/+$/, "");
+      return {
+        accessToken: pick(parsed?.access_token) || pick(parsed?.accessToken),
+        refreshToken: pick(parsed?.refresh_token) || pick(parsed?.refreshToken),
+        origin: KIMI_WEB_ORIGINS.includes(origin) ? origin : "",
+      };
+    } catch {
+      return { accessToken: "", refreshToken: "", origin: "" };
+    }
+  }
+
+  const trimmed = stripCookieInputPrefix(raw);
+  const pair = (name) => trimmed.match(new RegExp(`(?:^|[\\s;])${name}=([^;\\s]+)`))?.[1] || "";
+  const bearer = trimmed.match(/bearer\s+(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/i)?.[1];
+  const accessToken =
+    (JWT_RE.test(trimmed) ? trimmed : "") ||
+    pair("access_token") ||
+    pair("kimi-auth") ||
+    bearer ||
+    "";
+  return { accessToken, refreshToken: pair("refresh_token"), origin: "" };
+}
+
+/**
+ * Kimi web origin a pasted credential belongs to.
+ * @param {string} rawValue
+ * @returns {string}
+ */
+export function kimiWebOrigin(rawValue) {
+  return extractKimiTokens(rawValue).origin || KIMI_WEB_ORIGINS[0];
+}
+
+/**
+ * Access token only — see `extractKimiTokens` for the accepted input forms.
+ * Returns "" if no token can be located.
  * @param {string} rawValue
  * @returns {string}
  */
 export function extractKimiJwt(rawValue) {
-  const trimmed = stripCookieInputPrefix(rawValue);
-  if (!trimmed) return "";
-
-  // Bare JWT — three base64url segments separated by dots.
-  if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(trimmed)) {
-    return trimmed;
-  }
-
-  // Cookie-style pair: pull `kimi-auth=<value>` out of the blob.
-  const match = trimmed.match(/(?:^|[\s;])kimi-auth=([^;\s]+)/);
-  if (match) return match[1];
-
-  // Last resort: a `Bearer <jwt>` pasted without the header label.
-  const bearer = trimmed.match(/bearer\s+(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/i);
-  if (bearer) return bearer[1];
-
-  return "";
+  return extractKimiTokens(rawValue).accessToken;
 }

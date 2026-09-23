@@ -28,6 +28,7 @@ import { PollinationsExecutor } from "./pollinations.js";
 import { PuterExecutor } from "./puter.js";
 import { TheOldLlmExecutor } from "./theoldllm.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
+import { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { MimocodeExecutor } from "./mimocode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
@@ -89,6 +90,7 @@ const executors = {
   puter: new PuterExecutor(),
   theoldllm: new TheOldLlmExecutor(),
   "xiaomi-tokenplan": new XiaomiTokenplanExecutor(),
+  "xiaomi-mimo": new XiaomiMimoExecutor(),
   "mimo-free": new MimoFreeExecutor(),
   mimocode: new MimocodeExecutor(),
   mcode: new MimocodeExecutor(), // Alias for mimocode
@@ -190,6 +192,7 @@ export { PollinationsExecutor } from "./pollinations.js";
 export { PuterExecutor } from "./puter.js";
 export { TheOldLlmExecutor } from "./theoldllm.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
+export { XiaomiMimoExecutor } from "./xiaomi-mimo.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
 export { MimocodeExecutor } from "./mimocode.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";

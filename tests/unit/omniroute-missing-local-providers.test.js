@@ -168,6 +168,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
       "qwen3.5-plus",
       "qwen3.6-plus",
       "deepseek-v4-flash-free",
+      "mimo-v2.6-flash-free",
       "minimax-m2.5-free",
       "nemotron-3-super-free",
       "qwen3.6-plus-free",

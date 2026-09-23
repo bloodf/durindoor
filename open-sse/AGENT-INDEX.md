@@ -62,6 +62,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `vertex-partner` | VertexExecutor | `./vertex.js` |
 | `windsurf` | WindsurfExecutor | `./windsurf.js` |
 | `xai` | XaiExecutor | `./xai.js` |
+| `xiaomi-mimo` | XiaomiMimoExecutor | `./xiaomi-mimo.js` |
 | `xiaomi-tokenplan` | XiaomiTokenplanExecutor | `./xiaomi-tokenplan.js` |
 | `zenmux-free` | ZenmuxFreeExecutor | `./zenmux-free.js` |
 | `zmf` | ZenmuxFreeExecutor | `./zenmux-free.js` |
@@ -316,7 +317,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `windsurf` | grpc-web-proto | oauth | `https://server.self-serve.windsurf.com` |
 | `x5lab` |  | apikey | `https://api.x5lab.dev/v1/chat/completions` |
 | `xai` |  | oauth | `https://api.x.ai/v1/chat/completions` |
-| `xiaomi-mimo` |  | apikey | `https://api.xiaomimimo.com/v1/chat/completions` |
+| `xiaomi-mimo` |  | oauth | `https://api.xiaomimimo.com/v1/chat/completions` |
 | `xiaomi-tokenplan` |  | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xinference` | openai | apikey | `http://localhost:9997/v1` |
 | `yi` |  | apikey | `https://api.lingyiwanwu.com/v1/chat/completions` |

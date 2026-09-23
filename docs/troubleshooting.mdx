@@ -76,7 +76,7 @@ Fix: open the connection in the dashboard and read the stored error. Reconnect O
 
 ## Rate limit or quota skip
 
-Cause: upstream 429, an exhausted quota snapshot, or every account for that provider in cooldown. Chat can also return 503 `Provider quota capacity unavailable` when a reservation cannot be taken. A per-provider concurrency gate that never gets a slot returns 503 `Concurrency limit reached for provider "…"`.
+Cause: upstream 429, an exhausted quota snapshot, or every account for that provider in cooldown. Chat can also return 503 `Provider quota capacity unavailable` when a reservation cannot be taken. Admission is hierarchical: an optional global concurrency cap (`globalConcurrentRequests`, 0 = unlimited) gates every provider combined, then the per-provider cap in `providerConcurrencyLimits` gates that provider alone. A gate that never gets a slot returns 503 `Concurrency limit reached for provider "…"`, naming whichever tier (`__global__` or the provider id) timed out.
 
 A 429 response carries a `Retry-After` header when the cooldown is known: passed through verbatim when the upstream provider sent its own `Retry-After` header or a `retry_after`/`retryAfter`/`retryDelay` body field, or synthesized from the account's exponential backoff when the provider sent nothing at all (some providers, e.g. Z.AI/GLM, never send a cooldown hint). A billing/credit-exhausted error (HTTP 402, or a body reporting insufficient balance) still cools the account down internally but never advertises `Retry-After`, since retrying cannot fix it.
 

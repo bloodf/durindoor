@@ -18,7 +18,7 @@ import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../confi
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, finishActiveSession, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
-import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
+import { acquireMany, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
 import {
   runWithProviderAttemptContext,
   settleProviderAttemptDispatch } from
@@ -296,7 +296,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -995,9 +995,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
   log?.debug?.("REQUEST", `${provider.toUpperCase()} | ${cleanModel} | ${msgCount} msgs`);
 
-  // --- Per-provider concurrency gate (declaration before streamController closures) ---
+  // --- Hierarchical concurrency gate: global -> per-provider (declaration
+  // before streamController closures). `releaseConcurrencySlots` is the
+  // idempotent release for whichever tiers acquireMany() actually acquired;
+  // it starts as a no-op so finishProviderRequest is safe to call before the
+  // gate below runs (e.g. an early return / disconnect).
   const concurrencyLimit = getConcurrencyLimit(provider, providerConcurrencyLimit);
-  let slotAcquired = false;
+  let releaseConcurrencySlots = () => {};
   let providerRequestFinished = false;
   let activeSessionFinished = false;
   const finishActiveDashboardSession = (status) => {
@@ -1009,10 +1013,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     if (providerRequestFinished) return;
     providerRequestFinished = true;
     trackPendingRequest(cleanModel, provider, connectionId, false, false, { requestId: activeSessionRequestId }, apiKeyName);
-    if (slotAcquired) {
-      releaseSlot(provider);
-      slotAcquired = false;
-    }
+    releaseConcurrencySlots();
   };
 
   // Set once buildOnStreamComplete runs (streaming path only); lets the
@@ -1189,15 +1190,26 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   };
 
-  // --- Per-provider concurrency gate ---
-  // Acquire a slot before sending the upstream request.  This proactively
-  // limits concurrent in-flight requests per provider, preventing 429s before
-  // they happen.  If the slot can't be acquired within the timeout, return 503.
-  if (concurrencyLimit > 0) {
+  // --- Hierarchical concurrency gate: global -> per-provider ---
+  // Acquire slots before sending the upstream request. This proactively
+  // limits concurrent in-flight requests, preventing 429s before they happen.
+  // Admission is all-or-nothing across tiers (see acquireMany): a saturated
+  // provider tier never leaves the global tier's slot held hostage. If a slot
+  // can't be acquired within the timeout, return 503.
+  const globalLimit = Number.isFinite(globalConcurrentRequests) && globalConcurrentRequests > 0 ?
+  Math.floor(globalConcurrentRequests) :
+  0;
+  if (concurrencyLimit > 0 || globalLimit > 0) {
     try {
-      await acquireSlot(provider, concurrencyLimit, undefined, providerSignal);
-      slotAcquired = true;
-      log?.debug?.("CONCURRENCY", `${provider} | slot acquired (${concurrencyLimit} max)`);
+      releaseConcurrencySlots = await acquireMany(
+        [
+        { key: "__global__", limit: globalLimit },
+        { key: provider, limit: concurrencyLimit }],
+
+        undefined,
+        providerSignal
+      );
+      log?.debug?.("CONCURRENCY", `${provider} | slots acquired (global=${globalLimit || "off"}, provider=${concurrencyLimit || "off"})`);
     } catch (e) {
       finishProviderRequest();
       finishActiveDashboardSession("error");

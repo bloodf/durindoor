@@ -28,7 +28,7 @@ import {
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
 import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
-import { rankQuotaConnections } from "@/shared/services/quotaSelection";
+import { rankQuotaConnections, pickQuotaWeightedConnection } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
@@ -747,6 +747,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const providerOverride = (selectionSettings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || selectionSettings.fallbackStrategy || "fill-first";
     let quotaRanked = false;
+    // Populated alongside quotaRanked so the quota-weighted strategy below can
+    // draw from the same ranked/eligible pool instead of re-deriving it.
+    let quotaRankedEligible = null;
     if (availableConnections.some((candidate) => quotaDecisions.get(candidate.id)?.quotaProfile?.tracked)) {
       try {
         const pressure = await getQuotaReservationPressure({
@@ -779,6 +782,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         }
         quotaRanked = eligibleRanked.some((candidate) => candidate.quotaDecision?.comparable);
         if (quotaRanked || floorBlocked.length > 0) {
+          quotaRankedEligible = eligibleRanked;
           availableConnections = eligibleRanked.map((candidate) => candidate.value);
         }
       } catch {
@@ -849,7 +853,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     } else if (quotaRanked) {
       // Persistent pressure + last-selection history provide the fairness tier
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.
-      connection = availableConnections[0];
+      // "quota-weighted" draws probabilistically instead of always taking the
+      // top score, so concurrent requests spread across accounts that still
+      // have leftover quota instead of herding onto whichever one ranks first.
+      connection = strategy === "quota-weighted" && quotaRankedEligible ?
+      pickQuotaWeightedConnection(quotaRankedEligible, {
+        floorPercent: providerOverride.quotaWeightedFloorPercent ??
+        selectionSettings.quotaWeightedFloorPercent ??
+        1
+      }) || availableConnections[0] :
+      availableConnections[0];
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || selectionSettings.stickyRoundRobinLimit || 3;
 

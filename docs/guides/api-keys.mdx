@@ -63,6 +63,39 @@ A key can carry several independent restrictions. Empty means unrestricted for t
 
 Key groups are labels only. Membership never changes what a key can call.
 
+## Model access rules
+
+`policy.modelAccess` is `{ mode, patterns }`:
+
+- `mode: "all"` (default) puts no restriction on the key.
+- `mode: "allow"` lets the key call only models that match a pattern. An empty list blocks every model.
+- `mode: "deny"` lets the key call anything except models that match a pattern.
+
+Patterns are case-insensitive globs, up to 200 per key. `*` matches any run of characters, `/` included. Write them against the ids `/v1/models` shows, for example `openai/*` or `cx/gpt-5.6-sol`.
+
+The rule is checked after model resolution, in the same place as `policy.allowedModels`, on every `/v1` endpoint. A model matches under the name it was requested by, its canonical `providerId/model`, and its `alias/model` or provider-node `prefix/model` form, so an alias cannot get around a rule. A blocked model returns HTTP 403 before any credential lookup. Combos are checked member by member; combo names stay under `allowedCombos`. `/v1/models` and `/v1/models/{kind}` only list what the calling key may use. Requests without a key are not restricted while *Require API key* is off.
+
+## Windowed limits
+
+These fields also live in `policy`. Empty, `null` or `0` means no limit.
+
+| Field | Window |
+| --- | --- |
+| `rpmLimit` | Requests in a sliding 60 seconds |
+| `tpmLimit` | Input plus output tokens in a sliding 60 seconds |
+| `dailyInputTokenLimit`, `dailyOutputTokenLimit` | Input or output tokens since local midnight |
+| `monthlyTokenLimit`, `monthlyInputTokenLimit`, `monthlyOutputTokenLimit` | Tokens since the 1st of the month |
+| `monthlyRequestLimit` | Requests since the 1st of the month |
+| `monthlyBudget` | Estimated cost in USD since the 1st of the month |
+
+The daily total stays in `dailyLimitTokens`. An over-limit request gets HTTP 429 with `Retry-After` and a message naming the limit. Chat checks the limits once per request before combo dispatch, so a key's own 429 never counts against a combo member's health. `count_tokens` is not limited.
+
+RPM and TPM are counted in memory per process: RPM when a request is admitted, TPM when its usage is recorded. Token, request and budget windows sum `usageHistory`, which is written after a response finishes, so requests already in flight can go slightly over. Only endpoints that record usage move the token and budget windows.
+
+`usageHistory` is also the per-request cost record: every row carries the key, provider, model, token counts, the estimated `cost` and its split by rate (`inputCost`, `cachedCost`, `cacheCreationCost`, `outputCost`, `reasoningCost`). The monthly budget sums that column, so spend is tracked in one place.
+
+`PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key; the Keys page and the Usage overview poll it.
+
 ## Rotation
 
 There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `isActive: false`. Delete removes the row (join-table scope rows cascade).

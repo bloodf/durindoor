@@ -109,6 +109,64 @@ function normalizeTavily(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
+// Same shape check as the context7 fetch executor's library-id guard:
+// exactly "/owner/repo", path-safe segments, no traversal.
+const CONTEXT7_LIBRARY_ID_RE = /^\/[A-Za-z0-9][\w-]*(?:\.[\w-]+)*\/[A-Za-z0-9][\w-]*(?:\.[\w-]+)*$/;
+
+function normalizeContext7(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  const items = data?.results;
+  if (!Array.isArray(items)) return { results: [], totalResults: null };
+  const usable = items.filter((item) => isString(item?.id) && CONTEXT7_LIBRARY_ID_RE.test(item.id));
+  const results = usable.map((item, idx) =>
+  makeResult("context7", {
+    title: item.title,
+    url: `https://context7.com${item.id}`,
+    snippet: item.description || "",
+    published_at: item.lastUpdateDate
+  }, idx, now)
+  );
+  return { results, totalResults: null };
+}
+
+function normalizeNimble(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  const items = data?.results;
+  if (!Array.isArray(items)) return { results: [], totalResults: null };
+  const results = items.map((item, idx) =>
+  makeResult("nimble", {
+    title: item.title,
+    url: item.url,
+    snippet: item.description || (item.content ? item.content.slice(0, 300) : ""),
+    full_text: item.content || undefined,
+    text_format: "text"
+  }, idx, now)
+  );
+  const total = data?.total_results;
+  return { results, totalResults: isNumber(total) ? total : results.length };
+}
+
+// AnySearch wraps results in { code, message, data: { results | items } };
+// code !== 0 is an upstream error envelope with an HTTP 200 status, so a
+// non-zero code is treated as no results rather than a crash.
+function normalizeAnysearch(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  if (!isObject(data) || (isNumber(data.code) && data.code !== 0)) return { results: [], totalResults: 0 };
+  const items = data?.data?.results || data?.data?.items || data?.results;
+  if (!Array.isArray(items)) return { results: [], totalResults: 0 };
+  const results = items.map((item, idx) =>
+  makeResult("anysearch", {
+    title: item.title || item.url,
+    url: item.url,
+    snippet: item.snippet || item.summary || "",
+    score: item.score,
+    published_at: item.published_at || item.date,
+    source_type: "web"
+  }, idx, now)
+  );
+  return { results, totalResults: results.length };
+}
+
 function normalizeGooglePse(data, _query, _searchType) {
   const now = new Date().toISOString();
   const items = Array.isArray(data.items) ? data.items : [];
@@ -255,7 +313,10 @@ const NORMALIZERS = {
   "searchapi": normalizeSearchApi,
   "youcom": normalizeYouCom,
   "searxng": normalizeSearxng,
-  "ollama": normalizeOllama
+  "ollama": normalizeOllama,
+  "context7": normalizeContext7,
+  "nimble": normalizeNimble,
+  "anysearch": normalizeAnysearch
 };
 
 /**

@@ -40,7 +40,7 @@ async function handleCountTokensHandler(request) {
   }
 
   const { provider, model } = modelInfo;
-  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
+  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey, { limits: false });
   if (policyError) return policyError;
   // count_tokens is best-effort: a single credential attempt is enough (the core
   // falls back to the estimate on any failure / no native endpoint).

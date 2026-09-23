@@ -10,6 +10,23 @@ import { supportsReasoning } from "./modelCapabilities.js";
 import { isBoolean, isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 export const REASONING_BUFFER_MIN_TRIGGER = 256;
 
+/**
+ * Opt-in minimum output budget for reasoning models (port of OmniRoute #12742).
+ * Unset (default): budgets pass through this module's other checks unchanged.
+ * Set to a positive integer, a caller budget in [REASONING_BUFFER_MIN_TRIGGER,
+ * floor) on a thinking model is raised to the floor so reasoning tokens cannot
+ * consume the entire budget and yield a zero-content finish_reason:"length"
+ * turn. Opt-in keeps the existing "never enlarge an explicit max_tokens"
+ * contract below intact for every deployment that does not set the env.
+ * Budgets under REASONING_BUFFER_MIN_TRIGGER stay verbatim (probe requests),
+ * and the floor never exceeds the model's known output cap.
+ */
+export const REASONING_MIN_BUDGET_ENV = "DURINDOOR_REASONING_MIN_BUDGET";
+
+export function getReasoningMinBudget() {
+  return toPositiveInteger(process.env[REASONING_MIN_BUDGET_ENV]);
+}
+
 export function toPositiveInteger(value) {
   if (!isNumber(value) && (!isString(value) || value.trim() === "")) return null;
   const numeric = Number(value);
@@ -103,6 +120,12 @@ options = {})
   if (maxOutput === null) return null;
   if (current > maxOutput) return maxOutput;
   if (current < REASONING_BUFFER_MIN_TRIGGER) return current;
+
+  const minBudget = getReasoningMinBudget();
+  if (minBudget !== null && current < minBudget) {
+    const floored = Math.min(minBudget, maxOutput);
+    if (floored > current) return floored;
+  }
 
   const buffered = Math.max(current + 1000, Math.ceil(current * 1.5));
   return buffered > maxOutput ? current : buffered;

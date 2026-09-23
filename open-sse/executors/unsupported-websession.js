@@ -25,16 +25,6 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
     ],
     reason: "requires the Adapta web-session bearer-token executor and credential validation flow",
   },
-  "chatgpt-web": {
-    aliases: ["cgpt-web"],
-    source: [
-      "open-sse/executors/chatgpt-web.ts",
-      "open-sse/services/chatgptTlsClient.ts",
-      "open-sse/services/chatgptImageCache.ts",
-      "src/app/api/v1/images/edits/route.ts",
-    ],
-    reason: "requires the ChatGPT web TLS client, proof-of-work helpers, image cache route, and cookie normalization",
-  },
   huggingchat: {
     aliases: [],
     source: [

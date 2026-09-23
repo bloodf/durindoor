@@ -7,14 +7,15 @@ import {
 import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import {
   buildQuotaResourceKeys,
   evaluateProviderQuotaPreflight,
@@ -63,8 +64,10 @@ function githubMonthlyResetMs(status, errorText, provider) {
  * Detect Qoder's permanent account quota signal from structured executor data.
  * Rendered messages are untrusted text and must not widen this trigger (#3331).
  */
+const QODER_QUOTA_PROVIDER_IDS = new Set(["qoder", "qoder-cn"]);
+
 function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
-  if (resolveProviderId(provider) !== "qoder" || Number(status) !== 403) return false;
+  if (!QODER_QUOTA_PROVIDER_IDS.has(resolveProviderId(provider)) || Number(status) !== 403) return false;
   if (errorBody && isObject(errorBody)) {
     return isQoderQuotaExhaustedBody(errorBody?.error?.message);
   }
@@ -109,9 +112,7 @@ export async function hasValidCliToken(request) {
   const supplied = request?.headers?.get?.("x-9r-cli-token");
   if (!supplied) return false;
   const expected = await getConsistentMachineId(CLI_AUTH_SALT);
-  const suppliedBytes = Buffer.from(String(supplied));
-  const expectedBytes = Buffer.from(String(expected));
-  return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
+  return timingSafeCompare(String(supplied), String(expected));
 }
 
 // Round-robin metadata still needs ordered selection within one provider, but
@@ -1114,6 +1115,52 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
  *   login has already replaced.
  * @returns {{ shouldFallback: boolean, cooldownMs: number }}
  */
+/**
+ * OmniRoute #10920, adapted: cools down every sibling connection that shares
+ * the failing connection's proxy pool, for providers whose upstream quota is
+ * bucketed by egress IP rather than by account (operator opt-in via
+ * `settings.egressBucketedProviders`). DurinDoor has no historical egress-IP
+ * log (unlike OmniRoute's proxy_logs), so the bucket key is the connection's
+ * configured `providerSpecificData.proxyPoolId` (src/lib/db/repos/proxyPoolsRepo.js)
+ * -- connections routed through the same pool share the same egress IP.
+ * Connections with no pool configured ("direct") are never bucketed together:
+ * grouping every direct connection would assume they all share one host IP,
+ * which does not hold for most deployments.
+ *
+ * Best-effort and side-effect-safe: `connections` is the same provider-scoped
+ * list `markAccountUnavailable` already fetched, so this makes no extra DB
+ * read for the sibling set. A sibling is skipped when it has no matching pool,
+ * is already reauth-quarantined or disabled, or already has an active lock
+ * (never shortens an existing cooldown). Any per-sibling write failure is
+ * logged and does not affect the failing connection's own state.
+ */
+async function applyEgressBucketCooldown(connections, connectionId, provider, cooldownMs) {
+  const self = connections.find((c) => c.id === connectionId);
+  const bucket = self?.providerSpecificData?.proxyPoolId;
+  if (!isString(bucket) || !bucket.trim()) return;
+  let cooledCount = 0;
+  for (const sibling of connections) {
+    if (sibling.id === connectionId) continue;
+    if (sibling.providerSpecificData?.proxyPoolId !== bucket) continue;
+    if (sibling.testStatus === "reauth_required" || sibling.isActive === false) continue;
+    if (isModelLockActive(sibling, null)) continue;
+    try {
+      await updateProviderConnection(sibling.id, {
+        ...buildModelLockUpdate(null, cooldownMs),
+        testStatus: "unavailable",
+        lastError: `Shared egress IP rate limited (${provider})`,
+        errorCode: 429
+      });
+      cooledCount += 1;
+    } catch (error) {
+      log.warn("AUTH", `Egress-bucket cooldown skipped for ${sibling.id.slice(0, 8)}: ${error.message}`);
+    }
+  }
+  if (cooledCount > 0) {
+    log.warn("AUTH", `Egress-bucketed cooldown: ${provider} pool=${bucket} cooled ${cooledCount} sibling(s) for ${Math.round(cooldownMs / 1000)}s`);
+  }
+}
+
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
   const signal = context?.signal || null;
@@ -1362,6 +1409,23 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       log.warn("QUOTA", "Runtime rate-limit evidence could not be persisted");
+    }
+
+    // OmniRoute #10920, adapted: cool down sibling connections sharing the
+    // same proxy pool for operator-opted-in egress-bucketed providers. Skips
+    // a request-shaped/terminal failure (fallbackResult.terminal) since those
+    // say nothing about the shared IP's quota.
+    if (provider && !fallbackResult.terminal) {
+      try {
+        const currentSettings = await getSettings();
+        const egressBucketed = Array.isArray(currentSettings?.egressBucketedProviders) &&
+        currentSettings.egressBucketedProviders.includes(String(provider).toLowerCase());
+        if (egressBucketed) {
+          await applyEgressBucketCooldown(connections, connectionId, provider, cooldownMs);
+        }
+      } catch (error) {
+        log.warn("AUTH", `Egress-bucket cooldown lookup failed: ${error.message}`);
+      }
     }
   }
 

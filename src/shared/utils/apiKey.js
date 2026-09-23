@@ -13,6 +13,7 @@ import { DATA_DIR } from "@/lib/dataDir";
 // `requireLogin` is intentionally NOT consulted here: a login-disabled local
 // install still needs a stable secret so already-issued keys keep validating.
 import { isString } from "./typeChecks.js";
+import { timingSafeCompare } from "./timingSafeCompare.js";
 const SECRET_FILE_BASENAME = "api-key-secret";
 
 let cachedSecret = null;
@@ -119,7 +120,7 @@ export function parseApiKey(apiKey) {
 
     // Validate CRC
     const expectedCrc = generateCrc(machineId, keyId);
-    if (crc !== expectedCrc) return null;
+    if (!timingSafeCompare(crc, expectedCrc)) return null;
 
     return { machineId, keyId, isNewFormat: true };
   }

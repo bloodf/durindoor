@@ -1,6 +1,7 @@
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
 import { updateProviderConnection } from "../../lib/localDb.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 import {
   getProjectIdForConnection,
   removeConnection } from
@@ -206,6 +207,11 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
+    // Web-cookie providers (chatgpt-web) rotate their session cookie; only this
+    // explicit field may replace the stored apiKey.
+    if (isString(newCredentials.rotatedApiKey) && newCredentials.rotatedApiKey) {
+      updates.apiKey = newCredentials.rotatedApiKey;
+    }
 
     const result = await updateProviderConnection(connectionId, updates);
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {

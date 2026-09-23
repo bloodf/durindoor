@@ -22,6 +22,7 @@ import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import VisibleModelsModal from "./VisibleModelsModal";
+import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
@@ -180,6 +181,8 @@ export default function ProviderDetailPage() {
   const [syncingModels, setSyncingModels] = useState(false);
   const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
+  // Effective auto-synced model list (ModelAutoSyncPanel); null = registry defaults.
+  const [syncedModels, setSyncedModels] = useState(null);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
@@ -267,7 +270,7 @@ export default function ProviderDetailPage() {
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
   const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
-  const models = getModelsByProviderId(providerId);
+  const models = syncedModels || getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
 
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
@@ -757,6 +760,7 @@ export default function ProviderDetailPage() {
   useEffect(() => {
     setSuggestedModels([]);
     setModelsFetchedAt(null);
+    setSyncedModels(null);
   }, [providerId]);
 
   const handleSyncModels = async () => {
@@ -2215,6 +2219,13 @@ export default function ProviderDetailPage() {
         {/* buildModelsList publishes compatible-provider catalogs from their
             custom/alias ids only and never applies this allowlist to them, so
             the control would silently do nothing for these providers. */}
+        {!isCompatible &&
+        <ModelAutoSyncPanel
+          key={providerId}
+          providerId={providerId}
+          hasConnection={connections.some((conn) => conn.isActive !== false)}
+          onModelsChange={setSyncedModels} />
+        }
         {!isCompatible &&
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" icon="visibility" onClick={() => setShowVisibleModels(true)}>

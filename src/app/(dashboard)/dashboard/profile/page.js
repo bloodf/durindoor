@@ -22,6 +22,14 @@ import SelectiveTransferPanel from "./SelectiveTransferPanel";
 import MfaCard from "./MfaCard.jsx";
 
 const DATA_RETENTION_PRESETS = [7, 15, 30, 60, 90];
+const MODEL_AUTO_SYNC_INTERVALS = [
+  { value: 0, label: "Off" },
+  { value: 6, label: "Every 6 hours" },
+  { value: 12, label: "Every 12 hours" },
+  { value: 24, label: "Every day" },
+  { value: 72, label: "Every 3 days" },
+  { value: 168, label: "Every week" },
+];
 const SETTINGS_TABS = [
   { value: "general", label: "General", icon: "tune" },
   { value: "security", label: "Security", icon: "shield_lock" },
@@ -732,6 +740,20 @@ export default function ProfilePage() {
     }
   };
 
+  const updateModelAutoSyncInterval = async (value) => {
+    const hours = Number(value);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelAutoSyncIntervalHours: hours }),
+      });
+      if (res.ok) setSettings((prev) => ({ ...prev, modelAutoSyncIntervalHours: hours }));
+    } catch (err) {
+      console.error("Failed to update modelAutoSyncIntervalHours:", err);
+    }
+  };
+
   const reloadSettings = async () => {
     try {
       const res = await fetch("/api/settings");
@@ -924,6 +946,7 @@ export default function ProfilePage() {
       <section role="tabpanel" aria-label="Routing settings" hidden={activeTab !== "routing"} className="flex flex-col gap-5">
 
       <Card padding={false}><CardHeader icon="route" title="Routing Strategy" subtitle="Defaults used when DurinDoor selects an upstream model" /><CardContent className="flex flex-col gap-5"><Toggle label="Round Robin" description="Cycle through accounts to distribute load." checked={settings.fallbackStrategy === "round-robin"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")} disabled={loading} />{settings.fallbackStrategy === "round-robin" ? <Input label="Sticky Limit" hint="Calls per account before switching." type="number" min="1" max="10" value={settings.stickyRoundRobinLimit || 3} onChange={(e) => updateStickyLimit(e.target.value)} disabled={loading} /> : null}<Toggle label="Cache Affinity" description="Pin each conversation to one account so the provider prompt cache keeps hitting." checked={settings.fallbackStrategy === "cache-affinity"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "cache-affinity" ? "fill-first" : "cache-affinity")} disabled={loading} /><Toggle label="Combo Round Robin" description="Cycle through providers in combos instead of always starting with first." checked={settings.comboStrategy === "round-robin"} onChange={() => updateComboStrategy(settings.comboStrategy === "round-robin" ? "fallback" : "round-robin")} disabled={loading} />{settings.comboStrategy === "round-robin" ? <Input label="Combo Sticky Limit" hint="Calls per combo model before switching." type="number" min="1" max="100" value={settings.comboStickyRoundRobinLimit || 1} onChange={(e) => updateComboStickyLimit(e.target.value)} disabled={loading} /> : null}<Input id="vision-bridge-model-input" label="Vision Model" hint="Target as provider/model. Empty or invalid keeps original model." placeholder="openai/gpt-4o" key={settings.visionBridgeModel || ""} defaultValue={settings.visionBridgeModel || ""} onBlur={(e) => updateVisionBridge({ visionBridgeModel: e.target.value.trim() })} disabled={loading} /><Toggle label="Vision Bridge" description="Reroute image-bearing requests on a text-only model to this vision model." checked={settings.visionBridgeEnabled === true} onChange={handleVisionBridgeToggle} disabled={loading} /><p className="border-t border-dd-border-subtle pt-4 text-xs text-dd-muted">{settings.fallbackStrategy === "round-robin" ? `Currently distributing requests with ${settings.stickyRoundRobinLimit || 3} calls per account.` : settings.fallbackStrategy === "cache-affinity" ? "Currently pinning each conversation to one account (Cache Affinity); requests without a conversation id use priority order." : "Currently using accounts in priority order (Fill First)."}{settings.comboStrategy === "round-robin" ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} calls per model.` : " Combos always start with their first model."}</p></CardContent></Card>
+      <Card padding={false}><CardHeader icon="sync" title="Model Auto-update" subtitle="Refresh provider model lists from their APIs" /><CardContent className="flex flex-col gap-3"><Field label="Update interval" hint="Providers with Auto-update models on (set on each provider page) are refreshed this often. Off stops scheduled updates; Sync now still works."><Select aria-label="Model auto-update interval" options={MODEL_AUTO_SYNC_INTERVALS} value={MODEL_AUTO_SYNC_INTERVALS.some((o) => o.value === settings.modelAutoSyncIntervalHours) ? settings.modelAutoSyncIntervalHours : 24} disabled={loading} onChange={updateModelAutoSyncInterval} /></Field></CardContent></Card>
       </section>
 
       <section role="tabpanel" aria-label="Network settings" hidden={activeTab !== "network"} className="flex flex-col gap-5">

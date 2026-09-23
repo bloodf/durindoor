@@ -7,7 +7,8 @@ import {
   isOpenAICompatibleProvider,
   isLocalOllamaProvider } from
 "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getSyncedModelCatalogs } from "@/lib/localDb";
+import { effectiveSyncedModels, isModelAutoSyncEnabled } from "@/lib/modelAutoSync/catalog.js";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getEnabledModels } from "@/lib/enabledModelsDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -710,6 +711,19 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }
   }
 
+  // Model auto-sync (src/lib/modelAutoSync): a provider with auto-sync on and
+  // a successful synced catalog lists exactly that catalog instead of its
+  // registry defaults. Read only when such a provider is connected; a failed
+  // read fails soft to registry behavior.
+  let syncedCatalogs = {};
+  if ([...activeConnectionByProvider.keys()].some((id) => isModelAutoSyncEnabled(id, settings))) {
+    try {
+      syncedCatalogs = await getSyncedModelCatalogs();
+    } catch {
+      syncedCatalogs = {};
+    }
+  }
+
   const models = [];
   // Model ids below are prefixed with outputAlias (static alias or the active
   // connection's custom prefix), so map each exposed alias back to the
@@ -1002,6 +1016,25 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         }).
         filter((modelId) => modelId !== "");
 
+        // Auto-synced providers publish exactly the synced list (plus custom
+        // models below). The allowlist still narrows it, and the synced rows
+        // stand in for live metadata, so no per-request discovery runs.
+        const syncedModels = isCompatibleProvider || !isModelAutoSyncEnabled(providerId, settings) ?
+        null :
+        effectiveSyncedModels(syncedCatalogs[providerId], providerModels);
+        const syncedModelIds = syncedModels ? new Set(syncedModels.map((m) => m.id)) : null;
+        if (syncedModels) {
+          rawModelIds = hasExplicitEnabledModels ?
+          rawModelIds.filter((id) => syncedModelIds.has(id)) :
+          [...syncedModelIds];
+          for (const m of syncedModels) {
+            liveModelById.set(m.id, m);
+            liveModelIds.add(m.id);
+            if (m.kind) liveModelKindById.set(m.id, m.kind);
+            if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
+          }
+        }
+
         // Live metadata precedence is user override > live upstream > static
         // catalog > default. Custom-compatible public catalogs are persisted
         // allowlists, so only registry-backed/Kimi OpenAI-style discovery runs here.
@@ -1025,7 +1058,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           });
         } :
         null;
-        const liveResolver = providerLiveResolver || openAIStyleLiveResolver;
+        const liveResolver = syncedModels ? null : providerLiveResolver || openAIStyleLiveResolver;
         if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || openAIStyleLiveResolver)) {
           try {
             const live = await liveResolver(conn, guard);
@@ -1122,7 +1155,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         // An allowlist restricts what /v1/models publishes for this provider;
         // an alias pointed at an id outside it must not re-expose that id.
         // Custom models keep their separate always-visible exception.
-        filter((modelId) => !hasExplicitEnabledModels || enabledModels.includes(modelId));
+        filter((modelId) => !hasExplicitEnabledModels || enabledModels.includes(modelId)).
+        // A pruned model stays out even when an alias still points at it.
+        filter((modelId) => !syncedModelIds || syncedModelIds.has(modelId));
         const compatiblePublicIds = isCompatibleProvider ? getCompatiblePublicIds({
           customModelIds,
           modelAliases,

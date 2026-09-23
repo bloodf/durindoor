@@ -89,6 +89,9 @@ export default function ModelSelectModal({
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
   const [fetchedModels, setFetchedModels] = useState({});
+  // Effective auto-synced model lists by provider id (/api/models/auto-sync);
+  // a provider listed here shows its synced list instead of the registry.
+  const [syncedModelLists, setSyncedModelLists] = useState({});
   // #6495 / F-4: ids the server catalog currently exposes. /api/v1/models is
   // already filtered by the hide-paid toggle server-side, so intersecting the
   // modal's locally-built entries with this set enforces the toggle without
@@ -251,6 +254,25 @@ export default function ModelSelectModal({
 
   useEffect(() => {
     if (isOpen) fetchDisabledModels();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let ignore = false;
+    fetch("/api/models/auto-sync", { cache: "no-store" }).
+    then((res) => res.ok ? res.json() : null).
+    then((data) => {
+      if (ignore) return;
+      const lists = {};
+      for (const [providerId, status] of Object.entries(data?.providers || {})) {
+        if (Array.isArray(status?.models)) lists[providerId] = status.models;
+      }
+      setSyncedModelLists(lists);
+    }).
+    catch(() => {});
+    return () => {
+      ignore = true;
+    };
   }, [isOpen]);
 
   const allProviders = useMemo(() => ({ ...OAUTH_PROVIDERS, ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...APIKEY_PROVIDERS }), []);
@@ -489,7 +511,7 @@ export default function ModelSelectModal({
           hasModels: mergedModels.length > 0
         };
       } else {
-        const hardcodedModels = getModelsByProviderId(providerId);
+        const hardcodedModels = syncedModelLists[providerId] || getModelsByProviderId(providerId);
         const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
 
         // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider
@@ -579,7 +601,7 @@ export default function ModelSelectModal({
     }
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds, orcaCatalog]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds, orcaCatalog, syncedModelLists]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {

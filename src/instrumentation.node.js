@@ -45,7 +45,8 @@ export async function ensureHeadroomProxy() {
 }
 
 /**
- * Node.js-only boot work: rename the process and revive the Headroom proxy.
+ * Node.js-only boot work: rename the process, revive the Headroom proxy and
+ * start the background schedulers.
  * Only ever called from the guarded block in instrumentation.js.
  */
 export function bootstrapNodejsRuntime() {
@@ -77,5 +78,13 @@ export function bootstrapNodejsRuntime() {
     .then(({ startDataRetentionScheduler }) => startDataRetentionScheduler())
     .catch((error) => {
       console.log(`[data-retention] scheduler not started: ${error?.message || error}`);
+    });
+
+  // Model auto-sync: refresh provider model catalogs shortly after boot and on
+  // the configured interval. Failures stay per provider and never block boot.
+  void import("@/lib/modelAutoSync/scheduler.js")
+    .then(({ startModelAutoSyncScheduler }) => startModelAutoSyncScheduler())
+    .catch((error) => {
+      console.log(`[model-auto-sync] scheduler not started: ${error?.message || error}`);
     });
 }

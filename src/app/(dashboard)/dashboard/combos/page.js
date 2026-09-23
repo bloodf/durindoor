@@ -12,6 +12,7 @@ import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
+import { Badge } from "@/shared/ui/components/Badge.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
@@ -38,6 +39,7 @@ export default function CombosPage() {
   const [activeProviders, setActiveProviders] = useState([]);
   const [providerConnections, setProviderConnections] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
+  const [prunedCombos, setPrunedCombos] = useState({});
   const [confirmState, setConfirmState] = useState(null);
   const [groups, setGroups] = useState([]);
   const [presetLoading, setPresetLoading] = useState(null); // "cursor" | "claude" | null
@@ -136,6 +138,18 @@ export default function CombosPage() {
     }
   };
 
+  // Combo members whose model a provider's auto-synced list no longer has.
+  // Optional metadata: a failure just leaves the badges off.
+  const fetchPrunedCombos = async () => {
+    try {
+      const res = await fetch("/api/models/auto-sync", { cache: "no-store" });
+      const data = res?.ok ? await res.json() : null;
+      setPrunedCombos(data?.prunedReferences?.combos || {});
+    } catch {
+      setPrunedCombos({});
+    }
+  };
+
   const fetchData = async () => {
     setLoadError("");
     try {
@@ -161,6 +175,7 @@ export default function CombosPage() {
       }
       if (groupsRes.ok) setGroups(groupsData.groups || []);
       setComboStrategies(settingsData.comboStrategies || {});
+      await fetchPrunedCombos();
     } catch (error) {
       console.log("Error fetching data:", error);
       setLoadError(error.message || "Failed to load combos");
@@ -515,6 +530,7 @@ export default function CombosPage() {
                   onEdit={() => setEditingCombo(combo)}
                   onDelete={() => handleDelete(combo.id)}
                   strategy={comboStrategies[combo.name] || {}}
+                  prunedMembers={prunedCombos[combo.name] || []}
                   onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
                   selected={selectedIds.includes(combo.id)}
                   onToggleSelect={() => toggleSelect(combo.id)}
@@ -589,7 +605,7 @@ function getStrategyOptions() {
   ];
 }
 
-function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect }) {
+function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
@@ -612,6 +628,11 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
           </div>
           <div className="min-w-0 flex-1">
             <code className="block truncate font-mono text-sm font-medium text-dd-text">{combo.name}</code>
+            {prunedMembers.length > 0 && (
+              <Badge tone="warning" size="sm" icon="warning" className="mt-1" title={`No longer listed by the provider: ${prunedMembers.join(", ")}`}>
+                {prunedMembers.length === 1 ? "1 model no longer listed" : `${prunedMembers.length} models no longer listed`}
+              </Badge>
+            )}
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
               {combo.models.length === 0 ? (
                 <span className="text-xs italic text-dd-subtle">No models</span>

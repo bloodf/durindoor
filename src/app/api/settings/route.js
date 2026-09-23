@@ -21,6 +21,7 @@ import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChec
 import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { resolveObservabilityEnabled } from "@/lib/db/repos/requestDetailsRepo";
+import { validateModelAutoSyncSettingsPatch } from "@/lib/modelAutoSync/catalog.js";
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
@@ -338,6 +339,11 @@ export async function PATCH(request) {
       if (!Number.isInteger(v) || v < 1 || v > 3650) {
         return NextResponse.json({ error: "Invalid dataRetentionDays" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
+    }
+
+    const modelAutoSyncError = validateModelAutoSyncSettingsPatch(body);
+    if (modelAutoSyncError) {
+      return NextResponse.json({ error: modelAutoSyncError }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
     const willChangePassword = body.password !== undefined;

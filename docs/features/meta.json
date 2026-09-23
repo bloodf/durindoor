@@ -6,6 +6,7 @@
     "index",
     "smart-routing",
     "combos",
+    "model-auto-sync",
     "error-rules-and-egress-cooldown",
     "quota-tracking",
     "proxy-timeline",

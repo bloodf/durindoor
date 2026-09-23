@@ -13,7 +13,7 @@ import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
   HermesToolCard, DefaultToolCard, OpenCodeToolCard, CoworkToolCard,
   ClineToolCard, KiloToolCard, DeepSeekTuiToolCard,
-  JcodeToolCard, GrokBuildToolCard,
+  JcodeToolCard, GrokBuildToolCard, GenericCliToolCard,
 } from "../components";
 import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
 
@@ -126,6 +126,12 @@ export default function ToolDetailClient({ toolId, machineId }) {
       case "deepseek-tui": return <DeepSeekTuiToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
       case "jcode": return <JcodeToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
       case "grok-build": return <GrokBuildToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
+      case "pi":
+      case "crush":
+      case "forge":
+      case "smelt":
+      case "codewhale":
+        return <GenericCliToolCard {...commonProps} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders} cloudEnabled={cloudEnabled} />;
       default: return <DefaultToolCard toolId={toolId} {...commonProps} activeProviders={getActiveProviders()} cloudEnabled={cloudEnabled} cloudUrl={CLOUD_URL} />;
     }
   };

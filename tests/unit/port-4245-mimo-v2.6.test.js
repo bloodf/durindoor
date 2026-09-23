@@ -1,14 +1,10 @@
 // Coverage for port(upstream): #4245 - Xiaomi MiMo desktop login, account
 // clusters and v2.6 models.
 //
-// Scope note: only the v2.6-model / capability-metadata slice of the upstream
-// commit applies here. This fork's xiaomi-mimo provider never got the base
-// Desktop OAuth/account-service plumbing (no executor, no shared/mimoAccount.js,
-// no /api/oauth/xiaomi-mimo/login/* routes, no auth modal) that the five-cluster
-// desktop login and account-service dual-route models depend on upstream, so
-// that part is skipped — see the port commit body for details. These tests lock
-// in what did land: the mimo-v2.6-flash-free free-tier entry, the v2.6 pattern
-// capabilities/thinking levels, and the three v2.6 cloud-API models.
+// These tests lock the model-catalog slice: the mimo-v2.6-flash-free free-tier
+// entry, the v2.6 pattern capabilities/thinking levels, and the three v2.6
+// models. The desktop login, account clusters and dual-route executor are
+// covered by the xiaomi-mimo-*.test.js files.
 import { describe, expect, it } from "vitest";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";

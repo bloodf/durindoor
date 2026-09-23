@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
 import Select from "@/shared/ui/components/Select.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
@@ -2126,6 +2126,12 @@ export default function ProviderDetailPage() {
 
       providerId === "cursor" ?
       <CursorAuthModal
+        isOpen={showOAuthModal}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)} /> :
+
+      providerId === "xiaomi-mimo" ?
+      <XiaomiMimoAuthModal
         isOpen={showOAuthModal}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)} /> :

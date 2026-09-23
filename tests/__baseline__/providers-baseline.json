@@ -2184,5 +2184,68 @@
     "format": "openai",
     "authType": "apikey",
     "tokenUrl": "https://www.orcarouter.ai/api/v1/auth/keys"
+  },
+  "ghe-copilot": {
+    "baseUrl": "https://api.githubcopilot.com/chat/completions",
+    "responsesUrl": "https://api.githubcopilot.com/responses",
+    "messagesUrl": "https://api.githubcopilot.com/v1/messages",
+    "headers": {
+      "copilot-integration-id": "vscode-chat",
+      "editor-version": "vscode/1.110.0",
+      "editor-plugin-version": "copilot-chat/0.38.0",
+      "user-agent": "GitHubCopilotChat/0.38.0",
+      "openai-intent": "conversation-panel",
+      "x-github-api-version": "2025-04-01",
+      "x-vscode-user-agent-library-version": "electron-fetch",
+      "X-Initiator": "user",
+      "Accept": "application/json",
+      "Content-Type": "application/json"
+    },
+    "copilot": {
+      "vscodeVersion": "1.110.0",
+      "chatVersion": "0.38.0",
+      "userAgent": "GitHubCopilotChat/0.38.0",
+      "apiVersion": "2025-04-01"
+    },
+    "quirks": {
+      "preservePromptCacheKey": true
+    },
+    "format": "openai",
+    "clientId": "Iv1.b507a08c87ecfe98"
+  },
+  "amazon-q": {
+    "baseUrl": "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+    "baseUrls": [
+      "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+      "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+      "https://q.us-east-1.amazonaws.com/generateAssistantResponse"
+    ],
+    "format": "kiro",
+    "retry": {
+      "429": 0
+    },
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/vnd.amazon.eventstream",
+      "X-Amz-Target": "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
+      "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
+      "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0"
+    },
+    "tokenUrl": "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
+    "authUrl": "https://prod.us-east-1.auth.desktop.kiro.dev",
+    "usage": {
+      "cwHost": "https://codewhisperer.us-east-1.amazonaws.com",
+      "qHost": "https://q.us-east-1.amazonaws.com",
+      "limitsPath": "/getUsageLimits"
+    }
+  },
+  "muse-code": {
+    "baseUrl": "https://api.meta.ai/v1/responses",
+    "format": "openai-responses",
+    "headers": {
+      "User-Agent": "muse-build/1.3.0 (interactive; macos-aarch64; build ac7280f2aca67769d1455a8847bb502b617d50f6)"
+    },
+    "clientId": "1031625952748946",
+    "tokenUrl": "https://auth.meta.com/oidc/device/token/"
   }
 }

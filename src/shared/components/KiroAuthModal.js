@@ -19,7 +19,13 @@ function Notice({ tone, icon, message }) {
 function LoadingState({ title, message }) {
   return <div role="status" aria-live="polite" className="py-8 text-center"><span aria-hidden="true" className="material-symbols-outlined animate-spin text-[32px] leading-none text-dd-accent">progress_activity</span><h3 className="mt-3 font-semibold text-dd-text">{title}</h3><p className="mt-1 text-xs text-dd-muted">{message}</p></div>;
 }
-export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
+// Amazon Q shares Kiro's AWS device login; the Kiro-only import, API-key and
+// social paths create Kiro connections, so they are hidden for it.
+const DEVICE_METHODS = new Set(["builder-id", "idc"]);
+
+export default function KiroAuthModal({ isOpen, onMethodSelect, onClose, provider = "kiro" }) {
+  const deviceOnly = provider !== "kiro";
+  const providerName = provider === "amazon-q" ? "Amazon Q" : "Kiro";
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [idcStartUrl, setIdcStartUrl] = useState("");
   const [idcRegion, setIdcRegion] = useState("us-east-1");
@@ -221,12 +227,12 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
   ];
 
   return (
-    <Modal open={isOpen} title="Connect Kiro" subtitle="Choose a secure Kiro authentication method." onClose={onClose} size="lg" pending={importing} closeOnEscape={!importing} closeOnOverlay={!importing}>
+    <Modal open={isOpen} title={`Connect ${providerName}`} subtitle={`Choose a secure ${providerName} authentication method.`} onClose={onClose} size="lg" pending={importing} closeOnEscape={!importing} closeOnOverlay={!importing}>
       <div className="flex flex-col gap-5">
         {!selectedMethod && (
           <div className="grid gap-2 sm:grid-cols-2">
             {methodOptions.map(([method, icon, title, description, hidden]) => (
-              <button key={method} hidden={hidden} type="button" onClick={() => method === "builder-id" ? onMethodSelect(method) : handleMethodSelect(method)} className="flex min-h-11 w-full items-start gap-3 rounded-dd border border-dd-border bg-dd-surface p-4 text-start text-[13px] text-dd-text outline-none transition-colors hover:bg-dd-surface-2 focus-visible:shadow-dd-focus">
+              <button key={method} hidden={hidden || deviceOnly && !DEVICE_METHODS.has(method)} type="button" onClick={() => method === "builder-id" ? onMethodSelect(method) : handleMethodSelect(method)} className="flex min-h-11 w-full items-start gap-3 rounded-dd border border-dd-border bg-dd-surface p-4 text-start text-[13px] text-dd-text outline-none transition-colors hover:bg-dd-surface-2 focus-visible:shadow-dd-focus">
                 <span aria-hidden="true" className="material-symbols-outlined mt-0.5 text-[20px] leading-none text-dd-accent">{icon}</span>
                 <span className="min-w-0"><span className="block font-semibold">{title}</span><span className="mt-1 block text-xs leading-relaxed text-dd-muted">{description}</span></span>
               </button>
@@ -269,6 +275,7 @@ export default function KiroAuthModal({ isOpen, onMethodSelect, onClose }) {
 
 KiroAuthModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
+  provider: PropTypes.oneOf(["kiro", "amazon-q"]),
   onMethodSelect: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
 };

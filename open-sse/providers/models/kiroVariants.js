@@ -96,3 +96,16 @@ export function buildKiroGpt56Variants(base) {
     description: `Experimental preview of OpenAI ${base.name} with 1.05M context window`,
   });
 }
+
+/**
+ * Provider ids and aliases that run on the Kiro/CodeWhisperer backend and share
+ * its model catalog, capability table and pricing rules. `amazon-q` is the same
+ * backend and auth as Kiro, kept as its own provider so Amazon Q connections do
+ * not mix with Kiro ones.
+ */
+export const KIRO_FAMILY_PROVIDERS = new Set(["kiro", "kr", "amazon-q", "aq"]);
+
+/** @param {string|null|undefined} provider */
+export function isKiroFamilyProvider(provider) {
+  return KIRO_FAMILY_PROVIDERS.has(provider);
+}

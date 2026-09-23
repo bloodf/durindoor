@@ -26,6 +26,7 @@ import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
+import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fakeSuccessBodyClassifier.js";
 
 // Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
 // arrays, null) before any envelope unwrap or property access can throw or
@@ -566,6 +567,29 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         `Empty response content from ${provider}/${model}`,
         Date.now() + EMPTY_CONTENT_COOLDOWN_MS
       );
+    }
+
+    // Ported from OmniRoute #13910: on a narrow provider allowlist (free/
+    // web-session providers known to do this), a short assistant message
+    // dominated by a known credits-exhausted/account-deactivated phrase is
+    // the provider's own error prose disguised as a real HTTP 200 answer.
+    // See fakeSuccessBodyClassifier.js for the false-positive guards
+    // (allowlist + short content + dominant signal coverage) that keep this
+    // from ever tripping on a genuine longer completion.
+    if (!isNativeClaudeRefusal) {
+      const fakeSuccessReason = classifyFakeSuccessBody(
+        extractAssistantText(translatedResponse),
+        provider
+      );
+      if (fakeSuccessReason) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (fake success: ${fakeSuccessReason})` });
+        log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 disguising a ${fakeSuccessReason} failure`);
+        return createErrorResult(
+          HTTP_STATUS.BAD_GATEWAY,
+          `Upstream reported a failure disguised as a successful response from ${provider}/${model}`,
+          Date.now() + EMPTY_CONTENT_COOLDOWN_MS
+        );
+      }
     }
 
     /**

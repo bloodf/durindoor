@@ -121,6 +121,8 @@ export const MODEL_CAPABILITIES = {
   k3: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 },
   /** Third-party registries retain the upstream `kimi-k3` ID and its verified 1M context. */
   "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
+  /** Claude Opus 5.5: native 1M context, 128K output, adaptive thinking that cannot be disabled. */
+  "claude-opus-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   // Claude Opus 5: native 1M context window + adaptive thinking.
   "claude-opus-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-fable-5-1": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
@@ -434,13 +436,15 @@ export const PROVIDER_CAPABILITIES = {
   // Kimi Web (www.kimi.com) consumer chat — OpenAI-shaped transport. The
   // `k2d6-thinking` tier supports reasoning via the OpenAI `reasoning_effort`
   // wire format and can be disabled (`reasoning_effort: "none"`); the plain
-  // `k2d6` tier has no reasoning. Both tiers are toolless until tool mapping
+  // `k2d6` tier has no reasoning. All tiers are toolless until tool mapping
   // exists — the executor folds only system/user/assistant text and never
   // forwards tools/tool_choice or emits tool_calls, so combo or
   // `tool_choice:"required"` routing must not pick Kimi expecting a tool call.
   "kimi-web": {
     "k2d6": { tools: false },
-    "k2d6-thinking": { tools: false, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true }
+    "k2d6-thinking": { tools: false, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true },
+    // Web K3 takes LOW/HIGH/MAX effort and has no off switch.
+    "k3": { tools: false, vision: false, videoInput: false, reasoning: true, thinkingFormat: "openai-low-high-max", thinkingCanDisable: false }
   },
   // ZenMux Free exposes text streaming through its Anthropic-compatible web
   // endpoint but does not return structured tool_use blocks.
@@ -572,7 +576,16 @@ export const PROVIDER_CAPABILITIES = {
   },
 
   oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },
-  "opencode-go": { "ox-alpha-free": OX_ALPHA_CAPABILITIES },
+  "opencode-go": {
+    "ox-alpha-free": OX_ALPHA_CAPABILITIES,
+    // glm-5.3-flash has no exact global entry (only the base "glm-5.3" id
+    // does, with the z.ai-native "zai" thinkingFormat), so without a
+    // provider override it fell through to DEFAULT_CAPABILITIES with no
+    // reasoning at all. OpenCode Go's backend also rejects the z.ai
+    // `thinking` object (400: unknown field "thinking") and wants
+    // reasoning_effort, so the format here must be "openai", not "zai". #4226
+    "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 }
+  },
   ocg: { "ox-alpha-free": OX_ALPHA_CAPABILITIES },
 
   // OpenCode Zen — Big Pickle advertises reasoning in the registry but the
@@ -705,6 +718,7 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
+{ pattern: "*claude*opus-5-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*opus-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*sonnet-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 /** Claude 4.6+ variants share the generation's 1M context and 128K output limits. */
@@ -850,6 +864,7 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*minimax*", caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 } },
 
 // ── Xiaomi MiMo (vision + <think>-tag reasoning, always-on, can't disable) ──
+{ pattern: "*mimo*v2.6*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 } },
 { pattern: "*mimo*v2.5*", caps: { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 } },
 { pattern: "*mimo*omni*", caps: { vision: true, audioInput: true, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 131072 } },
 { pattern: "*mimo*", caps: { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 131072 } },

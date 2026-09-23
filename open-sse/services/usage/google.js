@@ -201,29 +201,41 @@ async function fetchAntigravityUserQuotaSummaryCached(accessToken, projectId, { 
 }
 
 const WEEKLY_KEYWORD = /\bweekly\b/;
+// Port of upstream be3bc764: retrieveUserQuotaSummary also reports a
+// sliding 5h/"session" bucket per family, separate from the multi-day weekly
+// bucket. "daily" is included because some accounts label the 5h bucket that way.
+const SESSION_KEYWORD = /\bfive hour\b|\b5h\b|\bdaily\b/;
 
-/** Turns a group displayName (e.g. "Gemini Models", "Claude and GPT models") into a quota key. */
-function slugifyGroupWeeklyKey(displayName) {
+/** Turns a group displayName (e.g. "Gemini Models", "Claude and GPT models") into a key stem. */
+function slugifyGroupKey(displayName) {
   const cleaned = String(displayName || "").
   toLowerCase().
   replace(/\bmodels?\b/g, "").
   replace(/\band\b/g, " ").
   replace(/[^a-z0-9]+/g, "_").
   replace(/^_+|_+$/g, "");
-  return cleaned ? `${cleaned}_weekly` : null;
+  return cleaned || null;
 }
 
-/** Friendly row label per weekly quota key (dashboard renders `displayName`). */
+/** Friendly row label per weekly/session quota key (dashboard renders `displayName`). */
 const WEEKLY_DISPLAY_LABELS = {
   gemini_weekly: "Gemini Weekly",
-  claude_gpt_weekly: "Claude & GPT Weekly"
+  claude_gpt_weekly: "Claude & GPT Weekly",
+  gemini_session: "Gemini 5h",
+  claude_gpt_session: "Claude & GPT 5h"
 };
 
 /**
- * Parse the raw `retrieveUserQuotaSummary` response into weekly quota entries, one per
- * model family group. Tolerant of both observed envelopes (`groups[]` top-level or
- * nested under `quotaSummary.groups[]`). Missing/partial payloads yield `{}` (or skip
- * the incomplete group) — best-effort, never fabricated rows.
+ * Parse the raw `retrieveUserQuotaSummary` response into weekly + 5h-session quota
+ * entries, one pair per model family group. Tolerant of both observed envelopes
+ * (`groups[]` top-level or nested under `quotaSummary.groups[]`). Missing/partial
+ * payloads yield `{}` (or skip the incomplete bucket) — best-effort, never fabricated
+ * rows.
+ *
+ * A weekly bucket disabled by upstream is truly unavailable and skipped. A session
+ * (5h) bucket disabled by upstream (typically because the weekly cap was already hit)
+ * is kept but pinned to `remainingFraction: 0`, so the UI still shows the 5h row
+ * instead of silently dropping it.
  */
 export function parseAntigravityWeeklyQuotas(summaryData) {
   const root = _toWeeklyRecord(summaryData);
@@ -238,43 +250,49 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
   for (const groupValue of rawGroups) {
     const group = _toWeeklyRecord(groupValue);
     const buckets = Array.isArray(group.buckets) ? group.buckets : [];
-    const weeklyBucketValue = buckets.find((b) => {
-      if (!b || !isObject(b)) return false;
-      const bucket = _toWeeklyRecord(b);
-      return WEEKLY_KEYWORD.test(`${String(bucket.bucketId || "")} ${String(bucket.displayName || "")}`.toLowerCase());
-    });
-    if (!weeklyBucketValue) continue;
+    const baseKey = slugifyGroupKey(String(group.displayName || ""));
+    if (!baseKey) continue;
 
-    const weeklyBucket = _toWeeklyRecord(weeklyBucketValue);
-    if (weeklyBucket.disabled === true) continue;
+    for (const bucketValue of buckets) {
+      if (!bucketValue || !isObject(bucketValue)) continue;
+      const bucket = _toWeeklyRecord(bucketValue);
+      const windowType = String(bucket.window || "").toLowerCase();
+      const bucketText = `${bucket.bucketId || ""} ${bucket.displayName || ""}`.toLowerCase();
+      const isWeekly = windowType === "weekly" || WEEKLY_KEYWORD.test(bucketText);
+      const isSession = windowType === "5h" || windowType === "daily" || SESSION_KEYWORD.test(bucketText);
+      if (!isWeekly && !isSession) continue;
 
-    const key = slugifyGroupWeeklyKey(String(group.displayName || ""));
-    if (!key) continue;
+      const key = `${baseKey}_${isWeekly ? "weekly" : "session"}`;
+      if (quotas[key]) continue; // first matching bucket per group+window wins
 
-    // Partial-payload guard: accept only a finite number or nonblank numeric string.
-    // null/"" coerce to 0 (fabricated depleted quota); objects may throw in Number().
-    const rawValue = weeklyBucket.remainingFraction;
-    const usable =
-    isNumber(rawValue) && Number.isFinite(rawValue) ||
-    isString(rawValue) && rawValue.trim() !== "";
-    if (!usable) continue;
-    const rawFraction = Number(rawValue);
-    if (!Number.isFinite(rawFraction) || rawFraction < 0) continue;
+      if (bucket.disabled === true && isWeekly) continue;
 
-    const remainingFraction = Math.max(0, Math.min(1, rawFraction));
-    const resetAt = parseResetTime(weeklyBucket.resetTime);
-    const isUnlimited = !resetAt && remainingFraction >= 1;
-    const total = 1000; // Normalized base, matches per-model convention
-    const remaining = Math.round(total * remainingFraction);
+      // Partial-payload guard: accept only a finite number or nonblank numeric string.
+      // null/"" coerce to 0 (fabricated depleted quota); objects may throw in Number().
+      // A disabled session bucket is forced to 0 instead of being dropped.
+      const rawValue = bucket.disabled === true ? 0 : bucket.remainingFraction;
+      const usable =
+      isNumber(rawValue) && Number.isFinite(rawValue) ||
+      isString(rawValue) && rawValue.trim() !== "";
+      if (!usable) continue;
+      const rawFraction = Number(rawValue);
+      if (!Number.isFinite(rawFraction) || rawFraction < 0) continue;
 
-    quotas[key] = {
-      used: isUnlimited ? 0 : Math.max(0, total - remaining),
-      total: isUnlimited ? 0 : total,
-      resetAt,
-      remainingPercentage: isUnlimited ? 100 : remainingFraction * 100,
-      unlimited: isUnlimited,
-      displayName: WEEKLY_DISPLAY_LABELS[key] || String(group.displayName || "").trim() || key
-    };
+      const remainingFraction = Math.max(0, Math.min(1, rawFraction));
+      const resetAt = parseResetTime(bucket.resetTime);
+      const isUnlimited = !resetAt && remainingFraction >= 1;
+      const total = 1000; // Normalized base, matches per-model convention
+      const remaining = Math.round(total * remainingFraction);
+
+      quotas[key] = {
+        used: isUnlimited ? 0 : Math.max(0, total - remaining),
+        total: isUnlimited ? 0 : total,
+        resetAt,
+        remainingPercentage: isUnlimited ? 100 : remainingFraction * 100,
+        unlimited: isUnlimited,
+        displayName: WEEKLY_DISPLAY_LABELS[key] || `${String(group.displayName || baseKey).trim()} (${isWeekly ? "Weekly" : "5h"})`
+      };
+    }
   }
 
   return quotas;
@@ -322,12 +340,13 @@ export const ANTIGRAVITY_QUOTA_MODELS = [
  * Exhausted-model reconciliation (paid-tier only — free-tier has no
  * per-model data to reconcile against):
  * - When every model in a Gemini or Claude & GPT family reports
- *   `remainingPercentage === 0`, the corresponding weekly row is forced to
- *   `used = total`, `remainingPercentage = 0`, and inherits the max
- *   `resetAt` across the exhausted models. This works around an upstream
- *   bug where free Starter accounts get `remainingFraction: 1` from
- *   `retrieveUserQuotaSummary` even after the starter quota is depleted and
- *   every per-model call 429s.
+ *   `remainingPercentage === 0`, the corresponding 5h session row (not the
+ *   weekly row) is forced to `used = total`, `remainingPercentage = 0`, and
+ *   inherits the max `resetAt` across the exhausted models. This works
+ *   around an upstream bug where free Starter accounts get
+ *   `remainingFraction: 1` from `retrieveUserQuotaSummary` even after the
+ *   starter quota is depleted and every per-model call 429s. The weekly row
+ *   is a separate, longer window and is left untouched.
  */
 export async function getAntigravityUsage(accessToken, providerSpecificData, proxyOptions = null) {
   try {
@@ -441,39 +460,40 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     // Wraps the reconciliation + Object.assign together so a reconciliation throw
     // does not silently drop the weekly rows.
     try {
-      // Reconcile weekly quota against model family status:
-      // If every model in a family is locked/exhausted (remainingPercentage === 0)
-      // until a future reset time, the weekly limit cannot be 100% available.
-      // On Google's Free Starter tier, retrieveUserQuotaSummary buggily reports
-      // remainingFraction: 1 even after the starter quota is depleted and all models 429.
+      // Reconcile the 5h session quota against model family status (port of
+      // upstream be3bc764): if every model in a family is locked/exhausted
+      // (remainingPercentage === 0) until a future reset time, the sliding 5h
+      // window cannot still be 100% available. Target the session bucket, not
+      // the weekly one — the weekly cap is a separate, longer window and must
+      // not be clobbered by a short-window exhaustion signal.
       const entries = Object.entries(quotas);
       const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image"));
       const claudeModels = entries.filter(([k]) => k.startsWith("claude-"));
 
-      if (weeklyQuotas.gemini_weekly && geminiModels.length > 0) {
+      if (weeklyQuotas.gemini_session && geminiModels.length > 0) {
         const allGeminiExhausted = geminiModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);
-        if (allGeminiExhausted && weeklyQuotas.gemini_weekly.remainingPercentage > 0) {
+        if (allGeminiExhausted && weeklyQuotas.gemini_session.remainingPercentage > 0) {
           const maxResetAt = geminiModels.reduce((max, [, q]) =>
             !max || (q.resetAt && new Date(q.resetAt) > new Date(max)) ? q.resetAt : max, null
           );
-          weeklyQuotas.gemini_weekly.used = weeklyQuotas.gemini_weekly.total;
-          weeklyQuotas.gemini_weekly.remainingPercentage = 0;
+          weeklyQuotas.gemini_session.used = weeklyQuotas.gemini_session.total;
+          weeklyQuotas.gemini_session.remainingPercentage = 0;
           if (maxResetAt) {
-            weeklyQuotas.gemini_weekly.resetAt = maxResetAt;
+            weeklyQuotas.gemini_session.resetAt = maxResetAt;
           }
         }
       }
 
-      if (weeklyQuotas.claude_gpt_weekly && claudeModels.length > 0) {
+      if (weeklyQuotas.claude_gpt_session && claudeModels.length > 0) {
         const allClaudeExhausted = claudeModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);
-        if (allClaudeExhausted && weeklyQuotas.claude_gpt_weekly.remainingPercentage > 0) {
+        if (allClaudeExhausted && weeklyQuotas.claude_gpt_session.remainingPercentage > 0) {
           const maxResetAt = claudeModels.reduce((max, [, q]) =>
             !max || (q.resetAt && new Date(q.resetAt) > new Date(max)) ? q.resetAt : max, null
           );
-          weeklyQuotas.claude_gpt_weekly.used = weeklyQuotas.claude_gpt_weekly.total;
-          weeklyQuotas.claude_gpt_weekly.remainingPercentage = 0;
+          weeklyQuotas.claude_gpt_session.used = weeklyQuotas.claude_gpt_session.total;
+          weeklyQuotas.claude_gpt_session.remainingPercentage = 0;
           if (maxResetAt) {
-            weeklyQuotas.claude_gpt_weekly.resetAt = maxResetAt;
+            weeklyQuotas.claude_gpt_session.resetAt = maxResetAt;
           }
         }
       }

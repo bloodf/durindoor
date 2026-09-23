@@ -4,6 +4,7 @@ import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger }
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { HTTP_STATUS, SSE_KEEPALIVE_MS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
@@ -142,7 +143,11 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
-  const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
+  // port(omniroute): per-connection upstream timeout override (#10885) — takes
+  // precedence over the provider's own stallTimeoutMs and the global default.
+  const stallTimeoutMs = resolveConnectionTimeoutMs(credentials?.providerSpecificData) ||
+  PROVIDERS[provider]?.stallTimeoutMs ||
+  STREAM_STALL_TIMEOUT_MS;
   const terminalTracker = createTerminalTracker(emittedFormat);
   // createTerminalTracker only covers OPENAI/OPENAI_RESPONSES/CLAUDE — every other
   // emitted format (Gemini-family, Ollama, Kiro, Commandcode, Cursor) has no EOF

@@ -21,17 +21,32 @@ export default {
     executor: "chatgpt-web",
     authType: "cookie",
   },
+  // Routes observed in ChatGPT's own Pro and Free web UIs (OmniRoute's list).
+  // Tool calls are emulated on the HTTP transport only.
   models: [
-    { id: "gpt-5.5-pro", name: "GPT-5.5 Pro" },
-    { id: "gpt-5.5-pro-extended", name: "GPT-5.5 Pro Extended" },
-    { id: "gpt-5.5-thinking", name: "GPT-5.5 Thinking" },
-    { id: "gpt-5.5", name: "GPT-5.5 Instant" },
-    { id: "gpt-5.4-pro", name: "GPT-5.4 Pro" },
-    { id: "gpt-5.4-thinking", name: "GPT-5.4 Thinking" },
-    { id: "gpt-5.4-thinking-mini", name: "GPT-5.4 Thinking Mini" },
-    { id: "gpt-5.3", name: "GPT-5.3 Instant" },
-    { id: "gpt-5.3-mini", name: "GPT-5.3 Mini" },
-    { id: "o3", name: "o3" },
+    { id: "gpt-5-6", name: "GPT-5.6 Sol — Instant", supportsVision: true },
+    {
+      id: "gpt-5-6-thinking",
+      name: "GPT-5.6 Sol — Thinking",
+      supportsReasoning: true,
+      supportsVision: true,
+    },
+    { id: "gpt-5-6-pro", name: "GPT-5.6 Sol — Pro", supportsReasoning: true, supportsVision: true },
+    { id: "gpt-5.6-luna-free", name: "GPT-5.6 Luna — Free", supportsVision: true },
+    {
+      id: "gpt-5.6-luna-free-thinking",
+      name: "GPT-5.6 Luna — Free Thinking",
+      supportsReasoning: true,
+      supportsVision: true,
+    },
+    { id: "gpt-5-5-instant", name: "GPT-5.5 — Instant", supportsVision: true },
+    {
+      id: "gpt-5-5-thinking",
+      name: "GPT-5.5 — Thinking",
+      supportsReasoning: true,
+      supportsVision: true,
+    },
+    { id: "gpt-5-5-pro", name: "GPT-5.5 — Pro", supportsReasoning: true, supportsVision: true },
   ],
   imageConfig: { baseUrl: "https://chatgpt.com/backend-api/conversation" },
 };

@@ -70,7 +70,7 @@ import {
   quotaDecisionDiagnostic,
   rankQuotaCandidates } from
 "open-sse/services/quota/scoring.js";
-import { isObject } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const ANTIGRAVITY_CAPACITY_SWEEP_RETRIES = 2;
 const MAX_ACCOUNT_ATTEMPTS_PER_REQUEST = 1024;
@@ -1187,6 +1187,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             return refreshedCredentials;
           }
         } : null),
+        // Web-cookie executors (chatgpt-web) hand back a rotated session cookie
+        // as `apiKey`; persist only that, only for cookie connections.
+        onCredentialsRefreshed: async (newCreds) => {
+          const rotated = newCreds?.apiKey;
+          if (activeConnection?.authType !== "cookie" || !isString(rotated) || !rotated) return;
+          if (rotated === refreshedCredentials?.apiKey) return;
+          await updateProviderCredentials(credentials.connectionId, { rotatedApiKey: rotated });
+        },
         onRequestSuccess: async ({ attemptStartedAt = latestAttemptStartedAt } = {}) => {
           if (provider === "antigravity" || provider === "agy") {
             clearAntigravity429Strikes(credentials.connectionId, model);

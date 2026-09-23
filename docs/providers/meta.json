@@ -8,6 +8,7 @@
     "api-key-providers",
     "openai-compatible-nodes",
     "free-and-local",
+    "chatgpt-web",
     "local-router-providers",
     "catalog"
   ]

@@ -86,11 +86,11 @@ Named volume:
 -v durindoor-data:/app/data
 ```
 
-The image entrypoint `chown`s `/app/data` to `node` then `exec`s `node custom-server.js`. `EXPOSE 20128`. Backup and restore for both mount styles: [Data management](../operations/data-management.mdx).
+The image entrypoint `chown`s `/app/data` to `node`, starts Xvfb on `:99` when Chromium's Xvfb is installed and `DISPLAY` is unset (`DURINDOOR_XVFB=0` skips it), then `exec`s `node custom-server.js`. `EXPOSE 20128`. Backup and restore for both mount styles: [Data management](../operations/data-management.mdx).
 
 ## Image layout
 
-The runtime stage copies `public/`, `.next/static/`, the Next standalone tree, `custom-server.js`, `open-sse/`, and the MITM sources the tracer drops. If you fork the Dockerfile, keep those `COPY` lines or the dashboard 404s hashed chunks. Confirm a source build with `npm run verify:static` before you change the image; see [Reverse proxy and static assets](./reverse-proxy-and-static-assets.mdx).
+The runtime stage copies `public/`, `.next/static/`, the Next standalone tree, `custom-server.js`, `open-sse/`, and the MITM sources the tracer drops. It also copies `playwright`, `playwright-core` and `tls-client-node` for [ChatGPT Web](../providers/chatgpt-web.mdx), and installs Alpine's `chromium`, `xvfb` and `gcompat`. Build with `--build-arg CHATGPT_WEB_BROWSER=false` to leave Chromium and Xvfb out. If you fork the Dockerfile, keep those `COPY` lines or the dashboard 404s hashed chunks. Confirm a source build with `npm run verify:static` before you change the image; see [Reverse proxy and static assets](./reverse-proxy-and-static-assets.mdx).
 
 ## Health and logs
 

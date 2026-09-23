@@ -17,7 +17,8 @@ FROM base AS builder
 
 # No "apk upgrade": a full distribution upgrade here makes builds less
 # reproducible and is unrelated to installing the build toolchain.
-RUN apk add --no-cache python3 make g++ linux-headers
+# cmake: koffi (tls-client-node) ships no musl arm64 prebuilt and compiles from source there.
+RUN apk add --no-cache python3 make g++ linux-headers cmake
 
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \

@@ -58,6 +58,7 @@ import {
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { validateChatRequestBody } from "open-sse/translator/validate.js";
@@ -449,6 +450,12 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
       log.warn("AUTH", `API key daily token limit exceeded (${used}/${limit})`);
       return errorResponse(HTTP_STATUS.RATE_LIMITED, `API key daily token limit exceeded (${used}/${limit} tokens)`);
     }
+
+    // Windowed per-key limits are checked once, before combo dispatch, so a
+    // key's own 429 never lowers the shared health score of combo members.
+    // The per-model policy checks below skip this step for the same request.
+    const windowedLimit = await enforceApiKeyLimits(request, authenticatedKeyRecord);
+    if (windowedLimit) return windowedLimit;
   }
 
   if (sourceFormat === FORMATS.CLAUDE) {

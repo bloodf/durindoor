@@ -39,7 +39,7 @@ describe("combo presets", () => {
     expect(items.every((i) => !i.name.includes("/"))).toBe(true);
   });
 
-  it("Claude aliases map opus → cc/claude-opus-5 and registry models seed cc/…", () => {
+  it("Claude aliases map opus → cc/claude-opus-5-5 and registry models seed cc/…", () => {
     const items = buildClaudePresetItems();
     const byName = Object.fromEntries(items.map((i) => [i.name, i]));
 
@@ -49,7 +49,7 @@ describe("combo presets", () => {
     });
     expect(byName.opus).toEqual({
       name: "opus",
-      models: ["cc/claude-opus-5"],
+      models: ["cc/claude-opus-5-5"],
     });
     expect(byName.sonnet).toEqual({
       name: "sonnet",
@@ -69,7 +69,7 @@ describe("combo presets", () => {
     });
     expect(byName.opusplan).toEqual({
       name: "opusplan",
-      models: ["cc/claude-opus-5"],
+      models: ["cc/claude-opus-5-5"],
     });
   });
 

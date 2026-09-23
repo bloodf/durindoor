@@ -14,10 +14,13 @@ export const PRESET_SOURCES = new Set(["cursor", "claude"]);
 const CURSOR_ALIAS = "cu";
 const CLAUDE_ALIAS = "cc";
 
-/** Extra Claude Code aliases not listed in defaultModels. */
-const CLAUDE_EXTRA_ALIAS_TARGETS = {
-  default: "cc/claude-sonnet-5",
-  opusplan: "cc/claude-opus-5",
+/**
+ * Extra Claude Code aliases not listed in defaultModels, mapped to the
+ * defaultModels alias whose target they reuse (so they follow the fork defaults).
+ */
+const CLAUDE_EXTRA_ALIAS_SOURCES = {
+  default: "sonnet",
+  opusplan: "opus",
 };
 
 /**
@@ -83,17 +86,19 @@ export function buildClaudePresetItems() {
   const out = itemsFromProviderModels(getProviderModels(CLAUDE_ALIAS), CLAUDE_ALIAS, seen);
 
   const claudeTool = CLI_TOOLS.claude || {};
+  const defaultTargets = {};
   for (const entry of claudeTool.defaultModels || []) {
     const name = entry.alias || entry.id;
     const target = entry.defaultValue;
     if (!name || !target) continue;
+    defaultTargets[name] = target;
     const item = pushItem(name, [target], seen);
     if (item) out.push(item);
   }
 
   for (const alias of claudeTool.modelAliases || []) {
     if (seen.has(alias)) continue;
-    const target = CLAUDE_EXTRA_ALIAS_TARGETS[alias];
+    const target = defaultTargets[CLAUDE_EXTRA_ALIAS_SOURCES[alias]];
     if (!target) continue;
     const item = pushItem(alias, [target], seen);
     if (item) out.push(item);

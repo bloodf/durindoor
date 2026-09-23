@@ -349,6 +349,11 @@ export {
   getEnabledModels, getEnabledByProvider, setEnabledModels } from
 "./repos/enabledModelsRepo.js";
 
+// Model auto-sync catalogs per provider id
+export {
+  getSyncedModelCatalogs, getSyncedModelCatalog, saveSyncedModelCatalog } from
+"./repos/syncedModelsRepo.js";
+
 // Usage
 export {
   statsEmitter, trackPendingRequest, finishPendingRequest, finishActiveSession, getActiveRequests,

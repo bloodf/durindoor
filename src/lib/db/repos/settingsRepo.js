@@ -78,6 +78,13 @@ const DEFAULT_SETTINGS = {
   /** Automatic cleanup of usage, request details, timeline and quota history older than N days. */
   dataRetentionEnabled: false,
   dataRetentionDays: 30,
+  /**
+   * Model auto-sync (src/lib/modelAutoSync): hours between provider model
+   * catalog refreshes, 0 = off. modelAutoSyncProviders holds per-provider
+   * on/off overrides; providers not listed use MODEL_AUTO_SYNC_DEFAULT_PROVIDERS.
+   */
+  modelAutoSyncIntervalHours: 24,
+  modelAutoSyncProviders: {},
   observabilityMaxRecords: 1000,
   observabilityBatchSize: 20,
   observabilityFlushIntervalMs: 5000,

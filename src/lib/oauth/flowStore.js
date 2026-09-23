@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 
 import { OAUTH_TIMEOUT } from "@/lib/oauth/constants/oauth.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
+import { timingSafeCompare } from "../../shared/utils/timingSafeCompare.js";
 
 const flows = new Map();
 const stateAliases = new Map();
@@ -85,7 +86,7 @@ function resolveRecord(selector, providerArgument = null) {
   if (flowId && idFromState && flowId !== idFromState) return null;
 
   const record = flows.get(flowId || idFromState);
-  if (!record || state && record.state !== state || provider && record.provider !== provider) {
+  if (!record || state && !timingSafeCompare(record.state, state) || provider && record.provider !== provider) {
     return null;
   }
   return record;
@@ -189,7 +190,7 @@ export function isOAuthFlowClaimActive(claim) {
   return Boolean(
     record &&
     record.status === "claimed" &&
-    record.claimToken === claim.claimToken
+    timingSafeCompare(record.claimToken, claim.claimToken)
   );
 }
 
@@ -197,7 +198,7 @@ export function isOAuthFlowClaimActive(claim) {
 export function consumeOAuthFlow(claim) {
   if (!claim?.flowId || !claim?.claimToken) return false;
   const record = flows.get(claim.flowId);
-  if (!record || record.status !== "claimed" || record.claimToken !== claim.claimToken) {
+  if (!record || record.status !== "claimed" || !timingSafeCompare(record.claimToken, claim.claimToken)) {
     return false;
   }
   return deleteRecord(record);
@@ -208,7 +209,7 @@ export function releaseOAuthFlow(claim) {
   if (!claim?.flowId || !claim?.claimToken) return false;
   const record = flows.get(claim.flowId);
   if (!record || record.kind !== "device" || record.status !== "claimed" ||
-  record.claimToken !== claim.claimToken || record.expiresAt <= Date.now()) {
+  !timingSafeCompare(record.claimToken, claim.claimToken) || record.expiresAt <= Date.now()) {
     if (record?.expiresAt <= Date.now()) deleteRecord(record);
     return false;
   }

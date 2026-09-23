@@ -24,6 +24,7 @@ import { OpenCodeZenExecutor } from "./opencode-zen.js";
 import { OpenCodeGoExecutor } from "./opencode-go.js";
 import { GrokWebExecutor } from "./grok-web.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
+import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { PollinationsExecutor } from "./pollinations.js";
@@ -52,6 +53,8 @@ import {
 } from "./unsupported-websession.js";
 import REGISTRY from "../providers/registry/index.js";
 
+const chatGptWebExecutor = new ChatGptWebExecutor();
+
 const executors = {
   antigravity: new AntigravityExecutor(),
   agy: new AntigravityExecutor("agy"),
@@ -69,6 +72,7 @@ const executors = {
   "inner-ai": new InnerAiExecutor(),
   "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
+  "qoder-cn": new QoderExecutor("qoder-cn"),
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),
   kiro: new KiroExecutor(),
@@ -86,6 +90,8 @@ const executors = {
   "opencode-go": new OpenCodeGoExecutor(),
   "grok-web": new GrokWebExecutor(),
   "perplexity-web": new PerplexityWebExecutor(),
+  "chatgpt-web": chatGptWebExecutor,
+  "cgpt-web": chatGptWebExecutor,
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
   "command-code": new CommandCodeExecutor("command-code"),
@@ -192,6 +198,7 @@ export { OpenCodeZenExecutor } from "./opencode-zen.js";
 export { OpenCodeGoExecutor } from "./opencode-go.js";
 export { GrokWebExecutor } from "./grok-web.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
+export { ChatGptWebExecutor } from "./chatgpt-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { PollinationsExecutor } from "./pollinations.js";

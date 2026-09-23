@@ -50,6 +50,11 @@ const PATTERN_THINKING = [
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   // Luna accepts max; ultra falls back to max in applyThinking.
   { pattern: "*gpt-5.6-luna*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+  // GPT-6 Sol accepts ultra (wire-aliased to max); Luna accepts max but not
+  // ultra — same split as their GPT-5.6 namesakes. Neither can disable
+  // thinking, so none/minimal are absent (floored to low in thinkingUnified.js).
+  { pattern: "*gpt-6-sol*", levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
+  { pattern: "*gpt-6-luna*", levels: ["low", "medium", "high", "xhigh", "max"] },
   // Astra supports only its published provider/model effort sets.
   { provider: "openai", pattern: "gpt-6-astra", levels: ["low", "medium", "high", "xhigh", "max"] },
   { provider: "codex", pattern: "gpt-6-astra", levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
@@ -99,6 +104,7 @@ const PATTERN_THINKING = [
   // parameters block. Keep max distinct from xhigh instead of applying the
   // generic OpenAI max→xhigh clamp.
   { provider: "qoder", pattern: "*", levels: L.budgetX },
+  { provider: "qoder-cn", pattern: "*", levels: L.budgetX },
   // Ollama GPT-OSS accepts low/medium/high only; max must clamp to high.
   { provider: "ollama", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
   { provider: "ollama-local", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },

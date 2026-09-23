@@ -6,7 +6,7 @@ import { isString } from "../utils/typeChecks.js";
 const MEDIA_ENTRY_KEYS = [
 "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
 "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
-"searchViaChat", "searchConfig", "fetchConfig",
+"searchViaChat", "searchConfig", "fetchConfig", "systemoneConfig",
 "modelsFetcher", "mediaPriority", "hiddenKinds"];
 
 
@@ -88,7 +88,8 @@ export const MEDIA_PROVIDER_KINDS = [
 { id: "webSearch", label: "Web Search", icon: "travel_explore", endpoint: { method: "POST", path: "/v1/search" } },
 { id: "webFetch", label: "Web Fetch", icon: "language", endpoint: { method: "POST", path: "/v1/web/fetch" } },
 { id: "video", label: "Video", icon: "movie", endpoint: { method: "POST", path: "/v1/video/generations" } },
-{ id: "music", label: "Music", icon: "music_note", endpoint: { method: "POST", path: "/v1/audio/music" } }];
+{ id: "music", label: "Music", icon: "music_note", endpoint: { method: "POST", path: "/v1/audio/music" } },
+{ id: "systemone", label: "System One", icon: "psychology", endpoint: { method: "POST", path: "/v1/systemone" } }];
 
 
 export const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";

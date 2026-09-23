@@ -21,6 +21,7 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "kilocode",
 "codebuddy-cn",
 "qoder",
+"qoder-cn",
 "grok-cli",
 "ghe-copilot",
 "amazon-q",

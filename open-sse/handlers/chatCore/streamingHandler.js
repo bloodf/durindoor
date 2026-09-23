@@ -19,6 +19,7 @@ import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
 import { isFunction } from "../../../src/shared/utils/typeChecks.js";
+import { classifyStreamAbandonReason, isRequestScopedStreamError } from "../../utils/streamLifecycle.js";
 const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
   [FORMATS.CLAUDE]: FORMATS.CLAUDE,
@@ -177,8 +178,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // Disconnect-aware piping owns client cancellation; capture transform state
   // before chatCore's lifecycle callbacks race to close the shared detail row.
   streamController.setInterruptionFinalizer?.((reason) => {
-    const normalizedReason = reason?.message === "stream stall timeout" ? "stall_timeout" :
-    reason?.message ? "stream_error" : reason || "client_disconnected";
+    const normalizedReason = reason?.message ? classifyStreamAbandonReason(reason) :
+    reason || "client_disconnected";
     onStreamAbandoned?.(normalizedReason, transformStream.getStreamSnapshot?.() || null);
   });
   const transformedBody = pipeWithDisconnect(
@@ -291,9 +292,13 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // It is a finished, coherent turn, not a provider fault worth a 7-minute
     // account cooldown.
     const isStreamedClaudeRefusal = summary?.providerResponse?.stop_reason === CLAUDE_STOP.REFUSAL;
+    // Same for an in-stream invalid_request_error / context_length_exceeded:
+    // the request was refused, the account is fine (OmniRoute #14585).
+    const isRequestScopedRefusal = isRequestScopedStreamError(contentObj?.upstreamError);
     if (
     isFunction(onEmptyStream) &&
     !isStreamedClaudeRefusal &&
+    !isRequestScopedRefusal &&
     !contentObj?.content?.trim?.() &&
     !contentObj?.hadToolCalls &&
     !contentObj?.thinking?.trim?.() &&

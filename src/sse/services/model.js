@@ -99,6 +99,7 @@ import {
 "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
+import { filterExposedModels } from "@/shared/utils/modelExposureList.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
 import { applyNoAuthAutoComboGate } from "open-sse/services/combo.js";
 import { NOAUTH_PROVIDERS } from "open-sse/config/providers.js";
@@ -347,13 +348,20 @@ function buildDisabledComboMemberMatcher(disabledByProvider, aliases, nodes) {
   };
 }
 
-export async function getComboModels(modelStr, hidePaidModels = false) {
+export async function getComboModels(modelStr, hidePaidModels = false, exposureSettings = null) {
   if (isAutoComboId(modelStr)) {
     const family = familyOfAutoId(modelStr);
     const catalog = await getAutoComboCatalog();
     // F-4 #6495: filter paid auto-combo members through the same toggle as saved
     // combos so chat/image/TTS routing honors `hidePaidModels` uniformly.
-    return filterPaidModels(resolveAutoCombo(family, catalog), hidePaidModels === true);
+    // OmniRoute #11481 (port(omniroute)): mirror the catalog's model exposure
+    // allow/deny list into the auto/* candidate pool — the same trap #6495
+    // fixed once for hidePaidModels (a denied model stayed reachable through
+    // an auto combo even after being hidden from GET /v1/models).
+    return filterExposedModels(
+      filterPaidModels(resolveAutoCombo(family, catalog), hidePaidModels === true),
+      exposureSettings
+    );
   }
   // Resolve a combo by its stored name only. A request containing a slash is
   // a real provider/model call — slash-basename lookup previously shadowed

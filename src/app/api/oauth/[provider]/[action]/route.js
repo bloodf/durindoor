@@ -43,6 +43,7 @@ import {
 "@/lib/oauth/utils/server";
 import { createProviderConnection } from "@/models";
 import { isFunction, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
+import { timingSafeCompare } from "../../../../../shared/utils/timingSafeCompare.js";
 
 const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "github",
@@ -51,6 +52,7 @@ const NO_PKCE_DEVICE_PROVIDERS = new Set([
 "kilocode",
 "codebuddy-cn",
 "qoder",
+"qoder-cn",
 "grok-cli",
 "ghe-copilot",
 "amazon-q",
@@ -162,7 +164,7 @@ function claimBoundOAuthFlow({ flowId, state = null, provider, kind }) {
       "OAuth session expired, was cancelled, or was already used"
     );
   }
-  if (state && current.state !== state) {
+  if (state && !timingSafeCompare(current.state, state)) {
     throw oauthRouteError(
       "OAUTH_STATE_MISMATCH",
       "OAuth state did not match this flow"
@@ -459,7 +461,7 @@ async function pollDeviceCode(provider, input) {
     } else if (EXTRA_DATA_POLL_PROVIDERS.has(provider)) {
       result = await callOAuthUpstream(() =>
       pollForToken(provider, deviceCode, null, extraData, resolvedProxy.proxyOptions));
-    } else if (provider === "qoder") {
+    } else if (provider === "qoder" || provider === "qoder-cn") {
       if (!codeVerifier) {
         throw oauthRouteError(
           "OAUTH_VALIDATION_FAILED",
@@ -529,7 +531,7 @@ async function startFixedPortProxy(provider, input) {
     let flow = getOAuthFlow(selector);
     if (!flow && selector.flowId) {
       const flowById = getOAuthFlow({ flowId: selector.flowId, provider });
-      if (flowById && selector.state && flowById.state !== selector.state) {
+      if (flowById && selector.state && !timingSafeCompare(flowById.state, selector.state)) {
         throw oauthRouteError("OAUTH_STATE_MISMATCH", "OAuth state did not match this flow");
       }
     }
@@ -589,7 +591,7 @@ async function fixedPortStatus(provider, input) {
   if (!flow) {
     const flowById = getOAuthFlow({ flowId: requestedFlowId, provider });
     const requestedState = isString(input.state) ? input.state.trim() : "";
-    if (flowById && requestedState && flowById.state !== requestedState) {
+    if (flowById && requestedState && !timingSafeCompare(flowById.state, requestedState)) {
       throw oauthRouteError("OAUTH_STATE_MISMATCH", "OAuth state did not match this flow");
     }
   }

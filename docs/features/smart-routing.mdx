@@ -47,6 +47,12 @@ If the client asked for SSE and the provider cannot stream, chatCore converts th
 
 Malformed JSON or an invalid `messages` / `model` body is rejected with HTTP 400 before auth. Missing credentials return an auth error. A 429 or quota skip locks that account for a bounded window and tries the next connection or combo member. Client-shaped errors are not retried on unrelated providers.
 
+A direct (non-combo) stream is held until its first content frame, for up to `STREAM_EARLY_EOF_PEEK_MS` (default 10000). If it closes or errors before any content, the request moves once to another connection of the same provider. Nothing has reached the client at that point, so the retry cannot duplicate output. Once content has started, a later failure is never retried. With no sibling left, the client gets the original stream unchanged. The hop does not cool the first account down by itself. A pinned connection (`x-connection-id`) never hops.
+
+An in-stream `invalid_request_error`, `context_length_exceeded`, or `context_window_exceeded` belongs to the request, not the account. Every connection would refuse it the same way, so it skips the sibling hop, never triggers the empty-stream account cooldown, and does not lower a model's smart-scoring health. A combo can still fall through to a different model.
+
+When a stream is cut after it started, the request log records why: `stall_timeout` (no upstream bytes inside the stall window), `ttft_timeout` (no first byte), `stream_terminated` (the upstream socket was dropped), or `stream_error` for anything else.
+
 `BACKOFF_BASE_MS` (default 2000) and `BACKOFF_MAX_MS` (default 300000) bound lock delays. See [Environment](../reference/environment.mdx).
 
 ## Worked example

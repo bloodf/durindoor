@@ -3,6 +3,7 @@
 import { getCapabilitiesForModel } from "./capabilities.js";
 import { matchPattern } from "./pricing.js";
 import { PROVIDERS } from "./index.js";
+import { isKiroFamilyProvider } from "./models/kiroVariants.js";
 
 // Shared level sets (deduped) — verified against provider docs + wire in thinkingUnified.applyFormat.
 const L = {
@@ -143,6 +144,6 @@ export function getThinkingLevelsFromCapabilities(caps, provider = null, model =
     ? L.hiMax
     : FORMAT_LEVELS[format] || L.base);
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
-  if (provider === "kiro" || provider === "kr") levels = levels.filter((l) => l !== "ultra" && l !== "max");
+  if (isKiroFamilyProvider(provider)) levels = levels.filter((l) => l !== "ultra" && l !== "max");
   return levels;
 }

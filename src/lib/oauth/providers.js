@@ -47,6 +47,8 @@ import {
 "./providerHelpers";
 import { isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
+import gheCopilot from "./gheCopilotProvider.js";
+import museCode from "./museCodeProvider.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
@@ -1680,8 +1682,14 @@ const PROVIDERS = {
       };
     }
   },
-  orcarouter
+  orcarouter,
+  "ghe-copilot": gheCopilot,
+  "muse-code": museCode
 };
+
+// Amazon Q Developer signs in exactly like Kiro (AWS Builder ID / IAM Identity
+// Center device flow); only the stored provider id differs.
+PROVIDERS["amazon-q"] = PROVIDERS.kiro;
 
 function isCloudflareHtmlBadRequest(status, body) {
   return status === 400 && /<html/i.test(body || "") && /cloudflare/i.test(body || "");
@@ -1790,13 +1798,13 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       // Call postExchange to get additional data (copilotToken, userInfo, etc.)
       let extra = null;
       if (provider.postExchange) {
-        extra = await provider.postExchange(result.data, proxyOptions);
+        extra = await provider.postExchange(result.data, proxyOptions, extraData);
       }
       const tokens = provider.mapTokens(result.data, extra);
       // Kiro IDC/Builder-ID tokens lack profileArn; resolve it to avoid 403.
       // Use the same region the token was issued in so IDC accounts in
       // eu-west-1 / ap-southeast-1 hit their regional CodeWhisperer endpoint.
-      if (providerName === "kiro" && !tokens.providerSpecificData?.profileArn) {
+      if ((providerName === "kiro" || providerName === "amazon-q") && !tokens.providerSpecificData?.profileArn) {
         const region = tokens.providerSpecificData?.region || "us-east-1";
         const profileArn = await fetchKiroProfileArn(tokens.accessToken, region, proxyOptions);
         if (!profileArn) {

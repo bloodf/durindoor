@@ -32,6 +32,7 @@ import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
+import { normalizeGheUrl } from "open-sse/config/gheCopilot.js";
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
@@ -94,6 +95,18 @@ export const OAUTH_TEST_CONFIG = {
     authPrefix: "Bearer ",
     extraHeaders: { "User-Agent": "9Router", "Accept": "application/vnd.github+json" }
   },
+  "ghe-copilot": {
+    // Probe the enterprise user API on the connection's own GHE host.
+    buildUrl: (_token, connection) => {
+      const gheUrl = normalizeGheUrl(connection.providerSpecificData?.gheUrl);
+      if (!gheUrl) throw new Error("GitHub Enterprise URL missing; reconnect this account");
+      return `${gheUrl}/api/v3/user`;
+    },
+    method: "GET",
+    authHeader: "Authorization",
+    authPrefix: "Bearer ",
+    extraHeaders: { "User-Agent": "DurinDoor", "Accept": "application/vnd.github+json" }
+  },
   iflow: {
     // iFlow getUserInfo requires accessToken as query param, not header
     buildUrl: (token) => `https://iflow.cn/api/oauth/getUserInfo?accessToken=${encodeURIComponent(token)}`,
@@ -102,6 +115,10 @@ export const OAUTH_TEST_CONFIG = {
   },
   qwen: { checkExpiry: true, refreshable: true },
   kiro: { checkExpiry: true, refreshable: true },
+  "amazon-q": { checkExpiry: true, refreshable: true },
+  // A minted Muse key has no expiry; presence is the check, and a dca-only
+  // login is reminted on first use.
+  "muse-code": { tokenExists: true },
   qoder: {
     // Test by hitting Qoder's userinfo endpoint with the device token.
     // refreshable: false because the device-flow refresh endpoint returns
@@ -261,7 +278,7 @@ async function refreshOAuthToken(connection, effectiveProxy = null) {
       return { accessToken: data.access_token, expiresIn: data.expires_in, refreshToken: data.refresh_token || refreshToken };
     }
 
-    if (provider === "kiro") {
+    if (provider === "kiro" || provider === "amazon-q") {
       const psd = connection.providerSpecificData || {};
       const clientId = psd.clientId || connection.clientId;
       const clientSecret = psd.clientSecret || connection.clientSecret;

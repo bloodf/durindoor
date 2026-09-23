@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, GheCopilotAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
 import Select from "@/shared/ui/components/Select.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
@@ -44,6 +44,15 @@ import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from ".
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
+
+// Bounds every fetch the initial page load awaits so a stuck backend call
+// (e.g. a hung OAuth credential refresh) cannot stall the loading spinner
+// forever — the page still renders, with that piece of data left blank.
+const FETCH_CONNECTIONS_TIMEOUT_MS = 20000;
+// Per Codex connection: refreshAndUpdateCredentials already caps itself at 15s
+// server-side, so give the usage fetch room for that plus its own network call
+// without inheriting an unbounded wait when the server-side fetch has none.
+const CODEX_USAGE_FETCH_TIMEOUT_MS = 20000;
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
@@ -424,10 +433,10 @@ export default function ProviderDetailPage() {
     currentProviderIdRef.current === requestProviderId;
     try {
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
-      fetch("/api/providers", { cache: "no-store" }),
-      fetch("/api/provider-nodes", { cache: "no-store" }),
-      fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
-      fetch("/api/settings", { cache: "no-store" })]
+      fetch("/api/providers", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      fetch("/api/provider-nodes", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      fetch("/api/settings", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) })]
       );
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
@@ -446,11 +455,17 @@ export default function ProviderDetailPage() {
         // Computed BEFORE any setState so the whole group lands atomically after
         // one staleness check: setting rows first and bailing afterwards would
         // leave a switched-away provider's connections rendered.
+        // Each connection's usage read is independently timed out so a stuck
+        // credential refresh on ONE account (durindoor#951 — refresh can hang
+        // past the server's own 15s budget when the usage fetch that follows
+        // it has no bound of its own) cannot hold the whole page's spinner.
         let plans = {};
         if (providerId === "codex" && filtered.length > 0) {
           const entries = await Promise.all(filtered.map(async (connection) => {
             try {
-              const usageRes = await fetch(`/api/usage/${connection.id}`);
+              const usageRes = await fetch(`/api/usage/${connection.id}`, {
+                signal: AbortSignal.timeout(CODEX_USAGE_FETCH_TIMEOUT_MS)
+              });
               if (!usageRes.ok) return null;
               return toCodexPlanEntry(connection.id, await usageRes.json());
             } catch {
@@ -505,7 +520,10 @@ export default function ProviderDetailPage() {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             await new Promise((resolve) => setTimeout(resolve, 150));
             if (!isCurrentRequest()) return;
-            const retryRes = await fetch("/api/provider-nodes", { cache: "no-store" });
+            const retryRes = await fetch("/api/provider-nodes", {
+              cache: "no-store",
+              signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS)
+            });
             if (!retryRes.ok) continue;
             const retryData = await retryRes.json();
             node = (retryData.nodes || []).find((entry) => entry.id === providerId) || null;
@@ -2237,9 +2255,10 @@ export default function ProviderDetailPage() {
       {bulkActionModal}
 
       {/* Modals */}
-      {providerId === "kiro" ?
+      {providerId === "kiro" || providerId === "amazon-q" ?
       <KiroOAuthWrapper
         isOpen={showOAuthModal}
+        provider={providerId}
         providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)}
@@ -2269,6 +2288,15 @@ export default function ProviderDetailPage() {
       <GitLabAuthModal
         isOpen={showOAuthModal}
         provider={providerId}
+        providerInfo={providerInfo}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady} /> :
+
+      providerId === "ghe-copilot" ?
+      <GheCopilotAuthModal
+        isOpen={showOAuthModal}
         providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)}

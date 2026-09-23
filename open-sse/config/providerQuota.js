@@ -4,8 +4,19 @@
  * This module is intentionally side-effect free so offline tests and quota
  * workers never have to import the generated provider registry.
  */
-import { isObject } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { KIMI_CODING_USAGE_URL } from "../providers/shared.js";
+
+// Mirrors src/shared/constants/providers.js's OPENAI_COMPATIBLE_PREFIX /
+// ANTHROPIC_COMPATIBLE_PREFIX. Not imported from there: that module pulls in
+// the full generated provider registry, which this file's own doc comment
+// promises never to do (offline tests and quota workers depend on it staying
+// side-effect free).
+const OPENAI_COMPATIBLE_PREFIX = "openai-compatible-";
+const ANTHROPIC_COMPATIBLE_PREFIX = "anthropic-compatible-";
+function isCompatibleConnectionProvider(provider) {
+  return isString(provider) && (provider.startsWith(OPENAI_COMPATIBLE_PREFIX) || provider.startsWith(ANTHROPIC_COMPATIBLE_PREFIX));
+}
 
 function deepFreeze(value) {
   if (!value || !isObject(value) || Object.isFrozen(value)) return value;
@@ -267,5 +278,15 @@ export const PROVIDER_QUOTA_UNSUPPORTED = deepFreeze({
 });
 
 export function getProviderQuotaConfig(provider) {
+  if (isCompatibleConnectionProvider(provider)) {
+    // Compatible connections have no fixed endpoint: the operator declares one
+    // per connection (providerSpecificData.quotaEndpoint), so the config is
+    // built per lookup instead of coming from the static map above.
+    return deepFreeze({
+      adapter: "openaiCompatible",
+      sourceId: `${provider}:quota-endpoint:v1`,
+      runtimeScopes: { cooldown: "model", exhausted: "account" }
+    });
+  }
   return PROVIDER_QUOTA_CONFIG[provider] || null;
 }

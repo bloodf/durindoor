@@ -38,6 +38,13 @@ export default {
     },
   ],
   models: [
+    // Cloud API (sk- key). Upstream's dual-route account-service transport for
+    // these v2.6 ids needs Desktop OAuth/session plumbing this fork doesn't have
+    // yet (no xiaomi-mimo executor, no account-service cookie exchange) — the
+    // cloud endpoint alone still serves them, so only that route is wired here.
+    { id: "mimo-v2.6-pro", name: "MiMo V2.6 Pro" },
+    { id: "mimo-v2.6-flash", name: "MiMo V2.6 Flash" },
+    { id: "mimo-v2.6-pro-ultraspeed", name: "MiMo V2.6 Pro UltraSpeed" },
     { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro" },
     { id: "mimo-v2.5", name: "MiMo V2.5" },
     { id: "mimo-v2-omni", name: "MiMo V2 Omni" },

@@ -5,7 +5,13 @@ description: Publish and run ghcr.io/bloodf/durindoor with Compose, volumes, env
 
 Image: `ghcr.io/bloodf/durindoor`. Builds are linux/amd64 and linux/arm64. Node 20.20.2 is already in the image. Persist `DATA_DIR`.
 
-Tags come from `.github/workflows/docker-publish.yml`. A `v*` git tag (or a manual `workflow_dispatch`) builds and pushes `ghcr.io/bloodf/durindoor`. Semver tags use `{{version}}` (tag `v4.3.0` publishes `4.3.0`). `latest` is added only when that tag is on the default branch. Pin a version tag in production. `latest` moves.
+Tags come from `.github/workflows/docker-publish.yml`. A Docker-safe semver git tag `vX.Y.Z` (or `vX.Y.Z-rc.1`) builds `linux/amd64` and `linux/arm64` on native runners, health-checks each platform image, verifies the resulting manifest and `/api/health`, then publishes `ghcr.io/bloodf/durindoor:X.Y.Z`. The `v` prefix is only for the git tag; image tags omit it. A tag push on the default branch promotes `latest`; a prerelease tag publishes only its numbered image unless `promote_latest` is set on a manual run. The git tag must match both `package.json` and `cli/package.json` versions exactly, or the workflow fails before any build starts. Pin a version tag in production; `latest` moves, and numbered tags can be replaced by a manual republish.
+
+To republish an existing tag, run the workflow manually (`workflow_dispatch`) with `release_tag` set to the exact tag, e.g. `v4.7.0`. `promote_latest` defaults to `false` so a manual run only touches the numbered tag unless you opt in. For an immutable reference, pin the image digest instead of a tag:
+
+```bash
+docker pull ghcr.io/bloodf/durindoor@sha256:<verified-digest>
+```
 
 <Callout type="warn">
 Without a bind mount or named volume, SQLite lives in the container writable layer and disappears when the container is removed. Mount something at `/app/data` and set `DATA_DIR=/app/data`.
@@ -91,6 +97,8 @@ The image entrypoint `chown`s `/app/data` to `node` then `exec`s `node custom-se
 ## Image layout
 
 The runtime stage copies `public/`, `.next/static/`, the Next standalone tree, `custom-server.js`, `open-sse/`, and the MITM sources the tracer drops. If you fork the Dockerfile, keep those `COPY` lines or the dashboard 404s hashed chunks. Confirm a source build with `npm run verify:static` before you change the image; see [Reverse proxy and static assets](./reverse-proxy-and-static-assets.mdx).
+
+The Dockerfile uses the official Alpine mirror (`dl-cdn.alpinelinux.org`) by default in both the builder and runner stages. Override it with `--build-arg ALPINE_MIRROR=<host>` for a local build on a network that cannot reach it; the CI workflow reads the same override from the optional `ALPINE_MIRROR` repository variable. `--build-arg APP_VERSION=<version>` sets the `org.opencontainers.image.version` label; the release workflow passes the validated tag version automatically.
 
 ## Health and logs
 

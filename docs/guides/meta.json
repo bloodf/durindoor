@@ -1,6 +1,6 @@
 {
   "title": "Guides",
-  "description": "API keys, model aliases, SDK examples, usage monitoring, and automation.",
+  "description": "API keys, model aliases, SDK examples, usage monitoring, quota, and automation.",
   "icon": "BookOpen",
-  "pages": ["index", "api-keys", "models-and-aliases", "sdk-examples", "monitoring-usage", "automating-durindoor"]
+  "pages": ["index", "api-keys", "models-and-aliases", "sdk-examples", "monitoring-usage", "usage-and-quota", "automating-durindoor"]
 }

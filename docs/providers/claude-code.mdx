@@ -1,0 +1,83 @@
+---
+title: Claude Code
+description: Connect a Claude subscription over OAuth, the Claude Code version DurinDoor presents and how to override it, forwarded betas, and the 5-hour and weekly quota.
+---
+
+Claude Code (`claude`, alias `cc`) uses a Claude.ai subscription through Anthropic's OAuth login, the same one the `claude` CLI uses. It is different from the `anthropic` provider, which takes a paid API key. To point the Claude Code CLI at DurinDoor as a client, see [Claude Code integration](../integrations/claude-code.mdx).
+
+The provider page shows a risk notice: this is a subscription session that was not licensed for router use, and Anthropic can restrict the account. Use an account you can afford to lose.
+
+## Connect
+
+<Steps>
+<Step>
+Open **Providers**, then **Claude Code**, then Connect.
+</Step>
+<Step>
+Sign in at claude.ai and approve access. DurinDoor asks for `org:create_api_key user:profile user:inference` with a PKCE challenge.
+</Step>
+<Step>
+The redirect goes to `http://localhost:<dashboard port>/callback`. On a loopback host the popup finishes by itself. From any other host the modal switches to a paste step: copy the full callback URL and paste it. A pasted `code#state` value also works. A state that does not match the one DurinDoor issued is rejected.
+</Step>
+</Steps>
+
+After the exchange DurinDoor reads your profile for the email and plan. Importing `~/.claude/.credentials.json` is not supported; sign in through the dashboard.
+
+Access tokens refresh four hours before expiry, both on request and in the background refresh pass. A refresh that fails with `invalid_grant` needs a new login.
+
+## Claude Code CLI version
+
+DurinDoor does not check which Claude Code CLI you have installed. It does present itself to Anthropic as a specific Claude Code release. The pin is `2.1.280` (`DEFAULT_CLAUDE_CLI_VERSION` in `open-sse/providers/shared.js`), the first release Anthropic accepts for Claude Opus 5.5. Requests to Anthropic carry:
+
+- `User-Agent: claude-cli/2.1.280 (external, sdk-cli)`
+- the beta flags, SDK and runtime headers from the captured Claude Code fingerprint
+- a billing header with `cc_version=2.1.280`
+
+When Anthropic starts gating a model on a newer release before DurinDoor ships one, set `CLAUDE_CODE_CLIENT_VERSION` and restart:
+
+```bash
+export CLAUDE_CODE_CLIENT_VERSION="2.1.300"
+```
+
+The value is read once at startup and replaces the version in both the user agent and the billing header. Anything that is not a short header-safe token (`[A-Za-z0-9][A-Za-z0-9._-]{0,31}`) is ignored and the pin is used. See [Environment variables](../reference/environment.mdx).
+
+There is one catch. When a real Claude Code client sends a request through DurinDoor, DurinDoor keeps that client's identity headers (user agent, SDK and runtime versions, session id) in memory and uses them for later `cc/` requests in place of the pinned values. Beta flags from both sets are merged. That cache lasts until the process restarts and always holds the most recent client.
+
+So an old `claude` CLI pointed at DurinDoor makes every `cc/` request look like that old version, and Anthropic rejects Claude Opus 5.5 from releases older than 2.1.280. Keep the Claude Code CLI you route through DurinDoor at `2.1.280` or newer:
+
+```bash
+claude --version
+npm install -g @anthropic-ai/claude-code@latest
+```
+
+If you updated the CLI and still see old-version behaviour, restart DurinDoor to clear the cached headers.
+
+### Betas passed through from the client
+
+DurinDoor builds the outbound `anthropic-beta` header itself. Three flags from the incoming request are always added to it when the client sends them, because the body fields they unlock return 400 without them:
+
+| Beta | Needed for |
+| --- | --- |
+| `thinking-binding-controls-2026-08-01` | `thinking.block_binding` on Fable 5.1 and Opus 5.5 |
+| `thinking-display-updates-2026-08-18` | `thinking.display` on Fable 5.1 and Opus 5.5 |
+| `dangerous-tool-use-2026-09-03` | the `safeguards` field Claude Code 2.1.278 and later sends |
+
+The same allowlist applies to Claude models on Anthropic-compatible nodes.
+
+## What DurinDoor changes on the way out
+
+Requests go to `https://api.anthropic.com/v1/messages?beta=true` with the OAuth token as Bearer. DurinDoor adds the Claude Code system line (`You are Claude Code, Anthropic's official CLI for Claude.`) as the first system block. With an OAuth token it also renames your client's tools with a suffix, adds decoy Claude Code tool definitions, and sets a `metadata.user_id`. Responses map tool names back, so clients see their own names.
+
+## Models
+
+Send `cc/<model>`, for example `cc/claude-sonnet-5`. `cc/claude-opus-5-5` (Claude Opus 5.5) is the newest Opus and the default Opus model the [Claude Code integration](../integrations/claude-code.mdx) card writes. `GET /v1/models` shows the current set.
+
+## Quota
+
+The [Quota Tracker](../features/quota-tracking.mdx) reads Anthropic's OAuth usage endpoint and shows:
+
+- `session (5h)`, the rolling five-hour window
+- `weekly (7d)`, the seven-day window
+- per-model weekly rows when Anthropic reports them
+
+Preflight skips an account whose window is exhausted. Auto-ping can restart the five-hour window on a schedule; see [Quota tracking](../features/quota-tracking.mdx#auto-ping).

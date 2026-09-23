@@ -25,7 +25,9 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "cookie",
 "QWEN_CLOUD_COOKIE",
 // Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
-"sessionToken"]
+"sessionToken",
+// Xiaomi account passToken (xiaomi-mimo session login); a long-lived account credential.
+"mimoPassToken"]
 );
 
 // Port of OmniRoute #6562/#6626: `priority` auto-increments unbounded on

@@ -6,6 +6,7 @@ import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/
 import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
+import HostAwareAddApiKeyModal from "../[id]/AddApiKeyModal";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -504,12 +505,23 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         }
       </Card>
 
+      {/* Laya needs a server URL and an optional key; the provider page's modal handles both. */}
+      {providerId === "laya" ?
+      <HostAwareAddApiKeyModal
+        isOpen={showAddModal}
+        provider={providerId}
+        providerName="Laya (local)"
+        proxyPools={proxyPools}
+        onSave={handleSaveApiKey}
+        onClose={() => setShowAddModal(false)} /> :
+
       <AddApiKeyModal
         isOpen={showAddModal}
         provider={providerId}
         proxyPools={proxyPools}
         onSave={handleSaveApiKey}
         onClose={() => setShowAddModal(false)} />
+      }
       
       <EditConnectionModal
         isOpen={showEditModal}

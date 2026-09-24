@@ -57,6 +57,21 @@ describe("keyless providers with a saved server URL", () => {
     expect(credentials.providerSpecificData.baseUrl).toBe(baseUrl);
   });
 
+  it("passes a saved Firecrawl row's key and custom headers along with its host", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{
+      id: "c1",
+      provider: "firecrawl_custom",
+      isActive: true,
+      apiKey: "fc-secret",
+      firecrawlHeaders: { "CF-Access-Client-Id": "abc" },
+      providerSpecificData: { baseUrl: "http://192.168.1.30:3002" }
+    }]);
+    const credentials = await getNoAuthProviderCredentials("firecrawl_custom");
+    expect(credentials.apiKey).toBe("fc-secret");
+    expect(credentials.firecrawlHeaders).toEqual({ "CF-Access-Client-Id": "abc" });
+    expect(credentials.providerSpecificData.baseUrl).toBe("http://192.168.1.30:3002");
+  });
+
   it("keeps the default host when no connection is saved", async () => {
     mocks.getProviderConnections.mockResolvedValue([]);
     expect(await getNoAuthProviderCredentials("local-whisper")).toEqual({});

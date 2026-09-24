@@ -189,9 +189,10 @@ const affinityCleanup = setInterval(() => {
 if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
-// Keyless self-hosted servers whose connection row carries the server URL.
-// Their handler no-auth path must use a saved row, or requests go to the
-// default host instead of the one the user configured.
+// Keyless self-hosted servers whose connection row carries the server URL (and,
+// for Firecrawl, an optional key and headers). With a saved row, the handler
+// no-auth path takes normal connection selection, the same as a scoped key, so
+// requests reach the configured host with the row's full credentials.
 const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper", "firecrawl_custom"]);
 
 // Canonical roster of providers eligible for the public no-auth fallback when
@@ -614,10 +615,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
 
     if (isNoAuthProvider) {
-      // Stored-data no-auth providers (e.g., mimocode) and self-hosted servers
-      // whose row holds the host use saved connections first. Once rows exist,
-      // they never fall back to the public no-auth credential.
-      if ((NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) || hasSavedHost) && connections.length > 0) {
+      // Stored-data no-auth providers (e.g., mimocode) use saved connections first.
+      // Once rows exist, they never fall back to the public no-auth credential.
+      if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
         const storedEligibleBeforeRpm = connections.filter(
           (c) => !excludeSet.has(c.id) &&
           !requestedModelLockActive(c, model, boundedModel, selectionNow) &&

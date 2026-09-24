@@ -102,6 +102,18 @@ describe("resolveDecisionBackend", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("never selects a Laya connection pointing at a blocked host", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://169.254.169.254" } }]);
+    expect(await resolveDecisionBackend({ fetchImpl: vi.fn() })).toBeNull();
+  });
+
+  it("sends classifier calls through the outbound guard", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://127.0.0.1:8001" } }]);
+    const backend = await resolveDecisionBackend({ fetchImpl: vi.fn() });
+    expect(typeof backend.fetchImpl).toBe("function");
+    await expect(backend.fetchImpl("http://169.254.169.254/v1/systemone", { method: "POST" })).rejects.toThrow();
+  });
+
   it("prefers the user's own Laya connection over a detected local one", async () => {
     mocks.getProviderConnections.mockResolvedValue([{ apiKey: "k", providerSpecificData: { baseUrl: "http://10.0.0.9:8000" } }]);
     const fetchImpl = vi.fn();

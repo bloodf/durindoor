@@ -8,6 +8,7 @@ import {
   resolveLayaCheckpoint
 } from "open-sse/config/laya.js";
 import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
+import { assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
 /**
  * Classifier backend for smart/task combo routing, in order:
@@ -30,10 +31,16 @@ export function clearLayaDetection() {
   detected = null;
 }
 
+// The classifier POSTs the user's turn to this host, so it goes through the
+// same outbound guard as provider requests, including the resolved-address
+// check on the socket.
+const guardedFetch = async (url, init) => guardedProbeFetch(url, init);
+
 function layaBackend(baseUrl, connection = null) {
   return {
     source: "laya",
     baseUrl,
+    fetchImpl: guardedFetch,
     apiKey: connection?.apiKey || null,
     apiKeyOptional: true,
     model: resolveLayaCheckpoint(connection),
@@ -79,6 +86,14 @@ function localLayaUsable(fetchImpl, now) {
  */
 export async function resolveDecisionBackend({ fetchImpl = (...args) => fetch(...args), now = Date.now() } = {}) {
   const [connection] = await getProviderConnections({ provider: LAYA_PROVIDER_ID, isActive: true });
-  if (connection) return layaBackend(resolveLayaHost(connection), connection);
+  if (connection) {
+    const host = resolveLayaHost(connection);
+    try {
+      assertOutboundUrlAllowed(host);
+    } catch {
+      return null; // a blocked host (e.g. cloud metadata) never gets the user's text; Jev runs instead
+    }
+    return layaBackend(host, connection);
+  }
   return (await localLayaUsable(fetchImpl, now)) ? layaBackend(LAYA_DEFAULT_HOST) : null;
 }

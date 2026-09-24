@@ -605,11 +605,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     throwIfAborted(signal);
 
     const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true || options?.noAuthPath === true;
-    const publicFallbackAllowed = !scopeRestricted && scopedHasOverlap && (options?.noAuthPath === true || providerAllowsPublicNoAuthFallback(providerId)) && !excludeSet.has("noauth");
+    const hasSavedHost = NO_AUTH_CONNECTION_HOST_PROVIDERS.has(providerId) && connections.length > 0;
+    // A saved host row that is gated or rate-limited must surface that state,
+    // never fall back to a credential that calls the default host.
+    const publicFallbackAllowed = !hasSavedHost && !scopeRestricted && scopedHasOverlap && (options?.noAuthPath === true || providerAllowsPublicNoAuthFallback(providerId)) && !excludeSet.has("noauth");
     // Explicit handler no-auth paths historically ignored saved connections.
     // Preserve that zero-relation behavior; any API-key/combo restriction opts
     // the caller into selecting a stored eligible connection or denying.
-    const hasSavedHost = NO_AUTH_CONNECTION_HOST_PROVIDERS.has(providerId) && connections.length > 0;
     if (options?.noAuthPath === true && !scopeRestricted && !hasSavedHost) {
       return buildOptionalNoAuthCredential();
     }

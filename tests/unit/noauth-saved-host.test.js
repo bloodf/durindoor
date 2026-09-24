@@ -72,6 +72,18 @@ describe("keyless providers with a saved server URL", () => {
     expect(credentials.providerSpecificData.baseUrl).toBe("http://192.168.1.30:3002");
   });
 
+  it("never falls back to the default host when the saved row is unavailable", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{
+      id: "c1",
+      provider: "local-whisper",
+      isActive: true,
+      providerSpecificData: { baseUrl: "http://192.168.1.20:11500" }
+    }]);
+    const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
+    const credentials = await getProviderCredentials("local-whisper", new Set(["c1"]), null, { noAuthPath: true });
+    expect(credentials).toBeNull();
+  });
+
   it("keeps the default host when no connection is saved", async () => {
     mocks.getProviderConnections.mockResolvedValue([]);
     expect(await getNoAuthProviderCredentials("local-whisper")).toEqual({});

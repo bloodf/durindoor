@@ -16,10 +16,10 @@ import { isString } from "@/shared/utils/typeChecks.js";
  * `local-device` counts only when the OS voice list loads. Keyless providers
  * with no server URL (edge-tts, google-tts libraries) count as working.
  *
- * Which URL: an unrestricted request carries no saved connection
- * (buildOptionalNoAuthCredential), so Local Whisper calls its default host and
- * self-hosted Firecrawl the dashboard setting, then FIRECRAWL_BASE_URL, then its
- * default. For an API key scoped to provider accounts, credential selection is
+ * Which URL: an unrestricted Local Whisper request uses its first active
+ * connection (the default host when none is saved); an unrestricted self-hosted
+ * Firecrawl request carries no saved connection, so it calls the dashboard
+ * setting, then FIRECRAWL_BASE_URL, then its default. For an API key scoped to provider accounts, credential selection is
  * fill-first by priority, so the first active connection that key may use is
  * the one probed. Results are cached per URL for PROBE_TTL_MS.
  */
@@ -44,7 +44,8 @@ function registryServiceUrl(provider) {
 }
 
 /**
- * The URL this request would call. Unscoped: the default URL. A key scoped to
+ * The URL this request would call. Unscoped: the first active Local Whisper
+ * connection's host (the default host when none), or Firecrawl's setting/default. A key scoped to
  * provider accounts: the host of its first allowed active connection, which is
  * the one credential selection picks (getProviderConnections sorts by priority).
  * An empty list means the key cannot use this provider.
@@ -65,8 +66,13 @@ async function requestUrlsFor(providerId, apiKeyId) {
     }
   };
   const allowedIds = apiKeyId ? await getApiKeyProviderConnectionIds(apiKeyId).catch(() => []) : [];
-  if (allowedIds.length === 0) return [resolve(null)].filter(Boolean);
   const connections = await getProviderConnections({ provider: providerId, isActive: true }).catch(() => []);
+  // Unscoped Local Whisper requests use the first active connection when one
+  // exists (auth.js NO_AUTH_CONNECTION_HOST_PROVIDERS); Firecrawl stays on its setting.
+  if (allowedIds.length === 0) {
+    const saved = providerId === "local-whisper" ? connections[0] : null;
+    return [resolve(saved || null)].filter(Boolean);
+  }
   // ponytail: ignores peak-hour/RPD gating that could skip the first row; mirror auth.js selection if that matters.
   const selected = connections.find((c) => allowedIds.includes(c.id));
   return selected ? [resolve(selected)].filter(Boolean) : [];

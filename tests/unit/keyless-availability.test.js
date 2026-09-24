@@ -45,8 +45,13 @@ describe("isKeylessProviderWorking", () => {
     expect(await isKeylessProviderWorking("coqui", { fetchImpl: down })).toBe(false);
   });
 
-  it("probes the default host for an unscoped request, ignoring saved connections", async () => {
+  it("probes the saved Local Whisper host for an unscoped request, the default host when none is saved", async () => {
     mocks.getProviderConnections.mockResolvedValue([{ id: "c1", providerSpecificData: { baseUrl: "http://192.168.1.20:9000" } }]);
+    await isKeylessProviderWorking("local-whisper", { fetchImpl: up });
+    expect(up.mock.calls.map((c) => c[0])).toEqual(["http://192.168.1.20:9000"]);
+    clearKeylessAvailabilityCache();
+    up.mockClear();
+    mocks.getProviderConnections.mockResolvedValue([]);
     await isKeylessProviderWorking("local-whisper", { fetchImpl: up });
     expect(up.mock.calls.map((c) => c[0])).toEqual(["http://127.0.0.1:11500"]);
   });

@@ -24,7 +24,7 @@ DurinDoor does not ship a default model. A route can only hold models that `GET 
 
 - It comes from a provider with an active connection, or from an enabled keyless provider that is installed and working:
   - A keyless provider that calls a server counts only if the URL this request would use answers within 1.5 seconds. That covers Local Whisper, Coqui, Tortoise, SearXNG, self-hosted Firecrawl and veoaifree-web.
-  - For an unscoped request, Local Whisper uses its default host. Self-hosted Firecrawl uses the dashboard setting, then `FIRECRAWL_BASE_URL`, then its default. For an API key scoped to provider accounts, the provider counts if the first connection that key may use (by priority) answers.
+  - For an unscoped request, Local Whisper uses its first active connection's host, or its default host when none is saved. Self-hosted Firecrawl uses the dashboard setting, then `FIRECRAWL_BASE_URL`, then its default. For an API key scoped to provider accounts, the provider counts if the first connection that key may use (by priority) answers.
   - The check uses the same outbound URL guard as provider requests, so a blocked host counts as not working and is never contacted.
   - `local-device` counts only when the OS voice list loads (macOS `say` or Windows SAPI).
   - Keyless libraries with no server (edge-tts, google-tts) count as working.

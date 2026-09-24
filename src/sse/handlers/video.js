@@ -239,7 +239,9 @@ async function handleVideoCreateHandler(request, action) {
   let forwardContentType = bodyInfo.contentType || null;
   if (bodyInfo.parsed && model && bodyInfo.parsed.model !== model) {
     forwardBody = JSON.stringify({ ...bodyInfo.parsed, model });
-  } else if (bodyInfo.formModel && model && bodyInfo.formModel !== model) {
+  } else if ((bodyInfo.contentType || "").includes("multipart/form-data") && model && bodyInfo.formModel !== model) {
+    // A prefixed, missing, or blank multipart model: send the provider-local
+    // id, like a JSON body, so upstream runs the model the gateway chose.
     ({ body: forwardBody, contentType: forwardContentType } = await withMultipartModel(bodyInfo.raw, bodyInfo.contentType, model));
   }
 

@@ -216,6 +216,17 @@ describe("media endpoints without a model", () => {
     expect(form.get("image")).toBeInstanceOf(File);
   });
 
+  it("a multipart job without a model gets the route's model written in", async () => {
+    catalog({ video: [entry("veoaifree-web/veo"), entry("xai/grok-imagine-video-1.5")] });
+    mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r4" }));
+    await handleVideoCreate(multipart({ prompt: "x", image: new File(["img"], "a.png") }), "edits");
+    const call = mocks.handleVideoProxyCore.mock.calls[0][0];
+    expect(call.provider).toBe("xai");
+    const form = await new Response(call.rawBody, { headers: { "content-type": call.contentType } }).formData();
+    expect(form.get("model")).toBe("grok-imagine-video-1.5");
+    expect(form.get("image")).toBeInstanceOf(File);
+  });
+
   it("a multipart job with a bare model forwards the original bytes", async () => {
     catalog({ video: [entry("minimax/MiniMax-H3"), entry("xai/grok-imagine-video")] });
     mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r3" }));

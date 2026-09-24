@@ -1,5 +1,5 @@
 import { AI_PROVIDERS } from "@/shared/constants/providers.js";
-import { getSettings } from "@/lib/localDb";
+import { getProviderConnections, getSettings } from "@/lib/localDb";
 import { isPrivateHost, assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { resolveLocalWhisperHost } from "open-sse/config/providers.js";
 import { resolveFirecrawlBaseUrl } from "open-sse/handlers/fetch/index.js";
@@ -37,18 +37,30 @@ function registryServiceUrl(provider) {
   return null;
 }
 
-// The URL a default-route request actually calls, so the probe checks the same
-// server. Unrestricted keyless requests carry no saved connection
-// (buildOptionalNoAuthCredential), so Local Whisper uses its default host and
-// self-hosted Firecrawl uses the dashboard setting, then FIRECRAWL_BASE_URL,
-// then its default.
-async function serviceUrlFor(providerId, provider) {
-  if (providerId === "local-whisper") return resolveLocalWhisperHost(null);
-  if (providerId === "firecrawl_custom") {
-    const settings = await getSettings().catch(() => ({}));
-    return resolveFirecrawlBaseUrl(providerId, { firecrawlBaseUrl: settings?.firecrawlBaseUrl || "" }, null);
+// The URLs a request can reach. An unrestricted keyless request carries no
+// saved connection (buildOptionalNoAuthCredential), so Local Whisper calls its
+// default host and self-hosted Firecrawl the dashboard setting, then
+// FIRECRAWL_BASE_URL, then its default. An API key scoped to a connection uses
+// that connection's host instead. A provider counts as working when any of
+// these answers; a request that lands on a dead one still falls through the
+// route. Unparseable saved URLs are skipped.
+async function serviceUrlsFor(providerId, provider) {
+  if (providerId !== "local-whisper" && providerId !== "firecrawl_custom") {
+    const url = registryServiceUrl(provider);
+    return url ? [url] : [];
   }
-  return registryServiceUrl(provider);
+  const connections = await getProviderConnections({ provider: providerId, isActive: true }).catch(() => []);
+  const settings = providerId === "firecrawl_custom" ? await getSettings().catch(() => ({})) : null;
+  const resolve = (connection) => {
+    try {
+      return providerId === "local-whisper"
+        ? resolveLocalWhisperHost(connection)
+        : resolveFirecrawlBaseUrl(providerId, { firecrawlBaseUrl: settings?.firecrawlBaseUrl || "" }, connection);
+    } catch {
+      return null;
+    }
+  };
+  return [...new Set([null, ...connections].map(resolve).filter(Boolean))];
 }
 
 /** Any HTTP answer means the server is up; refused, DNS failure or timeout means it is not. */
@@ -64,19 +76,7 @@ async function answers(url, fetchImpl) {
   }
 }
 
-async function probe(providerId, fetchImpl) {
-  if (providerId === "local-device") {
-    const voices = await fetchLocalDeviceVoices().catch(() => []);
-    return Array.isArray(voices) && voices.length > 0;
-  }
-  const provider = AI_PROVIDERS[providerId];
-  let url;
-  try {
-    url = await serviceUrlFor(providerId, provider);
-  } catch {
-    return false; // e.g. an invalid self-hosted Firecrawl URL
-  }
-  if (!url) return true;
+async function reachable(url, fetchImpl) {
   let hostname;
   try {
     hostname = new URL(url).hostname;
@@ -84,6 +84,17 @@ async function probe(providerId, fetchImpl) {
     return false;
   }
   return isPrivateHost(hostname) ? answers(url, fetchImpl) : true;
+}
+
+async function probe(providerId, fetchImpl) {
+  if (providerId === "local-device") {
+    const voices = await fetchLocalDeviceVoices().catch(() => []);
+    return Array.isArray(voices) && voices.length > 0;
+  }
+  const urls = await serviceUrlsFor(providerId, AI_PROVIDERS[providerId]);
+  if (urls.length === 0) return !["local-whisper", "firecrawl_custom"].includes(providerId);
+  const results = await Promise.all(urls.map((url) => reachable(url, fetchImpl)));
+  return results.some(Boolean);
 }
 
 /**

@@ -33,14 +33,24 @@ describe("isKeylessProviderWorking", () => {
     expect(await isKeylessProviderWorking("coqui", { fetchImpl: down })).toBe(false);
   });
 
-  it("probes the hosts a default-route request actually calls (saved connections are not used)", async () => {
-    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://10.0.0.5:3002" } }]);
-    await isKeylessProviderWorking("local-whisper", { fetchImpl: up });
-    expect(up.mock.calls[0][0]).toBe("http://127.0.0.1:11500");
+  it("counts Local Whisper working when its default host or any saved connection host answers", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://192.168.1.20:9000" } }]);
+    const onlyConnection = vi.fn(async (url) => {
+      if (url === "http://192.168.1.20:9000") return new Response("", { status: 404 });
+      throw new TypeError("fetch failed");
+    });
+    expect(await isKeylessProviderWorking("local-whisper", { fetchImpl: onlyConnection })).toBe(true);
+    expect(onlyConnection.mock.calls.map((c) => c[0]).sort()).toEqual(["http://127.0.0.1:11500", "http://192.168.1.20:9000"]);
 
+    clearKeylessAvailabilityCache();
+    expect(await isKeylessProviderWorking("local-whisper", { fetchImpl: down })).toBe(false);
+  });
+
+  it("probes self-hosted Firecrawl at its settings URL and any saved connection URL", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://10.0.0.5:3002" } }]);
     mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://192.168.1.9:3002" });
     await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });
-    expect(up.mock.calls[1][0]).toBe("http://192.168.1.9:3002");
+    expect(up.mock.calls.map((c) => c[0]).sort()).toEqual(["http://10.0.0.5:3002", "http://192.168.1.9:3002"]);
     mocks.getSettings.mockResolvedValue({});
   });
 

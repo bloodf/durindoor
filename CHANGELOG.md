@@ -1,3 +1,20 @@
+# 4.9.0
+
+## Features
+
+- feat(laya): add a local Laya provider that replaces Jev for smart combo routing (#992)
+- feat(media): dashboard-managed default routes for media endpoints called without a model (#991)
+
+## Fixes
+
+- fix(auth): send Local Whisper requests to the saved server URL (#993)
+- fix(openrouter): list only free models when fetching an OpenRouter connection's models (#990)
+
+## Maintenance
+
+- docs: move dashboard help into the docs site and link the docs from the sidebar (#995)
+
+
 # 4.8.1
 
 ## Fixes

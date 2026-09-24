@@ -5,8 +5,14 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ buildModelsList: vi.fn(), working: vi.fn(async () => true) }));
+const mocks = vi.hoisted(() => ({
+  buildModelsList: vi.fn(),
+  working: vi.fn(async () => true),
+  allowedIds: vi.fn(async () => []),
+  connections: vi.fn(async () => [])
+}));
 vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
+vi.mock("@/lib/localDb", () => ({ getApiKeyProviderConnectionIds: mocks.allowedIds, getProviderConnections: mocks.connections }));
 vi.mock("../../src/sse/services/keylessAvailability.js", () => ({ isKeylessProviderWorking: mocks.working }));
 
 const {
@@ -48,6 +54,22 @@ describe("route validation", () => {
     expect(normalizeMediaRoutes({ chat: ["openai/gpt-5"] })).toBeNull();
     expect(normalizeMediaRoutes([])).toBeNull();
     expect(normalizeMediaRoutes(null)).toBeNull();
+  });
+});
+
+describe("scoped API keys", () => {
+  it("drops providers the key has no allowed connection for, so the first video/embedding model is one it can call", async () => {
+    mocks.buildModelsList.mockResolvedValue([model("xai/grok-imagine-video"), model("minimax/video-01")]);
+    mocks.allowedIds.mockResolvedValueOnce(["mm1"]);
+    mocks.connections.mockResolvedValueOnce([{ id: "x1", provider: "xai" }, { id: "mm1", provider: "minimax" }]);
+    const route = await describeMediaRoute("video", { settings: {}, apiKeyId: "k1" });
+    expect(route.models).toEqual(["minimax/video-01"]);
+  });
+
+  it("keeps every provider for an unscoped key", async () => {
+    mocks.buildModelsList.mockResolvedValue([model("xai/grok-imagine-video"), model("minimax/video-01")]);
+    const route = await describeMediaRoute("video", { settings: {}, apiKeyId: "k1" });
+    expect(route.models).toEqual(["xai/grok-imagine-video", "minimax/video-01"]);
   });
 });
 

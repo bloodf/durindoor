@@ -19,8 +19,9 @@ import { isString } from "@/shared/utils/typeChecks.js";
  * Which URL: an unrestricted request carries no saved connection
  * (buildOptionalNoAuthCredential), so Local Whisper calls its default host and
  * self-hosted Firecrawl the dashboard setting, then FIRECRAWL_BASE_URL, then its
- * default. For an API key scoped to provider accounts, any active connection it
- * may use counts. Results are cached per URL for PROBE_TTL_MS.
+ * default. For an API key scoped to provider accounts, credential selection is
+ * fill-first by priority, so the first active connection that key may use is
+ * the one probed. Results are cached per URL for PROBE_TTL_MS.
  */
 const PROBE_TTL_MS = 30_000;
 const PROBE_TIMEOUT_MS = 1500;
@@ -43,10 +44,10 @@ function registryServiceUrl(provider) {
 }
 
 /**
- * The URLs this request could call. Unscoped: the one default URL. A key scoped
- * to provider accounts: every active connection of this provider it may use
- * (credential selection may skip a cooling or quota-blocked one, so any of them
- * answering counts). An empty list means the key cannot use this provider.
+ * The URL this request would call. Unscoped: the default URL. A key scoped to
+ * provider accounts: the host of its first allowed active connection, which is
+ * the one credential selection picks (getProviderConnections sorts by priority).
+ * An empty list means the key cannot use this provider.
  */
 async function requestUrlsFor(providerId, apiKeyId) {
   if (!CONNECTION_HOST_PROVIDERS.has(providerId)) {
@@ -66,7 +67,9 @@ async function requestUrlsFor(providerId, apiKeyId) {
   const allowedIds = apiKeyId ? await getApiKeyProviderConnectionIds(apiKeyId).catch(() => []) : [];
   if (allowedIds.length === 0) return [resolve(null)].filter(Boolean);
   const connections = await getProviderConnections({ provider: providerId, isActive: true }).catch(() => []);
-  return [...new Set(connections.filter((c) => allowedIds.includes(c.id)).map(resolve).filter(Boolean))];
+  // ponytail: ignores peak-hour/RPD gating that could skip the first row; mirror auth.js selection if that matters.
+  const selected = connections.find((c) => allowedIds.includes(c.id));
+  return selected ? [resolve(selected)].filter(Boolean) : [];
 }
 
 /** Any HTTP answer within the timeout means up; blocked, refused or silent means not. */

@@ -8,6 +8,7 @@ import { supportsVideoGeneration } from "open-sse/handlers/videoGenerationCore.j
 import { supportsSttTranslation } from "open-sse/handlers/sttCore.js";
 import { isKeylessProviderWorking } from "./keylessAvailability.js";
 import { isString } from "@/shared/utils/typeChecks.js";
+import { getApiKeyProviderConnectionIds, getProviderConnections } from "@/lib/localDb";
 import { MEDIA_ROUTE_KINDS, normalizeRouteModels } from "@/shared/constants/mediaRoutes.js";
 
 export {
@@ -24,13 +25,29 @@ const savedRoute = (settings, kind) => normalizeRouteModels(settings?.mediaRoute
 export const providerOfModelId = (id) => resolveProviderId(String(id).split("/")[0]);
 
 /**
+ * Providers an API key scoped to provider accounts may call (credential
+ * selection denies any provider without an allowed active connection, keyless
+ * ones included), or null when the key is unrestricted.
+ */
+async function scopedProviders(apiKeyId) {
+  if (!apiKeyId) return null;
+  const allowedIds = await getApiKeyProviderConnectionIds(apiKeyId).catch(() => []);
+  if (allowedIds.length === 0) return null;
+  const connections = await getProviderConnections({ isActive: true }).catch(() => []);
+  return new Set(connections.filter((c) => allowedIds.includes(c.id)).map((c) => resolveProviderId(c.provider)));
+}
+
+/**
  * Models the user can route for `kind` right now, as `/v1/models/{kind}`
- * lists them (combos excluded; a route holds concrete models), minus keyless
- * providers that are not installed and working (see keylessAvailability.js).
+ * lists them (combos excluded; a route holds concrete models), minus providers
+ * a scoped API key cannot call and keyless providers that are not installed and
+ * working (see keylessAvailability.js).
  */
 export async function listMediaRouteCandidates(kind, { apiKeyId = null } = {}) {
+  const allowed = await scopedProviders(apiKeyId);
   const list = (await buildModelsList([kind], getProviderValidationGuard(), { exposeComboOnly: false }))
-    .filter((m) => m?.owned_by !== "combo" && isString(m?.id) && (!m.kind || m.kind === kind));
+    .filter((m) => m?.owned_by !== "combo" && isString(m?.id) && (!m.kind || m.kind === kind))
+    .filter((m) => !allowed || allowed.has(providerOfModelId(m.id)));
   const providers = [...new Set(list.map((m) => providerOfModelId(m.id)))];
   const working = new Map(await Promise.all(providers.map(async (p) => [p, await isKeylessProviderWorking(p, { apiKeyId })])));
   return list.filter((m) => working.get(providerOfModelId(m.id)));

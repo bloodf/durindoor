@@ -9,6 +9,8 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 // resolver deliberately returns only the origin, so the route stays fixed and a
 // stored path cannot redirect audio somewhere else.
 const STT_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
+const STT_TRANSLATION_PATH = "/v1/audio/translations";
+const TRANSCRIPTION_SUFFIX_RE = /\/audio\/transcriptions\/?$/;
 
 /** Builds configured STT auth, including raw Authorization required by AssemblyAI (upstream #3058). */
 function buildAuthHeaders(cfg, token) {
@@ -185,14 +187,21 @@ function jsonResponse(obj) {
 
 /**
  * STT core handler — dispatch by sttConfig.format.
+ * `kind: "translation"` targets the OpenAI-style `/audio/translations` route;
+ * only OpenAI-format providers have one, so other formats are rejected.
  * @returns {Promise<{success, response, status?, error?}>}
  */
-export async function handleSttCore({ provider, model, formData, credentials, sttConfig }) {
+export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription" }) {
   const file = formData.get("file");
   if (!file) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
   let cfg = sttConfig;
   if (!cfg) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support STT`);
+
+  const translate = kind === "translation";
+  if (translate && (cfg.format !== "openai" || !TRANSCRIPTION_SUFFIX_RE.test(cfg.baseUrl || ""))) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support audio translations`);
+  }
 
   // A self-hosted server's host belongs to the user, not the registry. Rebuild
   // the endpoint against the connection's stored origin so the base URL field
@@ -206,13 +215,15 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   // link-local targets are refused. transcribeOpenAICompatible additionally
   // sends through guardedProbeFetch so DNS answers are validated on the socket.
   if (cfg.userConfigurableHost) {
-    const resolvedBaseUrl = `${resolveLocalWhisperHost(credentials)}${STT_TRANSCRIPTION_PATH}`;
+    const resolvedBaseUrl = `${resolveLocalWhisperHost(credentials)}${translate ? STT_TRANSLATION_PATH : STT_TRANSCRIPTION_PATH}`;
     try {
       assertOutboundUrlAllowed(resolvedBaseUrl);
     } catch (error) {
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message || PROVIDER_URL_BLOCKED_MESSAGE);
     }
     cfg = { ...cfg, baseUrl: resolvedBaseUrl };
+  } else if (translate) {
+    cfg = { ...cfg, baseUrl: cfg.baseUrl.replace(TRANSCRIPTION_SUFFIX_RE, "/audio/translations") };
   }
 
   const token = cfg.authType === "none" ? null : credentials?.apiKey || credentials?.accessToken;

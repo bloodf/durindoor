@@ -84,7 +84,7 @@ Image generate is JSON `{ model, prompt }`. Optional `Accept: text/event-stream`
 
 TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
 
-STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path; providers without that analog return 400. `maxDuration` is 300 seconds on those routes.
+STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path. Only OpenAI-format STT providers (OpenAI, Groq, Local Whisper) have one; the others return 400. `maxDuration` is 300 seconds on those routes.
 
 `POST /v1/audio/music` re-exports `POST /v1/music/generations`. JSON `{ model, prompt }`. `POST /v1/video/generations` is the same shape for video-capable models.
 

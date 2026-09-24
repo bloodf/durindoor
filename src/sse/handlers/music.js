@@ -6,6 +6,7 @@ import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import * as log from "../utils/logger.js";
 
 async function handleMusicGenerationHandler(request) {
   let body;

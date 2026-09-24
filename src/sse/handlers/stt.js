@@ -20,7 +20,7 @@ const CREDENTIALED_PROVIDERS = new Set(
     .map(([id]) => id)
 );
 
-async function handleSttHandler(request) {
+async function handleSttHandler(request, { kind = "transcription" } = {}) {
   let formData;
   try {
     formData = await request.formData();
@@ -29,7 +29,7 @@ async function handleSttHandler(request) {
   }
 
   const modelStr = formData.get("model");
-  log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
+  log.request("POST", `/v1/audio/${kind === "translation" ? "translations" : "transcriptions"} | ${modelStr}`);
 
   const settings = await getSettings();
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
@@ -67,7 +67,7 @@ async function handleSttHandler(request) {
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const coreOptions = { provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig };
+    const coreOptions = { provider, model, formData, kind, sttConfig: AI_PROVIDERS[provider]?.sttConfig };
     if (credentials.connectionId) coreOptions.credentials = credentials;
     const result = await handleSttCore(coreOptions);
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
@@ -98,7 +98,7 @@ async function handleSttHandler(request) {
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleSttCore({ provider, model, formData, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
+    const result = await handleSttCore({ provider, model, formData, kind, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
 
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 

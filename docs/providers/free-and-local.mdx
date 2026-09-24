@@ -70,7 +70,8 @@ empty `POST /v1/systemone`, which only returns 401 when the key is wrong or
 missing. Laya is not a chat model. It is listed with its checkpoints (`auto`,
 `english`, `multilingual`, `typed-decisions`) under the `decision` kind and never
 appears in `/v1/models`. An active connection replaces Jev as the classifier for
-`smart` combos. See [Complexity-aware routing](../features/combos.mdx).
+`smart` combos. A keyless `laya-serve` running on the default host is picked up
+without a connection. See [Complexity-aware routing](../features/combos.mdx).
 
 ## OpenCode free
 

@@ -101,8 +101,14 @@ as Jev. Add a **Laya (local)** connection under **Dashboard → Providers**. Ent
 the server URL (default `http://127.0.0.1:8000`), and add an API key only if the
 server was started with `LAYA_API_KEY`. While a Laya connection is active,
 `smart` combos ask Laya instead of Jev, and `TYPESAFE_API_KEY` is not needed.
-The first active Laya connection by priority is used. Disable it and Jev (if
-configured) takes over again.
+The first active Laya connection by priority is used.
+
+If you already run `laya-serve` on the default `http://127.0.0.1:8000` without
+`LAYA_API_KEY`, DurinDoor finds it and uses it without a connection. It sends
+an empty request and checks for a 400 answer (cached for 30s). A server that
+asks for a key is not used automatically, so it can't block Jev; add a
+connection with the key instead. Order: your Laya connection, then a local
+keyless Laya, then Jev (when `TYPESAFE_API_KEY` is set), then the heuristic.
 
 Laya picks its own checkpoint (English or multilingual) per request unless the
 connection pins one in `providerSpecificData.model` (`english`, `multilingual`,

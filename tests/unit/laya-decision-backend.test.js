@@ -9,7 +9,7 @@ vi.mock("@/lib/localDb", () => ({ getProviderConnections: mocks.getProviderConne
 
 const { classifyTier, resetJevBreaker } = await import("../../open-sse/services/jevClassifier.js");
 const { handleComboChat } = await import("../../open-sse/services/combo.js");
-const { resolveDecisionBackend } = await import("../../src/sse/services/decisionBackend.js");
+const { resolveDecisionBackend, clearLayaDetection } = await import("../../src/sse/services/decisionBackend.js");
 const { resolveLayaHost, resolveLayaCheckpoint, LAYA_DEFAULT_HOST } = await import("../../open-sse/config/laya.js");
 const { default: REGISTRY } = await import("../../open-sse/providers/registry/index.js");
 
@@ -30,6 +30,7 @@ function layaOk(choice, answerConfidence = 0.9) {
 
 beforeEach(() => {
   resetJevBreaker();
+  clearLayaDetection();
   mocks.getProviderConnections.mockReset();
 });
 afterEach(() => {
@@ -64,10 +65,41 @@ describe("resolveLayaHost / resolveLayaCheckpoint", () => {
 });
 
 describe("resolveDecisionBackend", () => {
-  it("returns null without an active Laya connection (Jev env stays in charge)", async () => {
+  it("returns null with no connection and no local Laya running (Jev env stays in charge)", async () => {
     mocks.getProviderConnections.mockResolvedValue([]);
-    expect(await resolveDecisionBackend()).toBeNull();
+    const fetchImpl = vi.fn(async () => { throw new TypeError("fetch failed"); });
+    expect(await resolveDecisionBackend({ fetchImpl })).toBeNull();
     expect(mocks.getProviderConnections).toHaveBeenCalledWith({ provider: "laya", isActive: true });
+  });
+
+  it("uses a keyless laya-serve already running on the default host", async () => {
+    mocks.getProviderConnections.mockResolvedValue([]);
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 400 }));
+    expect(await resolveDecisionBackend({ fetchImpl })).toMatchObject({ source: "laya", baseUrl: LAYA_DEFAULT_HOST, apiKey: null });
+    expect(fetchImpl.mock.calls[0][0]).toBe(`${LAYA_DEFAULT_HOST}/v1/systemone`);
+  });
+
+  it("skips a local Laya that demands a key, so it cannot shadow Jev", async () => {
+    mocks.getProviderConnections.mockResolvedValue([]);
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 401 }));
+    expect(await resolveDecisionBackend({ fetchImpl })).toBeNull();
+  });
+
+  it("caches detection for 30 seconds", async () => {
+    mocks.getProviderConnections.mockResolvedValue([]);
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 400 }));
+    await resolveDecisionBackend({ fetchImpl, now: 1000 });
+    await resolveDecisionBackend({ fetchImpl, now: 25_000 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await resolveDecisionBackend({ fetchImpl, now: 32_000 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("prefers the user's own Laya connection over a detected local one", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ apiKey: "k", providerSpecificData: { baseUrl: "http://10.0.0.9:8000" } }]);
+    const fetchImpl = vi.fn();
+    expect((await resolveDecisionBackend({ fetchImpl })).baseUrl).toBe("http://10.0.0.9:8000");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("builds keyless, free, auto-routed Laya settings from the first active connection", async () => {

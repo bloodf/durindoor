@@ -1,30 +1,40 @@
 import { getProviderConnections } from "@/lib/localDb";
 import {
   LAYA_PROVIDER_ID,
+  LAYA_DEFAULT_HOST,
   LAYA_TIMEOUT_MS,
   LAYA_MIN_CONFIDENCE,
   resolveLayaHost,
   resolveLayaCheckpoint
 } from "open-sse/config/laya.js";
+import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 
 /**
- * Classifier backend for smart/task combo routing.
+ * Classifier backend for smart/task combo routing, in order:
  *
- * An active Laya connection (a user-run `laya-serve`) replaces TypeSafe Jev:
- * same `/v1/systemone` protocol, local host, optional key, no spend. With no
- * active Laya connection this returns null and the classifier keeps its Jev
- * env configuration (TYPESAFE_API_KEY / TYPESAFE_API_BASE). The first active
- * connection by priority wins.
+ * 1. An active Laya connection the user added (first by priority).
+ * 2. A keyless `laya-serve` already running at the default local host,
+ *    found by probing; the user installed it, so it is used without setup.
+ * 3. null: the classifier keeps its Jev env configuration
+ *    (TYPESAFE_API_KEY / TYPESAFE_API_BASE), or the heuristic without one.
  *
- * @returns {Promise<object|null>} classifyTier overrides, or null
+ * Laya speaks Jev's `/v1/systemone` protocol, runs locally, and costs nothing.
  */
-export async function resolveDecisionBackend() {
-  const [connection] = await getProviderConnections({ provider: LAYA_PROVIDER_ID, isActive: true });
-  if (!connection) return null;
+const DETECT_TTL_MS = 30_000;
+const DETECT_TIMEOUT_MS = 1000;
+
+/** @type {{ expiresAt: number, usable: Promise<boolean> } | null} */
+let detected = null;
+
+export function clearLayaDetection() {
+  detected = null;
+}
+
+function layaBackend(baseUrl, connection = null) {
   return {
     source: "laya",
-    baseUrl: resolveLayaHost(connection),
-    apiKey: connection.apiKey || null,
+    baseUrl,
+    apiKey: connection?.apiKey || null,
     apiKeyOptional: true,
     model: resolveLayaCheckpoint(connection),
     timeoutMs: LAYA_TIMEOUT_MS,
@@ -32,4 +42,40 @@ export async function resolveDecisionBackend() {
     inputPricePerMTok: 0,
     outputPricePerMTok: 0
   };
+}
+
+/**
+ * An empty /v1/systemone body gets 400 from a keyless server and 401 from one
+ * started with LAYA_API_KEY. Only the keyless one is usable without a
+ * connection; a keyed one would fail every call and shadow Jev.
+ */
+async function probeLocalLaya(fetchImpl) {
+  try {
+    const res = await fetchImpl(`${LAYA_DEFAULT_HOST}${JEV_ENDPOINT_PATH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(DETECT_TIMEOUT_MS)
+    });
+    return res.status === 400;
+  } catch {
+    return false;
+  }
+}
+
+function localLayaUsable(fetchImpl, now) {
+  if (!detected || detected.expiresAt <= now) {
+    detected = { expiresAt: now + DETECT_TTL_MS, usable: probeLocalLaya(fetchImpl) };
+  }
+  return detected.usable;
+}
+
+/**
+ * @param {{ fetchImpl?: Function, now?: number }} [options] - injectable for tests
+ * @returns {Promise<object|null>} classifyTier overrides, or null
+ */
+export async function resolveDecisionBackend({ fetchImpl = (...args) => fetch(...args), now = Date.now() } = {}) {
+  const [connection] = await getProviderConnections({ provider: LAYA_PROVIDER_ID, isActive: true });
+  if (connection) return layaBackend(resolveLayaHost(connection), connection);
+  return (await localLayaUsable(fetchImpl, now)) ? layaBackend(LAYA_DEFAULT_HOST) : null;
 }

@@ -189,11 +189,11 @@ const affinityCleanup = setInterval(() => {
 if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
-// Keyless self-hosted servers whose connection row carries the server URL (and,
-// for Firecrawl, an optional key and headers). With a saved row, the handler
-// no-auth path takes normal connection selection, the same as a scoped key, so
-// requests reach the configured host with the row's full credentials.
-const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper", "firecrawl_custom"]);
+// Keyless self-hosted servers whose server URL lives only on the connection
+// row. With an active row, the handler no-auth path takes normal connection
+// selection, the same as a scoped key, so requests reach the configured host.
+// (Self-hosted Firecrawl is not listed: its host also has a dashboard setting.)
+const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper"]);
 
 // Canonical roster of providers eligible for the public no-auth fallback when
 // no saved connection row exists. Mimocode stays in the roster so zero-row

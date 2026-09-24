@@ -22,7 +22,11 @@ Routes exist for these endpoints:
 
 DurinDoor does not ship a default model. A route can only hold models that `GET /v1/models/{kind}` lists right now. Each one has to meet all of these:
 
-- It comes from a provider with an active connection, or from an enabled keyless provider.
+- It comes from a provider with an active connection, or from an enabled keyless provider that is installed and working:
+  - A self-hosted keyless server (Local Whisper, Coqui, Tortoise, SearXNG, self-hosted Firecrawl, or any loopback or private URL) counts only while it answers HTTP.
+  - `local-device` counts only when the OS voice list loads (macOS `say` or Windows SAPI).
+  - Keyless libraries and public services (edge-tts, google-tts, veoaifree-web) count as working.
+  - Checks are cached for 30 seconds.
 - The provider serves that kind.
 - The model itself is that kind.
 - The provider's visible-model allowlist and disabled-model list allow it.

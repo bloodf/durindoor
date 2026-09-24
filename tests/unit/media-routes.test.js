@@ -5,8 +5,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ buildModelsList: vi.fn() }));
+const mocks = vi.hoisted(() => ({ buildModelsList: vi.fn(), working: vi.fn(async () => true) }));
 vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
+vi.mock("../../src/sse/services/keylessAvailability.js", () => ({ isKeylessProviderWorking: mocks.working }));
 
 const {
   wantsDefaultRoute,
@@ -60,6 +61,14 @@ describe("resolveMediaRoute", () => {
     const route = await resolveMediaRoute("tts", { settings: {} });
     expect(route.models).toEqual(["openai/tts-1", "el/eleven_v3"]);
     expect(mocks.buildModelsList).toHaveBeenCalledWith(["tts"], expect.anything(), { exposeComboOnly: false });
+  });
+
+  it("drops keyless providers that are not installed and working", async () => {
+    mocks.buildModelsList.mockResolvedValue([model("local-whisper/whisper-1"), model("openai/whisper-1")]);
+    mocks.working.mockImplementation(async (p) => p !== "local-whisper");
+    const route = await resolveMediaRoute("stt", { settings: {} });
+    expect(route.models).toEqual(["openai/whisper-1"]);
+    mocks.working.mockImplementation(async () => true);
   });
 
   it("follows the saved order and skips saved models that are no longer available", async () => {

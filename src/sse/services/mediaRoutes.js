@@ -3,6 +3,7 @@ import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveProviderId } from "@/shared/constants/providers.js";
+import { isKeylessProviderWorking } from "./keylessAvailability.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 import { MEDIA_ROUTE_KINDS, normalizeRouteModels } from "@/shared/constants/mediaRoutes.js";
 
@@ -21,11 +22,15 @@ export const providerOfModelId = (id) => resolveProviderId(String(id).split("/")
 
 /**
  * Models the user can route for `kind` right now, as `/v1/models/{kind}`
- * lists them (combos excluded; a route holds concrete models).
+ * lists them (combos excluded; a route holds concrete models), minus keyless
+ * providers that are not installed and working (see keylessAvailability.js).
  */
 export async function listMediaRouteCandidates(kind) {
-  const list = await buildModelsList([kind], getProviderValidationGuard(), { exposeComboOnly: false });
-  return list.filter((m) => m?.owned_by !== "combo" && isString(m?.id) && (!m.kind || m.kind === kind));
+  const list = (await buildModelsList([kind], getProviderValidationGuard(), { exposeComboOnly: false }))
+    .filter((m) => m?.owned_by !== "combo" && isString(m?.id) && (!m.kind || m.kind === kind));
+  const providers = [...new Set(list.map((m) => providerOfModelId(m.id)))];
+  const working = new Map(await Promise.all(providers.map(async (p) => [p, await isKeylessProviderWorking(p)])));
+  return list.filter((m) => working.get(providerOfModelId(m.id)));
 }
 
 function kindLabel(kind) {

@@ -8,6 +8,7 @@ import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
 import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import {
@@ -383,7 +384,15 @@ export const PROVIDER_MODELS_CONFIG = {
     }
   },
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
-  openrouter: createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),
+  // The public catalog lists every paid model too; the picker offers only
+  // variants free for input and output (see isOpenRouterFreeModel).
+  openrouter: {
+    ...createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),
+    parseResponse: (data) => {
+      const models = parseOpenAIStyleModels(data);
+      return Array.isArray(models) ? models.filter(isOpenRouterFreeModel) : [];
+    }
+  },
   anthropic: {
     url: "https://api.anthropic.com/v1/models",
     method: "GET",

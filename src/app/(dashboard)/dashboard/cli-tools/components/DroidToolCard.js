@@ -11,6 +11,7 @@ import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { isUndefined } from "../../../../../shared/utils/typeChecks.js";
+import DocsLink from "@/shared/components/DocsLink";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
@@ -40,7 +41,6 @@ export default function DroidToolCard({
   const [modalOpen, setModalOpen] = useState(false);
   const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const hasInitializedModel = useRef(false);
 
@@ -263,24 +263,9 @@ export default function DroidToolCard({
                     <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
-                    <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
-                    {showInstallGuide ? "Hide" : "How to Install"}
-                  </Button>
+                  <DocsLink path="integrations/other-tools#install-commands" label="How to install" />
                 </div>
               </div>
-              {showInstallGuide &&
-          <div className="p-4 bg-dd-surface border border-dd-border rounded-dd-lg">
-                  <h4 className="font-medium mb-3">Installation Guide</h4>
-                  <div className="space-y-3 text-sm">
-                    <div>
-                      <p className="text-dd-muted mb-1">macOS / Linux / Windows:</p>
-                      <code className="block px-3 py-2 bg-dd-surface-2 bg-dd-surface-2 rounded-dd font-mono text-xs">curl -fsSL https://app.factory.ai/cli | sh</code>
-                    </div>
-                    <p className="text-dd-muted">After installation, run <code className="px-1 bg-dd-surface-2 bg-dd-surface-2 rounded-dd">droid</code> to verify.</p>
-                  </div>
-                </div>
-          }
             </div>
         }
 

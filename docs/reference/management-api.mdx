@@ -156,7 +156,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
-| GET, PATCH | `/api/settings` | Read settings (GET) or patch them (PATCH) | session, CLI, key, loop |
+| GET, PATCH | `/api/settings` | Read settings (GET) or patch them (PATCH), including the `mediaRoutes` key (400 `Invalid mediaRoutes` on a malformed value) | session, CLI, key, loop |
 | GET, POST | `/api/settings/auto-configure` | Headroom/PxPipe/Firecrawl probe status or run | session, CLI, key, loop; handler wants session |
 | GET, POST | `/api/settings/database` | Export/import the data file; JWT or CLI plus password | session, CLI; password on export/import |
 | POST | `/api/settings/database/cutover` | Run SQLite to PostgreSQL cutover; 503 + `Retry-After: 5` if the lock is held | session, CLI; password on export/import |

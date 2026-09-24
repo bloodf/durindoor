@@ -10,6 +10,7 @@ import {
   NavIcon,
   isActivePath,
 } from "../../src/shared/components/SidebarNavIcons";
+import { DOCS_URL, docsUrl } from "../../src/shared/constants/docs";
 
 const section = (key) => NAV_SECTIONS.find((s) => s.key === key);
 const itemEntries = (key) => section(key).entries.filter((e) => e.type === "item");
@@ -114,13 +115,14 @@ describe("SidebarNavIcons information architecture", () => {
     expect(media.basePath).toBe("/dashboard/media-providers");
   });
 
-  it("groups docs and debug aids under Reference, with Translator feature-gated", () => {
-    expect(itemLabels("reference")).toEqual(["API Docs", "MCP Help", "Translator"]);
-    expect(itemHrefs("reference")).toEqual([
-      "/dashboard/api-docs",
-      "/dashboard/mcp-help",
-      "/dashboard/translator",
-    ]);
+  it("groups the docs link and debug aids under Reference, with Translator feature-gated", () => {
+    expect(itemLabels("reference")).toEqual(["Docs", "Translator"]);
+    expect(itemHrefs("reference")).toEqual([DOCS_URL, "/dashboard/translator"]);
+    const docs = itemEntries("reference").find((i) => i.label === "Docs");
+    expect(docs).toMatchObject({ href: "https://durindoor.vercel.app/docs", icon: "menu_book", external: true });
+    // The in-app help pages moved to the public docs site.
+    expect(allHrefs()).not.toContain("/dashboard/api-docs");
+    expect(allHrefs()).not.toContain("/dashboard/mcp-help");
     const translator = itemEntries("reference").find((i) => i.label === "Translator");
     expect(translator.requiresTranslator).toBe(true);
   });
@@ -137,11 +139,15 @@ describe("SidebarNavIcons information architecture", () => {
       "/dashboard/endpoint",
       "/dashboard/proxy-pools",
       "/dashboard/mcp-gateway",
-      "/dashboard/api-docs",
-      "/dashboard/mcp-help",
     ]) {
       expect(hrefs).toContain(href);
     }
+  });
+
+  it("docsUrl joins a docs page path onto the docs site", () => {
+    expect(docsUrl()).toBe(DOCS_URL);
+    expect(docsUrl("features/combos")).toBe("https://durindoor.vercel.app/docs/features/combos");
+    expect(docsUrl("/features/mcp-gateway.mdx")).toBe("https://durindoor.vercel.app/docs/features/mcp-gateway");
   });
 
   it("centralizes the combined web icon glyph", () => {

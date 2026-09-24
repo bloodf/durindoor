@@ -15,6 +15,7 @@ import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
+import DocsLink from "@/shared/components/DocsLink";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -419,35 +420,7 @@ export default function CombosPage() {
           </div>
         </Card>
       ) : null}
-      <Card>
-        <div className="flex flex-col gap-2">
-          <p className="text-[13px] font-medium text-dd-text">
-            {translate("Strategy options")}
-          </p>
-          <ul className="flex flex-col gap-1 text-[13px] text-dd-muted">
-            <li>
-              <span className="font-medium text-dd-text">Fallback</span>
-              {translate(" — tries models in order (next on failure)")}
-            </li>
-            <li>
-              <span className="font-medium text-dd-text">Round Robin</span>
-              {translate(" — rotates models across requests to spread load")}
-            </li>
-            <li>
-              <span className="font-medium text-dd-text">Fusion</span>
-              {translate(" — queries all models in parallel, then a judge synthesizes one answer. Best quality, but costs the most: every request bills all panel models + the judge (N+1 calls)")}
-            </li>
-            <li>
-              <span className="font-medium text-dd-text">Smart Scoring</span>
-              {" — tracks provider health (quota, ban status) and prefers models with the best score; still falls back on errors"}
-            </li>
-            <li>
-              <span className="font-medium text-dd-text">Capacity auto-switch</span>
-              {translate(" — sends image/PDF/audio requests to a model that supports them first")}
-            </li>
-          </ul>
-        </div>
-      </Card>
+      <DocsLink path="features/combos#strategies" label={translate("How combo strategies work")} />
       {loadError ? null : combos.length === 0 ? (
         <Card>
           <EmptyState

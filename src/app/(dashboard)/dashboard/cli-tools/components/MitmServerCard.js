@@ -6,6 +6,7 @@ import Button from "@/shared/ui/components/Button";
 import { Badge } from "@/shared/ui/components/Badge";
 import Input from "@/shared/ui/components/Input";
 import Modal from "@/shared/ui/components/Modal";
+import DocsLink from "@/shared/components/DocsLink";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
@@ -162,15 +163,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             </div>
           </div>
 
-          {/* Purpose & How it works */}
-          <div className="px-2 py-2 rounded-dd-lg bg-dd-surface/50 border border-dd-border/50 flex flex-col gap-2">
-            <p className="text-[11px] text-dd-muted leading-relaxed">
-              <span className="font-medium text-dd-text">Purpose:</span> Use Antigravity IDE & GitHub Copilot → with ANY provider/model from DurinDoor
-            </p>
-            <p className="text-[11px] text-dd-muted leading-relaxed">
-              <span className="font-medium text-dd-text">How it works:</span> Antigravity/Copilot IDE request → DNS redirect to localhost:443 → MITM proxy intercepts → DurinDoor → response to Antigravity/Copilot
-            </p>
-          </div>
+          <DocsLink path="features/mitm" />
 
           {/* Base URL + API Key — same row pattern as Claude Code / cli-tools */}
           <div className="flex flex-col gap-2">

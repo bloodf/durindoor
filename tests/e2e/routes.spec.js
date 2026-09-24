@@ -58,9 +58,9 @@ function artifactStem(route, variant, url) {
 
 /** Text can overlap controls without increasing document.scrollWidth. */
 async function expectSeparatedTitles(page, route, url) {
-  if (!["R12", "R13", "R15", "R21", "R22", "R27"].includes(route.id)) return;
+  if (!["R13", "R15", "R21", "R22", "R27"].includes(route.id)) return;
   await page.evaluate(() => document.fonts.ready);
-  const collisions = await page.evaluate(({ routeId, routeUrl }) => {
+  const collisions = await page.evaluate(({ routeUrl }) => {
     const textRect = (element) => {
       const range = document.createRange();
       range.selectNodeContents(element);
@@ -76,20 +76,12 @@ async function expectSeparatedTitles(page, route, url) {
     if (title && actions && overlaps(textRect(title), actions.getBoundingClientRect())) {
       found.push("page title overlaps header actions");
     }
-    if (routeId === "R12") {
-      for (const heading of document.querySelectorAll('main h2, main [role="heading"][aria-level="2"]')) {
-        const subtitle = heading.closest("div")?.lastElementChild;
-        if (subtitle && subtitle !== heading && overlaps(textRect(heading), textRect(subtitle))) {
-          found.push(`${heading.textContent}: section heading overlaps subtitle`);
-        }
-      }
-    }
     if (routeUrl === "/dashboard/providers/openai") {
       const heading = document.querySelector("main h1");
       if (heading && heading.scrollWidth > heading.clientWidth + 1) found.push("provider identity is squeezed by controls");
     }
     return found;
-  }, { routeId: route.id, routeUrl: url });
+  }, { routeUrl: url });
   expect(collisions, `${route.id} ${url} titles must remain separate from adjacent controls`).toEqual([]);
 }
 

@@ -49,13 +49,13 @@ Open `http://localhost:20128/dashboard`. Next.js serves that tree from `src/app/
 
 **Auto-configure** (`/dashboard/auto-configure`) probes local helpers (for example Firecrawl) and reports what it can wire without a manual form.
 
-**Media Providers** (`/dashboard/media-providers/<kind>`) covers embeddings, image, TTS, STT, and a combined web fetch/search page. Kind and provider id are nested routes, not extra sidebar entries.
+**Media Providers** (`/dashboard/media-providers/<kind>`) covers embedding, rerank, image, image-to-text, TTS, STT, a combined web fetch/search page, video, music, and System One. Kind and provider id are nested routes, not extra sidebar entries.
+
+**Media Routes** (`/dashboard/media-routes`) sets the ordered fallback list of models each media endpoint uses when a request leaves out `model`. See [Media routes](../features/media-routes.mdx).
 
 ## Reference
 
-**API Docs** (`/dashboard/api-docs`) lists the HTTP surfaces (chat, models, images, audio, and the rest) as a catalog inside the app.
-
-**MCP Help** (`/dashboard/mcp-help`) is a short client config snippet for the MCP gateway URL and key.
+**Docs** opens this documentation site in a new tab. The HTTP surfaces (chat, models, images, audio, and the rest) are on [API](../reference/api.mdx). MCP client setup is on [MCP gateway](../features/mcp-gateway.mdx) and [MCP control](../features/mcp-control.mdx).
 
 **Translator** (`/dashboard/translator`) is a debug workspace for request/response translation. The sidebar hides it unless the translator flag is on.
 

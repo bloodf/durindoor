@@ -11,7 +11,6 @@ import { Badge } from "@/shared/ui/components/Badge.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import {
-  TUNNEL_BENEFITS,
   TUNNEL_PING_INTERVAL_MS,
   TUNNEL_PING_MAX_MS,
   STATUS_POLL_FAST_MS,
@@ -26,6 +25,7 @@ import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
 import StatusAlert from "./components/StatusAlert";
 import MonitoringStrip from "./components/MonitoringStrip";
+import DocsLink from "@/shared/components/DocsLink";
 import { isBrowser } from "@/shared/utils/typeChecks.js";
 
 function CardSkeleton() {
@@ -995,34 +995,9 @@ export default function EndpointPageClient({ localPort = 20128 }) {
         onClose={() => setShowEnableTunnelModal(false)}
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-dd-lg bg-dd-surface-2 p-4">
-            <div className="flex items-start gap-3">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent">
-                <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">cloud_upload</span>
-              </span>
-              <div className="flex flex-col gap-1">
-                <p className="text-[13px] font-semibold text-dd-text">Cloudflare Tunnel</p>
-                <p className="text-[13px] text-dd-muted">
-                  Expose your local DurinDoor to the internet. No port forwarding, no static IP needed. Share endpoint URL with your team or use it in Cursor, Cline, and other AI tools from anywhere.
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {TUNNEL_BENEFITS.map((benefit) => (
-              <div
-                key={benefit.title}
-                className="flex flex-col items-center gap-1 rounded-dd-lg bg-dd-surface-2 p-3 text-center"
-              >
-                <span className="flex size-8 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[18px] leading-none">{benefit.icon}</span>
-                </span>
-                <p className="text-xs font-semibold text-dd-text">{benefit.title}</p>
-                <p className="text-xs text-dd-muted">{benefit.desc}</p>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-dd-muted">Requires outbound port 7844 (TCP/UDP). Connection may take 10-30s.</p>
+          <p className="text-[13px] text-dd-muted">Cloudflare Tunnel gives this DurinDoor a public HTTPS URL. Requires outbound port 7844 (TCP/UDP). Connection may take 10-30s.</p>
+          {!requireApiKey ? <p className="text-xs text-dd-warning">Turn on Require API Key before you share the tunnel URL.</p> : null}
+          <DocsLink path="deployment/localhost#cloudflare-tunnel" />
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={handleEnableTunnel} className="flex-1">Start Tunnel</Button>
             <Button variant="ghost" onClick={() => setShowEnableTunnelModal(false)} className="flex-1">Cancel</Button>

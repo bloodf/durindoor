@@ -10,6 +10,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import DocsLink from "@/shared/components/DocsLink";
 
 export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
@@ -17,7 +18,6 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState(null);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [selectedApiKey, setSelectedApiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -197,20 +197,9 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
                     <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
-                    <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
-                    {showInstallGuide ? "Hide" : "How to Install"}
-                  </Button>
+                  <DocsLink path="integrations/cline" label="How to install" />
                 </div>
               </div>
-              {showInstallGuide && (
-                <div className="p-4 bg-dd-surface border border-dd-border rounded-dd-lg">
-                  <h4 className="font-medium mb-3">Installation Guide</h4>
-                  <div className="space-y-3 text-sm">
-                    <p className="text-dd-muted">Install Cline VS Code extension or CLI from <a className="text-dd-accent underline" href="https://docs.cline.bot/" target="_blank" rel="noreferrer">docs.cline.bot</a>.</p>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

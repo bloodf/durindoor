@@ -97,20 +97,6 @@ const getPageInfo = (pathname) => {
       icon: "auto_fix",
       breadcrumbs: [],
     };
-  if (pathname.includes("/mcp-help"))
-    return {
-      title: translate("MCP Help"),
-      description: translate("How DurinDoor speaks the Model Context Protocol"),
-      icon: "help",
-      breadcrumbs: [],
-    };
-  if (pathname.includes("/api-docs"))
-    return {
-      title: translate("API Documentation"),
-      description: translate("OpenAI-compatible endpoints and examples"),
-      icon: "description",
-      breadcrumbs: [],
-    };
   if (pathname.includes("/headroom"))
     return {
       title: translate("Headroom"),

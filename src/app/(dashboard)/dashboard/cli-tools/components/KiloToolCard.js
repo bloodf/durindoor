@@ -10,6 +10,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import DocsLink from "@/shared/components/DocsLink";
 
 export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
@@ -17,7 +18,6 @@ export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiK
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState(null);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [selectedApiKey, setSelectedApiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -183,18 +183,9 @@ export default function KiloToolCard({ tool, isExpanded, onToggle, baseUrl, apiK
                     <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
-                    <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
-                    {showInstallGuide ? "Hide" : "How to Install"}
-                  </Button>
+                  <DocsLink path="integrations/other-tools#install-commands" label="How to install" />
                 </div>
               </div>
-              {showInstallGuide && (
-                <div className="p-4 bg-dd-surface border border-dd-border rounded-dd-lg">
-                  <h4 className="font-medium mb-3">Installation Guide</h4>
-                  <p className="text-sm text-dd-muted">Install Kilo Code from <a className="text-dd-accent underline" href="https://kilocode.ai" target="_blank" rel="noreferrer">kilocode.ai</a> or VS Code extension marketplace.</p>
-                </div>
-              )}
             </div>
           )}
 

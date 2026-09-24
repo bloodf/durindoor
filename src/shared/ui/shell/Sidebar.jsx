@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { DOCS_URL } from "@/shared/constants/docs";
 import { StatusDot } from "@/shared/ui/components/StatusDot";
 
 /**
@@ -83,8 +84,7 @@ export const NAV_GROUPS = [
   {
     label: "REFERENCE",
     items: [
-      { label: "API Docs", icon: "description", href: "/dashboard/api-docs" },
-      { label: "MCP Help", icon: "help", href: "/dashboard/mcp-help" },
+      { label: "Docs", icon: "menu_book", href: DOCS_URL, external: true },
       { label: "Translator", icon: "translate", href: "/dashboard/translator" },
     ],
   },
@@ -230,7 +230,9 @@ export function Sidebar({
                         href={item.href}
                         title={collapsed ? item.label : undefined}
                         aria-current={!expandable && activePath === item.href ? "page" : undefined}
-                        onClick={(event) => navigate(event, item.href)}
+                        onClick={item.external ? undefined : (event) => navigate(event, item.href)}
+                        target={item.external ? "_blank" : undefined}
+                        rel={item.external ? "noopener noreferrer" : undefined}
                         className={
                           active
                             ? collapsed

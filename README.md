@@ -180,6 +180,7 @@ Beyond chat, the same `/v1` surface covers:
 - 📡 **Realtime** — a text WebSocket at `GET /v1/realtime` in the OpenAI Realtime event shape
 - 📦 **Files and batches** — OpenAI-style and Anthropic-style batch APIs over local storage
 - 🔌 **MCP gateway** — one JSON-RPC endpoint merging tools from any number of upstream MCP servers behind a single scoped key
+- 🚪 **Default media routes** — call any media endpoint with no `model` (or `"model": "auto"`) and DurinDoor runs the dashboard-ordered fallback chain for that kind; order lives in **Dashboard → Media Routes**. See [Media routes](https://durindoor.vercel.app/docs/features/media-routes)
 
 Full route-by-route reference, request bodies, and streaming behavior: [API reference](https://durindoor.vercel.app/docs/reference/api).
 
@@ -193,7 +194,8 @@ The bundled dashboard (`/dashboard`) is where you connect providers, mint API ke
 - **Usage** — per-key, per-model spend and token counts
 - **Proxy timeline** — an optional redacted hop log for debugging a request end to end
 - **MCP Gateway** — register upstream MCP servers and grant scoped keys to specific tools
-- **API Docs** — a live, in-dashboard route explorer
+- **Laya** — a local, self-hosted System One provider that replaces Jev for the smart/task combo complexity classifier, no API key required. See [Combos](https://durindoor.vercel.app/docs/features/combos#local-laya-instead-of-jev)
+- **Docs** — the sidebar links to the [documentation site](https://durindoor.vercel.app/docs), including the full [API reference](https://durindoor.vercel.app/docs/reference/api)
 
 Try it without installing anything: [hosted demo dashboard](https://durindoor.vercel.app/dashboard).
 

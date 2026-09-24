@@ -1,6 +1,6 @@
 {
   "title": "Features",
-  "description": "Routing, combos, quota tracking, MCP gateway and control, realtime, compression, and Headroom.",
+  "description": "Routing, combos, media routes, quota tracking, MCP gateway and control, realtime, compression, and Headroom.",
   "icon": "Sparkles",
   "pages": [
     "index",
@@ -13,6 +13,7 @@
     "proxy-timeline",
     "mcp-gateway",
     "mcp-control",
+    "mitm",
     "realtime",
     "compression",
     "headroom"

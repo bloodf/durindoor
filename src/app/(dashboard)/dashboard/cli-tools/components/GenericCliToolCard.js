@@ -12,16 +12,9 @@ import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { isString } from "@/shared/utils/typeChecks";
+import DocsLink from "@/shared/components/DocsLink";
 
 const DEFAULT_MODEL = "provider/model-id";
-
-const INSTALL_COMMANDS = {
-  pi: "curl -fsSL https://pi.dev/install.sh | sh  # or: npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
-  crush: "brew install charmbracelet/tap/crush  # or: go install github.com/charmbracelet/crush@latest",
-  forge: "cargo install forgecode",
-  smelt: "cargo install smelt",
-  codewhale: "cargo install codewhale",
-};
 
 // Pi takes a model list; the other tools take a single default model.
 const isMultiModel = (toolId) => toolId === "pi";
@@ -63,7 +56,6 @@ export default function GenericCliToolCard({
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState(null);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [selectedApiKey, setSelectedApiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState(() => getConfiguredModel(initialStatus?.config));
   const [selectedModels, setSelectedModels] = useState(() => getConfiguredModels(initialStatus?.config));
@@ -258,23 +250,9 @@ export default function GenericCliToolCard({
                     <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="ghost" size="sm" aria-expanded={showInstallGuide} onClick={() => setShowInstallGuide((v) => !v)}>
-                    <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
-                    {showInstallGuide ? "Hide" : "How to Install"}
-                  </Button>
+                  <DocsLink path="integrations/other-tools#install-commands" label="How to install" />
                 </div>
               </div>
-              {showInstallGuide &&
-          <div className="p-4 bg-dd-surface-2 border border-dd-border rounded-dd-lg flex flex-col gap-2 text-sm">
-                  <p className="text-dd-muted">Install command:</p>
-                  <code className="block p-2 bg-dd-surface-3 rounded-dd text-xs font-mono break-all">{INSTALL_COMMANDS[tool.id] || `npm install -g ${tool.id}`}</code>
-                  {tool.docsUrl &&
-            <p className="text-xs text-dd-muted">
-                      Docs: <a href={tool.docsUrl} target="_blank" rel="noreferrer" className="text-dd-accent hover:underline">{tool.docsUrl}</a>
-                    </p>
-            }
-                </div>
-          }
             </div>
         }
 

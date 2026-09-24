@@ -43,12 +43,14 @@ Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The
 
 | Value | Behaviour |
 | --- | --- |
-| `fallback` | Try members in the saved order. |
-| `round-robin` | Rotate the start member. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
+| `fallback` | Try members in the saved order. The next member runs only when the current one fails. |
+| `round-robin` | Rotate the start member across requests to spread load. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
 | `weighted` | Pick by member weight. |
-| `smart-scoring` | Reorder by quota and health scores, then fall through. |
+| `smart-scoring` | Reorder by provider health (quota, ban status) and prefer the best score, then fall through on errors. |
 | `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
-| `fusion` | Run members as a panel, then a judge model. Fusion has its own panel timeout, not the per-member timeout. |
+| `fusion` | Query every member in parallel as a panel, then a judge model writes one answer. Fusion has its own panel timeout, not the per-member timeout. Best quality, highest cost: each request bills every panel member plus the judge (N+1 calls). |
+
+Capacity auto-switch: with capability-aware routing on, a request that carries images, PDF, or audio goes first to a member that supports that input, whatever the strategy. See [Capability ceiling](#capability-ceiling).
 
 Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means use the fetch connect timeout (60s). Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default (0 = off).
 
@@ -98,10 +100,15 @@ place, and the combo dispatches exactly as it would without the classifier.
 [Laya](https://github.com/NandhaKishorM/laya) is an open decision engine you can
 run yourself. Its `laya-serve` command speaks the same `/v1/systemone` protocol
 as Jev. Add a connection under **Dashboard → Media Providers → System One → Laya (local)**. Enter
-the server URL (default `http://127.0.0.1:8000`; `host:port` without a scheme
-means `http://`), and add an API key only if the server was started with
-`LAYA_API_KEY`. A saved URL that is not http(s) is refused rather than replaced
-by the default host, and Jev keeps classifying. While a Laya connection is active,
+the server URL: `http://host:port` or `https://host:port` (default
+`http://127.0.0.1:8000`), or a bare `host:port` / `[ipv6]:port` with no scheme,
+which is treated as `http://`. Add an API key only if the server was started
+with `LAYA_API_KEY`. Only the origin is honored: any path, query, or fragment
+on the saved URL is dropped. Any other value, or an http(s) URL carrying a
+username or password, is refused rather than reinterpreted or replaced by the
+default host; a host the outbound guard blocks (for example cloud metadata) is
+refused the same way and is never called. In every refused case Jev keeps
+classifying. While a Laya connection is active,
 `smart` combos ask Laya instead of Jev, and `TYPESAFE_API_KEY` is not needed.
 The first active Laya connection by priority is used.
 

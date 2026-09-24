@@ -34,17 +34,22 @@ DurinDoor does not ship a default model. A route can only hold models that `GET 
 - The model itself is that kind.
 - The provider's visible-model allowlist and disabled-model list allow it.
 
-If nothing qualifies, a request without a model gets HTTP 400:
+If nothing qualifies, a request without a model gets HTTP 400 with `error.code: "no_provider_for_kind"`. The message depends on why:
+
+- No connected provider serves the kind at all:
 
 ```json
 {
   "error": {
-    "message": "No connected provider supports text to speech. Connect one in Dashboard > Media Providers, or pass a model.",
+    "message": "No connected provider supports text to speech on this endpoint. Connect one in Dashboard > Media Providers, or pass a model.",
     "type": "invalid_request_error",
     "code": "no_provider_for_kind"
   }
 }
 ```
+
+- A saved route exists, but none of its models are available right now (connection removed or disabled, model hidden): `"None of the models in the text to speech route are available. Update it in Dashboard > Media Routes, or pass a model."`
+- A saved route exists and some models are available, but this endpoint can't run any of them (a sync-only video model on `/v1/videos`, a Deepgram-only speech-to-text route on `/v1/audio/translations`): `"None of the models in the text to speech route can run on this endpoint. Add one it supports in Dashboard > Media Routes, or pass a model."`
 
 ## Set the order
 

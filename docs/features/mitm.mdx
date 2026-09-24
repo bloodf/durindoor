@@ -1,0 +1,41 @@
+---
+title: MITM proxy
+description: Route IDE tools such as Antigravity, Kiro, and GitHub Copilot through DurinDoor with a local certificate and DNS redirect.
+---
+
+Some IDEs only talk to their vendor's own API host. The MITM proxy lets those IDEs use any provider or model in DurinDoor anyway. Open **Dashboard → MITM Proxy** (`/dashboard/mitm`); **CLI Tools** links to it.
+
+<Callout type="warn">
+MITM intercepts HTTPS traffic from IDE tools through a local certificate authority. It may break the tool's terms of service, and the vendor can restrict the account.
+</Callout>
+
+## How it works
+
+An IDE request takes this path:
+
+1. The IDE resolves its API host. DNS redirect points that host at `127.0.0.1`, so the request reaches the local MITM server on port 443.
+2. The MITM server presents a certificate signed by the DurinDoor root CA, which the OS trusts after setup, and reads the request.
+3. The request goes to DurinDoor with the base URL and API key set on the MITM card. The IDE's model name is swapped for the DurinDoor model you mapped to it.
+4. DurinDoor's response goes back to the IDE.
+
+## Setup
+
+1. **Generate the certificate.** Start the server once; it creates the root CA if it does not exist.
+2. **Trust the certificate.** Click **Trust Cert**. This adds the root CA to the system keychain or certificate store, so it needs your sudo password (UAC on Windows).
+3. **Start the server.** It listens on port 443. If another process holds 443, the card names the owner and asks before stopping it.
+4. **Turn on DNS for a tool.** Each tool card adds that tool's hosts to the hosts file as `127.0.0.1`.
+5. **Map models.** On the tool card, pick a DurinDoor model for each model name the IDE sends.
+
+The card's **Cert**, **Trusted**, and **Server** indicators show which steps are done. On Windows, keep DurinDoor in standard-user mode; UAC is requested only for the system configuration steps.
+
+## Redirected hosts
+
+| Tool | Hosts |
+| --- | --- |
+| Antigravity | `daily-cloudcode-pa.googleapis.com`, `cloudcode-pa.googleapis.com` |
+| GitHub Copilot | `api.individual.githubcopilot.com` |
+| Kiro | `runtime.us-east-1.kiro.dev`, `q.us-east-1.amazonaws.com`, `codewhisperer.us-east-1.amazonaws.com` |
+
+For Antigravity the MITM proxy does not need an Antigravity provider connection; it only needs the models you map to. Provider-side details are on [Antigravity](../providers/antigravity.mdx#mitm-mode).
+
+Recovery steps for a stuck redirect, a lock error, or a missing root CA are on [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors).

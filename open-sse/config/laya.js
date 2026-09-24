@@ -29,17 +29,25 @@ export const LAYA_MIN_CONFIDENCE = 0.4;
  * Resolve the per-connection Laya origin. Only the origin is honored, so a
  * stored path, query or fragment cannot redirect prompts elsewhere. An empty
  * value means the default host; `host:port` without a scheme means http. Any
- * other value that is not an http(s) URL returns null, so callers refuse it
- * instead of silently calling the default host.
+ * other value, or an http(s) URL carrying a username or password, returns
+ * null, so callers refuse it instead of calling some other host.
  * @param {object|null} connection - connection or credentials with providerSpecificData
  * @returns {string|null}
  */
 export function resolveLayaHost(connection) {
   const raw = connection?.providerSpecificData?.baseUrl?.trim?.();
   if (!raw) return LAYA_DEFAULT_HOST;
+  // Only `http(s)://...` or a bare `host:port` / `[ipv6]:port`; anything else
+  // (a typo such as `http:/host`, another scheme) is refused, not reinterpreted.
+  let candidate = null;
+  if (/^https?:\/\//i.test(raw)) candidate = raw;
+  else if (/^(\[[0-9a-f:.]+\]|[a-z0-9.-]+):\d{1,5}$/i.test(raw)) candidate = `http://${raw}`;
+  if (!candidate) return null;
   try {
-    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
+    const url = new URL(candidate);
+    // Userinfo would be dropped by `origin`, turning `http://127.0.0.1:8000@evil.com` into evil.com.
+    if (url.username || url.password) return null;
+    return url.origin;
   } catch {
     return null;
   }

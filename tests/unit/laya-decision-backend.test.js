@@ -59,6 +59,10 @@ describe("resolveLayaHost / resolveLayaCheckpoint", () => {
     expect(resolveLayaHost({ providerSpecificData: { baseUrl: "not a url" } })).toBeNull();
     expect(resolveLayaHost({ providerSpecificData: { baseUrl: "10.0.0.8:9000" } })).toBe("http://10.0.0.8:9000");
     expect(resolveLayaHost({ providerSpecificData: { baseUrl: "localhost:9000" } })).toBe("http://localhost:9000");
+    expect(resolveLayaHost({ providerSpecificData: { baseUrl: "[::1]:9000" } })).toBe("http://[::1]:9000");
+    for (const bad of ["http:/127.0.0.1:8000", "http://127.0.0.1:8000@evil.com", "http://127.0.0.1:8000%2f%2f@evil.com", "http://user:pw@10.0.0.8:9000", "10.0.0.8"]) {
+      expect(resolveLayaHost({ providerSpecificData: { baseUrl: bad } })).toBeNull();
+    }
   });
   it("pins only known checkpoints, otherwise lets Laya route", () => {
     expect(resolveLayaCheckpoint({ providerSpecificData: { model: "multilingual" } })).toBe("multilingual");

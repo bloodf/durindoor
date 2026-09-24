@@ -16,6 +16,8 @@ import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/se
 import { isString, isUndefined } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
+import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
+import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -613,6 +615,32 @@ export async function POST(request) {
             } else {
               isValid = res.ok;
             }
+            break;
+          }
+
+        case "laya":{
+            // User-run laya-serve: /health proves the host answers. laya-serve
+            // answers an empty /v1/systemone body with 400 after the bearer
+            // check, so 400 is Laya accepting the key, 401 a wrong or missing
+            // key, and anything else a server that is not Laya.
+            const host = resolveLayaHost({ providerSpecificData });
+            if (!host) {
+              error = `Invalid Laya server URL: ${providerSpecificData?.baseUrl}`;
+              break;
+            }
+            const health = await fetchValidationProbe(`${host}${LAYA_HEALTH_PATH}`, {}, guardedProbeFetch).catch(() => null);
+            if (!health?.ok) {
+              error = `Laya server not reachable at ${host}`;
+              break;
+            }
+            const res = await fetchValidationProbe(`${host}${JEV_ENDPOINT_PATH}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : null) },
+              body: "{}"
+            }, guardedProbeFetch);
+            isValid = res.status === 400;
+            if (res.status === 401) error = "Laya rejected the API key";
+            else if (!isValid) error = `${host} does not answer the Laya /v1/systemone protocol`;
             break;
           }
 

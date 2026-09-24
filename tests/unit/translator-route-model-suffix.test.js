@@ -97,7 +97,9 @@ describe("translator console model suffix boundary", () => {
       }),
     });
 
-    expect(response.status).toBe(500);
+    // Refused before the executor now (devin has no chat transport → 400); any
+    // non-2xx that never serializes the credential satisfies this test.
+    expect(response.status).toBeGreaterThanOrEqual(400);
     const body = await response.json();
     expect(body.success).toBe(false);
 

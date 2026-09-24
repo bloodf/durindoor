@@ -103,13 +103,17 @@ async function handleSystemoneHandler(request) {
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "System One request failed");
   }
 
-  // Credential + fallback loop (mirrors handleRerank)
+  // Credential + fallback loop (mirrors handleRerank). The dashboard example
+  // sends x-connection-id for the selected connection; a pinned request uses
+  // only that connection (strict), so it never reaches another host or key.
+  const pin = request.headers.get("x-connection-id") || null;
+  const pinOptions = pin ? { preferredConnectionId: pin, strictConnectionId: pin } : {};
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId: apiKeyAuth.apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { ...pinOptions, apiKeyId: apiKeyAuth.apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

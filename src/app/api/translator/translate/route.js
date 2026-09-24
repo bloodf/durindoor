@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isChatProvider } from "open-sse/providers/chatCapability.js";
 import { detectFormat, getTargetFormat, resolveTransport } from "open-sse/services/provider.js";
 import { translateRequest } from "open-sse/translator/index.js";
 import { stripInternalKeys } from "open-sse/translator/validate.js";
@@ -128,7 +129,11 @@ export async function POST(request) {
           translated.model = resolvedModel.upstreamModel;
         }
 
-        // Build URL + headers via executor (same as chatCore → executor.execute)
+        // Build URL + headers via executor (same as chatCore → executor.execute).
+        // A provider without a chat transport would resolve to the OpenAI executor.
+        if (!isChatProvider(provider)) {
+          return NextResponse.json({ success: false, error: `Provider ${provider} does not serve chat requests` }, { status: 400 });
+        }
         const connections = await getProviderConnections({ provider });
         const connection = connections.find(c => c.isActive !== false);
         if (!connection) {

@@ -1,6 +1,7 @@
 import { getProviderConnections, updateProviderConnection } from "@/lib/localDb.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
 import { getExecutor } from "open-sse/index.js";
+import { isChatProvider } from "open-sse/providers/chatCapability.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 
@@ -41,6 +42,11 @@ async function POSTHandler(request) {
 
     if (!provider || !model || !body) {
       return Response.json({ success: false, error: "provider, model, and body required" }, { status: 400 });
+    }
+    // A provider without a chat transport would fall back to the OpenAI executor
+    // and receive this body plus the connection's key.
+    if (!isChatProvider(provider)) {
+      return Response.json({ success: false, error: `Provider ${provider} does not serve chat requests` }, { status: 400 });
     }
 
     const connections = await getProviderConnections({ provider });

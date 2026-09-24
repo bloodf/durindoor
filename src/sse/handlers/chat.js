@@ -1,3 +1,4 @@
+import { isChatProvider, isSystemoneModel } from "open-sse/providers/chatCapability.js";
 import { KIMI_CODING_MODELS_URL } from "../../../open-sse/providers/shared.js";
 import "open-sse/index.js";
 
@@ -19,6 +20,7 @@ import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels, getComboCanonicalName, createRoutableModelIdChecker, loadCustomCapabilities, parseModel } from "../services/model.js";
+import { resolveDecisionBackend } from "../services/decisionBackend.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
@@ -189,6 +191,15 @@ export function isImageOnlyModel(provider, model) {
   );
   const m = entry?.models?.find((x) => x.id === model);
   return (m?.kind ?? m?.type) === "image";
+}
+
+/**
+ * A model that can never answer a chat request: a System One decision model,
+ * or any model of a provider with no chat transport and no `llm` service kind
+ * (see open-sse/providers/chatCapability.js).
+ */
+export function isNonChatModel(provider, model) {
+  return isSystemoneModel(provider, model) || !isChatProvider(provider);
 }
 
 // Keep quota-only combo inspection distinct from the single-model resolution
@@ -642,6 +653,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         comboRouting
       ),
       jevClassify: true,
+      decisionBackend: resolveDecisionBackend,
       signal: request?.signal || null
     });
     // One row per logical combo request (collector holds only the latest
@@ -852,6 +864,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           mergedRouting
         ),
         jevClassify: true,
+        decisionBackend: resolveDecisionBackend,
         signal: requestSignal
       });
       if (ownsCollector && nestedCollector.latest) {
@@ -874,6 +887,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     return errorResponse(
       HTTP_STATUS.BAD_REQUEST,
       `Model '${provider}/${model}' is an image-generation model and cannot be used on /v1/chat/completions. Use POST /v1/images/generations instead.`
+    );
+  }
+
+  if (isNonChatModel(provider, model)) {
+    log.warn("CHAT", `Rejecting non-chat model on chat endpoint: ${provider}/${model}`);
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Model '${provider}/${model}' is not a chat model and cannot be used on the chat endpoints.`
     );
   }
 

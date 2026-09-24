@@ -55,6 +55,29 @@ ChatGPT Web has its own page, [ChatGPT Web](./chatgpt-web.mdx), covering the coo
 
 `local-device` is a TTS provider (`serviceKinds: ["tts"]`, `authType: "none"`). It synthesizes on the host (macOS or Windows) and returns mp3. Other local media ids include local Whisper (`local-whisper`, default `http://127.0.0.1:11500`) and optional local TTS/STT tools listed on the media-provider pages. Check those pages for voice, format, sample rate, and service URL fields.
 
+## Laya decision engine
+
+`laya` is a self-hosted [Laya](https://github.com/NandhaKishorM/laya) server:
+
+```bash
+pip install "laya[serve]"
+laya-serve        # http://127.0.0.1:8000; LAYA_PORT, LAYA_API_KEY, LAYA_DEVICE to change
+```
+
+Add the connection with the server URL: `http(s)://host:port`, or `host:port`
+for plain http. Other values, and URLs with a username or password, are refused.
+The API key is optional: the server URL stands in for it. Checking the connection calls `GET /health`, then sends an
+empty `POST /v1/systemone`. Laya answers 400 when the key is accepted and 401
+when it is wrong or missing. Any other answer means the host isn't a Laya
+server. Laya is not a chat model. Its checkpoints (`auto`, `english`,
+`multilingual`, `typed-decisions`) are System One models: call them on
+`POST /v1/systemone` with `model: "laya/english"` (send `x-connection-id` to use
+one connection only; the request then never runs on another), or try them from **Dashboard →
+Media Providers → System One → Laya (local)**. They never appear in
+`/v1/models`, and chat requests naming a Laya model get a 400. An active connection replaces Jev as the classifier for
+`smart` combos. A keyless `laya-serve` running on the default host is picked up
+without a connection. See [Complexity-aware routing](../features/combos.mdx).
+
 ## OpenCode free
 
 OpenCode Free is registry id `opencode`, alias `oc`, `noAuth: true`, and `autoComboNoAuth: true`. The static catalog currently lists Ox Alpha Free as `oc/x-preview-f-free` over Chat Completions. OpenCode Go subscribers can use the same model as `ocg/ox-alpha-free`. Catalog rows can change; `GET /v1/models` is the live list.

@@ -44,7 +44,7 @@ If nothing qualifies, a request without a model gets HTTP 400:
 Open **Dashboard → Media Routes** (`/dashboard/media-routes`). Each endpoint has a card:
 
 - **Automatic** is used until you save an order. It tries every available model in catalog order.
-- **Customize** copies the available models into an editable list. Drag to reorder, remove models, add others from the available list, then **Save**. The first model is the default and the rest are fallbacks.
+- **Customize** starts an editable list from the current first model. Add fallbacks from the available models, drag to reorder, remove models, then **Save**. The first model is the default and the rest are fallbacks.
 - **Use automatic order** clears the saved list.
 - A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order.
 

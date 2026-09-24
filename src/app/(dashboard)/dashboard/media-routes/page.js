@@ -20,6 +20,8 @@ const ROUTE_NOTES = {
   stt: "/v1/audio/translations uses only the models whose provider has a translations endpoint."
 };
 
+const AUTO_PREVIEW = 5;
+
 const providersPageFor = (kind) => (kind === "webSearch" || kind === "webFetch"
   ? "/dashboard/media-providers/web"
   : `/dashboard/media-providers/${kind}`);
@@ -113,15 +115,19 @@ function RouteCard({ route, onSaved }) {
               {translate("Requests without a model try every available model in this order. Customize to pick the default and its fallbacks.")}
             </p>
             <ol className="flex flex-col gap-1">
-              {route.effective.map((id, i) => (
+              {route.effective.slice(0, AUTO_PREVIEW).map((id, i) => (
                 <li key={id} className="flex min-w-0 items-center gap-2 px-2 text-[13px]">
                   <span className="w-4 shrink-0 text-center text-[11px] text-dd-muted dd-tnum">{i + 1}</span>
                   <code className="truncate text-dd-text">{id}</code>
                 </li>
               ))}
             </ol>
+            {route.effective.length > AUTO_PREVIEW ? (
+              <p className="px-2 text-[12px] text-dd-muted">+{route.effective.length - AUTO_PREVIEW} {translate("more")}</p>
+            ) : null}
             <div>
-              <Button icon="tune" onClick={() => setDraft(route.candidates.map((c) => c.id))}>{translate("Customize")}</Button>
+              {/* Start from the current first model; fallbacks are added on purpose. */}
+              <Button icon="tune" onClick={() => setDraft(route.effective.slice(0, 1))}>{translate("Customize")}</Button>
             </div>
           </>
         ) : null}

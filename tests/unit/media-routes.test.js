@@ -110,6 +110,20 @@ describe("resolveMediaRoute", () => {
     expect(route.models).toEqual(["tavily/fetch"]);
   });
 
+  it("uses the endpoint's automatic list when it can run none of the saved models", async () => {
+    mocks.buildModelsList.mockResolvedValue([model("veoaifree-web/veo"), model("xai/grok-imagine-video")]);
+    const settings = { mediaRoutes: { video: ["veoaifree-web/veo"] } };
+    const route = await resolveMediaRoute("video", { settings, supports: (p) => p === "xai" });
+    expect(route.models).toEqual(["xai/grok-imagine-video"]);
+  });
+
+  it("still errors when the saved models are gone everywhere", async () => {
+    mocks.buildModelsList.mockResolvedValue([model("xai/grok-imagine-video")]);
+    const settings = { mediaRoutes: { video: ["gone/model"] } };
+    const { error } = await resolveMediaRoute("video", { settings, supports: (p) => p === "xai" });
+    expect(error.status).toBe(400);
+  });
+
   it("applies an endpoint's provider filter", async () => {
     mocks.buildModelsList.mockResolvedValue([model("xai/grok-imagine-video"), model("veoaifree-web/veo")]);
     const route = await resolveMediaRoute("video", { settings: {}, supports: (p) => p === "veoaifree-web" });

@@ -1,6 +1,6 @@
 import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
-import { isBoolean, isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isString } from "../../../shared/utils/typeChecks.js";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
@@ -271,14 +271,17 @@ export async function getSettings() {
   return mergeWithDefaults(raw);
 }
 
-// Atomic read-merge-write inside transaction (prevents losing concurrent updates)
+// Atomic read-merge-write inside transaction (prevents losing concurrent updates).
+// `updates` may be a function of the stored settings, for merges into a nested
+// key that must see the row as it is inside the transaction.
 export async function updateSettings(updates) {
-  const { enableObservability2: _legacyObservability, ...sanitizedUpdates } = updates;
   const db = await getAdapter();
   let next;
   db.transaction(() => {
     const row = db.get(`SELECT data FROM settings WHERE id = 1`);
     const current = migrateObservabilityKeys(row ? parseJson(row.data, {}) : {});
+    const resolved = isFunction(updates) ? updates(current) : updates;
+    const { enableObservability2: _legacyObservability, ...sanitizedUpdates } = resolved;
     next = migrateObservabilityKeys({ ...current, ...sanitizedUpdates });
     db.run(
       `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,

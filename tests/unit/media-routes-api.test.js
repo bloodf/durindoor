@@ -13,7 +13,8 @@ vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mock
 vi.mock("@/lib/localDb", () => ({
   getSettings: vi.fn(async () => ({ ...mocks.store })),
   updateSettings: vi.fn(async (updates) => {
-    mocks.store = { ...mocks.store, ...updates };
+    const resolved = typeof updates === "function" ? updates({ ...mocks.store }) : updates;
+    mocks.store = { ...mocks.store, ...resolved };
     return { ...mocks.store };
   }),
   updateSettingsWithPasswordEpoch: vi.fn(),
@@ -73,6 +74,14 @@ describe("/api/media-providers/routes", () => {
     const reset = await (await put({ kind: "tts", models: [] })).json();
     expect(reset.route.saved).toEqual([]);
     expect(reset.route.effective).toEqual(["openai/tts-1", "elevenlabs/eleven_v3"]);
+  });
+
+  it("merges each kind against the stored map, so concurrent saves keep both", async () => {
+    await Promise.all([
+      put({ kind: "tts", models: ["openai/tts-1"] }),
+      put({ kind: "image", models: ["openai/dall-e-3"] })
+    ]);
+    expect(mocks.store.mediaRoutes).toEqual({ tts: ["openai/tts-1"], image: ["openai/dall-e-3"] });
   });
 
   it("rejects unknown kinds and malformed model lists", async () => {

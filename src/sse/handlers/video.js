@@ -297,11 +297,20 @@ async function handleVideoGetHandler(request, requestId) {
     const pinnedConnection = await getProviderConnectionById(preferredConnectionId);
     if (pinnedConnection?.provider && getVideoConfig(pinnedConnection.provider)) provider = pinnedConnection.provider;
   }
-  // Unpinned polls go to the provider a no-model create would have used.
+  // Jobs are account-bound, so an unpinned poll is only safe to guess when a
+  // single async video provider is connected; otherwise the client must echo
+  // the create response's connection header.
   if (!provider) {
-    const routed = await resolveRoutedVideoModel(settings);
-    if (routed.error) return routed.error;
-    provider = routed.provider;
+    const jobProviders = [...new Set((await listMediaRouteCandidates("video"))
+      .map((m) => providerOfModelId(m.id))
+      .filter(supportsVideoJobs))];
+    if (jobProviders.length !== 1) {
+      return errorResponse(
+        HTTP_STATUS.BAD_REQUEST,
+        "Missing x-connection-id: echo the x-9router-connection-id header from the create response"
+      );
+    }
+    provider = jobProviders[0];
   }
   const policyModel = getVideoConfig(provider)?.defaultModel || "grok-imagine-video";
   const policyError = await enforceVideoPolicy(request, provider, policyModel, apiKey);

@@ -41,11 +41,10 @@ export async function PUT(request) {
     return NextResponse.json({ error: "models must be a list of provider/model ids" }, { status: 400 });
   }
   try {
-    // ponytail: read-merge-write of the mediaRoutes map outside one
-    // transaction; two dashboard saves racing on different kinds can drop one.
-    const current = await getSettings();
-    const mediaRoutes = { ...(current.mediaRoutes || {}), [kind]: normalized };
-    const settings = await updateSettings({ mediaRoutes });
+    // Merged inside the settings transaction so saves of different kinds never drop each other.
+    const settings = await updateSettings((current) => ({
+      mediaRoutes: { ...(current.mediaRoutes || {}), [kind]: normalized }
+    }));
     return NextResponse.json({ route: await routeView(kind, settings) });
   } catch (error) {
     console.log("Error saving media route:", error?.message);

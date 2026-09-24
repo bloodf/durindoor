@@ -74,7 +74,7 @@ const { handleEmbeddings } = await import("../../src/sse/handlers/embeddings.js"
 const { handleStt } = await import("../../src/sse/handlers/stt.js");
 const { handleMusicGeneration } = await import("../../src/sse/handlers/music.js");
 const { handleImageGeneration } = await import("../../src/sse/handlers/imageGeneration.js");
-const { handleVideoGeneration, handleVideoCreate } = await import("../../src/sse/handlers/video.js");
+const { handleVideoGeneration, handleVideoCreate, handleVideoGet } = await import("../../src/sse/handlers/video.js");
 const { handleSearch } = await import("../../src/sse/handlers/search.js");
 
 const entry = (id, extra = {}) => ({ id, object: "model", owned_by: id.split("/")[0], ...extra });
@@ -196,6 +196,22 @@ describe("media endpoints without a model", () => {
     const call = mocks.handleVideoProxyCore.mock.calls[0][0];
     expect(call.provider).toBe("xai");
     expect(JSON.parse(call.rawBody).model).toBe("grok-imagine-video");
+  });
+
+  it("an unpinned poll asks for x-connection-id when more than one job provider is connected", async () => {
+    catalog({ video: [entry("xai/grok-imagine-video"), entry("minimax/MiniMax-H3")] });
+    const res = await handleVideoGet(new Request("http://localhost/v1/videos/r1"), "r1");
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toContain("x-connection-id");
+    expect(mocks.handleVideoProxyCore).not.toHaveBeenCalled();
+  });
+
+  it("an unpinned poll goes to the only connected job provider", async () => {
+    catalog({ video: [entry("veoaifree-web/veo"), entry("xai/grok-imagine-video")] });
+    mocks.handleVideoProxyCore.mockResolvedValue(ok({ status: "done" }));
+    const res = await handleVideoGet(new Request("http://localhost/v1/videos/r1"), "r1");
+    expect(res.status).toBe(200);
+    expect(mocks.handleVideoProxyCore.mock.calls[0][0].provider).toBe("xai");
   });
 
   it("async video jobs without a connected video provider fail with no_provider_for_kind", async () => {

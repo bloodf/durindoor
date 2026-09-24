@@ -55,11 +55,19 @@ function noRouteResponse(kind, hadSavedRoute) {
  * @param {(providerId: string) => boolean} [options.supports] - endpoint-specific provider filter
  */
 export async function describeMediaRoute(kind, { settings, supports = null } = {}) {
-  const candidates = (await listMediaRouteCandidates(kind))
-    .filter((m) => !supports || supports(providerOfModelId(m.id)));
+  const all = await listMediaRouteCandidates(kind);
+  const candidates = supports ? all.filter((m) => supports(providerOfModelId(m.id))) : all;
   const saved = savedRoute(settings, kind);
   const available = new Set(candidates.map((m) => m.id));
   let models = saved.length > 0 ? saved.filter((id) => available.has(id)) : candidates.map((m) => m.id);
+  // The saved models are still available but this endpoint cannot run any of
+  // them (e.g. a sync-only video model on /v1/videos, a Deepgram-only STT route
+  // on /v1/audio/translations): use this endpoint's own automatic list rather
+  // than failing. A saved route whose models are all gone still errors.
+  if (saved.length > 0 && models.length === 0 && supports) {
+    const allIds = new Set(all.map((m) => m.id));
+    if (saved.some((id) => allIds.has(id))) models = candidates.map((m) => m.id);
+  }
   // Vectors from different embedding models are not comparable, so an
   // embeddings route never falls through to a second model.
   if (kind === "embedding") models = models.slice(0, 1);

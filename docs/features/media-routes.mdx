@@ -15,7 +15,7 @@ Routes exist for these endpoints:
 | Web fetch | `POST /v1/web/fetch` | Send no `model` or `provider`. |
 | Embeddings | `POST /v1/embeddings` | Only the first available model runs. Vectors from different models are not comparable, so embeddings never switch models. They still move to the next account of that provider. |
 | Image generation | `POST /v1/images/generations` | |
-| Video generation | `POST /v1/video/generations`, `POST /v1/videos/{action}` | `/v1/video/generations` tries the models it can run, in order. `/v1/videos` creates a billable job, so it uses only the first route model whose provider runs async jobs and never retries. A `/v1/videos` poll without `x-connection-id` goes to that same provider. |
+| Video generation | `POST /v1/video/generations`, `POST /v1/videos/{action}` | `/v1/video/generations` tries the models it can run, in order. `/v1/videos` creates a billable job, so it uses only the first route model whose provider runs async jobs and never retries. A `/v1/videos` poll without `x-connection-id` works only when one async video provider is connected; otherwise it returns 400 asking for the header. |
 | Music generation | `POST /v1/music/generations`, `POST /v1/audio/music` | |
 
 ## Where the models come from
@@ -50,7 +50,7 @@ Open **Dashboard → Media Routes** (`/dashboard/media-routes`). Each endpoint h
 - **Automatic** is used until you save an order. It tries every available model in catalog order.
 - **Customize** starts an editable list from the current first model. Add fallbacks from the available models, drag to reorder, remove models, then **Save**. The first model is the default and the rest are fallbacks.
 - **Use automatic order** clears the saved list.
-- A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order.
+- A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order. One exception: if the saved models are still available but the endpoint can't run any of them, the endpoint uses its own automatic list. Examples are a `veoaifree-web` video route on `/v1/videos`, or a Deepgram-only speech-to-text route on `/v1/audio/translations`.
 
 Routes are stored in settings as `mediaRoutes`, for example `{ "tts": ["elevenlabs/eleven_v3", "openai/tts-1"] }`. You can also write them through:
 

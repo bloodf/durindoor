@@ -55,6 +55,23 @@ ChatGPT Web has its own page, [ChatGPT Web](./chatgpt-web.mdx), covering the coo
 
 `local-device` is a TTS provider (`serviceKinds: ["tts"]`, `authType: "none"`). It synthesizes on the host (macOS or Windows) and returns mp3. Other local media ids include local Whisper (`local-whisper`, default `http://127.0.0.1:11500`) and optional local TTS/STT tools listed on the media-provider pages. Check those pages for voice, format, sample rate, and service URL fields.
 
+## Laya decision engine
+
+`laya` is a self-hosted [Laya](https://github.com/NandhaKishorM/laya) server:
+
+```bash
+pip install "laya[serve]"
+laya-serve        # http://127.0.0.1:8000; LAYA_PORT, LAYA_API_KEY, LAYA_DEVICE to change
+```
+
+Add the connection with the server URL. The API key is optional: the server URL
+stands in for it. Checking the connection calls `GET /health`, then sends an
+empty `POST /v1/systemone`, which only returns 401 when the key is wrong or
+missing. Laya is not a chat model. It is listed with its checkpoints (`auto`,
+`english`, `multilingual`, `typed-decisions`) under the `decision` kind and never
+appears in `/v1/models`. An active connection replaces Jev as the classifier for
+`smart` combos. See [Complexity-aware routing](../features/combos.mdx).
+
 ## OpenCode free
 
 OpenCode Free is registry id `opencode`, alias `oc`, `noAuth: true`, and `autoComboNoAuth: true`. The static catalog currently lists Ox Alpha Free as `oc/x-preview-f-free` over Chat Completions. OpenCode Go subscribers can use the same model as `ocg/ox-alpha-free`. Catalog rows can change; `GET /v1/models` is the live list.

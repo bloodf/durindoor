@@ -19,6 +19,7 @@ import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { getModelInfo, getComboModels, getComboCanonicalName, createRoutableModelIdChecker, loadCustomCapabilities, parseModel } from "../services/model.js";
+import { resolveDecisionBackend } from "../services/decisionBackend.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
@@ -642,6 +643,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         comboRouting
       ),
       jevClassify: true,
+      decisionBackend: resolveDecisionBackend,
       signal: request?.signal || null
     });
     // One row per logical combo request (collector holds only the latest
@@ -852,6 +854,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           mergedRouting
         ),
         jevClassify: true,
+        decisionBackend: resolveDecisionBackend,
         signal: requestSignal
       });
       if (ownsCollector && nestedCollector.latest) {

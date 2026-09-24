@@ -13,6 +13,7 @@ import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
+import { LAYA_DEFAULT_HOST } from "open-sse/config/laya.js";
 import {
   allocateBulkConnectionName,
   bulkUsedNameSet,
@@ -56,11 +57,12 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isLocalWhisper = provider === "local-whisper";
+  const isLaya = provider === "laya";
   // Self-hosted providers store their origin per connection rather than taking
-  // it from the registry, so both need the host field.
-  const hasConfigurableHost = isOllamaLocal || isLocalWhisper;
-  const hostFieldLabel = isLocalWhisper ? "Whisper Server URL" : "Ollama Host URL";
-  const hostFieldPlaceholder = isLocalWhisper ? "http://127.0.0.1:11500" : "http://localhost:11434";
+  // it from the registry, so they need the host field.
+  const hasConfigurableHost = isOllamaLocal || isLocalWhisper || isLaya;
+  const hostFieldLabel = isLocalWhisper ? "Whisper Server URL" : isLaya ? "Laya Server URL" : "Ollama Host URL";
+  const hostFieldPlaceholder = isLocalWhisper ? "http://127.0.0.1:11500" : isLaya ? LAYA_DEFAULT_HOST : "http://localhost:11434";
   const isCookie = authType === "cookie";
   const { copied, copy } = useCopyToClipboard();
   const isXaiApiKey = provider === "xai" && !isCookie;
@@ -118,6 +120,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   }, [isOpen, existingConnectionNames, defaultRegion]);
 
   const buildProviderSpecificData = () => {
+    // Laya's host stands in for its optional key, so a blank field saves the default host.
+    if (isLaya) return { baseUrl: formData.ollamaHostUrl.trim() || LAYA_DEFAULT_HOST };
     if (hasConfigurableHost && formData.ollamaHostUrl.trim()) {
       return { baseUrl: formData.ollamaHostUrl.trim() };
     }
@@ -205,7 +209,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       }
 
       await onSave({
-        name: formData.name || (isOllamaLocal ? "Ollama Local" : isLocalWhisper ? "Local Whisper" : ""),
+        name: formData.name || (isOllamaLocal ? "Ollama Local" : isLocalWhisper ? "Local Whisper" : isLaya ? "Laya" : ""),
         apiKey: formData.apiKey,
         sessionToken,
         defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,

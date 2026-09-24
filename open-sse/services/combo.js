@@ -493,16 +493,18 @@ export function buildJevState(body, charBudget = JEV_STATE_CHAR_BUDGET) {
  * @param {object} body - client request body
  * @param {object} log
  * @param {AbortSignal|null} signal - client request signal, cancels the call on disconnect
- * @returns {Promise<{level: string, tier: string, confidence: number}|null>}
+ * @param {object|null} backend - classifyTier overrides for another /v1/systemone server
+ *        (a local Laya connection); null keeps the Jev env configuration
+ * @returns {Promise<{level: string, tier: string, confidence: number, source: string}|null>}
  */
-async function classifyTaskLevelWithJev(body, log, signal) {
+async function classifyTaskLevelWithJev(body, log, signal, backend = null) {
   const state = buildJevState(body);
   if (!state) return null;
-  const classified = await classifyTier({ state, log, signal });
+  const classified = await classifyTier({ ...(backend || {}), state, log, signal });
   if (!classified) return null;
   const level = JEV_TIER_TO_TASK_LEVEL[classified.tier];
   if (!level) return null;
-  return { level, tier: classified.tier, confidence: classified.confidence };
+  return { level, tier: classified.tier, confidence: classified.confidence, source: classified.source || "jev" };
 }
 
 function isTaskRoutingStrategy(strategy) {
@@ -1193,6 +1195,10 @@ export async function handleComboChat({
   // Only the chat handler opts in. TTS, image, search and fetch bodies are not
   // a user chat turn (a TTS `input` is the utterance), so they never go to Jev.
   jevClassify = false,
+  // Optional async resolver for the classifier backend (e.g. an active Laya
+  // connection). Called only when a task-routing strategy actually classifies;
+  // returning null keeps the Jev env configuration.
+  decisionBackend = null,
   comboTimeoutMs = 0,
   quotaRanker = null,
   signal = null,
@@ -1295,9 +1301,10 @@ export async function handleComboChat({
     // Optional Jev upgrade: when TYPESAFE_API_KEY is configured the judged tier
     // replaces the keyword/size heuristic level. Fail-open, so an unconfigured,
     // slow, broken or unsure classifier leaves the heuristic level in place.
-    const judged = jevClassify ? await classifyTaskLevelWithJev(body, log, signal) : null;
+    const backend = jevClassify && isFunction(decisionBackend) ? await decisionBackend().catch(() => null) : null;
+    const judged = jevClassify ? await classifyTaskLevelWithJev(body, log, signal, backend) : null;
     if (judged && judged.level !== task.level) {
-      task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`jev:${judged.tier}`] };
+      task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`${judged.source}:${judged.tier}`] };
     }
     const taskReordered = reorderByTaskWeight(rotatedModels, task, required, capabilitiesMap);
     if (taskReordered[0] !== rotatedModels[0]) {

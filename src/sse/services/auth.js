@@ -189,6 +189,11 @@ const affinityCleanup = setInterval(() => {
 if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
+// Keyless self-hosted servers whose server URL lives only on the connection
+// row. With an active row, the handler no-auth path takes normal connection
+// selection, the same as a scoped key, so requests reach the configured host.
+// (Self-hosted Firecrawl is not listed: its host also has a dashboard setting.)
+const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper"]);
 
 // Canonical roster of providers eligible for the public no-auth fallback when
 // no saved connection row exists. Mimocode stays in the roster so zero-row
@@ -600,11 +605,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     throwIfAborted(signal);
 
     const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true || options?.noAuthPath === true;
-    const publicFallbackAllowed = !scopeRestricted && scopedHasOverlap && (options?.noAuthPath === true || providerAllowsPublicNoAuthFallback(providerId)) && !excludeSet.has("noauth");
+    const hasSavedHost = NO_AUTH_CONNECTION_HOST_PROVIDERS.has(providerId) && connections.length > 0;
+    // A saved host row that is gated or rate-limited must surface that state,
+    // never fall back to a credential that calls the default host.
+    const publicFallbackAllowed = !hasSavedHost && !scopeRestricted && scopedHasOverlap && (options?.noAuthPath === true || providerAllowsPublicNoAuthFallback(providerId)) && !excludeSet.has("noauth");
     // Explicit handler no-auth paths historically ignored saved connections.
     // Preserve that zero-relation behavior; any API-key/combo restriction opts
     // the caller into selecting a stored eligible connection or denying.
-    if (options?.noAuthPath === true && !scopeRestricted) {
+    if (options?.noAuthPath === true && !scopeRestricted && !hasSavedHost) {
       return buildOptionalNoAuthCredential();
     }
 
@@ -936,7 +944,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * Resolve a handler's explicit no-auth branch through the same provider-account
  * selector used by credentialed requests. A scoped key may use a stored
  * connection for this provider, but cannot fall back to anonymous/local
- * execution. Zero relation rows preserve the legacy direct path.
+ * execution. Zero relation rows preserve the legacy direct path, except for
+ * NO_AUTH_CONNECTION_HOST_PROVIDERS (local-whisper) with an active row, which
+ * take normal selection so the saved host is used.
  *
  * Synthetic selector credentials are normalized back to an empty object so
  * no public token or proxy metadata leaks into cores that historically ran

@@ -126,6 +126,7 @@ export const NAV_SECTIONS = [
       { type: "item", href: "/dashboard/skills", label: "Skills", icon: "extension" },
       { type: "item", href: "/dashboard/auto-configure", label: "Auto-configure", icon: "auto_fix" },
       { type: "media", key: "media-providers", label: "Media Providers", icon: "perm_media", basePath: "/dashboard/media-providers" },
+      { type: "item", href: "/dashboard/media-routes", label: "Media Routes", icon: "alt_route" },
     ],
   },
   {

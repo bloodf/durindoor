@@ -19,6 +19,7 @@ import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
+import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -61,14 +62,26 @@ async function handleSearchHandler(request) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  if (!providerInput || !isString(providerInput)) {
-    log.warn("SEARCH", "Missing provider/model");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: provider (or model)");
+  if (!wantsDefaultRoute(providerInput) && !isString(providerInput)) {
+    log.warn("SEARCH", "Invalid provider/model");
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid field: provider (or model) must be a string");
   }
 
   if (!query || !isString(query) || !query.trim()) {
     log.warn("SEARCH", "Missing query");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
+  }
+
+  if (wantsDefaultRoute(providerInput)) {
+    const route = await resolveMediaRoute("webSearch", { settings, apiKeyId: apiKeyAuth.apiKeyId });
+    if (route.error) return route.error;
+    return handleComboChat({
+      body,
+      models: route.models,
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, settings),
+      log,
+      ...defaultRouteComboOptions("webSearch")
+    });
   }
 
   // Per-key combo access control. Auto-combo catalog computed lazily — only

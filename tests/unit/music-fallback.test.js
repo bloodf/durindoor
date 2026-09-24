@@ -114,6 +114,15 @@ describe("music handler credential fallback", () => {
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
   });
 
+  it("returns 403 when the provider is disabled", async () => {
+    mocks.getProviderCredentials.mockResolvedValue({ providerDisabled: true });
+
+    const response = await handleMusicGeneration(makeRequest());
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.message).toContain("Provider 'suno' is disabled");
+  });
+
   it("returns the core error when the last failure is non-fallback", async () => {
     const cred1 = { connectionId: "conn-1", connectionName: "first", apiKey: "ak" };
     mocks.getProviderCredentials.mockResolvedValue(cred1);

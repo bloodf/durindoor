@@ -14,6 +14,8 @@ const KIND_SLUG_MAP = {
   "image-to-text": ["imageToText"],
   "web": ["webSearch", "webFetch"],
   "rerank": ["rerank"],
+  "video": ["video"],
+  "music": ["music"],
 };
 
 const CORS_HEADERS = { "Access-Control-Allow-Origin": "*" };

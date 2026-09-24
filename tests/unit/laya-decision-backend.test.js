@@ -55,8 +55,10 @@ describe("resolveLayaHost / resolveLayaCheckpoint", () => {
   });
   it("falls back to the default host for blank or non-http values", () => {
     expect(resolveLayaHost(null)).toBe(LAYA_DEFAULT_HOST);
-    expect(resolveLayaHost({ providerSpecificData: { baseUrl: "file:///etc/passwd" } })).toBe(LAYA_DEFAULT_HOST);
-    expect(resolveLayaHost({ providerSpecificData: { baseUrl: "not a url" } })).toBe(LAYA_DEFAULT_HOST);
+    expect(resolveLayaHost({ providerSpecificData: { baseUrl: "file:///etc/passwd" } })).toBeNull();
+    expect(resolveLayaHost({ providerSpecificData: { baseUrl: "not a url" } })).toBeNull();
+    expect(resolveLayaHost({ providerSpecificData: { baseUrl: "10.0.0.8:9000" } })).toBe("http://10.0.0.8:9000");
+    expect(resolveLayaHost({ providerSpecificData: { baseUrl: "localhost:9000" } })).toBe("http://localhost:9000");
   });
   it("pins only known checkpoints, otherwise lets Laya route", () => {
     expect(resolveLayaCheckpoint({ providerSpecificData: { model: "multilingual" } })).toBe("multilingual");
@@ -114,6 +116,13 @@ describe("resolveDecisionBackend", () => {
   it("never selects a Laya connection pointing at a blocked host", async () => {
     mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://169.254.169.254" } }]);
     expect(await resolveDecisionBackend({ fetchImpl: vi.fn() })).toBeNull();
+  });
+
+  it("does not fall back to the default host for an invalid saved URL", async () => {
+    const fetchImpl = vi.fn();
+    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "ftp://10.0.0.8" } }]);
+    expect(await resolveDecisionBackend({ fetchImpl })).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("sends classifier calls through the outbound guard", async () => {

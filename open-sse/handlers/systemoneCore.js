@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { resolveLayaHost } from "../config/laya.js";
 import { createErrorResult, parseUpstreamError } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
@@ -55,9 +56,11 @@ export async function handleSystemoneCore({
   let baseUrl = cfg.baseUrl;
   let send = proxyAwareFetch;
   if (cfg.userConfigurableHost) {
-    const stored = credentials?.providerSpecificData?.baseUrl;
     try {
-      const origin = stored ? new URL(stored).origin : new URL(cfg.baseUrl).origin;
+      // Laya is the one provider with a user-set host; resolveLayaHost refuses
+      // (null) anything that is not an http(s) origin.
+      const origin = resolveLayaHost(credentials);
+      if (!origin) throw new Error(`Invalid ${provider} server URL`);
       baseUrl = `${origin}${new URL(cfg.baseUrl).pathname}`;
       assertOutboundUrlAllowed(baseUrl);
     } catch (err) {

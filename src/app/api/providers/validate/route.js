@@ -624,6 +624,10 @@ export async function POST(request) {
             // check, so 400 is Laya accepting the key, 401 a wrong or missing
             // key, and anything else a server that is not Laya.
             const host = resolveLayaHost({ providerSpecificData });
+            if (!host) {
+              error = `Invalid Laya server URL: ${providerSpecificData?.baseUrl}`;
+              break;
+            }
             const health = await fetchValidationProbe(`${host}${LAYA_HEALTH_PATH}`, {}, guardedProbeFetch).catch(() => null);
             if (!health?.ok) {
               error = `Laya server not reachable at ${host}`;

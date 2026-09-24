@@ -88,6 +88,7 @@ export async function resolveDecisionBackend({ fetchImpl = guardedFetch, now = D
   const [connection] = await getProviderConnections({ provider: LAYA_PROVIDER_ID, isActive: true });
   if (connection) {
     const host = resolveLayaHost(connection);
+    if (!host) return null; // an invalid saved URL never falls back to another host; Jev runs instead
     try {
       assertOutboundUrlAllowed(host);
     } catch {

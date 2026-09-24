@@ -27,20 +27,21 @@ export const LAYA_MIN_CONFIDENCE = 0.4;
 
 /**
  * Resolve the per-connection Laya origin. Only the origin is honored, so a
- * stored path, query or fragment cannot redirect prompts elsewhere; anything
- * that is not an http(s) URL falls back to the default host.
+ * stored path, query or fragment cannot redirect prompts elsewhere. An empty
+ * value means the default host; `host:port` without a scheme means http. Any
+ * other value that is not an http(s) URL returns null, so callers refuse it
+ * instead of silently calling the default host.
  * @param {object|null} connection - connection or credentials with providerSpecificData
- * @returns {string}
+ * @returns {string|null}
  */
 export function resolveLayaHost(connection) {
   const raw = connection?.providerSpecificData?.baseUrl?.trim?.();
   if (!raw) return LAYA_DEFAULT_HOST;
   try {
-    const url = new URL(raw);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return LAYA_DEFAULT_HOST;
-    return url.origin;
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `http://${raw}`);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
   } catch {
-    return LAYA_DEFAULT_HOST;
+    return null;
   }
 }
 

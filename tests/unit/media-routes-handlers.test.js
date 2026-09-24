@@ -198,6 +198,45 @@ describe("media endpoints without a model", () => {
     expect(JSON.parse(call.rawBody).model).toBe("grok-imagine-video");
   });
 
+  const multipart = (fields) => {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    return new Request("http://localhost/v1/videos/edits", { method: "POST", body: form });
+  };
+
+  it("a multipart job goes to the provider its model field names, prefix stripped", async () => {
+    catalog({ video: [entry("minimax/MiniMax-H3"), entry("xai/grok-imagine-video")] });
+    mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r2" }));
+    const res = await handleVideoCreate(multipart({ model: "xai/grok-imagine-video", prompt: "x", image: new File(["img"], "a.png") }), "edits");
+    expect(res.status).toBe(200);
+    const call = mocks.handleVideoProxyCore.mock.calls[0][0];
+    expect(call.provider).toBe("xai");
+    const form = await new Response(call.rawBody, { headers: { "content-type": call.contentType } }).formData();
+    expect(form.get("model")).toBe("grok-imagine-video");
+    expect(form.get("image")).toBeInstanceOf(File);
+  });
+
+  it("a multipart job with a bare model forwards the original bytes", async () => {
+    catalog({ video: [entry("minimax/MiniMax-H3"), entry("xai/grok-imagine-video")] });
+    mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r3" }));
+    const req = multipart({ model: "grok-imagine-video", prompt: "x" });
+    const contentType = req.headers.get("content-type");
+    await handleVideoCreate(req, "edits");
+    const call = mocks.handleVideoProxyCore.mock.calls[0][0];
+    expect(call.provider).toBe("xai");
+    expect(call.contentType).toBe(contentType);
+  });
+
+  it("a bare video id must match exactly and name one provider", async () => {
+    catalog({ video: [entry("minimax/MiniMax-H3"), entry("minimax-cn/MiniMax-H3"), entry("xai/grok-imagine-video")] });
+    const ambiguous = await handleVideoCreate(post("/v1/videos/generations", { model: "MiniMax-H3", prompt: "x" }), "generations");
+    expect(ambiguous.status).toBe(400);
+    expect((await ambiguous.json()).error.message).toContain("use a provider/model id");
+    const partial = await handleVideoCreate(post("/v1/videos/generations", { model: "video", prompt: "x" }), "generations");
+    expect(partial.status).toBe(400);
+    expect(mocks.handleVideoProxyCore).not.toHaveBeenCalled();
+  });
+
   it("an unpinned poll asks for x-connection-id when more than one job provider is connected", async () => {
     catalog({ video: [entry("xai/grok-imagine-video"), entry("minimax/MiniMax-H3")] });
     const res = await handleVideoGet(new Request("http://localhost/v1/videos/r1"), "r1");

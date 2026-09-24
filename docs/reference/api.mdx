@@ -90,7 +90,7 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 
 `POST /v1/audio/music` re-exports `POST /v1/music/generations`. JSON `{ model, prompt }`. `POST /v1/video/generations` is the same shape for video-capable models.
 
-`/v1/videos` is the async xAI Grok Imagine surface. `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte after stripping a `provider/` prefix. With no `model`, the first video-route model whose provider runs async jobs is used, and its id is written into a JSON body. A bare id is matched against the connected video models. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
+`/v1/videos` is the async xAI Grok Imagine surface. `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte. The `model` field (a JSON key or a multipart form field) picks the provider. A `provider/` prefix is stripped: JSON is rewritten, and multipart is re-encoded with a new boundary. With no `model`, the first video-route model whose provider runs async jobs is used, and for JSON its id is written into the body. A bare id must exactly match one connected video model; if two providers serve it, the request returns 400 and asks for `provider/model`. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |

@@ -9,6 +9,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import * as log from "../utils/logger.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { supportsVideoGeneration } from "open-sse/handlers/videoGenerationCore.js";
 import {
@@ -108,9 +109,31 @@ async function readForwardableBody(request) {
     return { raw, parsed, contentType };
   }
   // Multipart (or any other content type): forward the exact bytes — parsing
-  // and re-encoding FormData would change the multipart boundary.
+  // and re-encoding FormData would change the multipart boundary. A copy is
+  // parsed only to read the `model` field that picks the provider.
   const buf = Buffer.from(await request.arrayBuffer());
-  return { raw: buf, parsed: null, contentType };
+  let formModel = null;
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      const value = (await new Response(buf, { headers: { "content-type": contentType } }).formData()).get("model");
+      formModel = isString(value) ? value : null;
+    } catch {
+      return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart body") };
+    }
+  }
+  return { raw: buf, parsed: null, contentType, formModel };
+}
+
+/**
+ * Re-encode a multipart body with `model` set to the provider-local id. Only
+ * used when the client sent a `provider/model` field; the new boundary comes
+ * back in the content type.
+ */
+async function withMultipartModel(raw, contentType, model) {
+  const form = await new Response(raw, { headers: { "content-type": contentType } }).formData();
+  form.set("model", model);
+  const encoded = new Request("http://localhost/", { method: "POST", body: form });
+  return { body: Buffer.from(await encoded.arrayBuffer()), contentType: encoded.headers.get("content-type") };
 }
 
 /**
@@ -125,25 +148,34 @@ async function resolveRoutedVideoModel(settings) {
   return { provider: modelInfo.provider, model: modelInfo.model };
 }
 
-async function resolveVideoProvider(parsedBody, settings) {
-  if (wantsDefaultRoute(parsedBody?.model)) return resolveRoutedVideoModel(settings);
+async function resolveVideoProvider(requestedModel, settings) {
+  if (wantsDefaultRoute(requestedModel)) return resolveRoutedVideoModel(settings);
 
-  const modelStr = String(parsedBody.model);
+  const modelStr = String(requestedModel);
+  // Bare model ids (no "provider/" prefix): prefix-less inference targets chat
+  // providers, so match the id exactly against the connected video models
+  // first. Two providers serving the same id is ambiguous.
+  if (!modelStr.includes("/")) {
+    const providers = [...new Set((await listMediaRouteCandidates("video"))
+      .map((m) => m.id)
+      .filter((id) => id.slice(id.indexOf("/") + 1) === modelStr)
+      .map(providerOfModelId)
+      .filter(supportsVideoJobs))];
+    if (providers.length === 1) return { provider: providers[0], model: modelStr };
+    if (providers.length > 1) {
+      return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, `Model '${modelStr}' is served by ${providers.join(", ")}; use a provider/model id`) };
+    }
+  }
+
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Combos are not supported for video generation") };
   }
   if (!getVideoConfig(modelInfo.provider)) {
-    // Bare model ids (no "provider/" prefix): prefix-less inference targets
-    // chat providers, so match the id against the routable video models.
-    if (!modelStr.includes("/")) {
-      const match = (await listMediaRouteCandidates("video"))
-        .map((m) => m.id)
-        .find((id) => id.endsWith(`/${modelStr}`) && supportsVideoJobs(providerOfModelId(id)));
-      if (match) return { provider: providerOfModelId(match), model: modelStr };
-      return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, `No connected video provider serves model '${modelStr}'`) };
-    }
-    return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, `Provider '${modelInfo.provider}' does not support video generation`) };
+    const message = modelStr.includes("/")
+      ? `Provider '${modelInfo.provider}' does not support video generation`
+      : `No connected video provider serves model '${modelStr}'`;
+    return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, message) };
   }
   return { provider: modelInfo.provider, model: modelInfo.model };
 }
@@ -193,7 +225,8 @@ async function handleVideoCreateHandler(request, action) {
   const bodyInfo = await readForwardableBody(request);
   if (bodyInfo.error) return bodyInfo.error;
 
-  const resolved = await resolveVideoProvider(bodyInfo.parsed, settings);
+  const requestedModel = bodyInfo.parsed ? bodyInfo.parsed.model : bodyInfo.formModel;
+  const resolved = await resolveVideoProvider(requestedModel, settings);
   if (resolved.error) return resolved.error;
   const { provider, model } = resolved;
 
@@ -203,8 +236,11 @@ async function handleVideoCreateHandler(request, action) {
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
   // otherwise forward the original bytes untouched.
   let forwardBody = bodyInfo.raw;
+  let forwardContentType = bodyInfo.contentType || null;
   if (bodyInfo.parsed && model && bodyInfo.parsed.model !== model) {
     forwardBody = JSON.stringify({ ...bodyInfo.parsed, model });
+  } else if (bodyInfo.formModel && model && bodyInfo.formModel !== model) {
+    ({ body: forwardBody, contentType: forwardContentType } = await withMultipartModel(bodyInfo.raw, bodyInfo.contentType, model));
   }
 
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
@@ -233,7 +269,7 @@ async function handleVideoCreateHandler(request, action) {
     provider,
     action,
     rawBody: forwardBody,
-    contentType: bodyInfo.contentType || null,
+    contentType: forwardContentType,
     idempotencyKey,
     credentials: refreshedCredentials,
     signal: request.signal,

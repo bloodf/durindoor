@@ -1,6 +1,6 @@
 import { AI_PROVIDERS } from "@/shared/constants/providers.js";
 import { getProviderConnections, getSettings } from "@/lib/localDb";
-import { isPrivateHost, assertOutboundUrlAllowed } from "open-sse/utils/outboundUrlGuard.js";
+import { isPrivateHost, assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { resolveLocalWhisperHost } from "open-sse/config/providers.js";
 import { resolveFirecrawlBaseUrl } from "open-sse/handlers/fetch/index.js";
 import { fetchLocalDeviceVoices } from "open-sse/handlers/ttsProviders/localDevice.js";
@@ -90,7 +90,9 @@ async function probe(providerId, fetchImpl) {
  * @param {{ fetchImpl?: Function, now?: number }} [options]
  * @returns {Promise<boolean>} true for keyed providers (their connection proves setup)
  */
-export function isKeylessProviderWorking(providerId, { fetchImpl = (...args) => fetch(...args), now = Date.now() } = {}) {
+// guardedProbeFetch also validates the resolved address on the socket, so a
+// hostname that resolves to a metadata address is refused, not probed.
+export function isKeylessProviderWorking(providerId, { fetchImpl = guardedProbeFetch, now = Date.now() } = {}) {
   if (AI_PROVIDERS[providerId]?.noAuth !== true) return Promise.resolve(true);
   const hit = cache.get(providerId);
   if (hit && hit.expiresAt > now) return hit.working;

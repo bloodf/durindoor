@@ -23,7 +23,7 @@ Quick shapes from the template:
 
 - API-key LLM: `id`, `alias`, `category: "apikey"`, `display`, `transport.baseUrl`, `models`.
 - OAuth LLM: add `oauth`. `clientId` / `tokenUrl` inject into `transport` at build time. Do not duplicate them under `transport`.
-- Media-only: drop chat `models` and fill `media.serviceKinds` plus the matching `*Config` blocks.
+- Media-only: drop chat `models` and fill `media.serviceKinds` plus the matching `*Config` blocks. A provider with no chat transport and no `llm` service kind is refused on the chat and translator endpoints (`chatCapability.js`'s `isChatProvider`), not routed there by mistake.
 
 Default `transport.format` is `"openai"`. Declare only what differs.
 

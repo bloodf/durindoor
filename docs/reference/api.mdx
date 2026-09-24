@@ -5,7 +5,7 @@ description: Method, path, body, streaming, and provider support for every /v1 r
 
 Point clients at `http://localhost:20128/v1`. Production listens on port `20128`. Next rewrites `/v1/:path*` to `/api/v1/:path*`, so the files live under `src/app/api/v1` while the public path stays `/v1`. A second rewrite maps `/v1/v1/:path*` onto the same handlers for clients that already put `/v1` in both the base URL and the path. `/codex/:path*` and `/responses` land on `POST /v1/responses`. `/v1beta` is a separate tree.
 
-This page has one row per `route.js` under `src/app/api/v1` (39 files), plus the two Gemini-shaped routes under `src/app/api/v1beta`. A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
+This page has one row per `route.js` under `src/app/api/v1` (41 files), plus the two Gemini-shaped routes under `src/app/api/v1beta`. A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
 
 Key policy, minting, and lifetime caps are on [API keys](../guides/api-keys.mdx). SDK snippets are on [SDK examples](../guides/sdk-examples.mdx).
 
@@ -29,7 +29,7 @@ JSON errors also put that id on the body: `error.request_id` for OpenAI-shaped `
 
 **Expose combos only** (Profile, Model catalog) makes `GET /v1/models` return configured combo names with `owned_by: "combo"`. Default is off. Web combos keep `kind` so search and fetch stay distinct. `HEAD /v1/models` returns 200 with an empty body so SDK probes do not wait for the full list.
 
-Capability filters live at `GET /v1/models/{kind}` for `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, and `rerank`. `web` includes search and fetch. A single unknown segment still returns `Unknown model kind`. A provider-prefixed id (`GET /v1/models/cc/claude-sonnet-5`) returns that model object or HTTP 404 `error.code: "model_not_found"`. `HEAD` on those paths is a route probe: known kinds and provider-prefixed paths return 200 without proving the model exists.
+Capability filters live at `GET /v1/models/{kind}` for `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, `rerank`, `video`, and `music`. `web` includes search and fetch. A single unknown segment still returns `Unknown model kind`. A provider-prefixed id (`GET /v1/models/cc/claude-sonnet-5`) returns that model object or HTTP 404 `error.code: "model_not_found"`. `HEAD` on those paths is a route probe: known kinds and provider-prefixed paths return 200 without proving the model exists.
 
 Rows keep callable `id` and `owned_by`. Presentation may add `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Send `id` in requests. `GET /v1/models/info?id={alias}/{modelId}` keeps the registry `name` and only attaches those extra fields. Optional `kind` disambiguates duplicate ids. Missing `id`: 400. Unknown id: 404.
 
@@ -64,6 +64,8 @@ Claude-format requests normally end on a user turn. A trailing assistant text pr
 
 `POST /v1/messages/count_tokens` calls a native count on Claude-compatible providers. Anything else, including a missing model, returns `{ input_tokens, approximate: true }` from the heuristic.
 
+A model whose provider has no chat transport and no `llm` service kind (TTS, STT, search, image-only, or System One providers such as Laya) gets HTTP 400 `Model 'provider/model' is not a chat model and cannot be used on the chat endpoints.` from every chat endpoint above. The `/api/translator/send` and `/api/translator/translate` debug routes run the same `isChatProvider` check and refuse with `Provider {provider} does not serve chat requests` instead.
+
 <Callout type="warn">
 Combos only help when every member can run the client workflow (tools, images, JSON). Mix kinds and the fallback chain fails on the first incompatible hop.
 </Callout>
@@ -80,7 +82,7 @@ Combos only help when every member can run the client workflow (tools, images, J
 
 ## Media
 
-Every media endpoint below except image edit and voices accepts a request without `model` (or `"model": "auto"`). It then runs the endpoint's [media route](../features/media-routes.mdx): the dashboard-ordered models from connected providers of that kind, with fallback. If no connected provider serves the kind, it answers 400 `no_provider_for_kind`.
+Every media endpoint on this page, plus web search, web fetch, and embeddings below, accepts a request without `model` (or `"model": "auto"`) except image edit and voices. It then runs the endpoint's [media route](../features/media-routes.mdx): the dashboard-ordered models from connected providers of that kind, with fallback. The 400 `no_provider_for_kind` fires when no connected provider serves the kind, when a saved route has no available model, or when a saved route's models are available but none can run on this endpoint; see [media routes](../features/media-routes.mdx) for the exact message per case.
 
 Image generate is JSON `{ model, prompt }`. Optional `Accept: text/event-stream` and `?response_format=binary`. `sdwebui` and `comfyui` need no stored key. Image edit is multipart: `model`, `image`, `prompt`.
 
@@ -90,7 +92,7 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 
 `POST /v1/audio/music` re-exports `POST /v1/music/generations`. JSON `{ model, prompt }`. `POST /v1/video/generations` is the same shape for video-capable models.
 
-`/v1/videos` is the async xAI Grok Imagine surface. `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte. The `model` field (a JSON key or a multipart form field) picks the provider. A `provider/` prefix is stripped: JSON is rewritten, and multipart is re-encoded with a new boundary. With no `model`, the first video-route model whose provider runs async jobs is used, and its id is written into the body (JSON, or the re-encoded multipart form). A bare id must exactly match one connected video model; if two providers serve it, the request returns 400 and asks for `provider/model`. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
+`/v1/videos` is the async job surface: xAI Grok Imagine, MiniMax, MiniMax CN, and OrcaRouter (any provider with a `videoConfig` that is not the sync `veoaifree-web` generator). `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte. The `model` field (a JSON key or a multipart form field) picks the provider. A `provider/` prefix is stripped: JSON is rewritten, and multipart is re-encoded with a new boundary. With no `model`, the first video-route model whose provider runs async jobs is used, and its id is written into the body (JSON, or the re-encoded multipart form). A bare id must exactly match one connected video model; if two providers serve it, the request returns 400 and asks for `provider/model`. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
@@ -103,7 +105,7 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 | POST, OPTIONS | `/v1/music/generations` | JSON `model`, `prompt` | no | music-kind models |
 | POST, OPTIONS | `/v1/audio/music` | same (re-export) | no | same as music generations |
 | POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
-| POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, OrcaRouter) |
+| POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, MiniMax CN, OrcaRouter) |
 
 ## Embeddings, rerank, and moderation
 
@@ -117,11 +119,13 @@ JSON bodies. Embeddings need `model` and `input`. Rerank needs `model`, `query`,
 
 ## System One (Jev) decision endpoint
 
-Native pass-through for Jev decision models, with no chat translation layer. Body needs `model`, `state` (the situation to evaluate), and `questions` (an object, not an array). The provider's JSON response (typed `answers`, `usage`) is forwarded unchanged.
+Native pass-through for Jev-shaped decision models, with no chat translation layer. Body needs `model`, `state` (the situation to evaluate), and `questions` (an object, not an array). The provider's JSON response (typed `answers`, `usage`) is forwarded unchanged.
+
+`systemoneConfig` models include the Jev models (`opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, `openrouter/typesafe/jev-1.13`) and self-hosted [Laya](../features/combos.mdx#local-laya-instead-of-jev) (`laya/auto`, `laya/english`, `laya/multilingual`, `laya/typed-decisions`), served by a `laya-serve` connection. A request naming a connection's provider goes through the normal credential + fallback loop, but `x-connection-id` pins it strictly to that connection: the request never falls back to another connection or host on failure.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
-| POST, OPTIONS | `/v1/systemone` | JSON `model`, `state`, `questions` | no | `systemoneConfig` models (`opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, `openrouter/typesafe/jev-1.13`) |
+| POST, OPTIONS | `/v1/systemone` | JSON `model`, `state`, `questions`; optional `x-connection-id` header to pin a connection | no | `systemoneConfig` models (Jev, Laya) |
 
 ## Web search and fetch
 

@@ -100,10 +100,15 @@ place, and the combo dispatches exactly as it would without the classifier.
 [Laya](https://github.com/NandhaKishorM/laya) is an open decision engine you can
 run yourself. Its `laya-serve` command speaks the same `/v1/systemone` protocol
 as Jev. Add a connection under **Dashboard → Media Providers → System One → Laya (local)**. Enter
-the server URL (default `http://127.0.0.1:8000`; `host:port` without a scheme
-means `http://`), and add an API key only if the server was started with
-`LAYA_API_KEY`. A saved URL that is not http(s) is refused rather than replaced
-by the default host, and Jev keeps classifying. While a Laya connection is active,
+the server URL: `http://host:port` or `https://host:port` (default
+`http://127.0.0.1:8000`), or a bare `host:port` / `[ipv6]:port` with no scheme,
+which is treated as `http://`. Add an API key only if the server was started
+with `LAYA_API_KEY`. Only the origin is honored: any path, query, or fragment
+on the saved URL is dropped. Any other value, or an http(s) URL carrying a
+username or password, is refused rather than reinterpreted or replaced by the
+default host; a host the outbound guard blocks (for example cloud metadata) is
+refused the same way and is never called. In every refused case Jev keeps
+classifying. While a Laya connection is active,
 `smart` combos ask Laya instead of Jev, and `TYPESAFE_API_KEY` is not needed.
 The first active Laya connection by priority is used.
 

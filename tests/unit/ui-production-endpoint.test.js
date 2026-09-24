@@ -13,7 +13,6 @@ import {
 import {
   getLocalEndpointUrl,
   getCompositeEndpointEnabled,
-  TUNNEL_BENEFITS,
 } from "../../src/app/(dashboard)/dashboard/endpoint/endpointConstants";
 
 const FIXED_NOW = Date.parse("2026-09-05T00:00:00Z");
@@ -69,16 +68,5 @@ describe("endpoint UI behavior contracts", () => {
     expect(getCompositeEndpointEnabled({ enabled: true })).toBe(true);
     expect(getCompositeEndpointEnabled({ enabled: false })).toBe(false);
     expect(getCompositeEndpointEnabled(null)).toBeFalsy();
-  });
-
-  it("keeps every tunnel benefit renderable by the enable modal grid", () => {
-    expect(TUNNEL_BENEFITS).toHaveLength(4);
-    for (const benefit of TUNNEL_BENEFITS) {
-      expect(benefit).toMatchObject({
-        icon: expect.any(String),
-        title: expect.any(String),
-        desc: expect.any(String),
-      });
-    }
   });
 });

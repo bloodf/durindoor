@@ -12,15 +12,16 @@
 //   BUILD      — configure routing and credentials
 //   OPTIMIZE   — token-saving tooling
 //   INTEGRATE  — connect external clients and media kinds
-//   REFERENCE  — documentation and debugging aids
+//   REFERENCE  — documentation link and debugging aids
 //
 // Settings (profile) is not part of NAV_SECTIONS; PROFILE_NAV_ITEM is pinned
 // at the bottom of the rail, above the collapse toggle.
 //
 // Entry shapes:
-//   item  — { type: "item", href, label, icon, exact?, requiresTranslator? }
+//   item  — { type: "item", href, label, icon, exact?, requiresTranslator?, external? }
 //           `exact` defaults to prefix matching; `requiresTranslator` entries
-//           are hidden unless the translator feature flag is enabled.
+//           are hidden unless the translator feature flag is enabled;
+//           `external` entries link off-site and open in a new tab.
 //   group — { type: "group", key, label, icon, children: [<item-like>] }
 //           collapsible parent; collapsed rail links to the first child.
 //   media — { type: "media", key, label, icon, basePath }
@@ -29,6 +30,7 @@
 
 import { createElement } from "react";
 import { cn } from "@/shared/utils/cn";
+import { DOCS_URL } from "@/shared/constants/docs";
 
 // Segment-boundary active check.
 // Returns true when the current pathname starts with href, with three guards:
@@ -132,8 +134,8 @@ export const NAV_SECTIONS = [
     key: "reference",
     label: "Reference",
     entries: [
-      { type: "item", href: "/dashboard/api-docs", label: "API Docs", icon: "description" },
-      { type: "item", href: "/dashboard/mcp-help", label: "MCP Help", icon: "help" },
+      // External: opens the public docs site in a new tab.
+      { type: "item", href: DOCS_URL, label: "Docs", icon: "menu_book", external: true },
       { type: "item", href: "/dashboard/translator", label: "Translator", icon: "translate", exact: true, requiresTranslator: true },
     ],
   },

@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 const pagesDir = fileURLToPath(new URL("../../src/shared/ui/pages", import.meta.url));
 const expectedPaths = {
-  "api-docs": "/dashboard/api-docs",
   "cli-tools": "/dashboard/cli-tools",
   combos: "/dashboard/combos",
   "console-log": "/dashboard/console-log",
@@ -14,7 +13,6 @@ const expectedPaths = {
   headroom: "/dashboard/headroom",
   health: "/dashboard/health",
   "mcp-gateway": "/dashboard/mcp-gateway",
-  "mcp-help": "/dashboard/mcp-help",
   "media-providers": "/dashboard/media-providers/embedding",
   playground: "/dashboard/playground",
   providers: "/dashboard/providers",

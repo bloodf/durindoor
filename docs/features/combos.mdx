@@ -43,12 +43,14 @@ Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The
 
 | Value | Behaviour |
 | --- | --- |
-| `fallback` | Try members in the saved order. |
-| `round-robin` | Rotate the start member. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
+| `fallback` | Try members in the saved order. The next member runs only when the current one fails. |
+| `round-robin` | Rotate the start member across requests to spread load. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
 | `weighted` | Pick by member weight. |
-| `smart-scoring` | Reorder by quota and health scores, then fall through. |
+| `smart-scoring` | Reorder by provider health (quota, ban status) and prefer the best score, then fall through on errors. |
 | `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
-| `fusion` | Run members as a panel, then a judge model. Fusion has its own panel timeout, not the per-member timeout. |
+| `fusion` | Query every member in parallel as a panel, then a judge model writes one answer. Fusion has its own panel timeout, not the per-member timeout. Best quality, highest cost: each request bills every panel member plus the judge (N+1 calls). |
+
+Capacity auto-switch: with capability-aware routing on, a request that carries images, PDF, or audio goes first to a member that supports that input, whatever the strategy. See [Capability ceiling](#capability-ceiling).
 
 Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means use the fetch connect timeout (60s). Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default (0 = off).
 

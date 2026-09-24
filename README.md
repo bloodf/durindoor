@@ -193,7 +193,7 @@ The bundled dashboard (`/dashboard`) is where you connect providers, mint API ke
 - **Usage** — per-key, per-model spend and token counts
 - **Proxy timeline** — an optional redacted hop log for debugging a request end to end
 - **MCP Gateway** — register upstream MCP servers and grant scoped keys to specific tools
-- **API Docs** — a live, in-dashboard route explorer
+- **Docs** — the sidebar links to the [documentation site](https://durindoor.vercel.app/docs), including the full [API reference](https://durindoor.vercel.app/docs/reference/api)
 
 Try it without installing anything: [hosted demo dashboard](https://durindoor.vercel.app/dashboard).
 

@@ -116,3 +116,11 @@ If `DATA_DIR` is custom, copy that directory instead. Stop the process first. Fu
 `--host 127.0.0.1` keeps the dashboard on this machine. Binding `0.0.0.0` without a password you set, and without a proxy, puts privileged dashboard routes on the LAN. Change `INITIAL_PASSWORD` (built-in fallback is `123456`). Set `JWT_SECRET` before the first start on a fresh data dir. Remote login with `123456` is refused.
 
 For a second device, prefer a VPN, SSH tunnel, Tailscale, or the [VPS](./cloud.mdx) plus [reverse proxy](./reverse-proxy-and-static-assets.mdx) path. [Security](../operations/security.mdx) is the hardening list. [Installation](../getting-started/installation.mdx) has env vars and Node versions.
+
+## Cloudflare Tunnel
+
+**Endpoint** (`/dashboard/endpoint`) can start a Cloudflare Tunnel. It gives your local DurinDoor a public HTTPS URL with no port forwarding and no static IP. Use that URL from any network, share it with your team, or paste it into tools that call from the cloud, such as Cursor and Cline. Traffic is encrypted with TLS through Cloudflare.
+
+DurinDoor downloads `cloudflared` from Cloudflare's GitHub releases the first time you start a tunnel. The tunnel needs outbound port 7844 (TCP and UDP), and the connection can take 10 to 30 seconds. `TUNNEL_TRANSPORT_PROTOCOL` picks `http2` (default), `quic`, or `auto`; see [Environment variables](../reference/environment.mdx).
+
+Turn on **Require API Key** before you share the URL. The dashboard stays blocked through the tunnel unless you turn on **Allow dashboard access via tunnel**, and login is still required when it is on. Disabling the tunnel disconnects it, and the tunnel URL stops working.

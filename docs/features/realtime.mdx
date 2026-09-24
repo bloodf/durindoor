@@ -5,7 +5,7 @@ description: Text WebSocket at GET /v1/realtime in the OpenAI Realtime shape. Au
 
 `GET /v1/realtime` (trailing slash allowed) upgrades to a WebSocket. Other paths, including `/_next/webpack-hmr`, stay with Next.js. `custom-server.js` owns the upgrade so it does not race Next's listener. Each `response.create` is turned into an ordinary `POST /api/v1/chat/completions` on loopback `127.0.0.1` (the same `handleChat` → `handleChatCore` path) and the SSE is reframed as Realtime events. Pass `?model=provider/model` on the upgrade URL to set the session model.
 
-There is no Realtime dashboard page. Use **Dashboard → API Docs** (`/dashboard/api-docs`) for the route list, and **Dashboard → Usage** to see the loopback chat calls.
+There is no Realtime dashboard page. See [API](../reference/api.mdx) for the route list, and **Dashboard → Usage** to see the loopback chat calls.
 
 Audio is not supported. Declaring `audio` in `session.modalities` and then sending `response.create` yields an `error` event with code `modality_not_supported`. The socket stays open. Audio is never faked.
 

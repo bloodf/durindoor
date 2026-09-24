@@ -19,6 +19,24 @@ Production bind is port 20128. `npm run dev` listens on 20127. Remote deployment
 
 **Auto-configure** (`/dashboard/auto-configure`, `scripts/auto-configure.mjs`, `/api/settings/auto-configure`) probes Headroom, PxPipe, and Firecrawl. It does not write client config files.
 
+## Install commands
+
+Each CLI Tools card shows **How to install** when it cannot find the tool on this machine. Install the tool, run its command once to verify, then reopen the card. Manual Config still works without a local install when DurinDoor runs on a remote server.
+
+| Tool | Install | Verify |
+| --- | --- | --- |
+| Claude Code | `npm install -g @anthropic-ai/claude-code` | `claude` |
+| Codex | `npm install -g @openai/codex` | `codex` |
+| Cline | VS Code extension or CLI, see [docs.cline.bot](https://docs.cline.bot/) | |
+| OpenCode | `npm install -g opencode-ai` (macOS, Linux) | `opencode` |
+| Droid | `curl -fsSL https://app.factory.ai/cli \| sh` | `droid` |
+| Kilo Code | [kilocode.ai](https://kilocode.ai) or the VS Code extension marketplace | |
+| Pi | `curl -fsSL https://pi.dev/install.sh \| sh`, or `npm install -g --ignore-scripts @earendil-works/pi-coding-agent` ([pi.dev](https://pi.dev)) | `pi` |
+| Crush | `brew install charmbracelet/tap/crush`, or `go install github.com/charmbracelet/crush@latest` ([repo](https://github.com/charmbracelet/crush)) | `crush` |
+| ForgeCode | `cargo install forgecode` ([repo](https://github.com/antinomyhq/forge)) | `forge` |
+| Smelt | `cargo install smelt` ([repo](https://github.com/leonardcser/smelt)) | `smelt` |
+| CodeWhale | `cargo install codewhale` ([repo](https://github.com/Hmbown/CodeWhale)) | `codewhale` |
+
 <Callout type="warn">
 Amp (`CLI_TOOLS.amp`) is `unsupported`. `AMP_URL` configures the Amp service, not a model inference endpoint, so Amp cannot point at DurinDoor.
 </Callout>

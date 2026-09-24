@@ -91,6 +91,24 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
 
   const renderItem = (item, indent = false) => {
     if (item.requiresTranslator && !enableTranslator) return null;
+    if (item.external) {
+      return (
+        <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>
+          <a
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            aria-label={collapsed ? `${item.label} (opens in a new tab)` : undefined}
+            className={itemClasses(collapsed, false, indent)}
+          >
+            <NavIcon icon={item.icon} isActive={false} size={indent ? "16" : "18"} />
+            <span className={indent ? "text-sm" : "sidebar-label text-[13px] font-medium"}>{item.label}</span>
+            <span aria-hidden="true" className="sidebar-label material-symbols-outlined ms-auto text-[14px]">open_in_new</span>
+          </a>
+        </SidebarTooltip>
+      );
+    }
     const active = isActive(item.href, item.exact !== false);
     return (
       <SidebarTooltip key={item.href} collapsed={collapsed} label={item.label}>

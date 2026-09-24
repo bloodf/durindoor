@@ -5,7 +5,7 @@ description: One JSON-RPC endpoint in front of registered MCP servers, with gate
 
 The MCP gateway merges tools from one or more upstream MCP instances into a single JSON-RPC namespace. Each caller uses a dedicated gateway key granted to specific instances (and, on the backend, to specific tools). DurinDoor can attach an OAuth access token to upstream requests for an instance.
 
-Open **Dashboard → MCP Gateway → Instances** (`/dashboard/mcp-gateway`) to register servers. Open **Dashboard → MCP Gateway → Keys** (`/dashboard/mcp-gateway/keys`) to mint keys. **Dashboard → MCP Help** (`/dashboard/mcp-help`) has a short client snippet.
+Open **Dashboard → MCP Gateway → Instances** (`/dashboard/mcp-gateway`) to register servers. Open **Dashboard → MCP Gateway → Keys** (`/dashboard/mcp-gateway/keys`) to mint keys. Client configuration is under [Client setup](#client-setup) below.
 
 ## Transports
 
@@ -19,9 +19,13 @@ Both share the same JSON-RPC handler and the same key check.
 
 `GET /api/mcp-gateway` returns 405 with `Allow: POST`. Clients that send `Accept: text/event-stream` still get JSON on the POST path.
 
+Stdio bridge: allowlisted local plugins run as a child process on the DurinDoor host and are bridged to SSE. The bridge only spawns plugins on that allowlist, never a command taken from a request. Stdio instances (`npx`, `python`, `docker`, `command` kinds) run the command saved on the instance.
+
 Tool names are `<instanceSlug>__<toolName>`. `tools/call` splits on the first `__`. Disabled instances are omitted from `tools/list` and dispatch.
 
 ## Keys
+
+Gateway keys and dashboard API keys are separate credentials. A DurinDoor API key does not authenticate against the gateway, and a gateway key does not authenticate against `/v1` or the management API.
 
 Gateway keys are DurinDoor API-key shaped secrets (`sk-<machineId>-<keyId>-<crc8>`), stored on `mcpGatewayKeys`. They are not dashboard session cookies.
 
@@ -29,7 +33,7 @@ Send the secret as `Authorization: Bearer …`, `x-api-key`, `x-goog-api-key`, o
 
 `POST /api/mcp-gateway/keys` and `GET /api/mcp-gateway/keys/<id>/reveal` are local-request only (403 otherwise). The list endpoint never returns the raw secret. Create returns it once. Reveal exists for a signed-in local dashboard session, same as DurinDoor API keys.
 
-Grant the key to instances from the Keys page. An empty grant list means the key authenticates but sees no tools.
+Grant the key to instances from the Keys page. The tools a client sees are exactly the tools exposed by its granted instances. Removing a grant revokes access right away. An empty grant list means the key authenticates but sees no tools.
 
 The control endpoint `POST /api/mcp/control` does not accept a gateway key. It takes a dashboard session, the CLI token, or a DurinDoor API key. Full tool list and client setup: [MCP control](./mcp-control.mdx).
 
@@ -37,9 +41,18 @@ The control endpoint `POST /api/mcp/control` does not accept a gateway key. It t
 
 `GET`/`POST /api/mcp-gateway/instances` lists and creates. `GET`/`PUT`/`DELETE /api/mcp-gateway/instances/:id` reads, updates, and removes one row. `POST /api/mcp-gateway/instances/:id/test` lists upstream tools as a probe.
 
-An instance has an upstream URL, a transport (HTTP/SSE or stdio), optional fixed headers, and an optional OAuth flag. Enable it before you expect it in `tools/list`.
+An instance has a kind (`http`, `sse`, `npx`, `python`, `docker`, or `command`), a transport (HTTP, SSE, or stdio), an upstream URL or a command with args and env, optional fixed headers, and an optional OAuth flag. Enable it before you expect it in `tools/list`.
 
 ## OAuth
+
+Turn on **Requires OAuth** for an upstream server that uses the authorization-code flow, then click **Login** on the instance. The flow has four stages:
+
+- **Discovery.** DurinDoor reads the server's `WWW-Authenticate` challenge, then the `.well-known` protected-resource and authorization-server metadata.
+- **Registration.** Dynamic Client Registration against the server's `registration_endpoint`, or a Client ID Metadata Document when the server supports it.
+- **Login.** DurinDoor opens the provider's consent page with PKCE and a resource indicator, then exchanges the code and stores the tokens on the instance.
+- **Refresh.** Tokens refresh on their own before expiry and after a 401. If the refresh token is rejected for good, the instance shows **needs login**. Click **Login** again to re-authorize.
+
+OAuth needs a callback the upstream server can reach, so it works through a configured tunnel, Tailscale, or a public URL, not on a loopback-only host.
 
 When `oauth: true`, the dashboard starts the flow at `/api/mcp-gateway/oauth/:id/authorize`. The callback is `/api/mcp-gateway/oauth/:id/callback`. Poll `/api/mcp-gateway/oauth/:id/status`. The upstream authorization server fetches `/api/mcp-gateway/oauth/:id/client-metadata` as the Client ID Metadata Document.
 
@@ -59,6 +72,21 @@ Token endpoints and refresh redirects go through the outbound URL guard. Cross-o
 
 Every `tools/call`, ok or error, writes a usage row with `provider: "mcp-gateway"` and `model` set to the namespaced tool name. Watch it on **Dashboard → Usage**.
 
+## Client setup
+
+Point any streamable-HTTP MCP client at the gateway. Replace the host with your DurinDoor base URL and the key with a gateway key from **MCP Gateway → Keys**.
+
+```json
+{
+  "mcpServers": {
+    "durindoor": {
+      "url": "http://localhost:20128/api/mcp-gateway",
+      "headers": { "Authorization": "Bearer YOUR_GATEWAY_KEY" }
+    }
+  }
+}
+```
+
 ## Worked example
 
 1. Create an instance, enable it, run **Test**. You should see a tool count.
@@ -73,3 +101,11 @@ curl http://localhost:20128/api/mcp-gateway \
 ```
 
 Then `tools/list` with the same key. Call a tool as `"name": "<slug>__<toolName>"`. A disabled instance or a key without that grant returns `unknown tool`.
+
+## Troubleshooting
+
+- **401 from the gateway.** The gateway key is missing, invalid, or disabled. Send a gateway key, not a DurinDoor API key, as a Bearer token.
+- **A tool is missing.** Its instance is disabled or not granted to your key.
+- **Instance shows needs login.** The upstream OAuth token expired and could not refresh. Click **Login** again.
+- **URL not allowed.** The outbound URL guard rejected the upstream URL, for example a private address.
+- **Stdio spawn failed.** The command is not on the local plugin allowlist, or the process exited.

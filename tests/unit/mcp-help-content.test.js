@@ -3,15 +3,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 
-// The MCP Help page is a JSX-in-.js server component, which the repository's
-// Vitest esbuild does not transform for SSR, so this test checks that both MCP
-// surfaces and their current control contracts remain documented in source.
+// MCP help lives on the docs site (the in-app MCP Help page was removed).
+// This test checks that both MCP surfaces and their current control contracts
+// stay documented in the MDX pages the dashboard links to.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(
-  resolve(here, "../../src/app/(dashboard)/dashboard/mcp-help/page.js"),
-  "utf8"
-);
+const src = ["mcp-gateway.mdx", "mcp-control.mdx"]
+  .map((file) => readFileSync(resolve(here, "../../docs/features", file), "utf8"))
+  .join("\n");
 
 // Every control tool that must be listed, matching src/lib/mcp/control/tools.js.
 const CONTROL_TOOLS = [
@@ -34,7 +33,7 @@ const CONTROL_TOOLS = [
   "update_settings",
 ];
 
-describe("MCP Help page documents every surface", () => {
+describe("MCP docs document every surface", () => {
   it("frames both MCP surfaces (gateway + control server)", () => {
     expect(src).toMatch(/gateway/i);
     expect(src).toMatch(/control server/i);

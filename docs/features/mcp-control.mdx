@@ -5,7 +5,7 @@ description: JSON-RPC management server at POST /api/mcp/control, its tools, aut
 
 The control server is a JSON-RPC 2.0 MCP endpoint for the running DurinDoor instance. An MCP client lists combos, toggles connections, reads quota, and patches non-secret settings without opening the dashboard. The MCP gateway is a different endpoint: it sits in front of upstream MCP servers and authenticates with a gateway key on `/api/mcp-gateway`. Control authenticates with a dashboard session, the CLI token, or a DurinDoor API key, the same principals as the [Management API](../reference/management-api.mdx).
 
-Open **Dashboard → MCP Help** (`/dashboard/mcp-help`) for the in-app snippet. A curl-and-key walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
+Client snippets are under [Client setup](#client-setup) below. A curl-and-key walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
 
 ## Endpoint and transport
 

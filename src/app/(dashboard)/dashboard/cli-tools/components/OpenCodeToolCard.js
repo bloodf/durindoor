@@ -10,6 +10,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import DocsLink from "@/shared/components/DocsLink";
 
 export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
@@ -17,7 +18,6 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [message, setMessage] = useState(null);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [selectedApiKey, setSelectedApiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [subagentModel, setSubagentModel] = useState("");
@@ -260,24 +260,9 @@ export default function OpenCodeToolCard({ tool, isExpanded, onToggle, baseUrl, 
                     <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">content_copy</span>
                     Manual Config
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => setShowInstallGuide(!showInstallGuide)}>
-                    <span aria-hidden="true" className="material-symbols-outlined text-[18px] mr-1">{showInstallGuide ? "expand_less" : "help"}</span>
-                    {showInstallGuide ? "Hide" : "How to Install"}
-                  </Button>
+                  <DocsLink path="integrations/other-tools#install-commands" label="How to install" />
                 </div>
               </div>
-              {showInstallGuide && (
-                <div className="p-4 bg-dd-surface border border-dd-border rounded-dd-lg">
-                  <h4 className="font-medium mb-3">Installation Guide</h4>
-                  <div className="space-y-3 text-sm">
-                    <div>
-                      <p className="text-dd-muted mb-1">macOS / Linux:</p>
-                      <code className="block px-3 py-2 bg-dd-surface-2 bg-dd-surface-2 rounded-dd font-mono text-xs">npm install -g opencode-ai</code>
-                    </div>
-                    <p className="text-dd-muted">After installation, run <code className="px-1 bg-dd-surface-2 bg-dd-surface-2 rounded-dd">opencode</code> to verify.</p>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

@@ -31,31 +31,6 @@
   },
   "routes": [
     {
-      "id": "R01",
-      "template": "/dashboard/api-docs",
-      "entry": "src/app/(dashboard)/dashboard/api-docs/page.js",
-      "variants": [
-        {
-          "url": "/dashboard/api-docs",
-          "expectedSecondaryLocator": "heading",
-          "predicate": "static, source-of-truth ENDPOINTS array"
-        }
-      ],
-      "expectedText": "API Documentation",
-      "expectedTextSource": "src/app/(dashboard)/dashboard/api-docs/page.js:188 <h1>API Documentation</h1>",
-      "expectedSecondary": [
-        "Chat & Completions",
-        "Models"
-      ],
-      "fixture": "baseline",
-      "states": [
-        "default"
-      ],
-      "actions": [
-        "read-sections"
-      ]
-    },
-    {
       "id": "R02",
       "template": "/dashboard/auto-configure",
       "entry": "src/app/(dashboard)/dashboard/auto-configure/page.js",
@@ -444,33 +419,6 @@
       ],
       "actions": [
         "create-key"
-      ]
-    },
-    {
-      "id": "R12",
-      "template": "/dashboard/mcp-help",
-      "entry": "src/app/(dashboard)/dashboard/mcp-help/page.js",
-      "variants": [
-        {
-          "url": "/dashboard/mcp-help",
-          "predicate": "static"
-        }
-      ],
-      "expectedText": "MCP Help",
-      "expectedTextSource": "src/app/(dashboard)/dashboard/mcp-help/page.js:67 <h1>MCP Help</h1>",
-      "expectedSecondary": [
-        "Overview",
-        "Transports",
-        "Authentication",
-        "Keys & tool grants",
-        "Client configuration"
-      ],
-      "fixture": "baseline",
-      "states": [
-        "default"
-      ],
-      "actions": [
-        "follow-help-link"
       ]
     },
     {

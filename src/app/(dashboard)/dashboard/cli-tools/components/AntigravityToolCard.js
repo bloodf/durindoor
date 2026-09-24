@@ -10,6 +10,7 @@ import { Badge } from "@/shared/ui/components/Badge";
 import Input from "@/shared/ui/components/Input";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
+import DocsLink from "@/shared/components/DocsLink";
 
 export default function AntigravityToolCard({
   tool,
@@ -390,19 +391,7 @@ export default function AntigravityToolCard({
             </div>
           )}
 
-          {/* When stopped: how it works */}
-          {!isRunning && (
-            <div className="flex flex-col gap-1.5 px-1">
-              <p className="text-xs text-dd-muted">
-                <span className="font-medium text-dd-text">How it works:</span> Intercepts Antigravity traffic via DNS redirect, letting you reroute models through DurinDoor.
-              </p>
-              <div className="flex flex-col gap-0.5 text-[11px] text-dd-muted">
-                <span>1. Generates SSL cert & adds to system keychain</span>
-                <span>2. Redirects <code className="text-[10px] bg-dd-surface px-1 rounded-dd">daily-cloudcode-pa.googleapis.com</code> → localhost</span>
-                <span>3. Maps Antigravity models to any provider via DurinDoor</span>
-              </div>
-            </div>
-          )}
+          {!isRunning && <DocsLink path="features/mitm" className="px-1" />}
         </div>
       )}
 

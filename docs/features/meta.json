@@ -12,6 +12,7 @@
     "proxy-timeline",
     "mcp-gateway",
     "mcp-control",
+    "mitm",
     "realtime",
     "compression",
     "headroom"

@@ -66,8 +66,9 @@ laya-serve        # http://127.0.0.1:8000; LAYA_PORT, LAYA_API_KEY, LAYA_DEVICE 
 
 Add the connection with the server URL. The API key is optional: the server URL
 stands in for it. Checking the connection calls `GET /health`, then sends an
-empty `POST /v1/systemone`, which only returns 401 when the key is wrong or
-missing. Laya is not a chat model. It is listed with its checkpoints (`auto`,
+empty `POST /v1/systemone`. Laya answers 400 when the key is accepted and 401
+when it is wrong or missing. Any other answer means the host isn't a Laya
+server. Laya is not a chat model. It is listed with its checkpoints (`auto`,
 `english`, `multilingual`, `typed-decisions`) under the `decision` kind and never
 appears in `/v1/models`. An active connection replaces Jev as the classifier for
 `smart` combos. A keyless `laya-serve` running on the default host is picked up

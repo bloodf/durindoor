@@ -157,6 +157,22 @@ describe("classifyTier against Laya", () => {
     expect(await classifyTier({ ...opts, fetchImpl: vi.fn(async () => layaOk("SIMPLE", 0.33)) })).toBeNull();
   });
 
+  it("keeps one breaker per host, so a failing Laya does not switch Jev off", async () => {
+    const failing = vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) }));
+    expect(await classifyTier({ state: "hi", log, baseUrl: "http://laya:8000", apiKeyOptional: true, fetchImpl: failing })).toBeNull();
+    const jev = vi.fn(async () => layaOk("SIMPLE", 0.9));
+    expect((await classifyTier({ state: "hi", log, baseUrl: "https://api.typesafe.ai", apiKey: "k", fetchImpl: jev }))?.tier).toBe("SIMPLE");
+    const again = vi.fn();
+    expect(await classifyTier({ state: "hi", log, baseUrl: "http://laya:8000", apiKeyOptional: true, fetchImpl: again })).toBeNull();
+    expect(again).not.toHaveBeenCalled();
+  });
+
+  it("does not follow redirects", async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 307, json: async () => ({}) }));
+    expect(await classifyTier({ state: "hi", log, baseUrl: "http://laya:8000", apiKeyOptional: true, fetchImpl })).toBeNull();
+    expect(fetchImpl.mock.calls[0][1].redirect).toBe("manual");
+  });
+
   it("still requires a key for Jev (unchanged default)", async () => {
     vi.stubEnv("TYPESAFE_API_KEY", "");
     const fetchImpl = vi.fn();
@@ -192,9 +208,28 @@ describe("handleComboChat with a Laya backend", () => {
     expect(fetchSpy.mock.calls[0][0]).toBe("http://127.0.0.1:8000/v1/systemone");
   });
 
-  it("falls back to the Jev env config when no Laya connection exists", async () => {
+  it("falls back to the Jev env config when no Laya backend resolves", async () => {
+    const fetchSpy = vi.fn(async () => layaOk("MEDIUM", 0.9));
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubEnv("TYPESAFE_API_KEY", "ts-test-key");
+    await handleComboChat({
+      body: { messages: [{ role: "user", content: "fix the pagination bug" }] },
+      models: ["a/one", "b/two"],
+      handleSingleModel: async () => new Response("ok", { status: 200 }),
+      log,
+      comboName: "smart-combo",
+      comboStrategy: "smart",
+      jevClassify: true,
+      decisionBackend: async () => null
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("https://api.typesafe.ai/v1/systemone");
+    expect(init.headers.Authorization).toBe("Bearer ts-test-key");
+  });
+
+  it("with neither Laya nor a Jev key, the classifier stays off", async () => {
     const fetchSpy = await runSmartCombo(async () => null);
-    // No TYPESAFE_API_KEY either: classifier stays off, heuristic routing only.
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

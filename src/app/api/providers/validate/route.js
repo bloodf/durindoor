@@ -619,9 +619,10 @@ export async function POST(request) {
           }
 
         case "laya":{
-            // User-run laya-serve: /health proves the host answers; an empty
-            // /v1/systemone body is rejected with 400 after the bearer check,
-            // so only a 401 means the key is wrong (or required and missing).
+            // User-run laya-serve: /health proves the host answers. laya-serve
+            // answers an empty /v1/systemone body with 400 after the bearer
+            // check, so 400 is Laya accepting the key, 401 a wrong or missing
+            // key, and anything else a server that is not Laya.
             const host = resolveLayaHost({ providerSpecificData });
             const health = await fetchValidationProbe(`${host}${LAYA_HEALTH_PATH}`, {}, guardedProbeFetch).catch(() => null);
             if (!health?.ok) {
@@ -633,8 +634,9 @@ export async function POST(request) {
               headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : null) },
               body: "{}"
             }, guardedProbeFetch);
-            isValid = res.status !== 401;
-            if (!isValid) error = "Laya rejected the API key";
+            isValid = res.status === 400;
+            if (res.status === 401) error = "Laya rejected the API key";
+            else if (!isValid) error = `${host} does not answer the Laya /v1/systemone protocol`;
             break;
           }
 

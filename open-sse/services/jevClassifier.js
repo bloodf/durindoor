@@ -41,36 +41,47 @@ const NOOP_LOG = { info() {}, warn() {}, debug() {} };
  * Every probe ends in `tripBreaker` or `closeBreaker` (or `releaseProbe` on a
  * client abort), so `probing` can never stick. Not coordinated across
  * workers; each process protects its own latency budget.
- * @type {{ openUntil: number, probing: boolean }}
+ *
+ * One breaker per classifier host, so a slow local Laya server cannot switch
+ * off a hosted Jev (or the reverse) for the cooldown.
+ * @type {Map<string, { openUntil: number, probing: boolean }>}
  */
-const breaker = { openUntil: 0, probing: false };
+const breakers = new Map();
+
+function breakerFor(baseUrl) {
+  let breaker = breakers.get(baseUrl);
+  if (!breaker) {
+    breaker = { openUntil: 0, probing: false };
+    breakers.set(baseUrl, breaker);
+  }
+  return breaker;
+}
 
 /** Test/reset hook: clear breaker state. */
 export function resetJevBreaker() {
-  breaker.openUntil = 0;
-  breaker.probing = false;
+  breakers.clear();
 }
 
 /** Should this call be skipped? Claims the half-open probe slot when free. */
-function breakerOpen(now) {
+function breakerOpen(breaker, now) {
   if (breaker.openUntil === 0) return false;
   if (now < breaker.openUntil || breaker.probing) return true;
   breaker.probing = true;
   return false;
 }
 
-function tripBreaker(now, cooldownMs) {
+function tripBreaker(breaker, now, cooldownMs) {
   breaker.openUntil = now + cooldownMs;
   breaker.probing = false;
 }
 
-function closeBreaker() {
+function closeBreaker(breaker) {
   breaker.openUntil = 0;
   breaker.probing = false;
 }
 
 /** Client went away mid-probe: free the slot without judging the service. */
-function releaseProbe() {
+function releaseProbe(breaker) {
   breaker.probing = false;
 }
 
@@ -133,7 +144,8 @@ export async function classifyTier(opts = {}) {
     return null;
   }
 
-  if (breakerEnabled && breakerOpen(startedAt)) {
+  const breaker = breakerFor(baseUrl);
+  if (breakerEnabled && breakerOpen(breaker, startedAt)) {
     log.debug?.("JEV", "circuit breaker open — skipping classifier (fail-open)");
     return null;
   }
@@ -168,6 +180,9 @@ export async function classifyTier(opts = {}) {
         method: "POST",
         headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : null), "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        // A redirect would carry the user's text to a host nobody configured;
+        // treat it as a failure (non-200) instead of following it.
+        redirect: "manual",
         signal: controller.signal,
       }),
       aborted,
@@ -177,11 +192,11 @@ export async function classifyTier(opts = {}) {
     if (!isObject(json)) throw new Error("classifier unparseable response");
   } catch (e) {
     if (!timedOut && signal?.aborted) {
-      if (breakerEnabled) releaseProbe();
+      if (breakerEnabled) releaseProbe(breaker);
       log.debug?.("JEV", "client aborted — classifier skipped");
       return null;
     }
-    if (breakerEnabled) tripBreaker(now(), JEV_BREAKER_COOLDOWN_MS);
+    if (breakerEnabled) tripBreaker(breaker, now(), JEV_BREAKER_COOLDOWN_MS);
     log.warn?.("JEV", timedOut ? "classifier timed out — fail-open" : `${e?.message || e} — fail-open`);
     return null;
   } finally {
@@ -191,7 +206,7 @@ export async function classifyTier(opts = {}) {
   }
 
   // The service answered: close the breaker whatever the answer says.
-  if (breakerEnabled) closeBreaker();
+  if (breakerEnabled) closeBreaker(breaker);
 
   const answer = json?.answers?.tier;
   const tier = answer?.choice;

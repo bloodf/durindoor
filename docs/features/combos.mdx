@@ -117,7 +117,8 @@ text is sent, and failures leave the heuristic level in place. Laya's
 calibrated `answer_confidence` is the value checked, with a 0.4 threshold (Jev
 uses 0.5). Across four tiers, chance is 0.25, and Laya's zero-shot answers on
 coding asks usually score between 0.4 and 0.55. The deadline is 8s instead of 3s because CPU
-inference is slower, and there is no spend. Routing logs and task reasons
+inference is slower, and there is no spend. Each classifier host has its own
+circuit breaker, so a slow Laya doesn't pause Jev. Redirects are not followed. Routing logs and task reasons
 show `laya:<TIER>` instead of `jev:<TIER>`.
 
 ## Fallback triggers

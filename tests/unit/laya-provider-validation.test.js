@@ -52,6 +52,12 @@ describe("Laya connection validation", () => {
     expect(probe.mock.calls[1][1].headers.Authorization).toBe("Bearer wrong");
   });
 
+  it("rejects a host that has /health but does not speak /v1/systemone", async () => {
+    probe.mockResolvedValueOnce(new Response("{}", { status: 200 })).mockResolvedValueOnce(new Response("nope", { status: 404 }));
+    const body = await (await validate(layaBody())).json();
+    expect(body).toEqual({ valid: false, error: "http://127.0.0.1:8000 does not answer the Laya /v1/systemone protocol" });
+  });
+
   it("reports an unreachable server", async () => {
     probe.mockResolvedValueOnce(new Response("down", { status: 502 }));
     const body = await (await validate(layaBody())).json();

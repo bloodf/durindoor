@@ -93,6 +93,7 @@ Where it shows up:
 
 - `GET /v1/models`: with no model selection saved on the OpenRouter connection, the free models are listed next to the static embedding, TTS, image and rerank rows. With a saved selection, the list stays as selected and the catalog only fills in capabilities and limits.
 - Provider page: the suggested-models list shows the same free models with their context windows.
+- Model pickers: fetching models for an OpenRouter connection (provider page, model selector, playground) returns only the free models, so paid models such as Claude or GPT never show up there.
 - Routing: chat requests to an OpenRouter model use the discovered capabilities. Images are kept for vision models instead of being stripped, Vision Bridge and combo capability ordering see the real flags, and the context-length preflight rejects a request that cannot fit the published window.
 
 The catalog is cached in memory for 30 minutes. The fetch times out after 8 seconds, reads at most 8 MiB, and maps at most 2,000 entries. If a refresh fails, the last good catalog stays in use and the next attempt waits 5 minutes. With no good catalog yet, `/v1/models` falls back to the static list and requests use the static capability table. The first request after a restart may use static capabilities while the catalog loads in the background. A custom model row on the connection still overrides the discovered capabilities.

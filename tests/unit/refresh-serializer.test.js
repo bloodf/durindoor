@@ -224,4 +224,57 @@ describe("refresh serializer", () => {
     });
     expect(signalled).toBe(true);
   });
+
+  // durindoor#951: providerCredentials.refreshAndUpdateCredentials wraps
+  // executor.refreshCredentials() in serializeRefresh, and for Codex/Qwen that
+  // executor method itself delegates to oauthCredentialManager's
+  // refreshProviderCredentials(), which calls serializeRefresh again for the
+  // SAME group from inside the outer call's fn(). Before this fix that inner
+  // call queued behind the outer call's own tail — which cannot resolve until
+  // the inner call (holding it up) returns — a permanent deadlock that also
+  // starved every sibling connection queued behind the same lane.
+  it("does not deadlock when serializeRefresh is called again for the same group from inside fn", async () => {
+    process.env.CODEX_REFRESH_SPACING_MS = "0";
+    const events = [];
+
+    const outer = () => serializeRefresh("codex", async () => {
+      events.push("outer:start");
+      const inner = await serializeRefresh("codex", async () => {
+        events.push("inner:start");
+        return "inner-result";
+      });
+      events.push("outer:end");
+      return inner;
+    });
+
+    await expect(Promise.race([
+      outer(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("deadlocked")), 200)),
+    ])).resolves.toBe("inner-result");
+
+    expect(events).toEqual(["outer:start", "inner:start", "outer:end"]);
+  });
+
+  it("still serializes a sibling connection behind a re-entrant outer/inner pair", async () => {
+    process.env.CODEX_REFRESH_SPACING_MS = "0";
+    const events = [];
+
+    const nested = serializeRefresh("codex", async () => {
+      events.push("nested:start");
+      await serializeRefresh("codex", async () => {
+        events.push("nested:inner");
+      });
+      await flushMicrotasks(2);
+      events.push("nested:end");
+    });
+    const sibling = serializeRefresh("codex", async () => {
+      events.push("sibling:start");
+    });
+
+    await Promise.all([nested, sibling]);
+
+    expect(events).toEqual([
+      "nested:start", "nested:inner", "nested:end", "sibling:start",
+    ]);
+  });
 });

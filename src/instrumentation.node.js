@@ -45,7 +45,8 @@ export async function ensureHeadroomProxy() {
 }
 
 /**
- * Node.js-only boot work: rename the process and revive the Headroom proxy.
+ * Node.js-only boot work: rename the process, revive the Headroom proxy and
+ * start the background schedulers.
  * Only ever called from the guarded block in instrumentation.js.
  */
 export function bootstrapNodejsRuntime() {
@@ -53,6 +54,17 @@ export function bootstrapNodejsRuntime() {
   if (process.title.startsWith("next-server")) {
     process.title = process.title.replace("next-server", "9router");
   }
+
+  // Warn when the server that answers /v1 inference is bound to a
+  // non-loopback interface (HOSTNAME=0.0.0.0 or a LAN/WAN address) while
+  // "Require API key" is off — the anonymous proxy is then reachable from
+  // every interface the host has. Runs early so it is not buried in the
+  // boot log; never blocks startup (ported from OmniRoute #13820).
+  void import("@/lib/startup/nonLoopbackApiKeyGuard.js")
+    .then((m) => m.warnIfInferenceServerExposed())
+    .catch((error) => {
+      console.log(`[startup] exposure check failed: ${error?.message || error}`);
+    });
 
   // Not awaited on purpose. startHeadroomProxy holds an 8s startup probe, and
   // blocking `register()` on it would add that delay to every gateway boot.
@@ -66,5 +78,13 @@ export function bootstrapNodejsRuntime() {
     .then(({ startDataRetentionScheduler }) => startDataRetentionScheduler())
     .catch((error) => {
       console.log(`[data-retention] scheduler not started: ${error?.message || error}`);
+    });
+
+  // Model auto-sync: refresh provider model catalogs shortly after boot and on
+  // the configured interval. Failures stay per provider and never block boot.
+  void import("@/lib/modelAutoSync/scheduler.js")
+    .then(({ startModelAutoSyncScheduler }) => startModelAutoSyncScheduler())
+    .catch((error) => {
+      console.log(`[model-auto-sync] scheduler not started: ${error?.message || error}`);
     });
 }

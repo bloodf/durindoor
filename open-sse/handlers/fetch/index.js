@@ -1,6 +1,6 @@
 import { validateFirecrawlBaseUrl, validateFirecrawlHeaders, parseFirecrawlHeaders } from "open-sse/shared/firecrawlConfig.js";
 // Returns normalized shape across all providers
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import {
   OutboundUrlGuardError,
   assertOutboundUrlAllowed,
@@ -167,6 +167,15 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
     }
     if (provider === "ollama") {
       return await runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, providerConfig });
+    }
+    if (provider === "context7") {
+      return await runContext7({ url, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
+    }
+    if (provider === "nimble") {
+      return await runNimble({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
+    }
+    if (provider === "anysearch") {
+      return await runAnysearch({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
     }
     return { success: false, status: 400, error: `Unsupported provider: ${provider}` };
   } catch (err) {
@@ -401,6 +410,111 @@ async function runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
     data: buildData({
       provider: "ollama", url, title: isString(json.title) ? json.title : null, format: fmt, text,
       links: json.links, costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
+    })
+  };
+}
+
+// Context7's `url` is a library reference, not a generic web URL. Accepted
+// forms: "https://context7.com/owner/repo", "context7.com/owner/repo",
+// "/owner/repo", "owner/repo" — each segment path-safe, no traversal.
+const CONTEXT7_LIBRARY_RE = /^\/([\w.-]+)\/([\w.-]+)\/?$/;
+function parseContext7LibraryId(input) {
+  if (!isString(input)) return null;
+  let path = input.trim();
+  const hostMatch = path.match(/^(?:https?:\/\/)?(?:www\.)?context7\.com(\/.*)?$/i);
+  if (hostMatch) path = hostMatch[1] || "";
+  else if (/^https?:\/\//i.test(path)) return null;
+  if (!path.startsWith("/")) path = `/${path}`;
+  const m = CONTEXT7_LIBRARY_RE.exec(path);
+  return m ? `/${m[1]}/${m[2]}` : null;
+}
+
+async function runContext7({ url, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {
+  const libraryId = parseContext7LibraryId(url);
+  if (!libraryId) {
+    return {
+      success: false,
+      status: 400,
+      error: 'Context7 fetch expects a library reference such as "https://context7.com/reactjs/react.dev" or "/reactjs/react.dev"'
+    };
+  }
+  const upstreamStart = Date.now();
+  const context7Headers = { Accept: "text/plain" };
+  if (apiKey) context7Headers.Authorization = `Bearer ${apiKey}`;
+  const r = await tryFetch(`https://context7.com/api/v1${libraryId}?type=llms.txt`, {
+    method: "GET",
+    headers: context7Headers
+  }, timeoutMs);
+
+  if (!r.ok) {
+    return { success: false, status: r.timeout ? 504 : 502, error: r.error };
+  }
+  const upstreamMs = Date.now() - upstreamStart;
+  const body = await r.res.text();
+  if (!r.res.ok) {
+    return { success: false, status: r.res.status, error: body?.slice(0, 500) || `Context7 error: ${r.res.status}` };
+  }
+  const text = truncate(body, maxCharacters);
+  return {
+    success: true,
+    data: buildData({
+      provider: "context7", url: `https://context7.com${libraryId}`, title: `Context7 docs: ${libraryId}`, format: "markdown", text,
+      costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
+    })
+  };
+}
+
+async function runNimble({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {
+  if (!apiKey) {
+    return { success: false, status: 400, error: "Nimble API key is required" };
+  }
+  const upstreamStart = Date.now();
+  const r = await tryFetch("https://sdk.nimbleway.com/v1/extract", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ url, format: fmt === "html" ? "html" : "markdown" })
+  }, timeoutMs);
+
+  if (!r.ok) {
+    return { success: false, status: r.timeout ? 504 : 502, error: r.error };
+  }
+  const upstreamMs = Date.now() - upstreamStart;
+  const { json } = await readJsonOrText(r.res);
+  if (!r.res.ok) {
+    return { success: false, status: r.res.status, error: json?.error || `Nimble error: ${r.res.status}` };
+  }
+  const text = truncate(json?.data?.markdown || json?.data?.html || "", maxCharacters);
+  return {
+    success: true,
+    data: buildData({
+      provider: "nimble", url, title: null, format: fmt, text,
+      costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
+    })
+  };
+}
+
+async function runAnysearch({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {
+  const upstreamStart = Date.now();
+  const r = await tryFetch("https://api.anysearch.com/v1/extract", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : null) },
+    body: JSON.stringify({ url })
+  }, timeoutMs);
+
+  if (!r.ok) {
+    return { success: false, status: r.timeout ? 504 : 502, error: r.error };
+  }
+  const upstreamMs = Date.now() - upstreamStart;
+  const { json } = await readJsonOrText(r.res);
+  if (!r.res.ok || (isNumber(json?.code) && json.code !== 0)) {
+    return { success: false, status: r.res.ok ? 502 : r.res.status, error: json?.message || json?.error || `AnySearch error: ${r.res.status}` };
+  }
+  const text = truncate(json?.data?.content || json?.data?.markdown || json?.content || "", maxCharacters);
+  return {
+    success: true,
+    data: buildData({
+      provider: "anysearch", url, title: json?.data?.title || null, format: fmt, text,
+      costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
     })
   };
 }

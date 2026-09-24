@@ -5,11 +5,11 @@ import Link from "next/link";
 import { getConnectionErrorDisplay, getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import PropTypes from "prop-types";
-import { Badge, Toggle, Tooltip } from "@/shared/components";
+import { Badge, Button, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 import { buildTimelineHref } from "../../timeline/href.js";
 
-export default function ConnectionRow({ connection, providerId = null, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, providerId = null, plan = null, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, onReconnect = null, onClearCooldown = null, clearingCooldown = false, oneByOneStatus = null, autoPing = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -123,6 +123,23 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
     };
   }, [modelLockUntil]);
 
+  // Account-level 429 bench (distinct from the per-model lock above): a
+  // persisted lesson from an upstream rate limit, not upstream truth. Once
+  // the quota has actually refreshed the bench can outlive it, so it gets its
+  // own manual clear (decolua/9router-style CooldownTimer just displays it).
+  const rateLimitedUntil = connection.rateLimitedUntil || null;
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  useEffect(() => {
+    const checkRateLimit = () => {
+      setIsRateLimited(!!rateLimitedUntil && new Date(rateLimitedUntil).getTime() > Date.now());
+    };
+    checkRateLimit();
+    const interval = rateLimitedUntil ? setInterval(checkRateLimit, 1000) : null;
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [rateLimitedUntil]);
+
   // Determine effective status (override unavailable if cooldown expired)
   const effectiveStatus = (connection.testStatus === "unavailable" && !isCooldown)
     ? "active"  // Cooldown expired u2192 treat as active
@@ -199,6 +216,24 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
               </Badge>
             )}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
+            {isRateLimited && connection.isActive !== false && (
+              <span className="inline-flex items-center gap-1">
+                <CooldownTimer until={rateLimitedUntil} />
+                {onClearCooldown && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    loading={clearingCooldown}
+                    disabled={clearingCooldown}
+                    onClick={() => onClearCooldown(connection.id)}
+                    title="Clear the cooldown now — use when the quota has already refreshed upstream"
+                    className="!min-h-0 !min-w-0 px-1.5 py-0.5 text-[10px]"
+                  >
+                    {clearingCooldown ? "Clearing…" : "Clear cooldown"}
+                  </Button>
+                )}
+              </span>
+            )}
             {errorDisplay && (
               <span className="max-w-full truncate text-xs text-dd-danger sm:max-w-[300px]" title={`${errorDisplay.reason}${errorDisplay.time ? ` · ${errorDisplay.time}` : ""}`}>
                 {errorDisplay.reason}{errorDisplay.time ? ` · ${errorDisplay.time}` : ""}
@@ -327,6 +362,7 @@ ConnectionRow.propTypes = {
       chatgptPlanType: PropTypes.string,
     }),
     modelLockUntil: PropTypes.string,
+    rateLimitedUntil: PropTypes.string,
     testStatus: PropTypes.string,
     isActive: PropTypes.bool,
     lastError: PropTypes.string,
@@ -355,6 +391,8 @@ ConnectionRow.propTypes = {
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   onReconnect: PropTypes.func,
+  onClearCooldown: PropTypes.func,
+  clearingCooldown: PropTypes.bool,
   oneByOneStatus: PropTypes['shape']({
     state: PropTypes.string,
     error: PropTypes.string,

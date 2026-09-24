@@ -7,14 +7,15 @@ import {
 import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import {
   buildQuotaResourceKeys,
   evaluateProviderQuotaPreflight,
@@ -28,10 +29,12 @@ import {
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
 import { getModelQuotaFamily, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
-import { rankQuotaConnections } from "@/shared/services/quotaSelection";
+import { rankQuotaConnections, pickQuotaWeightedConnection } from "@/shared/services/quotaSelection";
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
+import { isOverLimit as isRpdOverLimit, recordRequest as recordRpdRequest, retryAfterMs as rpdRetryAfterMs } from "./rpdLimiter.js";
+import { evaluatePeakHourProtection } from "@/lib/providers/peakHourProtection";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
@@ -61,8 +64,10 @@ function githubMonthlyResetMs(status, errorText, provider) {
  * Detect Qoder's permanent account quota signal from structured executor data.
  * Rendered messages are untrusted text and must not widen this trigger (#3331).
  */
+const QODER_QUOTA_PROVIDER_IDS = new Set(["qoder", "qoder-cn"]);
+
 function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
-  if (resolveProviderId(provider) !== "qoder" || Number(status) !== 403) return false;
+  if (!QODER_QUOTA_PROVIDER_IDS.has(resolveProviderId(provider)) || Number(status) !== 403) return false;
   if (errorBody && isObject(errorBody)) {
     return isQoderQuotaExhaustedBody(errorBody?.error?.message);
   }
@@ -107,9 +112,7 @@ export async function hasValidCliToken(request) {
   const supplied = request?.headers?.get?.("x-9r-cli-token");
   if (!supplied) return false;
   const expected = await getConsistentMachineId(CLI_AUTH_SALT);
-  const suppliedBytes = Buffer.from(String(supplied));
-  const expectedBytes = Buffer.from(String(expected));
-  return suppliedBytes.length === expectedBytes.length && timingSafeEqual(suppliedBytes, expectedBytes);
+  return timingSafeCompare(String(supplied), String(expected));
 }
 
 // Round-robin metadata still needs ordered selection within one provider, but
@@ -399,6 +402,55 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
   };
 }
 
+// port(omniroute): peak-hour protection + per-connection RPD (OmniRoute
+// c11f661a8 #11622, c49ee53bc #12147). A connection in an active "block" peak
+// window, or one that has spent its own providerSpecificData.rateLimitOverrides.rpd
+// budget, is excluded from selection the same way a quota-skip is.
+function peakHourBlockedState(connection, now) {
+  const state = evaluatePeakHourProtection(connection?.providerSpecificData, new Date(now));
+  return state.active && state.mode === "block" ? state : null;
+}
+
+function resolveConnectionRpd(connection) {
+  const rpd = connection?.providerSpecificData?.rateLimitOverrides?.rpd;
+  return Number.isFinite(rpd) && rpd > 0 ? rpd : 0;
+}
+
+function isConnectionGated(connection, now) {
+  if (peakHourBlockedState(connection, now)) return true;
+  const rpd = resolveConnectionRpd(connection);
+  return rpd > 0 && isRpdOverLimit(connection.id, rpd, now);
+}
+
+function recordConnectionUsage(connection, rpmLimit, now) {
+  recordRequest(connection.id, rpmLimit, now);
+  const rpd = resolveConnectionRpd(connection);
+  if (rpd > 0) recordRpdRequest(connection.id, rpd, now);
+}
+
+/** Build the allRateLimited contract when every candidate is peak-hour blocked or over its RPD cap. */
+function summarizeGatedConnections(connections, now) {
+  const gated = connections.filter((connection) => isConnectionGated(connection, now));
+  if (connections.length === 0 || gated.length !== connections.length) return null;
+  const retryDates = gated.
+  map((connection) => {
+    const peak = peakHourBlockedState(connection, now);
+    if (peak) return peak.retryAfter;
+    const rpd = resolveConnectionRpd(connection);
+    const ms = rpdRetryAfterMs(connection.id, rpd, now);
+    return ms ? new Date(ms).toISOString() : null;
+  }).
+  filter(Boolean);
+  const retryAfter = retryDates.length > 0 ? retryDates.sort()[0] : null;
+  return {
+    allRateLimited: true,
+    retryAfter,
+    retryAfterHuman: retryAfter ? formatRetryAfter(retryAfter, now) : "",
+    lastError: "All accounts blocked by peak-hour protection or daily request cap",
+    lastErrorCode: 429
+  };
+}
+
 /** Build existing allRateLimited contract when every otherwise-eligible account hits #3203 RPM cap. */
 function summarizeRpmLimitedConnections(connections, rpmLimit, now) {
   if (connections.length === 0 || !connections.every(
@@ -563,7 +615,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         const storedEligibleBeforeRpm = connections.filter(
           (c) => !excludeSet.has(c.id) &&
           !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
-          !quotaDecisions.get(c.id)?.skip
+          !quotaDecisions.get(c.id)?.skip &&
+          !isConnectionGated(c, selectionNow)
         );
         const availableStoredConnections = storedEligibleBeforeRpm.filter(
           (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow)
@@ -577,10 +630,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
             ...buildNoAuthCredential(connection.providerSpecificData || {}, resolvedProxy, connection),
             _quotaPreflight: quotaDecisions.get(connection.id) || null
           };
-          recordRequest(connection.id, rpmLimit, selectionNow);
+          recordConnectionUsage(connection, rpmLimit, selectionNow);
           return credentials;
         }
         const rpmCandidates = connections.filter((connection) => !excludeSet.has(connection.id));
+        const gatedSummary = summarizeGatedConnections(rpmCandidates, selectionNow);
+        if (gatedSummary) return gatedSummary;
         const rpmSummary = summarizeRpmLimitedConnections(rpmCandidates, rpmLimit, selectionNow);
         if (rpmSummary) return rpmSummary;
         // If all stored connections are model-locked, surface the earliest retry time so callers can back off.
@@ -627,6 +682,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (excludeSet.has(c.id)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
+      if (isConnectionGated(c, selectionNow)) return false;
       return true;
     });
     let availableConnections = eligibleBeforeRpm.filter(
@@ -639,8 +695,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const locked = requestedModelLockActive(c, model, boundedModel, selectionNow);
       const quotaBlocked = quotaDecisions.get(c.id)?.skip === true;
       const rpmBlocked = isOverLimit(c.id, rpmLimit, selectionNow);
-      if (excluded || locked || quotaBlocked || rpmBlocked) {
-        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? "legacy_lock" : ""} ${quotaBlocked ? `quota_${quotaDecisions.get(c.id).reason}` : ""} ${rpmBlocked ? `rpm_${rpmLimit}` : ""}`);
+      const gated = isConnectionGated(c, selectionNow);
+      if (excluded || locked || quotaBlocked || rpmBlocked || gated) {
+        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? "legacy_lock" : ""} ${quotaBlocked ? `quota_${quotaDecisions.get(c.id).reason}` : ""} ${rpmBlocked ? `rpm_${rpmLimit}` : ""} ${gated ? "peak_hour_or_rpd" : ""}`);
       }
     });
 
@@ -657,6 +714,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         return buildOptionalNoAuthCredential();
       }
       const rpmCandidates = connections.filter((connection) => !excludeSet.has(connection.id));
+      const gatedSummary = summarizeGatedConnections(rpmCandidates, selectionNow);
+      if (gatedSummary) {
+        log.warn("AUTH", `${provider} | all ${rpmCandidates.length} accounts blocked by peak-hour protection or RPD cap`);
+        return gatedSummary;
+      }
       const rpmSummary = summarizeRpmLimitedConnections(rpmCandidates, rpmLimit, selectionNow);
       if (rpmSummary) {
         log.warn("AUTH", `${provider} | all ${rpmCandidates.length} accounts at ${rpmLimit} RPM cap`);
@@ -686,6 +748,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const providerOverride = (selectionSettings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || selectionSettings.fallbackStrategy || "fill-first";
     let quotaRanked = false;
+    // Populated alongside quotaRanked so the quota-weighted strategy below can
+    // draw from the same ranked/eligible pool instead of re-deriving it.
+    let quotaRankedEligible = null;
     if (availableConnections.some((candidate) => quotaDecisions.get(candidate.id)?.quotaProfile?.tracked)) {
       try {
         const pressure = await getQuotaReservationPressure({
@@ -718,12 +783,32 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         }
         quotaRanked = eligibleRanked.some((candidate) => candidate.quotaDecision?.comparable);
         if (quotaRanked || floorBlocked.length > 0) {
+          quotaRankedEligible = eligibleRanked;
           availableConnections = eligibleRanked.map((candidate) => candidate.value);
         }
       } catch {
         // Operational pressure is an optimization over provider observations.
         // Repository errors preserve the established selection order.
         quotaRanked = false;
+      }
+    }
+
+    // Peak-hour protection "avoid" mode: deprioritize (never exclude) an
+    // active-window connection when a non-windowed alternative exists.
+    if (availableConnections.length > 1) {
+      const avoidNow = new Set(
+        availableConnections.
+        filter((c) => {
+          const state = evaluatePeakHourProtection(c.providerSpecificData, new Date(selectionNow));
+          return state.active && state.mode === "avoid";
+        }).
+        map((c) => c.id)
+      );
+      if (avoidNow.size > 0 && avoidNow.size < availableConnections.length) {
+        availableConnections = [
+        ...availableConnections.filter((c) => !avoidNow.has(c.id)),
+        ...availableConnections.filter((c) => avoidNow.has(c.id))];
+
       }
     }
 
@@ -769,7 +854,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     } else if (quotaRanked) {
       // Persistent pressure + last-selection history provide the fairness tier
       // for quota-comparable accounts. Atomic acquire remains the final arbiter.
-      connection = availableConnections[0];
+      // "quota-weighted" draws probabilistically instead of always taking the
+      // top score, so concurrent requests spread across accounts that still
+      // have leftover quota instead of herding onto whichever one ranks first.
+      connection = strategy === "quota-weighted" && quotaRankedEligible ?
+      pickQuotaWeightedConnection(quotaRankedEligible, {
+        floorPercent: providerOverride.quotaWeightedFloorPercent ??
+        selectionSettings.quotaWeightedFloorPercent ??
+        1
+      }) || availableConnections[0] :
+      availableConnections[0];
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || selectionSettings.stickyRoundRobinLimit || 3;
 
@@ -831,7 +925,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
     throwIfAborted(signal);
     const credentials = await projectProviderCredentials(connection, quotaDecisions.get(connection.id) || null);
-    recordRequest(connection.id, rpmLimit, selectionNow);
+    recordConnectionUsage(connection, rpmLimit, selectionNow);
     return credentials;
   } finally {
     if (!releaseAfterPredecessor && resolveMutex) resolveMutex();
@@ -1021,6 +1115,52 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
  *   login has already replaced.
  * @returns {{ shouldFallback: boolean, cooldownMs: number }}
  */
+/**
+ * OmniRoute #10920, adapted: cools down every sibling connection that shares
+ * the failing connection's proxy pool, for providers whose upstream quota is
+ * bucketed by egress IP rather than by account (operator opt-in via
+ * `settings.egressBucketedProviders`). DurinDoor has no historical egress-IP
+ * log (unlike OmniRoute's proxy_logs), so the bucket key is the connection's
+ * configured `providerSpecificData.proxyPoolId` (src/lib/db/repos/proxyPoolsRepo.js)
+ * -- connections routed through the same pool share the same egress IP.
+ * Connections with no pool configured ("direct") are never bucketed together:
+ * grouping every direct connection would assume they all share one host IP,
+ * which does not hold for most deployments.
+ *
+ * Best-effort and side-effect-safe: `connections` is the same provider-scoped
+ * list `markAccountUnavailable` already fetched, so this makes no extra DB
+ * read for the sibling set. A sibling is skipped when it has no matching pool,
+ * is already reauth-quarantined or disabled, or already has an active lock
+ * (never shortens an existing cooldown). Any per-sibling write failure is
+ * logged and does not affect the failing connection's own state.
+ */
+async function applyEgressBucketCooldown(connections, connectionId, provider, cooldownMs) {
+  const self = connections.find((c) => c.id === connectionId);
+  const bucket = self?.providerSpecificData?.proxyPoolId;
+  if (!isString(bucket) || !bucket.trim()) return;
+  let cooledCount = 0;
+  for (const sibling of connections) {
+    if (sibling.id === connectionId) continue;
+    if (sibling.providerSpecificData?.proxyPoolId !== bucket) continue;
+    if (sibling.testStatus === "reauth_required" || sibling.isActive === false) continue;
+    if (isModelLockActive(sibling, null)) continue;
+    try {
+      await updateProviderConnection(sibling.id, {
+        ...buildModelLockUpdate(null, cooldownMs),
+        testStatus: "unavailable",
+        lastError: `Shared egress IP rate limited (${provider})`,
+        errorCode: 429
+      });
+      cooledCount += 1;
+    } catch (error) {
+      log.warn("AUTH", `Egress-bucket cooldown skipped for ${sibling.id.slice(0, 8)}: ${error.message}`);
+    }
+  }
+  if (cooledCount > 0) {
+    log.warn("AUTH", `Egress-bucketed cooldown: ${provider} pool=${bucket} cooled ${cooledCount} sibling(s) for ${Math.round(cooldownMs / 1000)}s`);
+  }
+}
+
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
   const signal = context?.signal || null;
@@ -1269,6 +1409,23 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       log.warn("QUOTA", "Runtime rate-limit evidence could not be persisted");
+    }
+
+    // OmniRoute #10920, adapted: cool down sibling connections sharing the
+    // same proxy pool for operator-opted-in egress-bucketed providers. Skips
+    // a request-shaped/terminal failure (fallbackResult.terminal) since those
+    // say nothing about the shared IP's quota.
+    if (provider && !fallbackResult.terminal) {
+      try {
+        const currentSettings = await getSettings();
+        const egressBucketed = Array.isArray(currentSettings?.egressBucketedProviders) &&
+        currentSettings.egressBucketedProviders.includes(String(provider).toLowerCase());
+        if (egressBucketed) {
+          await applyEgressBucketCooldown(connections, connectionId, provider, cooldownMs);
+        }
+      } catch (error) {
+        log.warn("AUTH", `Egress-bucket cooldown lookup failed: ${error.message}`);
+      }
     }
   }
 

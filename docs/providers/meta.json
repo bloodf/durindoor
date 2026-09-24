@@ -6,9 +6,18 @@
     "index",
     "connecting-accounts",
     "api-key-providers",
+    "web-cookie",
     "openai-compatible-nodes",
     "free-and-local",
+    "chatgpt-web",
     "local-router-providers",
+    "claude-code",
+    "codex",
+    "antigravity",
+    "kiro",
+    "cursor",
+    "kimi-web",
+    "retired",
     "catalog"
   ]
 }

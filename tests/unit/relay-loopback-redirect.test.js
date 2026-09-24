@@ -70,4 +70,36 @@ describe("deployed outbound relays", () => {
   it("rejects Vercel upstream redirects without following them", async () => {
     await expectRedirectRejected(RELAY_FUNCTION_CODE, (relay) => relay.default);
   });
+
+  it("forwards auth and content-type headers through the Vercel relay", async () => {
+    let received = {};
+    const upstream = http.createServer((request, response) => {
+      received = request.headers;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    const port = await listen(upstream);
+
+    try {
+      const relay = await importRelay(RELAY_FUNCTION_CODE);
+      const request = new Request("https://relay.example.test/", {
+        method: "POST",
+        headers: {
+          "x-relay-target": `http://127.0.0.1:${port}`,
+          "x-relay-path": "/start",
+          authorization: "Bearer secret-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ ok: true }),
+      });
+
+      const response = await relay.default(request);
+
+      expect(response.status).toBe(200);
+      expect(received.authorization).toBe("Bearer secret-token");
+      expect(received["content-type"]).toBe("application/json");
+    } finally {
+      await close(upstream);
+    }
+  });
 });

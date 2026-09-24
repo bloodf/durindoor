@@ -11,6 +11,7 @@ import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import Tabs from "@/shared/ui/components/Tabs.jsx";
+import Textarea from "@/shared/ui/components/Textarea.jsx";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { APP_CONFIG } from "@/shared/constants/config";
@@ -21,6 +22,14 @@ import SelectiveTransferPanel from "./SelectiveTransferPanel";
 import MfaCard from "./MfaCard.jsx";
 
 const DATA_RETENTION_PRESETS = [7, 15, 30, 60, 90];
+const MODEL_AUTO_SYNC_INTERVALS = [
+  { value: 0, label: "Off" },
+  { value: 6, label: "Every 6 hours" },
+  { value: 12, label: "Every 12 hours" },
+  { value: 24, label: "Every day" },
+  { value: 72, label: "Every 3 days" },
+  { value: 168, label: "Every week" },
+];
 const SETTINGS_TABS = [
   { value: "general", label: "General", icon: "tune" },
   { value: "security", label: "Security", icon: "shield_lock" },
@@ -443,6 +452,40 @@ export default function ProfilePage() {
     }
   };
 
+  // OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
+  // /v1/models exposure (mirrored into auto/* combo pools server-side, see
+  // src/shared/utils/modelExposureList.js). One entry per line; entries may
+  // be an exact "provider/model" or "model" id, or a glob using * / ?.
+  const [modelVisibilityDraft, setModelVisibilityDraft] = useState({ allow: "", deny: "" });
+  const [modelVisibilitySaving, setModelVisibilitySaving] = useState(false);
+  useEffect(() => {
+    setModelVisibilityDraft({
+      allow: (Array.isArray(settings.modelVisibilityAllowlist) ? settings.modelVisibilityAllowlist : []).join("\n"),
+      deny: (Array.isArray(settings.modelVisibilityDenylist) ? settings.modelVisibilityDenylist : []).join("\n")
+    });
+  }, [settings.modelVisibilityAllowlist, settings.modelVisibilityDenylist]);
+
+  const saveModelVisibilityLists = async () => {
+    const toList = (text) => text.split("\n").map((line) => line.trim()).filter(Boolean);
+    const modelVisibilityAllowlist = toList(modelVisibilityDraft.allow);
+    const modelVisibilityDenylist = toList(modelVisibilityDraft.deny);
+    setModelVisibilitySaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelVisibilityAllowlist, modelVisibilityDenylist })
+      });
+      if (res.ok) {
+        setSettings((prev) => ({ ...prev, modelVisibilityAllowlist, modelVisibilityDenylist }));
+      }
+    } catch (err) {
+      console.error("Failed to update model visibility lists:", err);
+    } finally {
+      setModelVisibilitySaving(false);
+    }
+  };
+
   const updateRequireLogin = async (requireLogin) => {
     try {
       const res = await fetch("/api/settings", {
@@ -697,6 +740,20 @@ export default function ProfilePage() {
     }
   };
 
+  const updateModelAutoSyncInterval = async (value) => {
+    const hours = Number(value);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelAutoSyncIntervalHours: hours }),
+      });
+      if (res.ok) setSettings((prev) => ({ ...prev, modelAutoSyncIntervalHours: hours }));
+    } catch (err) {
+      console.error("Failed to update modelAutoSyncIntervalHours:", err);
+    }
+  };
+
   const reloadSettings = async () => {
     try {
       const res = await fetch("/api/settings");
@@ -844,7 +901,33 @@ export default function ProfilePage() {
 
       <Card padding={false}><CardHeader icon="language" title="Language" subtitle="Regional display preferences" /><CardContent><button type="button" onClick={() => setLangOpen(true)} data-i18n-skip="true" className="flex min-h-11 w-full items-center justify-between rounded-dd border border-dd-border bg-dd-surface-2 px-3 text-left text-[13px] text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span>Display language</span><span role="img" aria-label={locale} className="text-xl">{LOCALE_FLAGS[locale] || "🌐"}</span></button></CardContent></Card>
 
-      <Card padding={false}><CardHeader icon="view_list" title="Model catalog" subtitle="Control model discovery and selectors" /><CardContent className="divide-y divide-dd-border-subtle"><div className="pb-4"><Toggle label="Expose combos only" description="When ON, /v1/models lists only configured combo names." checked={settings.exposeComboOnly === true} disabled={loading} onChange={() => updateExposeComboOnly(!(settings.exposeComboOnly === true))} /></div><div className="pt-4"><Toggle label="Hide paid models" description="When ON, /v1/models, dashboard pickers, and combo pools only show free or unpriced models." checked={settings.hidePaidModels === true} disabled={loading} onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))} /></div></CardContent></Card>
+      <Card padding={false}><CardHeader icon="view_list" title="Model catalog" subtitle="Control model discovery and selectors" /><CardContent className="divide-y divide-dd-border-subtle"><div className="pb-4"><Toggle label="Expose combos only" description="When ON, /v1/models lists only configured combo names." checked={settings.exposeComboOnly === true} disabled={loading} onChange={() => updateExposeComboOnly(!(settings.exposeComboOnly === true))} /></div><div className="py-4"><Toggle label="Hide paid models" description="When ON, /v1/models, dashboard pickers, and combo pools only show free or unpriced models." checked={settings.hidePaidModels === true} disabled={loading} onChange={() => updateHidePaidModels(!(settings.hidePaidModels === true))} /></div><div className="pt-4 space-y-3">
+        <div>
+          <p className="text-[13px] font-medium text-dd-text">Model exposure list</p>
+          <p className="text-xs text-dd-subtle">Operator allow/deny list for /v1/models and auto/* combo pools. One entry per line: an exact id (&quot;provider/model&quot; or &quot;model&quot;) or a glob with * / ?. Deny wins over allow; an empty allowlist exposes everything not denied.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Textarea
+            label="Allowlist"
+            hint="Empty = no restriction"
+            value={modelVisibilityDraft.allow}
+            disabled={loading || modelVisibilitySaving}
+            onChange={(e) => setModelVisibilityDraft((prev) => ({ ...prev, allow: e.target.value }))}
+            placeholder={"openai/*\nanthropic/claude-*"}
+          />
+          <Textarea
+            label="Denylist"
+            hint="Checked before the allowlist"
+            value={modelVisibilityDraft.deny}
+            disabled={loading || modelVisibilitySaving}
+            onChange={(e) => setModelVisibilityDraft((prev) => ({ ...prev, deny: e.target.value }))}
+            placeholder={"*-preview\nsome-provider/expensive-model"}
+          />
+        </div>
+        <Button size="sm" variant="secondary" disabled={loading || modelVisibilitySaving} onClick={saveModelVisibilityLists}>
+          {modelVisibilitySaving ? "Saving…" : "Save exposure list"}
+        </Button>
+      </div></CardContent></Card>
       </section>
 
       <section role="tabpanel" aria-label="Security settings" hidden={activeTab !== "security"} className="flex flex-col gap-5">
@@ -863,6 +946,7 @@ export default function ProfilePage() {
       <section role="tabpanel" aria-label="Routing settings" hidden={activeTab !== "routing"} className="flex flex-col gap-5">
 
       <Card padding={false}><CardHeader icon="route" title="Routing Strategy" subtitle="Defaults used when DurinDoor selects an upstream model" /><CardContent className="flex flex-col gap-5"><Toggle label="Round Robin" description="Cycle through accounts to distribute load." checked={settings.fallbackStrategy === "round-robin"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")} disabled={loading} />{settings.fallbackStrategy === "round-robin" ? <Input label="Sticky Limit" hint="Calls per account before switching." type="number" min="1" max="10" value={settings.stickyRoundRobinLimit || 3} onChange={(e) => updateStickyLimit(e.target.value)} disabled={loading} /> : null}<Toggle label="Cache Affinity" description="Pin each conversation to one account so the provider prompt cache keeps hitting." checked={settings.fallbackStrategy === "cache-affinity"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "cache-affinity" ? "fill-first" : "cache-affinity")} disabled={loading} /><Toggle label="Combo Round Robin" description="Cycle through providers in combos instead of always starting with first." checked={settings.comboStrategy === "round-robin"} onChange={() => updateComboStrategy(settings.comboStrategy === "round-robin" ? "fallback" : "round-robin")} disabled={loading} />{settings.comboStrategy === "round-robin" ? <Input label="Combo Sticky Limit" hint="Calls per combo model before switching." type="number" min="1" max="100" value={settings.comboStickyRoundRobinLimit || 1} onChange={(e) => updateComboStickyLimit(e.target.value)} disabled={loading} /> : null}<Input id="vision-bridge-model-input" label="Vision Model" hint="Target as provider/model. Empty or invalid keeps original model." placeholder="openai/gpt-4o" key={settings.visionBridgeModel || ""} defaultValue={settings.visionBridgeModel || ""} onBlur={(e) => updateVisionBridge({ visionBridgeModel: e.target.value.trim() })} disabled={loading} /><Toggle label="Vision Bridge" description="Reroute image-bearing requests on a text-only model to this vision model." checked={settings.visionBridgeEnabled === true} onChange={handleVisionBridgeToggle} disabled={loading} /><p className="border-t border-dd-border-subtle pt-4 text-xs text-dd-muted">{settings.fallbackStrategy === "round-robin" ? `Currently distributing requests with ${settings.stickyRoundRobinLimit || 3} calls per account.` : settings.fallbackStrategy === "cache-affinity" ? "Currently pinning each conversation to one account (Cache Affinity); requests without a conversation id use priority order." : "Currently using accounts in priority order (Fill First)."}{settings.comboStrategy === "round-robin" ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} calls per model.` : " Combos always start with their first model."}</p></CardContent></Card>
+      <Card padding={false}><CardHeader icon="sync" title="Model Auto-update" subtitle="Refresh provider model lists from their APIs" /><CardContent className="flex flex-col gap-3"><Field label="Update interval" hint="Providers with Auto-update models on (set on each provider page) are refreshed this often. Off stops scheduled updates; Sync now still works."><Select aria-label="Model auto-update interval" options={MODEL_AUTO_SYNC_INTERVALS} value={MODEL_AUTO_SYNC_INTERVALS.some((o) => o.value === settings.modelAutoSyncIntervalHours) ? settings.modelAutoSyncIntervalHours : 24} disabled={loading} onChange={updateModelAutoSyncInterval} /></Field></CardContent></Card>
       </section>
 
       <section role="tabpanel" aria-label="Network settings" hidden={activeTab !== "network"} className="flex flex-col gap-5">

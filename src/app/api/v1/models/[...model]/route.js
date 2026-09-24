@@ -3,6 +3,7 @@ import { LLM_KIND, buildModelsList } from "../buildModelsList.js";
 import { buildModelsResponse } from "../_shared.js";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
+import { filterModelsForRequest } from "@/sse/services/modelAccess.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -74,7 +75,7 @@ async function GETHandler(request, { params }) {
     const kindFilter = path.length === 1 ? KIND_SLUG_MAP[identifier] : null;
 
     if (kindFilter) {
-      const data = await buildModelsList(kindFilter, getProviderValidationGuard());
+      const data = await filterModelsForRequest(request, await buildModelsList(kindFilter, getProviderValidationGuard()));
       return buildModelsResponse(request, data);
     }
 
@@ -84,7 +85,7 @@ async function GETHandler(request, { params }) {
       return unknownKindResponse(identifier);
     }
 
-    const models = await buildModelsList([LLM_KIND], getProviderValidationGuard());
+    const models = await filterModelsForRequest(request, await buildModelsList([LLM_KIND], getProviderValidationGuard()));
     const matchedModel = models.find((candidate) => candidate.id === identifier);
     return matchedModel ? json(matchedModel) : modelNotFoundResponse(identifier);
   } catch (error) {

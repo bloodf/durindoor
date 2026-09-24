@@ -354,8 +354,10 @@ signal = null)
  * Uses AWS CodeWhisperer streaming API with AWS EventStream binary format
  */
 export class KiroExecutor extends BaseExecutor {
-  constructor() {
-    super("kiro", PROVIDERS.kiro);
+  // `amazon-q` reuses this executor with its own provider id, so its
+  // connections, cooldowns and usage stay separate from Kiro's.
+  constructor(provider = "kiro") {
+    super(provider, PROVIDERS[provider]);
   }
 
   /**

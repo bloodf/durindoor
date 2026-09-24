@@ -12,6 +12,7 @@ import KiroSocialOAuthModal from "./KiroSocialOAuthModal";
  */
 export default function KiroOAuthWrapper({
   isOpen,
+  provider = "kiro",
   providerInfo,
   onSuccess,
   onClose,
@@ -73,6 +74,7 @@ export default function KiroOAuthWrapper({
     return (
       <KiroAuthModal
         isOpen={isOpen}
+        provider={provider}
         onMethodSelect={handleMethodSelect}
         onClose={onClose}
       />
@@ -84,7 +86,7 @@ export default function KiroOAuthWrapper({
     return (
       <OAuthModal
         isOpen={isOpen}
-        provider="kiro"
+        provider={provider}
         providerInfo={providerInfo}
         onSuccess={handleDeviceSuccess}
         onClose={handleBack}
@@ -114,6 +116,8 @@ export default function KiroOAuthWrapper({
 
 KiroOAuthWrapper.propTypes = {
   isOpen: PropTypes.bool.isRequired,
+  /** "kiro" (default) or "amazon-q", which shares Kiro's device login. */
+  provider: PropTypes.oneOf(["kiro", "amazon-q"]),
   providerInfo: PropTypes['shape']({
     name: PropTypes.string,
   }),

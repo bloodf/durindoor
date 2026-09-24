@@ -92,7 +92,8 @@ export const KIRO_CREDIT_EXHAUSTION_PROBE_MS = 24 * 60 * 60 * 1000;
 // Per-provider override for the max resetsAtMs-derived cooldown (see markAccountUnavailable).
 // Any provider not listed here falls back to MAX_RATE_LIMIT_COOLDOWN_MS.
 export const RESET_COOLDOWN_CAP_MS = {
-  kiro: KIRO_CREDIT_EXHAUSTION_PROBE_MS
+  kiro: KIRO_CREDIT_EXHAUSTION_PROBE_MS,
+  "amazon-q": KIRO_CREDIT_EXHAUSTION_PROBE_MS
 };
 
 // Cooldown durations (ms)

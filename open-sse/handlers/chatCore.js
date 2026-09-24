@@ -13,12 +13,13 @@ import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
 import { checkFallbackError } from "../services/accountFallback.js";
+import { learnRequestCapFromBody } from "../services/learnedRequestCap.js";
 import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
 import { trackPendingRequest, finishActiveSession, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
-import { acquireSlot, releaseSlot, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
+import { acquireMany, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
 import {
   runWithProviderAttemptContext,
   settleProviderAttemptDispatch } from
@@ -26,6 +27,7 @@ import {
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { applyClaudeResponseModelEcho, applyResponseModelEcho, resolveClaudeEchoModel, resolveResponsesEchoModel } from "../services/responseModelEcho.js";
 import { getUsageForProvider } from "../services/usage.js";
+import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
 
 import { getExecutor } from "../executors/index.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
@@ -37,8 +39,10 @@ import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
 import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
+import { wireAdaptiveEffort } from "./chatCore/adaptiveEffortWiring.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
+import { classifyStreamAbandonReason } from "../utils/streamLifecycle.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
@@ -295,7 +299,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -554,6 +558,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const headroomStats = await compressWithHeadroom(body, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: sourceFormat, compressUserMessages: headroomCompressUserMessages, timeoutMs: headroomTimeoutMs, diagnostics: headroomDiagnostics });
   const headroomDurationMs = Date.now() - headroomStartedAt;
 
+  // RTK for cursor: its translator (openai-to-cursor.js) rewrites role:tool
+  // into user-role `<tool_result>` XML text, so the normal post-translate
+  // pass below never sees a role:tool / tool_result shape to compress.
+  // Compress the source-format body here instead, before that rewrite.
+  // Every other provider's translator keeps the tool_result shape 1:1, so
+  // they stay on the unchanged post-translate pass.
+  const preTranslateRtk = provider === "cursor" ?
+  compressMessages(body, tokenSaverEnabled && rtkEnabled) :
+  null;
+
   let translatedBody;
   let toolNameMap;
   let customToolNames;
@@ -630,6 +644,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     translatedBody.stream !== stream)
     translatedBody.stream = stream;
   }
+
+  // Adaptive reasoning effort (port of OmniRoute #13448): `X-DurinDoor-Effort: auto`
+  // resolves to a concrete low/medium/high thinking budget from the turn's
+  // request-shape signals, scoped to OpenAI-dispatch requests. No-op unless the
+  // caller opts in and carries no explicit reasoning field of any shape.
+  translatedBody = wireAdaptiveEffort(translatedBody, { rawBody: body, clientRawRequest, targetFormat });
 
   // opencode-go backed providers (opencode-go, opencode, opencode-zen) use a Go
   // ChatCompletionRequest struct where `reasoning` is a structured type; a bare
@@ -709,8 +729,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Token-saver summary parts, printed as one "⚙" line at the end (only active ones)
   const xf = [];
 
-  // RTK: compress tool_result content
-  const rtkStats = compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
+  // RTK: compress tool_result content. Skipped when already compressed
+  // pre-translate above (cursor) so a retry never double-compresses a body.
+  const rtkStats = preTranslateRtk || compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? (saved / rtkStats.bytesBefore * 100).toFixed(0) : "0";
@@ -983,9 +1004,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const msgCount = translatedBody.messages?.length || translatedBody.input?.length || translatedBody.contents?.length || translatedBody.request?.contents?.length || 0;
   log?.debug?.("REQUEST", `${provider.toUpperCase()} | ${cleanModel} | ${msgCount} msgs`);
 
-  // --- Per-provider concurrency gate (declaration before streamController closures) ---
+  // --- Hierarchical concurrency gate: global -> per-provider (declaration
+  // before streamController closures). `releaseConcurrencySlots` is the
+  // idempotent release for whichever tiers acquireMany() actually acquired;
+  // it starts as a no-op so finishProviderRequest is safe to call before the
+  // gate below runs (e.g. an early return / disconnect).
   const concurrencyLimit = getConcurrencyLimit(provider, providerConcurrencyLimit);
-  let slotAcquired = false;
+  let releaseConcurrencySlots = () => {};
   let providerRequestFinished = false;
   let activeSessionFinished = false;
   const finishActiveDashboardSession = (status) => {
@@ -997,10 +1022,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     if (providerRequestFinished) return;
     providerRequestFinished = true;
     trackPendingRequest(cleanModel, provider, connectionId, false, false, { requestId: activeSessionRequestId }, apiKeyName);
-    if (slotAcquired) {
-      releaseSlot(provider);
-      slotAcquired = false;
-    }
+    releaseConcurrencySlots();
   };
 
   // Set once buildOnStreamComplete runs (streaming path only); lets the
@@ -1023,7 +1045,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       finishProviderRequest();
       finishActiveDashboardSession("error");
       settleQuota(false, classifyQuotaTerminalReason(error));
-      abandonStreamingDetail?.(error?.message === "stream stall timeout" ? "stall_timeout" : "stream_error");
+      abandonStreamingDetail?.(classifyStreamAbandonReason(error));
     },
     onComplete: () => {
       finishProviderRequest();
@@ -1152,7 +1174,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         proxyOptions,
         requestContext,
         attemptStartedAt: initialAttempt,
-        onProviderAttempt: beginProviderAttempt
+        onProviderAttempt: beginProviderAttempt,
+        // Executors that rotate a stored credential mid-request (chatgpt-web's
+        // session cookie) report it here; the caller decides what to persist.
+        onCredentialsRefreshed
       }), {
         beginQuotaDispatch: quotaReservationActive ?
         () => quotaReservation.beginDispatch() :
@@ -1177,15 +1202,26 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   };
 
-  // --- Per-provider concurrency gate ---
-  // Acquire a slot before sending the upstream request.  This proactively
-  // limits concurrent in-flight requests per provider, preventing 429s before
-  // they happen.  If the slot can't be acquired within the timeout, return 503.
-  if (concurrencyLimit > 0) {
+  // --- Hierarchical concurrency gate: global -> per-provider ---
+  // Acquire slots before sending the upstream request. This proactively
+  // limits concurrent in-flight requests, preventing 429s before they happen.
+  // Admission is all-or-nothing across tiers (see acquireMany): a saturated
+  // provider tier never leaves the global tier's slot held hostage. If a slot
+  // can't be acquired within the timeout, return 503.
+  const globalLimit = Number.isFinite(globalConcurrentRequests) && globalConcurrentRequests > 0 ?
+  Math.floor(globalConcurrentRequests) :
+  0;
+  if (concurrencyLimit > 0 || globalLimit > 0) {
     try {
-      await acquireSlot(provider, concurrencyLimit, undefined, providerSignal);
-      slotAcquired = true;
-      log?.debug?.("CONCURRENCY", `${provider} | slot acquired (${concurrencyLimit} max)`);
+      releaseConcurrencySlots = await acquireMany(
+        [
+        { key: "__global__", limit: globalLimit },
+        { key: provider, limit: concurrencyLimit }],
+
+        undefined,
+        providerSignal
+      );
+      log?.debug?.("CONCURRENCY", `${provider} | slots acquired (global=${globalLimit || "off"}, provider=${concurrencyLimit || "off"})`);
     } catch (e) {
       finishProviderRequest();
       finishActiveDashboardSession("error");
@@ -1456,6 +1492,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         resetsAtMs = Date.now() + cooldownMs;
       }
     }
+    // Some providers (e.g. TokenRouter) state their ceiling in the 429 body
+    // prose instead of rate-limit headers, so rpmLimiter.js never learns it
+    // and keeps racing into the same cap. Learn it here and pace future
+    // selection for this connection under it (#13895 upstream).
+    if (statusCode === HTTP_STATUS.RATE_LIMITED && connectionId) {
+      try {
+        learnRequestCapFromBody(connectionId, errorBody ?? message);
+      } catch {
+        // Learning a pacing hint must never break error handling.
+      }
+    }
     const errMsg = formatProviderError(new Error(message), provider, requestedModel, statusCode);
     if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
       log?.warn?.("CHAT", `classifier upstream returned error, default-allowing: ${errMsg}`);
@@ -1555,7 +1602,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     log,
     usageEventId: activeSessionRequestId,
     claudeClassifierCompat,
-    terminalProvenance
+    terminalProvenance,
+    // port(omniroute): per-connection upstream timeout override (#10885).
+    // Falls through to each handler's own RESPONSE_BODY_TIMEOUT_MS default
+    // when the connection has no providerSpecificData.timeoutMs.
+    responseBodyTimeoutMs: resolveConnectionTimeoutMs(credentials?.providerSpecificData)
   };
   const appendLog = (extra) => appendRequestLog({ model: cleanModel, provider, connectionId, ...extra }).catch(() => {});
   // Release the concurrency slot when the request completes (covers streaming + non-streaming + disconnect)

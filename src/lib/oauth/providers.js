@@ -14,6 +14,7 @@ import {
   GEMINI_CONFIG,
   QWEN_CONFIG,
   QODER_CONFIG,
+  QODER_CN_CONFIG,
   IFLOW_CONFIG,
   ANTIGRAVITY_CONFIG,
   GITHUB_CONFIG,
@@ -46,6 +47,8 @@ import {
 "./providerHelpers";
 import { isString } from "../../shared/utils/typeChecks.js";
 import orcarouter from "./orcarouterProvider.js";
+import gheCopilot from "./gheCopilotProvider.js";
+import museCode from "./museCodeProvider.js";
 
 export { extractCodexAccountInfo, fetchKiroProfileArn, fetchClaudeProfile, claudeProfileFields };
 
@@ -70,6 +73,116 @@ async function discoverXaiEndpoints(proxyOptions = null) {
   } catch {/* fall through to static fallback */}
   cachedXaiDiscovery = { authorizeUrl: XAI_CONFIG.authorizeUrl, tokenUrl: XAI_CONFIG.tokenUrl };
   return cachedXaiDiscovery;
+}
+
+/**
+ * Build a Qoder device-code provider handler set for a region. `config` is
+ * the registry oauth block (open-sse/providers/registry/qoder.js or
+ * qoder-cn.js), which carries the region's login/deviceToken/userInfo URLs.
+ * The device flow (PKCE + nonce + machine_id, poll until a `dt-...` token
+ * appears) is identical across regions — only the hosts differ, and
+ * `new QoderService(config)` resolves those per-region URLs.
+ */
+function createQoderProviderHandlers(config) {
+  return {
+    config,
+    flowType: "device_code",
+    // Qoder uses a custom device flow: PKCE + nonce + machine_id are generated
+    // locally, the user lands on qoder.com[.cn]/device/selectAccounts in the
+    // browser, and we poll the region's deviceToken endpoint until a `dt-...`
+    // token appears.
+    requestDeviceCode: async (cfg) => {
+      const { QoderService } = await import("@/lib/oauth/services/qoder");
+      const flow = new QoderService(cfg).initiateDeviceFlow();
+      // Match the device_code shape the rest of the OAuthModal expects
+      // (device_code, user_code, verification_uri[_complete], interval).
+      // The poll endpoint identifies us by nonce+verifier, not by a
+      // server-issued device_code, so we plumb our own values through:
+      //   device_code   = nonce  (modal forwards as deviceCode on poll)
+      //   codeVerifier  = our PKCE verifier (route forwards as codeVerifier)
+      return {
+        device_code: flow.nonce,
+        user_code: flow.nonce.slice(0, 8).toUpperCase(),
+        verification_uri: cfg.loginUrl,
+        verification_uri_complete: flow.verificationUriComplete,
+        expires_in: 300,
+        interval: 2,
+        codeVerifier: flow.codeVerifier,
+        _qoderNonce: flow.nonce,
+        _qoderMachineId: flow.machineId
+      };
+    },
+    pollToken: async (cfg, deviceCode, codeVerifier, extraData, proxyOptions) => {
+      const { QoderService } = await import("@/lib/oauth/services/qoder");
+      const svc = new QoderService(cfg);
+      const nonce = deviceCode || extraData?._qoderNonce;
+      const verifier = codeVerifier || extraData?._qoderVerifier;
+      if (!nonce || !verifier) {
+        return {
+          ok: false,
+          data: { error: "invalid_request", error_description: "Missing nonce/verifier" }
+        };
+      }
+      let result;
+      try {
+        result = await svc.pollDeviceToken({ nonce, codeVerifier: verifier, proxyOptions });
+      } catch (err) {
+        return {
+          ok: false,
+          data: { error: "poll_failed", error_description: err.message }
+        };
+      }
+      if (result.status === "pending") {
+        return { ok: false, data: { error: "authorization_pending" } };
+      }
+      // Best-effort profile lookup so we have a name/email to display.
+      const userInfo = await svc.fetchUserInfo(result.accessToken, proxyOptions);
+      // expireTime is a Unix-ms timestamp from QoderService.parseExpiry,
+      // which already falls back to "now + 30 days" when the upstream
+      // omits expiry. Floor to a sane minimum (1 day) so a stale or
+      // skewed upstream timestamp doesn't truncate the stored token below
+      // something useful.
+      const minSeconds = 24 * 60 * 60;
+      const remainingSeconds = Math.floor((result.expireTime - Date.now()) / 1000);
+      const expiresIn = Math.max(minSeconds, remainingSeconds);
+      return {
+        ok: true,
+        data: {
+          access_token: result.accessToken,
+          refresh_token: result.refreshToken,
+          expires_in: expiresIn,
+          _qoderUserId: result.userId,
+          _qoderMachineId: extraData?._qoderMachineId || "",
+          _qoderName: userInfo.name,
+          _qoderEmail: userInfo.email,
+          _qoderOrganizationId: userInfo.organizationId
+        }
+      };
+    },
+    mapTokens: (tokens) => {
+      const rawEmail = (tokens._qoderEmail || "").trim();
+      const displayName = (tokens._qoderName || "").trim() || null;
+      const userId = tokens._qoderUserId || "";
+      // Dedup in createProviderConnection requires a non-empty email. When
+      // fetchUserInfo silently fails (returns ""), fall back to a stable
+      // synthetic identifier derived from userId so re-logins update the
+      // existing row instead of accumulating "Account N" duplicates.
+      const email = rawEmail || (userId ? `qoder-user-${userId}` : null);
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresIn: tokens.expires_in,
+        email,
+        displayName,
+        providerSpecificData: {
+          authMethod: "device",
+          userId,
+          machineId: tokens._qoderMachineId || "",
+          organizationId: tokens._qoderOrganizationId || ""
+        }
+      };
+    }
+  };
 }
 
 // Provider configurations
@@ -697,104 +810,8 @@ const PROVIDERS = {
     })
   },
 
-  qoder: {
-    config: QODER_CONFIG,
-    flowType: "device_code",
-    // Qoder uses a custom device flow: PKCE + nonce + machine_id are generated
-    // locally, the user lands on qoder.com/device/selectAccounts in the
-    // browser, and we poll openapi.qoder.sh until a `dt-...` token appears.
-    requestDeviceCode: async (config) => {
-      const { QoderService } = await import("@/lib/oauth/services/qoder");
-      const flow = new QoderService().initiateDeviceFlow();
-      // Match the device_code shape the rest of the OAuthModal expects
-      // (device_code, user_code, verification_uri[_complete], interval).
-      // The poll endpoint identifies us by nonce+verifier, not by a
-      // server-issued device_code, so we plumb our own values through:
-      //   device_code   = nonce  (modal forwards as deviceCode on poll)
-      //   codeVerifier  = our PKCE verifier (route forwards as codeVerifier)
-      return {
-        device_code: flow.nonce,
-        user_code: flow.nonce.slice(0, 8).toUpperCase(),
-        verification_uri: config.loginUrl,
-        verification_uri_complete: flow.verificationUriComplete,
-        expires_in: 300,
-        interval: 2,
-        codeVerifier: flow.codeVerifier,
-        _qoderNonce: flow.nonce,
-        _qoderMachineId: flow.machineId
-      };
-    },
-    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
-      const { QoderService } = await import("@/lib/oauth/services/qoder");
-      const svc = new QoderService();
-      const nonce = deviceCode || extraData?._qoderNonce;
-      const verifier = codeVerifier || extraData?._qoderVerifier;
-      if (!nonce || !verifier) {
-        return {
-          ok: false,
-          data: { error: "invalid_request", error_description: "Missing nonce/verifier" }
-        };
-      }
-      let result;
-      try {
-        result = await svc.pollDeviceToken({ nonce, codeVerifier: verifier, proxyOptions });
-      } catch (err) {
-        return {
-          ok: false,
-          data: { error: "poll_failed", error_description: err.message }
-        };
-      }
-      if (result.status === "pending") {
-        return { ok: false, data: { error: "authorization_pending" } };
-      }
-      // Best-effort profile lookup so we have a name/email to display.
-      const userInfo = await svc.fetchUserInfo(result.accessToken, proxyOptions);
-      // expireTime is a Unix-ms timestamp from QoderService.parseExpiry,
-      // which already falls back to "now + 30 days" when the upstream
-      // omits expiry. Floor to a sane minimum (1 day) so a stale or
-      // skewed upstream timestamp doesn't truncate the stored token below
-      // something useful.
-      const minSeconds = 24 * 60 * 60;
-      const remainingSeconds = Math.floor((result.expireTime - Date.now()) / 1000);
-      const expiresIn = Math.max(minSeconds, remainingSeconds);
-      return {
-        ok: true,
-        data: {
-          access_token: result.accessToken,
-          refresh_token: result.refreshToken,
-          expires_in: expiresIn,
-          _qoderUserId: result.userId,
-          _qoderMachineId: extraData?._qoderMachineId || "",
-          _qoderName: userInfo.name,
-          _qoderEmail: userInfo.email,
-          _qoderOrganizationId: userInfo.organizationId
-        }
-      };
-    },
-    mapTokens: (tokens) => {
-      const rawEmail = (tokens._qoderEmail || "").trim();
-      const displayName = (tokens._qoderName || "").trim() || null;
-      const userId = tokens._qoderUserId || "";
-      // Dedup in createProviderConnection requires a non-empty email. When
-      // fetchUserInfo silently fails (returns ""), fall back to a stable
-      // synthetic identifier derived from userId so re-logins update the
-      // existing row instead of accumulating "Account N" duplicates.
-      const email = rawEmail || (userId ? `qoder-user-${userId}` : null);
-      return {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || null,
-        expiresIn: tokens.expires_in,
-        email,
-        displayName,
-        providerSpecificData: {
-          authMethod: "device",
-          userId,
-          machineId: tokens._qoderMachineId || "",
-          organizationId: tokens._qoderOrganizationId || ""
-        }
-      };
-    }
-  },
+  qoder: createQoderProviderHandlers(QODER_CONFIG),
+  "qoder-cn": createQoderProviderHandlers(QODER_CN_CONFIG),
 
   qwen: {
     config: QWEN_CONFIG,
@@ -1665,8 +1682,14 @@ const PROVIDERS = {
       };
     }
   },
-  orcarouter
+  orcarouter,
+  "ghe-copilot": gheCopilot,
+  "muse-code": museCode
 };
+
+// Amazon Q Developer signs in exactly like Kiro (AWS Builder ID / IAM Identity
+// Center device flow); only the stored provider id differs.
+PROVIDERS["amazon-q"] = PROVIDERS.kiro;
 
 function isCloudflareHtmlBadRequest(status, body) {
   return status === 400 && /<html/i.test(body || "") && /cloudflare/i.test(body || "");
@@ -1775,13 +1798,13 @@ export async function pollForToken(providerName, deviceCode, codeVerifier, extra
       // Call postExchange to get additional data (copilotToken, userInfo, etc.)
       let extra = null;
       if (provider.postExchange) {
-        extra = await provider.postExchange(result.data, proxyOptions);
+        extra = await provider.postExchange(result.data, proxyOptions, extraData);
       }
       const tokens = provider.mapTokens(result.data, extra);
       // Kiro IDC/Builder-ID tokens lack profileArn; resolve it to avoid 403.
       // Use the same region the token was issued in so IDC accounts in
       // eu-west-1 / ap-southeast-1 hit their regional CodeWhisperer endpoint.
-      if (providerName === "kiro" && !tokens.providerSpecificData?.profileArn) {
+      if ((providerName === "kiro" || providerName === "amazon-q") && !tokens.providerSpecificData?.profileArn) {
         const region = tokens.providerSpecificData?.region || "us-east-1";
         const profileArn = await fetchKiroProfileArn(tokens.accessToken, region, proxyOptions);
         if (!profileArn) {

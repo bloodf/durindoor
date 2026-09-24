@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, XiaomiMimoAuthModal, ImportTokenModal, IFlowCookieModal, GitLabAuthModal, GheCopilotAuthModal, Toggle, EditConnectionModal, NoAuthProxyCard, ConfirmModal, ProviderIcon, OrcaRouterAuthModal, OrcaModelDropdown } from "@/shared/components";
 import Select from "@/shared/ui/components/Select.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 
@@ -22,10 +22,12 @@ import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import VisibleModelsModal from "./VisibleModelsModal";
+import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
 import ConnectionRow from "./ConnectionRow";
 import AddApiKeyModal from "./AddApiKeyModal";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
+import ProviderErrorRulesModal from "./ProviderErrorRulesModal";
 import { updateCompatibleProviderNode } from "./updateCompatibleProviderNode";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
@@ -42,6 +44,15 @@ import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from ".
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
+
+// Bounds every fetch the initial page load awaits so a stuck backend call
+// (e.g. a hung OAuth credential refresh) cannot stall the loading spinner
+// forever — the page still renders, with that piece of data left blank.
+const FETCH_CONNECTIONS_TIMEOUT_MS = 20000;
+// Per Codex connection: refreshAndUpdateCredentials already caps itself at 15s
+// server-side, so give the usage fetch room for that plus its own network call
+// without inheriting an unbounded wait when the server-side fetch has none.
+const CODEX_USAGE_FETCH_TIMEOUT_MS = 20000;
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
@@ -105,6 +116,7 @@ export default function ProviderDetailPage() {
   // When set, the open OAuth modal replaces this existing connection in place
   // (the Reconnect flow) instead of creating a new row. Cleared on close/success.
   const [reconnectConnectionId, setReconnectConnectionId] = useState(null);
+  const [clearingCooldownId, setClearingCooldownId] = useState(null);
   const [showIFlowCookieModal, setShowIFlowCookieModal] = useState(false);
   const [showImportTokenModal, setShowImportTokenModal] = useState(false);
   const [importTokenValue, setImportTokenValue] = useState("");
@@ -135,6 +147,9 @@ export default function ProviderDetailPage() {
   const [concurrencyLimit, setConcurrencyLimit] = useState("");
   const [retryDelay, setRetryDelay] = useState("auto");
   const [rpmLimit, setRpmLimit] = useState("");
+  const [egressBucketed, setEgressBucketed] = useState(false);
+  const [errorRules, setErrorRules] = useState([]);
+  const [showErrorRulesModal, setShowErrorRulesModal] = useState(false);
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
   const [autoPingQueue] = useState(() => createLatestIntentQueue({
     write: async (_key, enabled, { connectionId }) => {
@@ -166,6 +181,8 @@ export default function ProviderDetailPage() {
   const [syncingModels, setSyncingModels] = useState(false);
   const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
+  // Effective auto-synced model list (ModelAutoSyncPanel); null = registry defaults.
+  const [syncedModels, setSyncedModels] = useState(null);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
@@ -253,7 +270,7 @@ export default function ProviderDetailPage() {
   const isFreeNoAuth = !!FREE_PROVIDERS[providerId]?.noAuth;
   const isStoredNoAuth = isFreeNoAuth && providerId === "mimocode";
   const showConnections = shouldShowProviderConnections(providerInfo, { storedNoAuth: isStoredNoAuth });
-  const models = getModelsByProviderId(providerId);
+  const models = syncedModels || getModelsByProviderId(providerId);
   const providerAlias = getProviderAlias(providerId);
 
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
@@ -416,10 +433,10 @@ export default function ProviderDetailPage() {
     currentProviderIdRef.current === requestProviderId;
     try {
       const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
-      fetch("/api/providers", { cache: "no-store" }),
-      fetch("/api/provider-nodes", { cache: "no-store" }),
-      fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
-      fetch("/api/settings", { cache: "no-store" })]
+      fetch("/api/providers", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      fetch("/api/provider-nodes", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      fetch("/api/settings", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) })]
       );
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
@@ -438,11 +455,17 @@ export default function ProviderDetailPage() {
         // Computed BEFORE any setState so the whole group lands atomically after
         // one staleness check: setting rows first and bailing afterwards would
         // leave a switched-away provider's connections rendered.
+        // Each connection's usage read is independently timed out so a stuck
+        // credential refresh on ONE account (durindoor#951 — refresh can hang
+        // past the server's own 15s budget when the usage fetch that follows
+        // it has no bound of its own) cannot hold the whole page's spinner.
         let plans = {};
         if (providerId === "codex" && filtered.length > 0) {
           const entries = await Promise.all(filtered.map(async (connection) => {
             try {
-              const usageRes = await fetch(`/api/usage/${connection.id}`);
+              const usageRes = await fetch(`/api/usage/${connection.id}`, {
+                signal: AbortSignal.timeout(CODEX_USAGE_FETCH_TIMEOUT_MS)
+              });
               if (!usageRes.ok) return null;
               return toCodexPlanEntry(connection.id, await usageRes.json());
             } catch {
@@ -478,6 +501,10 @@ export default function ProviderDetailPage() {
       setRetryDelay(selectedRetryDelay != null ? String(selectedRetryDelay) : "auto");
       const selectedRpm = (settingsData.rpmByProvider || {})[providerId];
       setRpmLimit(selectedRpm != null ? String(selectedRpm) : "");
+      // OmniRoute #10920 / #11104, adapted: egress-bucketed cooldown opt-in and
+      // operator error rules for this provider.
+      setEgressBucketed((settingsData.egressBucketedProviders || []).includes(providerId));
+      setErrorRules((settingsData.providerErrorRules || {})[providerId] || []);
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       autoPingQueue.hydrate(
@@ -493,7 +520,10 @@ export default function ProviderDetailPage() {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             await new Promise((resolve) => setTimeout(resolve, 150));
             if (!isCurrentRequest()) return;
-            const retryRes = await fetch("/api/provider-nodes", { cache: "no-store" });
+            const retryRes = await fetch("/api/provider-nodes", {
+              cache: "no-store",
+              signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS)
+            });
             if (!retryRes.ok) continue;
             const retryData = await retryRes.json();
             node = (retryData.nodes || []).find((entry) => entry.id === providerId) || null;
@@ -669,6 +699,50 @@ export default function ProviderDetailPage() {
     }
   };
 
+  /** OmniRoute #10920, adapted: opt this provider into egress-IP-bucketed 429 cooldown. */
+  const saveEgressBucketed = async (checked) => {
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const current = new Set(settingsData.egressBucketedProviders || []);
+      if (checked) current.add(providerId);else current.delete(providerId);
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ egressBucketedProviders: Array.from(current) })
+      });
+    } catch (error) {
+      console.log("Error saving egress-bucketed cooldown:", error);
+    }
+  };
+
+  const handleEgressBucketedChange = (checked) => {
+    setEgressBucketed(checked);
+    saveEgressBucketed(checked);
+  };
+
+  /**
+   * OmniRoute #11104, adapted: persist this provider's operator error rules.
+   * Throws on a non-ok response so the modal can surface the server's
+   * validation message instead of silently discarding the edit.
+   */
+  const saveErrorRules = async (rules) => {
+    const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+    const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+    const updated = { ...(settingsData.providerErrorRules || {}) };
+    if (rules.length > 0) updated[providerId] = rules;else delete updated[providerId];
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerErrorRules: updated })
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || "Failed to save error rules");
+    }
+    setErrorRules(rules);
+  };
+
 
   const handleAutoPingConnection = (connectionId, on) => {
     if (!AUTO_PING_SETTINGS_KEYS[providerId]) return;
@@ -686,6 +760,7 @@ export default function ProviderDetailPage() {
   useEffect(() => {
     setSuggestedModels([]);
     setModelsFetchedAt(null);
+    setSyncedModels(null);
   }, [providerId]);
 
   const handleSyncModels = async () => {
@@ -820,8 +895,9 @@ export default function ProviderDetailPage() {
         const modelId = model.id || model.name;
         if (!modelId) continue;
 
-        // Qoder model ID format may be "qoder/auto" or "auto", need to remove prefix
-        const cleanModelId = modelId.replace(/^qoder\//, "");
+        // Qoder model ID format may be "qoder/auto", "qoder-cn/auto" or "auto",
+        // need to remove the provider prefix before storing.
+        const cleanModelId = modelId.replace(/^(qoder-cn|qoder)\//, "");
         const alreadyExists = customModels.some(
           (entry) => entry.providerAlias === providerStorageAlias && entry.id === cleanModelId && (entry.kind || entry.type || "llm") === "llm"
         ) || Object.values(modelAliases).includes(`${providerStorageAlias}/${cleanModelId}`);
@@ -1077,6 +1153,31 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Manually lift a persisted 429 cooldown (port of OmniRoute #12224). The
+  // bench is DurinDoor's own lesson, not upstream truth: a quota can refresh
+  // upstream (daily/weekly reset, provider-side fix) well before our timer
+  // does, and the only automatic clear paths (a successful retest, an
+  // Edit-modal key re-validation) require another upstream round-trip first.
+  const handleClearCooldown = async (id) => {
+    if (!id || clearingCooldownId) return;
+    setClearingCooldownId(id);
+    try {
+      const res = await fetch(`/api/providers/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rateLimitedUntil: null })
+      });
+      if (res.ok) {
+        const { connection } = await res.json();
+        if (connection) setConnections((prev) => replaceUpdatedConnections(prev, [connection]));
+      }
+    } catch (error) {
+      console.log("Error clearing cooldown:", error);
+    } finally {
+      setClearingCooldownId(null);
+    }
+  };
+
   const handleBulkSetConnectionStatus = async (isActive) => {
     const idsToUpdate = [...selectedConnectionIds];
     if (idsToUpdate.length === 0) return;
@@ -1281,6 +1382,8 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
+                onClearCooldown={handleClearCooldown}
+                clearingCooldown={clearingCooldownId === conn.id}
                 autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && conn.authType === "oauth" && conn.isActive !== false ? {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
@@ -1429,7 +1532,10 @@ export default function ProviderDetailPage() {
       customModels,
       modelAliases,
       providerAlias: providerStorageAlias,
-      builtInModels: models,
+      // allModels (not just the static `models` registry) so a kiloFreeModels
+      // row that picks up a capability override is excluded from the custom
+      // list too, matching the row it actually overrides (port(omniroute) #14356).
+      builtInModels: allModels,
       type: "llm"
     });
 
@@ -1469,6 +1575,14 @@ export default function ProviderDetailPage() {
           const existingAlias = Object.entries(modelAliases).find(
             ([, m]) => m === fullModel || m === oldFormatModel
           )?.[0];
+          // OmniRoute #14356 (port(omniroute)): a registry/synced model has no
+          // customModels row by default, so it carries no capability override
+          // (context window, etc). If the operator already saved one, merge it
+          // over the base caps the same way the server's dedup pass does.
+          const customOverride = customModels.find(
+            (m) => m?.id === model.id && m.providerAlias === providerStorageAlias && (m.kind || m.type || "llm") === "llm"
+          );
+          const baseCaps = getCaps(`${providerId}/${model.id}`);
           return (
             <ModelRow
               key={model.id}
@@ -1484,8 +1598,9 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
-              caps={getCaps(`${providerId}/${model.id}`)}
-              thinkingSuffix={resolveThinkingSuffix(model.id)} />);
+              caps={customOverride ? { ...baseCaps, ...customOverride.capabilities } : baseCaps}
+              thinkingSuffix={resolveThinkingSuffix(model.id)}
+              onEdit={() => setEditingCustomModel({ id: model.id, name: model.name, capabilities: customOverride?.capabilities || {} })} />);
 
 
         })}
@@ -1499,8 +1614,8 @@ export default function ProviderDetailPage() {
           Add Model
         </button>
 
-        {/* Import Qoder models button — only show for qoder provider */}
-        {providerId === "qoder" && connections.some((conn) => conn.isActive !== false) &&
+        {/* Import Qoder models button — only show for qoder/qoder-cn provider */}
+        {(providerId === "qoder" || providerId === "qoder-cn") && connections.some((conn) => conn.isActive !== false) &&
         <button
           onClick={handleImportQoderModels}
           disabled={importingQoderModels}
@@ -1877,8 +1992,26 @@ export default function ProviderDetailPage() {
                 onChange={(e) => handleConcurrencyLimitChange(e.target.value)}
                 placeholder="∞"
                 className="min-h-11 w-16 rounded-dd border border-dd-border bg-dd-surface px-2 text-xs text-dd-text outline-none focus:border-dd-accent focus-visible:shadow-dd-focus" />
-              
+
               </div>
+              {/* OmniRoute #10920, adapted: egress-IP-bucketed 429 cooldown opt-in */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-dd-muted font-medium">Egress-Bucketed 429</span>
+                <Toggle
+                ariaLabel="Toggle egress-bucketed 429 cooldown"
+                checked={egressBucketed}
+                onChange={handleEgressBucketedChange} />
+
+              </div>
+              {/* OmniRoute #11104, adapted: operator per-provider error rules */}
+              <Button
+              size="sm"
+              variant="secondary"
+              icon="rule"
+              onClick={() => setShowErrorRulesModal(true)}>
+
+                  Error Rules{errorRules.length > 0 ? ` (${errorRules.length})` : ""}
+                </Button>
             </div>
           </div>
 
@@ -2087,6 +2220,13 @@ export default function ProviderDetailPage() {
             custom/alias ids only and never applies this allowlist to them, so
             the control would silently do nothing for these providers. */}
         {!isCompatible &&
+        <ModelAutoSyncPanel
+          key={providerId}
+          providerId={providerId}
+          hasConnection={connections.some((conn) => conn.isActive !== false)}
+          onModelsChange={setSyncedModels} />
+        }
+        {!isCompatible &&
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" icon="visibility" onClick={() => setShowVisibleModels(true)}>
             Visible models{enabledModelIds.length > 0 ? ` (${enabledModelIds.length})` : ""}
@@ -2115,9 +2255,10 @@ export default function ProviderDetailPage() {
       {bulkActionModal}
 
       {/* Modals */}
-      {providerId === "kiro" ?
+      {providerId === "kiro" || providerId === "amazon-q" ?
       <KiroOAuthWrapper
         isOpen={showOAuthModal}
+        provider={providerId}
         providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)}
@@ -2126,6 +2267,12 @@ export default function ProviderDetailPage() {
 
       providerId === "cursor" ?
       <CursorAuthModal
+        isOpen={showOAuthModal}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)} /> :
+
+      providerId === "xiaomi-mimo" ?
+      <XiaomiMimoAuthModal
         isOpen={showOAuthModal}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)} /> :
@@ -2141,6 +2288,15 @@ export default function ProviderDetailPage() {
       <GitLabAuthModal
         isOpen={showOAuthModal}
         provider={providerId}
+        providerInfo={providerInfo}
+        onSuccess={handleOAuthSuccess}
+        onClose={() => setShowOAuthModal(false)}
+        proxyPools={proxyPools}
+        proxyPoolsReady={proxyPoolsReady} /> :
+
+      providerId === "ghe-copilot" ?
+      <GheCopilotAuthModal
+        isOpen={showOAuthModal}
         providerInfo={providerInfo}
         onSuccess={handleOAuthSuccess}
         onClose={() => setShowOAuthModal(false)}
@@ -2230,6 +2386,7 @@ export default function ProviderDetailPage() {
         isAnthropic={isAnthropicCompatible}
         authType={providerInfo?.authType}
         authHint={providerInfo?.authHint}
+        authSnippet={providerInfo?.authSnippet}
         website={providerInfo?.website}
         proxyPools={proxyPools}
         existingConnectionNames={providerApiKeyConnectionNames}
@@ -2257,6 +2414,13 @@ export default function ProviderDetailPage() {
         isAnthropic={isAnthropicCompatible} />
 
       }
+      <ProviderErrorRulesModal
+        isOpen={showErrorRulesModal}
+        providerId={providerId}
+        rules={errorRules}
+        onSave={saveErrorRules}
+        onClose={() => setShowErrorRulesModal(false)} />
+
       {(!isCompatible || editingCustomModel) &&
       <AddCustomModelModal
         isOpen={showAddCustomModel || Boolean(editingCustomModel)}
@@ -2264,7 +2428,17 @@ export default function ProviderDetailPage() {
         providerDisplayAlias={providerDisplayAlias}
         initialModel={editingCustomModel}
         onSave={async (payload) => {
-          if (editingCustomModel) {
+          // OmniRoute #14356 (port(omniroute)): a registry/synced row opens
+          // this same editor with `editingCustomModel` set, but (unlike a
+          // true custom-model edit) has no customModels row yet, so its first
+          // save must go through POST (add), same as a brand-new custom
+          // model. Only branch to update when a row for this id actually
+          // exists; the plain "Add Model" flow (editingCustomModel null)
+          // always adds, unchanged from before.
+          const hasExistingRow = Boolean(editingCustomModel) && customModels.some(
+            (m) => m?.id === payload.id && m.providerAlias === providerStorageAlias && (m.kind || m.type || "llm") === "llm"
+          );
+          if (hasExistingRow) {
             await handleUpdateCustomModel(payload);
           } else {
             await handleAddCustomModel(payload, "llm", providerStorageAlias);

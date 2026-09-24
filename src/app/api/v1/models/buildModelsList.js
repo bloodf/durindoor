@@ -7,7 +7,8 @@ import {
   isOpenAICompatibleProvider,
   isLocalOllamaProvider } from
 "@/shared/constants/providers";
-import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getSyncedModelCatalogs } from "@/lib/localDb";
+import { effectiveSyncedModels, isModelAutoSyncEnabled } from "@/lib/modelAutoSync/catalog.js";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getEnabledModels } from "@/lib/enabledModelsDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -43,6 +44,7 @@ import { projectModelPresentation } from "open-sse/providers/models/presentation
 // deleted in `finally`), so DB/credential changes are observed on the next
 // request and a rejection cannot poison future calls.
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { isModelExposureAllowed } from "../../../../shared/utils/modelExposureList.js";
 const modelsInFlight = new Map();
 
 function kindFilterKey(kindFilter) {
@@ -148,6 +150,24 @@ async function liveResolverOptions(conn) {
 }
 
 
+// Qoder shares one live resolver across intl (qoder) and CN (qoder-cn); the
+// credentials carry the provider id so qoderModels picks the right region's
+// catalog endpoint.
+async function resolveQoderLiveModels(conn, providerId) {
+  const result = await resolveQoderModels({
+    provider: providerId,
+    accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
+    refreshToken: isString(conn.refreshToken) ? conn.refreshToken : undefined,
+    email: isString(conn.email) ? conn.email : undefined,
+    displayName: isString(conn.displayName) ? conn.displayName : undefined,
+    providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
+  });
+  if (!result?.models?.length) return null;
+  return {
+    models: result.models.map((m) => ({ id: m.id, name: m.name }))
+  };
+}
+
 const LIVE_MODEL_RESOLVERS = {
   anthropic: async (conn, guard) => resolveLiveAnthropicModels(conn, {
     ...(await liveResolverOptions(conn)),
@@ -235,19 +255,8 @@ const LIVE_MODEL_RESOLVERS = {
     });
     return models.length ? { models } : null;
   },
-  qoder: async (conn) => {
-    const result = await resolveQoderModels({
-      accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
-      refreshToken: isString(conn.refreshToken) ? conn.refreshToken : undefined,
-      email: isString(conn.email) ? conn.email : undefined,
-      displayName: isString(conn.displayName) ? conn.displayName : undefined,
-      providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
-    });
-    if (!result?.models?.length) return null;
-    return {
-      models: result.models.map((m) => ({ id: m.id, name: m.name }))
-    };
-  },
+  qoder: (conn) => resolveQoderLiveModels(conn, "qoder"),
+  "qoder-cn": (conn) => resolveQoderLiveModels(conn, "qoder-cn"),
   github: async (conn) => {
     const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
     const proxyOptions = await resolveConnectionProxyConfig(psd);
@@ -702,6 +711,19 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }
   }
 
+  // Model auto-sync (src/lib/modelAutoSync): a provider with auto-sync on and
+  // a successful synced catalog lists exactly that catalog instead of its
+  // registry defaults. Read only when such a provider is connected; a failed
+  // read fails soft to registry behavior.
+  let syncedCatalogs = {};
+  if ([...activeConnectionByProvider.keys()].some((id) => isModelAutoSyncEnabled(id, settings))) {
+    try {
+      syncedCatalogs = await getSyncedModelCatalogs();
+    } catch {
+      syncedCatalogs = {};
+    }
+  }
+
   const models = [];
   // Model ids below are prefixed with outputAlias (static alias or the active
   // connection's custom prefix), so map each exposed alias back to the
@@ -994,6 +1016,25 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         }).
         filter((modelId) => modelId !== "");
 
+        // Auto-synced providers publish exactly the synced list (plus custom
+        // models below). The allowlist still narrows it, and the synced rows
+        // stand in for live metadata, so no per-request discovery runs.
+        const syncedModels = isCompatibleProvider || !isModelAutoSyncEnabled(providerId, settings) ?
+        null :
+        effectiveSyncedModels(syncedCatalogs[providerId], providerModels);
+        const syncedModelIds = syncedModels ? new Set(syncedModels.map((m) => m.id)) : null;
+        if (syncedModels) {
+          rawModelIds = hasExplicitEnabledModels ?
+          rawModelIds.filter((id) => syncedModelIds.has(id)) :
+          [...syncedModelIds];
+          for (const m of syncedModels) {
+            liveModelById.set(m.id, m);
+            liveModelIds.add(m.id);
+            if (m.kind) liveModelKindById.set(m.id, m.kind);
+            if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
+          }
+        }
+
         // Live metadata precedence is user override > live upstream > static
         // catalog > default. Custom-compatible public catalogs are persisted
         // allowlists, so only registry-backed/Kimi OpenAI-style discovery runs here.
@@ -1017,7 +1058,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           });
         } :
         null;
-        const liveResolver = providerLiveResolver || openAIStyleLiveResolver;
+        const liveResolver = syncedModels ? null : providerLiveResolver || openAIStyleLiveResolver;
         if (liveResolver && (!hasExplicitEnabledModels || providerLiveResolver || openAIStyleLiveResolver)) {
           try {
             const live = await liveResolver(conn, guard);
@@ -1114,7 +1155,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         // An allowlist restricts what /v1/models publishes for this provider;
         // an alias pointed at an id outside it must not re-expose that id.
         // Custom models keep their separate always-visible exception.
-        filter((modelId) => !hasExplicitEnabledModels || enabledModels.includes(modelId));
+        filter((modelId) => !hasExplicitEnabledModels || enabledModels.includes(modelId)).
+        // A pruned model stays out even when an alias still points at it.
+        filter((modelId) => !syncedModelIds || syncedModelIds.has(modelId));
         const compatiblePublicIds = isCompatibleProvider ? getCompatiblePublicIds({
           customModelIds,
           modelAliases,
@@ -1253,6 +1296,18 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     // already member-filtered above; skip them here so an empty/all-paid combo
     // can't be re-hidden by its bare name (unknown → visible).
     if (hidePaidModels && model.owned_by !== "combo" && isPaidModel(model.id)) continue;
+    // OmniRoute #11481 (port(omniroute)): operator glob allow/deny list for
+    // /v1/models exposure. Same backstop shape as hidePaidModels above so
+    // every code path that can push a model entry is covered in one place.
+    // Named combos are exempt (an entry is a bare combo name, not a
+    // provider/model pair); their member pool is filtered separately where
+    // it feeds auto/* resolution (src/sse/services/model.js::getComboModels).
+    if (model.owned_by !== "combo" && model.id.includes("/")) {
+      const slash = model.id.indexOf("/");
+      const provider = model.id.slice(0, slash);
+      const modelId = model.id.slice(slash + 1);
+      if (!isModelExposureAllowed(provider, modelId, settings)) continue;
+    }
     dedupedModels.push(model);
   }
 

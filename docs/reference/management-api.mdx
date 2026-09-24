@@ -3,7 +3,7 @@ title: Management API
 description: Every dashboard REST route under /api, which credentials it accepts, and what an API key cannot do.
 ---
 
-Dashboard REST lives under `/api/*` on the same process as inference. Production listens on port `20128`. A DurinDoor API key that can call `/v1` can also call most of these routes. Tables below cover every `route.js` under `src/app/api` except `/v1`, `/v1beta`, and `[...catchAll]` (162 files). Tools for the same work sit on [MCP control](../features/mcp-control.mdx). A walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
+Dashboard REST lives under `/api/*` on the same process as inference. Production listens on port `20128`. A DurinDoor API key that can call `/v1` can also call most of these routes. Tables below cover every `route.js` under `src/app/api` except `/v1`, `/v1beta`, and `[...catchAll]` (164 files). Tools for the same work sit on [MCP control](../features/mcp-control.mdx). A walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
 
 ## Credentials
 
@@ -68,6 +68,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | --- | --- | --- | --- |
 | GET, POST | `/api/keys` | List keys with usage (GET) or mint a key (POST, secret once) | session, CLI, key, loop |
 | GET | `/api/keys/policy-catalog` | Model ids valid for a key policy allowlist | session, CLI, key, loop |
+| GET | `/api/keys/usage` | Current usage against each key's windowed limits | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/keys/{id}` | Read, update, or delete a key (secret masked) | session, CLI, key, loop |
 | GET | `/api/keys/{id}/reveal` | Return the raw DurinDoor key secret | session, CLI, key, loop; key refused on reveal |
 
@@ -124,8 +125,9 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | --- | --- | --- | --- |
 | GET | `/api/usage/chart` | Usage chart buckets for a period | session, CLI, key, loop |
 | GET | `/api/usage/combos` | Combo-attributed usage for a period | session, CLI, key, loop |
-| GET | `/api/usage/history` | Aggregate usage stats (default period) | session, CLI, key, loop |
+| GET | `/api/usage/history` | Paginated usage rows (`limit` up to 200, `offset`, filters) | session, CLI, key, loop |
 | GET | `/api/usage/logs` | Last 200 usage log rows | session, CLI, key, loop |
+| GET | `/api/usage/me` | Self-service usage for the calling API key only: lifetime totals, daily limit status, policy, and quota snapshots for the key's own connections. `?format=json` is accepted; requires a resolvable application API key, not just session/CLI/loop | key |
 | GET | `/api/usage/providers` | Distinct providers from request details | session, CLI, key, loop |
 | GET | `/api/usage/request-details` | Paginated request-detail rows | session, CLI, key, loop |
 | GET | `/api/usage/request-logs` | Last 200 usage log rows (alias of logs) | session, CLI, key, loop |
@@ -134,6 +136,12 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET | `/api/usage/stream` | SSE of full stats for a dashboard period | session, CLI, key, loop |
 | GET | `/api/usage/{connectionId}` | Live provider quota/usage for one connection; ?force=1 | session, CLI, key, loop |
 | GET, POST | `/api/usage/{connectionId}/codex-reset-credits` | Read or trigger Codex credit reset | session, CLI, key, loop |
+
+### Logs
+
+| Method | Path | Does | Auth |
+| --- | --- | --- | --- |
+| GET | `/api/logs/export` | Streamed JSON export of `requestDetails` rows. `?hours=1-168` (default 24), `?limit=1-50000` (default 10000). Truncated exports carry `capped`, `limit`, and `totalAvailable` in the response header, ahead of the row array, so a streaming reader learns about truncation before it finishes the body | session, CLI, loop |
 
 ### Timeline
 

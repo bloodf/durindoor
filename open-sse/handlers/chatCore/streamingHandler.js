@@ -4,6 +4,7 @@ import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger }
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { HTTP_STATUS, SSE_KEEPALIVE_MS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
@@ -18,6 +19,7 @@ import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
 import { isFunction } from "../../../src/shared/utils/typeChecks.js";
+import { classifyStreamAbandonReason, isRequestScopedStreamError } from "../../utils/streamLifecycle.js";
 const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
   [FORMATS.CLAUDE]: FORMATS.CLAUDE,
@@ -142,7 +144,11 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
-  const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
+  // port(omniroute): per-connection upstream timeout override (#10885) — takes
+  // precedence over the provider's own stallTimeoutMs and the global default.
+  const stallTimeoutMs = resolveConnectionTimeoutMs(credentials?.providerSpecificData) ||
+  PROVIDERS[provider]?.stallTimeoutMs ||
+  STREAM_STALL_TIMEOUT_MS;
   const terminalTracker = createTerminalTracker(emittedFormat);
   // createTerminalTracker only covers OPENAI/OPENAI_RESPONSES/CLAUDE — every other
   // emitted format (Gemini-family, Ollama, Kiro, Commandcode, Cursor) has no EOF
@@ -172,8 +178,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // Disconnect-aware piping owns client cancellation; capture transform state
   // before chatCore's lifecycle callbacks race to close the shared detail row.
   streamController.setInterruptionFinalizer?.((reason) => {
-    const normalizedReason = reason?.message === "stream stall timeout" ? "stall_timeout" :
-    reason?.message ? "stream_error" : reason || "client_disconnected";
+    const normalizedReason = reason?.message ? classifyStreamAbandonReason(reason) :
+    reason || "client_disconnected";
     onStreamAbandoned?.(normalizedReason, transformStream.getStreamSnapshot?.() || null);
   });
   const transformedBody = pipeWithDisconnect(
@@ -286,9 +292,13 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // It is a finished, coherent turn, not a provider fault worth a 7-minute
     // account cooldown.
     const isStreamedClaudeRefusal = summary?.providerResponse?.stop_reason === CLAUDE_STOP.REFUSAL;
+    // Same for an in-stream invalid_request_error / context_length_exceeded:
+    // the request was refused, the account is fine (OmniRoute #14585).
+    const isRequestScopedRefusal = isRequestScopedStreamError(contentObj?.upstreamError);
     if (
     isFunction(onEmptyStream) &&
     !isStreamedClaudeRefusal &&
+    !isRequestScopedRefusal &&
     !contentObj?.content?.trim?.() &&
     !contentObj?.hadToolCalls &&
     !contentObj?.thinking?.trim?.() &&

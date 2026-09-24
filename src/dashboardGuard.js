@@ -3,6 +3,7 @@ import { getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 import {
   CONTROL_PORT_HEADER,
@@ -23,7 +24,7 @@ async function getCliToken() {
 export async function hasValidCliToken(request) {
   const token = request.headers.get(CLI_TOKEN_HEADER);
   if (!token) return false;
-  return token === await getCliToken();
+  return timingSafeCompare(token, await getCliToken());
 }
 
 // Public API paths — no auth required (LLM API has its own key auth inside handler).
@@ -65,6 +66,7 @@ const ALWAYS_PROTECTED = [
   "/api/version/update",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
+  "/api/oauth/xiaomi-mimo/auto-import",
 ];
 
 // Management APIs — require JWT/CLI; loopback may use the open-dashboard
@@ -118,6 +120,7 @@ const LOCAL_ONLY_PATHS = [
   "/api/tunnel/disable",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
+  "/api/oauth/xiaomi-mimo/auto-import",
   "/api/auth/reset-password",
   "/api/headroom/start",
   "/api/headroom/stop",
@@ -438,7 +441,7 @@ export async function isOperatorRequest(request) {
  * qualify; a valid DurinDoor application API key grants full programmatic
  * control; loopback peers keep open-dashboard usability when login is disabled.
  */
-async function canAccessManagementApi(request) {
+export async function canAccessManagementApi(request) {
   if (await hasValidCliToken(request)) return true;
   if (await hasValidToken(request)) return true;
   // Full programmatic control with the application API key — except raw secret

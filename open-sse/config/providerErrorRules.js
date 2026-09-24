@@ -88,13 +88,92 @@ export const providerRuleRegistry = new Map([
 ["agentrouter", buildAgentrouterRules()]]
 );
 
-/** Provider rules inspect parsed error envelopes only, never raw response text. */
-export function resolveRuleMatchBody(_provider, structuredError) {
+/**
+ * Operator-declared per-provider error rules from `settings.providerErrorRules`
+ * (OmniRoute #11104). Data-only: `{ status, match, scope, reason?, cooldownMs? }`
+ * per provider (lowercased key). `match` is always a plain case-insensitive
+ * SUBSTRING of the error body, never a RegExp -- the settings boundary accepts
+ * operator-supplied strings, so a regex engine here would open a ReDoS hole on
+ * the error-classification hot path. Populated by `setOperatorProviderErrorRules`,
+ * called once at boot (initializeApp.js) and again on every settings PATCH that
+ * touches the key (src/app/api/settings/route.js). Consulted BEFORE the
+ * built-in `providerRuleRegistry` so an operator can override catalog behavior
+ * for any provider without editing this file.
+ */
+const MAX_OPERATOR_RULES_TOTAL = 50;
+let operatorProviderErrorRules = {};
+
+/**
+ * Replace the in-memory operator rule cache. Pass `undefined`/`null`/`{}` to
+ * clear. Silently drops malformed entries and rules past
+ * {@link MAX_OPERATOR_RULES_TOTAL} -- callers validate shape/bounds at the
+ * settings boundary, this is a defensive second gate so a corrupted stored
+ * value can never crash or blow up the matcher.
+ */
+export function setOperatorProviderErrorRules(rules) {
+  operatorProviderErrorRules = {};
+  if (!rules || !isObject(rules)) return;
+  let total = 0;
+  for (const [provider, list] of Object.entries(rules)) {
+    if (!isString(provider) || !provider.trim() || !Array.isArray(list) || list.length === 0) continue;
+    const validRules = [];
+    for (const rule of list) {
+      if (total >= MAX_OPERATOR_RULES_TOTAL) break;
+      if (!isObject(rule)) continue;
+      if (!Number.isInteger(rule.status) || rule.status < 100 || rule.status > 599) continue;
+      if (!isString(rule.match) || !rule.match.trim()) continue;
+      if (rule.scope !== "model" && rule.scope !== "provider" && rule.scope !== "connection") continue;
+      validRules.push({
+        status: rule.status,
+        match: rule.match,
+        scope: rule.scope,
+        reason: isString(rule.reason) && rule.reason ? rule.reason : "quota_exhausted",
+        cooldownMs: Number.isFinite(rule.cooldownMs) && rule.cooldownMs >= 0 ? rule.cooldownMs : undefined
+      });
+      total += 1;
+    }
+    if (validRules.length > 0) operatorProviderErrorRules[provider.toLowerCase()] = validRules;
+  }
+}
+
+/** True when an operator declared at least one rule for this provider. */
+export function hasOperatorRuleForProvider(provider) {
+  if (!provider) return false;
+  const rules = operatorProviderErrorRules[provider.toLowerCase()];
+  return !!rules && rules.length > 0;
+}
+
+function matchOperatorRule(provider, status, body) {
+  if (!provider) return null;
+  const rules = operatorProviderErrorRules[provider.toLowerCase()];
+  if (!rules || rules.length === 0) return null;
+  const text = isString(body) ? body : JSON.stringify(body ?? "");
+  const lowered = text.toLowerCase();
+  for (const rule of rules) {
+    if (rule.status !== status) continue;
+    if (!lowered.includes(rule.match.toLowerCase())) continue;
+    return { reason: rule.reason, scope: rule.scope, cooldownMs: rule.cooldownMs };
+  }
+  return null;
+}
+
+/**
+ * Provider rules inspect parsed error envelopes by default; a provider with
+ * an operator-declared rule gets the full raw error text instead, since the
+ * operator's `match` is a literal body substring by construction and could
+ * never match a structured envelope.
+ */
+export function resolveRuleMatchBody(provider, structuredError, errorText) {
+  if (provider && hasOperatorRuleForProvider(provider) && isString(errorText) && errorText) {
+    return errorText;
+  }
   return structuredError ?? null;
 }
 
 export function getProviderErrorRuleMatch(provider, status, headers, body) {
   if (!provider) return null;
+  const operatorMatch = matchOperatorRule(provider, status, body);
+  if (operatorMatch) return operatorMatch;
   const rules = providerRuleRegistry.get(provider.toLowerCase());
   if (!rules) return null;
   const normalizedHeaders = !headers ?

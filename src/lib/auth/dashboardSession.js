@@ -5,6 +5,7 @@ import path from "node:path";
 import { DATA_DIR } from "@/lib/dataDir";
 import { getSettings, getSettingsSync } from "@/lib/localDb";
 import { isString } from "../../shared/utils/typeChecks.js";
+import { timingSafeCompare } from "../../shared/utils/timingSafeCompare.js";
 
 export const DEFAULT_PASSWORD = "123456";
 
@@ -289,5 +290,5 @@ export async function verifyDashboardPassword(password) {
   const storedHash = settings?.password;
   if (storedHash) return bcrypt.compare(password, storedHash);
   const initialPassword = process.env.INITIAL_PASSWORD || DEFAULT_PASSWORD;
-  return password === initialPassword;
+  return timingSafeCompare(password, initialPassword);
 }

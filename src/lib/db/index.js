@@ -349,18 +349,24 @@ export {
   getEnabledModels, getEnabledByProvider, setEnabledModels } from
 "./repos/enabledModelsRepo.js";
 
+// Model auto-sync catalogs per provider id
+export {
+  getSyncedModelCatalogs, getSyncedModelCatalog, saveSyncedModelCatalog } from
+"./repos/syncedModelsRepo.js";
+
 // Usage
 export {
   statsEmitter, trackPendingRequest, finishPendingRequest, finishActiveSession, getActiveRequests,
   saveRequestUsage, getUsageHistory, getUsageStats, getChartData,
   appendRequestLog, getRecentLogs,
   recordTokenSaverEvent, getTokenSaverStats,
-  resetUsageHistory } from
+  resetUsageHistory, getApiKeyWindowUsageTotals } from
 "./repos/usageRepo.js";
 
 // Request details
 export {
-  saveRequestDetail, getRequestDetails, getRequestDetailById, getDistinctProviders } from
+  saveRequestDetail, getRequestDetails, getRequestDetailById, getDistinctProviders,
+  countRequestDetailsSince, iterateRequestDetailsSince } from
 "./repos/requestDetailsRepo.js";
 
 // Export/import full DB

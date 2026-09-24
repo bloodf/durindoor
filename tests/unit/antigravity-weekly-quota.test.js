@@ -29,7 +29,7 @@ function summaryResponse(groups) {
 }
 
 describe("parseAntigravityWeeklyQuotas", () => {
-  it("extracts the weekly bucket per model-family group, never the 5h bucket", () => {
+  it("extracts the weekly bucket per model-family group, and the 5h bucket separately", () => {
     const quotas = parseAntigravityWeeklyQuotas({
       groups: [
         {
@@ -54,12 +54,18 @@ describe("parseAntigravityWeeklyQuotas", () => {
       unlimited: false,
       displayName: "Gemini Weekly",
     });
+    expect(quotas.gemini_session).toMatchObject({
+      remainingPercentage: 40,
+      resetAt: RESET_IN_2_HOURS,
+      displayName: "Gemini 5h",
+    });
     expect(quotas.claude_gpt_weekly).toMatchObject({
       remainingPercentage: 10,
       displayName: "Claude & GPT Weekly",
     });
-    // Exactly one entry per group — the 5h bucket must not be picked up.
-    expect(Object.keys(quotas).sort()).toEqual(["claude_gpt_weekly", "gemini_weekly"]);
+    // One weekly + one session entry for Gemini, one weekly-only entry for Claude & GPT
+    // (that group had no 5h bucket in the fixture).
+    expect(Object.keys(quotas).sort()).toEqual(["claude_gpt_weekly", "gemini_session", "gemini_weekly"]);
   });
 
   it("tolerates the quotaSummary-nested envelope", () => {
@@ -109,6 +115,45 @@ describe("parseAntigravityWeeklyQuotas", () => {
       ],
     });
     expect(quotas).toEqual({});
+  });
+
+  // Port of upstream be3bc764: the summary RPC also reports a sliding 5h
+  // "session" bucket per family, separate from the multi-day weekly bucket.
+  it("extracts both the weekly and 5h session bucket per group", () => {
+    const quotas = parseAntigravityWeeklyQuotas({
+      groups: [
+        {
+          displayName: "Gemini Models",
+          buckets: [
+            { bucketId: "gemini-5h", displayName: "Five Hour Limit Remaining", window: "5h", remainingFraction: 0.9, resetTime: RESET_IN_2_HOURS },
+            { bucketId: "gemini-weekly", displayName: "Weekly Limit Remaining", window: "weekly", remainingFraction: 0.75, resetTime: RESET_IN_3_DAYS },
+          ],
+        },
+      ],
+    });
+
+    expect(quotas.gemini_session).toMatchObject({
+      remainingPercentage: 90,
+      resetAt: RESET_IN_2_HOURS,
+      displayName: "Gemini 5h",
+    });
+    expect(quotas.gemini_weekly).toMatchObject({
+      remainingPercentage: 75,
+      resetAt: RESET_IN_3_DAYS,
+      displayName: "Gemini Weekly",
+    });
+  });
+
+  it("keeps a disabled session bucket at remainingFraction 0 instead of dropping it", () => {
+    const quotas = parseAntigravityWeeklyQuotas({
+      groups: [
+        {
+          displayName: "Gemini Models",
+          buckets: [{ bucketId: "gemini-5h", displayName: "Five Hour Limit Remaining", window: "5h", remainingFraction: 1, disabled: true, resetTime: RESET_IN_2_HOURS }],
+        },
+      ],
+    });
+    expect(quotas.gemini_session).toMatchObject({ remainingPercentage: 0, used: 1000 });
   });
 });
 
@@ -328,7 +373,7 @@ describe("getAntigravityUsage tier gating and weekly reconciliation", () => {
     expect(result.quotas.gemini_weekly?.remainingPercentage).toBe(80);
   });
 
-  it("applies weekly reconciliation when every Gemini model reports 0% (upstream bug)", async () => {
+  it("applies 5h-session reconciliation when every Gemini model reports 0%, without clobbering weekly (port of be3bc764)", async () => {
     proxyAwareFetch.mockImplementation(
       makeMock({
         subscription: { paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } },
@@ -343,7 +388,10 @@ describe("getAntigravityUsage tier gating and weekly reconciliation", () => {
         weeklyGroups: [
           {
             displayName: "Gemini Models",
-            buckets: [{ bucketId: "gemini-weekly", displayName: "Weekly Quota", remainingFraction: 1, resetTime: WEEKLY_RESET }],
+            buckets: [
+              { bucketId: "gemini-5h", displayName: "Five Hour Quota", window: "5h", remainingFraction: 1, resetTime: WEEKLY_RESET },
+              { bucketId: "gemini-weekly", displayName: "Weekly Quota", window: "weekly", remainingFraction: 0.6, resetTime: WEEKLY_RESET },
+            ],
           },
         ],
       })
@@ -351,14 +399,20 @@ describe("getAntigravityUsage tier gating and weekly reconciliation", () => {
 
     const result = await getAntigravityUsage("token-reconcile", {});
 
-    // Reconciliation overrode the weekly row.
-    expect(result.quotas.gemini_weekly).toMatchObject({
+    // Reconciliation overrode the session row, not the weekly row.
+    expect(result.quotas.gemini_session).toMatchObject({
       remainingPercentage: 0,
       used: 1000,
     });
     // Inherited the per-model resetAt (the only sane answer when every model
     // is locked until a future time).
-    expect(result.quotas.gemini_weekly.resetAt).toBe(GEMINI_5H_RESET);
+    expect(result.quotas.gemini_session.resetAt).toBe(GEMINI_5H_RESET);
+
+    // Weekly quota is a separate, longer window and must stay untouched.
+    expect(result.quotas.gemini_weekly).toMatchObject({
+      remainingPercentage: 60,
+      resetAt: WEEKLY_RESET,
+    });
   });
 
   it("leaves weekly quota untouched on paid tier when not all family models are exhausted", async () => {

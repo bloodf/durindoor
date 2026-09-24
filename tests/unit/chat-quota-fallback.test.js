@@ -512,7 +512,7 @@ describe("chat quota fallback orchestration", () => {
         return {
           success: true,
           attemptStartedAt,
-          response: new Response("data: {\"ok\":true}\n\ndata: [DONE]\n\n", {
+          response: new Response("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n", {
             status: 200,
             headers: { "Content-Type": "text/event-stream" },
           }),
@@ -576,7 +576,7 @@ describe("chat quota fallback orchestration", () => {
         return {
           success: true,
           attemptStartedAt,
-          response: new Response("data: [DONE]\n\n", {
+          response: new Response("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n", {
             status: 200,
             headers: { "Content-Type": "text/event-stream" },
           }),
@@ -1169,7 +1169,7 @@ describe("chat quota fallback orchestration", () => {
         return {
           success: true,
           attemptStartedAt,
-          response: new Response("data: {\"ok\":true}\n\ndata: [DONE]\n\n", {
+          response: new Response("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n", {
             status: 200,
             headers: { "Content-Type": "text/event-stream" },
           }),

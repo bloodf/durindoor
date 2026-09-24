@@ -1,0 +1,44 @@
+---
+title: Cursor
+description: Import a Cursor IDE session as a DurinDoor provider, where auto-detect looks, what a manual import needs, and why there is no refresh.
+---
+
+The Cursor provider (`cursor`, alias `cu`) lets DurinDoor send requests to Cursor's own chat backend with the session from your Cursor IDE. It is the opposite direction from the [Cursor integration](../integrations/cursor.mdx), which points the Cursor editor at DurinDoor.
+
+There is no browser login. You import the access token and machine id the IDE already stores.
+
+## Connect
+
+Open **Providers**, then **Cursor IDE**, then Connect. The **Connect Cursor IDE** modal runs auto-detect as soon as it opens.
+
+### Auto-detect
+
+Auto-detect reads Cursor's local `state.vscdb` on the machine where DurinDoor runs. It only works when DurinDoor and a signed-in Cursor IDE share a host and user. It fills the form; you still confirm the import.
+
+| OS | Paths checked, each followed by `/User/globalStorage/state.vscdb` |
+| --- | --- |
+| macOS | `~/Library/Application Support/Cursor`, and the `Cursor - Insiders` variant |
+| Windows | `%APPDATA%\Cursor`, the Insiders variant, `%LOCALAPPDATA%\Cursor`, `%LOCALAPPDATA%\Programs\Cursor` |
+| Linux | `~/.config/Cursor`, `~/.config/cursor` |
+
+It reads `cursorAuth/accessToken` (or `cursorAuth/token`) for the token, `storage.serviceMachineId` (or `storage.machineId`, `telemetry.machineId`) for the machine id, and `cursorAuth/cachedEmail` for the label.
+
+### Manual import
+
+If DurinDoor runs somewhere else, copy those two values out of the IDE's `state.vscdb` yourself and paste them into the modal. The access token must be at least 50 characters. The machine id must look like a UUID. DurinDoor only checks the format; it does not call Cursor before saving.
+
+The HTTP route is `POST /api/oauth/cursor/import` with `accessToken`, `machineId`, and optional `cachedEmail`.
+
+## No refresh
+
+Cursor publishes no refresh endpoint. The connection is saved with no refresh token and an expiry 24 hours out. When requests start failing with auth errors, sign in to the IDE again and repeat the import. Signing out of the IDE usually ends the imported session too.
+
+## How requests are sent
+
+The executor speaks Cursor's Connect protocol with protobuf frames over HTTP/2 to `api2.cursor.sh`. Every request needs the saved machine id; headers include a checksum derived from it. A connection without a machine id fails before anything is sent.
+
+Send `cu/<model>`. `cu/default` is Cursor's Auto choice. `GET /v1/models` lists the rest.
+
+## Quota
+
+The [Quota Tracker](../features/quota-tracking.mdx) reads Cursor's dashboard endpoints and shows Included spend, Auto mode, API usage, On-demand for individual and team pool, and per-model rows. Those come from Cursor's dashboard JSON, not from the chat protocol.

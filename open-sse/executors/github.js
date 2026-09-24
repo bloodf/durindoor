@@ -24,9 +24,19 @@ import crypto from "crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export class GithubExecutor extends BaseExecutor {
-  constructor() {
-    super("github", PROVIDERS.github);
+  constructor(provider = "github", config = PROVIDERS[provider]) {
+    super(provider, config);
     this.knownCodexModels = new Set();
+  }
+
+  /**
+   * Copilot endpoint for one request. `kind` is the transport key
+   * (`baseUrl`, `messagesUrl` or `responsesUrl`). github.com uses the static
+   * registry URLs; GheCopilotExecutor overrides this to derive them from the
+   * connection's enterprise host.
+   */
+  endpointUrl(kind, credentials = null) {
+    return this.config[kind];
   }
 
   // Claude models get routed to Copilot's Anthropic-native /v1/messages shim (see
@@ -39,8 +49,8 @@ export class GithubExecutor extends BaseExecutor {
     return /claude/i.test(model || "");
   }
 
-  buildUrl(model, stream, urlIndex = 0) {
-    return this.config.baseUrl;
+  buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    return this.endpointUrl("baseUrl", credentials);
   }
 
   buildHeaders(credentials, stream = true) {
@@ -228,7 +238,7 @@ export class GithubExecutor extends BaseExecutor {
    *      DEFAULT_RETRY_CONFIG, with connect_timeout getting 0 in-place retries.
    */
   async executeWithMessagesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, requestPolicy = null }) {
-    const url = this.config.messagesUrl;
+    const url = this.endpointUrl("messagesUrl", credentials);
     // Force stream:true upstream regardless of client preference (headers AND body),
     // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
     // already knows how to buffer an SSE response into a single JSON reply when the
@@ -653,7 +663,7 @@ export class GithubExecutor extends BaseExecutor {
   }
 
   async executeWithResponsesEndpoint({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
-    const url = this.config.responsesUrl;
+    const url = this.endpointUrl("responsesUrl", credentials);
     // GitHub's /responses branch is always converted through an SSE transformer
     // below. Keep the upstream Responses request streaming even when the
     // original Chat Completions client requested a non-streaming response.

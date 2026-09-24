@@ -2,6 +2,7 @@ import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
+import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
@@ -24,6 +25,7 @@ import {
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { extractStreamErrorPayload } from "./streamLifecycle.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -365,6 +367,9 @@ export function createSSEStream(options = {}) {
     thinking: thinkingChunks.join("")
   });
   let ttftAt = null;
+  // Gateway-measured tok/s excluding TTFT (#12631 port). No-op until the first
+  // token lands; generation-only duration is simply "now minus first token".
+  const withTps = (usageObj) => attachTokensPerSecond(usageObj, ttftAt ? Date.now() - ttftAt : null);
   /** Tool-call frames are useful output even when providers omit usage and text. */
   let hadToolCalls = false;
   // Names only, for a readable log label — a turn that only calls tools accumulates
@@ -476,6 +481,10 @@ export function createSSEStream(options = {}) {
 
   let claudeTerminalSeen = false;
   let upstreamErrorForwarded = false;
+  // Passthrough only: first in-stream error envelope, handed to
+  // onStreamComplete so a request-scoped refusal is not read as an empty
+  // stream that cools the account down (OmniRoute #14585).
+  let passthroughStreamError = null;
   const terminalBody = providerBody || body;
   const upstreamTerminal = createUpstreamTerminalTracker({
     format: targetFormat,
@@ -658,6 +667,7 @@ export function createSSEStream(options = {}) {
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
+              passthroughStreamError ??= extractStreamErrorPayload(parsed);
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -900,12 +910,12 @@ export function createSSEStream(options = {}) {
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               if (isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
-                parsed.usage = filterUsageForFormat(enrichUsageCost(estimated, provider, model), FORMATS.OPENAI);
+                parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
               } else if (isFinishChunk && usage) {
                 const buffered = addBufferToUsage(usage);
-                parsed.usage = filterUsageForFormat(enrichUsageCost(buffered, provider, model), FORMATS.OPENAI);
+                parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(buffered, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
               } else if (idFixed || fieldsInjected) {
@@ -1136,11 +1146,11 @@ export function createSSEStream(options = {}) {
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
               const estimated = mergeUsage(state.usage ?? item.usage, estimateUsage(body, totalContentLength, sourceFormat));
-              item.usage = filterUsageForFormat(enrichUsageCost(estimated, provider, model), sourceFormat); // Filter + already has buffer
+              item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               const buffered = addBufferToUsage(state.usage);
-              item.usage = filterUsageForFormat(enrichUsageCost(buffered, provider, model), sourceFormat);
+              item.usage = filterUsageForFormat(withTps(enrichUsageCost(buffered, provider, model)), sourceFormat);
             }
 
             const output = formatSSE(item, sourceFormat);
@@ -1277,7 +1287,8 @@ export function createSSEStream(options = {}) {
             onStreamComplete({
               ...getAccumulatedCompletion(),
               ...(hadToolCalls ? { hadToolCalls: true } : null),
-              ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
+              ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
+              ...(passthroughStreamError ? { upstreamError: passthroughStreamError } : null)
             }, usage, ttftAt, providerSummary.finalize(usage));
           }
           return;

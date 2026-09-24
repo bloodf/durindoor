@@ -5,7 +5,7 @@ description: Method, path, body, streaming, and provider support for every /v1 r
 
 Point clients at `http://localhost:20128/v1`. Production listens on port `20128`. Next rewrites `/v1/:path*` to `/api/v1/:path*`, so the files live under `src/app/api/v1` while the public path stays `/v1`. A second rewrite maps `/v1/v1/:path*` onto the same handlers for clients that already put `/v1` in both the base URL and the path. `/codex/:path*` and `/responses` land on `POST /v1/responses`. `/v1beta` is a separate tree.
 
-This page has one row per `route.js` under `src/app/api/v1` (39 files). A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
+This page has one row per `route.js` under `src/app/api/v1` (39 files), plus the two Gemini-shaped routes under `src/app/api/v1beta`. A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
 
 Key policy, minting, and lifetime caps are on [API keys](../guides/api-keys.mdx). SDK snippets are on [SDK examples](../guides/sdk-examples.mdx).
 
@@ -113,6 +113,14 @@ JSON bodies. Embeddings need `model` and `input`. Rerank needs `model`, `query`,
 | POST, OPTIONS | `/v1/rerank` | JSON `model`, `query`, `documents` | no | Cohere/Jina/Voyage-style rerank models |
 | POST, OPTIONS | `/v1/moderations` | JSON `model`, `input` | no | moderation models |
 
+## System One (Jev) decision endpoint
+
+Native pass-through for Jev decision models, with no chat translation layer. Body needs `model`, `state` (the situation to evaluate), and `questions` (an object, not an array). The provider's JSON response (typed `answers`, `usage`) is forwarded unchanged.
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| POST, OPTIONS | `/v1/systemone` | JSON `model`, `state`, `questions` | no | `systemoneConfig` models (`opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, `openrouter/typesafe/jev-1.13`) |
+
 ## Web search and fetch
 
 Provider is the model. Send `provider` or `model`. Catalog ids look like `tavily/search` and `tavily/fetch`; the handler strips the suffix when the remainder is a real search or fetch provider. Bare ids and OmniRoute aliases (`tavily-search`, `exa-search`, `serper-search`, `google-pse-search`, `linkup-search`, `searchapi-search`, `youcom-search`, `searxng-search`, `ollama-search`, `perplexity-search`) also resolve.
@@ -154,6 +162,29 @@ The WebSocket itself is not this `route.js`. `custom-server.js` upgrades `GET /v
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
 | GET, OPTIONS | `/v1/realtime/auth` | same key headers as chat | no | none (auth probe) |
+
+## Gemini v1beta
+
+`/v1beta/:path*` rewrites to `/api/v1beta/:path*`. These routes let a Gemini-native client, such as Gemini CLI or the `@google/genai` SDK, talk to DurinDoor without an OpenAI shim.
+
+`GET /v1beta/models` returns a Gemini-style `{ models: [...] }` list built from the static catalog. Every catalog row appears as `models/{provider}/{id}`. Rows from the `gemini` provider also appear as plain `models/{id}` with `streamGenerateContent` in `supportedGenerationMethods`. The token limits in that list are fixed placeholders (`128000` in, `8192` out), not the real model limits. The list handler does not check a key.
+
+`POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent` accept a Gemini request body. `{model}` is either a bare Gemini id or `{provider}/{model}`. The URL suffix decides streaming: `:streamGenerateContent` streams Gemini SSE, `:generateContent` returns one JSON `GenerateContentResponse`. The body is converted to the internal chat shape and runs through the same chat core as `/v1/chat/completions`, so key checks, combos, and fallback behave the same way.
+
+A Gemini text-to-speech request (a Gemini TTS model id, or `responseModalities` asking for audio) skips that conversion. It is forwarded to Google's `generativelanguage.googleapis.com` with a saved Gemini credential, after the usual client-key and model-policy checks.
+
+```bash
+curl "http://localhost:20128/v1beta/models/gemini/gemini-2.5-flash:generateContent" \
+  -H "x-goog-api-key: YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"contents":[{"role":"user","parts":[{"text":"Say hello."}]}]}'
+```
+
+| Method | Path | Request | Stream | Providers |
+| --- | --- | --- | --- | --- |
+| GET, OPTIONS | `/v1beta/models` | none | no | static catalog |
+| POST, OPTIONS | `/v1beta/models/{model}:generateContent` | Gemini `contents` body | no | any chat model; Gemini TTS goes to Google |
+| POST, OPTIONS | `/v1beta/models/{model}:streamGenerateContent` | Gemini `contents` body | yes | any chat model; Gemini TTS goes to Google |
 
 ## Unknown paths
 

@@ -3,6 +3,7 @@ import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { toResponsesUsage } from "../concerns/usage.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 
 function parseArgs(value) {
   if (!value) return {};
@@ -272,6 +273,7 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
         arguments: argumentsText
       };
       if (namespace && !custom) item.namespace = namespace;
+      if (!custom && isCodexMultiAgentPlaintextTool({ name, namespace })) item.encrypted_function_args = [];
       output.push(item);
       idx++;
     }

@@ -14,6 +14,7 @@ import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
+import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
@@ -430,6 +431,9 @@ function emitToolCall(state, emit, tc) {
         arguments: "",
         call_id: refCallId,
         ...resolveResponsesToolName(state, refName),
+        ...(isCodexMultiAgentPlaintextTool(resolveResponsesToolName(state, refName)) ?
+        { encrypted_function_args: [] } :
+        null),
         status: "in_progress"
       }
     });
@@ -545,6 +549,9 @@ function closeToolCall(state, emit, idx) {
           arguments: args,
           call_id: callId,
           ...resolveResponsesToolName(state, state.funcNames[idx] || ""),
+          ...(isCodexMultiAgentPlaintextTool(resolveResponsesToolName(state, state.funcNames[idx] || "")) ?
+          { encrypted_function_args: [] } :
+          null),
           status: "completed"
         }
       });

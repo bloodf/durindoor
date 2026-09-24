@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 265 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 266 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -158,6 +158,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Kiro AI | `kiro` | oauth | 47 | [site](https://kiro.dev) |
 | Lambda AI | `lambda-ai` | apikey | 3 | [site](https://lambda.ai) |
 | LaoZhang AI | `laozhang` | apikey | 0 | [site](https://api.laozhang.ai) |
+| Laya (local) | `laya` | apikey | 4 | [site](https://github.com/NandhaKishorM/laya) |
 | Lemonade Server | `lemonade` | apikey | 0 | [site](https://lemonade-server.ai) |
 | Leonardo.Ai | `leonardo` | apikey | 2 | [site](https://leonardo.ai) |
 | Linkup | `linkup` | apikey | 0 | [site](https://linkup.so) |

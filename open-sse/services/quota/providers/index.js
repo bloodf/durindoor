@@ -18,6 +18,7 @@ import {
   fetchDeepSeekQuota,
   fetchVercelQuota } from
 "./balances.js";
+import { fetchOpenAiCompatibleQuota } from "./openaiCompatible.js";
 
 export const PROVIDER_QUOTA_ADAPTERS = Object.freeze({
   google: fetchGoogleQuota,
@@ -34,7 +35,8 @@ export const PROVIDER_QUOTA_ADAPTERS = Object.freeze({
   qoder: fetchQoderQuota,
   vercel: fetchVercelQuota,
   crof: fetchCrofQuota,
-  deepseek: fetchDeepSeekQuota
+  deepseek: fetchDeepSeekQuota,
+  openaiCompatible: fetchOpenAiCompatibleQuota
 });
 
 const PROVIDER_QUOTA_CONNECTION_ELIGIBILITY = Object.freeze({

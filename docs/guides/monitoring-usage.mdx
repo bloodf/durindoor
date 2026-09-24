@@ -7,7 +7,7 @@ Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`). The
 
 The period control accepts `today`, `24h`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`, and `all`. Editing the calendar to a window that is not one of those presets queries stats by `startDate`/`endDate` and skips the chart (the chart endpoint is preset-only).
 
-The details tab lists individual calls: timestamp, model, provider, input/cached/output tokens, TTFT, and total latency. Filter by provider and a local date-time range. Open a row for payload metadata. Bodies are not stored; each stage keeps presence, type, and byte length:
+The details tab lists individual calls: timestamp, model, provider, input/cached/output tokens, a cache-hit percentage, TTFT, total latency, and per-request tokens/sec. Cache hit % and tok/s are both derived client-side from the same token and latency columns already on the row, so no new storage is needed; tok/s excludes TTFT the same way the overview's output-speed card does, and is left off a row when TTFT was not measured (non-streaming calls, or older rows recorded before timing existed). Filter by provider and a local date-time range. Open a row for payload metadata and a "Copy all" button that copies the whole (already-redacted) row as JSON, never a raw payload, since bodies are not stored. A "Raw detail (JSON tree)" section below it lets you drill into that same row with native, no-dependency `<details>` disclosure widgets. Bodies are not stored; each stage keeps presence, type, and byte length:
 
 | Field | Label |
 | --- | --- |
@@ -17,6 +17,8 @@ The details tab lists individual calls: timestamp, model, provider, input/cached
 | `response` | Client response |
 
 A `?tab=logs` URL still renders request-log lines from `/api/usage/request-logs` (datetime, model, provider, account, in, out, status). The segmented control on the page shows Overview and Details only.
+
+Streaming chat responses also carry a gateway-measured `tokens_per_second` field on the final `usage` object sent to the client (OpenAI, Claude, and Gemini-family formats), computed the same way: output tokens divided by the time since the first token, excluding TTFT. It is omitted whenever TTFT is not known, which is always the case for non-streaming responses. Do not compute your own tok/s from `output_tokens / total_latency`, since that includes queueing and first-token wait.
 
 Reset on the overview tab posts `/api/usage/reset` with a period (`5m`, `1h`, `3h`, `6h`, `12h`, `1d`, `7d`, `30d`, or `all`). That delete cannot be undone.
 

@@ -169,9 +169,9 @@ function toGeminiThinkingLevel(cfg) {
  * Anthropic rejects with HTTP 400 — fall back to high; minimal uses the nearest
  * lower level. (Upstream #3792)
  */
-function toClaudeAdaptiveEffort(cfg, caps, provider) {
+function toClaudeAdaptiveEffort(cfg, caps, provider, model) {
   const level = toLevel(cfg);
-  const allowed = getThinkingLevelsFromCapabilities(caps, provider);
+  const allowed = getThinkingLevelsFromCapabilities(caps, provider, model);
   if (allowed?.includes(level)) return level;
   if (level === "minimal" && allowed?.includes("low")) return "low";
   return "high";
@@ -293,14 +293,15 @@ function stripAll(body) {
   }
 }
 
-// Astra cannot disable reasoning: its published floor is `low`, so an
-// unsupported `minimal` (client-sent, or "none" folded to "minimal" by the
-// thinkingCanDisable:false clamp above) must not leak upstream as-is.
-// Scoped to the exact Astra provider/model rows so no other OpenAI-format
-// model's effort resolution changes.
-const ASTRA_MINIMAL_FLOOR_PROVIDERS = new Set(["openai", "codex", "cx"]);
+// Astra, Sol and Luna cannot disable reasoning: their published floor is
+// `low`, so an unsupported `minimal` (client-sent, or "none" folded to
+// "minimal" by the thinkingCanDisable:false clamp above) must not leak
+// upstream as-is. Scoped to the exact GPT-6 provider/model rows so no other
+// OpenAI-format model's effort resolution changes.
+const GPT_6_MINIMAL_FLOOR_PROVIDERS = new Set(["openai", "codex", "cx"]);
+const GPT_6_MINIMAL_FLOOR_MODELS = new Set(["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]);
 function isAstraMinimalFloorModel(provider, model) {
-  return ASTRA_MINIMAL_FLOOR_PROVIDERS.has(provider) && model === "gpt-6-astra";
+  return GPT_6_MINIMAL_FLOOR_PROVIDERS.has(provider) && GPT_6_MINIMAL_FLOOR_MODELS.has(model);
 }
 
 // Map requested OpenAI effort to a level the model accepts.
@@ -369,7 +370,7 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
     case "claude-adaptive":{
         // disabled must NOT carry display (Anthropic rejects display on type:"disabled").
         if (none && canDisable) {body.thinking = { type: "disabled" };break;}
-        body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider) };
+        body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider, model) };
         // Opus 4.7/4.8/Sonnet5/Fable5/Mythos5 default thinking.display to "omitted",
         // so default to summarized to keep reasoning summary flowing to clients —
         // but a client that explicitly asked for a display mode (e.g. "omitted"

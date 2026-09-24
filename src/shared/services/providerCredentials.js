@@ -18,7 +18,8 @@ const REFRESH_METADATA_FIELDS = new Set([
 "authMethod",
 "provider",
 "tokenEndpoint",
-"scope"]
+"scope",
+"copilotApiUrl"]
 );
 const REFRESH_LOG_CATEGORIES = new Set(["AUTH", "KIRO", "TOKEN", "TOKEN_REFRESH", "VERTEX"]);
 const MAX_REFRESH_SECRET_LENGTH = 64 * 1024;
@@ -208,7 +209,7 @@ function safeMetadataUrl(value, { httpsOnly = false } = {}) {
 
 function validatedMetadataValue(field, value) {
   if (field === "baseUrl" || field === "resourceUrl") return safeMetadataUrl(value);
-  if (field === "tokenEndpoint") return safeMetadataUrl(value, { httpsOnly: true });
+  if (field === "tokenEndpoint" || field === "copilotApiUrl") return safeMetadataUrl(value, { httpsOnly: true });
   if (field === "region") return safeMetadataString(value, { pattern: /^[a-z]{2}(?:-[a-z0-9]+)+-\d{1,2}$/ });
   if (field === "profileArn") {
     return safeMetadataString(value, {

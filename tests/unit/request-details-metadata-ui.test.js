@@ -91,7 +91,72 @@ describe("Request Details metadata-only UI", () => {
     for (const bytes of ["111 bytes", "222 bytes", "333 bytes", "444 bytes"]) {
       expect(container.textContent).toContain(bytes);
     }
-    expect(container.textContent).not.toMatch(/Copy|Provider Response \(Raw\)|Client Request \(Input\)|No data available/);
+    // Copy all is allowed (it composes the already-redacted metadata row) —
+    // a raw payload copy/view path is what must never exist.
+    expect(container.textContent).not.toMatch(/Provider Response \(Raw\)|Client Request \(Input\)|No data available/);
+  });
+
+  it("copy all composes the redacted detail row, never raw payload bytes", async () => {
+    globalThis.fetch = vi.fn(async (url) => ({
+      ok: true,
+      json: async () => String(url).startsWith("/api/usage/request-details")
+        ? { details: [detail], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } }
+        : String(url) === "/api/usage/providers"
+          ? { providers: [{ id: "openai", name: "OpenAI" }] }
+          : { nodes: [] },
+    }));
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    await act(async () => {
+      root.render(React.createElement(RequestDetailsTab));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const detailButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Detail");
+    await act(async () => detailButton.click());
+
+    const copyAllButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Copy all");
+    expect(copyAllButton).toBeDefined();
+    await act(async () => { copyAllButton.click(); });
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = JSON.parse(writeText.mock.calls[0][0]);
+    expect(copied.id).toBe("request-1");
+    expect(copied.request).toEqual(detail.request);
+    expect(container.textContent).toContain("Copied");
+  });
+
+  it("derives tok/s (excluding TTFT) and cache-hit % from existing latency/token columns", async () => {
+    const cachedDetail = {
+      ...detail,
+      id: "request-2",
+      latency: { ttft: 10, total: 20 },
+      tokens: { prompt_tokens: 100, completion_tokens: 3, cached_tokens: 25 },
+    };
+    globalThis.fetch = vi.fn(async (url) => ({
+      ok: true,
+      json: async () => String(url).startsWith("/api/usage/request-details")
+        ? { details: [cachedDetail], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } }
+        : String(url) === "/api/usage/providers"
+          ? { providers: [{ id: "openai", name: "OpenAI" }] }
+          : { nodes: [] },
+    }));
+
+    await act(async () => {
+      root.render(React.createElement(RequestDetailsTab));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // completion_tokens 3 / ((20-10)ms / 1000) = 300 tok/s.
+    expect(container.textContent).toContain("300.0");
+    // cached 25 / prompt 100 = 25%.
+    expect(container.textContent).toContain("25%");
+
+    const detailButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Detail");
+    await act(async () => detailButton.click());
+    expect(container.textContent).toContain("300.0 tok/s");
   });
 
   it("renders the observability callout with a settings link when observability is disabled", async () => {

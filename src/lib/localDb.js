@@ -40,6 +40,7 @@ export {
   validateGatewayKey, getGrantsForKey, getGrantsForKeyDetailed, setGrants,
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel,
+  getSyncedModelCatalogs, getSyncedModelCatalog, saveSyncedModelCatalog,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb, exportSelectiveDb, importSelectiveDb, getSelectiveTransferCatalog, previewSelectiveImport,

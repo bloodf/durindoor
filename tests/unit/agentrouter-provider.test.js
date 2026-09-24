@@ -11,7 +11,7 @@ describe("AgentRouter provider", () => {
     expect(headers).toMatchObject({
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
-      "User-Agent": "claude-cli/2.1.258 (external, sdk-cli)",
+      "User-Agent": "claude-cli/2.1.280 (external, sdk-cli)",
       "X-App": "cli",
       "X-Stainless-Lang": "js",
       "X-Stainless-Runtime": "node",

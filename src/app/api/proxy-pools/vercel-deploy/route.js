@@ -20,16 +20,20 @@ export default async function handler(req) {
 
   const targetUrl = target.replace(/\\/$/, "") + relayPath;
 
-  const headers = new Headers(req.headers);
-  headers.delete("x-relay-target");
-  headers.delete("x-relay-path");
-  headers.delete("host");
+  // Build headers from entries() into a plain object instead of
+  // new Headers(req.headers): the Vercel edge runtime normalizes casing
+  // and duplicate keys on a Headers instance, which some providers reject.
+  const rawHeaders = {};
+  for (const [key, value] of req.headers.entries()) rawHeaders[key] = value;
+  delete rawHeaders["x-relay-target"];
+  delete rawHeaders["x-relay-path"];
+  delete rawHeaders["host"];
 
   try {
     /** Keep redirect handling explicit instead of relying on runtime-specific fetch errors. */
     const response = await fetch(targetUrl, {
       method: req.method,
-      headers,
+      headers: rawHeaders,
       body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
       redirect: "manual",
       duplex: "half",

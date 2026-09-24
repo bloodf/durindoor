@@ -1,0 +1,75 @@
+---
+title: Usage and quota
+description: Where to look when an account runs out, which window each provider reports, how cooldowns and retention work, and how to adjust prices.
+---
+
+DurinDoor keeps two sets of numbers, and it helps to keep them apart:
+
+- **Usage** is what this install counted: requests, tokens, latency, and an estimated cost. It lives on **Dashboard → Usage** (`/dashboard/usage`). [Monitoring usage](./monitoring-usage.mdx) covers that page.
+- **Quota** is what the provider says is left on the account. It lives on **Dashboard → Quota Tracker** (`/dashboard/quota`), and routing reads it. [Quota tracking](../features/quota-tracking.mdx) covers how snapshots and preflight work.
+
+Resetting usage never touches upstream quota, and the provider's own dashboard is still the billing authority.
+
+## When an account runs out
+
+<Steps>
+<Step>
+Open **Quota Tracker** and find the connection. A row that is exhausted or cooling down shows when it resets.
+</Step>
+<Step>
+If the numbers look stale, refresh that connection. The dashboard calls `GET /api/usage/{connectionId}?force=1`, which skips the 60 second cache.
+</Step>
+<Step>
+Nothing to do if you have a second account on the same provider: preflight already skips the exhausted one. Otherwise add a connection or put the model in a [combo](../features/combos.mdx) with a fallback member.
+</Step>
+</Steps>
+
+A provider without a usage fetcher shows `Usage API not implemented for <provider>`. That is expected; see the table below.
+
+## What each provider reports
+
+These providers have a usage fetcher. The window names are the ones the Quota Tracker shows.
+
+| Provider | Windows |
+| --- | --- |
+| Claude Code | `session (5h)`, `weekly (7d)`, per-model weekly rows |
+| OpenAI Codex | session, weekly, and a review family for `*-review` models |
+| GitHub Copilot | chat, completions, premium interactions; monthly quotas otherwise |
+| Cursor | Included spend, Auto mode, API usage, On-demand (individual and team pool), per-model rows |
+| Antigravity, `agy` | per-model rows, Gemini Weekly, Claude & GPT Weekly |
+| Kimi | Weekly, Rolling 5-hour |
+| MiniMax, MiniMax CN | per-model 5-hour and weekly |
+| DeepSeek | account balance in currency |
+| OpenCode Go | weekly, monthly |
+| Grok CLI | Credits, On-demand, Prepaid, Monthly |
+
+Also covered, with provider-specific rows: Gemini CLI, Kiro, Qoder, Qwen, Bailian Coding Plan, iFlow, Ollama, GLM, GLM CN, Vercel AI Gateway, CodeBuddy CN, xAI, and Grok Web. xAI falls back to 30 days of local history when its API has nothing.
+
+Being in this list does not mean routing uses the number. Preflight only reads providers that have a quota policy; the list is on [Quota tracking](../features/quota-tracking.mdx#who-has-a-provider-api). Everything else relies on the upstream returning 429.
+
+Per-provider notes: [Claude Code](../providers/claude-code.mdx#quota), [OpenAI Codex](../providers/codex.mdx#quota), [Cursor](../providers/cursor.mdx#quota), [Antigravity](../providers/antigravity.mdx#quota), [Kiro](../providers/kiro.mdx#models-and-quota).
+
+You can hide individual rows per connection in the limits view if a provider reports buckets you do not care about. The choice is stored per connection.
+
+## Cooldowns
+
+When an upstream fails, DurinDoor locks that account (or that account and model) for a while and tries the next one.
+
+| Trigger | Lock |
+| --- | --- |
+| 429 or a rate-limit or capacity message | Exponential: `BACKOFF_BASE_MS` (2000) doubled per level, capped at `BACKOFF_MAX_MS` (300000) and `BACKOFF_MAX_LEVEL` (15) |
+| 401, 403, 404 | Two minutes |
+| 402 | Two minutes, and the error is terminal for that request |
+| Provider reset hint (for example Antigravity's reset timestamp, Kiro's monthly reset) | Until that time |
+
+A 429 sent to the client carries `Retry-After` when the cooldown is known. The full behaviour is on [Troubleshooting](../troubleshooting.mdx#rate-limit-or-quota-skip). The backoff variables are on [Environment variables](../reference/environment.mdx).
+
+## Retention
+
+Nothing is pruned by default. Turn on **Auto-clean old data** under **Profile → Observability** to delete usage history, request details, timeline traces, and quota snapshots older than the window you pick (30 days unless you change it; presets 7, 15, 30, 60, or 90, or a custom value from 1 to 3650). The sweep runs hourly, starting a minute after boot. **Clean now** runs it at once. Over HTTP it is `GET` and `POST /api/data-retention`.
+
+There is no CSV export for usage. **Download Backup** under **Profile → Data & Backups** saves the whole database, usage included, and a copy of `DATA_DIR/db/data.sqlite` works too.
+
+## Prices
+
+Estimated cost uses the built-in price table in `open-sse/providers/pricing.js`. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep the cost they were saved with.

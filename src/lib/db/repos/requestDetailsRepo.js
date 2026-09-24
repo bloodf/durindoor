@@ -202,6 +202,50 @@ export async function getRequestDetailById(id) {
   return row ? parseJson(row.data, null) : null;
 }
 
+const EXPORT_BATCH_SIZE = 500;
+
+/**
+ * Cheap COUNT(*) of requestDetails rows at or after `sinceIso`, for the
+ * `totalAvailable`/`capped` fields of a bounded export. Never touches row data.
+ * @param {string} sinceIso
+ * @returns {Promise<number>}
+ */
+export async function countRequestDetailsSince(sinceIso) {
+  const db = await getAdapter();
+  const row = db.get(`SELECT COUNT(*) AS c FROM requestDetails WHERE timestamp >= ?`, [sinceIso]);
+  return Number(row?.c) || 0;
+}
+
+/**
+ * Yield up to `limit` requestDetails rows at or after `sinceIso`, newest
+ * first, one row at a time. Reads in fixed-size LIMIT/OFFSET pages instead of
+ * one LIMIT-bounded query so a streaming export's peak memory stays bounded
+ * by one page rather than the full matching (possibly tens-of-thousands-row)
+ * set — same shape as `getRequestDetails`'s pagination, minus the count.
+ * @param {string} sinceIso
+ * @param {number} limit
+ * @returns {AsyncGenerator<object>}
+ */
+export async function* iterateRequestDetailsSince(sinceIso, limit) {
+  const db = await getAdapter();
+  let offset = 0;
+  let emitted = 0;
+  while (emitted < limit) {
+    const pageSize = Math.min(EXPORT_BATCH_SIZE, limit - emitted);
+    const rows = db.all(
+      `SELECT data FROM requestDetails WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
+      [sinceIso, pageSize, offset]
+    );
+    if (rows.length === 0) return;
+    for (const row of rows) {
+      yield parseJson(row.data, {});
+      emitted++;
+    }
+    offset += rows.length;
+    if (rows.length < pageSize) return;
+  }
+}
+
 /**
  * Distinct provider ids present in the requestDetails log.
  * Reads only the `provider` column — deliberately avoids parsing every row's

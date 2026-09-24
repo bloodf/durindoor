@@ -227,13 +227,20 @@ function getCodexReviewRateLimit(data) {
   }) || null;
 }
 
+// Unlike the credential refresh it follows, this call had no bound of its own
+// (durindoor#951): a stalled path to chatgpt.com left /api/usage/[connectionId]
+// hanging well past the refresh's own 15s budget, and the dashboard's Codex
+// provider page — which awaits this per connection — spun forever with it.
+const USAGE_FETCH_TIMEOUT_MS = 15000;
+
 export async function getCodexUsage(accessToken, providerSpecificData = {}, proxyOptions = null, idToken = null) {
   [providerSpecificData, proxyOptions] = normalizeCodexUsageArgs(providerSpecificData, proxyOptions, idToken);
 
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",
-      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken)
+      headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken),
+      signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS)
     }, proxyOptions);
 
     if (!response.ok) {

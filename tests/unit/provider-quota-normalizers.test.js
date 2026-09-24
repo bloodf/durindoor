@@ -217,9 +217,51 @@ describe("Claude, GitHub, and Cursor quota normalizers", () => {
     expect(both[1]).toMatchObject({ resourceKey: "model:fable", amounts: { remainingRatio: 0.05 } });
   });
 
+  it("maps a weekly_scoped limits[] row into the canonical model window", () => {
+    const rows = normalizeClaudeQuota({
+      seven_day: { utilization: 10, resets_at: RESET },
+      limits: [
+        { kind: "session", percent: 37, resets_at: RESET, scope: null },
+        { kind: "weekly_all", percent: 39, resets_at: RESET, scope: null },
+        { kind: "weekly_scoped", percent: 69, resets_at: RESET, scope: { model: { display_name: "  Fable  " } } },
+      ],
+    }, { now: NOW });
+    expect(rows).toHaveLength(2);
+    // session/weekly_all rows are skipped; only the weekly_scoped row lands,
+    // folded into the canonical fable window (name is trimmed + lowercased).
+    expect(rows[1]).toMatchObject({ resourceKey: "model:fable", amounts: { remainingRatio: 0.31 } });
+  });
+
+  it("lets a legacy seven_day_<codename> value win over a limits[] row for the same model", () => {
+    const rows = normalizeClaudeQuota({
+      seven_day: { utilization: 10, resets_at: RESET },
+      seven_day_sonnet: { utilization: 55, resets_at: RESET },
+      limits: [{ kind: "weekly_scoped", percent: 5, resets_at: RESET, scope: { model: { display_name: "Sonnet" } } }],
+    }, { now: NOW });
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject({ resourceKey: "model:sonnet", amounts: { remainingRatio: 0.45 } });
+  });
+
+  it("skips weekly_scoped rows with no usable scope name, falling back to id/surface", () => {
+    const rows = normalizeClaudeQuota({
+      seven_day: { utilization: 10, resets_at: RESET },
+      limits: [
+        { kind: "weekly_scoped", percent: 12, scope: { model: null, surface: null } },
+        { kind: "weekly_scoped", percent: 20, scope: { model: { display_name: "   " }, surface: null } },
+        { kind: "weekly_scoped", percent: 5, resets_at: RESET, scope: { model: null, surface: "cowork" } },
+      ],
+    }, { now: NOW });
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject({ resourceKey: "model:cowork", amounts: { remainingRatio: 0.95 } });
+  });
+
   it("rejects present malformed and empty Claude windows as a whole source", () => {
     expect(normalizeClaudeQuota({ five_hour: "invalid" }, { now: NOW })).toBeNull();
     expect(normalizeClaudeQuota({}, { now: NOW })).toBeNull();
+    expect(normalizeClaudeQuota({
+      seven_day: { utilization: 10, resets_at: RESET },
+      limits: [{ kind: "weekly_scoped", percent: "not-a-number", scope: { model: { display_name: "Bad" } } }],
+    }, { now: NOW })).toBeNull();
   });
 
   it("normalizes the accepted Claude legacy admin usage shape without inventing a limit", () => {

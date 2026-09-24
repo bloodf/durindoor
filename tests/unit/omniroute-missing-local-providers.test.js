@@ -168,9 +168,13 @@ describe("OmniRoute Batch G local/router provider parity", () => {
       "qwen3.5-plus",
       "qwen3.6-plus",
       "deepseek-v4-flash-free",
+      "mimo-v2.6-flash-free",
       "minimax-m2.5-free",
       "nemotron-3-super-free",
       "qwen3.6-plus-free",
+      // System One (Jev) decision models served on the /systemone endpoint
+      "jev-1.13",
+      "jev-1.13-free",
     ]);
     expect(PROVIDER_MODELS["opencode-zen"]).toHaveLength(opencodeZen.models.length);
     expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "gpt-5.2").targetFormat).toBe("openai-responses");

@@ -1,9 +1,11 @@
-import { normalizeApiKeyPolicy } from "@/lib/db/helpers/apiKeyPolicy.js";
+import { API_KEY_LIMIT_FIELDS, normalizeApiKeyPolicy } from "@/lib/db/helpers/apiKeyPolicy.js";
 import { getComboByName, getProviderNodes } from "@/lib/localDb";
 import { getModelInfo, resolveModelAlias } from "@/sse/services/model.js";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 
-const POLICY_FIELDS = ["allowedModels", "maxTokens", "maxCostUsd"];
+// Top-level request fields accepted as policy patches. `modelAccess` and the
+// windowed limits keep the request shape of upstream 9router's key API.
+const POLICY_FIELDS = ["allowedModels", "maxTokens", "maxCostUsd", "modelAccess", ...API_KEY_LIMIT_FIELDS];
 const UNRESTRICTED_POLICY = Object.freeze({ allowedModels: [], maxTokens: null, maxCostUsd: null });
 
 export class ApiKeyPolicyInputError extends TypeError {

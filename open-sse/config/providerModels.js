@@ -3,6 +3,7 @@ import REGISTRY from "../providers/registry/index.js";
 import { PROVIDER_MODELS } from "../providers/index.js";
 import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, modelForceStream, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
+import { KIRO_FAMILY_PROVIDERS } from "../providers/models/kiroVariants.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -21,7 +22,7 @@ export function getDefaultModel(aliasOrId) {
 // Providers whose registry uses dots in version numbers (e.g. "claude-sonnet-4.5").
 // For these, we tolerate clients sending dashes ("claude-sonnet-4-5") by normalizing
 // digit-hyphen-digit to digit-dot-digit before lookup. Other providers are left untouched.
-const DOT_VERSION_PROVIDERS = new Set(["kr", "kiro"]);
+const DOT_VERSION_PROVIDERS = KIRO_FAMILY_PROVIDERS;
 
 /**
  * Find a registry entry by id. For Kiro models, tolerates dash/dot version

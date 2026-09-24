@@ -3,6 +3,7 @@
 import { getCapabilitiesForModel } from "./capabilities.js";
 import { matchPattern } from "./pricing.js";
 import { PROVIDERS } from "./index.js";
+import { isKiroFamilyProvider } from "./models/kiroVariants.js";
 
 // Shared level sets (deduped) — verified against provider docs + wire in thinkingUnified.applyFormat.
 const L = {
@@ -42,11 +43,18 @@ const FORMAT_LEVELS = {
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 // GPT-5.6 patterns must precede broad *codex* so Sol/Terra/Luna keep their matrix.
 const PATTERN_THINKING = [
+  /** Claude Opus 5.5 accepts low..max including xhigh; it rejects disabled thinking and `ultra`. */
+  { pattern: "*claude*opus-5-5*", levels: ["low", "medium", "high", "xhigh", "max"] },
   // Sol/Terra accept max + ultra on the wire.
   { pattern: "*gpt-5.6-sol*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   { pattern: "*gpt-5.6-terra*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
   // Luna accepts max; ultra falls back to max in applyThinking.
   { pattern: "*gpt-5.6-luna*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+  // GPT-6 Sol accepts ultra (wire-aliased to max); Luna accepts max but not
+  // ultra — same split as their GPT-5.6 namesakes. Neither can disable
+  // thinking, so none/minimal are absent (floored to low in thinkingUnified.js).
+  { pattern: "*gpt-6-sol*", levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
+  { pattern: "*gpt-6-luna*", levels: ["low", "medium", "high", "xhigh", "max"] },
   // Astra supports only its published provider/model effort sets.
   { provider: "openai", pattern: "gpt-6-astra", levels: ["low", "medium", "high", "xhigh", "max"] },
   { provider: "codex", pattern: "gpt-6-astra", levels: ["low", "medium", "high", "xhigh", "max", "ultra"] },
@@ -83,6 +91,7 @@ const PATTERN_THINKING = [
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
+  { pattern: "*mimo*v2.6*", levels: ["none", "low", "medium", "high", "xhigh"] },
   // xAI publishes only low/medium/high/xhigh for Grok 4.5-4.7 and the 4.20
   // multi-agent model; reasoning cannot be disabled. grok-build-latest is a
   // grok-4.5 alias. https://docs.x.ai/developers/model-capabilities/text/reasoning
@@ -95,6 +104,7 @@ const PATTERN_THINKING = [
   // parameters block. Keep max distinct from xhigh instead of applying the
   // generic OpenAI max→xhigh clamp.
   { provider: "qoder", pattern: "*", levels: L.budgetX },
+  { provider: "qoder-cn", pattern: "*", levels: L.budgetX },
   // Ollama GPT-OSS accepts low/medium/high only; max must clamp to high.
   { provider: "ollama", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
   { provider: "ollama-local", pattern: "*gpt-oss*", levels: ["none", "low", "medium", "high"] },
@@ -134,6 +144,6 @@ export function getThinkingLevelsFromCapabilities(caps, provider = null, model =
     ? L.hiMax
     : FORMAT_LEVELS[format] || L.base);
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");
-  if (provider === "kiro" || provider === "kr") levels = levels.filter((l) => l !== "ultra" && l !== "max");
+  if (isKiroFamilyProvider(provider)) levels = levels.filter((l) => l !== "ultra" && l !== "max");
   return levels;
 }

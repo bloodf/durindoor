@@ -1,11 +1,17 @@
 /**
  * Qoder API constants ported from CLIProxyAPIPlus qoder-provider branch.
  *
- * Endpoint set:
+ * Endpoint set (intl):
  *   openapi.qoder.sh   - device flow + userinfo + quota usage
  *   center.qoder.sh    - token refresh (best-effort, currently 403 for device tokens)
  *   api3.qoder.sh      - inference (chat) + model list, requires COSY signing
  *   qoder.com/device   - browser landing page for device authorization
+ *
+ * Qoder CN (qoder-cn, qoder.com.cn) runs the identical device/OAuth flow and
+ * COSY-signed chat protocol against a parallel CN host set, collapsed to a
+ * single gateway host (no api3/api2 split like intl). The named QODER_*
+ * constants below stay intl-only for backward compat; region-aware code
+ * calls the qoder*Url(region) helpers, deriving region via qoderRegionOf().
  */
 
 export const QODER_OPENAPI_BASE = "https://openapi.qoder.sh";
@@ -30,6 +36,54 @@ export const QODER_CHAT_SIG_PATH = "/api/v2/service/pro/sse/agent_chat_generatio
 export const QODER_CHAT_URL = `${QODER_CHAT_BASE}/algo${QODER_CHAT_SIG_PATH}?FetchKeys=llm_model_result&AgentId=agent_common`;
 export const QODER_CHAT_URL_ENCODED = `${QODER_CHAT_URL}&Encode=1`;
 export const QODER_MODEL_LIST_URL = `${QODER_CHAT_BASE}/algo/api/v2/model/list`;
+
+// ── Region support (qoder / qoder-cn) ───────────────────────────────────────
+export const QODER_REGION_INTL = "intl";
+export const QODER_REGION_CN = "cn";
+
+const QODER_REGION_BASES = {
+  [QODER_REGION_INTL]: {
+    chat: QODER_CHAT_BASE,
+    openApi: QODER_OPENAPI_BASE,
+    login: QODER_LOGIN_URL,
+  },
+  [QODER_REGION_CN]: {
+    chat: "https://gateway.qoder.com.cn",
+    openApi: "https://openapi.qoder.com.cn",
+    login: "https://qoder.com.cn/device/selectAccounts",
+  },
+};
+
+function qoderRegionBases(region) {
+  return QODER_REGION_BASES[region] || QODER_REGION_BASES[QODER_REGION_INTL];
+}
+
+/** Region for a provider id — "cn" for qoder-cn, "intl" otherwise (default/unknown). */
+export function qoderRegionOf(providerId) {
+  return providerId === "qoder-cn" ? QODER_REGION_CN : QODER_REGION_INTL;
+}
+
+export function qoderChatUrlEncoded(region) {
+  return `${qoderRegionBases(region).chat}/algo${QODER_CHAT_SIG_PATH}?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1`;
+}
+export function qoderModelListUrl(region) {
+  return `${qoderRegionBases(region).chat}/algo/api/v2/model/list`;
+}
+export function qoderJobTokenExchangeUrl(region) {
+  return `${qoderRegionBases(region).openApi}/api/v1/jobToken/exchange`;
+}
+export function qoderUserInfoUrl(region) {
+  return `${qoderRegionBases(region).openApi}/api/v1/userinfo`;
+}
+export function qoderQuotaUsageUrl(region) {
+  return `${qoderRegionBases(region).openApi}/api/v2/quota/usage`;
+}
+export function qoderDeviceTokenUrl(region) {
+  return `${qoderRegionBases(region).openApi}/api/v1/deviceToken/poll`;
+}
+export function qoderLoginUrl(region) {
+  return qoderRegionBases(region).login;
+}
 
 // COSY header constants. These are not arbitrary — the upstream signature
 // validation matches them against the values used at signing time.

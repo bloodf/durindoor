@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -21,6 +21,9 @@ import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import StatusAlert from "../endpoint/components/StatusAlert";
 import ApiKeyPolicyFields from "../endpoint/components/ApiKeyPolicyFields";
+import { KeyUsageSummary, KeyLimitsModal } from "../endpoint/components/ApiKeyLimits";
+import ApiKeyModelAccessModal from "../endpoint/ApiKeyModelAccessModal";
+import { KEY_USAGE_POLL_MS } from "../endpoint/endpointConstants";
 import {
   apiKeyPolicyDraftToPayload,
   apiKeyPolicyPatchFromDraft,
@@ -36,7 +39,7 @@ import {
   formatKeyExpiry,
 } from "../endpoint/apiKeyExpiry";
 
-function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDelete, copied, policyInvalid, policyUsage }) {
+function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDelete, onModelAccess, onLimits, keyUsage, copied, policyInvalid, policyUsage }) {
   const active = apiKey.isActive ?? true;
   const expiry = formatKeyExpiry(apiKey.expiresAt);
   const overflowReached = policyUsage.tokensExceeded || policyUsage.costExceeded;
@@ -58,6 +61,16 @@ function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDel
           {groupLabels.map((label) => (
             <Badge key={label} tone="accent" size="sm">{label}</Badge>
           ))}
+          {apiKey.policy?.modelAccess?.mode === "allow" ? (
+            <Badge tone="accent" size="sm" title={apiKey.policy.modelAccess.patterns.join(", ")}>
+              Allow: {apiKey.policy.modelAccess.patterns.length} rules
+            </Badge>
+          ) : null}
+          {apiKey.policy?.modelAccess?.mode === "deny" ? (
+            <Badge tone="warning" size="sm" title={apiKey.policy.modelAccess.patterns.join(", ")}>
+              Blocked: {apiKey.policy.modelAccess.patterns.length} rules
+            </Badge>
+          ) : null}
         </div>
         <code className="mt-1 block font-mono text-xs text-dd-muted">{apiKey.maskedKey || "***"}</code>
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -112,6 +125,7 @@ function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDel
             <span className="rounded-dd bg-dd-accent-soft px-1.5 py-0.5 text-[11px] text-dd-accent">All</span>
           )}
         </div>
+        {keyUsage && <KeyUsageSummary usage={keyUsage} />}
       </div>
       <div className="flex w-full shrink-0 justify-end gap-1 sm:w-auto">
         <Toggle
@@ -119,6 +133,22 @@ function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDel
           checked={active}
           onChange={(checked) => onToggle(apiKey, checked)}
           aria-label={active ? `Pause ${apiKey.name}` : `Resume ${apiKey.name}`}
+        />
+        <IconButton
+          icon="vpn_key"
+          label={`Model access for ${apiKey.name}`}
+          variant="ghost"
+          size="md"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+          onClick={() => onModelAccess(apiKey)}
+        />
+        <IconButton
+          icon="speed"
+          label={`Limits for ${apiKey.name}`}
+          variant="ghost"
+          size="md"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+          onClick={() => onLimits(apiKey)}
         />
         <IconButton
           icon={copied === `reveal_${apiKey.id}` ? "check" : "content_copy"}
@@ -157,6 +187,9 @@ ApiKeyRow.propTypes = {
   onReveal: PropTypes.func.isRequired,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
+  onModelAccess: PropTypes.func.isRequired,
+  onLimits: PropTypes.func.isRequired,
+  keyUsage: PropTypes.object,
   copied: PropTypes.string,
   policyInvalid: PropTypes.bool,
   policyUsage: PropTypes['shape']({ tokens: PropTypes.string, cost: PropTypes.string, tokensExceeded: PropTypes.bool, costExceeded: PropTypes.bool }),
@@ -168,6 +201,9 @@ function emptyAddKeyPolicy() {
 
 export default function KeysPageClient() {
   const [keys, setKeys] = useState([]);
+  const [keyUsage, setKeyUsage] = useState({});
+  const [limitsKey, setLimitsKey] = useState(null);
+  const [modelAccessKey, setModelAccessKey] = useState(null);
   const [providerConnections, setProviderConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState([]);
@@ -186,6 +222,7 @@ export default function KeysPageClient() {
   const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
+  const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
   const [policyCatalog, setPolicyCatalog] = useState([]);
   const [policyCatalogLoading, setPolicyCatalogLoading] = useState(true);
   const [newKeyPolicy, setNewKeyPolicy] = useState(emptyAddKeyPolicy);
@@ -202,10 +239,39 @@ export default function KeysPageClient() {
   const [editKeyPolicyDirty, setEditKeyPolicyDirty] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
+  const fetchKeyUsage = useCallback(async () => {
+    try {
+      const res = await fetch("/api/keys/usage", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setKeyUsage(data.usage || {});
+    } catch { /* usage meters are best-effort */ }
+  }, []);
+
   useEffect(() => {
     fetchData().finally(() => setLoading(false));
     fetchPolicyCatalog();
-  }, []);
+    fetchKeyUsage();
+    const timer = setInterval(fetchKeyUsage, KEY_USAGE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [fetchKeyUsage]);
+
+  const handleSaveLimits = async (id, limits) => {
+    const res = await fetch(`/api/keys/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(limits),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Failed to save limits");
+    setKeys((prev) => prev.map((k) => (k.id === id ? { ...k, ...data.key } : k)));
+    fetchKeyUsage();
+  };
+
+  const handleSaveModelAccess = (updatedKey) => {
+    if (!updatedKey) return;
+    setKeys((prev) => prev.map((k) => (k.id === updatedKey.id ? { ...k, ...updatedKey } : k)));
+  };
 
   const fetchData = async () => {
     setLoadError("");
@@ -616,6 +682,9 @@ export default function KeysPageClient() {
                       onReveal={revealAndCopyKey}
                       onEdit={beginEditKey}
                       onDelete={handleDeleteKey}
+                      onModelAccess={setModelAccessKey}
+                      onLimits={setLimitsKey}
+                      keyUsage={keyUsage[key.id]}
                       copied={copied}
                       policyInvalid={policyInvalid}
                       policyUsage={policyUsage}
@@ -1067,6 +1136,25 @@ export default function KeysPageClient() {
         onConfirm={() => removeGroup(groupConfirm)}
         onCancel={() => setGroupConfirm(null)}
       />
+
+      {limitsKey && (
+        <KeyLimitsModal
+          key={limitsKey.id}
+          apiKey={limitsKey}
+          onClose={() => setLimitsKey(null)}
+          onSave={handleSaveLimits}
+        />
+      )}
+
+      {modelAccessKey && (
+        <ApiKeyModelAccessModal
+          key={modelAccessKey.id}
+          apiKey={modelAccessKey}
+          catalog={policyCatalog}
+          onClose={() => setModelAccessKey(null)}
+          onSave={handleSaveModelAccess}
+        />
+      )}
     </div>
   );
 }

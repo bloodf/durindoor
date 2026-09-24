@@ -116,6 +116,20 @@ export const SSE_KEEPALIVE_MS = (() => {
   return Number.isFinite(n) && n >= 0 ? n : 10 * 1000;
 })();
 
+/**
+ * Single-model early-EOF sibling failover: how long the first SSE bytes are
+ * held while waiting for content. A stream that ends or errors inside this
+ * window without content is retried once on a sibling connection; after the
+ * window the stream passes through untouched. `STREAM_EARLY_EOF_PEEK_MS=0`
+ * turns the peek and the failover off.
+ */
+export const STREAM_EARLY_EOF_PEEK_MS = (() => {
+  const raw = process.env.STREAM_EARLY_EOF_PEEK_MS;
+  if (raw == null || raw === "") return 10 * 1000;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 10 * 1000;
+})();
+
 // Connect timeout for ollama-local: higher default because local models may need extra time
 // to load weights (especially large models). Env: OLLAMA_LOCAL_CONNECT_TIMEOUT_MS.
 export const OLLAMA_LOCAL_CONNECT_TIMEOUT_MS = envMs("OLLAMA_LOCAL_CONNECT_TIMEOUT_MS", 120 * 1000);

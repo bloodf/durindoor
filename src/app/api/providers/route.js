@@ -26,7 +26,9 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "cookie",
 "QWEN_CLOUD_COOKIE",
 // Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
-"sessionToken"]
+"sessionToken",
+// Xiaomi account passToken (xiaomi-mimo session login); a long-lived account credential.
+"mimoPassToken"]
 );
 
 /**
@@ -95,6 +97,7 @@ export function canDiscoverModels(connection) {
       case "kiro":
         return Boolean(connection.accessToken);
       case "qoder":
+      case "qoder-cn":
         return Boolean(connection.accessToken && connection.providerSpecificData?.userId);
       case "github":
         // copilotModels.js:106 — copilotToken OR accessToken; refreshToken

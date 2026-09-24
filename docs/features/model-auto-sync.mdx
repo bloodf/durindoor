@@ -1,0 +1,69 @@
+---
+title: Model auto-update
+description: Keep provider model lists current by fetching them from each provider's list-models API.
+---
+
+Providers ship new models faster than the built-in registry is updated. Model auto-update asks each provider's own list-models API what the account can use and publishes that list, so a new model shows up in `/v1/models`, the dashboard and the combo pickers without a release or a manual step.
+
+## Which providers
+
+Auto-update is **on by default** for OpenAI, Anthropic (API key), Claude (OAuth), xAI (Grok), Gemini, Codex and GitHub Copilot. Every other provider with a list-models API can be turned on from its provider page. OpenRouter keeps its own live free-model catalog, OrcaRouter's catalog is capability-scoped and Ollama Local is already read live, so those three are not synced.
+
+| Provider | Endpoint |
+| --- | --- |
+| OpenAI | `GET https://api.openai.com/v1/models` |
+| Anthropic, Claude | `GET https://api.anthropic.com/v1/models` (OAuth tokens go as a Bearer with the `oauth-2025-04-20` beta) |
+| xAI | `GET https://api.x.ai/v1/models` |
+| Gemini | `GET https://generativelanguage.googleapis.com/v1beta/models` |
+| Codex | the ChatGPT Codex models endpoint, filtered by `minimal_client_version` |
+| GitHub Copilot | `GET https://api.githubcopilot.com/models` (chat models only) |
+
+The sync uses the provider's first active connection, its proxy route, and the same request the provider page's model import uses. An expiring OAuth token is refreshed first.
+
+## What gets published
+
+After a successful sync, the provider's model list is exactly what the API returned, after filtering:
+
+- Chat models are listed as chat models.
+- Embedding, text-to-speech, speech-to-text (Whisper, transcribe), image (DALL-E, gpt-image, Imagen) and video models go to their own service kind, so they appear under `/v1/models/embedding`, `/v1/models/tts` and so on, not in the chat list.
+- Moderation and realtime-only models have no route in the gateway and are dropped.
+
+Registry models the API no longer returns are **removed** from the list. Models you added yourself with **Add Model** are never removed. Codex review variants stay while their base model is listed.
+
+Capabilities come from the existing pattern tables, plus whatever the API states: Anthropic's `max_input_tokens` and `max_tokens` and its image, PDF and thinking flags, Gemini's token limits and thinking flag, Copilot's limits and vision and tool support, and Codex's context window.
+
+The visible-model allowlist and the disabled-models list still apply on top of the synced list. An auto-synced provider does not run per-request model discovery on `/v1/models`; the synced list is the source.
+
+Pruning only changes listings. A request that names a removed model is still sent to the provider, which answers for itself.
+
+## Safety rules
+
+- The list is only replaced after a successful, non-empty fetch. An error, timeout (30 seconds), auth failure or empty list keeps the previous list, and the provider page shows the failure.
+- Until the first successful sync, the built-in registry list is used.
+- The registry file is never changed. Turning auto-update off for a provider restores its built-in list right away.
+- A failure in one provider never stops the others and never affects requests.
+- When a combo member or a model alias points at a removed model, the sync logs it and the combos page shows a **models no longer listed** badge on that combo. Nothing is rewritten; edit the combo to pick a current model.
+
+## Schedule
+
+The sync runs about 30 seconds after the server starts and then every `modelAutoSyncIntervalHours` hours (default 24). Set the interval in **Settings → Routing → Model Auto-update**; **Off** (0) stops scheduled runs, and **Sync now** still works.
+
+## Provider page
+
+Each eligible provider page has an **Auto-update models** switch, the last sync time with the number of new and removed models, the ids that were added or removed in the last sync, the last error if the latest attempt failed, and a **Sync now** button.
+
+## Storage and API
+
+Synced catalogs live in the existing `kv` table under scope `syncedModels`, one row per provider, so no database migration is needed on SQLite or Postgres. Settings keys:
+
+```json
+{
+  "modelAutoSyncIntervalHours": 24,
+  "modelAutoSyncProviders": { "groq": true, "openai": false }
+}
+```
+
+`modelAutoSyncProviders` holds per-provider overrides; a provider that is not listed uses the default above.
+
+- `GET /api/models/auto-sync[?provider=id]` returns each provider's status, its effective model list (or `null` when the registry is in use), and the combo members and aliases that point at removed models.
+- `POST /api/models/auto-sync` with `{ "provider": "openai" }` syncs that provider now; with no body it syncs every provider that has auto-update on.

@@ -24,4 +24,17 @@ curl -X POST "$DURINDOOR_URL/v1/web/fetch" \
 
 `model` and `url` are required. Formats, truncation, rendering, and extraction options depend on the selected provider. The normalized response contains URL, title, content, metadata, usage, and metrics.
 
+## Use the default route
+
+Leave out `model` and `provider`, and DurinDoor uses the web fetch route from **Dashboard → Media Routes**, trying the fallbacks in order.
+
+```bash
+curl -X POST "$DURINDOOR_URL/v1/web/fetch" \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com","format":"markdown"}'
+```
+
+If no connected provider serves this endpoint, the response is HTTP 400 with `error.code` set to `no_provider_for_kind`. Connect a provider, or pass `model`.
+
 Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

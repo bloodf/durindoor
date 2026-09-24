@@ -2,9 +2,12 @@ import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 
+/** Providers /v1/video/generations can run (async job APIs use /v1/videos). */
+export const supportsVideoGeneration = (provider) => provider === "veoaifree-web";
+
 export async function handleVideoGenerationCore({ provider, model, body, credentials, signal }) {
   if (!body?.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
-  if (provider !== "veoaifree-web") {
+  if (!supportsVideoGeneration(provider)) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support video generation`);
   }
   try {

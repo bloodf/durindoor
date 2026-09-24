@@ -6,6 +6,9 @@ import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import * as log from "../utils/logger.js";
+import { handleComboChat } from "open-sse/services/combo.js";
+import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 
 async function handleMusicGenerationHandler(request) {
   let body;
@@ -24,9 +27,23 @@ async function handleMusicGenerationHandler(request) {
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
   );
 
-  if (!body.model) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
-  const modelInfo = await getModelInfo(body.model);
+  if (wantsDefaultRoute(body.model)) {
+    const route = await resolveMediaRoute("music", { settings, apiKeyId: apiKeyAuth.apiKeyId });
+    if (route.error) return route.error;
+    return handleComboChat({
+      body,
+      models: route.models,
+      handleSingleModel: (b, m) => handleSingleModelMusic(b, m, request, apiKey, apiKeyAuth.apiKeyId, preferredConnectionId),
+      log,
+      ...defaultRouteComboOptions("music")
+    });
+  }
+  return handleSingleModelMusic(body, body.model, request, apiKey, apiKeyAuth.apiKeyId, preferredConnectionId);
+}
+
+async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId, preferredConnectionId) {
+  const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const { provider, model } = modelInfo;
   const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
@@ -38,7 +55,7 @@ async function handleMusicGenerationHandler(request) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId, apiKeyId: apiKeyAuth.apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId, apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

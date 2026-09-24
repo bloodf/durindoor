@@ -64,12 +64,15 @@ describe("xAI video proxy (9router#2593)", () => {
     vi.clearAllMocks();
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.getProviderConnections.mockResolvedValue([{ ...XAI_CONNECTION }]);
-    mocks.getProviderConnectionById.mockImplementation(async (id) => id === "minimax-1" ? {
-      id,
-      provider: "minimax",
-      apiKey: "minimax-secret",
-      testStatus: "active",
-    } : null);
+    mocks.getProviderConnectionById.mockImplementation(async (id) => {
+      if (id === XAI_CONNECTION.id) return { ...XAI_CONNECTION };
+      return id === "minimax-1" ? {
+        id,
+        provider: "minimax",
+        apiKey: "minimax-secret",
+        testStatus: "active",
+      } : null;
+    });
     mocks.getApiKeyByKey.mockResolvedValue(null);
     mocks.getApiKeyUsageTotals.mockResolvedValue({});
     mocks.getProxyPools.mockResolvedValue([]);
@@ -231,7 +234,8 @@ describe("xAI video proxy (9router#2593)", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const okReq = jsonRequest("http://localhost/v1/videos/generations", { prompt: "hi" });
+    // No-model routing is covered in media-routes-handlers.test.js.
+    const okReq = jsonRequest("http://localhost/v1/videos/generations", { model: "xai/grok-imagine-video", prompt: "hi" });
     const okRes = await POST(okReq, { params: Promise.resolve({ path: ["generations"] }) });
     expect(okRes.status).toBe(200);
     expect(fetchMock.mock.calls[0][0]).toBe("https://api.x.ai/v1/videos/generations");

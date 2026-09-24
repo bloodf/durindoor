@@ -9,11 +9,17 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import * as log from "../utils/logger.js";
-
-// Async video jobs (xAI Grok Imagine shape) are xAI-only today; requests
-// without a provider prefix (bare model id, or multipart bodies we
-// deliberately don't parse) land here.
-const DEFAULT_VIDEO_PROVIDER = "xai";
+import { isString } from "@/shared/utils/typeChecks.js";
+import { handleComboChat } from "open-sse/services/combo.js";
+import { supportsVideoGeneration } from "open-sse/handlers/videoGenerationCore.js";
+import {
+  wantsDefaultRoute,
+  resolveMediaRoute,
+  defaultRouteComboOptions,
+  listMediaRouteCandidates,
+  providerOfModelId,
+  supportsVideoJobs
+} from "../services/mediaRoutes.js";
 
 
 async function enforceVideoPolicy(request, provider, model, apiKey) {
@@ -43,12 +49,26 @@ async function handleVideoGenerationHandler(request) {
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
   );
 
-  if (!body.model) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
-  const modelInfo = await getModelInfo(body.model);
+  if (wantsDefaultRoute(body.model)) {
+    const route = await resolveMediaRoute("video", { settings, supports: supportsVideoGeneration, apiKeyId: apiKeyAuth.apiKeyId });
+    if (route.error) return route.error;
+    return handleComboChat({
+      body,
+      models: route.models,
+      handleSingleModel: (b, m) => handleSingleModelVideo(b, m, request, apiKey, apiKeyAuth.apiKeyId),
+      log,
+      ...defaultRouteComboOptions("video")
+    });
+  }
+  return handleSingleModelVideo(body, body.model, request, apiKey, apiKeyAuth.apiKeyId);
+}
+
+async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId) {
+  const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model, apiKey);
   if (policyError) return policyError;
-  const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId: apiKeyAuth.apiKeyId });
+  const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId });
   if (credentials?.providerDisabled) {
     log.warn("VIDEO", `[${modelInfo.provider}/${modelInfo.model}] free no-auth provider disabled by settings`);
     return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${modelInfo.provider}' is disabled. Enable it in Settings > Providers.`);
@@ -86,26 +106,73 @@ async function readForwardableBody(request) {
     return { raw, parsed, contentType };
   }
   // Multipart (or any other content type): forward the exact bytes — parsing
-  // and re-encoding FormData would change the multipart boundary.
+  // and re-encoding FormData would change the multipart boundary. A copy is
+  // parsed only to read the `model` field that picks the provider.
   const buf = Buffer.from(await request.arrayBuffer());
-  return { raw: buf, parsed: null, contentType };
+  let formModel = null;
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      const value = (await new Response(buf, { headers: { "content-type": contentType } }).formData()).get("model");
+      formModel = isString(value) ? value : null;
+    } catch {
+      return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart body") };
+    }
+  }
+  return { raw: buf, parsed: null, contentType, formModel };
 }
 
-async function resolveVideoProvider(parsedBody) {
-  if (!parsedBody?.model) return { provider: DEFAULT_VIDEO_PROVIDER, model: null };
+/**
+ * Re-encode a multipart body with `model` set to the provider-local id. Only
+ * used when the client sent a `provider/model` field; the new boundary comes
+ * back in the content type.
+ */
+async function withMultipartModel(raw, contentType, model) {
+  const form = await new Response(raw, { headers: { "content-type": contentType } }).formData();
+  form.set("model", model);
+  const encoded = new Request("http://localhost/", { method: "POST", body: form });
+  return { body: Buffer.from(await encoded.arrayBuffer()), contentType: encoded.headers.get("content-type") };
+}
 
-  const modelStr = String(parsedBody.model);
+/**
+ * No model (or a multipart body, which is forwarded unparsed): the video
+ * route's first model whose provider runs async jobs. Creation is a billable
+ * upstream job, so it is never retried on a second model.
+ */
+async function resolveRoutedVideoModel(settings, apiKeyId) {
+  const route = await resolveMediaRoute("video", { settings, supports: supportsVideoJobs, apiKeyId });
+  if (route.error) return { error: route.error };
+  const modelInfo = await getModelInfo(route.models[0]);
+  return { provider: modelInfo.provider, model: modelInfo.model };
+}
+
+async function resolveVideoProvider(requestedModel, settings, apiKeyId) {
+  if (wantsDefaultRoute(requestedModel)) return resolveRoutedVideoModel(settings, apiKeyId);
+
+  const modelStr = String(requestedModel);
+  // Bare model ids (no "provider/" prefix): prefix-less inference targets chat
+  // providers, so match the id exactly against the connected video models
+  // first. Two providers serving the same id is ambiguous.
+  if (!modelStr.includes("/")) {
+    const providers = [...new Set((await listMediaRouteCandidates("video", { apiKeyId }))
+      .map((m) => m.id)
+      .filter((id) => id.slice(id.indexOf("/") + 1) === modelStr)
+      .map(providerOfModelId)
+      .filter(supportsVideoJobs))];
+    if (providers.length === 1) return { provider: providers[0], model: modelStr };
+    if (providers.length > 1) {
+      return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, `Model '${modelStr}' is served by ${providers.join(", ")}; use a provider/model id`) };
+    }
+  }
+
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Combos are not supported for video generation") };
   }
   if (!getVideoConfig(modelInfo.provider)) {
-    // Bare model ids (no explicit "provider/" prefix) fall back to the default
-    // video provider — the prefix-less inference targets chat providers only.
-    if (!modelStr.includes("/")) {
-      return { provider: DEFAULT_VIDEO_PROVIDER, model: modelStr };
-    }
-    return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, `Provider '${modelInfo.provider}' does not support video generation`) };
+    const message = modelStr.includes("/")
+      ? `Provider '${modelInfo.provider}' does not support video generation`
+      : `No connected video provider serves model '${modelStr}'`;
+    return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, message) };
   }
   return { provider: modelInfo.provider, model: modelInfo.model };
 }
@@ -155,20 +222,24 @@ async function handleVideoCreateHandler(request, action) {
   const bodyInfo = await readForwardableBody(request);
   if (bodyInfo.error) return bodyInfo.error;
 
-  const resolved = await resolveVideoProvider(bodyInfo.parsed);
+  const requestedModel = bodyInfo.parsed ? bodyInfo.parsed.model : bodyInfo.formModel;
+  const resolved = await resolveVideoProvider(requestedModel, settings, apiKeyAuth.apiKeyId);
   if (resolved.error) return resolved.error;
   const { provider, model } = resolved;
 
-  // Policy needs a concrete model; bodies that omit `model` (allowed by the
-  // upstream xAI video API) default to the provider's video model.
-  const policyError = await enforceVideoPolicy(request, provider, model || "grok-imagine-video", apiKey);
+  const policyError = await enforceVideoPolicy(request, provider, model, apiKey);
   if (policyError) return policyError;
 
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
   // otherwise forward the original bytes untouched.
   let forwardBody = bodyInfo.raw;
+  let forwardContentType = bodyInfo.contentType || null;
   if (bodyInfo.parsed && model && bodyInfo.parsed.model !== model) {
     forwardBody = JSON.stringify({ ...bodyInfo.parsed, model });
+  } else if ((bodyInfo.contentType || "").includes("multipart/form-data") && model && bodyInfo.formModel !== model) {
+    // A prefixed, missing, or blank multipart model: send the provider-local
+    // id, like a JSON body, so upstream runs the model the gateway chose.
+    ({ body: forwardBody, contentType: forwardContentType } = await withMultipartModel(bodyInfo.raw, bodyInfo.contentType, model));
   }
 
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
@@ -177,13 +248,13 @@ async function handleVideoCreateHandler(request, action) {
   const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, model, { preferredConnectionId, apiKeyId: apiKeyAuth.apiKeyId });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
     if (credentials?.providerDisabled) {
-      log.warn("VIDEO", `[${provider}/${model || "grok-imagine-video"}] free no-auth provider disabled by settings`);
+      log.warn("VIDEO", `[${provider}/${model}] free no-auth provider disabled by settings`);
       return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
     }
     if (credentials?.allRateLimited) {
       return unavailableResponse(
         Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE,
-        `[${provider}/${model || "grok-imagine-video"}] ${credentials.lastError || "Unavailable"}`,
+        `[${provider}/${model}] ${credentials.lastError || "Unavailable"}`,
         credentials.retryAfter,
         credentials.retryAfterHuman,
       );
@@ -197,7 +268,7 @@ async function handleVideoCreateHandler(request, action) {
     provider,
     action,
     rawBody: forwardBody,
-    contentType: bodyInfo.contentType || null,
+    contentType: forwardContentType,
     idempotencyKey,
     credentials: refreshedCredentials,
     signal: request.signal,
@@ -252,7 +323,7 @@ async function handleVideoGetHandler(request, requestId) {
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 
   const preferredConnectionId = request.headers.get("x-9router-connection-id") || request.headers.get("x-connection-id") || null;
-  let provider = DEFAULT_VIDEO_PROVIDER;
+  let provider = null;
   if (preferredConnectionId) {
     const scopedConnectionIds = apiKeyAuth.apiKeyId ? await getApiKeyProviderConnectionIds(apiKeyAuth.apiKeyId) : [];
     if (scopedConnectionIds.length > 0 && !scopedConnectionIds.includes(preferredConnectionId)) {
@@ -260,6 +331,21 @@ async function handleVideoGetHandler(request, requestId) {
     }
     const pinnedConnection = await getProviderConnectionById(preferredConnectionId);
     if (pinnedConnection?.provider && getVideoConfig(pinnedConnection.provider)) provider = pinnedConnection.provider;
+  }
+  // Jobs are account-bound, so an unpinned poll is only safe to guess when a
+  // single async video provider is connected; otherwise the client must echo
+  // the create response's connection header.
+  if (!provider) {
+    const jobProviders = [...new Set((await listMediaRouteCandidates("video", { apiKeyId: apiKeyAuth.apiKeyId }))
+      .map((m) => providerOfModelId(m.id))
+      .filter(supportsVideoJobs))];
+    if (jobProviders.length !== 1) {
+      return errorResponse(
+        HTTP_STATUS.BAD_REQUEST,
+        "Missing x-connection-id: echo the x-9router-connection-id header from the create response"
+      );
+    }
+    provider = jobProviders[0];
   }
   const policyModel = getVideoConfig(provider)?.defaultModel || "grok-imagine-video";
   const policyError = await enforceVideoPolicy(request, provider, policyModel, apiKey);

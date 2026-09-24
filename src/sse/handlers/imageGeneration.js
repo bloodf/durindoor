@@ -17,6 +17,7 @@ import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
+import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
@@ -60,8 +61,19 @@ async function handleImageGenerationHandler(request) {
     }
   }
 
-  if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
+
+  if (wantsDefaultRoute(modelStr)) {
+    const route = await resolveMediaRoute("image", { settings, apiKeyId: apiKeyAuth.apiKeyId });
+    if (route.error) return route.error;
+    return handleComboChat({
+      body,
+      models: route.models,
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId }),
+      log,
+      ...defaultRouteComboOptions("image")
+    });
+  }
 
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
   // #6495 / F-4: filter paid members when the toggle is on. Auth ACL check

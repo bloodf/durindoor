@@ -18,6 +18,7 @@ import {
   stripSettingKeys,
 } from "@/lib/settings/settingsPatchAuth";
 import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
+import { normalizeMediaRoutes } from "@/shared/constants/mediaRoutes.js";
 import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { resolveObservabilityEnabled } from "@/lib/db/repos/requestDetailsRepo";
@@ -309,6 +310,15 @@ export async function PATCH(request) {
         if (Object.prototype.hasOwnProperty.call(cr, "preferLargeContext") && !isBoolean(cr.preferLargeContext)) return bad();
         if (Object.prototype.hasOwnProperty.call(cr, "contextFilterMode") && cr.contextFilterMode !== "strict" && cr.contextFilterMode !== "lenient") return bad();
       }
+    }
+
+    // mediaRoutes: { [kind]: ["provider/model", ...] } — see shared/constants/mediaRoutes.js.
+    if (Object.prototype.hasOwnProperty.call(body, "mediaRoutes")) {
+      const routes = normalizeMediaRoutes(body.mediaRoutes);
+      if (!routes) {
+        return NextResponse.json({ error: "Invalid mediaRoutes" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+      }
+      body.mediaRoutes = routes;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "enableProxyTimeline")

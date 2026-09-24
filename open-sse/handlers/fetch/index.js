@@ -256,7 +256,7 @@ function normalizeFirecrawlBaseUrl(validation) {
   return `${url.origin}${pathname}`;
 }
 
-function resolveFirecrawlBaseUrl(provider, providerConfig, credentials) {
+export function resolveFirecrawlBaseUrl(provider, providerConfig, credentials) {
   const isCustom = provider === "firecrawl_custom";
   if (isCustom) {
     const explicitCustom = credentials?.providerSpecificData?.baseUrl;

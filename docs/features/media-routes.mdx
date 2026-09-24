@@ -1,0 +1,67 @@
+---
+title: Media routes
+description: Default model and fallbacks for each media endpoint, so requests can leave out the model.
+---
+
+A media route is the ordered list of models an endpoint uses when a request has no `model`. Leave `model` out, or send `"model": "auto"`. DurinDoor tries the route's models in order and moves to the next one on a retryable failure (429, 5xx, missing or exhausted credentials). Any other error comes back unchanged. If the request names a model or a combo, the route is not used.
+
+Routes exist for these endpoints:
+
+| Route | Endpoint | Notes |
+| --- | --- | --- |
+| Text to speech | `POST /v1/audio/speech` | |
+| Speech to text | `POST /v1/audio/transcriptions`, `POST /v1/audio/translations` | Translations only use providers with a translations endpoint (OpenAI, Groq, Local Whisper). |
+| Web search | `POST /v1/search` | Send no `model` or `provider`. |
+| Web fetch | `POST /v1/web/fetch` | Send no `model` or `provider`. |
+| Embeddings | `POST /v1/embeddings` | Only the first available model runs. Vectors from different models are not comparable, so embeddings never switch models. They still move to the next account of that provider. |
+| Image generation | `POST /v1/images/generations` | |
+| Video generation | `POST /v1/video/generations`, `POST /v1/videos/{action}` | `/v1/video/generations` tries the models it can run, in order. `/v1/videos` creates a billable job, so it uses only the first route model whose provider runs async jobs and never retries. A `/v1/videos` poll without `x-connection-id` goes to that same provider. |
+| Music generation | `POST /v1/music/generations`, `POST /v1/audio/music` | |
+
+## Where the models come from
+
+DurinDoor does not ship a default model. A route can only hold models that `GET /v1/models/{kind}` lists right now. Each one has to meet all of these:
+
+- It comes from a provider with an active connection, or from an enabled keyless provider.
+- The provider serves that kind.
+- The model itself is that kind.
+- The provider's visible-model allowlist and disabled-model list allow it.
+
+If nothing qualifies, a request without a model gets HTTP 400:
+
+```json
+{
+  "error": {
+    "message": "No connected provider supports text to speech. Connect one in Dashboard > Media Providers, or pass a model.",
+    "type": "invalid_request_error",
+    "code": "no_provider_for_kind"
+  }
+}
+```
+
+## Set the order
+
+Open **Dashboard → Media Routes** (`/dashboard/media-routes`). Each endpoint has a card:
+
+- **Automatic** is used until you save an order. It tries every available model in catalog order.
+- **Customize** copies the available models into an editable list. Drag to reorder, remove models, add others from the available list, then **Save**. The first model is the default and the rest are fallbacks.
+- **Use automatic order** clears the saved list.
+- A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order.
+
+Routes are stored in settings as `mediaRoutes`, for example `{ "tts": ["elevenlabs/eleven_v3", "openai/tts-1"] }`. You can also write them through:
+
+- `PUT /api/media-providers/routes` with `{ "kind": "tts", "models": [...] }`. An empty list resets the route to automatic.
+- `PATCH /api/settings` with `{ "mediaRoutes": {...} }`.
+
+Both reject unknown kinds, and ids without a `provider/` prefix.
+
+## Example
+
+```bash
+curl http://localhost:20128/v1/audio/speech \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"Speak, friend, and enter."}' --output door.mp3
+```
+
+API key model policies still apply to each route model, the same way they do when the model is named explicitly.

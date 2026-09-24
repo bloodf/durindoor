@@ -80,6 +80,8 @@ Combos only help when every member can run the client workflow (tools, images, J
 
 ## Media
 
+Every media endpoint below except image edit and voices accepts a request without `model` (or `"model": "auto"`). It then runs the endpoint's [media route](../features/media-routes.mdx): the dashboard-ordered models from connected providers of that kind, with fallback. If no connected provider serves the kind, it answers 400 `no_provider_for_kind`.
+
 Image generate is JSON `{ model, prompt }`. Optional `Accept: text/event-stream` and `?response_format=binary`. `sdwebui` and `comfyui` need no stored key. Image edit is multipart: `model`, `image`, `prompt`.
 
 TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
@@ -88,7 +90,7 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 
 `POST /v1/audio/music` re-exports `POST /v1/music/generations`. JSON `{ model, prompt }`. `POST /v1/video/generations` is the same shape for video-capable models.
 
-`/v1/videos` is the async xAI Grok Imagine surface. `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte after stripping a `provider/` prefix. Default provider when the body has no prefix: `xai`. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
+`/v1/videos` is the async xAI Grok Imagine surface. `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte after stripping a `provider/` prefix. With no `model`, the first video-route model whose provider runs async jobs is used, and its id is written into a JSON body. A bare id is matched against the connected video models. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
@@ -101,7 +103,7 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 | POST, OPTIONS | `/v1/music/generations` | JSON `model`, `prompt` | no | music-kind models |
 | POST, OPTIONS | `/v1/audio/music` | same (re-export) | no | same as music generations |
 | POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
-| POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | xAI Grok Imagine (`xai` default) |
+| POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, OrcaRouter) |
 
 ## Embeddings, rerank, and moderation
 

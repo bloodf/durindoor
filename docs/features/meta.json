@@ -6,6 +6,7 @@
     "index",
     "smart-routing",
     "combos",
+    "media-routes",
     "quota-tracking",
     "proxy-timeline",
     "mcp-gateway",

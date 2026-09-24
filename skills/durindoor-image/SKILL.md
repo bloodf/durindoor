@@ -27,4 +27,17 @@ Required fields are `model` and `prompt`. Optional fields such as `n`, `size`, `
 
 JSON responses use OpenAI-compatible `data[].url` or `data[].b64_json`. The binary response mode returns image bytes.
 
+## Use the default route
+
+Leave out `model` and DurinDoor uses the image generation route from **Dashboard → Media Routes**, trying the fallbacks in order.
+
+```bash
+curl -X POST "$DURINDOOR_URL/v1/images/generations" \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"watercolor mountains at sunrise"}'
+```
+
+If no connected provider serves this endpoint, the response is HTTP 400 with `error.code` set to `no_provider_for_kind`. Connect a provider, or pass `model`.
+
 Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

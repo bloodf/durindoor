@@ -185,6 +185,11 @@ function jsonResponse(obj) {
   };
 }
 
+/** OpenAI-format STT configs have a sibling `/audio/translations` endpoint. */
+export function supportsSttTranslation(cfg) {
+  return cfg?.format === "openai" && TRANSCRIPTION_SUFFIX_RE.test(cfg.baseUrl || "");
+}
+
 /**
  * STT core handler — dispatch by sttConfig.format.
  * `kind: "translation"` targets the OpenAI-style `/audio/translations` route;
@@ -199,7 +204,7 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   if (!cfg) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support STT`);
 
   const translate = kind === "translation";
-  if (translate && (cfg.format !== "openai" || !TRANSCRIPTION_SUFFIX_RE.test(cfg.baseUrl || ""))) {
+  if (translate && !supportsSttTranslation(cfg)) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support audio translations`);
   }
 

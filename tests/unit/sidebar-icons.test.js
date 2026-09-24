@@ -106,6 +106,7 @@ describe("SidebarNavIcons information architecture", () => {
       "/dashboard/cli-tools",
       "/dashboard/skills",
       "/dashboard/auto-configure",
+      "/dashboard/media-routes",
     ]);
     const media = section("integrate").entries.find((e) => e.type === "media");
     expect(media.label).toBe("Media Providers");

@@ -21,6 +21,7 @@ import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
+import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -65,9 +66,9 @@ async function handleFetchHandler(request) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  if (!providerInput || !isString(providerInput)) {
-    log.warn("FETCH", "Missing provider/model");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: provider (or model)");
+  if (!wantsDefaultRoute(providerInput) && !isString(providerInput)) {
+    log.warn("FETCH", "Invalid provider/model");
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid field: provider (or model) must be a string");
   }
 
   if (!targetUrl || !isString(targetUrl)) {
@@ -90,6 +91,18 @@ async function handleFetchHandler(request) {
   } catch (err) {
     log.warn("FETCH", "Blocked URL", { url: targetUrl });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, err.message);
+  }
+
+  if (wantsDefaultRoute(providerInput)) {
+    const route = await resolveMediaRoute("webFetch", { settings });
+    if (route.error) return route.error;
+    return handleComboChat({
+      body,
+      models: route.models,
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, settings),
+      log,
+      ...defaultRouteComboOptions("webFetch")
+    });
   }
 
   // Per-key combo access control. Auto-combo catalog computed lazily — only

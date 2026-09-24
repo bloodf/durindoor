@@ -12,6 +12,9 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { handleComboChat } from "open-sse/services/combo.js";
+import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
+import { supportsSttTranslation } from "open-sse/handlers/sttCore.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -40,9 +43,25 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
   );
 
-  if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!formData.get("file")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
+  if (wantsDefaultRoute(modelStr)) {
+    // Translations only reach providers that expose /audio/translations.
+    const supports = kind === "translation" ? (providerId) => supportsSttTranslation(AI_PROVIDERS[providerId]?.sttConfig) : null;
+    const route = await resolveMediaRoute("stt", { settings, supports });
+    if (route.error) return route.error;
+    return handleComboChat({
+      body: {},
+      models: route.models,
+      handleSingleModel: (_b, m) => handleSingleModelStt(formData, m, kind, request, apiKey, apiKeyAuth.apiKeyId),
+      log,
+      ...defaultRouteComboOptions("stt")
+    });
+  }
+  return handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyAuth.apiKeyId);
+}
+
+async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyId) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -57,7 +76,7 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
   // Local/no-auth execution remains unrestricted only for keys with zero
   // provider-account relations.
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId: apiKeyAuth.apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -80,7 +99,7 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId: apiKeyAuth.apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

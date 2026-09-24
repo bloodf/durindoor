@@ -13,6 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { wantsDefaultRoute, resolveMediaRoute } from "../services/mediaRoutes.js";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -30,7 +31,7 @@ async function handleEmbeddingsHandler(request) {
   }
 
   const url = new URL(request.url);
-  const modelStr = body.model;
+  let modelStr = body.model;
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
@@ -52,14 +53,17 @@ async function handleEmbeddingsHandler(request) {
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
 
-  if (!modelStr) {
-    log.warn("EMBEDDINGS", "Missing model");
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
-  }
-
   if (!body.input) {
     log.warn("EMBEDDINGS", "Missing input");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
+  }
+
+  // No model: the embeddings route's first model (embeddings never switch
+  // models mid-route; account fallback below still applies).
+  if (wantsDefaultRoute(modelStr)) {
+    const route = await resolveMediaRoute("embedding", { settings });
+    if (route.error) return route.error;
+    modelStr = route.models[0];
   }
 
   const modelInfo = await getModelInfo(modelStr);

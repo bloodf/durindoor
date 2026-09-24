@@ -56,6 +56,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| GET, PUT | `/api/media-providers/routes` | Default media routes: GET lists each endpoint's saved order, available models, and effective order; PUT `{ kind, models }` saves one (empty list = automatic). See [Media routes](../features/media-routes.mdx) | session, CLI, key, loop |
 | GET | `/api/media-providers/tts/deepgram/voices` | Deepgram TTS voices grouped by language | session, CLI, key, loop |
 | GET | `/api/media-providers/tts/elevenlabs/voices` | ElevenLabs TTS voices grouped by language | session, CLI, key, loop |
 | GET | `/api/media-providers/tts/inworld/voices` | Inworld TTS voices grouped by language | session, CLI, key, loop |

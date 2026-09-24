@@ -234,7 +234,22 @@ describe("handleComboChat with a Laya backend", () => {
   });
 
   it("a failing backend resolver fails open to the Jev env config", async () => {
-    const fetchSpy = await runSmartCombo(async () => { throw new Error("db down"); });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    const fetchSpy = vi.fn(async () => layaOk("MEDIUM", 0.9));
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubEnv("TYPESAFE_API_KEY", "ts-test-key");
+    await handleComboChat({
+      body: { messages: [{ role: "user", content: "fix the pagination bug" }] },
+      models: ["a/one", "b/two"],
+      handleSingleModel: async () => new Response("ok", { status: 200 }),
+      log,
+      comboName: "smart-combo",
+      comboStrategy: "smart",
+      jevClassify: true,
+      decisionBackend: async () => { throw new Error("db down"); }
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("https://api.typesafe.ai/v1/systemone");
+    expect(init.headers.Authorization).toBe("Bearer ts-test-key");
   });
 });

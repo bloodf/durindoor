@@ -31,10 +31,10 @@ export default {
   category: "apikey",
   apiKeyOptionalWith: "baseUrl",
   models: [
-    { id: "auto", name: "Laya router (picks the checkpoint)", kind: "decision" },
-    { id: "english", name: "Laya English (ModernBERT-large)", kind: "decision" },
-    { id: "multilingual", name: "Laya Multilingual (mmBERT-base, 100+ languages)", kind: "decision" },
-    { id: "typed-decisions", name: "Laya Typed Decisions", kind: "decision" },
+    { id: "auto", name: "Laya router (picks the checkpoint)", kind: "decision", contextLength: 1024 },
+    { id: "english", name: "Laya English (ModernBERT-large)", kind: "decision", contextLength: 512 },
+    { id: "multilingual", name: "Laya Multilingual (mmBERT-base, 100+ languages)", kind: "decision", contextLength: 1024 },
+    { id: "typed-decisions", name: "Laya Typed Decisions", kind: "decision", contextLength: 1024 },
   ],
   serviceKinds: ["decision"],
 };

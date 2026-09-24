@@ -79,6 +79,13 @@ describe("resolveDecisionBackend", () => {
     expect(fetchImpl.mock.calls[0][0]).toBe(`${LAYA_DEFAULT_HOST}/v1/systemone`);
   });
 
+  it("does not trust a redirect during detection", async () => {
+    mocks.getProviderConnections.mockResolvedValue([]);
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 307, headers: { location: "https://other/v1/systemone" } }));
+    expect(await resolveDecisionBackend({ fetchImpl })).toBeNull();
+    expect(fetchImpl.mock.calls[0][1].redirect).toBe("manual");
+  });
+
   it("skips a local Laya that demands a key, so it cannot shadow Jev", async () => {
     mocks.getProviderConnections.mockResolvedValue([]);
     const fetchImpl = vi.fn(async () => new Response("{}", { status: 401 }));

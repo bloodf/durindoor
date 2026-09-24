@@ -1520,11 +1520,12 @@ export default function ProviderDetailPage() {
 
     }
     // Combine hardcoded models with Kilo free models (deduplicated)
-    // Exclude non-llm models (embedding, tts, etc.) — they have dedicated pages under media-providers
+    // Exclude non-llm models (embedding, tts, etc.) — they have dedicated pages under media-providers.
+    // Decision models (Laya checkpoints) have no other page, so they stay listed here.
     const allModels = [
     ...models,
     ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
-    filter((m) => {const k = getModelKind(m);return !k || k === "llm";});
+    filter((m) => {const k = getModelKind(m);return !k || k === "llm" || k === "decision";});
     const disabledSet = new Set(disabledModelIds);
     const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
     const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
@@ -2195,7 +2196,7 @@ export default function ProviderDetailPage() {
             const allIds = [
             ...models,
             ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
-            filter((m) => {const k = getModelKind(m);return !k || k === "llm";}).map((m) => m.id);
+            filter((m) => {const k = getModelKind(m);return !k || k === "llm" || k === "decision";}).map((m) => m.id);
             const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
             return (
               <div className="flex gap-2">

@@ -55,6 +55,9 @@ async function probeLocalLaya(fetchImpl) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
+      // Only a direct 400 is Laya; a redirect is not followed or trusted,
+      // matching the classifier, which also refuses redirects.
+      redirect: "manual",
       signal: AbortSignal.timeout(DETECT_TIMEOUT_MS)
     });
     return res.status === 400;

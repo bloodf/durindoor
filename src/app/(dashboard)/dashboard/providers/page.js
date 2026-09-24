@@ -379,7 +379,8 @@ export default function ProvidersPage() {
   );
   // API Key: connected providers first, then alphabetical by name.
   // Agent-only providers (e.g. Devin) are shown once an account is connected
-  // even though they are not LLM chat providers.
+  // even though they are not LLM chat providers. Decision engines (Laya) are
+  // listed before they have a connection: the card is how one gets added.
   // NOTE: pass noAuth=false here on purpose. Local no-auth infra in the apikey
   // category (lm-studio, llama-cpp, docker-model-runner, 9router, ...) must NOT
   // be reported as "active" until it actually has a connection — otherwise the
@@ -390,7 +391,7 @@ export default function ProvidersPage() {
   filter(
     ([key, info]) =>
     !info.hidden && (
-    (info.serviceKinds ?? ["llm"]).includes("llm") ||
+    (info.serviceKinds ?? ["llm"]).some((kind) => kind === "llm" || kind === "decision") ||
     getProviderStats(key, "apikey").total > 0) &&
     matchSearch(info.name) &&
     matchStatus(key, "apikey")

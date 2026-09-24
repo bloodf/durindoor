@@ -189,6 +189,10 @@ const affinityCleanup = setInterval(() => {
 if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
+// Keyless self-hosted servers whose connection row carries the server URL.
+// Their handler no-auth path must use a saved row, or requests go to the
+// default host instead of the one the user configured.
+const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper", "firecrawl_custom"]);
 
 // Canonical roster of providers eligible for the public no-auth fallback when
 // no saved connection row exists. Mimocode stays in the roster so zero-row
@@ -604,14 +608,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Explicit handler no-auth paths historically ignored saved connections.
     // Preserve that zero-relation behavior; any API-key/combo restriction opts
     // the caller into selecting a stored eligible connection or denying.
-    if (options?.noAuthPath === true && !scopeRestricted) {
+    const hasSavedHost = NO_AUTH_CONNECTION_HOST_PROVIDERS.has(providerId) && connections.length > 0;
+    if (options?.noAuthPath === true && !scopeRestricted && !hasSavedHost) {
       return buildOptionalNoAuthCredential();
     }
 
     if (isNoAuthProvider) {
-      // Stored-data no-auth providers (e.g., mimocode) use saved connections first.
-      // Once rows exist, they never fall back to the public no-auth credential.
-      if (NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) && connections.length > 0) {
+      // Stored-data no-auth providers (e.g., mimocode) and self-hosted servers
+      // whose row holds the host use saved connections first. Once rows exist,
+      // they never fall back to the public no-auth credential.
+      if ((NO_AUTH_STORED_DATA_PROVIDERS.has(providerId) || hasSavedHost) && connections.length > 0) {
         const storedEligibleBeforeRpm = connections.filter(
           (c) => !excludeSet.has(c.id) &&
           !requestedModelLockActive(c, model, boundedModel, selectionNow) &&

@@ -23,10 +23,12 @@ Routes exist for these endpoints:
 DurinDoor does not ship a default model. A route can only hold models that `GET /v1/models/{kind}` lists right now. Each one has to meet all of these:
 
 - It comes from a provider with an active connection, or from an enabled keyless provider that is installed and working:
-  - A self-hosted keyless server (Local Whisper, Coqui, Tortoise, SearXNG, self-hosted Firecrawl, or any loopback or private URL) counts only while it answers HTTP. For Local Whisper and self-hosted Firecrawl, it counts when the default URL or any saved connection's URL answers.
+  - A keyless provider that calls a server counts only if the URL this request would use answers within 1.5 seconds. That covers Local Whisper, Coqui, Tortoise, SearXNG, self-hosted Firecrawl and veoaifree-web.
+  - For an unscoped request, Local Whisper uses its default host. Self-hosted Firecrawl uses the dashboard setting, then `FIRECRAWL_BASE_URL`, then its default. An API key scoped to provider accounts uses its connection's host instead.
+  - The check uses the same outbound URL guard as provider requests, so a blocked host counts as not working and is never contacted.
   - `local-device` counts only when the OS voice list loads (macOS `say` or Windows SAPI).
-  - Keyless libraries and public services (edge-tts, google-tts, veoaifree-web) count as working.
-  - Checks are cached for 30 seconds.
+  - Keyless libraries with no server (edge-tts, google-tts) count as working.
+  - Checks are cached per URL for 30 seconds.
 - The provider serves that kind.
 - The model itself is that kind.
 - The provider's visible-model allowlist and disabled-model list allow it.
@@ -50,7 +52,7 @@ Open **Dashboard → Media Routes** (`/dashboard/media-routes`). Each endpoint h
 - **Automatic** is used until you save an order. It tries every available model in catalog order.
 - **Customize** starts an editable list from the current first model. Add fallbacks from the available models, drag to reorder, remove models, then **Save**. The first model is the default and the rest are fallbacks.
 - **Use automatic order** clears the saved list.
-- A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order. One exception: if the saved models are still available but the endpoint can't run any of them, the endpoint uses its own automatic list. Examples are a `veoaifree-web` video route on `/v1/videos`, or a Deepgram-only speech-to-text route on `/v1/audio/translations`.
+- A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order. The same applies when the saved models are available but the endpoint can't run any of them, for example a `veoaifree-web`-only video route on `/v1/videos`, or a Deepgram-only speech-to-text route on `/v1/audio/translations`. The video and speech-to-text cards list what each endpoint will run and flag an endpoint that can't run any model in the route.
 
 Routes are stored in settings as `mediaRoutes`, for example `{ "tts": ["elevenlabs/eleven_v3", "openai/tts-1"] }`. You can also write them through:
 

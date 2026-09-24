@@ -110,11 +110,14 @@ describe("resolveMediaRoute", () => {
     expect(route.models).toEqual(["tavily/fetch"]);
   });
 
-  it("uses the endpoint's automatic list when it can run none of the saved models", async () => {
+  it("errors when the endpoint can run none of the saved models, instead of picking other providers", async () => {
     mocks.buildModelsList.mockResolvedValue([model("veoaifree-web/veo"), model("xai/grok-imagine-video")]);
     const settings = { mediaRoutes: { video: ["veoaifree-web/veo"] } };
-    const route = await resolveMediaRoute("video", { settings, supports: (p) => p === "xai" });
-    expect(route.models).toEqual(["xai/grok-imagine-video"]);
+    const { error } = await resolveMediaRoute("video", { settings, supports: (p) => p === "xai" });
+    expect(error.status).toBe(400);
+    const body = await error.json();
+    expect(body.error.code).toBe("no_provider_for_kind");
+    expect(body.error.message).toContain("can run on this endpoint");
   });
 
   it("still errors when the saved models are gone everywhere", async () => {

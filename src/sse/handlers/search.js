@@ -73,7 +73,7 @@ async function handleSearchHandler(request) {
   }
 
   if (wantsDefaultRoute(providerInput)) {
-    const route = await resolveMediaRoute("webSearch", { settings });
+    const route = await resolveMediaRoute("webSearch", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
       body,

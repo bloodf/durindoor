@@ -64,7 +64,7 @@ async function handleImageGenerationHandler(request) {
   if (!body.prompt) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
 
   if (wantsDefaultRoute(modelStr)) {
-    const route = await resolveMediaRoute("image", { settings });
+    const route = await resolveMediaRoute("image", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
       body,

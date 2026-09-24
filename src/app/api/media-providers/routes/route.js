@@ -1,18 +1,25 @@
 import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { parseJsonBody } from "@/shared/utils/parseJsonBody";
-import { MEDIA_ROUTE_KINDS, isMediaRouteKind, normalizeRouteModels, describeMediaRoute } from "@/sse/services/mediaRoutes.js";
+import { MEDIA_ROUTE_KINDS, MEDIA_ROUTE_ENDPOINTS, isMediaRouteKind, normalizeRouteModels, describeMediaRoute } from "@/sse/services/mediaRoutes.js";
 
 export const dynamic = "force-dynamic";
 
 async function routeView(kind, settings) {
   const meta = MEDIA_ROUTE_KINDS.find((k) => k.id === kind);
   const { saved, candidates, models } = await describeMediaRoute(kind, { settings });
+  // Endpoints that run only part of the kind (async video jobs, translations)
+  // show their own effective list, so a route one endpoint cannot use is visible.
+  const endpoints = await Promise.all((MEDIA_ROUTE_ENDPOINTS[kind] || []).map(async ({ path, supports }) => ({
+    path,
+    effective: (await describeMediaRoute(kind, { settings, supports })).models
+  })));
   return {
     ...meta,
     saved,
     candidates: candidates.map((m) => ({ id: m.id, name: m.name || m.id, provider: m.owned_by })),
-    effective: models
+    effective: models,
+    endpoints
   };
 }
 

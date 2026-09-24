@@ -62,7 +62,7 @@ async function handleTtsHandler(request) {
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
 
   if (wantsDefaultRoute(modelStr)) {
-    const route = await resolveMediaRoute("tts", { settings });
+    const route = await resolveMediaRoute("tts", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
       body,

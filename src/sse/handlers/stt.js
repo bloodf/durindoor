@@ -13,8 +13,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { handleComboChat } from "open-sse/services/combo.js";
-import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
-import { supportsSttTranslation } from "open-sse/handlers/sttCore.js";
+import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -47,8 +46,8 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
 
   if (wantsDefaultRoute(modelStr)) {
     // Translations only reach providers that expose /audio/translations.
-    const supports = kind === "translation" ? (providerId) => supportsSttTranslation(AI_PROVIDERS[providerId]?.sttConfig) : null;
-    const route = await resolveMediaRoute("stt", { settings, supports });
+    const supports = kind === "translation" ? supportsTranslation : null;
+    const route = await resolveMediaRoute("stt", { settings, supports, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
       body: {},

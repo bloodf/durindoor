@@ -29,7 +29,7 @@ async function handleMusicGenerationHandler(request) {
 
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   if (wantsDefaultRoute(body.model)) {
-    const route = await resolveMediaRoute("music", { settings });
+    const route = await resolveMediaRoute("music", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
       body,

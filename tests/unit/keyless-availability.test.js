@@ -1,12 +1,22 @@
 /**
- * Media routes count a keyless provider only when it is installed and working:
- * self-hosted servers must answer, local-device needs OS voices, and keyless
- * libraries / public services count as working.
+ * Media routes count a keyless provider only when it is installed and working
+ * at the URL this request would call: the unscoped default, or the connection
+ * a scoped API key uses. local-device needs OS voices; keyless libraries with
+ * no server URL count as working.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getProviderConnections: vi.fn(async () => []), getSettings: vi.fn(async () => ({})), voices: vi.fn() }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnections: mocks.getProviderConnections, getSettings: mocks.getSettings }));
+const mocks = vi.hoisted(() => ({
+  getProviderConnections: vi.fn(async () => []),
+  getApiKeyProviderConnectionIds: vi.fn(async () => []),
+  getSettings: vi.fn(async () => ({})),
+  voices: vi.fn()
+}));
+vi.mock("@/lib/localDb", () => ({
+  getProviderConnections: mocks.getProviderConnections,
+  getApiKeyProviderConnectionIds: mocks.getApiKeyProviderConnectionIds,
+  getSettings: mocks.getSettings
+}));
 vi.mock("open-sse/handlers/ttsProviders/localDevice.js", () => ({ fetchLocalDeviceVoices: mocks.voices }));
 
 const { isKeylessProviderWorking, clearKeylessAvailabilityCache } = await import("../../src/sse/services/keylessAvailability.js");
@@ -18,6 +28,8 @@ beforeEach(() => {
   clearKeylessAvailabilityCache();
   vi.clearAllMocks();
   mocks.getProviderConnections.mockResolvedValue([]);
+  mocks.getApiKeyProviderConnectionIds.mockResolvedValue([]);
+  mocks.getSettings.mockResolvedValue({});
 });
 
 describe("isKeylessProviderWorking", () => {
@@ -33,39 +45,42 @@ describe("isKeylessProviderWorking", () => {
     expect(await isKeylessProviderWorking("coqui", { fetchImpl: down })).toBe(false);
   });
 
-  it("counts Local Whisper working when its default host or any saved connection host answers", async () => {
-    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://192.168.1.20:9000" } }]);
-    const onlyConnection = vi.fn(async (url) => {
-      if (url === "http://192.168.1.20:9000") return new Response("", { status: 404 });
-      throw new TypeError("fetch failed");
-    });
-    expect(await isKeylessProviderWorking("local-whisper", { fetchImpl: onlyConnection })).toBe(true);
-    expect(onlyConnection.mock.calls.map((c) => c[0]).sort()).toEqual(["http://127.0.0.1:11500", "http://192.168.1.20:9000"]);
-
-    clearKeylessAvailabilityCache();
-    expect(await isKeylessProviderWorking("local-whisper", { fetchImpl: down })).toBe(false);
+  it("probes the default host for an unscoped request, ignoring saved connections", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ id: "c1", providerSpecificData: { baseUrl: "http://192.168.1.20:9000" } }]);
+    await isKeylessProviderWorking("local-whisper", { fetchImpl: up });
+    expect(up.mock.calls.map((c) => c[0])).toEqual(["http://127.0.0.1:11500"]);
   });
 
-  it("probes self-hosted Firecrawl at its settings URL and any saved connection URL", async () => {
-    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://10.0.0.5:3002" } }]);
+  it("probes the scoped key's connection host", async () => {
+    mocks.getApiKeyProviderConnectionIds.mockResolvedValue(["c1"]);
+    mocks.getProviderConnections.mockResolvedValue([{ id: "c1", providerSpecificData: { baseUrl: "http://192.168.1.20:9000" } }]);
+    await isKeylessProviderWorking("local-whisper", { apiKeyId: "k1", fetchImpl: up });
+    expect(up.mock.calls.map((c) => c[0])).toEqual(["http://192.168.1.20:9000"]);
+  });
+
+  it("is not working for a scoped key with no connection of that provider", async () => {
+    mocks.getApiKeyProviderConnectionIds.mockResolvedValue(["other"]);
+    mocks.getProviderConnections.mockResolvedValue([{ id: "c1", providerSpecificData: {} }]);
+    expect(await isKeylessProviderWorking("local-whisper", { apiKeyId: "k1", fetchImpl: up })).toBe(false);
+    expect(up).not.toHaveBeenCalled();
+  });
+
+  it("probes self-hosted Firecrawl at the settings URL when unscoped", async () => {
     mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://192.168.1.9:3002" });
     await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });
-    expect(up.mock.calls.map((c) => c[0]).sort()).toEqual(["http://10.0.0.5:3002", "http://192.168.1.9:3002"]);
-    mocks.getSettings.mockResolvedValue({});
+    expect(up.mock.calls[0][0]).toBe("http://192.168.1.9:3002");
   });
 
-  it("never probes a blocked cloud-metadata host", async () => {
-    mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://169.254.169.254" });
-    expect(await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up })).toBe(false);
-    expect(up).not.toHaveBeenCalled();
-    mocks.getSettings.mockResolvedValue({});
-  });
-
-  it("counts keyless libraries and public services without probing", async () => {
-    for (const id of ["edge-tts", "google-tts", "veoaifree-web"]) {
+  it("counts keyless libraries without a server URL as working", async () => {
+    for (const id of ["edge-tts", "google-tts"]) {
       expect(await isKeylessProviderWorking(id, { fetchImpl: down })).toBe(true);
     }
     expect(down).not.toHaveBeenCalled();
+  });
+
+  it("probes public keyless services too", async () => {
+    expect(await isKeylessProviderWorking("veoaifree-web", { fetchImpl: down })).toBe(false);
+    expect(down.mock.calls[0][0]).toBe("https://veoaifree.com");
   });
 
   it("counts local-device only when the OS voice list loads", async () => {
@@ -76,7 +91,12 @@ describe("isKeylessProviderWorking", () => {
     expect(await isKeylessProviderWorking("local-device")).toBe(false);
   });
 
-  it("caches the answer for 30 seconds", async () => {
+  it("uses the guarded fetch by default, so a metadata host is never contacted", async () => {
+    mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://169.254.169.254" });
+    expect(await isKeylessProviderWorking("firecrawl_custom")).toBe(false);
+  });
+
+  it("caches the answer per URL for 30 seconds", async () => {
     await isKeylessProviderWorking("tortoise", { fetchImpl: up, now: 1000 });
     await isKeylessProviderWorking("tortoise", { fetchImpl: up, now: 20_000 });
     expect(up).toHaveBeenCalledTimes(1);

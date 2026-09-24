@@ -94,7 +94,7 @@ async function handleFetchHandler(request) {
   }
 
   if (wantsDefaultRoute(providerInput)) {
-    const route = await resolveMediaRoute("webFetch", { settings });
+    const route = await resolveMediaRoute("webFetch", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
       body,

@@ -16,8 +16,8 @@ import { translate } from "@/i18n/runtime";
 
 const ROUTE_NOTES = {
   embedding: "Only the first available model runs. Embeddings never switch models, because vectors from different models are not comparable.",
-  video: "/v1/video/generations tries the models it can run in order. /v1/videos creates a billable job, so it uses only the first model whose provider supports async jobs.",
-  stt: "/v1/audio/translations uses only the models whose provider has a translations endpoint."
+  video: "Each video endpoint runs only the route models it supports. /v1/videos creates a billable job, so it uses only the first of them and never retries.",
+  stt: "Translations run only the route models whose provider has a translations endpoint."
 };
 
 const AUTO_PREVIEW = 5;
@@ -163,6 +163,19 @@ function RouteCard({ route, onSaved }) {
         ) : null}
 
         {ROUTE_NOTES[route.id] ? <p className="text-[12px] text-dd-muted">{translate(ROUTE_NOTES[route.id])}</p> : null}
+        {route.endpoints?.length ? (
+          <ul className="flex flex-col gap-1 text-[12px]">
+            {route.endpoints.map((e) => (
+              <li key={e.path} className="flex min-w-0 flex-wrap gap-1">
+                <code className="text-dd-text">{e.path}</code>
+                <span className="text-dd-muted">→</span>
+                {e.effective.length
+                  ? <code className="truncate text-dd-muted">{e.effective.slice(0, 3).join(", ")}{e.effective.length > 3 ? ` +${e.effective.length - 3}` : ""}</code>
+                  : <span className="text-dd-danger">{translate("no model in this route can run here")}</span>}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {error ? <p role="alert" className="text-[13px] text-dd-danger">{error}</p> : null}
 
         {custom || route.saved.length > 0 ? (

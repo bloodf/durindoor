@@ -61,7 +61,7 @@ async function handleEmbeddingsHandler(request) {
   // No model: the embeddings route's first model (embeddings never switch
   // models mid-route; account fallback below still applies).
   if (wantsDefaultRoute(modelStr)) {
-    const route = await resolveMediaRoute("embedding", { settings });
+    const route = await resolveMediaRoute("embedding", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     modelStr = route.models[0];
   }

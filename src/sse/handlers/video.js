@@ -17,12 +17,9 @@ import {
   resolveMediaRoute,
   defaultRouteComboOptions,
   listMediaRouteCandidates,
-  providerOfModelId
+  providerOfModelId,
+  supportsVideoJobs
 } from "../services/mediaRoutes.js";
-
-// veoaifree-web also carries a videoConfig, but it is the synchronous
-// /v1/video/generations provider, not an async job API.
-const supportsVideoJobs = (providerId) => !!getVideoConfig(providerId) && !supportsVideoGeneration(providerId);
 
 
 async function enforceVideoPolicy(request, provider, model, apiKey) {
@@ -53,7 +50,7 @@ async function handleVideoGenerationHandler(request) {
   );
 
   if (wantsDefaultRoute(body.model)) {
-    const route = await resolveMediaRoute("video", { settings, supports: supportsVideoGeneration });
+    const route = await resolveMediaRoute("video", { settings, supports: supportsVideoGeneration, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
       body,
@@ -141,22 +138,22 @@ async function withMultipartModel(raw, contentType, model) {
  * route's first model whose provider runs async jobs. Creation is a billable
  * upstream job, so it is never retried on a second model.
  */
-async function resolveRoutedVideoModel(settings) {
-  const route = await resolveMediaRoute("video", { settings, supports: supportsVideoJobs });
+async function resolveRoutedVideoModel(settings, apiKeyId) {
+  const route = await resolveMediaRoute("video", { settings, supports: supportsVideoJobs, apiKeyId });
   if (route.error) return { error: route.error };
   const modelInfo = await getModelInfo(route.models[0]);
   return { provider: modelInfo.provider, model: modelInfo.model };
 }
 
-async function resolveVideoProvider(requestedModel, settings) {
-  if (wantsDefaultRoute(requestedModel)) return resolveRoutedVideoModel(settings);
+async function resolveVideoProvider(requestedModel, settings, apiKeyId) {
+  if (wantsDefaultRoute(requestedModel)) return resolveRoutedVideoModel(settings, apiKeyId);
 
   const modelStr = String(requestedModel);
   // Bare model ids (no "provider/" prefix): prefix-less inference targets chat
   // providers, so match the id exactly against the connected video models
   // first. Two providers serving the same id is ambiguous.
   if (!modelStr.includes("/")) {
-    const providers = [...new Set((await listMediaRouteCandidates("video"))
+    const providers = [...new Set((await listMediaRouteCandidates("video", { apiKeyId }))
       .map((m) => m.id)
       .filter((id) => id.slice(id.indexOf("/") + 1) === modelStr)
       .map(providerOfModelId)
@@ -226,7 +223,7 @@ async function handleVideoCreateHandler(request, action) {
   if (bodyInfo.error) return bodyInfo.error;
 
   const requestedModel = bodyInfo.parsed ? bodyInfo.parsed.model : bodyInfo.formModel;
-  const resolved = await resolveVideoProvider(requestedModel, settings);
+  const resolved = await resolveVideoProvider(requestedModel, settings, apiKeyAuth.apiKeyId);
   if (resolved.error) return resolved.error;
   const { provider, model } = resolved;
 
@@ -339,7 +336,7 @@ async function handleVideoGetHandler(request, requestId) {
   // single async video provider is connected; otherwise the client must echo
   // the create response's connection header.
   if (!provider) {
-    const jobProviders = [...new Set((await listMediaRouteCandidates("video"))
+    const jobProviders = [...new Set((await listMediaRouteCandidates("video", { apiKeyId: apiKeyAuth.apiKeyId }))
       .map((m) => providerOfModelId(m.id))
       .filter(supportsVideoJobs))];
     if (jobProviders.length !== 1) {

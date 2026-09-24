@@ -5,8 +5,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getProviderConnections: vi.fn(async () => []), voices: vi.fn() }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnections: mocks.getProviderConnections }));
+const mocks = vi.hoisted(() => ({ getProviderConnections: vi.fn(async () => []), getSettings: vi.fn(async () => ({})), voices: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: mocks.getProviderConnections, getSettings: mocks.getSettings }));
 vi.mock("open-sse/handlers/ttsProviders/localDevice.js", () => ({ fetchLocalDeviceVoices: mocks.voices }));
 
 const { isKeylessProviderWorking, clearKeylessAvailabilityCache } = await import("../../src/sse/services/keylessAvailability.js");
@@ -37,6 +37,25 @@ describe("isKeylessProviderWorking", () => {
     mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://192.168.1.20:9000/x" } }]);
     await isKeylessProviderWorking("local-whisper", { fetchImpl: up });
     expect(up.mock.calls[0][0]).toBe("http://192.168.1.20:9000");
+  });
+
+  it("probes self-hosted Firecrawl where its requests go: connection, then setting, then env", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://10.0.0.5:3002" } }]);
+    await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });
+    expect(up.mock.calls[0][0]).toBe("http://10.0.0.5:3002");
+
+    clearKeylessAvailabilityCache();
+    mocks.getProviderConnections.mockResolvedValue([]);
+    mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://192.168.1.9:3002" });
+    await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });
+    expect(up.mock.calls[1][0]).toBe("http://192.168.1.9:3002");
+    mocks.getSettings.mockResolvedValue({});
+  });
+
+  it("never probes a blocked cloud-metadata host", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://169.254.169.254" } }]);
+    expect(await isKeylessProviderWorking("local-whisper", { fetchImpl: up })).toBe(false);
+    expect(up).not.toHaveBeenCalled();
   });
 
   it("counts keyless libraries and public services without probing", async () => {

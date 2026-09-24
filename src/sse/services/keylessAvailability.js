@@ -1,7 +1,8 @@
 import { AI_PROVIDERS } from "@/shared/constants/providers.js";
-import { getProviderConnections } from "@/lib/localDb";
-import { isPrivateHost } from "open-sse/utils/outboundUrlGuard.js";
+import { getProviderConnections, getSettings } from "@/lib/localDb";
+import { isPrivateHost, assertOutboundUrlAllowed } from "open-sse/utils/outboundUrlGuard.js";
 import { resolveLocalWhisperHost } from "open-sse/config/providers.js";
+import { resolveFirecrawlBaseUrl } from "open-sse/handlers/fetch/index.js";
 import { fetchLocalDeviceVoices } from "open-sse/handlers/ttsProviders/localDevice.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 
@@ -36,10 +37,15 @@ function registryServiceUrl(provider) {
   return null;
 }
 
+// The URL the provider's own request path would call, so the probe checks the
+// same server: Local Whisper and self-hosted Firecrawl read the connection
+// (and, for Firecrawl, the dashboard setting and FIRECRAWL_BASE_URL) first.
 async function serviceUrlFor(providerId, provider) {
-  if (providerId === "local-whisper") {
+  if (providerId === "local-whisper" || providerId === "firecrawl_custom") {
     const [connection] = await getProviderConnections({ provider: providerId, isActive: true }).catch(() => []);
-    return resolveLocalWhisperHost(connection || null);
+    if (providerId === "local-whisper") return resolveLocalWhisperHost(connection || null);
+    const settings = await getSettings().catch(() => ({}));
+    return resolveFirecrawlBaseUrl(providerId, { firecrawlBaseUrl: settings?.firecrawlBaseUrl || "" }, connection || null);
   }
   return registryServiceUrl(provider);
 }
@@ -47,6 +53,9 @@ async function serviceUrlFor(providerId, provider) {
 /** Any HTTP answer means the server is up; refused, DNS failure or timeout means it is not. */
 async function answers(url, fetchImpl) {
   try {
+    // Same outbound policy as the provider's own requests: a cloud-metadata or
+    // otherwise blocked host is "not working", never probed.
+    assertOutboundUrlAllowed(url);
     await fetchImpl(new URL(url).origin, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
     return true;
   } catch {
@@ -60,7 +69,12 @@ async function probe(providerId, fetchImpl) {
     return Array.isArray(voices) && voices.length > 0;
   }
   const provider = AI_PROVIDERS[providerId];
-  const url = await serviceUrlFor(providerId, provider);
+  let url;
+  try {
+    url = await serviceUrlFor(providerId, provider);
+  } catch {
+    return false; // e.g. an invalid self-hosted Firecrawl URL
+  }
   if (!url) return true;
   let hostname;
   try {

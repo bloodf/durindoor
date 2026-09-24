@@ -944,7 +944,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * Resolve a handler's explicit no-auth branch through the same provider-account
  * selector used by credentialed requests. A scoped key may use a stored
  * connection for this provider, but cannot fall back to anonymous/local
- * execution. Zero relation rows preserve the legacy direct path.
+ * execution. Zero relation rows preserve the legacy direct path, except for
+ * NO_AUTH_CONNECTION_HOST_PROVIDERS (local-whisper) with an active row, which
+ * take normal selection so the saved host is used.
  *
  * Synthetic selector credentials are normalized back to an empty object so
  * no public token or proxy metadata leaks into cores that historically ran

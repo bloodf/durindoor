@@ -22,6 +22,7 @@ import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { resolveObservabilityEnabled } from "@/lib/db/repos/requestDetailsRepo";
 import { validateModelAutoSyncSettingsPatch } from "@/lib/modelAutoSync/catalog.js";
+import { syncFirecrawlCustomHost } from "@/lib/firecrawl/firecrawlConfig.js";
 
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
@@ -358,6 +359,7 @@ export async function PATCH(request) {
       }
       throw error;
     }
+    if (Object.prototype.hasOwnProperty.call(body, "firecrawlBaseUrl")) await syncFirecrawlCustomHost(body.firecrawlBaseUrl);
     if (willChangePassword) invalidateDefaultPasswordCache();
     if (willChangePassword) resetPasswordChangeProofs();
     if (willChangePassword) {

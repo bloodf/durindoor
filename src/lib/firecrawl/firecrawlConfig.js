@@ -103,6 +103,20 @@ export async function upsertFirecrawlCustomConnection({
   return await createProviderConnection(payload);
 }
 
+/**
+ * Keep saved self-hosted Firecrawl rows on the URL set in Profile → Network.
+ * A row's own baseUrl wins over the setting at request time, so without this
+ * a changed (or cleared) setting would never reach requests that use the row.
+ * @param {string} baseUrl - the saved setting; "" clears the row's host
+ */
+export async function syncFirecrawlCustomHost(baseUrl) {
+  const rows = await getProviderConnections({ provider: "firecrawl_custom" });
+  for (const row of rows) {
+    if ((row.providerSpecificData?.baseUrl || "") === baseUrl) continue;
+    await updateProviderConnection(row.id, { providerSpecificData: { baseUrl } });
+  }
+}
+
 export async function probeDefaultFirecrawlEndpoints({ apiKey, headers } = {}) {
   const candidates = ["http://127.0.0.1:3002", "http://[::1]:3002"];
   for (const baseUrl of candidates) {

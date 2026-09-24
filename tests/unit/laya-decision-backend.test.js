@@ -102,6 +102,14 @@ describe("resolveDecisionBackend", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("skips local detection when the outbound guard blocks loopback", async () => {
+    vi.stubEnv("OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS", "false");
+    mocks.getProviderConnections.mockResolvedValue([]);
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 400 }));
+    expect(await resolveDecisionBackend({ fetchImpl })).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("never selects a Laya connection pointing at a blocked host", async () => {
     mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://169.254.169.254" } }]);
     expect(await resolveDecisionBackend({ fetchImpl: vi.fn() })).toBeNull();

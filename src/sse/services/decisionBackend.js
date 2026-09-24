@@ -84,7 +84,7 @@ function localLayaUsable(fetchImpl, now) {
  * @param {{ fetchImpl?: Function, now?: number }} [options] - injectable for tests
  * @returns {Promise<object|null>} classifyTier overrides, or null
  */
-export async function resolveDecisionBackend({ fetchImpl = (...args) => fetch(...args), now = Date.now() } = {}) {
+export async function resolveDecisionBackend({ fetchImpl = guardedFetch, now = Date.now() } = {}) {
   const [connection] = await getProviderConnections({ provider: LAYA_PROVIDER_ID, isActive: true });
   if (connection) {
     const host = resolveLayaHost(connection);
@@ -94,6 +94,14 @@ export async function resolveDecisionBackend({ fetchImpl = (...args) => fetch(..
       return null; // a blocked host (e.g. cloud metadata) never gets the user's text; Jev runs instead
     }
     return layaBackend(host, connection);
+  }
+  // Detection uses the same outbound policy as classify: when the guard blocks
+  // loopback (public-only mode), a local Laya could never be called, so it is
+  // not selected and Jev keeps running.
+  try {
+    assertOutboundUrlAllowed(LAYA_DEFAULT_HOST);
+  } catch {
+    return null;
   }
   return (await localLayaUsable(fetchImpl, now)) ? layaBackend(LAYA_DEFAULT_HOST) : null;
 }

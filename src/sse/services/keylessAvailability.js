@@ -1,5 +1,5 @@
 import { AI_PROVIDERS } from "@/shared/constants/providers.js";
-import { getProviderConnections, getSettings } from "@/lib/localDb";
+import { getSettings } from "@/lib/localDb";
 import { isPrivateHost, assertOutboundUrlAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { resolveLocalWhisperHost } from "open-sse/config/providers.js";
 import { resolveFirecrawlBaseUrl } from "open-sse/handlers/fetch/index.js";
@@ -37,15 +37,16 @@ function registryServiceUrl(provider) {
   return null;
 }
 
-// The URL the provider's own request path would call, so the probe checks the
-// same server: Local Whisper and self-hosted Firecrawl read the connection
-// (and, for Firecrawl, the dashboard setting and FIRECRAWL_BASE_URL) first.
+// The URL a default-route request actually calls, so the probe checks the same
+// server. Unrestricted keyless requests carry no saved connection
+// (buildOptionalNoAuthCredential), so Local Whisper uses its default host and
+// self-hosted Firecrawl uses the dashboard setting, then FIRECRAWL_BASE_URL,
+// then its default.
 async function serviceUrlFor(providerId, provider) {
-  if (providerId === "local-whisper" || providerId === "firecrawl_custom") {
-    const [connection] = await getProviderConnections({ provider: providerId, isActive: true }).catch(() => []);
-    if (providerId === "local-whisper") return resolveLocalWhisperHost(connection || null);
+  if (providerId === "local-whisper") return resolveLocalWhisperHost(null);
+  if (providerId === "firecrawl_custom") {
     const settings = await getSettings().catch(() => ({}));
-    return resolveFirecrawlBaseUrl(providerId, { firecrawlBaseUrl: settings?.firecrawlBaseUrl || "" }, connection || null);
+    return resolveFirecrawlBaseUrl(providerId, { firecrawlBaseUrl: settings?.firecrawlBaseUrl || "" }, null);
   }
   return registryServiceUrl(provider);
 }

@@ -33,19 +33,11 @@ describe("isKeylessProviderWorking", () => {
     expect(await isKeylessProviderWorking("coqui", { fetchImpl: down })).toBe(false);
   });
 
-  it("probes Local Whisper at the connection's host when one is saved", async () => {
-    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://192.168.1.20:9000/x" } }]);
-    await isKeylessProviderWorking("local-whisper", { fetchImpl: up });
-    expect(up.mock.calls[0][0]).toBe("http://192.168.1.20:9000");
-  });
-
-  it("probes self-hosted Firecrawl where its requests go: connection, then setting, then env", async () => {
+  it("probes the hosts a default-route request actually calls (saved connections are not used)", async () => {
     mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://10.0.0.5:3002" } }]);
-    await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });
-    expect(up.mock.calls[0][0]).toBe("http://10.0.0.5:3002");
+    await isKeylessProviderWorking("local-whisper", { fetchImpl: up });
+    expect(up.mock.calls[0][0]).toBe("http://127.0.0.1:11500");
 
-    clearKeylessAvailabilityCache();
-    mocks.getProviderConnections.mockResolvedValue([]);
     mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://192.168.1.9:3002" });
     await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });
     expect(up.mock.calls[1][0]).toBe("http://192.168.1.9:3002");
@@ -53,9 +45,10 @@ describe("isKeylessProviderWorking", () => {
   });
 
   it("never probes a blocked cloud-metadata host", async () => {
-    mocks.getProviderConnections.mockResolvedValue([{ providerSpecificData: { baseUrl: "http://169.254.169.254" } }]);
-    expect(await isKeylessProviderWorking("local-whisper", { fetchImpl: up })).toBe(false);
+    mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://169.254.169.254" });
+    expect(await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up })).toBe(false);
     expect(up).not.toHaveBeenCalled();
+    mocks.getSettings.mockResolvedValue({});
   });
 
   it("counts keyless libraries and public services without probing", async () => {

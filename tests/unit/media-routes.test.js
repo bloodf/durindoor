@@ -57,6 +57,15 @@ describe("route validation", () => {
   });
 });
 
+describe("adapter coverage", () => {
+  it("leaves out image and embedding models of providers the gateway has no adapter for", async () => {
+    mocks.buildModelsList.mockResolvedValue([model("venice/venice-sd35"), model("xai/grok-imagine-image")]);
+    expect((await describeMediaRoute("image", { settings: {} })).models).toEqual(["xai/grok-imagine-image"]);
+    mocks.buildModelsList.mockResolvedValue([model("venice/text-embedding-3-large"), model("gemini/embedding-001")]);
+    expect((await describeMediaRoute("embedding", { settings: {} })).models).toEqual(["gemini/embedding-001"]);
+  });
+});
+
 describe("scoped API keys", () => {
   it("drops providers the key has no allowed connection for, so the first video/embedding model is one it can call", async () => {
     mocks.buildModelsList.mockResolvedValue([model("xai/grok-imagine-video"), model("minimax/video-01")]);

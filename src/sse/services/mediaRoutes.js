@@ -6,6 +6,8 @@ import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js
 import { getVideoConfig } from "open-sse/handlers/videoCore.js";
 import { supportsVideoGeneration } from "open-sse/handlers/videoGenerationCore.js";
 import { supportsSttTranslation } from "open-sse/handlers/sttCore.js";
+import { getImageAdapter } from "open-sse/handlers/imageProviders/index.js";
+import { getEmbeddingAdapter } from "open-sse/handlers/embeddingProviders/index.js";
 import { isKeylessProviderWorking } from "./keylessAvailability.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 import { getApiKeyProviderConnectionIds, getProviderConnections } from "@/lib/localDb";
@@ -40,14 +42,22 @@ async function scopedProviders(apiKeyId) {
 /**
  * Models the user can route for `kind` right now, as `/v1/models/{kind}`
  * lists them (combos excluded; a route holds concrete models), minus providers
- * a scoped API key cannot call and keyless providers that are not installed and
+ * with no image/embedding adapter, providers a scoped API key cannot call, and keyless providers that are not installed and
  * working (see keylessAvailability.js).
  */
+// Some catalogs list models of a kind for providers the gateway has no adapter
+// for (e.g. Venice image and embedding rows); those can only return 400.
+const KIND_ADAPTER = Object.freeze({
+  image: (providerId) => !!getImageAdapter(providerId),
+  embedding: (providerId) => !!getEmbeddingAdapter(providerId)
+});
+
 export async function listMediaRouteCandidates(kind, { apiKeyId = null } = {}) {
   const allowed = await scopedProviders(apiKeyId);
+  const hasAdapter = KIND_ADAPTER[kind] || (() => true);
   const list = (await buildModelsList([kind], getProviderValidationGuard(), { exposeComboOnly: false }))
     .filter((m) => m?.owned_by !== "combo" && isString(m?.id) && (!m.kind || m.kind === kind))
-    .filter((m) => !allowed || allowed.has(providerOfModelId(m.id)));
+    .filter((m) => (!allowed || allowed.has(providerOfModelId(m.id))) && hasAdapter(providerOfModelId(m.id)));
   const providers = [...new Set(list.map((m) => providerOfModelId(m.id)))];
   const working = new Map(await Promise.all(providers.map(async (p) => [p, await isKeylessProviderWorking(p, { apiKeyId })])));
   return list.filter((m) => working.get(providerOfModelId(m.id)));

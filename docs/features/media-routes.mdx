@@ -28,9 +28,9 @@ DurinDoor does not ship a default model. A route can only hold models that `GET 
   - The check uses the same outbound URL guard as provider requests, so a blocked host counts as not working and is never contacted.
   - `local-device` counts only when the OS voice list loads (macOS `say` or Windows SAPI).
   - Keyless libraries with no server (edge-tts, google-tts) count as working.
-- For image and embedding routes, the provider has an image or embedding adapter in DurinDoor. A catalog that lists such models for a provider without one (Venice, for example) does not put them on the route.
   - Checks are cached per URL for 30 seconds.
 - The provider serves that kind.
+- For image and embedding routes, the provider has an image or embedding adapter in DurinDoor. A catalog that lists such models for a provider without one (Venice, for example) does not put them on the route.
 - The model itself is that kind.
 - The provider's visible-model allowlist and disabled-model list allow it.
 

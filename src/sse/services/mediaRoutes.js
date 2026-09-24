@@ -110,6 +110,7 @@ export function defaultRouteComboOptions(kind) {
     comboName: `media-route:${kind}`,
     comboStrategy: "fallback",
     autoSwitch: false,
+    checkEmptyBody: false,
     comboMembers: []
   };
 }

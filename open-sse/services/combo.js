@@ -1190,6 +1190,9 @@ export async function handleComboChat({
   comboStrategy,
   comboStickyLimit = 1,
   autoSwitch = true,
+  // Chat-only: retry once, then fall through, on a 200 whose chat payload is
+  // empty. Media routes turn it off; an empty transcript or fetch is a result.
+  checkEmptyBody = true,
   // Only the chat handler opts in. TTS, image, search and fetch bodies are not
   // a user chat turn (a TTS `input` is the utterance), so they never go to Jev.
   jevClassify = false,
@@ -1447,7 +1450,7 @@ export async function handleComboChat({
               headers: result.headers
             });
           }
-        } else if (!body?.stream && await isBodyEmpty(result)) {
+        } else if (checkEmptyBody && !body?.stream && await isBodyEmpty(result)) {
           log.warn("COMBO", `Model ${modelStr} returned 200 but empty body, retrying once`);
           const retryResult = await handleSingleModel(body, modelStr);
           if (!retryResult.ok || await isBodyEmpty(retryResult)) {

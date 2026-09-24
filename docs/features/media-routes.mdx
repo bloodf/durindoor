@@ -3,7 +3,7 @@ title: Media routes
 description: Default model and fallbacks for each media endpoint, so requests can leave out the model.
 ---
 
-A media route is the ordered list of models an endpoint uses when a request has no `model`. Leave `model` out, or send `"model": "auto"`. DurinDoor tries the route's models in order and moves to the next one on a retryable failure (429, 5xx, missing or exhausted credentials). Any other error comes back unchanged. If the request names a model or a combo, the route is not used.
+A media route is the ordered list of models an endpoint uses when a request has no `model`. Leave `model` out, or send `"model": "auto"`. DurinDoor tries the route's models in order and moves to the next one on a retryable failure (429, 5xx, missing or exhausted credentials). Any other error comes back unchanged. A 200 with an empty result (a silent audio file, a page with no text) is returned as is, not retried. If the request names a model or a combo, the route is not used.
 
 Routes exist for these endpoints:
 
@@ -24,7 +24,7 @@ DurinDoor does not ship a default model. A route can only hold models that `GET 
 
 - It comes from a provider with an active connection, or from an enabled keyless provider that is installed and working:
   - A keyless provider that calls a server counts only if the URL this request would use answers within 1.5 seconds. That covers Local Whisper, Coqui, Tortoise, SearXNG, self-hosted Firecrawl and veoaifree-web.
-  - For an unscoped request, Local Whisper uses its default host. Self-hosted Firecrawl uses the dashboard setting, then `FIRECRAWL_BASE_URL`, then its default. An API key scoped to provider accounts uses its connection's host instead.
+  - For an unscoped request, Local Whisper uses its default host. Self-hosted Firecrawl uses the dashboard setting, then `FIRECRAWL_BASE_URL`, then its default. For an API key scoped to provider accounts, the provider counts if any connection that key may use answers.
   - The check uses the same outbound URL guard as provider requests, so a blocked host counts as not working and is never contacted.
   - `local-device` counts only when the OS voice list loads (macOS `say` or Windows SAPI).
   - Keyless libraries with no server (edge-tts, google-tts) count as working.

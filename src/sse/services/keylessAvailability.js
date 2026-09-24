@@ -19,8 +19,8 @@ import { isString } from "@/shared/utils/typeChecks.js";
  * Which URL: an unrestricted request carries no saved connection
  * (buildOptionalNoAuthCredential), so Local Whisper calls its default host and
  * self-hosted Firecrawl the dashboard setting, then FIRECRAWL_BASE_URL, then its
- * default. An API key scoped to provider accounts uses the first active
- * connection it may use. Results are cached per URL for PROBE_TTL_MS.
+ * default. For an API key scoped to provider accounts, any active connection it
+ * may use counts. Results are cached per URL for PROBE_TTL_MS.
  */
 const PROBE_TTL_MS = 30_000;
 const PROBE_TIMEOUT_MS = 1500;
@@ -42,28 +42,31 @@ function registryServiceUrl(provider) {
   return null;
 }
 
-/** The connection a scoped key would use for this provider, or null when unscoped. */
-async function scopedConnection(providerId, apiKeyId) {
-  if (!apiKeyId) return { connection: null };
-  const allowedIds = await getApiKeyProviderConnectionIds(apiKeyId).catch(() => []);
-  if (allowedIds.length === 0) return { connection: null };
-  const connections = await getProviderConnections({ provider: providerId, isActive: true }).catch(() => []);
-  const connection = connections.find((c) => allowedIds.includes(c.id));
-  return connection ? { connection } : { denied: true };
-}
-
-/** The URL this request would call, `null` when the provider has none, `false` when unusable. */
-async function requestUrlFor(providerId, apiKeyId) {
-  if (!CONNECTION_HOST_PROVIDERS.has(providerId)) return registryServiceUrl(AI_PROVIDERS[providerId]);
-  const { connection, denied } = await scopedConnection(providerId, apiKeyId);
-  if (denied) return false; // the key may not use any account of this provider
-  try {
-    if (providerId === "local-whisper") return resolveLocalWhisperHost(connection);
-    const settings = await getSettings().catch(() => ({}));
-    return resolveFirecrawlBaseUrl(providerId, { firecrawlBaseUrl: settings?.firecrawlBaseUrl || "" }, connection);
-  } catch {
-    return false; // e.g. an invalid self-hosted Firecrawl URL
+/**
+ * The URLs this request could call. Unscoped: the one default URL. A key scoped
+ * to provider accounts: every active connection of this provider it may use
+ * (credential selection may skip a cooling or quota-blocked one, so any of them
+ * answering counts). An empty list means the key cannot use this provider.
+ */
+async function requestUrlsFor(providerId, apiKeyId) {
+  if (!CONNECTION_HOST_PROVIDERS.has(providerId)) {
+    const url = registryServiceUrl(AI_PROVIDERS[providerId]);
+    return url ? [url] : null;
   }
+  const settings = providerId === "firecrawl_custom" ? await getSettings().catch(() => ({})) : null;
+  const resolve = (connection) => {
+    try {
+      return providerId === "local-whisper"
+        ? resolveLocalWhisperHost(connection)
+        : resolveFirecrawlBaseUrl(providerId, { firecrawlBaseUrl: settings?.firecrawlBaseUrl || "" }, connection);
+    } catch {
+      return null; // e.g. an invalid self-hosted Firecrawl URL
+    }
+  };
+  const allowedIds = apiKeyId ? await getApiKeyProviderConnectionIds(apiKeyId).catch(() => []) : [];
+  if (allowedIds.length === 0) return [resolve(null)].filter(Boolean);
+  const connections = await getProviderConnections({ provider: providerId, isActive: true }).catch(() => []);
+  return [...new Set(connections.filter((c) => allowedIds.includes(c.id)).map(resolve).filter(Boolean))];
 }
 
 /** Any HTTP answer within the timeout means up; blocked, refused or silent means not. */
@@ -97,8 +100,8 @@ export async function isKeylessProviderWorking(providerId, { apiKeyId = null, fe
       return Array.isArray(voices) && voices.length > 0;
     });
   }
-  const url = await requestUrlFor(providerId, apiKeyId);
-  if (url === false) return false;
-  if (!url) return true;
-  return cached(url, now, () => answers(url, fetchImpl));
+  const urls = await requestUrlsFor(providerId, apiKeyId);
+  if (urls === null) return true; // no server URL (a keyless library)
+  const results = await Promise.all(urls.map((url) => cached(url, now, () => answers(url, fetchImpl))));
+  return results.some(Boolean);
 }

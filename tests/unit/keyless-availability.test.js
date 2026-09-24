@@ -58,6 +58,20 @@ describe("isKeylessProviderWorking", () => {
     expect(up.mock.calls.map((c) => c[0])).toEqual(["http://192.168.1.20:9000"]);
   });
 
+  it("counts a scoped key's provider working when any connection it may use answers", async () => {
+    mocks.getApiKeyProviderConnectionIds.mockResolvedValue(["c1", "c2"]);
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "c1", providerSpecificData: { baseUrl: "http://10.0.0.2:11500" } },
+      { id: "c2", providerSpecificData: { baseUrl: "http://10.0.0.3:11500" } }
+    ]);
+    const secondUp = vi.fn(async (url) => {
+      if (url === "http://10.0.0.3:11500") return new Response("", { status: 404 });
+      throw new TypeError("fetch failed");
+    });
+    expect(await isKeylessProviderWorking("local-whisper", { apiKeyId: "k1", fetchImpl: secondUp })).toBe(true);
+    expect(secondUp.mock.calls.map((c) => c[0]).sort()).toEqual(["http://10.0.0.2:11500", "http://10.0.0.3:11500"]);
+  });
+
   it("is not working for a scoped key with no connection of that provider", async () => {
     mocks.getApiKeyProviderConnectionIds.mockResolvedValue(["other"]);
     mocks.getProviderConnections.mockResolvedValue([{ id: "c1", providerSpecificData: {} }]);

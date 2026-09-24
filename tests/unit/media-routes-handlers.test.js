@@ -166,6 +166,19 @@ describe("media endpoints without a model", () => {
     expect(mocks.handleSttCore.mock.calls[0][0].kind).toBe("translation");
   });
 
+  it("an empty transcript is a result, not a failure to retry", async () => {
+    catalog({ stt: [entry("openai/whisper-1"), entry("groq/whisper-large-v3")] });
+    mocks.handleSttCore.mockResolvedValue(ok({ text: "" }));
+    const form = new FormData();
+    form.append("file", new File(["x"], "silence.wav", { type: "audio/wav" }));
+
+    const res = await handleStt(new Request("http://localhost/v1/audio/transcriptions", { method: "POST", body: form }));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).text).toBe("");
+    expect(mocks.handleSttCore).toHaveBeenCalledTimes(1);
+  });
+
   it("web search routes to provider search entries", async () => {
     catalog({ webSearch: [entry("tavily/search", { kind: "webSearch" })] });
     mocks.handleSearchCore.mockResolvedValue(ok({ results: [] }));

@@ -39,12 +39,13 @@ afterEach(() => {
 });
 
 describe("Laya registry entry", () => {
-  it("is a keyless-capable, decision-only provider with no chat transport", () => {
+  it("is a keyless-capable System One provider with no chat transport", () => {
     const laya = REGISTRY.find((p) => p.id === "laya");
     expect(laya.apiKeyOptionalWith).toBe("baseUrl");
-    expect(laya.serviceKinds).toEqual(["decision"]);
+    expect(laya.serviceKinds).toEqual(["systemone"]);
+    expect(laya.systemoneConfig).toMatchObject({ baseUrl: "http://127.0.0.1:8000/v1/systemone", userConfigurableHost: true });
     expect(laya.transport).toBeUndefined();
-    expect(laya.models.every((m) => m.kind === "decision")).toBe(true);
+    expect(laya.models.every((m) => m.kind === "systemone")).toBe(true);
   });
 });
 

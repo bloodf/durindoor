@@ -90,12 +90,14 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
 });
 
 describe("isNonChatModel", () => {
-  it("flags decision models and transport-less non-llm providers only", () => {
+  it("flags System One models and transport-less non-llm providers only", () => {
     expect(isNonChatModel("laya", "english")).toBe(true);
     expect(isNonChatModel("laya", "unknown-checkpoint")).toBe(true);
     expect(isNonChatModel("tavily", "search")).toBe(true);
     expect(isNonChatModel("openai", "gpt-4o")).toBe(false);
     expect(isNonChatModel("cloudflare-ai", "@cf/meta/llama-3.3-70b-instruct")).toBe(false);
+    expect(isNonChatModel("openrouter", "typesafe/jev-1.13")).toBe(true);
+    expect(isNonChatModel("openrouter", "openai/gpt-5")).toBe(false);
     expect(isNonChatModel("does-not-exist", "nope")).toBe(false);
   });
 });

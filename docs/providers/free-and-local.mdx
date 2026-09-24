@@ -68,9 +68,11 @@ Add the connection with the server URL. The API key is optional: the server URL
 stands in for it. Checking the connection calls `GET /health`, then sends an
 empty `POST /v1/systemone`. Laya answers 400 when the key is accepted and 401
 when it is wrong or missing. Any other answer means the host isn't a Laya
-server. Laya is not a chat model. It is listed with its checkpoints (`auto`,
-`english`, `multilingual`, `typed-decisions`) under the `decision` kind and never
-appears in `/v1/models`. An active connection replaces Jev as the classifier for
+server. Laya is not a chat model. Its checkpoints (`auto`, `english`,
+`multilingual`, `typed-decisions`) are System One models: call them on
+`POST /v1/systemone` with `model: "laya/english"`, or try them from **Dashboard →
+Media Providers → System One → Laya (local)**. They never appear in
+`/v1/models`, and chat requests naming a Laya model get a 400. An active connection replaces Jev as the classifier for
 `smart` combos. A keyless `laya-serve` running on the default host is picked up
 without a connection. See [Complexity-aware routing](../features/combos.mdx).
 

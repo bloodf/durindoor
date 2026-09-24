@@ -1,3 +1,4 @@
+import { isChatProvider, isSystemoneModel } from "open-sse/providers/chatCapability.js";
 import { KIMI_CODING_MODELS_URL } from "../../../open-sse/providers/shared.js";
 import "open-sse/index.js";
 
@@ -193,21 +194,12 @@ export function isImageOnlyModel(provider, model) {
 }
 
 /**
- * A registry model that can never answer a chat request: a `decision` model
- * (Laya checkpoints), or any model of a provider with no chat transport whose
- * service kinds exclude `llm`. Without this guard the executor lookup falls
- * back to the OpenAI default and would send the prompt, and the connection's
- * key, to api.openai.com.
+ * A model that can never answer a chat request: a System One decision model,
+ * or any model of a provider with no chat transport and no `llm` service kind
+ * (see open-sse/providers/chatCapability.js).
  */
 export function isNonChatModel(provider, model) {
-  const entry = REGISTRY.find(
-    (e) => e.id === provider || e.alias === provider || e.aliases?.includes(provider)
-  );
-  if (!entry) return false;
-  const m = entry.models?.find((x) => x.id === model);
-  if ((m?.kind ?? m?.type) === "decision") return true;
-  const kinds = Array.isArray(entry.serviceKinds) ? entry.serviceKinds : ["llm"];
-  return !entry.transport && !kinds.includes("llm");
+  return isSystemoneModel(provider, model) || !isChatProvider(provider);
 }
 
 // Keep quota-only combo inspection distinct from the single-model resolution

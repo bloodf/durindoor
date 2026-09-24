@@ -1520,12 +1520,11 @@ export default function ProviderDetailPage() {
 
     }
     // Combine hardcoded models with Kilo free models (deduplicated)
-    // Exclude non-llm models (embedding, tts, etc.) — they have dedicated pages under media-providers.
-    // Decision models (Laya checkpoints) have no other page, so they stay listed here.
+    // Exclude non-llm models (embedding, tts, etc.) — they have dedicated pages under media-providers
     const allModels = [
     ...models,
     ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
-    filter((m) => {const k = getModelKind(m);return !k || k === "llm" || k === "decision";});
+    filter((m) => {const k = getModelKind(m);return !k || k === "llm";});
     const disabledSet = new Set(disabledModelIds);
     const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
     const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
@@ -1560,7 +1559,7 @@ export default function ProviderDetailPage() {
             }
           }}
           testStatus={modelTestResults[model.id]}
-          onTest={getModelKind(model) !== "decision" && (connections.length > 0 || isFreeNoAuth) ? () => handleTestModel(model.id) : undefined}
+          onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
           isTesting={testingModelIds.has(model.id)}
           isCustom
           isFree={false}
@@ -1595,7 +1594,7 @@ export default function ProviderDetailPage() {
               onSetAlias={(alias) => handleSetAlias(model.id, alias, providerStorageAlias)}
               onDeleteAlias={() => handleDeleteAlias(existingAlias)}
               testStatus={modelTestResults[model.id]}
-              onTest={getModelKind(model) !== "decision" && (connections.length > 0 || isFreeNoAuth) ? () => handleTestModel(model.id) : undefined}
+              onTest={connections.length > 0 || isFreeNoAuth ? () => handleTestModel(model.id) : undefined}
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
@@ -2196,7 +2195,7 @@ export default function ProviderDetailPage() {
             const allIds = [
             ...models,
             ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
-            filter((m) => {const k = getModelKind(m);return !k || k === "llm" || k === "decision";}).map((m) => m.id);
+            filter((m) => {const k = getModelKind(m);return !k || k === "llm";}).map((m) => m.id);
             const activeIds = allIds.filter((id) => !disabledModelIds.includes(id));
             return (
               <div className="flex gap-2">

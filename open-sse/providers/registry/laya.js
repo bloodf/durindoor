@@ -11,8 +11,9 @@
  *   connection in `providerSpecificData.baseUrl` (resolved by resolveLayaHost).
  * - **Optional key.** `laya-serve` only checks a bearer token when started with
  *   `LAYA_API_KEY`; the host stands in for the key (`apiKeyOptionalWith`).
- * - **No transport / "decision" kind only**, so it never shows up as a chat,
- *   media, or combo-member model.
+ * - **System One kind, no chat transport.** Its checkpoints are served on
+ *   `POST /v1/systemone` (`model: "laya/english"`) and the System One media
+ *   page, never as chat models.
  */
 export default {
   id: "laya",
@@ -25,16 +26,22 @@ export default {
     textIcon: "LY",
     website: "https://github.com/NandhaKishorM/laya",
     notice: {
-      text: "Run `pip install \"laya[serve]\"` then `laya-serve` (default http://127.0.0.1:8000). Set the API key only if the server was started with LAYA_API_KEY. An active Laya connection replaces Jev for smart/task combo routing.",
+      text: "Run `pip install \"laya[serve]\"` then `laya-serve` (default http://127.0.0.1:8000). Set the API key only if the server was started with LAYA_API_KEY. Laya serves POST /v1/systemone (model laya/english, laya/multilingual, ...) and, while connected, replaces Jev for smart/task combo routing.",
     },
   },
   category: "apikey",
   apiKeyOptionalWith: "baseUrl",
   models: [
-    { id: "auto", name: "Laya router (picks the checkpoint)", kind: "decision", contextLength: 1024 },
-    { id: "english", name: "Laya English (ModernBERT-large)", kind: "decision", contextLength: 512 },
-    { id: "multilingual", name: "Laya Multilingual (mmBERT-base, 100+ languages)", kind: "decision", contextLength: 1024 },
-    { id: "typed-decisions", name: "Laya Typed Decisions", kind: "decision", contextLength: 1024 },
+    { id: "auto", name: "Laya router (picks the checkpoint)", kind: "systemone", contextLength: 1024 },
+    { id: "english", name: "Laya English (ModernBERT-large)", kind: "systemone", contextLength: 512 },
+    { id: "multilingual", name: "Laya Multilingual (mmBERT-base, 100+ languages)", kind: "systemone", contextLength: 1024 },
+    { id: "typed-decisions", name: "Laya Typed Decisions", kind: "systemone", contextLength: 1024 },
   ],
-  serviceKinds: ["decision"],
+  serviceKinds: ["systemone"],
+  // Default host only; the origin comes from the connection's base URL
+  // (userConfigurableHost), resolved in systemoneCore.
+  systemoneConfig: {
+    baseUrl: "http://127.0.0.1:8000/v1/systemone",
+    userConfigurableHost: true,
+  },
 };

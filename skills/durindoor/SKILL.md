@@ -25,9 +25,11 @@ curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/stt"   
 curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/embedding"   # embeddings
 curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/web"         # web search and fetch; inspect kind
 curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/rerank"      # reranking
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/video"       # video generation
+curl -H "Authorization: Bearer $DURINDOOR_KEY" "$DURINDOOR_URL/v1/models/music"       # music generation
 ```
 
-Use a returned `data[].id` as the request's `model`. Web entries identify `kind` as `webSearch` or `webFetch`. `/v1/models/web` discovers models; requests go to `POST /v1/search` or `POST /v1/web/fetch`.
+Use a returned `data[].id` as the request's `model`. Media endpoints (TTS, STT, embeddings, image, video, music, web search, web fetch) also accept no `model`: the gateway then uses the default model and fallbacks set in **Dashboard → Media Routes**, and answers HTTP 400 `no_provider_for_kind` if no connected provider serves that endpoint. Web entries identify `kind` as `webSearch` or `webFetch`. `/v1/models/web` discovers models; requests go to `POST /v1/search` or `POST /v1/web/fetch`.
 
 ## Capability skills
 
@@ -38,5 +40,7 @@ Use a returned `data[].id` as the request's `model`. Web entries identify `kind`
 - Embeddings: https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-embeddings/SKILL.md
 - Web search: https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-search/SKILL.md
 - Web fetch: https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-fetch/SKILL.md
+- Video: https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-video/SKILL.md
+- Music: https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-music/SKILL.md
 
 Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

@@ -24,4 +24,17 @@ curl -X POST "$DURINDOOR_URL/v1/embeddings" \
 
 `input` accepts a string or array. Optional dimensions, encoding format, and batch limits depend on the selected model. The response uses OpenAI-compatible `data[].embedding` arrays.
 
+## Use the default route
+
+Leave out `model` and DurinDoor uses the first available model in the embeddings route (**Dashboard → Media Routes**). Embeddings never switch to a second model, because vectors from different models are not comparable. Pin `model` when you store vectors, so later calls use the same model.
+
+```bash
+curl -X POST "$DURINDOOR_URL/v1/embeddings" \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"hello"}'
+```
+
+If no connected provider serves this endpoint, the response is HTTP 400 with `error.code` set to `no_provider_for_kind`. Connect a provider, or pass `model`.
+
 Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

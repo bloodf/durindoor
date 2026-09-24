@@ -33,4 +33,18 @@ curl -X POST "$DURINDOOR_URL/v1/audio/speech" \
 
 The default response is raw audio. Use `?response_format=json` for base64 JSON when supported.
 
+## Use the default route
+
+Leave out `model` and DurinDoor uses the text-to-speech route set in **Dashboard → Media Routes**: the default model first, then its fallbacks.
+
+```bash
+curl -X POST "$DURINDOOR_URL/v1/audio/speech" \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"Hello world"}' \
+  --output speech.mp3
+```
+
+If no connected provider serves this endpoint, the response is HTTP 400 with `error.code` set to `no_provider_for_kind`. Connect a provider, or pass `model`.
+
 Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

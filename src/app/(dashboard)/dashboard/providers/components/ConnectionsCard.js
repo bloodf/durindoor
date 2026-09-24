@@ -6,6 +6,7 @@ import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/
 import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
+import HostAwareAddApiKeyModal from "../[id]/AddApiKeyModal";
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -316,6 +317,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const [proxyPools, setProxyPools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addError, setAddError] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [providerStrategy, setProviderStrategy] = useState(null);
@@ -416,10 +418,13 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   };
 
   const handleSaveApiKey = async (formData) => {
+    setAddError(null);
     try {
       const res = await fetch("/api/providers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: providerId, ...formData }) });
-      if (res.ok) {await fetch_();setShowAddModal(false);}
-    } catch (e) {console.log("save apikey error:", e);}
+      if (res.ok) {await fetch_();setShowAddModal(false);return;}
+      const data = await res.json().catch(() => ({}));
+      setAddError(data.error || `Save failed (${res.status})`);
+    } catch (e) {console.log("save apikey error:", e);setAddError("Save failed");}
   };
 
   const handleUpdateConnection = async (formData) => {
@@ -504,12 +509,25 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         }
       </Card>
 
+      {/* Laya needs a server URL and an optional key; the provider page's modal handles both. */}
+      {providerId === "laya" ?
+      <HostAwareAddApiKeyModal
+        isOpen={showAddModal}
+        provider={providerId}
+        providerName="Laya (local)"
+        proxyPools={proxyPools}
+        existingConnectionNames={connections.map((c) => c.name).filter(Boolean)}
+        error={addError}
+        onSave={handleSaveApiKey}
+        onClose={() => {setShowAddModal(false);setAddError(null);}} /> :
+
       <AddApiKeyModal
         isOpen={showAddModal}
         provider={providerId}
         proxyPools={proxyPools}
         onSave={handleSaveApiKey}
         onClose={() => setShowAddModal(false)} />
+      }
       
       <EditConnectionModal
         isOpen={showEditModal}

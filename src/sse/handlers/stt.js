@@ -12,6 +12,8 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { handleComboChat } from "open-sse/services/combo.js";
+import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
 
 // Providers requiring credentials for STT
 const CREDENTIALED_PROVIDERS = new Set(
@@ -20,7 +22,7 @@ const CREDENTIALED_PROVIDERS = new Set(
     .map(([id]) => id)
 );
 
-async function handleSttHandler(request) {
+async function handleSttHandler(request, { kind = "transcription" } = {}) {
   let formData;
   try {
     formData = await request.formData();
@@ -29,7 +31,7 @@ async function handleSttHandler(request) {
   }
 
   const modelStr = formData.get("model");
-  log.request("POST", `/v1/audio/transcriptions | ${modelStr}`);
+  log.request("POST", `/v1/audio/${kind === "translation" ? "translations" : "transcriptions"} | ${modelStr}`);
 
   const settings = await getSettings();
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
@@ -40,9 +42,25 @@ async function handleSttHandler(request) {
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
   );
 
-  if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!formData.get("file")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
+  if (wantsDefaultRoute(modelStr)) {
+    // Translations only reach providers that expose /audio/translations.
+    const supports = kind === "translation" ? supportsTranslation : null;
+    const route = await resolveMediaRoute("stt", { settings, supports, apiKeyId: apiKeyAuth.apiKeyId });
+    if (route.error) return route.error;
+    return handleComboChat({
+      body: {},
+      models: route.models,
+      handleSingleModel: (_b, m) => handleSingleModelStt(formData, m, kind, request, apiKey, apiKeyAuth.apiKeyId),
+      log,
+      ...defaultRouteComboOptions("stt")
+    });
+  }
+  return handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyAuth.apiKeyId);
+}
+
+async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyId) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -57,7 +75,7 @@ async function handleSttHandler(request) {
   // Local/no-auth execution remains unrestricted only for keys with zero
   // provider-account relations.
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId: apiKeyAuth.apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -67,7 +85,7 @@ async function handleSttHandler(request) {
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const coreOptions = { provider, model, formData, sttConfig: AI_PROVIDERS[provider]?.sttConfig };
+    const coreOptions = { provider, model, formData, kind, sttConfig: AI_PROVIDERS[provider]?.sttConfig };
     if (credentials.connectionId) coreOptions.credentials = credentials;
     const result = await handleSttCore(coreOptions);
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
@@ -80,7 +98,7 @@ async function handleSttHandler(request) {
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId: apiKeyAuth.apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
@@ -98,7 +116,7 @@ async function handleSttHandler(request) {
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleSttCore({ provider, model, formData, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
+    const result = await handleSttCore({ provider, model, formData, kind, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
 
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 

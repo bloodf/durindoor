@@ -95,6 +95,36 @@ circuit breaker; after the cooldown one request probes the service again. It fai
 unknown tier, or a confidence below 0.5 all leave the local heuristic level in
 place, and the combo dispatches exactly as it would without the classifier.
 
+### Local Laya instead of Jev
+
+[Laya](https://github.com/NandhaKishorM/laya) is an open decision engine you can
+run yourself. Its `laya-serve` command speaks the same `/v1/systemone` protocol
+as Jev. Add a connection under **Dashboard → Media Providers → System One → Laya (local)**. Enter
+the server URL (default `http://127.0.0.1:8000`; `host:port` without a scheme
+means `http://`), and add an API key only if the server was started with
+`LAYA_API_KEY`. A saved URL that is not http(s) is refused rather than replaced
+by the default host, and Jev keeps classifying. While a Laya connection is active,
+`smart` combos ask Laya instead of Jev, and `TYPESAFE_API_KEY` is not needed.
+The first active Laya connection by priority is used.
+
+If you already run `laya-serve` on the default `http://127.0.0.1:8000` without
+`LAYA_API_KEY`, DurinDoor finds it and uses it without a connection. It sends
+an empty request and checks for a 400 answer (cached for 30s). A server that
+asks for a key is not used automatically, so it can't block Jev; add a
+connection with the key instead. Order: your Laya connection, then a local
+keyless Laya, then Jev (when `TYPESAFE_API_KEY` is set), then the heuristic.
+
+Laya picks its own checkpoint (English or multilingual) per request unless the
+connection pins one in `providerSpecificData.model` (`english`, `multilingual`,
+`typed-decisions`). The same rules apply as for Jev: only current-turn user
+text is sent, and failures leave the heuristic level in place. Laya's
+calibrated `answer_confidence` is the value checked, with a 0.4 threshold (Jev
+uses 0.5). Across four tiers, chance is 0.25, and Laya's zero-shot answers on
+coding asks usually score between 0.4 and 0.55. The deadline is 8s instead of 3s because CPU
+inference is slower, and there is no spend. Each classifier host has its own
+circuit breaker, so a slow Laya doesn't pause Jev. Redirects are not followed. Routing logs and task reasons
+show `laya:<TIER>` instead of `jev:<TIER>`.
+
 ## Fallback triggers
 
 A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, and HTTP 200 with no usable output. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.

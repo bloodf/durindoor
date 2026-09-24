@@ -6,6 +6,7 @@
     "index",
     "smart-routing",
     "combos",
+    "media-routes",
     "model-auto-sync",
     "error-rules-and-egress-cooldown",
     "quota-tracking",

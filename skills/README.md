@@ -14,6 +14,8 @@ Start with the entry skill, then load the capability skill needed for the reques
 | Embeddings | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-embeddings/SKILL.md |
 | Web search | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-search/SKILL.md |
 | Web fetch | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-web-fetch/SKILL.md |
+| Video generation | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-video/SKILL.md |
+| Music generation | https://raw.githubusercontent.com/bloodf/durindoor/refs/heads/main/skills/durindoor-music/SKILL.md |
 
 ## Setup
 

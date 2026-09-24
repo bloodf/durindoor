@@ -67,6 +67,20 @@ export const SKILLS = [
     endpoint: "/v1/web/fetch",
     icon: "language",
   },
+  {
+    id: "durindoor-video",
+    name: "Video Generation",
+    description: "Async video jobs via xAI Grok Imagine, MiniMax, OrcaRouter; sync via VEO.",
+    endpoint: "/v1/videos/generations",
+    icon: "movie",
+  },
+  {
+    id: "durindoor-music",
+    name: "Music Generation",
+    description: "Songs and loops via Suno and Udio.",
+    endpoint: "/v1/music/generations",
+    icon: "music_note",
+  },
 ];
 
 export function getSkillRawUrl(id) {

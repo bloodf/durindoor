@@ -24,4 +24,17 @@ curl -X POST "$DURINDOOR_URL/v1/search" \
 
 Optional country, language, time range, domain filter, search type, and provider options depend on the discovered model. The response includes normalized `results`, usage, metrics, and errors.
 
+## Use the default route
+
+Leave out `model` and `provider`, and DurinDoor uses the web search route from **Dashboard → Media Routes**, trying the fallbacks in order.
+
+```bash
+curl -X POST "$DURINDOOR_URL/v1/search" \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"DurinDoor documentation"}'
+```
+
+If no connected provider serves this endpoint, the response is HTTP 400 with `error.code` set to `no_provider_for_kind`. Connect a provider, or pass `model`.
+
 Reference: https://github.com/bloodf/durindoor/blob/main/docs/reference/api.mdx

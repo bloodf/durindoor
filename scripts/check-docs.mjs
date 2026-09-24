@@ -43,6 +43,8 @@ export const PACKAGE_FILES = new Set([
   "skills/durindoor-tts/SKILL.md",
   "skills/durindoor-web-fetch/SKILL.md",
   "skills/durindoor-web-search/SKILL.md",
+  "skills/durindoor-video/SKILL.md",
+  "skills/durindoor-music/SKILL.md",
 ]);
 
 export const REQUIRED_ASSETS = [

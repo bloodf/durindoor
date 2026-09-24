@@ -225,6 +225,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `kiro` | kiro | free | `https://runtime.us-east-1.kiro.dev/generateAssistantResponse` |
 | `lambda-ai` |  | apikey | `https://api.lambda.ai/v1/chat/completions` |
 | `laozhang` |  | apikey | `https://api.laozhang.ai/v1/chat/completions` |
+| `laya` |  | apikey | `` |
 | `lemonade` | openai | apikey | `http://localhost:13305/api/v1` |
 | `leonardo` |  | apikey | `` |
 | `linkup` |  | apikey | `` |

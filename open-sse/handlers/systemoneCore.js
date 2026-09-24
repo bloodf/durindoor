@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
+import { resolveLayaHost } from "../config/laya.js";
 import { createErrorResult, parseUpstreamError } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { assertOutboundUrlAllowed, guardedProbeFetch } from "../utils/outboundUrlGuard.js";
 import { isObject } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
@@ -48,6 +50,25 @@ export async function handleSystemoneCore({
   }
 
   // noAuth free lanes carry an accessToken stub; paid lanes carry apiKey.
+  // A self-hosted engine (Laya) keeps its origin on the connection; only the
+  // origin is taken, the path stays the registry's, and the host goes through
+  // the outbound guard (including the resolved-address check).
+  let baseUrl = cfg.baseUrl;
+  let send = proxyAwareFetch;
+  if (cfg.userConfigurableHost) {
+    try {
+      // Laya is the one provider with a user-set host; resolveLayaHost refuses
+      // (null) anything that is not an http(s) origin.
+      const origin = resolveLayaHost(credentials);
+      if (!origin) throw new Error(`Invalid ${provider} server URL`);
+      baseUrl = `${origin}${new URL(cfg.baseUrl).pathname}`;
+      assertOutboundUrlAllowed(baseUrl);
+    } catch (err) {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, err?.message || `Invalid ${provider} server URL`);
+    }
+    send = (url, init) => guardedProbeFetch(url, init);
+  }
+
   const key = credentials?.apiKey || credentials?.accessToken;
   const headers = { "Content-Type": "application/json" };
   if (key) headers.Authorization = `Bearer ${key}`;
@@ -56,11 +77,11 @@ export async function handleSystemoneCore({
   headers["x-opencode-session"] = generateOpencodeSessionId();
   const requestBody = { ...body, model };
 
-  log?.debug?.("SYSTEMONE", `${provider} | ${model} | ${cfg.baseUrl}`);
+  log?.debug?.("SYSTEMONE", `${provider} | ${model} | ${baseUrl}`);
 
   let res;
   try {
-    res = await proxyAwareFetch(cfg.baseUrl, {
+    res = await send(baseUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody)

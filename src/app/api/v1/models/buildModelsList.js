@@ -382,7 +382,8 @@ const MODEL_TYPE_TO_KIND = {
   stt: "stt",
   imageToText: "imageToText",
   rerank: "rerank",
-  video: "video"
+  video: "video",
+  music: "music"
 };
 
 function modelKind(model) {

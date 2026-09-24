@@ -74,6 +74,11 @@ export const NAV_GROUPS = [
           { label: "Web Fetch & Search", href: "/dashboard/media-providers/web" },
         ],
       },
+      {
+        label: "Media Routes",
+        icon: "alt_route",
+        href: "/dashboard/media-routes",
+      },
     ],
   },
   {

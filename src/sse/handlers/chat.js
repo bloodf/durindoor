@@ -192,6 +192,24 @@ export function isImageOnlyModel(provider, model) {
   return (m?.kind ?? m?.type) === "image";
 }
 
+/**
+ * A registry model that can never answer a chat request: a `decision` model
+ * (Laya checkpoints), or any model of a provider with no chat transport whose
+ * service kinds exclude `llm`. Without this guard the executor lookup falls
+ * back to the OpenAI default and would send the prompt, and the connection's
+ * key, to api.openai.com.
+ */
+export function isNonChatModel(provider, model) {
+  const entry = REGISTRY.find(
+    (e) => e.id === provider || e.alias === provider || e.aliases?.includes(provider)
+  );
+  if (!entry) return false;
+  const m = entry.models?.find((x) => x.id === model);
+  if ((m?.kind ?? m?.type) === "decision") return true;
+  const kinds = Array.isArray(entry.serviceKinds) ? entry.serviceKinds : ["llm"];
+  return !entry.transport && !kinds.includes("llm");
+}
+
 // Keep quota-only combo inspection distinct from the single-model resolution
 // call below. This helper is invoked only after the shared API-key guard has
 // authenticated the request, and the alias makes that security ordering
@@ -877,6 +895,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     return errorResponse(
       HTTP_STATUS.BAD_REQUEST,
       `Model '${provider}/${model}' is an image-generation model and cannot be used on /v1/chat/completions. Use POST /v1/images/generations instead.`
+    );
+  }
+
+  if (isNonChatModel(provider, model)) {
+    log.warn("CHAT", `Rejecting non-chat model on chat endpoint: ${provider}/${model}`);
+    return errorResponse(
+      HTTP_STATUS.BAD_REQUEST,
+      `Model '${provider}/${model}' is not a chat model and cannot be used on the chat endpoints.`
     );
   }
 

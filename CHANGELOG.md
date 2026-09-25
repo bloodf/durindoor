@@ -1,3 +1,38 @@
+# 4.9.1
+
+## Fixes
+
+- fix(ci): count every upstream number in combined port subjects (#998)
+- fix(firecrawl): send the saved self-hosted connection's key and headers on every request (#997)
+
+## Upstream ports
+
+- port(omniroute): fix provider error and quota edge cases (#1004)
+- port(omniroute): keep Claude URL images, Responses tool-output images, v1beta inlineData; strip ~ schema keys (#1003)
+- port(omniroute): grok-cli Grok Build reasoning, web_search, schema, namespace fixes (#1002)
+- port(omniroute): carry upstream status and retry hint in post-keepalive error frames (#1000)
+- port(omniroute): full Anthropic model page and Responses empty-input fix (#999)
+- port(upstream): #4294 - stop killing processes that are not ours (#1011)
+- port(upstream): #4278 - preserve Pi model settings and resolve missing limits (#1010)
+- port(upstream): #4280 - persist provider account reorder atomically (#1014)
+- port(upstream): #4330 - build the OAuth redirect_uri from the public base URL (#1013)
+- port(upstream): #4305 - clear Codex model locks after a reset credit is redeemed (#1012)
+- port(upstream): #4048 - GPT-5.6 Codex/Kiro cannot disable thinking (#1009)
+- port(upstream): #4323 - handle Claude container_upload content blocks (#1008)
+- port(upstream): #4274 - disambiguate colliding tool call ids in openai to gemini (#1007)
+- port(upstream): #4318 - refuse direct requests for models disabled in the dashboard (#1016)
+- port(upstream): #4332 - record mid-stream stream failures as errors (#1015)
+- port(upstream): #4286 - ignore published example JWT_SECRET values and fail closed (#1006)
+- port(upstream): #4289 - treat documented example INITIAL_PASSWORD values like the default password (#1005)
+- port(omniroute): create DATA_DIR 0700 and repair perms on existing installs (#1001)
+
+## Maintenance
+
+- chore(claude): present as Claude Code 2.1.282 (#1019)
+- ci(website): build the website and Vercel previews only for docs and website changes (#1018)
+- test(media): keep media route handler tests off the network (#1017)
+
+
 # 4.9.0
 
 ## Features

@@ -15,8 +15,8 @@ Tables list the code default when the variable is unset, what it does, and the p
 
 | Variable | Default | Purpose | Read in |
 | --- | --- | --- | --- |
-| `JWT_SECRET` | none | Signs dashboard session tokens. Env wins. Legacy `DATA_DIR/jwt-secret` is accepted with a warning. Missing both throws. | `src/lib/auth/dashboardSession.js` |
-| `INITIAL_PASSWORD` | `123456` | Dashboard password when none is stored. Remote login with the built-in default is refused. | `src/lib/auth/dashboardSession.js` |
+| `JWT_SECRET` | none | Signs dashboard session tokens. Env wins. Legacy `DATA_DIR/jwt-secret` is accepted with a warning. Missing both throws. Documented example values such as `replace-me` are ignored and count as unset. | `src/lib/auth/dashboardSession.js` |
+| `INITIAL_PASSWORD` | `123456` | Dashboard password when none is stored. Remote login with the built-in default, or with a documented example such as `change-me` or `replace-me`, is refused. | `src/lib/auth/dashboardSession.js` |
 | `API_KEY_SECRET` | minted at `DATA_DIR/api-key-secret` when `DATA_DIR` is set | Secret that signs API key checksums. Set it when minted keys must survive recreate. | `src/shared/utils/apiKey.js` |
 | `MACHINE_ID_SALT` | `endpoint-proxy-salt` | Salt for the machine id embedded in generated API keys. | `src/shared/utils/machineId.js` |
 | `AUTH_COOKIE_SECURE` | `false` | `true` forces secure dashboard cookies. Otherwise https on `BASE_URL` / `NEXT_PUBLIC_BASE_URL` or the request URL decides. | `src/lib/auth/dashboardSession.js` |
@@ -35,7 +35,7 @@ Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9ro
 | `NODE_ENV` | unset (treated as not `production` / not `development` unless set) | `production` for production starts. Gates shutdown, intercept-path overrides, and similar. | `src/app/api/shutdown/route.js` |
 | `NINEROUTER_MAX_OLD_SPACE_SIZE` | `6144` MB | CLI child heap cap. Positive integer MB, or `0` to leave sizing to Node. An existing `--max-old-space-size` in `NODE_OPTIONS` suppresses the default. | `cli/hooks/nodeFlags.js` |
 | `BASE_URL` | unset | Server-side origin for callbacks, secure-cookie inference, and the sidecar manifest URL. | `src/lib/auth/dashboardSession.js` |
-| `NEXT_PUBLIC_BASE_URL` | unset | Browser-visible origin. Same fallback chain as `BASE_URL` for cookies and the manifest. | `src/lib/auth/requestOrigin.js` |
+| `NEXT_PUBLIC_BASE_URL` | unset | Browser-visible origin. Same fallback chain as `BASE_URL` for cookies and the manifest. Also the OAuth `redirect_uri` for a non-loopback install, so the consent flow lands on the public origin instead of `window.location.origin` behind a proxy that rewrites `Host`. | `src/lib/auth/requestOrigin.js`, `src/lib/oauth/redirectUri.js` |
 | `CLOUD_URL` | unset | Optional server-side origin for a separately configured remote endpoint. No hosted default. | `src/lib/db/repos/settingsRepo.js` |
 | `NEXT_PUBLIC_CLOUD_URL` | unset | Browser-visible remote endpoint used by selected CLI-tool helpers. | `src/lib/db/repos/settingsRepo.js` |
 | `TRUST_PROXY` | unset (`false`) | `true` plus the custom-server peer token lets login rate limiting read `X-Forwarded-For`. | `src/lib/auth/loginLimiter.js` |

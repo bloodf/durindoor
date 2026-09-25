@@ -12,9 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const SECRET_FILE_BASENAME = "jwt-secret";
 
-/** Fingerprint of the fail-closed resolution contract (env → legacy file → throw). */
+/** Fingerprint of the fail-closed resolution contract (env unless placeholder → legacy file → throw). */
 const LOAD_JWT_SECRET_CONTRACT_SHA256 =
-  "c7a8a24804ef4342ff52ee14fbf00ac89146abc9e95959151c33828d792462e8";
+  "db95984476896a119b827dd48b1c98b36360debe474cb0c3aa6fbb6b3d1d4075";
 
 function resetEnv() {
   delete process.env.JWT_SECRET;
@@ -54,6 +54,7 @@ describe("dashboardSession JWT secret resolution (GHSA-jphh)", () => {
     const { loadJwtSecret, JWT_SECRET_FILE_BASENAME } = await loadModuleFresh(tempDir);
     const contract = [
       "1:env JWT_SECRET non-empty string wins",
+      "1b:published placeholder JWT_SECRET ignored with warn, treated as unset",
       "2:legacy DATA_DIR/" + JWT_SECRET_FILE_BASENAME + " reused with warn",
       "3:neither → throw; never mkdir/write/randomBytes mint",
       loadJwtSecret.toString(),

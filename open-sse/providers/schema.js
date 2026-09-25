@@ -33,6 +33,8 @@ export const INLINE_THINKING_FORMATS = Object.freeze({
  * @property {Object}  [thinkingConfig] Reasoning UI: {options:[...],defaultMode}.
  * @property {boolean} [passthroughModels] Forward client model id untouched.
  * @property {boolean} [passthroughConnectionWideErrors] Treat 5xx / network errors as account-wide for passthrough providers that share one connection (currently only NVIDIA NIM).
+ * @property {string}  [naiveResetTimezone] UTC offset (e.g. "+08:00") a 429 body's naive, offset-less
+ *   reset timestamp is actually stamped in; error.js absoluteResetFromText() defaults to "Z" otherwise.
  *
  * TransportConfig: { baseUrl, format, headers, auth, forceStream, urlSuffix, quirks, retry, timeoutMs,
  *   executor, clientId, clientSecret, tokenUrl, refreshUrl, usage, cliVersion, apiClient, regions,

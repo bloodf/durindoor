@@ -39,6 +39,20 @@ function buildAuggieArgs(model) {
   return ["--print", "--quiet", "--model", model, "--"];
 }
 
+// Node's CVE-2024-27980 fix makes spawn() on a .cmd/.bat shim throw
+// synchronously with `spawn EINVAL` on Windows unless shell:true is set.
+// resolveAuggieBin() falls back to "auggie.cmd" on win32, so every spawn call
+// site needs this, not just the request-time ones.
+export function buildAuggieSpawnOptions(stdio) {
+  const isWin = process.platform === "win32";
+  return {
+    env: process.env,
+    stdio,
+    shell: isWin,
+    windowsHide: true
+  };
+}
+
 export function resolveAuggieBin() {
   const envBin = (process.env.AUGGIE_BIN || process.env.CLI_AUGGIE_BIN || "").trim();
   if (envBin) return envBin;
@@ -102,7 +116,7 @@ export function checkAuggieCliVersion(timeoutMs = 5000) {
 
     let child;
     try {
-      child = spawn(bin, ["--version"], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+      child = spawn(bin, ["--version"], buildAuggieSpawnOptions(["ignore", "pipe", "pipe"]));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       settle({ ok: false, error: isEnoentLike(message) ? cliNotFoundMessage(bin) : sanitizeErrorMessage(message) });
@@ -180,10 +194,7 @@ export class AuggieExecutor extends BaseExecutor {
   }
 
   spawnAuggie(auggieBin, model, promptText) {
-    const child = spawn(auggieBin, buildAuggieArgs(model), {
-      env: process.env,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
+    const child = spawn(auggieBin, buildAuggieArgs(model), buildAuggieSpawnOptions(["pipe", "pipe", "pipe"]));
     child.stdin.on("error", () => {});
     try {
       child.stdin.write(promptText);
@@ -255,10 +266,7 @@ export class AuggieExecutor extends BaseExecutor {
         };
 
         try {
-          child = spawn(auggieBin, buildAuggieArgs(model), {
-            env: process.env,
-            stdio: ["pipe", "pipe", "pipe"]
-          });
+          child = spawn(auggieBin, buildAuggieArgs(model), buildAuggieSpawnOptions(["pipe", "pipe", "pipe"]));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           emitError(isEnoentLike(message) ? cliNotFoundMessage(auggieBin) : message);

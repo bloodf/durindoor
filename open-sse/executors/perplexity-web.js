@@ -29,6 +29,16 @@ const THINKING_MAP = {
 };
 
 const CITATION_RE = /\[\d+\]/g;
+// Citation cleanup used to run over the whole answer, so subscript indexing
+// spelled exactly like a citation marker (`arr[0]`) got stripped from code
+// output — including inside <tool> call arguments, corrupting generated code
+// on disk, not just the rendered prose (OmniRoute #14122). CODE_SPAN_RE marks
+// the regions stripCitations() must leave untouched. Alternation order is
+// load-bearing: closed fenced/tool blocks first, then their unterminated
+// tails (so a stream cut mid-answer still protects the partial block), and
+// the inline span last (so a fence's own closing backticks are never read as
+// an empty inline span).
+const CODE_SPAN_RE = /```[\s\S]*?```|<tool>[\s\S]*?<\/tool>|```[\s\S]*$|<tool>[\s\S]*$|`[^`\n]+`/g;
 const GROK_TAG_RE = /<grok:[^>]*>.*?<\/grok:[^>]*>/gs;
 const GROK_SELF_RE = /<grok:[^>]*\/>/g;
 const XML_DECL_RE = /<[?]xml[^?]*[?]>/g;
@@ -79,10 +89,25 @@ function sessionStore(history, currentMsg, responseText, backendUuid) {
   }
 }
 
+// Strip citation markers everywhere except fenced code blocks, <tool>
+// payloads, and inline code spans, so array subscripts inside code survive.
+function stripCitations(text) {
+  if (!isString(text) || !text) return text;
+  let result = "";
+  let lastIndex = 0;
+  for (const match of text.matchAll(CODE_SPAN_RE)) {
+    result += text.slice(lastIndex, match.index).replace(CITATION_RE, "");
+    result += match[0];
+    lastIndex = match.index + match[0].length;
+  }
+  result += text.slice(lastIndex).replace(CITATION_RE, "");
+  return result;
+}
+
 function cleanResponse(text, strip = true) {
   let t = text;
   t = t.replace(XML_DECL_RE, "");
-  t = t.replace(CITATION_RE, "");
+  t = stripCitations(t);
   t = t.replace(GROK_TAG_RE, "");
   t = t.replace(GROK_SELF_RE, "");
   t = t.replace(RESPONSE_TAG_RE, "");
@@ -658,6 +683,6 @@ export class PerplexityWebExecutor extends BaseExecutor {
   }
 }
 
-export { MAX_WORKFLOW_ANSWERS, parseOpenAIMessages, buildQuery, buildPplxRequestBody, formatToolsHint, seedWorkflowAnswer, sessionKey };
+export { MAX_WORKFLOW_ANSWERS, parseOpenAIMessages, buildQuery, buildPplxRequestBody, formatToolsHint, seedWorkflowAnswer, sessionKey, cleanResponse };
 
 export default PerplexityWebExecutor;

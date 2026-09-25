@@ -6,8 +6,9 @@
 #
 # Two evidence sources, unioned:
 #
-#   1. Commit subjects  `port(upstream): #N - ...`
-#      Only the FIRST #N counts; a trailing `(#123)` is our own squash number.
+#   1. Commit subjects  `port(upstream): #N - ...` or `port(upstream): #A+#B - ...`
+#      Every number in the leading `#A+#B+...` group counts (one commit often
+#      lands several upstream PRs); a trailing `(#123)` is our own squash number.
 #
 #   2. .github/upstream-ported.json `ported[].pr`
 #      Reviewed ledger for PRs with no `port(upstream)` subject of their own:
@@ -26,7 +27,8 @@ LEDGER="$ROOT/.github/upstream-ported.json"
 
 {
   git -C "$ROOT" log --format='%s' \
-    | sed -nE 's/^port\(upstream\): #([0-9]+).*/\1/p'
+    | sed -nE 's/^port\(upstream\): (#[0-9]+(\+#[0-9]+)*).*/\1/p' \
+    | tr '+' '\n' | tr -d '#'
 
   if [ -f "$LEDGER" ]; then
     jq -r '.ported[].pr' "$LEDGER"

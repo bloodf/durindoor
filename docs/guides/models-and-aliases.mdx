@@ -58,7 +58,7 @@ If the request carries an `anthropic-version` header, the same catalog is wrappe
 
 Context windows and max output for a listed id are documented in [Model limits](../reference/model-limits.mdx).
 
-Disabled model ids are omitted. When hide-paid is on, paid provider models drop out of the list, and a combo with no remaining visible members is omitted too. Compatible nodes are allowlist-only on this public catalog. Dashboard import discovery stays on `/api/providers/[id]/models`.
+Disabled model ids are omitted, and a direct request for one (chat or any media endpoint, by id or through a model alias) is refused with HTTP 403 and `Model '<provider>/<model>' is disabled.` before any account is picked. Media default routes never pick a disabled model. When hide-paid is on, paid provider models drop out of the list, and a combo with no remaining visible members is omitted too. Compatible nodes are allowlist-only on this public catalog. Dashboard import discovery stays on `/api/providers/[id]/models`.
 
 ### Model exposure allow/deny list
 

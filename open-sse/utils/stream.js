@@ -481,10 +481,13 @@ export function createSSEStream(options = {}) {
 
   let claudeTerminalSeen = false;
   let upstreamErrorForwarded = false;
-  // Passthrough only: first in-stream error envelope, handed to
-  // onStreamComplete so a request-scoped refusal is not read as an empty
-  // stream that cools the account down (OmniRoute #14585).
-  let passthroughStreamError = null;
+  // First in-stream error envelope (OpenAI/Anthropic `error`, Responses
+  // `error` / `response.failed`), in both passthrough and translate mode. It
+  // reaches onStreamComplete as `upstreamError` so a request-scoped refusal is
+  // not read as an empty stream that cools the account down (OmniRoute #14585),
+  // and so a stream that failed after HTTP 200 is recorded as an error, not a
+  // success (upstream 9router #4332). The client bytes are not affected.
+  let streamErrorPayload = null;
   const terminalBody = providerBody || body;
   const upstreamTerminal = createUpstreamTerminalTracker({
     format: targetFormat,
@@ -667,7 +670,7 @@ export function createSSEStream(options = {}) {
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
-              passthroughStreamError ??= extractStreamErrorPayload(parsed);
+              streamErrorPayload ??= extractStreamErrorPayload(parsed);
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -985,6 +988,7 @@ export function createSSEStream(options = {}) {
         }
 
         if (upstreamErrorForwarded) continue;
+        streamErrorPayload ??= extractStreamErrorPayload(parsed);
         if (parsed.error) {
           const output = formatTranslatedStreamError(parsed.error, sourceFormat);
           reqLogger?.appendConvertedChunk?.(output);
@@ -1113,7 +1117,8 @@ export function createSSEStream(options = {}) {
           onStreamComplete({
             ...getAccumulatedCompletion(),
             ...(hadToolCalls ? { hadToolCalls: true } : null),
-            ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
+            ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
+            ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
           }, state.usage, ttftAt, providerSummary.finalize(state.usage));
         }
 
@@ -1288,7 +1293,7 @@ export function createSSEStream(options = {}) {
               ...getAccumulatedCompletion(),
               ...(hadToolCalls ? { hadToolCalls: true } : null),
               ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
-              ...(passthroughStreamError ? { upstreamError: passthroughStreamError } : null)
+              ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
             }, usage, ttftAt, providerSummary.finalize(usage));
           }
           return;
@@ -1296,6 +1301,15 @@ export function createSSEStream(options = {}) {
 
         if (upstreamErrorForwarded) {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "FAILED STREAM_ERROR" }).catch(() => {});
+          // Close the request-detail row as an error; without this call it kept
+          // the "[Streaming in progress...]" placeholder with status "success".
+          if (onStreamComplete && !onStreamCompleteFired) {
+            onStreamCompleteFired = true;
+            onStreamComplete({
+              ...getAccumulatedCompletion(),
+              upstreamError: streamErrorPayload
+            }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
+          }
           return;
         }
 
@@ -1303,6 +1317,7 @@ export function createSSEStream(options = {}) {
           const trimmedBuffer = buffer.trim();
           currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
           const parsed = parseSSELine(trimmedBuffer, targetFormat);
+          streamErrorPayload ??= extractStreamErrorPayload(parsed);
           /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
           if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
           if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
@@ -1376,7 +1391,8 @@ export function createSSEStream(options = {}) {
           onStreamComplete({
             ...getAccumulatedCompletion(),
             ...(hadToolCalls ? { hadToolCalls: true } : null),
-            ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null)
+            ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
+            ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
           }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
         }
       } catch (error) {

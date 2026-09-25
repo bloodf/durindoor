@@ -163,7 +163,10 @@ export function hasValidContent(msg) {
     block.type === CLAUDE_BLOCK.IMAGE ||
     block.type === CLAUDE_BLOCK.DOCUMENT ||
     block.type === CLAUDE_BLOCK.THINKING ||
-    block.type === CLAUDE_BLOCK.REDACTED_THINKING);
+    block.type === CLAUDE_BLOCK.REDACTED_THINKING ||
+    // decolua/9router#4323: keep container_upload alive on Claude→Claude
+    // passthrough instead of dropping the message as empty.
+    block.type === CLAUDE_BLOCK.CONTAINER_UPLOAD);
   }
   if (isString(msg.content) && msg.content.trim()) return true;
   if (Array.isArray(msg.content)) {
@@ -176,7 +179,8 @@ export function hasValidContent(msg) {
     block.type === CLAUDE_BLOCK.IMAGE ||
     block.type === CLAUDE_BLOCK.DOCUMENT ||
     block.type === CLAUDE_BLOCK.THINKING ||
-    block.type === CLAUDE_BLOCK.REDACTED_THINKING
+    block.type === CLAUDE_BLOCK.REDACTED_THINKING ||
+    block.type === CLAUDE_BLOCK.CONTAINER_UPLOAD
     );
   }
   return false;

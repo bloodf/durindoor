@@ -32,17 +32,43 @@ export const MFA_PENDING_COOKIE = "mfa_pending";
 const MFA_PENDING_MAX_AGE_SEC = 5 * 60;
 const MFA_PENDING_SCOPE = "mfa_pending";
 
+/**
+ * Example INITIAL_PASSWORD values printed in .env.example, the README, docs/
+ * and the upstream 9router docs (decolua/9router#4289). Copied verbatim they
+ * are as public as DEFAULT_PASSWORD, so they get the same treatment: no remote
+ * session until the password is changed, and never accepted as a new password.
+ * Compared case-insensitively after trimming.
+ * tests/unit/auth-placeholder-initial-password.test.js fails if a doc adds a
+ * literal example that is missing here.
+ */
+const PLACEHOLDER_INITIAL_PASSWORDS = new Set([
+  "change-me",
+  "changeme",
+  "change_me_strong_password",
+  "replace-me",
+  "your-password",
+  "your-secure-password",
+  "votre-mot-de-passe",
+  "tu-contraseña",
+]);
+
+export function isPlaceholderInitialPassword(value) {
+  return isString(value) && PLACEHOLDER_INITIAL_PASSWORDS.has(value.trim().toLowerCase());
+}
+
 export function validateDashboardPassword(password) {
   if (!isString(password) || password.length < 6) {
     return "Password must be at least 6 characters";
   }
   if (password === DEFAULT_PASSWORD) return "Password must not use the built-in default";
+  if (isPlaceholderInitialPassword(password)) return "Password must not use a documented example value";
   return null;
 }
 
 // Built-in default is "active" whenever the effective password literally
 // resolves to DEFAULT_PASSWORD — a stored hash of it, or an INITIAL_PASSWORD
-// env var set to it, or no password source configured at all.
+// env var set to it or to a documented example value, or no password source
+// configured at all.
 // The boolean result is cached for the lifetime of the process; callers MUST
 // invoke `invalidateDefaultPasswordCache()` after persisting a new password
 // hash or clearing the stored one, otherwise the public /api/auth/status
@@ -86,7 +112,8 @@ export async function isUsingDefaultPassword(settings) {
         result = await bcrypt.compare(DEFAULT_PASSWORD, settings.password);
       } else {
         const initialPassword = process.env.INITIAL_PASSWORD;
-        result = !initialPassword || initialPassword === DEFAULT_PASSWORD;
+        result = !initialPassword || initialPassword === DEFAULT_PASSWORD ||
+          isPlaceholderInitialPassword(initialPassword);
       }
       if (cacheGeneration === generation) {
         defaultPasswordCache = { key, value: result, populated: true, promise: null };
@@ -104,6 +131,32 @@ export async function isUsingDefaultPassword(settings) {
 }
 
 /**
+ * Example JWT_SECRET values printed in .env.example, the README, docs/ and the
+ * upstream 9router docs (decolua/9router#4286). Anyone can read them, so a
+ * session signed with one can be forged. Compared case-insensitively after
+ * trimming. tests/unit/auth-jwt-secret-placeholder.test.js fails if a doc adds
+ * a literal example that is missing here.
+ */
+const PLACEHOLDER_JWT_SECRETS = new Set([
+  "change-me",
+  "changeme",
+  "change_me_long_random_secret",
+  "change-me-to-a-long-random-secret",
+  "replace-me",
+  "your-secret",
+  "your-secure-secret",
+  "your-secure-secret-change-this",
+  "your-secure-secret-change-this-to-random-string",
+  "generated-secret-here",
+  "tu-secreto-seguro-cámbialo",
+  "votre-secret-sécurisé-changez-le",
+]);
+
+export function isPlaceholderJwtSecret(secret) {
+  return isString(secret) && PLACEHOLDER_JWT_SECRETS.has(secret.trim().toLowerCase());
+}
+
+/**
  * Resolve the JWT signing secret for dashboard session cookies.
  *
  * SECURITY (independent re-implementation of GHSA-jphh / 9router #3501):
@@ -111,7 +164,9 @@ export async function isUsingDefaultPassword(settings) {
  * deploy without an intentional secret and lose session integrity across hosts.
  *
  * Resolution order:
- *   1. process.env.JWT_SECRET — operator-supplied, wins in all modes.
+ *   1. process.env.JWT_SECRET — operator-supplied, wins in all modes. A
+ *      published example value (see PLACEHOLDER_JWT_SECRETS) is ignored with a
+ *      warning and treated as unset, so resolution fails closed below.
  *   2. Existing DATA_DIR/jwt-secret — legacy file from older DurinDoor /
  *      9router installs; reused with a warning so existing DATA_DIR installs
  *      are not bricked. Operators should copy the value into JWT_SECRET.
@@ -122,7 +177,11 @@ export async function isUsingDefaultPassword(settings) {
 export function loadJwtSecret() {
   const fromEnv = process.env.JWT_SECRET;
   if (isString(fromEnv) && fromEnv.length > 0) {
-    return fromEnv;
+    if (!isPlaceholderJwtSecret(fromEnv)) return fromEnv;
+    console.warn(
+      "[auth] JWT_SECRET is a published example value and is ignored. " +
+        "Set a unique random JWT_SECRET (e.g. openssl rand -hex 32).",
+    );
   }
 
   const secretPath = path.join(DATA_DIR, JWT_SECRET_FILE_BASENAME);

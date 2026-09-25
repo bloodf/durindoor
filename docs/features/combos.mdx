@@ -154,7 +154,7 @@ Groups never become dispatch units. Deleting a group does not disable its connec
 
 ## Disabled members
 
-**Dashboard → Providers → (provider) → Models** can disable a catalog id via `POST /api/models/disabled`. Matching uses the member's saved provider form and its registry/node counterpart. The stored `models` array is not mutated. Store outages fail open (members stay).
+**Dashboard → Providers → (provider) → Models** can disable a catalog id via `POST /api/models/disabled`. Matching uses the member's saved provider form and its registry/node counterpart. The stored `models` array is not mutated. Store outages fail open (members stay). The same list is enforced on direct requests: calling a disabled model directly returns HTTP 403.
 
 ## Worked example
 

@@ -393,8 +393,10 @@ export const PROVIDER_MODELS_CONFIG = {
       return Array.isArray(models) ? models.filter(isOpenRouterFreeModel) : [];
     }
   },
+  // limit=1000 matches the claude entry above: Anthropic's default page size
+  // truncates large catalogs (port of OmniRoute#14237).
   anthropic: {
-    url: "https://api.anthropic.com/v1/models",
+    url: "https://api.anthropic.com/v1/models?limit=1000",
     method: "GET",
     headers: {
       "Anthropic-Version": "2023-06-01",

@@ -10,6 +10,17 @@ function historicalToolResult(name, content) {
   return `[Historical tool result for ${name}]: ${content}`;
 }
 
+// A Claude image with a remote URL source (`{ type: "url", url }`) becomes a
+// Gemini `fileData` part, which Gemini fetches itself. inlineData is base64
+// only. Same mapping and `image/*` placeholder MIME that
+// convertOpenAIContentToParts uses for an OpenAI image_url URL. Returns null
+// for any other block.
+function urlImagePart(block) {
+  const url = block?.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "url" ? block.source.url : null;
+  if (!isString(url) || !/^https?:\/\//i.test(url)) return null;
+  return { fileData: { fileUri: url, mimeType: "image/*" } };
+}
+
 export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   const { alias: sanitize, memo: toolNameMemo } = createGeminiToolNameAliaser();
 
@@ -53,20 +64,24 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
         if (block.type === CLAUDE_BLOCK.TEXT && block.text) parts.push({ text: block.text });else
         if (block.type === CLAUDE_BLOCK.THINKING && block.thinking) parts.push({ thought: true, text: block.thinking });else
         if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") parts.push({ inlineData: { mimeType: block.source.media_type || DEFAULT_IMAGE_MIME, data: block.source.data } });else
+        if (urlImagePart(block)) parts.push(urlImagePart(block));else
         if (block.type === CLAUDE_BLOCK.TOOL_USE) {
           const signature = signatures.get(block.id);
           parts.push({ ...(signature ? { thoughtSignature: signature } : null), functionCall: { ...(stripFunctionCallId ? null : { id: block.id }), name: sanitize(block.name), args: block.input || {} } });
         } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
           let content = block.content;
-          if (Array.isArray(content)) content = content.map((entry) => entry.type === CLAUDE_BLOCK.TEXT ? entry.text : JSON.stringify(entry)).join("\n");
+          // URL images in the result follow it as fileData parts instead of
+          // being stringified into the result text.
+          const imageParts = Array.isArray(content) ? content.map(urlImagePart).filter(Boolean) : [];
+          if (Array.isArray(content)) content = content.filter((entry) => !urlImagePart(entry)).map((entry) => entry.type === CLAUDE_BLOCK.TEXT ? entry.text : JSON.stringify(entry)).join("\n");
           const name = toolUseNames[block.tool_use_id] || "unknown";
           if (!signatures.has(block.tool_use_id)) {
-            parts.push({ text: historicalToolResult(name, content) });
+            parts.push({ text: historicalToolResult(name, content) }, ...imageParts);
             continue;
           }
           let parsed = sanitizeFunctionResponseResult(tryParseJSON(content));
           if (parsed === null || !isObject(parsed)) parsed = { result: parsed === null ? content : parsed };
-          parts.push({ functionResponse: { ...(stripFunctionCallId ? null : { id: block.tool_use_id }), name, response: { result: parsed } } });
+          parts.push({ functionResponse: { ...(stripFunctionCallId ? null : { id: block.tool_use_id }), name, response: { result: parsed } } }, ...imageParts);
         }
       }
     } else if (isString(message.content) && message.content) parts.push({ text: message.content });

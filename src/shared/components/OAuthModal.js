@@ -12,6 +12,7 @@ import {
   createOAuthFlowLifecycle,
   oauthProxySelection
 } from "@/shared/utils/oauthFlowLifecycle";
+import { buildOAuthRedirectUri } from "@/lib/oauth/redirectUri";
 
 const DEVICE_CODE_PROVIDERS = new Set([
 "github",
@@ -291,11 +292,11 @@ export default function OAuthModal({
       }
 
       const appPort = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
-      const redirectUri = flow.provider === "codex" ?
-      "http://localhost:1455/auth/callback" :
-      flow.provider === "xai" ?
-      "http://127.0.0.1:56121/callback" :
-      `http://localhost:${appPort}/callback`;
+      // Loopback installs keep the loopback callback. A hosted or reverse-proxied
+      // install must redirect back to the public base URL instead, otherwise the
+      // consent flow lands on http://localhost:<port> on the user's machine
+      // (upstream #4054).
+      const redirectUri = buildOAuthRedirectUri(window.location, flow.provider);
       const response = await fetch(`/api/oauth/${flow.provider}/authorize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

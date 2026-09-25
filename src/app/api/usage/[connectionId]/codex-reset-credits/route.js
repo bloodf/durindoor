@@ -1,7 +1,7 @@
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
 
-import { getProviderConnectionById } from "@/lib/localDb";
+import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
@@ -163,6 +163,26 @@ export async function POST(request, { params }) {
           `[Codex Reset Credits] force refresh failed: ${sanitizeErrorMessage(retryError?.message || retryError)}`,
         );
       }
+    }
+
+    if (consumeResult.ok) {
+      // Upstream usage windows just reset — the local modelLock_* cooldowns
+      // predicted the old windows and would otherwise keep this connection
+      // unusable until they expire on their own or are cleared manually.
+      const latestConnection = await getProviderConnectionById(connection.id);
+      const lockUpdates = Object.fromEntries(
+        Object.keys(latestConnection || {})
+          .filter((key) => key.startsWith("modelLock_"))
+          .map((key) => [key, null]),
+      );
+      await updateProviderConnection(connection.id, {
+        ...lockUpdates,
+        testStatus: "active",
+        lastError: null,
+        errorCode: null,
+        lastErrorAt: null,
+        backoffLevel: 0,
+      });
     }
 
     return getResponseForConsumeResult(consumeResult, redeemRequestId);

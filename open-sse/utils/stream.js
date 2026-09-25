@@ -13,6 +13,7 @@ import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
+import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import {
   createMinimaxThinkingStreamState,
@@ -725,6 +726,12 @@ export function createSSEStream(options = {}) {
                 for (const choice of parsed.choices) {
                   if (choice.content_filter_results !== undefined) {
                     delete choice.content_filter_results;
+                    fieldsInjected = true;
+                  }
+                  // Claude stop_reason literals (end_turn, tool_use, ...) are not OpenAI values.
+                  const finishReason = normalizeOpenAIFinish(choice.finish_reason);
+                  if (finishReason !== choice.finish_reason) {
+                    choice.finish_reason = finishReason;
                     fieldsInjected = true;
                   }
                 }

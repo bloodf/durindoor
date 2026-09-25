@@ -76,6 +76,25 @@ function stripOrphanedToolOutputs(input) {
 const MAX_TOOL_NAME_LEN = 128;
 
 /**
+ * Split a `function_call_output.output` value into the tool message text and
+ * the images it carries. Chat Completions `tool` messages cannot hold images,
+ * so `input_image` parts become `image_url` parts for a following user message
+ * and the tool text notes they were attached there. Returns no images for a
+ * string output or one without `input_image` parts, keeping the old content.
+ */
+function splitToolOutputImages(output) {
+  if (!Array.isArray(output) || !output.some((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE)) {
+    return { content: isString(output) ? output : JSON.stringify(output), images: [] };
+  }
+  const images = output.
+  filter((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE).
+  map((c) => ({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: c.image_url || c.file_id || "", detail: c.detail || "auto" } }));
+  const text = coerceResponsesOutput(output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE));
+  const note = "[tool returned an image; see attached]";
+  return { content: text ? `${text}\n${note}` : note, images };
+}
+
+/**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
  */
 /** `{ name, namespace }` -> the expanded `{namespace}.{name}` declaration name. */
@@ -220,10 +239,19 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     currentAssistantMsg = null;
   };
 
+  // Images lifted out of tool outputs wait here until the run of tool
+  // messages ends, so a user message never splits parallel tool results.
+  let pendingToolImages = [];
+
   for (const item of inputItems) {
     // Determine item type - Droid CLI sends role-based items without 'type' field
     // Fallback: if no type but has role property, treat as message
     const itemType = item.type || (item.role ? RESPONSES_ITEM.MESSAGE : null);
+
+    if (pendingToolImages.length > 0 && itemType !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT && itemType !== RESPONSES_ITEM.REASONING) {
+      result.messages.push({ role: ROLE.USER, content: pendingToolImages });
+      pendingToolImages = [];
+    }
 
     if (itemType === RESPONSES_ITEM.MESSAGE) {
       // Convert content: input_text → text, output_text → text, input_image → image_url
@@ -323,12 +351,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         }
         pendingToolResults = [];
       }
-      // Add tool result immediately
-      result.messages.push({
-        role: ROLE.TOOL,
-        tool_call_id: item.call_id,
-        content: isString(item.output) ? item.output : JSON.stringify(item.output)
-      });
+      // Add tool result immediately; its images follow in a user message
+      const { content, images } = splitToolOutputImages(item.output);
+      result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content });
+      pendingToolImages.push(...images);
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
@@ -340,6 +366,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
 
   // Flush remaining
   flushAssistant();
+  if (pendingToolImages.length > 0) result.messages.push({ role: ROLE.USER, content: pendingToolImages });
   if (pendingToolResults.length > 0) {
     for (const tr of pendingToolResults) {
       result.messages.push(tr);
@@ -483,6 +510,30 @@ function normalizeResponsesOutputLimit(source, target) {
 }
 
 /**
+ * Port of OmniRoute#14673: GitHub Copilot (and OpenAI) /responses rejects a
+ * body carrying neither a non-empty `input` nor previous_response_id / prompt
+ * / conversation_id: `400 One of "input" or "previous_response_id" or
+ * 'prompt' or 'conversation' must be provided.` System-only turns, empty
+ * messages, and orphan-filtered tool results can all leave `input: []` with
+ * no continuity field. Inject a placeholder user item unless a continuity
+ * field already satisfies the validator.
+ * @param {Record<string, unknown>} result
+ * @returns {Record<string, unknown>}
+ */
+function ensureResponsesInputOrContinuity(result) {
+  if (!Array.isArray(result.input) || result.input.length !== 0) return result;
+  const hasContinuity =
+  isString(result.previous_response_id) && result.previous_response_id.length > 0 ||
+  isString(result.conversation_id) && result.conversation_id.length > 0 ||
+  isString(result.prompt) && result.prompt.length > 0;
+  if (hasContinuity) return result;
+  result.input = [
+  { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
+
+  return result;
+}
+
+/**
  * Convert OpenAI Chat Completions to OpenAI Responses API format.
  * Generic Responses transports preserve the caller's stream mode here so
  * non-streaming clients can receive JSON from native /responses endpoints.
@@ -493,7 +544,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.input) {
     const cleanInput = stripOrphanedToolOutputs(body.input);
     const result = cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
-    return normalizeResponsesOutputLimit(body, result);
+    return ensureResponsesInputOrContinuity(normalizeResponsesOutputLimit(body, result));
   }
 
   const result = {
@@ -629,7 +680,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   result.input = stripOrphanedToolOutputs(result.input);
 
-  return result;
+  return ensureResponsesInputOrContinuity(result);
 }
 
 // Register both directions

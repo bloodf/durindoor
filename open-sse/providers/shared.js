@@ -117,7 +117,11 @@ export function selectAnthropicBeta(model = "") {
 export const FORWARDABLE_CLIENT_BETAS = new Set([
   "thinking-binding-controls-2026-08-01",
   "thinking-display-updates-2026-08-18",
-  "dangerous-tool-use-2026-09-03"
+  // Claude Code sends this paired with dangerous-tool-use-2026-09-03 while
+  // auto mode is active; without it the upstream never sees the full
+  // auto-mode negotiation (OmniRoute #14694).
+  "dangerous-tool-use-2026-09-03",
+  "afk-mode-2026-01-31"
 ]);
 
 /**

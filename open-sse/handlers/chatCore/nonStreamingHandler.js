@@ -18,6 +18,7 @@ import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
+import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
@@ -84,6 +85,25 @@ function hasUsefulContent(response) {
   }
 
   return false;
+}
+
+// Antigravity is Google's first-party Gemini API: an empty candidate paired
+// with a normal terminal stop is a real, legitimate answer, not the
+// scraping-provider "empty 200 shell" failure hasUsefulContent() otherwise
+// guards against (OmniRoute #14243 / #14160). Retrying the same prompt on
+// another account just returns the same empty answer, so treating it as a
+// 502 only locks a healthy account out of the pool. Every other provider
+// (and antigravity itself on any non-normal finish) keeps the guard.
+const TRUSTED_EMPTY_STOP_PROVIDERS = new Set(["antigravity", "agy"]);
+
+function hasNormalTerminalStop(response) {
+  if (Array.isArray(response?.choices)) return response.choices[0]?.finish_reason === "stop";
+  if (response?.type === "message") return response.stop_reason === CLAUDE_STOP.END_TURN;
+  return false;
+}
+
+function isTrustedEmptyStop(response, provider) {
+  return TRUSTED_EMPTY_STOP_PROVIDERS.has(provider) && hasNormalTerminalStop(response);
 }
 
 // Claude Code classifier compat: detect classifier-shaped requests by the
@@ -559,7 +579,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // "content_filter" (see fromOpenAIFinish) — check the raw provider body here
     // so neither path is mistaken for a retryable empty-content gateway fault.
     const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
-    if (!isNativeClaudeRefusal && !hasUsefulContent(translatedResponse)) {
+    if (!isNativeClaudeRefusal && !hasUsefulContent(translatedResponse) && !isTrustedEmptyStop(translatedResponse, provider)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(
@@ -623,7 +643,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       if (isOpenAIChatResponse) {
         delete translatedResponse.prompt_filter_results;
         if (translatedResponse?.choices) {
-          for (const choice of translatedResponse.choices) delete choice.content_filter_results;
+          for (const choice of translatedResponse.choices) {
+            delete choice.content_filter_results;
+            // OpenAI clients only: Claude stop_reason literals are not OpenAI values.
+            if (sourceFormat === FORMATS.OPENAI) choice.finish_reason = normalizeOpenAIFinish(choice.finish_reason);
+          }
         }
       }
     }

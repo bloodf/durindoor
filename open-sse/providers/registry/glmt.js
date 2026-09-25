@@ -1,7 +1,12 @@
+import { NAIVE_RESET_TIMEZONES } from "../../config/naiveResetTimezones.js";
+
 export default {
   id: "glmt",
   priority: 145,
   alias: "glmt",
+  // 429 body prose stamps naive (offset-less) reset timestamps in
+  // Asia/Shanghai, not UTC (OmniRoute #14542) — see error.js absoluteResetFromText.
+  naiveResetTimezone: NAIVE_RESET_TIMEZONES.glmt,
   display: {
     name: "GLM T",
     icon: "code",

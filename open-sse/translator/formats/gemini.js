@@ -293,6 +293,9 @@ export function generateProjectId() {
 /**
  * Removes unsupported keywords from schema nodes while preserving every key
  * in a `properties` name-map and recursing into that map's values.
+ * Vendor keys are dropped too: `x-` extensions and `~`-prefixed Standard Schema
+ * metadata (Zod 4 / Valibot / ArkType, e.g. `~optional`), which Gemini rejects
+ * with a 400 for the whole tool list.
  */
 function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
   if (!obj || !isObject(obj)) return;
@@ -305,7 +308,7 @@ function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
   const isSchemaNode = obj.type !== undefined || obj.properties !== undefined || obj.items !== undefined;
   for (const key of Object.keys(obj)) {
     const value = obj[key];
-    if (!isPropertiesMap && (keywords.includes(key) || key.startsWith("x-") || isSchemaNode && STRAY_SCHEMA_KEYS.has(key))) {
+    if (!isPropertiesMap && (keywords.includes(key) || key.startsWith("x-") || key.startsWith("~") || isSchemaNode && STRAY_SCHEMA_KEYS.has(key))) {
       delete obj[key];
       continue;
     }

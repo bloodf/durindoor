@@ -1,9 +1,13 @@
 import { CLAUDE_API_HEADERS } from "../shared.js";
+import { NAIVE_RESET_TIMEZONES } from "../../config/naiveResetTimezones.js";
 
 export default {
   id: "glm",
   priority: 140,
   alias: "glm",
+  // 429 body prose stamps naive (offset-less) reset timestamps in
+  // Asia/Shanghai, not UTC (OmniRoute #14542) — see error.js absoluteResetFromText.
+  naiveResetTimezone: NAIVE_RESET_TIMEZONES.glm,
   display: {
     name: "GLM Coding",
     icon: "code",

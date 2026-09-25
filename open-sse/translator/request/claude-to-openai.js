@@ -185,6 +185,13 @@ function describeOmittedMedia(mediaType) {
   return `[tool result omitted image: ${label}]`;
 }
 
+// A Claude image whose source is a URL (`{ type: "url", url }`) maps straight
+// to an OpenAI image_url part; returns null for any other image source.
+function urlImagePart(block) {
+  if (block?.source?.type !== "url" || !isString(block.source.url) || !block.source.url) return null;
+  return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: block.source.url } };
+}
+
 // Convert single Claude message - returns single message or array of messages
 function convertClaudeMessage(msg) {
   // Tolerate clients that send one content block without the surrounding array.
@@ -209,6 +216,9 @@ function convertClaudeMessage(msg) {
     const parts = [];
     const toolCalls = [];
     const toolResults = [];
+    // URL images found inside tool_result blocks, sent in the user message
+    // that follows the tool messages (OpenAI tool messages can't hold images).
+    const toolResultImages = [];
     let reasoningContent = "";
     const redactedThinking = [];
 
@@ -238,6 +248,8 @@ function convertClaudeMessage(msg) {
                 url: encodeDataUri(block.source.media_type, block.source.data)
               }
             });
+          } else if (urlImagePart(block)) {
+            parts.push(urlImagePart(block));
           }
           break;
 
@@ -277,6 +289,10 @@ function convertClaudeMessage(msg) {
               } else if (c.type === CLAUDE_BLOCK.IMAGE && c.source?.type === "base64") {
                 textParts.push(describeOmittedMedia(c.source.media_type));
                 hasOmittedMedia = true;
+              } else if (c.type === CLAUDE_BLOCK.IMAGE && urlImagePart(c)) {
+                // A URL costs no tokens to forward, so it is lifted as a real image.
+                toolResultImages.push(urlImagePart(c));
+                textParts.push("[tool returned an image; see attached]");
               }
             }
             resultContent = textParts.join("\n") || (hasOmittedMedia ? "[tool result omitted media]" : JSON.stringify(block.content));
@@ -295,8 +311,9 @@ function convertClaudeMessage(msg) {
 
     // If has tool results, return array of tool messages
     if (toolResults.length > 0) {
-      if (parts.length > 0) {
-        return [...toolResults, { role: ROLE.USER, content: collapseTextParts(parts) }];
+      const followUp = [...toolResultImages, ...parts];
+      if (followUp.length > 0) {
+        return [...toolResults, { role: ROLE.USER, content: collapseTextParts(followUp) }];
       }
       return toolResults;
     }

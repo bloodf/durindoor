@@ -26,7 +26,7 @@ docker run -d \
   -p 20128:20128 \
   -v durindoor-data:/app/data \
   -e DATA_DIR=/app/data \
-  -e JWT_SECRET="your-secret" \
+  -e JWT_SECRET="$JWT_SECRET" \
   -e API_KEY_SECRET="your-secret" \
   -e INITIAL_PASSWORD="your-password" \
   ghcr.io/bloodf/durindoor:latest

@@ -259,17 +259,19 @@ function normalizeFirecrawlBaseUrl(validation) {
 export function resolveFirecrawlBaseUrl(provider, providerConfig, credentials) {
   const isCustom = provider === "firecrawl_custom";
   if (isCustom) {
+    // Profile → Network → Firecrawl URL is the dashboard control for this host,
+    // so a valid self-hosted value there wins over the host saved on the
+    // connection (auto-configure writes both). The same setting also serves
+    // hosted Firecrawl; a public URL there is not a self-hosted host and is skipped.
+    const setting = providerConfig?.firecrawlBaseUrl ? validateFirecrawlBaseUrl(providerConfig.firecrawlBaseUrl) : null;
+    if (setting?.ok) return normalizeFirecrawlBaseUrl(setting);
     const explicitCustom = credentials?.providerSpecificData?.baseUrl;
     if (explicitCustom) {
       const validated = validateFirecrawlBaseUrl(explicitCustom);
       if (validated.ok) return normalizeFirecrawlBaseUrl(validated);
       throw new Error(`Invalid self-hosted Firecrawl URL: ${validated.error}`);
     }
-    if (providerConfig?.firecrawlBaseUrl) {
-      const validated = validateFirecrawlBaseUrl(providerConfig.firecrawlBaseUrl);
-      if (validated.ok) return normalizeFirecrawlBaseUrl(validated);
-      throw new Error(`Invalid self-hosted Firecrawl URL: ${validated.error}`);
-    }
+    if (setting) throw new Error(`Invalid self-hosted Firecrawl URL: ${setting.error}`);
     const envBaseUrl = process.env.FIRECRAWL_BASE_URL;
     if (envBaseUrl && validateFirecrawlBaseUrl(envBaseUrl).ok) {
       return envBaseUrl.replace(/\/$/, "");

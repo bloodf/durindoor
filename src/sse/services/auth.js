@@ -189,11 +189,12 @@ const affinityCleanup = setInterval(() => {
 if (affinityCleanup.unref) affinityCleanup.unref();
 
 const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
-// Keyless self-hosted servers whose server URL lives only on the connection
-// row. With an active row, the handler no-auth path takes normal connection
-// selection, the same as a scoped key, so requests reach the configured host.
-// (Self-hosted Firecrawl is not listed: its host also has a dashboard setting.)
-const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper"]);
+// Keyless self-hosted servers whose connection row carries what the request
+// needs: Local Whisper's server URL, self-hosted Firecrawl's optional key and
+// headers (its host prefers the Profile setting, see resolveFirecrawlBaseUrl).
+// With an active row, the handler no-auth path takes normal connection
+// selection, the same as a scoped key, so the row's credentials are sent.
+const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper", "firecrawl_custom"]);
 
 // Canonical roster of providers eligible for the public no-auth fallback when
 // no saved connection row exists. Mimocode stays in the roster so zero-row
@@ -945,8 +946,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * selector used by credentialed requests. A scoped key may use a stored
  * connection for this provider, but cannot fall back to anonymous/local
  * execution. Zero relation rows preserve the legacy direct path, except for
- * NO_AUTH_CONNECTION_HOST_PROVIDERS (local-whisper) with an active row, which
- * take normal selection so the saved host is used.
+ * NO_AUTH_CONNECTION_HOST_PROVIDERS (local-whisper, firecrawl_custom) with an active row, which
+ * take normal selection so the saved row's credentials are used.
  *
  * Synthetic selector credentials are normalized back to an empty object so
  * no public token or proxy metadata leaks into cores that historically ran

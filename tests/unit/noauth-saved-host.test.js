@@ -32,7 +32,8 @@ vi.mock("@/lib/network/connectionProxy", () => ({
 }));
 
 /**
- * Local Whisper keeps its server URL only on the connection row, so an unrestricted handler request must use the saved row
+ * Local Whisper and self-hosted Firecrawl keep what a request needs on the
+ * connection row (server URL; Firecrawl key and headers), so an unrestricted handler request must use the saved row
  * instead of the provider's default host.
  */
 const { getNoAuthProviderCredentials } = await import("../../src/sse/services/auth.js");
@@ -72,9 +73,19 @@ describe("keyless providers with a saved server URL", () => {
     expect(await getNoAuthProviderCredentials("local-whisper")).toEqual({});
   });
 
-  it.each(["firecrawl_custom"])("leaves %s on its existing host rules (dashboard setting)", async (provider) => {
-    mocks.getProviderConnections.mockResolvedValue([{ id: "c1", provider, isActive: true, providerSpecificData: { baseUrl: "http://192.168.1.30:3002" } }]);
-    expect(await getNoAuthProviderCredentials(provider)).toEqual({});
+  it("sends a saved self-hosted Firecrawl row's key and headers for an unrestricted request", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{
+      id: "c1",
+      provider: "firecrawl_custom",
+      isActive: true,
+      apiKey: "fc-secret",
+      firecrawlHeaders: { "CF-Access-Client-Id": "abc" },
+      providerSpecificData: { baseUrl: "http://192.168.1.30:3002" }
+    }]);
+    const credentials = await getNoAuthProviderCredentials("firecrawl_custom");
+    expect(credentials.connectionId).toBe("c1");
+    expect(credentials.apiKey).toBe("fc-secret");
+    expect(credentials.firecrawlHeaders).toEqual({ "CF-Access-Client-Id": "abc" });
   });
 
   it("still ignores saved rows for other keyless providers", async () => {

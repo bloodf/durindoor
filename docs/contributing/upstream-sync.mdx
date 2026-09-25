@@ -5,7 +5,7 @@ description: Watch list for unmerged 9router and OmniRoute work, plus the dispat
 
 Unmerged upstream 9router pull requests and deliberately deferred OmniRoute/9router commits live here. Historical per-PR port ledgers are not committed.
 
-Last reviewed sync window: 2026-08-05 through 2026-08-20.
+Last reviewed sync window: 2026-09-22 through 2026-09-25 (upstream head `39e36d3d0`, v0.5.86).
 
 | Source | Reviewed head |
 | --- | --- |
@@ -16,7 +16,7 @@ Use those heads as the lower-bound anchors for the next sync review.
 
 Ported work is recorded two ways, unioned by `scripts/upstream-ported-ids.sh`:
 
-1. Commit subjects `port(upstream): #N - ...`. Only the first `#N` counts; a trailing `(#123)` is this repository's squash number.
+1. Commit subjects `port(upstream): #N - ...` or `port(upstream): #A+#B - ...`. Every number in the leading `#A+#B` group counts; a trailing `(#123)` is this repository's squash number.
 2. `.github/upstream-ported.json` `ported[].pr`, for PRs with no `port(upstream)` subject of their own.
 
 `CHANGELOG.md` is not parsed for membership.

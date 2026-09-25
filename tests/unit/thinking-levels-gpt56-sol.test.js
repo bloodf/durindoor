@@ -37,6 +37,11 @@ describe("getThinkingLevels GPT-5.6 effort matrix", () => {
     expect(levels).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"]);
   });
 
+  // #4031: GPT-5.6 Sol/Terra/Luna reject `reasoning_effort: "none"` outright
+  // on Codex/Kiro (`thinkingCanDisable: false`), so "none" is gone from every
+  // list below. Everything else this file pins — Sol/Terra carry max+ultra,
+  // Luna carries max but not ultra — is unchanged.
+
   it("does not add max/ultra for gpt-5.5", () => {
     const levels = getThinkingLevels("codex", "gpt-5.5");
     expect(levels || []).not.toContain("max");
@@ -50,7 +55,7 @@ describe("getThinkingLevels GPT-5.6 effort matrix", () => {
   it("Kiro GPT-5.6 Sol exposes only effective levels (no ultra/max)", () => {
     for (const provider of ["kiro", "kr"]) {
       expect(getThinkingLevels(provider, "gpt-5.6-sol"), provider).toEqual([
-        "none", "minimal", "low", "medium", "high", "xhigh",
+        "minimal", "low", "medium", "high", "xhigh",
       ]);
     }
   });
@@ -58,10 +63,10 @@ describe("getThinkingLevels GPT-5.6 effort matrix", () => {
   it("Kiro GPT-5.6 Terra/Luna also drop ultra and max", () => {
     for (const provider of ["kiro", "kr"]) {
       expect(getThinkingLevels(provider, "gpt-5.6-terra"), provider).toEqual([
-        "none", "minimal", "low", "medium", "high", "xhigh",
+        "minimal", "low", "medium", "high", "xhigh",
       ]);
       expect(getThinkingLevels(provider, "gpt-5.6-luna"), provider).toEqual([
-        "none", "minimal", "low", "medium", "high", "xhigh",
+        "minimal", "low", "medium", "high", "xhigh",
       ]);
     }
   });

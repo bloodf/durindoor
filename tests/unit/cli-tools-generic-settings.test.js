@@ -94,9 +94,13 @@ describe("pi-settings", () => {
     expect(cfg.providers.other).toEqual({ baseUrl: "https://x.example/v1" });
     expect(cfg.providers["9router"]).toBeUndefined();
     expect(cfg.providers.durindoor).toMatchObject({ baseUrl: "http://localhost:20128/v1", apiKey: "k", api: "openai-completions" });
+    // "a/b" and "c/d" are not registered provider/model ids, so limits fall
+    // through capability resolution to the generic capability floor
+    // (DEFAULT_CAPABILITIES.contextWindow/maxOutput) rather than a Pi-specific
+    // fixed default; an explicitly supplied maxTokens (999) still wins.
     expect(cfg.providers.durindoor.models).toEqual([
-      { id: "a/b", name: "a/b", contextWindow: 128000, maxTokens: 16384 },
-      { id: "c/d", name: "c/d", contextWindow: 128000, maxTokens: 999 },
+      { id: "a/b", name: "a/b", contextWindow: 200000, maxTokens: 64000 },
+      { id: "c/d", name: "c/d", contextWindow: 200000, maxTokens: 999 },
     ]);
 
     await route.DELETE();

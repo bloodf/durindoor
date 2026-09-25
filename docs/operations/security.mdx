@@ -11,6 +11,10 @@ Do not publish the dashboard on a public address with the built-in password `123
 
 ## Secrets
 
+### DATA_DIR permissions
+
+`DATA_DIR` (default `~/.9router`, or the configured path) is created owner-only (`0700`), and the columnCrypto master key (`DATA_DIR/master-key`) is written `0600`. Both are also repaired on next use if an older install left them group- or world-readable, so a permissive process `umask` cannot make credentials readable to other local users. Repair is best-effort and skipped on Windows, which has no POSIX mode bits.
+
 ### JWT_SECRET
 
 Signs dashboard session cookies (HS256, 24-hour `exp` and cookie `Max-Age`). Resolution order:
@@ -21,11 +25,15 @@ Signs dashboard session cookies (HS256, 24-hour `exp` and cookie `Max-Age`). Res
 
 Changing the secret invalidates every dashboard session. Generate with `openssl rand -hex 32`.
 
+A `JWT_SECRET` copied from `.env.example` or these docs (`replace-me`, `your-secret`, `CHANGE_ME_LONG_RANDOM_SECRET`, `change-me` and similar, case-insensitive) is ignored with a warning and treated as unset. Anyone who can read the docs could forge a session with it, so DurinDoor falls through to the legacy file or refuses to sign sessions.
+
 ### INITIAL_PASSWORD
 
 Used only when no password hash is stored. Default is `123456`. `validateDashboardPassword` rejects that string as a new password (minimum 6 characters, not the built-in default).
 
 Remote clients that still have the built-in password never get a session cookie. A loopback login gets a five-minute, IP-bound, one-shot proof that only `POST /api/auth/change-password` accepts. Set `INITIAL_PASSWORD` or store a hash before any remote access.
+
+An `INITIAL_PASSWORD` copied from `.env.example` or these docs counts as the default too. `change-me`, `changeme`, `replace-me`, `your-password`, `your-secure-password` and `CHANGE_ME_STRONG_PASSWORD` (case-insensitive) are public, so remote login on them returns the same 403 and the local machine gets the change-password proof. `validateDashboardPassword` also rejects them as a new password. Pick a value of your own.
 
 The login hint for the default password shows only when the effective password is still the built-in value. A stored custom hash or OIDC mode hides it.
 

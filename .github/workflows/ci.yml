@@ -49,8 +49,39 @@ jobs:
           DATA_DIR: ${{ runner.temp }}/durindoor-data
         run: npm run build
 
+  website-changes:
+    name: Website changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      website: ${{ steps.diff.outputs.website }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # Pull requests build the website only when docs/ or website/ changed
+      # (matching website/scripts/vercel-ignore-build.sh). Pushes to main always
+      # build it, which also catches dashboard code the site imports from src/.
+      - name: Detect docs/ or website/ changes
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "website=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet HEAD^1 HEAD -- docs website; then
+            echo "website=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "website=true" >> "$GITHUB_OUTPUT"
+          fi
+
   website-build:
     name: Website build
+    needs: website-changes
+    if: needs.website-changes.outputs.website == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

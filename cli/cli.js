@@ -10,6 +10,7 @@ const os = require("os");
 const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
 const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
 const { waitServerReady } = require("./src/cli/waitServerReady");
+const { collectAppPids, killAppPids, readCommand, portOccupantToKill } = require("./src/lib/processScan");
 
 // Resolve once before any worker changes cwd. Every CLI helper and the Next
 // worker inherit the same absolute path, so database, PID, CA, and auth-token
@@ -186,29 +187,15 @@ function killTunnelByPidFile() {
 function killCloudflaredByAppPort(appPort) {
   if (!appPort) return [];
   const portMatchers = [`localhost:${appPort}`, `127.0.0.1:${appPort}`];
-  const pids = [];
+  let pids = [];
   try {
-    if (process.platform === "win32") {
-      const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"cloudflared.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
-      const output = execSync(psCmd, { encoding: "utf8", windowsHide: true, timeout: 5000 });
-      const lines = output.split("\n").slice(1).filter(l => l.trim());
-      lines.forEach(line => {
-        if (portMatchers.some(m => line.includes(m))) {
-          const match = line.match(/^"(\d+)"/);
-          if (match && match[1]) pids.push(match[1]);
-        }
-      });
-    } else {
-      const output = execSync("ps -eo pid,command 2>/dev/null", { encoding: "utf8", timeout: 5000 });
-      output.split("\n").forEach(line => {
-        if (line.includes("cloudflared") && portMatchers.some(m => line.includes(m))) {
-          const parts = line.trim().split(/\s+/);
-          const pid = parts[0];
-          if (pid && !isNaN(pid)) pids.push(pid);
-        }
-      });
-    }
-  } catch { }
+    // Shares the safe scan (pid column, verified candidates, ancestors excluded)
+    // and only keeps the tunnels pointed at this app's port.
+    pids = collectAppPids().filter((pid) => {
+      const cmd = readCommand(pid) || "";
+      return cmd.includes("cloudflared") && portMatchers.some((m) => cmd.includes(m));
+    });
+  } catch {}
   return pids;
 }
 
@@ -228,81 +215,21 @@ function killAllAppProcesses(appPort) {
       // Kill cloudflared/tailscale by PID file (precise, only this app's tunnel)
       killTunnelByPidFile();
 
-      const platform = process.platform;
-      let pids = [];
-
       // Catch stale PID files: kill cloudflared bound to this app's port
-      pids.push(...killCloudflaredByAppPort(appPort));
+      try { killAppPids(killCloudflaredByAppPort(appPort)); } catch {}
 
-      if (platform === "win32") {
-        // Windows: use WMI to get full CommandLine (tasklist /V doesn't include it)
-        try {
-          const psCmd = `powershell -NonInteractive -WindowStyle Hidden -Command "Get-WmiObject Win32_Process -Filter 'Name=\\"node.exe\\"' | Select-Object ProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation"`;
-          const output = execSync(psCmd, {
-            encoding: "utf8",
-            windowsHide: true,
-            timeout: 5000
-          });
-          const lines = output.split("\n").slice(1).filter(l => l.trim());
-          lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const match = line.match(/^"(\d+)"/);
-              if (match && match[1] && match[1] !== process.pid.toString()) {
-                pids.push(match[1]);
-              }
-            }
-          });
-        } catch (e) {
-          // No processes found or error - continue
-        }
-      } else {
-        // macOS/Linux: use ps to find all matching processes
-        try {
-          const output = execSync('ps aux 2>/dev/null', {
-            encoding: 'utf8',
-            timeout: 5000
-          });
-          const lines = output.split('\n');
-
-          lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing grep/strace/editors/cursor that incidentally match "9router".
-            const cmd = line.toLowerCase();
-            const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))
-              || cmd.includes("next-server");
-            if (isAppProcess) {
-              const parts = line.trim().split(/\s+/);
-              const pid = parts[1];
-              if (pid && !isNaN(pid) && pid !== process.pid.toString()) {
-                pids.push(pid);
-              }
-            }
-          });
-        } catch (e) {
-          // No processes found or error - continue
-        }
+      // Pids come from the pid column and every candidate is verified (alive, still
+      // ours) before the kill; our own process and its ancestors are never targets.
+      // See src/lib/processScan.js for why that matters.
+      let pids = [];
+      try {
+        pids = collectAppPids();
+      } catch {
+        // No processes found or error - continue
       }
 
-      // Kill all found processes
       if (pids.length > 0) {
-        pids.forEach(pid => {
-          try {
-            if (platform === "win32") {
-              execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
-            } else {
-              execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
-            }
-          } catch (err) {
-            // Process already dead or can't kill - continue
-          }
-        });
+        killAppPids(pids);
 
         // Wait for processes to fully terminate
         setTimeout(() => resolve(), 1000);
@@ -326,7 +253,7 @@ function killProcessOnPort(port) {
   return new Promise((resolve) => {
     try {
       const platform = process.platform;
-      let pid;
+      let pid = null;
 
       if (platform === "win32") {
         try {
@@ -336,28 +263,37 @@ function killProcessOnPort(port) {
             windowsHide: true,
             timeout: 5000
           }).trim();
-          const lines = output.split('\n').filter(l => l.includes('LISTENING'));
-          if (lines.length > 0) {
-            pid = lines[0].trim().split(/\s+/).pop();
-            execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
-          }
+          const listener = output.split('\n').find(l => l.includes('LISTENING'));
+          if (listener) pid = Number(listener.trim().split(/\s+/).pop());
         } catch (e) {
           // Port is free or error
         }
       } else {
         // macOS/Linux
         try {
-          const pidOutput = execSync(`lsof -ti:${port}`, {
+          // -sTCP:LISTEN: the occupant is a *listener*. A client that merely has an
+          // established connection to this port (a supervisor's health probe, for
+          // instance) is not one — and `lsof -ti:${port}` used to hand us its pid,
+          // which we then killed.
+          const pidOutput = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, {
             encoding: 'utf8',
             stdio: ['pipe', 'pipe', 'ignore']
           }).trim();
-          if (pidOutput) {
-            pid = pidOutput.split('\n')[0];
-            execSync(`kill -9 ${pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
-          }
+          if (pidOutput) pid = Number(pidOutput.split('\n')[0]);
         } catch (e) {
           // Port is free or error
         }
+      }
+
+      const occupant = portOccupantToKill(pid);
+      if (occupant.reason === "own-process-tree") {
+        // Whoever launched us (a supervisor, a shell, a service manager) is not a
+        // stale copy of us: killing it takes down the thing keeping us running.
+        console.warn(`[port ${port}] is held by pid ${pid}, part of our own process tree — leaving it alone`);
+      } else if (occupant.pid !== null && platform === "win32") {
+        execSync(`taskkill /F /PID ${occupant.pid} 2>nul`, { stdio: 'ignore', shell: true, windowsHide: true, timeout: 3000 });
+      } else if (occupant.pid !== null) {
+        execSync(`kill -9 ${occupant.pid} 2>/dev/null`, { stdio: 'ignore', timeout: 3000 });
       }
 
       // Wait for port to be released

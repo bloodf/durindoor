@@ -4,6 +4,7 @@
  * adding non-route exports to the Next.js app route module.
  */
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
+import { encodeDataUri } from "open-sse/translator/concerns/image.js";
 
 /**
  * Convert Gemini request format to OpenAI/internal format.
@@ -142,6 +143,12 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
   filter((part) => isString(part.text)).
   map((part) => part.text).
   join("\n");
+  // Inline images, PDFs and audio become data-URL image_url parts, the same
+  // mapping gemini-to-openai.js uses. gemini-cli sends a file a tool read as
+  // inlineData next to the functionResponse, so this runs for those turns too.
+  const inlineParts = remainingParts.
+  filter((part) => part.inlineData?.data).
+  map((part) => ({ type: "image_url", image_url: { url: encodeDataUri(part.inlineData.mimeType, part.inlineData.data) } }));
   const toolCalls = remainingParts.
   filter((part) => part.functionCall).
   map((part) => {
@@ -169,6 +176,9 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
     const assistantMessage = { role: "assistant", tool_calls: toolCalls };
     if (text) assistantMessage.content = text;
     messages.push(assistantMessage);
+  } else if (inlineParts.length > 0) {
+    const textParts = text ? [{ type: "text", text }] : [];
+    messages.push({ role: content.role === "model" ? "assistant" : "user", content: [...textParts, ...inlineParts] });
   } else if (text) {
     messages.push({ role: content.role === "model" ? "assistant" : "user", content: text });
   }

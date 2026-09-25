@@ -1,6 +1,22 @@
 // Concern #6: finish_reason / stop_reason mapping.
 // One entry per direction; switch by special format, default handles common providers.
 import { OPENAI_FINISH, CLAUDE_STOP, GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../schema/finishReasons.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+
+const CLAUDE_STOP_VALUES = new Set(Object.values(CLAUDE_STOP));
+
+/**
+ * Map a Claude `stop_reason` literal that an OpenAI-shaped provider put in
+ * `finish_reason` to its OpenAI equivalent. Some OpenAI-compatible upstreams answer
+ * with `end_turn` / `tool_use` / ..., and strict OpenAI clients read a value outside
+ * their vocabulary as a provider fault and drop the turn. Every other value, including
+ * abort reasons that must not look like a clean stop, is returned unchanged.
+ */
+export function normalizeOpenAIFinish(reason) {
+  if (!isString(reason)) return reason;
+  const lower = reason.toLowerCase();
+  return CLAUDE_STOP_VALUES.has(lower) ? toOpenAIFinish(lower, "claude") : reason;
+}
 
 // upstream finish/stop reason → OpenAI finish_reason
 export function toOpenAIFinish(reason, format) {

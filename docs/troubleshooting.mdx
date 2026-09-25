@@ -112,6 +112,17 @@ Cause: a reverse proxy's read or send timeout closed the SSE socket, or the sele
 
 Fix: raise proxy timeouts, test on localhost without the proxy, or set `"stream": false` if the client allows it. [Reverse proxy and static assets](./deployment/reverse-proxy-and-static-assets.mdx).
 
+## Streaming request fails after keepalive frames
+
+Cause: on `/v1/responses` and `/v1/messages` with `"stream": true`, DurinDoor opens a 200 SSE response after about 2 s of upstream silence and sends keepalive frames. If the request then fails (rate limit, quota, model not allowed), the HTTP status can no longer change, so the error arrives as the last SSE event instead:
+
+- `/v1/responses`: `event: error` with `{"type":"error","code","message","param","sequence_number","status_code","error_type","retry_after_seconds"}`.
+- `/v1/messages`: `event: error` with `{"type":"error","error":{"type","message","status_code","retry_after_seconds"}}`, where `type` is the Anthropic error type for the status (`rate_limit_error`, `permission_error`, `overloaded_error`, ...).
+
+`retry_after_seconds` comes from the failed response's `Retry-After` header, capped at 3600, and is left out when there was none.
+
+Fix: read `status_code` and `retry_after_seconds` from that event and retry only on 429 and 5xx.
+
 ## Dashboard login loops or is refused
 
 Cause: `JWT_SECRET` changed across restarts, the browser dropped the cookie, `AUTH_COOKIE_SECURE=true` is set without HTTPS, Origin does not match, or the built-in password `123456` is still in use. Remote login on that password returns 403 `mustChangePassword` and never issues a session cookie. Five failures from one IP lock out with 429 `Retry-After`. OIDC mode returns 403 `Password login is disabled`.

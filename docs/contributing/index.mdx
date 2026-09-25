@@ -124,7 +124,7 @@ The PR body lists scope, tests, docs, and baseline impact. Reviewers check corre
 
 ## Documentation
 
-Docs in this site are MDX under `docs/`. The public build lives in `website/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `npm run check:docs`.
+Docs in this site are MDX under `docs/`. The public build lives in `website/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `npm run check:docs`. Vercel builds a pull request preview only when the change touches `docs/` or `website/` (`website/scripts/vercel-ignore-build.sh`); `main` always deploys, and the `Website build` CI job still builds the site on every pull request.
 
 Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX.md`. Run `npm run gen:registry-index` and `npm run gen:agent-index`. Those flows are on [Provider registry](./provider-registry.mdx). Translator work is on [Translators](./translators.mdx). The Vitest layout is on [Testing](./testing.mdx).
 

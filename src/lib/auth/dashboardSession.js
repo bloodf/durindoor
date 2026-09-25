@@ -104,6 +104,32 @@ export async function isUsingDefaultPassword(settings) {
 }
 
 /**
+ * Example JWT_SECRET values printed in .env.example, the README, docs/ and the
+ * upstream 9router docs (decolua/9router#4286). Anyone can read them, so a
+ * session signed with one can be forged. Compared case-insensitively after
+ * trimming. tests/unit/auth-jwt-secret-placeholder.test.js fails if a doc adds
+ * a literal example that is missing here.
+ */
+const PLACEHOLDER_JWT_SECRETS = new Set([
+  "change-me",
+  "changeme",
+  "change_me_long_random_secret",
+  "change-me-to-a-long-random-secret",
+  "replace-me",
+  "your-secret",
+  "your-secure-secret",
+  "your-secure-secret-change-this",
+  "your-secure-secret-change-this-to-random-string",
+  "generated-secret-here",
+  "tu-secreto-seguro-cámbialo",
+  "votre-secret-sécurisé-changez-le",
+]);
+
+export function isPlaceholderJwtSecret(secret) {
+  return isString(secret) && PLACEHOLDER_JWT_SECRETS.has(secret.trim().toLowerCase());
+}
+
+/**
  * Resolve the JWT signing secret for dashboard session cookies.
  *
  * SECURITY (independent re-implementation of GHSA-jphh / 9router #3501):
@@ -111,7 +137,9 @@ export async function isUsingDefaultPassword(settings) {
  * deploy without an intentional secret and lose session integrity across hosts.
  *
  * Resolution order:
- *   1. process.env.JWT_SECRET — operator-supplied, wins in all modes.
+ *   1. process.env.JWT_SECRET — operator-supplied, wins in all modes. A
+ *      published example value (see PLACEHOLDER_JWT_SECRETS) is ignored with a
+ *      warning and treated as unset, so resolution fails closed below.
  *   2. Existing DATA_DIR/jwt-secret — legacy file from older DurinDoor /
  *      9router installs; reused with a warning so existing DATA_DIR installs
  *      are not bricked. Operators should copy the value into JWT_SECRET.
@@ -122,7 +150,11 @@ export async function isUsingDefaultPassword(settings) {
 export function loadJwtSecret() {
   const fromEnv = process.env.JWT_SECRET;
   if (isString(fromEnv) && fromEnv.length > 0) {
-    return fromEnv;
+    if (!isPlaceholderJwtSecret(fromEnv)) return fromEnv;
+    console.warn(
+      "[auth] JWT_SECRET is a published example value and is ignored. " +
+        "Set a unique random JWT_SECRET (e.g. openssl rand -hex 32).",
+    );
   }
 
   const secretPath = path.join(DATA_DIR, JWT_SECRET_FILE_BASENAME);

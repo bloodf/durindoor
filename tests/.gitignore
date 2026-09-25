@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .vite/
 coverage/
 .test-results.json

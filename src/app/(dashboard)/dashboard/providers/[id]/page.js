@@ -1220,25 +1220,19 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Per-connection PUTs (one per swapped row) raced under `reorderInTx`
+  // normalization: two parallel writes each retarget only their own row, so
+  // the server's most-recently-updated tiebreak could resolve the pair in
+  // either order, and an untouched row's stale priority could collide with
+  // one of the writes. Reuse the atomic reorder endpoint that
+  // handleReorderByStatus already relies on instead of duplicating that bug.
   const handleSwapPriority = async (index1, index2) => {
-    // Optimistic update state
     const newConnections = [...connections];
     [newConnections[index1], newConnections[index2]] = [newConnections[index2], newConnections[index1]];
     setConnections(newConnections);
 
     try {
-      await Promise.all([
-      fetch(`/api/providers/${newConnections[index1].id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priority: index1 + 1 })
-      }),
-      fetch(`/api/providers/${newConnections[index2].id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priority: index2 + 1 })
-      })]
-      );
+      await persistConnectionOrder(providerId, newConnections);
     } catch (error) {
       console.log("Error swapping priority:", error);
       await fetchConnections();

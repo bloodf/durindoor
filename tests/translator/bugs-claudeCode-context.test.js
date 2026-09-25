@@ -89,4 +89,27 @@ describe("Claude Code CLI context → OpenAI", () => {
     expect(tool?.content, "placeholder names the media").toContain("image/png");
     expect(JSON.stringify(out), "base64 payload is absent from converted request").not.toContain(payload);
   });
+
+  // decolua/9router#4323: container_upload blocks were silently dropped as
+  // empty content on Claude→Claude passthrough (hasValidContent didn't know
+  // the type) and had no error path when bridged through OpenAI, which has
+  // no equivalent block.
+  it("preserves container_upload user messages on Claude→Claude passthrough", () => {
+    const out = T(FORMATS.CLAUDE, FORMATS.CLAUDE, {
+      messages: [
+        { role: "user", content: [{ type: "container_upload" }] },
+      ],
+    });
+    expect(out.messages?.[0]?.content?.[0]?.type).toBe("container_upload");
+  });
+
+  it("rejects container_upload when translating Claude→OpenAI", () => {
+    expect(() =>
+      T(FORMATS.CLAUDE, FORMATS.OPENAI, {
+        messages: [
+          { role: "user", content: [{ type: "container_upload" }] },
+        ],
+      })
+    ).toThrow("Unsupported Claude content block type for OpenAI: container_upload");
+  });
 });

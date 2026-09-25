@@ -8,6 +8,16 @@
  * file exists). Pi takes a model list, so POST accepts `models` (strings or
  * `{ id, name, contextWindow, maxTokens }`) or a single `model`.
  * A legacy `providers.9router` entry counts as configured and is replaced on apply.
+ *
+ * A dashboard save may send only ids for previously configured models, so
+ * POST merges each selected model with its existing `durindoor` entry by id
+ * before writing, keeping hand-tuned limits and metadata (name, modalities,
+ * cost, compat options, ...) instead of resetting them to the fixed
+ * `DEFAULT_CONTEXT_WINDOW` / `DEFAULT_MAX_TOKENS`. Limits still missing after
+ * the merge are resolved through the capability layer (provider/model
+ * aliases, or combo aggregation for a combo name) rather than defaulted.
+ * The selected list stays authoritative for order and removal; unrelated
+ * provider fields (`authHeader`, custom `headers`, ...) are preserved.
  */
 
 import { NextResponse } from "next/server";
@@ -19,6 +29,9 @@ import { promisify } from "util";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject, isString } from "@/shared/utils/typeChecks";
 import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { getCombos } from "@/lib/localDb";
+import { getModelInfo } from "@/sse/services/model";
+import { getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 
 const execAsync = promisify(exec);
 
@@ -62,16 +75,44 @@ const hasDurinDoorConfig = (config) => {
   return Object.values(providers).some((p) => String(p?.baseUrl ?? "").includes("20128"));
 };
 
-const toModelEntry = (m) => {
-  if (isString(m)) {
-    return { id: m, name: m, contextWindow: DEFAULT_CONTEXT_WINDOW, maxTokens: DEFAULT_MAX_TOKENS };
+const hasValidLimit = (value) => Number.isFinite(value) && value > 0;
+
+/**
+ * Resolve missing context/output limits for a model id through the same
+ * capability layer /v1/models uses: provider aliases and configured model
+ * aliases via `getModelInfo`, or combo aggregation (including nested combos)
+ * when the id names a combo rather than a `provider/model` pair.
+ */
+const resolveMissingCapabilities = async (id, comboLookupRef) => {
+  if (!id.includes("/")) {
+    comboLookupRef.current ??= Object.fromEntries((await getCombos()).map((c) => [c.name, c.models]));
+    if (comboLookupRef.current[id]) {
+      const caps = aggregateComboCapabilities(comboLookupRef.current[id], comboLookupRef.current);
+      if (caps) return caps;
+    }
   }
-  const id = m?.id || "provider/model-id";
+  const resolved = await getModelInfo(id);
+  return getCapabilitiesForModel(resolved.provider, resolved.model || id);
+};
+
+/**
+ * Merge a dashboard-selected model (an id string, or an object carrying only
+ * the fields the dashboard chose to send) with the previously saved entry
+ * for that id, so hand-tuned limits and metadata survive an ID-only save.
+ * Limits still missing after the merge are resolved from capabilities
+ * instead of falling back to the fixed Pi defaults.
+ */
+const mergeModelEntry = async (entry, previousModels, comboLookupRef) => {
+  const supplied = isString(entry) ? { id: entry } : entry;
+  const id = supplied?.id || "provider/model-id";
+  const merged = { ...previousModels.get(id), ...supplied, id };
+  const needsCaps = !hasValidLimit(merged.contextWindow) || !hasValidLimit(merged.maxTokens);
+  const caps = needsCaps ? await resolveMissingCapabilities(id, comboLookupRef) : null;
   return {
-    id,
-    name: m?.name || id,
-    contextWindow: m?.contextWindow || DEFAULT_CONTEXT_WINDOW,
-    maxTokens: m?.maxTokens || DEFAULT_MAX_TOKENS,
+    ...merged,
+    name: merged.name || id,
+    contextWindow: hasValidLimit(merged.contextWindow) ? merged.contextWindow : caps?.contextWindow || DEFAULT_CONTEXT_WINDOW,
+    maxTokens: hasValidLimit(merged.maxTokens) ? merged.maxTokens : caps?.maxOutput || DEFAULT_MAX_TOKENS,
   };
 };
 
@@ -116,13 +157,21 @@ export async function POST(request) {
     const configPath = await resolveModelsJsonPath();
     const existing = (await readExistingConfig(configPath, parseObject)) ?? {};
     const providers = isPlainObject(existing.providers) ? { ...existing.providers } : {};
+    const previousProvider = providers[PROVIDER_ID] || {};
     delete providers[LEGACY_PROVIDER_ID];
 
-    const modelList = Array.isArray(models) && models.length > 0
-      ? models.map(toModelEntry)
-      : [toModelEntry(model || "provider/model-id")];
+    const previousModels = new Map(
+      (Array.isArray(previousProvider.models) ? previousProvider.models : []).map((m) => [m.id, m])
+    );
+    const selected = Array.isArray(models) && models.length > 0 ? models : [model || "provider/model-id"];
+    const comboLookupRef = { current: null };
+    const modelList = [];
+    for (const entry of selected) {
+      modelList.push(await mergeModelEntry(entry, previousModels, comboLookupRef));
+    }
 
     providers[PROVIDER_ID] = {
+      ...previousProvider,
       baseUrl: baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`,
       apiKey: apiKey || "sk_durindoor",
       api: "openai-completions",

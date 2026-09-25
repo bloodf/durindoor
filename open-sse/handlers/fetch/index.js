@@ -271,7 +271,6 @@ export function resolveFirecrawlBaseUrl(provider, providerConfig, credentials) {
       if (validated.ok) return normalizeFirecrawlBaseUrl(validated);
       throw new Error(`Invalid self-hosted Firecrawl URL: ${validated.error}`);
     }
-    if (setting) throw new Error(`Invalid self-hosted Firecrawl URL: ${setting.error}`);
     const envBaseUrl = process.env.FIRECRAWL_BASE_URL;
     if (envBaseUrl && validateFirecrawlBaseUrl(envBaseUrl).ok) {
       return envBaseUrl.replace(/\/$/, "");

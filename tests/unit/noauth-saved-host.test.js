@@ -37,6 +37,7 @@ vi.mock("@/lib/network/connectionProxy", () => ({
  * instead of the provider's default host.
  */
 const { getNoAuthProviderCredentials } = await import("../../src/sse/services/auth.js");
+const { handleFetchCore } = await import("../../open-sse/handlers/fetch/index.js");
 
 describe("keyless providers with a saved server URL", () => {
   beforeEach(() => {
@@ -79,13 +80,24 @@ describe("keyless providers with a saved server URL", () => {
       provider: "firecrawl_custom",
       isActive: true,
       apiKey: "fc-secret",
-      firecrawlHeaders: { "CF-Access-Client-Id": "abc" },
+      firecrawlHeaders: JSON.stringify({ "CF-Access-Client-Id": "abc" }),
       providerSpecificData: { baseUrl: "http://192.168.1.30:3002" }
     }]);
     const credentials = await getNoAuthProviderCredentials("firecrawl_custom");
     expect(credentials.connectionId).toBe("c1");
-    expect(credentials.apiKey).toBe("fc-secret");
-    expect(credentials.firecrawlHeaders).toEqual({ "CF-Access-Client-Id": "abc" });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ success: true, data: { markdown: "# Hi" } }), { status: 200 }));
+    const realFetch = global.fetch;
+    global.fetch = fetchMock;
+    try {
+      await handleFetchCore({ url: "https://example.com", provider: "firecrawl_custom", providerConfig: { firecrawlBaseUrl: "" }, credentials });
+    } finally {
+      global.fetch = realFetch;
+    }
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://192.168.1.30:3002/v2/scrape");
+    const headers = Object.fromEntries(Object.entries(init.headers).map(([k, v]) => [k.toLowerCase(), v]));
+    expect(headers.authorization).toBe("Bearer fc-secret");
+    expect(headers["cf-access-client-id"]).toBe("abc");
   });
 
   it("still ignores saved rows for other keyless providers", async () => {

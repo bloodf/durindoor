@@ -21,13 +21,13 @@ const translateToClaude = (body, credentials, sourceFormat = FORMATS.OPENAI) => 
 );
 
 describe("direct Claude protocol parity", () => {
-  it("matches the captured Claude Code 2.1.280 static fingerprint", () => {
+  it("matches the Claude Code 2.1.282 static fingerprint", () => {
     expect(claude.transport.headers).toBe(CLAUDE_CLI_SPOOF_HEADERS);
     expect(CLAUDE_CLI_SPOOF_HEADERS).toEqual({
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
       "Anthropic-Dangerous-Direct-Browser-Access": "true",
-      "User-Agent": "claude-cli/2.1.280 (external, sdk-cli)",
+      "User-Agent": "claude-cli/2.1.282 (external, sdk-cli)",
       "X-App": "cli",
       "X-Stainless-Retry-Count": "0",
       "X-Stainless-Runtime-Version": "v26.3.0",
@@ -55,7 +55,7 @@ describe("direct Claude protocol parity", () => {
     expect(credentials._clientSessionId).toBe("session-123");
     expect(headers["X-Claude-Code-Session-Id"]).toBe("session-123");
     expect(JSON.parse(body.metadata.user_id).session_id).toBe("session-123");
-    expect(body.system[0].text).toMatch(/cc_version=2\.1\.280\.[0-9a-f]{3};/);
+    expect(body.system[0].text).toMatch(/cc_version=2\.1\.282\.[0-9a-f]{3};/);
   });
 
   it("omits the Claude session header when no client session id is present", () => {

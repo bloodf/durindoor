@@ -26,8 +26,11 @@ export function mapStainlessArch(archName = arch()) {
 // Anthropic API version (single source — reused across claude-format providers/executors)
 export const ANTHROPIC_API_VERSION = "2023-06-01";
 
-/** Pinned Claude Code release; 2.1.280 is the first one Anthropic accepts for Claude Opus 5.5. */
-export const DEFAULT_CLAUDE_CLI_VERSION = "2.1.280";
+/**
+ * Pinned Claude Code release (latest on npm when last bumped). It must stay at or above
+ * 2.1.280, the first release Anthropic accepts for Claude Opus 5.5.
+ */
+export const DEFAULT_CLAUDE_CLI_VERSION = "2.1.282";
 const SAFE_CLI_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
 
 /**
@@ -52,9 +55,9 @@ export const CLAUDE_API_HEADERS = {
 };
 
 // Full Claude CLI fingerprint captured from Claude Code 2.1.258. The version
-// (User-Agent + billing cc_version) is bumped to 2.1.280, the first release
-// that ships Claude Opus 5.5; Anthropic rejects Opus 5.5 from older CLI
-// versions. Every beta flag below is still present in the 2.1.280 bundle.
+// (User-Agent + billing cc_version) is bumped to 2.1.282 (Anthropic rejects
+// Claude Opus 5.5 from CLI versions older than 2.1.280). Every beta flag below
+// and the Stainless SDK version (0.112.1) are still present in the 2.1.282 bundle.
 // Static stable values (UA, beta flags, package/runtime versions, runtime,
 // language, retry, timeout, API version, dangerous browser header, x-app) are
 // pinned to the captured wire literal. OS and architecture use the live

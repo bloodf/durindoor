@@ -27,11 +27,11 @@ Access tokens refresh four hours before expiry, both on request and in the backg
 
 ## Claude Code CLI version
 
-DurinDoor does not check which Claude Code CLI you have installed. It does present itself to Anthropic as a specific Claude Code release. The pin is `2.1.280` (`DEFAULT_CLAUDE_CLI_VERSION` in `open-sse/providers/shared.js`), the first release Anthropic accepts for Claude Opus 5.5. Requests to Anthropic carry:
+DurinDoor does not check which Claude Code CLI you have installed. It does present itself to Anthropic as a specific Claude Code release. The pin is `2.1.282` (`DEFAULT_CLAUDE_CLI_VERSION` in `open-sse/providers/shared.js`). It must stay at or above `2.1.280`, the first release Anthropic accepts for Claude Opus 5.5. Requests to Anthropic carry:
 
-- `User-Agent: claude-cli/2.1.280 (external, sdk-cli)`
+- `User-Agent: claude-cli/2.1.282 (external, sdk-cli)`
 - the beta flags, SDK and runtime headers from the captured Claude Code fingerprint
-- a billing header with `cc_version=2.1.280`
+- a billing header with `cc_version=2.1.282`
 
 When Anthropic starts gating a model on a newer release before DurinDoor ships one, set `CLAUDE_CODE_CLIENT_VERSION` and restart:
 

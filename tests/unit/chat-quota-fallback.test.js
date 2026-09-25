@@ -408,6 +408,23 @@ describe("chat quota fallback orchestration", () => {
     });
   });
 
+  it("answers 403 without a retry deadline for a model disabled in the dashboard (#4318)", async () => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "codex", model: "gpt-5.4" });
+    mocks.getProviderCredentials.mockResolvedValue({
+      allRateLimited: true,
+      modelDisabled: true,
+      lastErrorCode: 403,
+      lastError: "Model 'codex/gpt-5.4' is disabled. Enable it in the dashboard to use it.",
+    });
+
+    const response = await handleChat(request());
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("retry-after")).toBeNull();
+    expect((await response.json()).error.message).toContain("Model 'codex/gpt-5.4' is disabled");
+    expect(mocks.handleChatCore).not.toHaveBeenCalled();
+  });
+
   it("reports an unknown provider as model_not_found", async () => {
     mocks.getModelInfo.mockResolvedValue({ provider: "unknown-provider", model: "missing-model" });
     mocks.getProviderCredentials.mockResolvedValue(null);

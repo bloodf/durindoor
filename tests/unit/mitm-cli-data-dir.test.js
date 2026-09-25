@@ -11,22 +11,36 @@ describe("CLI data-directory resolution", () => {
     ["win32", "C:\\fixture\\work", "C:\\fixture\\work\\relative-fixture-data"],
   ])("canonicalizes configured DATA_DIR before worker cwd changes on %s", (platform, cwd, expected) => {
     const mkdir = vi.fn();
+    const stat = vi.fn(() => ({ mode: 0o40700 }));
+    const chmod = vi.fn();
     expect(getAppDataDir({
       env: { DATA_DIR: "relative-fixture-data" },
       platform,
       homedir: () => "/fixture/home",
       cwd: () => cwd,
       mkdir,
+      stat,
+      chmod,
     })).toBe(expected);
-    expect(mkdir).toHaveBeenCalledWith(expected, { recursive: true });
+    expect(mkdir).toHaveBeenCalledWith(expected, { recursive: true, mode: 0o700 });
   });
 
   it("uses the Windows home fallback when APPDATA is absent", () => {
+    const mkdir = vi.fn();
+    const stat = vi.fn(() => ({ mode: 0o40700 }));
+    const chmod = vi.fn();
     expect(getAppDataDir({
       env: {},
       platform: "win32",
       homedir: () => "C:\\Users\\fixture",
+      mkdir,
+      stat,
+      chmod,
     })).toBe(path.win32.join("C:\\Users\\fixture", "AppData", "Roaming", "9router"));
+    expect(mkdir).toHaveBeenCalledWith(
+      path.win32.join("C:\\Users\\fixture", "AppData", "Roaming", "9router"),
+      { recursive: true, mode: 0o700 }
+    );
   });
 
   it("falls back from a Unix path on Windows without creating it", () => {

@@ -135,7 +135,7 @@ const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => asyn
 // Provider models endpoints configuration
 export const PROVIDER_MODELS_CONFIG = {
   claude: {
-    url: "https://api.anthropic.com/v1/models",
+    url: "https://api.anthropic.com/v1/models?limit=1000",
     method: "GET",
     headers: {
       "Anthropic-Version": "2023-06-01",
@@ -206,7 +206,7 @@ export const PROVIDER_MODELS_CONFIG = {
   openai: createOpenAIModelsConfig("https://api.openai.com/v1/models"),
   openrouter: createOpenAIModelsConfig("https://openrouter.ai/api/v1/models"),
   anthropic: {
-    url: "https://api.anthropic.com/v1/models",
+    url: "https://api.anthropic.com/v1/models?limit=1000",
     method: "GET",
     headers: {
       "Anthropic-Version": "2023-06-01",

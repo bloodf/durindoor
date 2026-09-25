@@ -38,6 +38,8 @@ async function POSTHandler(request) {
   if (body?.stream === true || accept.includes("text/event-stream")) {
     return await withEarlyStreamKeepalive(handleChat(request), {
       signal: request.signal,
+      // A late failure becomes a Responses `error` event carrying the HTTP status.
+      errorFormat: "responses",
     });
   }
 

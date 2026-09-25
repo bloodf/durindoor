@@ -11,6 +11,10 @@ Do not publish the dashboard on a public address with the built-in password `123
 
 ## Secrets
 
+### DATA_DIR permissions
+
+`DATA_DIR` (default `~/.9router`, or the configured path) is created owner-only (`0700`), and the columnCrypto master key (`DATA_DIR/master-key`) is written `0600`. Both are also repaired on next use if an older install left them group- or world-readable, so a permissive process `umask` cannot make credentials readable to other local users. Repair is best-effort and skipped on Windows, which has no POSIX mode bits.
+
 ### JWT_SECRET
 
 Signs dashboard session cookies (HS256, 24-hour `exp` and cookie `Max-Age`). Resolution order:

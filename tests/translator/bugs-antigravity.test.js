@@ -483,6 +483,79 @@ describe("Claude → Antigravity image preservation", () => {
   });
 });
 
+// decolua/9router#4274: a tool_call_id reused across turns must not overwrite an
+// earlier turn's cached name/response, and Gemini functionCall/functionResponse
+// ids must stay unique per turn or Google rejects the strict 1:1 pairing.
+describe("OpenAI → Gemini colliding tool_call_id across turns (#4274)", () => {
+  const O2G = (messages) =>
+    translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, "gemini-2.5-pro", { messages }, true, null, null);
+
+  it("disambiguates a reused call id so each turn keeps its own name/response", () => {
+    const out = O2G([
+      { role: "user", content: "edit file" },
+      { role: "assistant", tool_calls: [{ id: "call_81334", type: "function", function: { name: "edit", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "call_81334", content: JSON.stringify({ success: true }) },
+      { role: "user", content: "run test" },
+      { role: "assistant", tool_calls: [{ id: "call_81334", type: "function", function: { name: "bash", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "call_81334", content: JSON.stringify({ passed: true }) },
+    ]);
+
+    const modelContents = out.contents.filter((c) => c.role === "model");
+    const userContents = out.contents.filter((c) => c.role === "user");
+
+    const call1 = modelContents[0].parts.find((p) => p.functionCall)?.functionCall;
+    const call2 = modelContents[1].parts.find((p) => p.functionCall)?.functionCall;
+    const resp1 = userContents.map((c) => c.parts.find((p) => p.functionResponse)?.functionResponse).find(Boolean);
+    const resp2 = userContents.map((c) => c.parts.find((p) => p.functionResponse)?.functionResponse).filter(Boolean)[1];
+
+    expect(call1.name).toBe("edit");
+    expect(call1.id).toBe("call_81334");
+    expect(resp1.name).toBe("edit");
+    expect(resp1.id).toBe("call_81334");
+    expect(resp1.response.result).toEqual({ success: true });
+
+    expect(call2.name).toBe("bash");
+    expect(call2.id).toBe("call_81334_1");
+    expect(resp2.name).toBe("bash");
+    expect(resp2.id).toBe("call_81334_1");
+    expect(resp2.response.result).toEqual({ passed: true });
+  });
+
+  it("disambiguates a reused tool_use id on the Claude-backed Antigravity envelope", () => {
+    const request = openaiToAntigravityRequest("claude-opus-4-6", {
+      messages: [
+        { role: "user", content: "edit file" },
+        { role: "assistant", tool_calls: [{ id: "call_81334", type: "function", function: { name: "edit", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "call_81334", content: JSON.stringify({ success: true }) },
+        { role: "user", content: "run test" },
+        { role: "assistant", tool_calls: [{ id: "call_81334", type: "function", function: { name: "bash", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "call_81334", content: JSON.stringify({ passed: true }) },
+      ],
+    }, true, { projectId: "project-1" });
+
+    const contents = request.request.contents;
+    const modelContents = contents.filter((c) => c.role === "model");
+    const responseTurns = contents
+      .map((c) => c.parts.find((p) => p.functionResponse)?.functionResponse)
+      .filter(Boolean);
+
+    const call1 = modelContents[0].parts.find((p) => p.functionCall).functionCall;
+    const call2 = modelContents[1].parts.find((p) => p.functionCall).functionCall;
+
+    expect(call1.name).toBe("edit");
+    expect(call1.id).toBe("call_81334");
+    expect(responseTurns[0].id).toBe("call_81334");
+    expect(responseTurns[0].name).toBe("edit");
+    expect(responseTurns[0].response.result).toEqual({ success: true });
+
+    expect(call2.name).toBe("bash");
+    expect(call2.id).toBe("call_81334_1");
+    expect(responseTurns[1].id).toBe("call_81334_1");
+    expect(responseTurns[1].name).toBe("bash");
+    expect(responseTurns[1].response.result).toEqual({ passed: true });
+  });
+});
+
 // #676 (upstream decolua/9router#3645): provider-issued Gemini thought signatures
 // must survive the Gemini → OpenAI → Gemini tool-call round trip. The OpenAI
 // intermediate has no signature field, so the transport rides in the tool-call id.

@@ -1,4 +1,5 @@
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
+import { isProviderModelDisabled } from "@/sse/services/disabledModelGate.js";
 import {
   getProviderConnections, getProviderConnectionById, getApiKeyByKey, validateApiKey,
   updateProviderConnection, getSettings, getProxyPools,
@@ -517,6 +518,19 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
   const settings = await getSettings().catch(() => null);
   if (isFreeNoAuthProviderDisabled(providerId, settings)) {
     return { providerDisabled: true };
+  }
+  // Upstream 9router #4318: a model switched off in the dashboard is refused
+  // before any account is picked. The result reuses the "no account can serve"
+  // shape every caller already maps to `lastErrorCode` + `lastError`, so each
+  // endpoint answers 403 with this message. No retryAfter: waiting won't help.
+  if (model && await isProviderModelDisabled(provider, model)) {
+    log.warn("AUTH", `${provider}/${model} is disabled in the dashboard, refusing request`);
+    return {
+      allRateLimited: true,
+      modelDisabled: true,
+      lastErrorCode: 403,
+      lastError: `Model '${provider}/${model}' is disabled. Enable it in the dashboard to use it.`
+    };
   }
   /** decolua/9router#3203: blank settings default NVIDIA to 40 RPM; other providers stay unlimited. */
   const rpmLimit = resolveProviderRpm(settings, providerId);

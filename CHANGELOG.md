@@ -1,3 +1,10 @@
+# 4.9.2
+
+## Fixes
+
+- fix(tests): untrack an accidental tests/node_modules symlink and ignore symlinked node_modules (#1021)
+
+
 # 4.9.1
 
 ## Fixes

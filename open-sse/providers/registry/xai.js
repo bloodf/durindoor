@@ -18,6 +18,9 @@ export default {
     "apikey",
   ],
   hasOAuth: true,
+  // Port of OmniRoute#14237: xAI ships new chat ids ahead of a registry seed
+  // bump; passthrough keeps unknown model ids from failing validation.
+  passthroughModels: true,
   transport: {
     baseUrl: "https://api.x.ai/v1/chat/completions",
     validateUrl: "https://api.x.ai/v1/models",

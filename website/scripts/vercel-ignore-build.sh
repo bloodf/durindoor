@@ -5,7 +5,7 @@
 # Production (main) always builds, so the public site and docs never go stale.
 # Preview deployments build only when the change touches docs/ or website/.
 # The website also imports dashboard code from src/ and open-sse/; breakage
-# there is still caught by the "Website build" CI job, just without a preview.
+# there is caught when main builds (the "Website build" CI job and production).
 if [ "$VERCEL_ENV" = "production" ] || [ "$VERCEL_GIT_COMMIT_REF" = "main" ]; then
   exit 1
 fi

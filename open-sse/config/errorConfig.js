@@ -4,7 +4,10 @@ export const ERROR_TYPES = {
   400: { type: "invalid_request_error", code: "bad_request" },
   401: { type: "authentication_error", code: "invalid_api_key" },
   402: { type: "billing_error", code: "payment_required" },
-  403: { type: "permission_error", code: "insufficient_quota" },
+  // A bare 403 carries no quota signal; misclassifying it as
+  // insufficient_quota misleads quota-recovery/cooldown logic into treating a
+  // plain refusal as billing exhaustion (OmniRoute #14234).
+  403: { type: "permission_error", code: "permission_denied" },
   404: { type: "invalid_request_error", code: "model_not_found" },
   406: { type: "invalid_request_error", code: "model_not_supported" },
   410: { type: "invalid_request_error", code: "model_shutdown" },
@@ -22,7 +25,7 @@ export const DEFAULT_ERROR_MESSAGES = {
   400: "Bad request",
   401: "Invalid API key provided",
   402: "Payment required",
-  403: "You exceeded your current quota",
+  403: "Permission denied",
   404: "Model not found",
   406: "Model not supported",
   410: "Model shut down",

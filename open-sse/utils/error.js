@@ -5,6 +5,7 @@ import {
 "../config/errorConfig.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
+import { NAIVE_RESET_TIMEZONES } from "../config/naiveResetTimezones.js";
 
 /**
  * Build OpenAI-compatible error response body
@@ -231,7 +232,7 @@ function hasStructuredQuotaExhaustion(text) {
   return visit(root, 0);
 }
 
-function absoluteResetFromText(text, now, maxDelayMs) {
+function absoluteResetFromText(text, now, maxDelayMs, naiveZoneSuffix = "Z") {
   if (!isString(text) || text.length > 64 * 1024) return null;
   // Open, unmerged decolua/9router#3612 asserts UTC for its observed GLM/Z.AI
   // sample (`Your limit will reset at 2026-08-17 02:56:15`) without
@@ -239,10 +240,16 @@ function absoluteResetFromText(text, now, maxDelayMs) {
   // lower-priority prose fallback, after executor, Retry-After, reset-header,
   // and structured-body evidence. A wrong offset can shift the deadline by
   // hours but remains bounded by the seven-day MAX_RATE_LIMIT_COOLDOWN_MS.
+  //
+  // Z.AI/BigModel GLM actually stamp this naive timestamp in Asia/Shanghai
+  // (+08:00), not UTC (OmniRoute #14542): reading it as UTC adds 8 phantom
+  // hours to a 5-hour quota cooldown. `naiveZoneSuffix` lets a caller supply
+  // the provider's real offset via its registry `naiveResetTimezone` flag;
+  // providers with no such flag keep defaulting to "Z".
   let resetAtMs = null;
   for (const match of text.matchAll(/\breset(?:s)?\s+at\s+(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?![A-Za-z0-9:+-])/gi)) {
     if (resetAtMs !== null) return null;
-    resetAtMs = absoluteFromIso(`${match[1].replace(" ", "T")}Z`, now, maxDelayMs);
+    resetAtMs = absoluteFromIso(`${match[1].replace(" ", "T")}${naiveZoneSuffix}`, now, maxDelayMs);
     if (!resetAtMs) return null;
   }
   return resetAtMs;
@@ -335,7 +342,8 @@ export function parseRateLimitEvidence({
     } catch {/* non-JSON provider body */}
   }
   if (!resetAtMs) {
-    resetAtMs = absoluteResetFromText(bodyText, safeNow, maxDelayMs) ||
+    const naiveZoneSuffix = NAIVE_RESET_TIMEZONES[provider] || "Z";
+    resetAtMs = absoluteResetFromText(bodyText, safeNow, maxDelayMs, naiveZoneSuffix) ||
     durationResetFromText(bodyText, safeNow, maxDelayMs);
     if (resetAtMs) source = "quota_text";
   }

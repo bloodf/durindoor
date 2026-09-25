@@ -81,6 +81,29 @@ describe("bounded 429 evidence parsing", () => {
     });
   });
 
+  it("parses GLM/Z.AI bare reset timestamps as Asia/Shanghai (+08:00) when scoped to those providers", () => {
+    for (const provider of ["glm", "glm-cn", "glmt", "zai"]) {
+      expect(parseRateLimitEvidence({
+        status: 429,
+        provider,
+        bodyText: "Usage limit reached for 5 hour. Your limit will reset at 2026-07-11 02:00:00",
+        now: NOW,
+      })).toMatchObject({
+        resetAtMs: Date.parse("2026-07-11T02:00:00.000+08:00"),
+        source: "quota_text",
+        state: "exhausted",
+      });
+    }
+    // Unscoped/other providers keep the UTC default (same clock reading turns
+    // 8 phantom hours later if misread as this provider's local zone).
+    expect(parseRateLimitEvidence({
+      status: 429,
+      provider: "openai",
+      bodyText: "Usage limit reached for 5 hour. Your limit will reset at 2026-07-11 02:00:00",
+      now: NOW,
+    })).toMatchObject({ resetAtMs: Date.parse("2026-07-11T02:00:00.000Z"), source: "quota_text" });
+  });
+
   it("rejects past and over-cap GLM/Z.AI reset timestamps", () => {
     for (const timestamp of ["2026-07-10 11:59:59", "2026-07-17 12:00:01"]) {
       expect(parseRateLimitEvidence({

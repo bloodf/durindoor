@@ -1,6 +1,11 @@
+import { NAIVE_RESET_TIMEZONES } from "../../config/naiveResetTimezones.js";
+
 export default {
   id: "zai",
   alias: "zai",
+  // 429 body prose stamps naive (offset-less) reset timestamps in
+  // Asia/Shanghai, not UTC (OmniRoute #14542) — see error.js absoluteResetFromText.
+  naiveResetTimezone: NAIVE_RESET_TIMEZONES.zai,
   display: {
     name: "Z.AI",
     icon: "psychology",

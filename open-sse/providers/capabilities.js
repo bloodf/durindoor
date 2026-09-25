@@ -223,9 +223,12 @@ export const MODEL_CAPABILITIES = {
 /**
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
+// OpenAI reasoning models reject `reasoning_effort: "none"` outright
+// ("Unsupported value: 'reasoning_effort' does not support 'none'"), so the
+// GPT-5.6 family must clamp to the minimum instead of disabling. #4031
 const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   KIRO_GPT_5_6_FAMILY.flatMap(buildKiroGpt56Variants).map((m) => [m.id, {
-    vision: true, reasoning: true, search: true,
+    vision: true, reasoning: true, search: true, thinkingCanDisable: false,
     thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 32000
   }])
 );
@@ -264,10 +267,16 @@ const CODEX_GPT_CAPS = {
   "gpt-5.3-codex-spark": { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
   "gpt-5.3-codex-spark-review": { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
   "codex-auto-review": { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.6-sol-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol-ultra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-terra-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-luna-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 }
+  // Codex's GPT-5.6 family rejects `reasoning_effort: "none"` outright, unlike
+  // the direct OpenAI API surface these override; clamp instead of disable. #4031
+  "gpt-5.6": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-sol": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-terra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-luna": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-sol-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-sol-ultra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-terra-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
+  "gpt-5.6-luna-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 }
 };
 
 // Native MiniMax hosts (platform.minimax.io / minimaxi.com) serve M3 at the

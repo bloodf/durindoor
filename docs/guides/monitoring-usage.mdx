@@ -40,6 +40,8 @@ Default `DATA_DIR` is `~/.9router` on macOS and Linux, `%APPDATA%\9router` on Wi
 
 Request-log lines shown by `/api/usage/request-logs` are derived from `usageHistory` on read (`getRecentLogs`, default 200 rows). `appendRequestLog` is a no-op. Parallel inserts with the same fields are not collapsed; only an explicit `usageEventId` dedupes a retry of the same event. History insert, daily upsert, and the lifetime counter run in one transaction.
 
+A streamed request that fails after the gateway already answered HTTP 200 (the upstream sends an in-stream `error` frame or a Responses `response.failed` event, then ends the stream) is recorded with status `error`, in both the request details row and the usage row. The details row keeps any partial text, or reads `[Streaming failed: <message>]` when there was none, and carries the upstream error under `response.error`. What the client receives does not change.
+
 `DATA_DIR/usage.json` is the JSON-store import file (`LEGACY_FILES.usage`). SQLite boot can read it once. Runtime writes go to `usageHistory`, not that JSON file. There is no `log.txt` under the data dir.
 
 ## Cost split and speed

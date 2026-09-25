@@ -25,6 +25,8 @@ Signs dashboard session cookies (HS256, 24-hour `exp` and cookie `Max-Age`). Res
 
 Changing the secret invalidates every dashboard session. Generate with `openssl rand -hex 32`.
 
+A `JWT_SECRET` copied from `.env.example` or these docs (`replace-me`, `your-secret`, `CHANGE_ME_LONG_RANDOM_SECRET`, `change-me` and similar, case-insensitive) is ignored with a warning and treated as unset. Anyone who can read the docs could forge a session with it, so DurinDoor falls through to the legacy file or refuses to sign sessions.
+
 ### INITIAL_PASSWORD
 
 Used only when no password hash is stored. Default is `123456`. `validateDashboardPassword` rejects that string as a new password (minimum 6 characters, not the built-in default).

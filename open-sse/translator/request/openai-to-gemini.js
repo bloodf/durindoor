@@ -116,8 +116,11 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   }
 
 
-  // Build tool_call_id -> name map
+  // Build tool_call_id -> name map. Keyed on a per-occurrence unique id
+  // (decolua/9router#4274) so a call id reused across turns doesn't clobber
+  // an earlier turn's function name.
   const tcID2Name = {};
+  const nameOccurrences = new Map();
   if (body.messages && Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
@@ -125,22 +128,36 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
           if (tc.type === OPENAI_BLOCK.FUNCTION && tc.id && tc.function?.name) {
             // Decode signature-transport ids (#676) so name/response maps key
             // on the raw upstream id; plain ids decode to themselves.
-            tcID2Name[decodeToolCallId(tc.id).id] = tc.function.name;
+            const rawId = decodeToolCallId(tc.id).id;
+            const count = nameOccurrences.get(rawId) || 0;
+            nameOccurrences.set(rawId, count + 1);
+            const uniqueId = count === 0 ? rawId : `${rawId}_${count}`;
+            tcID2Name[uniqueId] = tc.function.name;
           }
         }
       }
     }
   }
 
-  // Build tool responses cache
+  // Build tool responses cache, disambiguated the same way so a repeated
+  // tool_call_id across turns keeps each turn's own response.
   const toolResponses = {};
+  const responseOccurrences = new Map();
   if (body.messages && Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role === ROLE.TOOL && msg.tool_call_id) {
-        toolResponses[decodeToolCallId(msg.tool_call_id).id] = msg.content;
+        const rawId = decodeToolCallId(msg.tool_call_id).id;
+        const count = responseOccurrences.get(rawId) || 0;
+        responseOccurrences.set(rawId, count + 1);
+        const uniqueId = count === 0 ? rawId : `${rawId}_${count}`;
+        toolResponses[uniqueId] = msg.content;
       }
     }
   }
+
+  // Same disambiguation applied while walking the conversation below so the
+  // n-th occurrence of a call id lines up with the n-th cached name/response.
+  const callIdOccurrences = new Map();
 
   // Convert messages
   if (body.messages && Array.isArray(body.messages)) {
@@ -194,9 +211,18 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             // Session-namespaced store replay (upstream c08efdbe): a signature
             // persisted for this exact call id wins over the synthetic default.
             const cachedSig = decoded.id ? getGeminiThoughtSignatureSync(decoded.id, sessionId, model) : null;
+            // Disambiguate a call id reused across turns (decolua/9router#4274):
+            // Gemini requires strict 1:1 functionCall/functionResponse pairing,
+            // so a repeated id gets a `_<n>` suffix from its second occurrence on.
+            let uniqueId = decoded.id;
+            if (decoded.id) {
+              const count = callIdOccurrences.get(decoded.id) || 0;
+              callIdOccurrences.set(decoded.id, count + 1);
+              uniqueId = count === 0 ? decoded.id : `${decoded.id}_${count}`;
+            }
             const functionCallPart = {
               functionCall: {
-                id: decoded.id,
+                id: uniqueId,
                 name: sanitizeToolName(tc.function.name),
                 args: args
               }
@@ -214,7 +240,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               functionCallPart.thoughtSignature = signature;
             }
             parts.push(functionCallPart);
-            toolCallIds.push(decoded.id);
+            toolCallIds.push(uniqueId);
           }
 
           if (parts.length > 0) {
@@ -424,6 +450,13 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
     }
   }
 
+  // Disambiguate a tool_use id reused across turns (decolua/9router#4274):
+  // give each occurrence a unique id and pair each tool_result to the oldest
+  // unmatched tool_use with that raw id (FIFO), so cross-turn collisions
+  // can't mismatch a functionResponse's id/name to the wrong functionCall.
+  const toolUseOccurrences = new Map();
+  const pendingToolUses = new Map();
+
   // Convert Claude messages to Gemini contents
   if (claudeRequest.messages && Array.isArray(claudeRequest.messages)) {
     for (const msg of claudeRequest.messages) {
@@ -446,9 +479,19 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
             const callSig = cachedSig || (!firstToolUseSeen ? signature : undefined);
             firstToolUseSeen = true;
 
+            const rawId = block.id;
+            let uniqueId = rawId;
+            if (rawId) {
+              const count = toolUseOccurrences.get(rawId) || 0;
+              toolUseOccurrences.set(rawId, count + 1);
+              uniqueId = count === 0 ? rawId : `${rawId}_${count}`;
+              if (!pendingToolUses.has(rawId)) pendingToolUses.set(rawId, []);
+              pendingToolUses.get(rawId).push({ uniqueId, name: block.name });
+            }
+
             const part = {
               functionCall: {
-                id: block.id,
+                id: uniqueId,
                 name: sanitizeToolName(block.name),
                 args: block.input || {}
               }
@@ -486,12 +529,18 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
               }
               content = textItems.join("\n");
             }
-            // Resolve the original tool name from the id — Gemini requires it to match the functionCall name
-            const resolvedName = toolUseIdToName[block.tool_use_id] ?
-            sanitizeToolName(toolUseIdToName[block.tool_use_id]) :
-            "tool";
+            // Resolve the original tool name from the id — Gemini requires it to match the functionCall name.
+            // Pair FIFO against the oldest unmatched tool_use with this raw id so a
+            // reused id across turns doesn't resolve to a later turn's name/id.
+            const rawId = block.tool_use_id;
+            const queue = rawId ? pendingToolUses.get(rawId) : null;
+            const matched = queue && queue.length > 0 ? queue.shift() : null;
+            const responseId = matched ? matched.uniqueId : rawId || "";
+            const resolvedName = sanitizeToolName(
+              matched?.name || (rawId ? toolUseIdToName[rawId] : null) || "tool"
+            );
             const functionResponse = {
-              id: block.tool_use_id,
+              id: responseId,
               name: resolvedName,
               response: { result: sanitizeFunctionResponseResult(tryParseJSON(content)) || content }
             };

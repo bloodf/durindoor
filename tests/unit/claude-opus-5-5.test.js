@@ -25,11 +25,11 @@ describe("Claude Opus 5.5", () => {
     expect(anthropic.models.map((m) => m.id)).toContain("claude-opus-5-5");
   });
 
-  it("spoofs Claude Code 2.1.280, the first CLI Anthropic accepts for Opus 5.5", () => {
-    expect(CLAUDE_CLI_VERSION).toBe("2.1.280");
-    expect(CLAUDE_CLI_SPOOF_HEADERS["User-Agent"]).toBe("claude-cli/2.1.280 (external, sdk-cli)");
+  it("spoofs Claude Code 2.1.282, at or above 2.1.280 (the first CLI Anthropic accepts for Opus 5.5)", () => {
+    expect(CLAUDE_CLI_VERSION).toBe("2.1.282");
+    expect(CLAUDE_CLI_SPOOF_HEADERS["User-Agent"]).toBe("claude-cli/2.1.282 (external, sdk-cli)");
     const body = applyCloaking({ messages: [] }, "sk-ant-oat-test", "session-id");
-    expect(body.system[0].text).toMatch(/^x-anthropic-billing-header: cc_version=2\.1\.280\./);
+    expect(body.system[0].text).toMatch(/^x-anthropic-billing-header: cc_version=2\.1\.282\./);
   });
 
   it("resolves its own price instead of the generic Opus row", () => {
@@ -73,10 +73,10 @@ describe("Claude Opus 5.5", () => {
   });
 
   it("lets CLAUDE_CODE_CLIENT_VERSION override the pin, ignoring unsafe values", () => {
-    expect(resolveClaudeCliVersion({})).toBe("2.1.280");
+    expect(resolveClaudeCliVersion({})).toBe("2.1.282");
     expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: " 2.1.300 " })).toBe("2.1.300");
-    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "2.1.300\r\nX-Evil: 1" })).toBe("2.1.280");
-    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "" })).toBe("2.1.280");
+    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "2.1.300\r\nX-Evil: 1" })).toBe("2.1.282");
+    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "" })).toBe("2.1.282");
   });
 
   it("drops top_p and top_k, which Opus 5.5 rejects, but keeps them for Opus 5", () => {
@@ -149,7 +149,7 @@ describe("Claude model discovery headers", () => {
       Authorization: "Bearer sk-ant-oat01-abc",
       "Anthropic-Beta": "oauth-2025-04-20",
       "Anthropic-Version": "2023-06-01",
-      "User-Agent": "claude-cli/2.1.280 (external, sdk-cli)",
+      "User-Agent": "claude-cli/2.1.282 (external, sdk-cli)",
     });
     expect(headers["x-api-key"]).toBeUndefined();
   });

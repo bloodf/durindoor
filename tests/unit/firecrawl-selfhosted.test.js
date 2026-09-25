@@ -63,7 +63,7 @@ describe("Firecrawl providers", () => {
   });
 
   describe("firecrawl_custom provider", () => {
-    it("prefers credentials.providerSpecificData.baseUrl over env var", async () => {
+    it("prefers a valid self-hosted Profile setting over the connection host and env var", async () => {
       process.env.FIRECRAWL_BASE_URL = "http://127.0.0.1:3002";
 
       global.fetch = vi.fn().mockResolvedValue({
@@ -76,6 +76,26 @@ describe("Firecrawl providers", () => {
         url: "https://example.com",
         provider: "firecrawl_custom",
         providerConfig: { firecrawlBaseUrl: "http://10.0.0.5:3002" },
+        credentials: { providerSpecificData: { baseUrl: "http://127.0.0.1:3002/firecrawl" } }
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "http://10.0.0.5:3002/v2/scrape",
+        expect.anything()
+      );
+    });
+
+    it("skips a hosted Firecrawl URL in the setting and uses the connection host", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { markdown: "# Hi" } }),
+      });
+
+      await handleFetchCore({
+        url: "https://example.com",
+        provider: "firecrawl_custom",
+        providerConfig: { firecrawlBaseUrl: "https://api.firecrawl.dev" },
         credentials: { providerSpecificData: { baseUrl: "http://127.0.0.1:3002/firecrawl" } }
       });
 

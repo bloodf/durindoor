@@ -48,6 +48,8 @@ Passthrough models are on for LM Studio and 9router: unknown ids are forwarded. 
 
 Local Whisper is not in the table above. Default origin is `http://127.0.0.1:11500`, stored per connection like Ollama. Only the origin is honored; a stored path or query is discarded. Every request picks a saved active connection with the normal fallback strategy (fill-first by priority unless changed), so the saved origin applies even to API keys with no provider-account scope. The default origin is used when no active connection exists (an inactive row does not count), or when the selected connection has no valid http(s) URL; when active connections exist but all are rate-limited or gated, the request fails with that status instead of calling the default origin.
 
+Self-hosted Firecrawl (`firecrawl_custom`) follows the same selection: with an active connection, every request uses it, so its saved API key and custom headers (for example Cloudflare Access) are sent even for API keys with no provider-account scope. The host comes from **Profile → Network → Firecrawl URL** when that is a valid self-hosted URL (localhost or a private address), then from the connection, then `FIRECRAWL_BASE_URL`, then `http://127.0.0.1:3002`. A hosted URL in that setting (such as `https://api.firecrawl.dev`, used by the hosted Firecrawl provider) is skipped for self-hosted requests.
+
 `llamafile` and `llama-cpp` share `http://127.0.0.1:8080/v1`. `vllm` and `triton` share `http://localhost:8000/v1`. Override `baseUrl` if you run two of those on one host.
 
 OpenCode Zen's static catalog omits Gemini-family rows on purpose. A passthrough `gemini-` id still hits the unimplemented branch and fails closed.

@@ -84,6 +84,13 @@ describe("isKeylessProviderWorking", () => {
     expect(up).not.toHaveBeenCalled();
   });
 
+  it("probes the saved Firecrawl connection host when the setting holds a hosted URL", async () => {
+    mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "https://api.firecrawl.dev" });
+    mocks.getProviderConnections.mockResolvedValue([{ id: "c1", providerSpecificData: { baseUrl: "http://192.168.1.30:3002" } }]);
+    await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });
+    expect(up.mock.calls.map((c) => c[0])).toEqual(["http://192.168.1.30:3002"]);
+  });
+
   it("probes self-hosted Firecrawl at the settings URL when unscoped", async () => {
     mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://192.168.1.9:3002" });
     await isKeylessProviderWorking("firecrawl_custom", { fetchImpl: up });

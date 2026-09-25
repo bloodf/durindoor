@@ -32,17 +32,43 @@ export const MFA_PENDING_COOKIE = "mfa_pending";
 const MFA_PENDING_MAX_AGE_SEC = 5 * 60;
 const MFA_PENDING_SCOPE = "mfa_pending";
 
+/**
+ * Example INITIAL_PASSWORD values printed in .env.example, the README, docs/
+ * and the upstream 9router docs (decolua/9router#4289). Copied verbatim they
+ * are as public as DEFAULT_PASSWORD, so they get the same treatment: no remote
+ * session until the password is changed, and never accepted as a new password.
+ * Compared case-insensitively after trimming.
+ * tests/unit/auth-placeholder-initial-password.test.js fails if a doc adds a
+ * literal example that is missing here.
+ */
+const PLACEHOLDER_INITIAL_PASSWORDS = new Set([
+  "change-me",
+  "changeme",
+  "change_me_strong_password",
+  "replace-me",
+  "your-password",
+  "your-secure-password",
+  "votre-mot-de-passe",
+  "tu-contraseña",
+]);
+
+export function isPlaceholderInitialPassword(value) {
+  return isString(value) && PLACEHOLDER_INITIAL_PASSWORDS.has(value.trim().toLowerCase());
+}
+
 export function validateDashboardPassword(password) {
   if (!isString(password) || password.length < 6) {
     return "Password must be at least 6 characters";
   }
   if (password === DEFAULT_PASSWORD) return "Password must not use the built-in default";
+  if (isPlaceholderInitialPassword(password)) return "Password must not use a documented example value";
   return null;
 }
 
 // Built-in default is "active" whenever the effective password literally
 // resolves to DEFAULT_PASSWORD — a stored hash of it, or an INITIAL_PASSWORD
-// env var set to it, or no password source configured at all.
+// env var set to it or to a documented example value, or no password source
+// configured at all.
 // The boolean result is cached for the lifetime of the process; callers MUST
 // invoke `invalidateDefaultPasswordCache()` after persisting a new password
 // hash or clearing the stored one, otherwise the public /api/auth/status
@@ -86,7 +112,8 @@ export async function isUsingDefaultPassword(settings) {
         result = await bcrypt.compare(DEFAULT_PASSWORD, settings.password);
       } else {
         const initialPassword = process.env.INITIAL_PASSWORD;
-        result = !initialPassword || initialPassword === DEFAULT_PASSWORD;
+        result = !initialPassword || initialPassword === DEFAULT_PASSWORD ||
+          isPlaceholderInitialPassword(initialPassword);
       }
       if (cacheGeneration === generation) {
         defaultPasswordCache = { key, value: result, populated: true, promise: null };

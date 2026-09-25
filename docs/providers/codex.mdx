@@ -66,6 +66,6 @@ Send `cx/<model>`, for example `cx/gpt-5.5`. The registry lists chat models, `*-
 
 The [Quota Tracker](../features/quota-tracking.mdx) reads ChatGPT's usage endpoint and shows a session window and a weekly window, plus a review family when your plan reports one. Preflight picks the most specific bucket that exists: the exact model, then its family, then the account.
 
-When the plan offers rate-limit reset credits, the limits view can read and spend them through `/api/usage/{connectionId}/codex-reset-credits`. Spending one resets the upstream limit and cannot be undone.
+When the plan offers rate-limit reset credits, the limits view can read and spend them through `/api/usage/{connectionId}/codex-reset-credits`. Spending one resets the upstream limit and cannot be undone. A successful redemption also clears that connection's local model cooldowns and marks it active again, so it does not stay locked out waiting for a cooldown that no longer matches the reset upstream window.
 
 Auto-ping can restart the five-hour window on a schedule; see [Quota tracking](../features/quota-tracking.mdx#auto-ping).

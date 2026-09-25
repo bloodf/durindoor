@@ -204,6 +204,12 @@ describe("ported ledger", () => {
     expect(out).toContain(3497);
     expect(out.length).toBeGreaterThan(ledger().ported.length);
   });
+
+  it("counts every number in a combined `#A+#B` subject", () => {
+    const out = JSON.parse(execFileSync(IDS_SCRIPT, [ROOT], { encoding: "utf8" }));
+    // `port(upstream): #4256+#4241 - ...` and `#4193+#4216+#4225+#4228 - ...`
+    for (const pr of [4256, 4241, 4193, 4216, 4225, 4228]) expect(out).toContain(pr);
+  });
 });
 
 describe("upstream-watch workflow wiring", () => {

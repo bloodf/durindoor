@@ -31,6 +31,8 @@ Used only when no password hash is stored. Default is `123456`. `validateDashboa
 
 Remote clients that still have the built-in password never get a session cookie. A loopback login gets a five-minute, IP-bound, one-shot proof that only `POST /api/auth/change-password` accepts. Set `INITIAL_PASSWORD` or store a hash before any remote access.
 
+An `INITIAL_PASSWORD` copied from `.env.example` or these docs counts as the default too. `change-me`, `changeme`, `replace-me`, `your-password`, `your-secure-password` and `CHANGE_ME_STRONG_PASSWORD` (case-insensitive) are public, so remote login on them returns the same 403 and the local machine gets the change-password proof. `validateDashboardPassword` also rejects them as a new password. Pick a value of your own.
+
 The login hint for the default password shows only when the effective password is still the built-in value. A stored custom hash or OIDC mode hides it.
 
 ### API_KEY_SECRET

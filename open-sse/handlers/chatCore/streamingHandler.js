@@ -255,10 +255,15 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       total: Date.now() - requestStartTime
     };
     const toolCallNames = contentObj?.toolCallNames || [];
+    // A stream can fail after HTTP 200: the upstream sends an `error` frame or
+    // a Responses `response.failed` event and the stream then ends normally.
+    // Record that turn as an error instead of a success (upstream 9router #4332).
+    const streamError = contentObj?.upstreamError || null;
     // Tool calls carry no accumulated content, so a tool-call-only turn would otherwise
     // log as "[Empty streaming response]" — indistinguishable from a truncated stream.
     const safeContent = contentObj?.content
-      || (toolCallNames.length ? `[Tool calls: ${toolCallNames.join(", ")}]` : "[Empty streaming response]");
+      || (toolCallNames.length ? `[Tool calls: ${toolCallNames.join(", ")}]` : null)
+      || (streamError ? `[Streaming failed: ${streamError.message || "unknown error"}]` : "[Empty streaming response]");
     const safeThinking = contentObj?.thinking || null;
 
     saveRequestDetail(buildRequestDetail({
@@ -268,9 +273,9 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       request: extractRequestConfig(body, stream),
       providerRequest: finalBody || translatedBody || null,
       providerResponse: summary?.providerResponse ?? safeContent,
-      response: { content: safeContent, thinking: safeThinking, tool_calls: toolCallNames, type: "streaming" },
+      response: { content: safeContent, thinking: safeThinking, tool_calls: toolCallNames, type: "streaming", ...(streamError ? { error: streamError } : null) },
       pxpipe,
-      status: "success"
+      status: streamError ? "error" : "success"
     }, { id: streamDetailId })).catch((err) => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
@@ -282,7 +287,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
     // The TTFT fallback above keeps request logs readable, but stored usage
     // needs one "not measured" value: 0, as the other handlers write.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, label: "STREAM USAGE", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     // A streamed Claude refusal (stop_reason "refusal") never accumulates delta

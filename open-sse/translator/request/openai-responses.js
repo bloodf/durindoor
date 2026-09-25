@@ -510,6 +510,30 @@ function normalizeResponsesOutputLimit(source, target) {
 }
 
 /**
+ * Port of OmniRoute#14673: GitHub Copilot (and OpenAI) /responses rejects a
+ * body carrying neither a non-empty `input` nor previous_response_id / prompt
+ * / conversation_id: `400 One of "input" or "previous_response_id" or
+ * 'prompt' or 'conversation' must be provided.` System-only turns, empty
+ * messages, and orphan-filtered tool results can all leave `input: []` with
+ * no continuity field. Inject a placeholder user item unless a continuity
+ * field already satisfies the validator.
+ * @param {Record<string, unknown>} result
+ * @returns {Record<string, unknown>}
+ */
+function ensureResponsesInputOrContinuity(result) {
+  if (!Array.isArray(result.input) || result.input.length !== 0) return result;
+  const hasContinuity =
+  isString(result.previous_response_id) && result.previous_response_id.length > 0 ||
+  isString(result.conversation_id) && result.conversation_id.length > 0 ||
+  isString(result.prompt) && result.prompt.length > 0;
+  if (hasContinuity) return result;
+  result.input = [
+  { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
+
+  return result;
+}
+
+/**
  * Convert OpenAI Chat Completions to OpenAI Responses API format.
  * Generic Responses transports preserve the caller's stream mode here so
  * non-streaming clients can receive JSON from native /responses endpoints.
@@ -520,7 +544,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.input) {
     const cleanInput = stripOrphanedToolOutputs(body.input);
     const result = cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
-    return normalizeResponsesOutputLimit(body, result);
+    return ensureResponsesInputOrContinuity(normalizeResponsesOutputLimit(body, result));
   }
 
   const result = {
@@ -656,7 +680,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   result.input = stripOrphanedToolOutputs(result.input);
 
-  return result;
+  return ensureResponsesInputOrContinuity(result);
 }
 
 // Register both directions

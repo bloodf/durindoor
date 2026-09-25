@@ -47,7 +47,9 @@ async function POSTHandler(request) {
   return await withEarlyStreamKeepalive(handlerPromise, {
     signal: request.signal,
     intervalMs: SSE_KEEPALIVE_MS,
-    keepaliveFrame: ANTHROPIC_PING_FRAME
+    keepaliveFrame: ANTHROPIC_PING_FRAME,
+    // A late failure becomes an Anthropic `event: error` carrying the HTTP status.
+    errorFormat: "claude"
   });
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);

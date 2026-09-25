@@ -23,11 +23,29 @@ import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 const MASTER_KEY_BASENAME = "master-key";
 const MASTER_KEY_BYTES = 32;
+const MASTER_KEY_MODE = 0o600;
+const DATA_DIR_MODE = 0o700;
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const FORMAT_VERSION = 1;
 
 let cachedKey = null;
+
+/**
+ * Best-effort chmod: repairs a master-key or DATA_DIR mode that predates
+ * this fix (GHSA-2pg2-xm9r-8544, ported from OmniRoute) or that an explicit
+ * `mode` on write did not stick to (the umask still filters it on some
+ * platforms). No-op on Windows; never throws — a foreign-owned path must
+ * not block boot.
+ */
+function chmodQuiet(target, mode) {
+  if (process.platform === "win32") return;
+  try {
+    fs.chmodSync(target, mode);
+  } catch {
+    // best-effort
+  }
+}
 
 function loadMasterKey() {
   if (cachedKey) return cachedKey;
@@ -35,7 +53,7 @@ function loadMasterKey() {
     throw new Error("columnCrypto: DATA_DIR required to load master key");
   }
   const dataDir = getDataDir();
-  fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(dataDir, { recursive: true, mode: DATA_DIR_MODE });
   const keyPath = path.join(dataDir, MASTER_KEY_BASENAME);
   let raw = null;
   try {
@@ -44,6 +62,7 @@ function loadMasterKey() {
     if (err && err.code !== "ENOENT") throw err;
   }
   if (raw && raw.length === MASTER_KEY_BYTES) {
+    chmodQuiet(keyPath, MASTER_KEY_MODE);
     cachedKey = raw;
     return cachedKey;
   }
@@ -53,7 +72,8 @@ function loadMasterKey() {
     );
   }
   const generated = crypto.randomBytes(MASTER_KEY_BYTES);
-  fs.writeFileSync(keyPath, generated, { mode: 0o600 });
+  fs.writeFileSync(keyPath, generated, { mode: MASTER_KEY_MODE });
+  chmodQuiet(keyPath, MASTER_KEY_MODE);
   cachedKey = generated;
   return cachedKey;
 }

@@ -306,6 +306,13 @@ function convertClaudeMessage(msg) {
             content: resultContent
           });
           break;
+
+        // decolua/9router#4323: OpenAI has no equivalent block — fail loudly
+        // instead of silently dropping the upload.
+        case CLAUDE_BLOCK.CONTAINER_UPLOAD:
+          throw new Error(
+            `Unsupported Claude content block type for OpenAI: ${CLAUDE_BLOCK.CONTAINER_UPLOAD}`
+          );
       }
     }
 

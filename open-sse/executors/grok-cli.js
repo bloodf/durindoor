@@ -10,10 +10,28 @@ import { getModelUpstreamId } from "../config/providerModels.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getConsistentMachineId } from "../shared/machineId.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { flattenGrokCliNamespaceTools, restoreGrokCliNamespaceIdentity } from "./grokCliNamespaceTools.js";
+import { normalizeGrokCliToolSchemas } from "./grokCliToolSchema.js";
 
 // Server-generated item id prefixes that /responses cannot resolve when store=false.
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const SERVER_ID_PATTERN = /^(rs|fc|resp|msg)_/;
+
+// Grok Build's own reasoning ids look like `rs_<uuid>`; its server-side tool reasoning
+// (emitted after a web search) is `tco_...`, with an id and blob that both start with
+// `tco_`. A reasoning item carrying neither marker was produced by another Responses
+// provider (e.g. a combo turn served by codex before falling back to grok-cli), and
+// Grok Build cannot decrypt its `encrypted_content`. Upstream OmniRoute#14650.
+const GROK_BUILD_REASONING_ID_PATTERN = /^rs_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GROK_BUILD_TOOL_REASONING_PREFIX = "tco_";
+
+// OpenAI-only `web_search` tool arguments Grok Build rejects with
+// `400 Argument not supported: <name>`. Codex CLI sends `external_web_access` on every
+// turn when search interception is off. Upstream OmniRoute#14609.
+const GROK_CLI_UNSUPPORTED_WEB_SEARCH_ARGS = ["external_web_access", "search_context_size"];
+
+// xAI's cli-chat-proxy enforces a maximum of 200 tools per request. Upstream decolua/9router#2534.
+const GROK_CLI_MAX_TOOLS = 200;
 
 // Hosted tool types executed server-side by the Grok CLI backend.
 const HOSTED_TOOL_TYPES = new Set([
@@ -120,6 +138,55 @@ export function resolveGrokCliSessionId(credentials, body = null) {
     workspaceId: credentials?.providerSpecificData?.workspaceId,
     scope: "grok-cli"
   });
+}
+
+function isGrokBuildOwnReasoning(item) {
+  const id = isString(item.id) ? item.id : "";
+  const blob = isString(item.encrypted_content) ? item.encrypted_content : "";
+  return (
+    GROK_BUILD_REASONING_ID_PATTERN.test(id) ||
+    id.startsWith(GROK_BUILD_TOOL_REASONING_PREFIX) ||
+    blob.startsWith(GROK_BUILD_TOOL_REASONING_PREFIX));
+
+}
+
+/**
+ * Sanitize replayed `reasoning` items before Grok Build sees them. Must run
+ * before `stripStoredItemReferences` deletes `rs_`-prefixed ids, since that is
+ * how a foreign (OpenAI) reasoning item is told apart from one of Grok's own.
+ *
+ * - Drops `encrypted_content` from reasoning Grok Build did not produce: it
+ *   cannot decrypt another provider's blob and 400s the whole turn (upstream
+ *   OmniRoute#14650). Grok accepts the item back without a blob (`summary: []`
+ *   when missing); the item itself (id, plaintext content) stays.
+ * - Drops a `content: null` Codex CLI replays on reasoning items: Grok Build
+ *   fails to decode an otherwise byte-identical encrypted blob when that key is
+ *   present (upstream OmniRoute#14615). The encrypted blob is left untouched.
+ */
+function sanitizeGrokCliReasoningReplay(input) {
+  if (!Array.isArray(input)) return;
+  for (const item of input) {
+    if (!item || !isObject(item) || Array.isArray(item) || item.type !== "reasoning") continue;
+    if (isString(item.encrypted_content) && !isGrokBuildOwnReasoning(item)) {
+      delete item.encrypted_content;
+      if (!Array.isArray(item.summary)) item.summary = [];
+    }
+    if (item.content === null) delete item.content;
+  }
+}
+
+/** Drop OpenAI-only `web_search` arguments Grok Build rejects; keep the tool itself. */
+function stripUnsupportedGrokCliWebSearchArgs(tools) {
+  let changed = false;
+  const next = tools.map((tool) => {
+    if (!tool || !isObject(tool) || Array.isArray(tool) || tool.type !== "web_search") return tool;
+    if (!GROK_CLI_UNSUPPORTED_WEB_SEARCH_ARGS.some((arg) => arg in tool)) return tool;
+    changed = true;
+    const copy = { ...tool };
+    for (const arg of GROK_CLI_UNSUPPORTED_WEB_SEARCH_ARGS) delete copy[arg];
+    return copy;
+  });
+  return changed ? next : tools;
 }
 
 function stripStoredItemReferences(body) {
@@ -243,7 +310,23 @@ export class GrokCliExecutor extends BaseExecutor {
         this._defaultAgentId = crypto.randomUUID();
       }
     }
-    return super.execute(ctx);
+
+    // Grok Build rejects Responses `namespace` tool groups (Codex CLI MCP servers)
+    // with a 422; flatten them into function tools before dispatch and restore
+    // their `{namespace, name}` identity on any function call Grok returns, so
+    // Codex can still dispatch it. Upstream OmniRoute#14596.
+    const { body: flattenedBody, identityMap } = flattenGrokCliNamespaceTools(ctx.body);
+    const nextCtx = identityMap ? { ...ctx, body: flattenedBody } : ctx;
+    if (identityMap) {
+      const toolCount = Array.isArray(flattenedBody?.tools) ? flattenedBody.tools.length : 0;
+      if (toolCount > GROK_CLI_MAX_TOOLS) {
+        ctx.log?.warn?.("GROK_CLI", `Flattened namespace tools exceed the Grok Build limit: sending ${GROK_CLI_MAX_TOOLS} of ${toolCount} tools`);
+      }
+    }
+
+    const result = await super.execute(nextCtx);
+    if (!identityMap || !result?.response) return result;
+    return { ...result, response: await restoreGrokCliNamespaceIdentity(result.response, identityMap) };
   }
 
   // Refresh goes through the shared manager: rotation, dedup lock, merge and
@@ -350,6 +433,9 @@ export class GrokCliExecutor extends BaseExecutor {
       }
     }
 
+    // Must run before stripStoredItemReferences deletes `rs_`-prefixed ids: that id is
+    // how a foreign (OpenAI) reasoning item is told apart from one of Grok Build's own.
+    sanitizeGrokCliReasoningReplay(body.input);
     stripStoredItemReferences(body);
     const turnIdx = resolveGrokCliTurnIdx(sessionId, body.input);
     if (requestContext) {
@@ -360,10 +446,19 @@ export class GrokCliExecutor extends BaseExecutor {
 
     body.stream = true;
     body.store = false;
+    if (Array.isArray(body.tools)) {
+      body.tools = stripUnsupportedGrokCliWebSearchArgs(body.tools);
+    }
     normalizeGrokCliTools(body);
     // xAI cli-chat-proxy enforces a maximum of 200 tools per request. Upstream decolua/9router#2534.
-    if (Array.isArray(body.tools) && body.tools.length > 200) {
-      body.tools = body.tools.slice(0, 200);
+    if (Array.isArray(body.tools) && body.tools.length > GROK_CLI_MAX_TOOLS) {
+      body.tools = body.tools.slice(0, GROK_CLI_MAX_TOOLS);
+    }
+    // Grok Build refuses a root anyOf/oneOf tool schema with a `$ref` or non-object
+    // branch (`invalid_client_tool_schema`), e.g. Codex desktop's `automation_update`.
+    // Upstream OmniRoute#14649.
+    if (Array.isArray(body.tools)) {
+      body.tools = normalizeGrokCliToolSchemas(body.tools);
     }
 
     // Resolve upstream model id (strip effort suffix from virtual models).

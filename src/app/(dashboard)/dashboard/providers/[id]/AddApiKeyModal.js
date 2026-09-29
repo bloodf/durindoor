@@ -171,7 +171,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
       });
       const data = await res.json();
-      setValidationResult(data.valid ? "success" : "failed");
+      setValidationResult(data.skipped ? "skipped" : data.valid ? "success" : "failed");
     } catch {
       setValidationResult("failed");
     } finally {
@@ -201,7 +201,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         });
         const data = await res.json();
         isValid = !!data.valid;
-        setValidationResult(isValid ? "success" : "failed");
+        setValidationResult(data.skipped ? "skipped" : isValid ? "success" : "failed");
       } catch {
         setValidationResult("failed");
       } finally {
@@ -434,8 +434,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </p>
           }
         {validationResult &&
-          <Badge tone={validationResult === "success" ? "success" : "danger"}>
-            {validationResult === "success" ? "Valid" : "Invalid"}
+          <Badge tone={validationResult === "success" ? "success" : validationResult === "skipped" ? "neutral" : "danger"}>
+            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : "Invalid"}
           </Badge>
           }
         {error &&

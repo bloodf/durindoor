@@ -219,7 +219,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx))
       });
       const data = await res.json();
-      setValidationResult(data.valid ? "success" : "failed");
+      setValidationResult(data.skipped ? "skipped" : data.valid ? "success" : "failed");
     } catch {setValidationResult("failed");} finally
     {setValidating(false);}
   };
@@ -238,7 +238,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
         });
         const data = await res.json();
         isValid = !!data.valid;
-        setValidationResult(isValid ? "success" : "failed");
+        setValidationResult(data.skipped ? "skipped" : isValid ? "success" : "failed");
       } catch {setValidationResult("failed");} finally
       {setValidating(false);}
       const providerSpecificData = isGooglePseProvider(provider) ? buildGooglePseProviderSpecificData(formData.cx) : undefined;
@@ -280,8 +280,8 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
           </div>
         }
         {validationResult &&
-        <Badge variant={validationResult === "success" ? "success" : "error"}>
-            {validationResult === "success" ? "Valid" : "Invalid"}
+        <Badge variant={validationResult === "success" ? "success" : validationResult === "skipped" ? "default" : "error"}>
+            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : "Invalid"}
           </Badge>
         }
         <div>

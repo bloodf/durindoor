@@ -196,7 +196,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     try {
       const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST" });
       const data = await res.json();
-      setTestResult(data.valid ? "success" : "failed");
+      setTestResult(data.skipped ? "skipped" : data.valid ? "success" : "failed");
     } catch {
       setTestResult("failed");
     } finally {
@@ -224,7 +224,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         })
       });
       const data = await res.json();
-      setValidationResult(data.valid ? "success" : "failed");
+      setValidationResult(data.skipped ? "skipped" : data.valid ? "success" : "failed");
     } catch {
       setValidationResult("failed");
     } finally {
@@ -246,6 +246,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (!isOAuth && formData.apiKey) {
         updates.apiKey = formData.apiKey;
         let isValid = validationResult === "success";
+        let skipped = validationResult === "skipped";
         if (!isValid) {
           try {
             setValidating(true);
@@ -263,7 +264,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             });
             const data = await res.json();
             isValid = !!data.valid;
-            setValidationResult(isValid ? "success" : "failed");
+            skipped = data.skipped === true;
+            setValidationResult(skipped ? "skipped" : isValid ? "success" : "failed");
           } catch {
             setValidationResult("failed");
           } finally {
@@ -273,8 +275,8 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         // An AWS edit that swaps credentials also clears the profile, so saving a key that failed
         // the check would drop a working SSO setup for a bad paste.
         if (!isValid && usesAwsCredentialForm) return;
-        if (isValid) {
-          updates.testStatus = "active";
+        if (isValid || skipped) {
+          updates.testStatus = isValid ? "active" : "unknown";
           updates.lastError = null;
           updates.lastErrorAt = null;
         }
@@ -313,7 +315,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         {isGithub ? <Input label="AI Credits limit per billing period" type="number" min="0" step="any" value={aiCreditLimit} onChange={(e) => setAiCreditLimit(e.target.value)} placeholder="No local limit" error={invalidCreditLimit ? "Enter a non-negative number." : undefined} hint="Blank disables the limit; 0 blocks all requests. Checks GitHub-reported credit usage through a short-lived cache, and blocks when usage cannot be verified. Cached readings, GitHub reporting delays and in-flight requests can all overshoot this cutoff, so it is not a guaranteed spending ceiling. Applies only to this connection's traffic." /> : null}
         {!isOAuth ? <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Input label="API Key" type="password" value={formData.apiKey} onChange={(e) => { setFormData({ ...formData, apiKey: e.target.value }); setValidationResult(null); }} placeholder="Enter new API key" hint="Leave blank to keep current API key." /></div><Button variant="secondary" icon="fact_check" onClick={handleValidate} loading={validating} disabled={!formData.apiKey || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim() || saving}>Check</Button></div>
-          {validationResult ? <Badge tone={validationResult === "success" ? "success" : "danger"}>{validationResult === "success" ? "Valid" : "Invalid"}</Badge> : null}
+          {validationResult ? <Badge tone={validationResult === "success" ? "success" : validationResult === "skipped" ? "neutral" : "danger"}>{validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : "Invalid"}</Badge> : null}
         </> : null}
         {isGooglePse ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">Google Programmable Search</h3><Input label="Search Engine ID (cx)" value={googlePseData.cx} onChange={(e) => setGooglePseData({ cx: e.target.value })} placeholder="012345678901234567890:abcdefg" hint="Required for Google Programmable Search requests." /></section> : null}
         {isAzure ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">Azure OpenAI Configuration</h3><div className="flex flex-col gap-3"><Input label="Azure Endpoint" value={azureData.azureEndpoint} onChange={(e) => setAzureData({ ...azureData, azureEndpoint: e.target.value })} placeholder="https://your-resource.openai.azure.com" hint="Your Azure OpenAI resource endpoint URL" /><Input label="Deployment Name" value={azureData.deployment} onChange={(e) => setAzureData({ ...azureData, deployment: e.target.value })} placeholder="gpt-4" hint="Deployment name in Azure resource" /><Input label="API Version" value={azureData.apiVersion} onChange={(e) => setAzureData({ ...azureData, apiVersion: e.target.value })} placeholder="2024-10-01-preview" hint="Azure OpenAI API version to use" /><Input label="Organization" value={azureData.organization} onChange={(e) => setAzureData({ ...azureData, organization: e.target.value })} placeholder="Organization ID" hint="Required for billing" /></div></section> : null}
@@ -331,7 +333,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         </section>
         <PeakHourProtectionEditor value={peakHourProtection} onChange={setPeakHourProtection} />
         {formatPeakHourSummary(peakHourProtection) ? <p className="text-xs text-dd-muted">{formatPeakHourSummary(peakHourProtection)}</p> : null}
-        {!isCompatible && !isAzure && !requiresAccountId ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" icon="network_check" onClick={handleTest} loading={testing}>Test Connection</Button>{testResult ? <Badge tone={testResult === "success" ? "success" : "danger"}>{testResult === "success" ? "Valid" : "Failed"}</Badge> : null}</div> : null}
+        {!isCompatible && !isAzure && !requiresAccountId ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" icon="network_check" onClick={handleTest} loading={testing}>Test Connection</Button>{testResult ? <Badge tone={testResult === "success" ? "success" : testResult === "skipped" ? "neutral" : "danger"}>{testResult === "success" ? "Valid" : testResult === "skipped" ? "Skipped" : "Failed"}</Badge> : null}</div> : null}
       </div>
     </Modal>);
 

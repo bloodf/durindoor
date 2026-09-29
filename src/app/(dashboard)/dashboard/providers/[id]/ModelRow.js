@@ -5,6 +5,7 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 const STATUS_TOKENS = {
   ok: { border: "border-dd-success/40", icon: "check_circle", iconClass: "text-dd-success" },
   error: { border: "border-dd-danger/40", icon: "cancel", iconClass: "text-dd-danger" },
+  skipped: { border: "border-dd-border", icon: "info", iconClass: "text-dd-muted" },
   default: { border: "border-dd-border", icon: "smart_toy", iconClass: "text-dd-muted" },
 };
 
@@ -136,7 +137,7 @@ ModelRow.propTypes = {
   alias: PropTypes.string,
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
-  testStatus: PropTypes.oneOf(["ok", "error"]),
+  testStatus: PropTypes.oneOf(["ok", "error", "skipped"]),
   isCustom: PropTypes.bool,
   isFree: PropTypes.bool,
   onDeleteAlias: PropTypes.func,

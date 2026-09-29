@@ -51,31 +51,14 @@ describe("zenmux-free saved connection test", () => {
     mocks.testProxyUrl.mockResolvedValue({ ok: true });
   });
 
-  it("probes ZenMux cookies through the configured connection proxy", async () => {
+  it("skips ZenMux saved-connection test: no chat request, no persisted status (#14818)", async () => {
     const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
 
     const result = await testSingleConnection("conn-zmf");
 
-    expect(result.valid).toBe(true);
-    expect(result.error).toBeNull();
-    expect(proxyAwareFetch).toHaveBeenCalledWith(
-      expect.stringContaining("https://zenmux.ai/api/anthropic/v1/messages?ctoken=tok123"),
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          Cookie: "foo=1; ctoken=tok123; bar=2",
-          "anthropic-version": "2023-06-01",
-        }),
-      }),
-      expect.objectContaining({
-        connectionProxyEnabled: true,
-        connectionProxyUrl: "http://proxy.local:8080",
-      }),
-    );
-    expect(mocks.updateProviderConnection).toHaveBeenCalledWith("conn-zmf", expect.objectContaining({
-      testStatus: "active",
-      lastError: null,
-    }));
+    expect(result).toMatchObject({ valid: false, skipped: true });
+    expect(proxyAwareFetch).not.toHaveBeenCalled();
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
   it("redacts proxy validation errors before returning or persisting them", async () => {
@@ -88,6 +71,9 @@ describe("zenmux-free saved connection test", () => {
       ok: false,
       status: 500,
       error: "connect http://alice:proxy-secret@proxy.local:8080?token=query-secret",
+    });
+    mocks.getProviderConnectionById.mockResolvedValue({
+      id: "conn-zmf", provider: "openai", authType: "apikey", apiKey: "sk-test", providerSpecificData: { connectionProxyEnabled: true },
     });
     const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
 

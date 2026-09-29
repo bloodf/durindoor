@@ -54,7 +54,7 @@ export async function POST(request) {
           ...warmupResult
         })}\n\n`));
 
-        const isProviderLevelError = warmupResult.error && (
+        const isProviderLevelError = !warmupResult.skipped && warmupResult.error && (
         warmupResult.error.includes('401') ||
         warmupResult.error.includes('403') ||
         warmupResult.error.includes('timeout') ||
@@ -69,6 +69,7 @@ export async function POST(request) {
               model: item.model,
               kind: item.kind,
               ok: false,
+              skipped: true,
               error: "Skipped: provider unavailable",
               latencyMs: 0
             })}\n\n`));

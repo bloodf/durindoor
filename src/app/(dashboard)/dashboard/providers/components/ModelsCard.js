@@ -7,6 +7,7 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
+import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 
 // ── ModelRow ───────────────────────────────────────────────────
 export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, checkbox }) {
@@ -18,7 +19,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteS
       <div className="flex items-center gap-2">
         {checkbox}
         <span className={`material-symbols-outlined text-base ${iconClass}`}>
-          {deleteStatus === "deleting" ? "delete" : testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
+          {deleteStatus === "deleting" ? "delete" : testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : testStatus === "skipped" ? "info" : "smart_toy"}
         </span>
         <div className="flex flex-col gap-1">
           <code className="text-xs text-dd-muted font-mono bg-dd-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>
@@ -76,7 +77,7 @@ ModelRow.propTypes = {
   fullModel: PropTypes.string.isRequired,
   copied: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
-  testStatus: PropTypes.oneOf(["ok", "error", "testing"]),
+  testStatus: PropTypes.oneOf(["ok", "error", "skipped", "testing"]),
   deleteStatus: PropTypes.oneOf(["deleting"]),
   isCustom: PropTypes.bool,
   isFree: PropTypes.bool,
@@ -226,8 +227,9 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         body: JSON.stringify({ model: `${providerAlias}/${modelId}`, kind: kindFilter, connectionId }),
       });
       const data = await res.json();
-      setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
-      setTestError(data.ok ? "" : (data.error || "Model not reachable"));
+      const outcome = probeOutcome(data);
+      setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
+      setTestError(outcome === "error" ? (data.error || "Model not reachable") : "");
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setTestError("Network error");
@@ -386,7 +388,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
       await readSSEStream(res, (result) => {
         if (result.model) {
           const modelId = result.model.substring(result.model.lastIndexOf("/") + 1);
-          const status = result.ok ? "ok" : "error";
+          const status = probeOutcome(result);
           setModelTestResults(prev => ({ ...prev, [modelId]: status }));
         } else if (result.error) {
           console.error("Batch test server error:", result.error);

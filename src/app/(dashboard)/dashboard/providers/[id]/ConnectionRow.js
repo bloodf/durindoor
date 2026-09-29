@@ -164,6 +164,7 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
     if (oneByOneStatus.state === "queued") return "queued";
     if (oneByOneStatus.state === "testing") return "testing";
     if (oneByOneStatus.state === "success") return "success";
+    if (oneByOneStatus.state === "skipped") return "skipped";
     if (oneByOneStatus.state === "failed") return oneByOneStatus.error ? `failed: ${oneByOneStatus.error}` : "failed";
     return null;
   };

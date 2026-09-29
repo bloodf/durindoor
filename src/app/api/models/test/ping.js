@@ -1,6 +1,9 @@
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { getProviderByAlias, WEB_COOKIE_PROVIDERS } from "@/shared/constants/providers";
+import { resolveProviderAlias } from "open-sse/services/model.js";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
 
@@ -41,6 +44,16 @@ async function getInternalHeaders() {
   const headers = { "Content-Type": "application/json" };
   headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
   return headers;
+}
+
+// A chat probe on a web-session LLM provider opens a real conversation on the user's account and
+// gets it suspended (OmniRoute #14780/#14818). Skipped, not failed: callers must not colour or hide it.
+// Music-only web providers (suno/udio) have no chat surface and are not matched.
+function isConversationChatModel(model) {
+  const prefix = isString(model) ? model.split("/", 1)[0] : "";
+  const provider = getProviderByAlias(resolveProviderAlias(prefix));
+  const web = provider && WEB_COOKIE_PROVIDERS[provider.id];
+  return Boolean(web && (!web.serviceKinds || web.serviceKinds.includes("llm")));
 }
 
 export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`, connectionId = null) {
@@ -185,6 +198,17 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
       return { ok: false, latencyMs, status: res.status, error: "Provider returned no answers for this model" };
     }
     return { ok: true, latencyMs, error: null, status: res.status };
+  }
+
+  // Only the chat fallback creates a conversation; media/embedding/etc. kinds above are untouched.
+  if (isConversationChatModel(model)) {
+    return {
+      ok: false,
+      latencyMs: 0,
+      status: 422,
+      skipped: true,
+      error: SKIPPED_WEB_SESSION_ERROR
+    };
   }
 
   const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {

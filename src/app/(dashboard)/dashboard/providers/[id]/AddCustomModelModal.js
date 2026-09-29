@@ -7,6 +7,7 @@ import Modal from "@/shared/ui/components/Modal.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import CapacityBadges from "@/shared/components/CapacityBadges";
 import { buildCustomCapabilities } from "./customModelCapabilities";
+import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 
 const BOOLEAN_CAP_KEYS = [
   { key: "vision", label: "Vision", icon: "visibility" },
@@ -115,7 +116,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
         body: JSON.stringify({ model: `${providerAlias}/${cleanId}`, connectionId }),
       });
       const data = await res.json();
-      setTestStatus(data.ok ? "ok" : "error");
+      setTestStatus(probeOutcome(data));
       setTestError(data.error || "");
     } catch (err) {
       setTestStatus("error");
@@ -227,6 +228,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
         ) : null}
 
         {testStatus === "ok" ? <div className="flex items-center gap-2 text-sm text-dd-success"><span aria-hidden="true" className="material-symbols-outlined text-base">check_circle</span>Model is reachable</div> : null}
+        {testStatus === "skipped" ? <div className="flex items-start gap-2 text-sm text-dd-muted" role="status"><span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">info</span><span>{testError}</span></div> : null}
         {testStatus === "error" ? <div className="flex items-start gap-2 text-sm text-dd-danger" role="alert"><span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span><span>{testError || "Model not reachable"}</span></div> : null}
         {saveError ? <div className="flex items-center gap-1.5 text-sm text-dd-danger" role="alert"><span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span><span>{saveError}</span></div> : null}
 

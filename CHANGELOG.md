@@ -15,6 +15,7 @@
 
 ## Fixes
 
+- fix(claude): strip the `_ide` cloak suffix from tool_use names when the tool-name map is lost or misses (retry/reconnect), streaming and non-streaming, so clients no longer see unknown `<tool>_ide` tools; CC decoy names are left as-is (ports upstream #4342)
 - fix(tests): untrack an accidental tests/node_modules symlink and ignore symlinked node_modules (#1021)
 
 

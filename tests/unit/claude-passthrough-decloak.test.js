@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import { createPassthroughStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { decloakToolNames } from "../../open-sse/utils/claudeCloaking.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
 async function runPassthrough(toolNameMap, chunks, targetFormat = null) {
@@ -92,7 +93,7 @@ describe("claude→claude passthrough tool-name decloaking", () => {
     expect(output).toContain('"name":"Execute"');
   });
 
-  it("does not decloak a tool name not present in the map", async () => {
+  it("strips the cloak suffix when the map misses the name (stale/partial map)", async () => {
     const toolNameMap = new Map([["Other_ide", "Other"]]);
     const sseChunk =
       `data: ${JSON.stringify({
@@ -103,7 +104,34 @@ describe("claude→claude passthrough tool-name decloaking", () => {
 
     const output = await runPassthrough(toolNameMap, [sseChunk]);
 
-    expect(output).toContain('"name":"Execute_ide"');
+    expect(output).not.toContain("Execute_ide");
+    expect(output).toContain('"name":"Execute"');
+  });
+
+  it("strips the cloak suffix when the map was lost entirely (retry/reconnect)", async () => {
+    const sseChunk =
+      `data: ${JSON.stringify({
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "tool_use", id: "toolu_01", name: "Execute_ide", input: {} }
+      })}\n\n`;
+
+    const output = await runPassthrough(null, [sseChunk]);
+
+    expect(output).toContain('"name":"Execute"');
+  });
+
+  it("never strips reserved CC decoy names", async () => {
+    const sseChunk =
+      `data: ${JSON.stringify({
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "tool_use", id: "toolu_01", name: "Bash", input: {} }
+      })}\n\n`;
+
+    const output = await runPassthrough(null, [sseChunk]);
+
+    expect(output).toContain('"name":"Bash"');
   });
 
   it("preserves native Claude data frames and ends at message_stop without OpenAI DONE", async () => {
@@ -122,6 +150,19 @@ describe("claude→claude passthrough tool-name decloaking", () => {
       expect(output).toContain(JSON.stringify(data));
     }
     expect(output).not.toContain("data: [DONE]");
+  });
+
+  it("non-streaming decloakToolNames: map hit wins, lost/missed map strips suffix, decoys untouched", () => {
+    const body = { content: [
+      { type: "text", text: "Execute_ide" },
+      { type: "tool_use", id: "1", name: "Execute_ide", input: {} },
+      { type: "tool_use", id: "2", name: "Bash", input: {} },
+      { type: "tool_use", id: "3", name: "run_ide", input: {} },
+    ] };
+    const names = (b) => b.content.map((c) => c.name ?? c.text);
+    expect(names(decloakToolNames(body, null))).toEqual(["Execute_ide", "Execute", "Bash", "run"]);
+    expect(names(decloakToolNames(body, new Map([["Other_ide", "Other"]])))).toEqual(["Execute_ide", "Execute", "Bash", "run"]);
+    expect(names(decloakToolNames(body, new Map([["run_ide", "run_ide"], ["Execute_ide", "Exec"]])))).toEqual(["Execute_ide", "Exec", "Bash", "run_ide"]);
   });
 
   it("fails closed when a native Claude stream ends before message_stop", async () => {

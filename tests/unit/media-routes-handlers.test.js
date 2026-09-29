@@ -232,6 +232,23 @@ describe("media endpoints without a model", () => {
     expect(res.status).toBe(200);
     expect(mocks.handleSearchCore.mock.calls[0][0].provider.name).toBe("Tavily");
   });
+  it("scopes search failures and success to a search-only lock, not chat", async () => {
+    const auth = await import("../../src/sse/services/auth.js");
+    mocks.handleSearchCore.mockResolvedValueOnce(rateLimited()).mockImplementationOnce(async ({ onRequestSuccess }) => {
+      await onRequestSuccess();
+      return ok({ results: [] });
+    });
+
+    const failed = await handleSearch(post("/v1/search", { provider: "tavily", query: "durin" }));
+    const succeeded = await handleSearch(post("/v1/search", { provider: "tavily", query: "durin" }));
+
+    expect(failed.status).toBe(429);
+    expect(succeeded.status).toBe(200);
+    expect(mocks.getProviderCredentialsWithQuotaPreflight).toHaveBeenCalledWith("tavily", expect.any(Set), "websearch:tavily", expect.objectContaining({ webSearch: true }));
+    expect(auth.markAccountUnavailable).toHaveBeenCalledWith("c1", 429, "rate limited", "tavily", "websearch:tavily", null, expect.objectContaining({ webSearch: true }));
+    expect(auth.clearAccountError).toHaveBeenCalledWith("c1", expect.objectContaining({ connectionId: "c1" }), "websearch:tavily", expect.objectContaining({ provider: "tavily", webSearch: true }));
+  });
+
 
   it("video generation only tries providers the endpoint can run", async () => {
     catalog({ video: [entry("xai/grok-imagine-video"), entry("veoaifree-web/veo")] });

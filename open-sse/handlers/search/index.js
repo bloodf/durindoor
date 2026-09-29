@@ -184,7 +184,7 @@ async function tryDedicatedProvider({
  * @param {object|null} options.credentials  Provider credentials
  * @param {object}   [options.log]           Logger
  */
-export async function handleSearchCore({ body, provider, providerConfig, credentials, log }) {
+export async function handleSearchCore({ body, provider, providerConfig, credentials, log, onRequestSuccess }) {
   const globalStartTime = Date.now();
   const proxyOptions = resolveCredentialProxyOptions(credentials);
 
@@ -219,7 +219,10 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
     return errorResult(400, `Provider ${provider.id} does not support web search`);
   }
 
-  if (result.success) return successResult(result.data);
+  if (result.success) {
+    await onRequestSuccess?.();
+    return successResult(result.data);
+  }
 
   // 3. Failover within global timeout for retriable errors
   if (
@@ -238,7 +241,10 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
       proxyOptions,
       log
     });
-    if (fallback.success) return successResult(fallback.data);
+    if (fallback.success) {
+      await onRequestSuccess?.();
+      return successResult(fallback.data);
+    }
   }
 
   return errorResult(result.status || 502, result.error || "Search failed");

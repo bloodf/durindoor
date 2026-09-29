@@ -462,6 +462,7 @@ export async function recordProviderConnectionFallbackState(id, {
   backoffLevel = 0,
   observedAt,
   webFetch = false,
+  webSearch = false,
   videoPoll = false
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
@@ -488,7 +489,7 @@ export async function recordProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
-    const scope = boundedModelScope(existing.provider, model, { webFetch, videoPoll });
+    const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch, videoPoll });
     const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
     const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;
     const storedVersion = Date.parse(existing[versionKey] || "") || 0;
@@ -508,7 +509,10 @@ export async function recordProviderConnectionFallbackState(id, {
       // dedupe and OAuth compare-and-swap keys.
       updatedAt: existing.updatedAt
     };
-    if (!webFetch) {
+    if (webSearch && scope.startsWith("websearch:")) {
+      merged[`modelError_${scope}`] = Number(status) || 503;
+    }
+    if (!webFetch && !webSearch) {
       merged.testStatus = "unavailable";
       merged.lastError = storedReason;
       merged.errorCode = Number(status) || null;
@@ -529,7 +533,8 @@ export async function recordProviderConnectionFallbackState(id, {
 export async function clearProviderConnectionFallbackState(id, {
   model = null,
   observedAt,
-  webFetch = false
+  webFetch = false,
+  webSearch = false
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
   const db = await getAdapter();
@@ -541,8 +546,8 @@ export async function clearProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
-    const scope = boundedModelScope(existing.provider, model, { webFetch });
-    const relevantScopes = webFetch || scope === "__all" ? [scope] : [scope, "__all"];
+    const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch });
+    const relevantScopes = webFetch || webSearch || scope === "__all" ? [scope] : [scope, "__all"];
     const primaryVersion = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${scope}`] || "") || 0;
     if (eventMs <= primaryVersion) {
       result = { applied: false, connection: existing };
@@ -563,15 +568,19 @@ export async function clearProviderConnectionFallbackState(id, {
       merged[`${MODEL_LOCK_PREFIX}${candidate}`] = null;
       merged[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] = new Date(eventMs).toISOString();
     }
-    if (!webFetch) {
+    if (webSearch && scope.startsWith("websearch:") && acceptedScopes.includes(scope)) {
+      merged[`modelError_${scope}`] = null;
+    }
+    if (!webFetch && !webSearch) {
       for (const [key, value] of Object.entries(existing)) {
-        if (!key.startsWith(MODEL_LOCK_PREFIX) || acceptedScopes.some((candidate) => key === `${MODEL_LOCK_PREFIX}${candidate}`)) continue;
+        if (!key.startsWith(MODEL_LOCK_PREFIX) || key.startsWith(`${MODEL_LOCK_PREFIX}webfetch:`) || key.startsWith(`${MODEL_LOCK_PREFIX}websearch:`) || acceptedScopes.some((candidate) => key === `${MODEL_LOCK_PREFIX}${candidate}`)) continue;
         if (Date.parse(value || "") <= eventMs) merged[key] = null;
       }
     }
     const activeLocks = Object.entries(merged).some(
       ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) &&
       !key.startsWith(`${MODEL_LOCK_PREFIX}webfetch:`) &&
+      !key.startsWith(`${MODEL_LOCK_PREFIX}websearch:`) &&
       activeTimestamp(value, eventMs)
     );
     // A durable reauth_required state means the OAuth refresh token is dead and
@@ -580,7 +589,7 @@ export async function clearProviderConnectionFallbackState(id, {
     // looks healthy while every request 401s. Only a successful OAuth
     // replacement (updateProviderConnection with testStatus:"active") clears it.
     const reauthPinned = existing.testStatus === "reauth_required" || existing.errorCode === "REAUTH";
-    if (!webFetch && !reauthPinned && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
+    if (!webFetch && !webSearch && !reauthPinned && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
       Object.assign(merged, {
         testStatus: "active",
         lastError: null,

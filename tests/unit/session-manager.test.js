@@ -63,6 +63,28 @@ describe("resolveSessionId", () => {
     expect(got).toBe("client-sess-123");
   });
 
+  it("Claude scope reads x-claude-code-session-id header when metadata is absent", () => {
+    const headers = { "x-claude-code-session-id": " 0a1b2c3d-1111-2222-3333-444455556666 " };
+    expect(resolveClientSessionId({ headers, body: {}, scope: "claude" })).toBe("0a1b2c3d-1111-2222-3333-444455556666");
+    expect(resolveClientSessionId({ headers, body: {}, scope: "codex" })).toBeNull();
+    expect(resolveSessionId({ headers, body: {}, connectionId: "c1", scope: "claude" })).toBe("0a1b2c3d-1111-2222-3333-444455556666");
+  });
+
+  it("Claude metadata.user_id wins over x-claude-code-session-id header", () => {
+    const got = resolveClientSessionId({
+      headers: { "x-claude-code-session-id": "header-sess" },
+      body: { metadata: { user_id: "user_abc_session_aaaa-bbbb" } },
+      scope: "claude",
+    });
+    expect(got).toBe("aaaa-bbbb");
+  });
+
+  it("Claude header is normalized: blank and over-256-char values are ignored", () => {
+    expect(resolveClientSessionId({ headers: { "x-claude-code-session-id": "   " }, body: {}, scope: "claude" })).toBeNull();
+    expect(resolveClientSessionId({ headers: { "x-claude-code-session-id": "a".repeat(257) }, body: {}, scope: "claude" })).toBeNull();
+    expect(resolveClientSessionId({ headers: { "x-claude-code-session-id": "a".repeat(256) }, body: {}, scope: "claude" })).toBe("a".repeat(256));
+  });
+
   it("does not use request-scoped x-client-request-id for provider account affinity in Kiro scope", () => {
     const got = resolveClientSessionId({
       headers: { "x-client-request-id": "req-1" },

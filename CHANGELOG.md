@@ -15,6 +15,7 @@
 - fix(models): Gemini models.list follows `nextPageToken` (`pageSize=1000`); a failed later page, repeated cursor, or page-cap overrun now errors instead of storing a truncated catalog
 - fix(models): add `claude-sonnet-5-5` to anthropic/claude registries with its own $2/$10 pricing; drop retired `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-5-sonnet-20241022` from the anthropic bootstrap
 - fix(providers): stop creating conversations on web-session accounts from model tests, connection tests, and key validation; report them as skipped, never failed (#14818)
+- fix(session): in Claude scope, read the Claude Code session id from `x-claude-code-session-id` when `metadata.user_id` carries none (port of upstream 2fd99eae; other scopes ignore the header)
 
 
 # 4.9.2

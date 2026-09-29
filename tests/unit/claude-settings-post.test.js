@@ -128,6 +128,27 @@ describe("claude-settings POST", () => {
     expect(written.env.ANTHROPIC_BASE_URL).toBe("http://gateway/9router/v1");
   });
 
+  it("keeps an existing ANTHROPIC_AUTH_TOKEN while updating other env values", async () => {
+    mocks.readFile.mockResolvedValue(JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "sk-existing" } }));
+    const response = await postEnv({
+      ANTHROPIC_AUTH_TOKEN: "sk-new",
+      ANTHROPIC_BASE_URL: "http://gateway/9router",
+    });
+
+    expect(response.status).toBe(200);
+    const written = JSON.parse(mocks.writeFile.mock.calls[0][1]);
+    expect(written.env.ANTHROPIC_AUTH_TOKEN).toBe("sk-existing");
+    expect(written.env.ANTHROPIC_BASE_URL).toBe("http://gateway/9router/v1");
+  });
+
+  it("writes ANTHROPIC_AUTH_TOKEN when none exists", async () => {
+    const response = await postEnv({ ANTHROPIC_AUTH_TOKEN: "sk-new" });
+
+    expect(response.status).toBe(200);
+    const written = JSON.parse(mocks.writeFile.mock.calls[0][1]);
+    expect(written.env.ANTHROPIC_AUTH_TOKEN).toBe("sk-new");
+  });
+
   it("includes opus[1m] and sonnet[1m] aliases", () => {
     expect(CLI_TOOLS.claude.modelAliases).toContain("opus[1m]");
     expect(CLI_TOOLS.claude.modelAliases).toContain("sonnet[1m]");

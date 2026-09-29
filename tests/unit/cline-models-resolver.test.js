@@ -114,4 +114,44 @@ describe("resolveClineModels", () => {
       { id: "openai/gpt-live", name: "GPT Live" },
     ]);
   });
+
+  describe("free tier feed", () => {
+    const FEED = "https://api.cline.bot/api/v1/ai/cline/recommended-models";
+    const feedFetch = (feedResponse, catalog = [{ id: "anthropic/claude-sonnet", name: "Sonnet" }]) =>
+      mocks.proxyAwareFetch.mockImplementation(async (url) =>
+        url === FEED ? feedResponse : { ok: true, json: async () => catalog });
+
+    it("merges free[] without overwriting catalog entries, unauthenticated, via the connection proxy", async () => {
+      const proxyOptions = { connectionProxyUrl: "http://proxy.internal:8080" };
+      feedFetch({
+        ok: true,
+        json: async () => ({
+          free: [
+            { id: "cline-free/solar-pro4", name: "Solar Pro 4" },
+            { id: "anthropic/claude-sonnet", name: "Feed name must lose" },
+            { id: "cline-pass/leak", name: "no" },
+            { id: "", name: "blank" },
+          ],
+        }),
+      });
+
+      await expect(resolveClineModels(connection, { proxyOptions })).resolves.toEqual([
+        { id: "anthropic/claude-sonnet", name: "Sonnet" },
+        { id: "cline-free/solar-pro4", name: "Solar Pro 4" },
+      ]);
+      const feedCall = mocks.proxyAwareFetch.mock.calls.find(([url]) => url === FEED);
+      expect(feedCall[1].headers).toEqual({ Accept: "application/json" });
+      expect(feedCall[2]).toBe(proxyOptions);
+    });
+
+    it.each([
+      ["a non-2xx feed", { ok: false, json: vi.fn() }],
+      ["a feed without free[]", { ok: true, json: async () => ({ recommended: [] }) }],
+    ])("keeps the catalog for %s", async (_case, feedResponse) => {
+      feedFetch(feedResponse);
+      await expect(resolveClineModels(connection)).resolves.toEqual([
+        { id: "anthropic/claude-sonnet", name: "Sonnet" },
+      ]);
+    });
+  });
 });

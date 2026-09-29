@@ -5,6 +5,7 @@
 - port(upstream): #4481 - expose Claude cache read and creation tokens to OpenAI streaming clients without charging cached prompts as uncached input
 - port(9router): keep a trailing user turn after empty-message cleanup when the client ended on a user turn, including under the preserve-prefill header (decolua/9router#4482)
 - port(omniroute): prepend a text part to image-only user turns sent to Poe, which rejects them with 400 (upstream #15179)
+- port(upstream): #4334 - price `cline-free/*` and Cline's exact `(Free)` catalog models at zero without changing paid twins; merge the recommended-models `free[]` feed additively into the live catalog (catalog entries win on shared ids). Feed is unauthenticated and fails soft.
 
 ## Fixes
 

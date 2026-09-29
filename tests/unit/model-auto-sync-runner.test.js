@@ -138,6 +138,35 @@ describe("syncProviderModels per provider", () => {
     ]);
   });
 
+  it("gemini: follows nextPageToken across pages and unions models", async () => {
+    connect("gemini");
+    const page = (id, next) => json({ models: [{ name: `models/${id}`, supportedGenerationMethods: ["generateContent"] }], ...(next && { nextPageToken: next }) });
+    respond({ "generativelanguage.googleapis.com": (url) =>
+      String(url).includes("pageToken=tok%2F2") ? page("gemini-b") :
+      String(url).includes("pageToken=") ? page("gemini-c") : page("gemini-a", "tok/2") });
+    await syncProviderModels("gemini", { now: NOW });
+    const urls = routedFetch.mock.calls.map((c) => String(c[0]));
+    expect(urls).toHaveLength(2);
+    expect(urls.every((u) => u.includes("pageSize=1000"))).toBe(true);
+    expect(db.catalogs.gemini.models.map((m) => m.id)).toEqual(["gemini-a", "gemini-b"]);
+  });
+
+  it("gemini: failing later page or repeated cursor never stores a truncated catalog", async () => {
+    connect("gemini");
+    respond({ "generativelanguage.googleapis.com": (url) =>
+      String(url).includes("pageToken=") ? json({ error: "boom" }, 500) :
+      json({ models: [{ name: "models/gemini-a", supportedGenerationMethods: ["generateContent"] }], nextPageToken: "t1" }) });
+    await syncProviderModels("gemini", { now: NOW });
+    expect(db.catalogs.gemini?.models ?? []).toEqual([]);
+
+    routedFetch.mockReset();
+    respond({ "generativelanguage.googleapis.com": () =>
+      json({ models: [{ name: "models/gemini-a", supportedGenerationMethods: ["generateContent"] }], nextPageToken: "same" }) });
+    await syncProviderModels("gemini", { now: NOW });
+    expect(routedFetch.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(db.catalogs.gemini?.models ?? []).toEqual([]);
+  });
+
   it("codex: models endpoint, minimal_client_version gate, no synthesized review rows", async () => {
     connect("codex", { apiKey: undefined, accessToken: "codex-token" });
     respond({ "chatgpt.com/backend-api/codex/models": json({ models: [

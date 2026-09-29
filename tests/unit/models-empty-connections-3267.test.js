@@ -37,13 +37,13 @@ describe("buildModelsList DB availability (#3267)", () => {
     const { buildModelsList } = await import("../../src/app/api/v1/models/buildModelsList.js");
     const ids = (await buildModelsList(["llm"])).map((model) => model.id);
     expect(ids).toContain("custom/explicit-model");
-    expect(ids).not.toContain("anthropic/claude-sonnet-4-20250514");
+    expect(ids).not.toContain("anthropic/claude-sonnet-5-5");
   });
 
   it("falls back to the built-in catalog when the DB is unavailable", async () => {
     mocks.getProviderConnections.mockRejectedValue(new Error("DB unavailable"));
     const { buildModelsList } = await import("../../src/app/api/v1/models/buildModelsList.js");
     const ids = (await buildModelsList(["llm"])).map((model) => model.id);
-    expect(ids).toContain("anthropic/claude-sonnet-4-20250514");
+    expect(ids).toContain("anthropic/claude-sonnet-5-5");
   });
 });

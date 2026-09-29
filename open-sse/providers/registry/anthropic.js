@@ -24,6 +24,7 @@ export default {
   },
   models: [
     { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
+    { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
     { id: "claude-opus-5", name: "Claude Opus 5" },
     { id: "claude-sonnet-5", name: "Claude Sonnet 5" },
     { id: "claude-fable-5-1", name: "Claude Fable 5.1" },
@@ -36,9 +37,7 @@ export default {
     { id: "claude-opus-4-5-20251101", name: "Claude Opus 4.5" },
     { id: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5" },
     { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5" },
-    { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
-    { id: "claude-opus-4-20250514", name: "Claude Opus 4" },
-    { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet" },
+    /** claude-sonnet-4-20250514, claude-opus-4-20250514 retired 2026-06-15; claude-3-5-sonnet-20241022 retired 2025-10-28 (platform.claude.com/docs/en/about-claude/model-deprecations, updated 2026-09-29). */
   ],
   serviceKinds: ["llm","imageToText"],
 };

@@ -6,6 +6,9 @@ import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
+// Safety cap on paginated list endpoints (1000 models/page for Gemini).
+const MAX_MODEL_LIST_PAGES = 20;
+
 async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
   const baseUrl = connection.providerSpecificData?.baseUrl;
   if (!baseUrl) return { error: "Missing custom base URL", status: 400 };
@@ -120,11 +123,27 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
   const fetchOptions = { method: config.method || "GET", headers, cache: "no-store" };
   if (config.body && config.method === "POST") fetchOptions.body = JSON.stringify(config.body);
 
-  const response = await proxyAwareFetch(url, fetchOptions, proxyOptions);
-  if (!response.ok) {
-    const text = await response.text();
-    return { error: sanitizeErrorMessage(text || response.statusText), status: response.status };
+  // Cursor-paginated list endpoints (Gemini models.list: pageSize<=1000 +
+  // nextPageToken) declare `pageSize` and `nextPageToken`; all others are one request.
+  const models = [];
+  const seenTokens = new Set();
+  let pageToken = null;
+  for (let page = 0; page < MAX_MODEL_LIST_PAGES; page++) {
+    let pageUrl = url;
+    if (config.pageSize) pageUrl += `${pageUrl.includes("?") ? "&" : "?"}pageSize=${config.pageSize}`;
+    if (pageToken) pageUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
+    const response = await proxyAwareFetch(pageUrl, fetchOptions, proxyOptions);
+    if (!response.ok) {
+      const text = await response.text();
+      return { error: sanitizeErrorMessage(text || response.statusText), status: response.status };
+    }
+    const data = await response.json();
+    models.push(...(config.parseResponse(data) || []));
+    pageToken = isFunction(config.nextPageToken) ? config.nextPageToken(data) : null;
+    if (!pageToken) return { models };
+    // A repeated cursor would loop forever; a truncated list must not pass as complete.
+    if (seenTokens.has(pageToken)) return { error: "Models list pagination cursor repeated", status: 502 };
+    seenTokens.add(pageToken);
   }
-  const data = await response.json();
-  return { models: config.parseResponse(data) || [] };
+  return { error: `Models list exceeded ${MAX_MODEL_LIST_PAGES} pages`, status: 502 };
 }

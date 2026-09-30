@@ -477,6 +477,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
 
   // Normalize non-standard single-block content before system folding and all
   // block-oriented validation so no meaningful turn is discarded.
+  const originalLastRole = options?.clientLastRole ?? (Array.isArray(body.messages) ? body.messages[body.messages.length - 1]?.role : undefined);
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) normalizeMessageContent(msg);
   }
@@ -597,8 +598,32 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   }
 
   reconcileClaudeThinkingBudget(body, provider, customMaxOutput);
+  // The passthrough path does not run prepareClaudeRequest's empty-message filter.
+  // Drop only a trailing empty user turn before restoring client intent; leave
+  // nonempty and tool-result turns untouched.
+  if (body.messages?.at(-1)?.role === ROLE.USER && !hasValidContent(body.messages.at(-1))) {
+    body.messages.pop();
+  }
+  body.messages = ensureTrailingUserTurn(body.messages, originalLastRole);
   applyAssistantPrefillPolicy(body, options?.rawHeaders);
   return body;
+}
+
+// Cleanup passes delete emptied messages, so an emptied trailing user turn can
+// leave the previous assistant turn last (Anthropic: "does not support assistant
+// message prefill"). Restore a user turn only when the client did not itself end
+// on assistant; real prefill (client's last role assistant) is left alone.
+const TRAILING_USER_PLACEHOLDER = "Continue.";
+
+export function ensureTrailingUserTurn(messages, originalLastRole) {
+  if (!Array.isArray(messages) || originalLastRole !== ROLE.USER) return messages;
+  const last = messages[messages.length - 1];
+  if (last?.role !== ROLE.ASSISTANT) return messages;
+  // Trailing tool_use / text-less assistant: leave to applyAssistantPrefillPolicy
+  // (synthesizes tool_result / drops the empty turn).
+  const c = last.content;
+  if (!hasValidContent(last) || (Array.isArray(c) && c.some((b) => b?.type === CLAUDE_BLOCK.TOOL_USE))) return messages;
+  return [...messages, { role: ROLE.USER, content: [{ type: CLAUDE_BLOCK.TEXT, text: TRAILING_USER_PLACEHOLDER }] }];
 }
 
 // Prepare request for Claude format endpoints
@@ -607,7 +632,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
 // - Apply cloaking (billing header + fake user ID) for OAuth tokens
-export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, customMaxOutput = null) {
+export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null, customMaxOutput = null, clientLastRole = null) {
   const dropsClaudeCacheControl = PROVIDERS[provider]?.quirks?.dropClaudeCacheControl ||
   provider === "ollama" ||
   provider === "ollama-local";
@@ -633,6 +658,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // 2. Messages: process in optimized passes
   if (body.messages && Array.isArray(body.messages)) {
     const len = body.messages.length;
+    const originalLastRole = clientLastRole ?? body.messages[len - 1]?.role;
     let filtered = [];
 
     // Pass 1: remove cache_control + filter empty messages
@@ -659,6 +685,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     filtered = fixToolUseOrdering(filtered);
 
     body.messages = filtered;
+    body.messages = ensureTrailingUserTurn(body.messages, originalLastRole);
     applyAssistantPrefillPolicy(body, rawHeaders);
     filtered = body.messages;
 

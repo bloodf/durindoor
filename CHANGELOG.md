@@ -3,6 +3,7 @@
 ## Upstream ports
 
 - port(upstream): #4481 - expose Claude cache read and creation tokens to OpenAI streaming clients without charging cached prompts as uncached input
+- port(9router): keep a trailing user turn after empty-message cleanup when the client ended on a user turn, including under the preserve-prefill header (decolua/9router#4482)
 
 # 4.9.2
 

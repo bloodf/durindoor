@@ -7,8 +7,8 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { CODEX_CLI_USER_AGENT } from "open-sse/config/appConstants.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
-import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
+import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import {
@@ -33,6 +33,8 @@ import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/se
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 import { normalizeGheUrl } from "open-sse/config/gheCopilot.js";
+
+import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
 
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
@@ -941,53 +943,6 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy("https://llm.chutes.ai/v1/models", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
           return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
         }
-      case "grok-web":{
-          const token = connection.apiKey.startsWith("sso=") ? connection.apiKey.slice(4) : connection.apiKey;
-          const randomHex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, "0")).join("");
-          const statsigId = Buffer.from("e:TypeError: Cannot read properties of null (reading 'children')").toString("base64");
-          const res = await fetchWithConnectionProxy("https://grok.com/rest/app-chat/conversations/new", {
-            method: "POST",
-            headers: {
-              Accept: "*/*", "Content-Type": "application/json",
-              Cookie: `sso=${token}`, Origin: "https://grok.com", Referer: "https://grok.com/",
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-              "x-statsig-id": statsigId, "x-xai-request-id": crypto.randomUUID(),
-              traceparent: `00-${randomHex(16)}-${randomHex(8)}-00`
-            },
-            body: JSON.stringify({ temporary: true, modelName: "grok-4", message: "ping", fileAttachments: [], imageAttachments: [], disableSearch: false, enableImageGeneration: false, sendFinalMetadata: true })
-          }, effectiveProxy);
-          const valid = res.status !== 401 && res.status !== 403;
-          return { valid, error: valid ? null : "Invalid SSO cookie" };
-        }
-      case "copilot-web":{
-          const credential = String(connection.apiKey || "").trim();
-          const token =
-          credential.match(/access_token=([^;]+)/)?.[1] ||
-          credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
-          credential;
-          if (!token) {
-            return { valid: false, error: "Paste your access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
-          }
-          const res = await fetchWithConnectionProxy("https://copilot.microsoft.com/c/api/start", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-              Origin: "https://copilot.microsoft.com",
-              Referer: "https://copilot.microsoft.com/",
-              Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              timeZone: "America/New_York",
-              startNewConversation: true,
-              teenSupportEnabled: false
-            })
-          }, effectiveProxy);
-          if (res.status === 401 || res.status === 403) {
-            return { valid: false, error: "Invalid or expired access_token from copilot.microsoft.com", refreshed: false, newTokens: null };
-          }
-          return { valid: true, error: null, refreshed: false, newTokens: null };
-        }
 
       case "copilot-m365-web":{
           const params = resolveConnectionParams(connection);
@@ -1009,37 +964,6 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const data = await res.json().catch(() => null);
           const valid = !!(data && data.user);
           return { valid, error: valid ? null : "Session expired — re-paste cookie" };
-        }
-      case "zenmux-free":{
-          const cookie = normalizeZenmuxCookie(connection.apiKey);
-          const ctoken = extractZenmuxCtoken(cookie);
-          if (!ctoken) return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" };
-
-          const model = connection.defaultModel || getDefaultModel("zenmux-free") || "deepseek/deepseek-chat";
-          const url = new URL(ZENMUX_FREE_CHAT_URL);
-          url.searchParams.set("ctoken", ctoken);
-          const res = await fetchWithConnectionProxy(url.toString(), {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-              Accept: "text/event-stream",
-              Origin: "https://zenmux.ai",
-              Referer: "https://zenmux.ai/platform/chat",
-              "anthropic-version": "2023-06-01",
-              "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
-              "x-zenmux-accept-processing": "true, true",
-              "x-zenmux-apikey-source": "subscription",
-              Cookie: cookie
-            },
-            body: JSON.stringify(buildZenmuxAnthropicBody({
-              model,
-              max_tokens: 1,
-              messages: [{ role: "user", content: "ping" }]
-            }, model))
-          }, effectiveProxy);
-          const valid = res.status !== 401 && res.status !== 403;
-          return { valid, error: valid ? null : "Invalid ZenMux cookie - re-paste cookies from zenmux.ai" };
         }
       case "opencode-go":{
           /** Guard the authenticated usage probe and retain the resolved connection route. */
@@ -1194,6 +1118,12 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
 export async function testSingleConnection(id) {
   const connection = await getProviderConnectionById(id);
   if (!connection) return { valid: false, error: "Connection not found", latencyMs: 0, testedAt: new Date().toISOString() };
+  if (isConversationProbeProvider(connection.provider)) {
+    if (connection.provider === "zenmux-free" && !extractZenmuxCtoken(connection.apiKey)) {
+      return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken", latencyMs: 0, testedAt: new Date().toISOString() };
+    }
+    return { valid: false, skipped: true, error: SKIPPED_WEB_SESSION_ERROR, latencyMs: 0, testedAt: new Date().toISOString() };
+  }
 
   const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 

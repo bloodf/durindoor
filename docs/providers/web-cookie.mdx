@@ -29,7 +29,7 @@ Under Request Headers, copy the `Cookie` value. Some providers only want one nam
 In DurinDoor open **Providers**, pick the cookie provider, and click Add. The field is labelled **Cookie Value**. The hint under it is the provider's `authHint`.
 </Step>
 <Step>
-Paste and save. Save runs the same probe as **Validate** first.
+Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web` and `zenmux-free`: their chat endpoints create a real conversation per probe, risking account restrictions (OmniRoute #14780, #14818). Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
 </Step>
 </Steps>
 
@@ -68,7 +68,7 @@ Some of these ids exist in the registry before their executor does. A request to
 
 ## Validation
 
-**Validate** posts to `/api/providers/validate` and has a hard 10 second limit. Grok Web, Perplexity Web, Copilot Web, and ZenMux Free have their own probes. ChatGPT Web exchanges the cookie at `chatgpt.com/api/auth/session`, the same call the web app makes: a live session returns an access token, and an expired or incomplete one (a missing `.1` chunk, for example) fails with a message asking for every chunk. Microsoft 365 Copilot Web only checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
+**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web and ZenMux Free skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
 
 A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
 

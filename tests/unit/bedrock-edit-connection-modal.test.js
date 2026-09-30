@@ -77,4 +77,21 @@ describe("EditConnectionModal AWS credential checks", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it("clears stale test status when a replaced cookie's validation is skipped", async () => {
+    globalThis.fetch = vi.fn(async () => ({ json: async () => ({ valid: false, skipped: true }) }));
+    const onSave = vi.fn();
+    await act(async () => {
+      root.render(h(EditConnectionModal, {
+        isOpen: true,
+        connection: { id: "c2", provider: "grok-web", authType: "cookie", name: "w", priority: 1, testStatus: "error", lastError: "old", providerSpecificData: {} },
+        proxyPools: [], onSave, onClose: vi.fn(),
+      }));
+    });
+
+    await type("API Key", "sso=new");
+    await click("Save");
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "sso=new", testStatus: "unknown", lastError: null, lastErrorAt: null }));
+  });
 });

@@ -5,7 +5,8 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
-import { buildZenmuxAnthropicBody, extractZenmuxCtoken, normalizeZenmuxCookie, ZENMUX_FREE_CHAT_URL } from "open-sse/executors/zenmux-free.js";
+import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
+import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
@@ -13,7 +14,7 @@ import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
-import { isString, isUndefined } from "../../../../shared/utils/typeChecks.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
@@ -222,6 +223,15 @@ export async function POST(request) {
     }
     if (isNoAuth && !apiKey) {
       return NextResponse.json({ valid: true, error: null });
+    }
+
+    // Skipping chat must not accept a cookie that could never authenticate.
+    if (provider === "zenmux-free" && !extractZenmuxCtoken(apiKey)) {
+      return NextResponse.json({ valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" });
+    }
+
+    if (isConversationProbeProvider(provider)) {
+      return NextResponse.json({ valid: false, skipped: true, error: SKIPPED_WEB_SESSION_ERROR });
     }
 
     let isValid = false;
@@ -739,95 +749,6 @@ export async function POST(request) {
             break;
           }
 
-        case "grok-web":{
-            const token = apiKey.startsWith("sso=") ? apiKey.slice(4) : apiKey;
-            // Cloudflare-bypass: send POST with same browser fingerprint headers as GrokWebExecutor
-            const randomHex = (n) => {
-              const a = new Uint8Array(n);
-              crypto.getRandomValues(a);
-              return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
-            };
-            const statsigId = Buffer.from("e:TypeError: Cannot read properties of null (reading 'children')").toString("base64");
-            const traceId = randomHex(16);
-            const spanId = randomHex(8);
-            const res = await fetchValidationProbe("https://grok.com/rest/app-chat/conversations/new", {
-              method: "POST",
-              headers: {
-                Accept: "*/*",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Cache-Control": "no-cache",
-                "Content-Type": "application/json",
-                Cookie: `sso=${token}`,
-                Origin: "https://grok.com",
-                Pragma: "no-cache",
-                Referer: "https://grok.com/",
-                "Sec-Ch-Ua": '"Google Chrome";v="136", "Chromium";v="136", "Not(A:Brand";v="24"',
-                "Sec-Ch-Ua-Mobile": "?0",
-                "Sec-Ch-Ua-Platform": '"macOS"',
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-                "x-statsig-id": statsigId,
-                "x-xai-request-id": crypto.randomUUID(),
-                traceparent: `00-${traceId}-${spanId}-00`
-              },
-              body: JSON.stringify({
-                temporary: true, modelName: "grok-4", modelMode: "MODEL_MODE_GROK_4", message: "ping",
-                fileAttachments: [], imageAttachments: [],
-                disableSearch: false, enableImageGeneration: false, returnImageBytes: false,
-                returnRawGrokInXaiRequest: false, enableImageStreaming: false, imageGenerationCount: 0,
-                forceConcise: false, toolOverrides: {}, enableSideBySide: true, sendFinalMetadata: true,
-                isReasoning: false, disableTextFollowUps: true, disableMemory: true,
-                forceSideBySide: false, isAsyncChat: false, disableSelfHarmShortCircuit: false
-              })
-            });
-            // Cookie valid = any non-401/403 response (200, 400, 429 all mean cookie accepted)
-            if (res.status === 401 || res.status === 403) {
-              isValid = false;
-              error = "Invalid SSO cookie — re-paste from grok.com DevTools → Cookies → sso";
-            } else {
-              isValid = true;
-            }
-            break;
-          }
-
-        case "copilot-web":{
-            const credential = String(apiKey || "").trim();
-            const token =
-            credential.match(/access_token=([^;]+)/)?.[1] ||
-            credential.match(/[Bb]earer\s+(.+)/)?.[1] ||
-            credential;
-            if (!token) {
-              isValid = false;
-              error = "Paste your access_token from copilot.microsoft.com";
-              break;
-            }
-            const res = await fetchValidationProbe("https://copilot.microsoft.com/c/api/start", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-                Origin: "https://copilot.microsoft.com",
-                Referer: "https://copilot.microsoft.com/",
-                Authorization: `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                timeZone: "America/New_York",
-                startNewConversation: true,
-                teenSupportEnabled: false
-              })
-            });
-            if (res.status === 401 || res.status === 403) {
-              isValid = false;
-              error = "Invalid or expired access_token from copilot.microsoft.com";
-            } else {
-              isValid = true;
-            }
-            break;
-          }
-
         case "copilot-m365-web":{
             const params = resolveConnectionParams({ apiKey, providerSpecificData });
             isValid = !("error" in params);
@@ -836,78 +757,19 @@ export async function POST(request) {
           }
 
         case "perplexity-web":{
-            const sessionCookie = buildNextAuthSessionCookie(apiKey);
-            const tz = !isUndefined(Intl) ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
-            const res = await fetchValidationProbe("https://www.perplexity.ai/rest/sse/perplexity_ask", {
-              method: "POST",
+            // Read-only session check: the ask endpoint would create a conversation.
+            const res = await fetchValidationProbe("https://www.perplexity.ai/api/auth/session", {
               headers: {
-                "Content-Type": "application/json",
-                Accept: "text/event-stream",
-                Origin: "https://www.perplexity.ai",
-                Referer: "https://www.perplexity.ai/",
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-                "X-App-ApiClient": "default",
-                "X-App-ApiVersion": "2.18",
-                Cookie: sessionCookie
-              },
-              body: JSON.stringify({
-                query_str: "ping",
-                params: {
-                  query_str: "ping", search_focus: "internet", mode: "concise", model_preference: "pplx_pro",
-                  sources: ["web"], attachments: [],
-                  frontend_uuid: crypto.randomUUID(), frontend_context_uuid: crypto.randomUUID(),
-                  version: "2.18", language: "en-US", timezone: tz,
-                  search_recency_filter: null, is_incognito: true, use_schematized_api: true, last_backend_uuid: null
-                }
-              })
+                Cookie: buildNextAuthSessionCookie(apiKey)
+              }
             });
-            if (res.status === 401 || res.status === 403) {
-              isValid = false;
-              error = "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai";
-            } else {
-              isValid = true;
-            }
+            const data = res.ok ? await res.json().catch(() => null) : null;
+            isValid = !!data?.user;
+            if (!isValid) error = "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai";
             break;
           }
 
-        case "zenmux-free":{
-            const cookie = normalizeZenmuxCookie(apiKey);
-            const ctoken = extractZenmuxCtoken(cookie);
-            if (!ctoken) {
-              isValid = false;
-              error = "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken";
-              break;
-            }
-            const url = new URL(ZENMUX_FREE_CHAT_URL);
-            url.searchParams.set("ctoken", ctoken);
-            const res = await fetchValidationProbe(url.toString(), {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-                Accept: "text/event-stream",
-                Origin: "https://zenmux.ai",
-                Referer: "https://zenmux.ai/platform/chat",
-                "anthropic-version": "2023-06-01",
-                "chat-request-id": crypto.randomUUID().replace(/-/g, ""),
-                "x-zenmux-accept-processing": "true, true",
-                "x-zenmux-apikey-source": "subscription",
-                Cookie: cookie
-              },
-              body: JSON.stringify(buildZenmuxAnthropicBody({
-                model: getDefaultModel("zenmux-free") || "deepseek/deepseek-chat",
-                max_tokens: 1,
-                messages: [{ role: "user", content: "ping" }]
-              }, getDefaultModel("zenmux-free") || "deepseek/deepseek-chat")),
-            });
-            if (res.status === 401 || res.status === 403) {
-              isValid = false;
-              error = "Invalid ZenMux cookie - re-paste cookies from zenmux.ai";
-            } else {
-              isValid = true;
-            }
-            break;
-          }
 
         default:{
             // Generic registry probe covers OpenAI-compatible and Claude-format providers.

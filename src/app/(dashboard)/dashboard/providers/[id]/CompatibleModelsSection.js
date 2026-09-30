@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { Button, ConfirmModal } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
+import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onEdit, onTest, testStatus, deleteStatus, isTesting, checkbox }) {
   const borderColor = deleteStatus === "deleting"
@@ -31,7 +32,7 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
       <span
         className={`material-symbols-outlined text-base ${iconClass}`}
       >
-        {deleteStatus === "deleting" ? "delete" : testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
+        {deleteStatus === "deleting" ? "delete" : testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : testStatus === "skipped" ? "info" : "smart_toy"}
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{modelId}</p>
@@ -126,7 +127,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         }),
       });
       const data = await res.json();
-      setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
+      const outcome = probeOutcome(data);
+      setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
     } finally {
@@ -280,7 +282,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       await readSSEStream(res, (result) => {
         if (result.model) {
           const modelId = result.model.substring(result.model.lastIndexOf("/") + 1);
-          const status = result.ok ? "ok" : "error";
+          const status = probeOutcome(result);
           setModelTestResults(prev => ({ ...prev, [modelId]: status }));
         } else if (result.error) {
           console.error("Batch test server error:", result.error);

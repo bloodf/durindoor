@@ -11,6 +11,7 @@ import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, DEFAULT_PROVIDER_RPM, MAX_PROVIDER_RPM, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { toCodexPlanEntry, buildCodexPlanMap } from "@/shared/utils/codexPlanLabel";
 import { translate } from "@/i18n/runtime";
@@ -938,6 +939,7 @@ export default function ProviderDetailPage() {
 
     let passed = 0;
     let failed = 0;
+    let skipped = 0;
 
     try {
       for (let index = 0; index < connections.length; index += 1) {
@@ -947,6 +949,7 @@ export default function ProviderDetailPage() {
             completed: index,
             passed,
             failed,
+            skipped,
             stopped: true
           });
           break;
@@ -962,9 +965,12 @@ export default function ProviderDetailPage() {
         try {
           const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST" });
           const data = await res.json();
+          const wasSkipped = !!data.skipped;
           const valid = !!data.valid;
 
-          if (valid) {
+          if (wasSkipped) {
+            skipped += 1;
+          } else if (valid) {
             passed += 1;
           } else {
             failed += 1;
@@ -973,7 +979,7 @@ export default function ProviderDetailPage() {
           setOneByOneResults((prev) => ({
             ...prev,
             [connection.id]: {
-              state: valid ? "success" : "failed",
+              state: wasSkipped ? "skipped" : valid ? "success" : "failed",
               error: valid ? null : data.error || null
             }
           }));
@@ -993,6 +999,7 @@ export default function ProviderDetailPage() {
           completed: index + 1,
           passed,
           failed,
+          skipped,
           stopped: false
         });
 
@@ -1481,8 +1488,9 @@ export default function ProviderDetailPage() {
         })
       });
       const data = await res.json();
-      setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
-      setModelsTestError(data.ok ? "" : data.error || "Model not reachable");
+      const outcome = probeOutcome(data);
+      setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
+      setModelsTestError(outcome === "error" ? data.error || "Model not reachable" : "");
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setModelsTestError("Network error");
@@ -2075,6 +2083,7 @@ export default function ProviderDetailPage() {
                     <span>Completed: {oneByOneSummary.completed}</span>
                     <span>Passed: {oneByOneSummary.passed}</span>
                     <span>Failed: {oneByOneSummary.failed}</span>
+                    {oneByOneSummary.skipped > 0 && <span>Skipped: {oneByOneSummary.skipped}</span>}
                     {oneByOneSummary.stopped &&
               <span className="text-dd-warning">Stopped</span>
               }

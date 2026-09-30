@@ -297,6 +297,9 @@ export const PROVIDER_MODELS_CONFIG = {
     method: "GET",
     headers: { "Content-Type": "application/json" },
     authQuery: "key",
+    // models.list defaults to 50 per page (max 1000) and pages by nextPageToken.
+    pageSize: 1000,
+    nextPageToken: (data) => (isString(data?.nextPageToken) && data.nextPageToken) || null,
     parseResponse: (data) => data.models || []
   },
   qwen: {

@@ -33,6 +33,9 @@ export const REVIEWED_ORPHANS = new Map([
   ["clinepass:qwen3.7-max", "proxy upstreamModelId"],
   ["clinepass:qwen3.7-plus", "proxy upstreamModelId"],
 
+  // Retired Anthropic bootstrap ids retain rates for historical usage records.
+  ["pricing:claude-opus-4-20250514", "retired Anthropic id retained for historical cost"],
+  ["pricing:claude-sonnet-4-20250514", "retired Anthropic id retained for historical cost"],
   ["pricing:claude-opus-4-5-20251101", "priced alias present in upstream"],
   ["pricing:claude-sonnet-4-5-20250929", "priced alias present in upstream"],
   ["pricing:claude-opus-4.1", "priced alias present in upstream"],

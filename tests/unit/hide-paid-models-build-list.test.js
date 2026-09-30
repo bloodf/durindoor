@@ -52,7 +52,7 @@ describe("buildModelsList hidePaidModels wiring", () => {
       id: "anthropic-test",
       provider: "anthropic",
       apiKey: "test-key",
-      providerSpecificData: { enabledModels: ["claude-sonnet-4-20250514"] },
+      providerSpecificData: { enabledModels: ["claude-sonnet-5-5"] },
     },
     {
       id: "gemini-test",
@@ -68,15 +68,15 @@ describe("buildModelsList hidePaidModels wiring", () => {
     // this test focused on paid filtering without invoking live discovery.
     mocks.getProviderConnections.mockResolvedValue(connectedCatalogs);
     mocks.getCombos.mockResolvedValue([
-      { name: "mixed-combo", models: ["anthropic/claude-sonnet-4-20250514", "aug/claude-sonnet-4.6"] },
-      { name: "all-paid-combo", models: ["anthropic/claude-sonnet-4-20250514"] },
+      { name: "mixed-combo", models: ["anthropic/claude-sonnet-5-5", "aug/claude-sonnet-4.6"] },
+      { name: "all-paid-combo", models: ["anthropic/claude-sonnet-5-5"] },
     ]);
 
     const buildModelsList = await loadBuildModelsList();
     const models = await buildModelsList(["llm"]);
     const ids = new Set(models.map((m) => m.id));
 
-    expect(ids.has("anthropic/claude-sonnet-4-20250514")).toBe(true); // paid present when off
+    expect(ids.has("anthropic/claude-sonnet-5-5")).toBe(true); // paid present when off
     expect(ids.has("gemini/gemini-2.5-pro")).toBe(true); // paid-only Gemini present when off (guards the on-test false assertion below)
     expect(ids.has("gemini/gemini-2.5-flash")).toBe(true); // curated free Gemini present when off
     expect(ids.has("mixed-combo")).toBe(true);
@@ -87,8 +87,8 @@ describe("buildModelsList hidePaidModels wiring", () => {
     mocks.getSettings.mockResolvedValue({ hidePaidModels: true });
     mocks.getProviderConnections.mockResolvedValue(connectedCatalogs);
     mocks.getCombos.mockResolvedValue([
-      { name: "mixed-combo", models: ["anthropic/claude-sonnet-4-20250514", "aug/claude-sonnet-4.6"] },
-      { name: "all-paid-combo", models: ["anthropic/claude-sonnet-4-20250514"] },
+      { name: "mixed-combo", models: ["anthropic/claude-sonnet-5-5", "aug/claude-sonnet-4.6"] },
+      { name: "all-paid-combo", models: ["anthropic/claude-sonnet-5-5"] },
       { name: "free-combo", models: ["aug/claude-sonnet-4.6"] },
     ]);
 
@@ -97,7 +97,7 @@ describe("buildModelsList hidePaidModels wiring", () => {
     const ids = new Set(models.map((m) => m.id));
 
     // Paid provider row hidden.
-    expect(ids.has("anthropic/claude-sonnet-4-20250514")).toBe(false);
+    expect(ids.has("anthropic/claude-sonnet-5-5")).toBe(false);
     // Gemini paid-only row (gemini-2.5-pro, not on the free roster) hidden…
     expect(ids.has("gemini/gemini-2.5-pro")).toBe(false);
     // …while the curated free Gemini row stays — exercises the catalog import

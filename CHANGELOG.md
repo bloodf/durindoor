@@ -12,6 +12,8 @@
 - fix(models): dashboard model tests now pin probes to the first active connection selected by the caller rather than another account of that provider; unavailable pins fail closed. Operator-only pinning prevents API keys from probing accounts outside their scope. Ports decolua/9router#4492.
 - fix(claude): strip the `_ide` cloak suffix from tool_use names when the tool-name map is lost or misses (retry/reconnect), streaming and non-streaming, only for requests that were actually OAuth-cloaked (explicit `_claudeCloaked` context); legitimate client tools ending in `_ide` are left alone on non-cloaked requests; CC decoy names are left as-is (ports upstream #4342)
 - fix(claude-settings): keep an existing `ANTHROPIC_AUTH_TOKEN` in `~/.claude/settings.json` when applying settings from the dashboard; the token is only written when absent and Reset still clears it (ports upstream c4690307)
+- fix(models): Gemini models.list follows `nextPageToken` (`pageSize=1000`); a failed later page, repeated cursor, or page-cap overrun now errors instead of storing a truncated catalog
+- fix(models): add `claude-sonnet-5-5` to anthropic/claude registries with its own $2/$10 pricing; drop retired `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-5-sonnet-20241022` from the anthropic bootstrap
 
 
 # 4.9.2

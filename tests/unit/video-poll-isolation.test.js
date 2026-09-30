@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   clearProviderConnectionFallbackState: vi.fn(),
+  getApiKeyProviderConnectionIds: vi.fn(),
   clearProviderRateLimitEvidence: vi.fn(),
   getProviderConnections: vi.fn(),
   recordProviderConnectionFallbackState: vi.fn(),
@@ -13,7 +14,7 @@ vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
   getApiKeyByKey: vi.fn(),
   validateApiKey: vi.fn(),
-  getApiKeyProviderConnectionIds: vi.fn(async () => []),
+  getApiKeyProviderConnectionIds: mocks.getApiKeyProviderConnectionIds,
   updateProviderConnection: mocks.updateProviderConnection,
   getSettings: vi.fn(async () => ({})),
   recordProviderConnectionFallbackState: mocks.recordProviderConnectionFallbackState,
@@ -103,6 +104,7 @@ describe("strict connection pinning for account-bound resources", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getApiKeyProviderConnectionIds.mockResolvedValue([]);
     mocks.getProviderConnections.mockImplementation(async () => connections.map(c => ({ ...c })));
   });
 
@@ -112,6 +114,22 @@ describe("strict connection pinning for account-bound resources", () => {
       strictConnectionId: "xai-2",
     });
     expect(credentials?.connectionId).toBe("xai-2");
+  });
+
+  it("refuses an inactive pinned account even when another account is active", async () => {
+    mocks.getProviderConnections.mockResolvedValue(connections.filter(c => c.id === "xai-1"));
+    const credentials = await getProviderCredentials("xai", null, null, {
+      preferredConnectionId: "xai-2", strictConnectionId: "xai-2",
+    });
+    expect(credentials).toBeNull();
+  });
+
+  it("refuses a pin outside the API key's account scope", async () => {
+    mocks.getApiKeyProviderConnectionIds.mockResolvedValue(["xai-1"]);
+    const credentials = await getProviderCredentials("xai", null, null, {
+      apiKeyId: "scoped-key", preferredConnectionId: "xai-2", strictConnectionId: "xai-2",
+    });
+    expect(credentials).toBeNull();
   });
 
   it("refuses to substitute another account when the pinned one is absent", async () => {

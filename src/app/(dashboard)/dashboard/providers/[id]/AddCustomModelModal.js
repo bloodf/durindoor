@@ -37,7 +37,7 @@ const THINKING_FORMATS = [
   { value: "kiro", label: "Kiro" },
 ];
 
-export default function AddCustomModelModal({ isOpen, providerAlias, providerDisplayAlias, initialModel, onSave, onClose }) {
+export default function AddCustomModelModal({ isOpen, providerAlias, providerDisplayAlias, initialModel, onSave, onClose, connections = [] }) {
   const isEdit = Boolean(initialModel);
   const [modelId, setModelId] = useState("");
   const [caps, setCaps] = useState({ tools: true });
@@ -108,10 +108,11 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     setTestStatus("testing");
     setTestError("");
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${cleanId}` }),
+        body: JSON.stringify({ model: `${providerAlias}/${cleanId}`, connectionId }),
       });
       const data = await res.json();
       setTestStatus(data.ok ? "ok" : "error");
@@ -244,5 +245,6 @@ AddCustomModelModal.propTypes = {
   providerDisplayAlias: PropTypes.string.isRequired,
   initialModel: PropTypes['shape']({ id: PropTypes.string, capabilities: PropTypes.object }),
   onSave: PropTypes.func.isRequired,
+  connections: PropTypes.arrayOf(PropTypes['shape']({ id: PropTypes.string, isActive: PropTypes.bool })),
   onClose: PropTypes.func.isRequired,
 };

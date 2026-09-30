@@ -219,10 +219,11 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     if (testingModelId) return;
     setTestingModelId(modelId);
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${modelId}`, kind: kindFilter }),
+        body: JSON.stringify({ model: `${providerAlias}/${modelId}`, kind: kindFilter, connectionId }),
       });
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
@@ -358,6 +359,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     });
 
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const models = currentSelected.map(model => ({
         model: `${model.providerAlias}/${model.id}`,
         kind: model.type || "llm",
@@ -366,7 +368,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
       const res = await fetch("/api/models/test/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ models }),
+        body: JSON.stringify({ models, connectionId }),
         signal: abortCtrl.signal,
       });
 

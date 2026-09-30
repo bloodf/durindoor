@@ -100,7 +100,7 @@ PassthroughModelRow.propTypes = {
   checkbox: PropTypes.node,
 };
 
-export default function PassthroughModelsSection({ providerAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, onRefresh }) {
+export default function PassthroughModelsSection({ providerAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel, onRefresh, connections = [] }) {
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
@@ -132,10 +132,11 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
     if (testingModelId) return;
     setTestingModelId(id);
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${id}` }),
+        body: JSON.stringify({ model: `${providerAlias}/${id}`, connectionId }),
       });
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [id]: data.ok ? "ok" : "error" }));
@@ -253,6 +254,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
     });
 
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const models = currentSelected.map((m) => ({
         model: `${providerAlias}/${m.id}`,
         kind: "llm",
@@ -260,7 +262,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
       const res = await fetch("/api/models/test/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ models }),
+        body: JSON.stringify({ models, connectionId }),
         signal: abortCtrl.signal,
       });
 

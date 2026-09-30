@@ -603,6 +603,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       log.warn("AUTH", `${provider} | preferred connection ${preferredConnectionId.slice(0, 8)} rejected by scoped allow-list`);
       return null;
     }
+    if (strictConnectionId && connections.length === 0) return null;
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}, scope: ${scopeRestricted ? `restricted[${scopedConnectionIds.size}]` : "unrestricted"}`);
 
     const resourceKeys = options?.resourceKeys || buildQuotaResourceKeys({
@@ -627,7 +628,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Explicit handler no-auth paths historically ignored saved connections.
     // Preserve that zero-relation behavior; any API-key/combo restriction opts
     // the caller into selecting a stored eligible connection or denying.
-    if (options?.noAuthPath === true && !scopeRestricted && !hasSavedHost) {
+    if (options?.noAuthPath === true && !strictConnectionId && !scopeRestricted && !hasSavedHost) {
       return buildOptionalNoAuthCredential();
     }
 

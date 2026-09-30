@@ -149,6 +149,18 @@ describe("API-key provider scope at no-auth handler entrypoints", () => {
     }));
   });
 
+
+  it("refuses a missing image connection pin without executing an anonymous request", async () => {
+    const request = jsonRequest(
+      "/v1/images/generations",
+      { model: "sdwebui/sdxl", prompt: "cat" },
+      legacyKey,
+    );
+    request.headers.set("x-connection-id", "missing");
+    const response = await handleImageGeneration(request);
+    expect(response.status).toBe(400);
+    expect(mocks.image).not.toHaveBeenCalled();
+  });
   it("authenticates a real stored legacy sk-<8 hex> key with zero relations and keeps no-auth routing unrestricted", async () => {
     expect(await db.getApiKeyProviderConnectionIds("legacy-key-row")).toEqual([]);
     const response = await handleImageGeneration(jsonRequest(

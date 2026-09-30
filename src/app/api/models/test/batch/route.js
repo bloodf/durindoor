@@ -1,3 +1,4 @@
+import { isOperatorRequest } from "@/dashboardGuard";
 import { pingModelByKind } from "../ping";
 import { isString } from "../../../../../shared/utils/typeChecks.js";
 
@@ -5,7 +6,7 @@ const CONCURRENCY_LIMIT = 10;
 
 export async function POST(request) {
   const body = await request.json();
-  const { models } = body;
+  const { models, connectionId } = body;
 
   if (!Array.isArray(models) || models.length === 0) {
     return Response.json({ error: "models array required" }, { status: 400 });
@@ -18,6 +19,17 @@ export async function POST(request) {
       return Response.json({ error: "each model must have a non-empty string 'model' field" }, { status: 400 });
     }
   }
+  if (connectionId !== undefined) {
+    if (!isString(connectionId) || !connectionId.trim()) {
+      return Response.json({ error: "connectionId must be a non-empty string" }, { status: 400 });
+    }
+    // Same rule as POST /api/models/test: the probe uses the unscoped CLI token,
+    // so only operators may pin an account.
+    if (!(await isOperatorRequest(request))) {
+      return Response.json({ error: "connectionId requires an operator session" }, { status: 403 });
+    }
+  }
+  const pin = connectionId?.trim() || null;
 
   const encoder = new TextEncoder();
 
@@ -31,7 +43,7 @@ export async function POST(request) {
         const first = models[0];
         let warmupResult;
         try {
-          warmupResult = await pingModelByKind(first.model, first.kind);
+          warmupResult = await pingModelByKind(first.model, first.kind, undefined, pin);
         } catch (err) {
           warmupResult = { ok: false, error: err.message, latencyMs: 0 };
         }
@@ -72,7 +84,7 @@ export async function POST(request) {
           const batch = remaining.slice(i, i + CONCURRENCY_LIMIT);
           const batchPromises = batch.map(async (item) => {
             try {
-              const result = await pingModelByKind(item.model, item.kind);
+              const result = await pingModelByKind(item.model, item.kind, undefined, pin);
               const itemResult = { model: item.model, kind: item.kind, ...result };
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(itemResult)}\n\n`));
               return itemResult;

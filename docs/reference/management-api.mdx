@@ -42,7 +42,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | PATCH | `/api/providers/{id}/auto-ping` | Set that connection's quota auto-ping flag | session, CLI, key, loop |
 | GET | `/api/providers/{id}/models` | Discover models for that connection | session, CLI, key, loop |
 | POST | `/api/providers/{id}/test` | Test one connection | session, CLI, key, loop |
-| POST | `/api/providers/{id}/test-models` | Ping models on that connection by kind | session, CLI, key, loop |
+| POST | `/api/providers/{id}/test-models` | Ping models by kind using active connection `{id}`; unavailable pins fail rather than switching accounts | session, CLI, open local dashboard (operator only) |
 
 ### Provider nodes
 
@@ -105,8 +105,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET, POST, PATCH, DELETE | `/api/models/custom` | CRUD custom model rows and capabilities | session, CLI, key, loop |
 | GET, POST, DELETE | `/api/models/disabled` | List, set, or clear disabled model ids per provider | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/models/enabled` | List, set, or clear the visible-model allowlist per provider | session, CLI, key, loop |
-| POST | `/api/models/test` | Ping one model through the internal completions/embeddings path | session, CLI, key, loop |
-| POST | `/api/models/test/batch` | Ping up to 200 models; streamed results | session, CLI, key, loop |
+| POST | `/api/models/test` | Ping one model by kind. Optional `connectionId` pins the probe to an active account; unavailable pins fail without switching accounts. API keys cannot request a pin because internal probes use an unscoped CLI token | unpinned: session, CLI, key, loop; pinned: session, CLI, open local dashboard (operator only) |
+| POST | `/api/models/test/batch` | Ping up to 200 models; streamed results. Optional `connectionId` pins each probe to an active account with the same operator restriction | unpinned: session, CLI, key, loop; pinned: session, CLI, open local dashboard (operator only) |
 
 ### Pricing
 

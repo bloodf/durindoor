@@ -6,6 +6,11 @@
 - port(9router): keep a trailing user turn after empty-message cleanup when the client ended on a user turn, including under the preserve-prefill header (decolua/9router#4482)
 - port(omniroute): prepend a text part to image-only user turns sent to Poe, which rejects them with 400 (upstream #15179)
 
+## Fixes
+
+- fix(models): dashboard model tests now pin probes to the first active connection selected by the caller rather than another account of that provider; unavailable pins fail closed. Operator-only pinning prevents API keys from probing accounts outside their scope. Ports decolua/9router#4492.
+
+
 # 4.9.2
 
 ## Fixes

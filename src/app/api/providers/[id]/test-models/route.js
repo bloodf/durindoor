@@ -4,6 +4,7 @@ import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/provide
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { pingModelByKind } from "@/app/api/models/test/ping";
+import { isOperatorRequest } from "@/dashboardGuard";
 
 /**
  * POST /api/providers/[id]/test-models
@@ -13,6 +14,11 @@ import { pingModelByKind } from "@/app/api/models/test/ping";
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
+    // Probes run with the unscoped CLI token and are pinned to this account,
+    // so an API-key caller must not be able to reach an out-of-scope connection.
+    if (!(await isOperatorRequest(request))) {
+      return NextResponse.json({ error: "Testing a connection's models requires an operator session" }, { status: 403 });
+    }
     const connection = await getProviderConnectionById(id);
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -45,13 +51,13 @@ export async function POST(request, { params }) {
     // This prevents race condition where multiple requests concurrently refresh the same token.
     const [first, ...rest] = models;
     const firstKind = first.kind || first.type || "llm";
-    const firstResult = await pingModelByKind(`${alias}/${first.id}`, firstKind, baseUrl);
+    const firstResult = await pingModelByKind(`${alias}/${first.id}`, firstKind, baseUrl, id);
     const results = [{ modelId: first.id, name: first.name || first.id, ...firstResult }];
 
     if (rest.length > 0) {
       const restResults = await Promise.all(
         rest.map(async (model) => {
-          const result = await pingModelByKind(`${alias}/${model.id}`, model.kind || model.type || "llm", baseUrl);
+          const result = await pingModelByKind(`${alias}/${model.id}`, model.kind || model.type || "llm", baseUrl, id);
           return { modelId: model.id, name: model.name || model.id, ...result };
         })
       );

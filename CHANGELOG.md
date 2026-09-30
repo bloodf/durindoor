@@ -1,3 +1,9 @@
+# Unreleased
+
+## Upstream ports
+
+- port(upstream): #4481 - expose Claude cache read and creation tokens to OpenAI streaming clients without charging cached prompts as uncached input
+
 # 4.9.2
 
 ## Fixes

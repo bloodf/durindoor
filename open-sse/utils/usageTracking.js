@@ -120,6 +120,14 @@ export function filterUsageForFormat(usage, targetFormat) {
       reasoning_tokens: thinkingTokens
     };
   }
+  // Claude stream state carries the cache split in flat fields; OpenAI clients
+  // expect that split under prompt_tokens_details, not as top-level fields.
+  if (fields === formatFields.default && (usage.cache_read_input_tokens > 0 || usage.cache_creation_input_tokens > 0)) {
+    const details = { ...filtered.prompt_tokens_details };
+    if (usage.cache_read_input_tokens > 0 && details.cached_tokens === undefined) details.cached_tokens = usage.cache_read_input_tokens;
+    if (usage.cache_creation_input_tokens > 0 && details.cache_creation_tokens === undefined) details.cache_creation_tokens = usage.cache_creation_input_tokens;
+    filtered.prompt_tokens_details = details;
+  }
   return filtered;
 }
 

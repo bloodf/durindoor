@@ -97,6 +97,9 @@ export function isPaidModel(modelStr) {
   // Bare / providerless IDs (custom/providerless rows in buildModelsList) have
   // no curated catalog entry and must stay visible — never classify as paid.
   if (!providerOrAlias || !model) return false;
+  // Namespaces upstream meters at $0 (Cline free tier) are free regardless of
+  // whether the provider has a curated free roster.
+  if (isFreeNamespace(model)) return false;
   const provider = resolveProviderId(providerOrAlias);
 
   if (registryFreeSignal(provider, model) === true) return false;
@@ -332,6 +335,12 @@ export const PROVIDER_PRICING = {
   openai: {
     "gpt-6-astra": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
   },
+  // Cline advertises these exact ids as Free; other providers bill their twins.
+  cline: {
+    "deepseek/deepseek-v4-flash": { input: 0, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
+    "z-ai/glm-5.3-flash": { input: 0, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
+    "poolside/laguna-s-2.1:free": { input: 0, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
+  },
   // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
@@ -506,6 +515,20 @@ const XAI_PRICING_ALIASES = {
   "grok-code-fast-1-0825": "grok-build-0.1",
 };
 
+/**
+ * Namespaces upstream bills at $0. Checked before MODEL_PRICING because the
+ * vendor-prefix strip would turn "cline-free/deepseek-v4.1-flash" into
+ * "deepseek-v4.1-flash" and inherit a paid rate.
+ * Source: decolua/9router#4334 (199173fe).
+ */
+export const FREE_MODEL_NAMESPACES = ["cline-free/"];
+export const ZERO_PRICING = Object.freeze({ input: 0, output: 0, cached: 0, reasoning: 0, cache_creation: 0 });
+export function isFreeNamespace(model) {
+  if (!isString(model)) return false;
+  const lower = model.toLowerCase();
+  return FREE_MODEL_NAMESPACES.some((ns) => lower.startsWith(ns));
+}
+
 export function getPricingForModel(provider, model) {
   if (!model) return null;
 
@@ -513,6 +536,9 @@ export function getPricingForModel(provider, model) {
   if (provider && PROVIDER_PRICING[provider]?.[model]) {
     return PROVIDER_PRICING[provider][model];
   }
+
+  // 1b. Free namespaces bill $0 whatever model name sits behind them.
+  if (isFreeNamespace(model)) return ZERO_PRICING;
 
   // 2. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
   const baseModel = model.includes("/") ? model.split("/").pop() : model;

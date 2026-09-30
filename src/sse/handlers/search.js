@@ -215,12 +215,16 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  // A failed search must not lock the same connection's chat traffic.
+  // Read, write, and clear the same search-only model lock.
+  const searchLockKey = `websearch:${providerId}`;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds, null, {
+    const credentials = await getProviderCredentialsWithQuotaPreflight(providerId, excludeConnectionIds, searchLockKey, {
       apiKeyId,
       allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
-      restrictionApplied: comboRouting?.restrictionApplied === true
+      restrictionApplied: comboRouting?.restrictionApplied === true,
+      webSearch: true
     });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
@@ -261,7 +265,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
         });
       },
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials);
+        await clearAccountError(credentials.connectionId, credentials, searchLockKey, { provider: providerId, webSearch: true });
       }
     });
 
@@ -273,7 +277,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       });
     }
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId, null, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId, searchLockKey, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, webSearch: true });
 
     if (shouldFallback) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);

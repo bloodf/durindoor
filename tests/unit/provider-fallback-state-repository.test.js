@@ -266,6 +266,105 @@ describe("atomic provider fallback health state", () => {
     expect(stored["modelLock_gpt-oss:120b"]).toBe(modelLock);
   });
 
+  it("keeps search failure off chat and preserves search lock through chat success", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
+    const db = await getAdapter();
+    const base = Date.now();
+    const createdAt = new Date(base - 60_000).toISOString();
+    db.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, isActive, data, createdAt, updatedAt)
+       VALUES('conn-search', 'perplexity', 'apikey', 'Perplexity', 1, ?, ?, ?)`,
+      [JSON.stringify({ apiKey: "local-test-key", testStatus: "active" }), createdAt, createdAt],
+    );
+
+    await database.recordProviderConnectionFallbackState("conn-search", {
+      model: "websearch:perplexity", status: 429, reasonCode: "rate_limited",
+      cooldownMs: 60_000, observedAt: base, webSearch: true,
+    }, { now: base });
+    const locked = await database.getProviderConnectionById("conn-search");
+    expect(locked["modelLock_websearch:perplexity"]).toBe(new Date(base + 60_000).toISOString());
+    expect(locked["modelError_websearch:perplexity"]).toBe(429);
+    expect(locked.modelLock___all).toBeUndefined();
+    expect(locked.testStatus).toBe("active");
+    const select = (model, options = {}) => getProviderCredentials("perplexity", null, model, {
+      now: base + 100, quotaSnapshotsLoader: async () => [], ...options,
+    });
+    expect((await select("sonar"))?.connectionId).toBe("conn-search");
+    expect(await select("websearch:perplexity", { webSearch: true })).toMatchObject({
+      allRateLimited: true, lastErrorCode: 429, lastError: "Rate limited",
+      retryAfter: new Date(base + 60_000).toISOString(),
+    });
+    await database.updateProviderConnection("conn-search", { errorCode: 401, lastError: "Old chat error" });
+    expect(await select("websearch:perplexity", { webSearch: true })).toMatchObject({
+      allRateLimited: true, lastErrorCode: 429, lastError: "Rate limited",
+      retryAfter: new Date(base + 60_000).toISOString(),
+    });
+
+    await database.clearProviderConnectionFallbackState("conn-search", {
+      model: "sonar", observedAt: base + 200,
+    }, { now: base + 200 });
+    expect((await database.getProviderConnectionById("conn-search"))["modelLock_websearch:perplexity"]).toBe(new Date(base + 60_000).toISOString());
+    await database.clearProviderConnectionFallbackState("conn-search", {
+      model: "websearch:perplexity", observedAt: base + 300, webSearch: true,
+    }, { now: base + 300 });
+    expect((await database.getProviderConnectionById("conn-search"))["modelLock_websearch:perplexity"]).toBeNull();
+    expect((await database.getProviderConnectionById("conn-search"))["modelError_websearch:perplexity"]).toBeNull();
+    expect((await select("websearch:perplexity", { webSearch: true }))?.connectionId).toBe("conn-search");
+  });
+
+  it("reports isolated search authentication failures without changing chat health", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const { getProviderCredentials } = await import("../../src/sse/services/auth.js");
+    const db = await getAdapter();
+    const now = Date.now();
+    const createdAt = new Date(now - 60_000).toISOString();
+    db.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, isActive, data, createdAt, updatedAt)
+       VALUES('conn-search-auth', 'perplexity', 'apikey', 'Perplexity', 1, ?, ?, ?)`,
+      [JSON.stringify({ apiKey: "local-test-key", testStatus: "active" }), createdAt, createdAt],
+    );
+    await database.recordProviderConnectionFallbackState("conn-search-auth", {
+      model: "websearch:perplexity", status: 401, reasonCode: "authentication_error",
+      cooldownMs: 60_000, observedAt: now, webSearch: true,
+    }, { now });
+    const select = (model, options = {}) => getProviderCredentials("perplexity", null, model, {
+      now: now + 100, quotaSnapshotsLoader: async () => [], ...options,
+    });
+    expect((await select("sonar"))?.connectionId).toBe("conn-search-auth");
+    expect(await select("websearch:perplexity", { webSearch: true })).toMatchObject({
+      allRateLimited: true, lastErrorCode: 401, lastError: "Authentication failed", retryAfter: null,
+    });
+    const locked = await database.getProviderConnectionById("conn-search-auth");
+    expect(locked.testStatus).toBe("active");
+    expect(locked.errorCode).toBeUndefined();
+  });
+
+  it("locks shared GLM credentials across chat and search on explicit plan exhaustion", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const { markAccountUnavailable } = await import("../../src/sse/services/auth.js");
+    const db = await getAdapter();
+    const now = Date.now();
+    const createdAt = new Date(now - 60_000).toISOString();
+    db.run(
+      `INSERT INTO providerConnections(id, provider, authType, name, isActive, data, createdAt, updatedAt)
+       VALUES('conn-glm-search', 'glm', 'apikey', 'GLM', 1, '{}', ?, ?)`,
+      [createdAt, createdAt],
+    );
+
+    await markAccountUnavailable("conn-glm-search", 429, "plan exhausted", "glm", "websearch:glm", null, {
+      webSearch: true, attemptStartedAt: now,
+      rateLimitEvidence: { state: "exhausted", resetAtMs: now + 60_000 },
+    });
+    const locked = await database.getProviderConnectionById("conn-glm-search");
+    expect(locked.modelLock___all).toBeTruthy();
+    expect(locked["modelLock_websearch:glm"]).toBeUndefined();
+    expect(locked.errorCode).toBe(429);
+  });
+
   it("restores chat health while preserving an active web-fetch lock", async () => {
     const database = await import("@/lib/db/index.js");
     const { getAdapter } = await import("@/lib/db/driver.js");

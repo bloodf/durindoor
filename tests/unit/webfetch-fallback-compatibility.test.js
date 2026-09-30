@@ -95,3 +95,29 @@ describe("web-fetch fallback compatibility updates", () => {
     });
   });
 });
+
+describe("web-search fallback compatibility updates", () => {
+  it("records search-only failure without changing chat health", async () => {
+    await markAccountUnavailable("ollama-1", 429, "rate limited", "ollama", "websearch:ollama", null, {
+      attemptStartedAt: NOW, webSearch: true,
+    });
+    const patch = mocks.updateProviderConnection.mock.calls[0][1];
+    expect(Object.keys(patch).sort()).toEqual(["modelError_websearch:ollama", "modelLock_websearch:ollama"]);
+    expect(Date.parse(patch["modelLock_websearch:ollama"])).toBeGreaterThan(NOW);
+  });
+
+  it("clears search only; chat success cannot clear an expired search lock", async () => {
+    const expired = new Date(NOW - 1_000).toISOString();
+    const connection = {
+      provider: "ollama", testStatus: "unavailable", lastError: "Chat failed",
+      "modelLock_websearch:ollama": expired,
+      "modelLock_gpt-oss:120b": new Date(NOW + 60_000).toISOString(),
+    };
+    await clearAccountError("ollama-1", connection, "gpt-oss:120b", { attemptStartedAt: NOW, provider: "ollama" });
+    expect(mocks.updateProviderConnection.mock.calls[0][1]).not.toHaveProperty("modelLock_websearch:ollama");
+    await clearAccountError("ollama-1", connection, "websearch:ollama", {
+      attemptStartedAt: NOW, provider: "ollama", webSearch: true,
+    });
+    expect(mocks.updateProviderConnection.mock.calls[1][1]).toEqual({ "modelLock_websearch:ollama": null, "modelError_websearch:ollama": null });
+  });
+});

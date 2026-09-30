@@ -51,8 +51,10 @@ describe("GLM MCP web search", () => {
       // Reading registry config is intentional: absent media projection must fail dispatch.
       const config = PROVIDER_MEDIA.glm.searchConfig;
       expect(config).toBeDefined();
-      const options = { provider: { id: "glm" }, providerConfig: { ...config, baseUrl: `http://127.0.0.1:${server.address().port}/mcp` }, credentials: { apiKey: "fixture-key", providerSpecificData: { oauthProxy: { mode: "direct" } } }, body: { query: "  durindoor  ", max_results: 1 } };
+      let successes = 0;
+      const options = { provider: { id: "glm" }, providerConfig: { ...config, baseUrl: `http://127.0.0.1:${server.address().port}/mcp` }, credentials: { apiKey: "fixture-key", providerSpecificData: { oauthProxy: { mode: "direct" } } }, body: { query: "  durindoor  ", max_results: 1 }, onRequestSuccess: async () => { successes++; } };
       const result = await handleSearchCore(options);
+      expect(successes).toBe(1);
       expect(result.response.status).toBe(200);
       const data = await result.response.json();
       expect(data).toEqual(expect.objectContaining({ provider: "glm", results: [expect.objectContaining({ title: item.title })], usage: { queries_used: 1, search_cost_usd: 0 }, metrics: expect.objectContaining({ total_results_available: 2 }) }));
@@ -62,6 +64,7 @@ describe("GLM MCP web search", () => {
       expect(requests).toHaveLength(1);
       responseBody = "invalid outer JSON";
       expect((await handleSearchCore(options)).status).toBe(502);
+      expect(successes).toBe(1);
       responseBody = JSON.stringify({ result: { content: [{ text: "invalid inner JSON" }] } });
       const innerMalformed = await handleSearchCore(options);
       expect(innerMalformed.response.status).toBe(200);

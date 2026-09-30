@@ -364,17 +364,24 @@ function summarizeBlockedConnections(connections, decisions, rawModel, boundedMo
   const blocked = connections.filter((connection) =>
   requestedModelLockActive(connection, rawModel, boundedModel, now) || decisions.get(connection.id)?.skip
   );
-  const legacyLocked = blocked.filter(
-    (connection) => requestedModelLockActive(connection, rawModel, boundedModel, now)
+  // Search locks have their own status; the row-wide errorCode describes chat.
+  // An account-wide lock still uses the shared status. Older search locks with
+  // no scoped status were rate limits, so keep their 429 fallback.
+  const searchScope = boundedModel?.startsWith("websearch:") ? boundedModel : null;
+  const legacyLocked = blocked.filter((connection) =>
+    requestedModelLockActive(connection, rawModel, boundedModel, now)
   );
+  const lockStatus = (connection) => searchScope && !getActiveModelLockUntil(connection, null, now) ?
+  Number(connection[`modelError_${searchScope}`]) || 429 :
+  Number(connection.errorCode);
   // Authentication failures must not be hidden by an earlier priority account's
   // rate-limit lock. Legacy 429 deadlines are combined with quota decisions
   // below so a no-reset exhaustion cannot expose the local breaker as provider
   // Retry-After evidence.
-  const legacy = legacyLocked.find((connection) => [401, 403].includes(Number(connection.errorCode))) ||
-  legacyLocked.find((connection) => Number(connection.errorCode) !== 429);
+  const legacy = legacyLocked.find((connection) => [401, 403].includes(lockStatus(connection))) ||
+  legacyLocked.find((connection) => lockStatus(connection) !== 429);
   if (legacy) {
-    const code = Number(legacy.errorCode);
+    const code = lockStatus(legacy);
     const status = code >= 400 && code <= 599 ? code : 503;
     const message = status === 429 ?
     "Rate limited" :
@@ -570,7 +577,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     throwIfAborted(signal);
 
-    const boundedModel = resolveFallbackModelScope(providerId, model, { webFetch: options?.webFetch === true, videoPoll: options?.videoPoll === true });
+    const boundedModel = resolveFallbackModelScope(providerId, model, { webFetch: options?.webFetch === true, webSearch: options?.webSearch === true, videoPoll: options?.videoPoll === true });
 
     // API-key provider-account relations and combo allow-lists both narrow the
     // eligible pool. Their intersection is authoritative; a derived empty
@@ -1380,9 +1387,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     status
   );
   const providerRuleConnectionWide = fallbackResult.scope === "connection";
+  const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide);
+  const isolatedSearch = context?.webSearch === true && !accountWide;
   const fallbackModel = resolveFallbackModelScope(provider, model, {
-    accountWide: githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide,
+    accountWide,
     webFetch: context?.webFetch === true,
+    webSearch: context?.webSearch === true,
     videoPoll: context?.videoPoll === true
   });
   let atomicApplied = false;
@@ -1398,6 +1408,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         backoffLevel: newBackoffLevel ?? backoffLevel,
         observedAt,
         webFetch: context?.webFetch === true,
+        webSearch: isolatedSearch,
         videoPoll: context?.videoPoll === true
       }, { signal });
       atomicApplied = true;
@@ -1408,7 +1419,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   if (!atomicApplied) {
     const lockUpdate = buildModelLockUpdate(fallbackModel, legacyCooldownMs);
-    await updateProviderConnection(connectionId, context?.webFetch === true ? lockUpdate : {
+    if (isolatedSearch) lockUpdate[`modelError_${fallbackModel}`] = Number(status) || 503;
+    await updateProviderConnection(connectionId, context?.webFetch === true || isolatedSearch ? lockUpdate : {
       ...lockUpdate,
       testStatus: "unavailable",
       lastError: reason,
@@ -1485,7 +1497,7 @@ export async function clearAccountError(connectionId, currentConnection, model =
   context.attemptStartedAt :
   Date.now();
   const provider = context?.provider || conn?.provider;
-  const fallbackModel = resolveFallbackModelScope(provider, model, { webFetch: context?.webFetch === true, videoPoll: context?.videoPoll === true });
+  const fallbackModel = resolveFallbackModelScope(provider, model, { webFetch: context?.webFetch === true, webSearch: context?.webSearch === true, videoPoll: context?.videoPoll === true });
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");
@@ -1493,7 +1505,8 @@ export async function clearAccountError(connectionId, currentConnection, model =
       await db.clearProviderConnectionFallbackState(connectionId, {
         model: fallbackModel,
         observedAt: now,
-        webFetch: context?.webFetch === true
+        webFetch: context?.webFetch === true,
+        webSearch: context?.webSearch === true
       }, { signal });
       atomicApplied = true;
     }
@@ -1504,10 +1517,10 @@ export async function clearAccountError(connectionId, currentConnection, model =
 
   const allLockKeys = Object.keys(conn).filter((k) => k.startsWith("modelLock_"));
   if (!atomicApplied && (conn.testStatus || conn.lastError || allLockKeys.length > 0)) {
-    const webFetch = context?.webFetch === true;
-    const relevantLockKeys = webFetch ?
+    const isolated = context?.webFetch === true || context?.webSearch === true;
+    const relevantLockKeys = isolated ?
     allLockKeys.filter((k) => k === `modelLock_${fallbackModel}`) :
-    allLockKeys.filter((k) => !k.startsWith("modelLock_webfetch:"));
+    allLockKeys.filter((k) => !k.startsWith("modelLock_webfetch:") && !k.startsWith("modelLock_websearch:"));
     const keysToClear = relevantLockKeys.filter((k) => {
       if (fallbackModel && k === `modelLock_${fallbackModel}`) return true;
       if (model && k === `modelLock_${model}`) return true;
@@ -1521,11 +1534,12 @@ export async function clearAccountError(connectionId, currentConnection, model =
       return expiry && new Date(expiry).getTime() > now;
     });
     const clearObj = Object.fromEntries(keysToClear.map((k) => [k, null]));
+    if (context?.webSearch === true && fallbackModel) clearObj[`modelError_${fallbackModel}`] = null;
     // Never let ordinary request success clear a durable reauth_required state;
     // only a successful OAuth reconnect (which writes testStatus:"active"
     // directly) may revive the account. See connectionsRepo fallback-clear guard.
     const reauthPinned = conn.testStatus === "reauth_required" || conn.errorCode === "REAUTH";
-    if (!webFetch && !reauthPinned && remainingActiveLocks.length === 0) {
+    if (!isolated && !reauthPinned && remainingActiveLocks.length === 0) {
       Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
     }
     if (Object.keys(clearObj).length > 0) await updateProviderConnection(connectionId, clearObj);

@@ -23,6 +23,7 @@ import { isNumber, isObject, isString, runtimeTypeName } from "../../src/shared/
 
 export const INTERNAL_KEYS = Object.freeze([
 "_toolNameMap",
+"_claudeCloaked",
 "_customToolNames",
 "_clientSessionId",
 "_kiroUpstreamModel"]

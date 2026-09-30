@@ -202,8 +202,8 @@ describe("port(omniroute): #10392 - normalize Claude tool call names to PascalCa
 });
 
 describe("claude→claude passthrough decloak when toolNameMap is lost or misses (upstream #4342)", () => {
-  async function run(toolNameMap, name) {
-    const stream = createPassthroughStreamWithLogger("claude", null, toolNameMap, "claude-opus-4", "conn-1", {}, null, "sk-ant-oat-test", null);
+  async function run(toolNameMap, name, claudeCloaked = true) {
+    const stream = createPassthroughStreamWithLogger("claude", null, toolNameMap, "claude-opus-4", "conn-1", {}, null, "sk-ant-oat-test", null, null, null, claudeCloaked);
     const writer = stream.writable.getWriter();
     const reader = stream.readable.getReader();
     const frame = `data: ${JSON.stringify({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_01", name, input: {} } })}\n\n`;
@@ -232,6 +232,7 @@ describe("claude→claude passthrough decloak when toolNameMap is lost or misses
   it("keeps decoy and uncloaked names untouched", async () => {
     expect(await run(null, "Bash")).toContain('"name":"Bash"');
     expect(await run(null, "uncloaked_tool")).toContain('"name":"uncloaked_tool"');
+    expect(await run(null, "run_ide", false)).toContain('"name":"run_ide"');
   });
 
   it("map hit wins over suffix stripping for a genuine client id ending in the suffix", () => {

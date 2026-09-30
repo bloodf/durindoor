@@ -13,7 +13,7 @@ import { createPassthroughStreamWithLogger } from "../../open-sse/utils/stream.j
 import { decloakToolNames } from "../../open-sse/utils/claudeCloaking.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
-async function runPassthrough(toolNameMap, chunks, targetFormat = null) {
+async function runPassthrough(toolNameMap, chunks, targetFormat = null, claudeCloaked = true) {
   const stream = createPassthroughStreamWithLogger(
     "claude",           // provider
     null,               // reqLogger
@@ -23,7 +23,10 @@ async function runPassthrough(toolNameMap, chunks, targetFormat = null) {
     {},                 // body
     null,               // onStreamComplete
     "sk-ant-oat-test",  // apiKey
-    targetFormat
+    targetFormat,
+    null,               // onCoherentTerminal
+    null,               // providerBody
+    claudeCloaked
   );
 
   const writer = stream.writable.getWriter();
@@ -160,9 +163,9 @@ describe("claude→claude passthrough tool-name decloaking", () => {
       { type: "tool_use", id: "3", name: "run_ide", input: {} },
     ] };
     const names = (b) => b.content.map((c) => c.name ?? c.text);
-    expect(names(decloakToolNames(body, null))).toEqual(["Execute_ide", "Execute", "Bash", "run"]);
-    expect(names(decloakToolNames(body, new Map([["Other_ide", "Other"]])))).toEqual(["Execute_ide", "Execute", "Bash", "run"]);
-    expect(names(decloakToolNames(body, new Map([["run_ide", "run_ide"], ["Execute_ide", "Exec"]])))).toEqual(["Execute_ide", "Exec", "Bash", "run_ide"]);
+    expect(names(decloakToolNames(body, null, true))).toEqual(["Execute_ide", "Execute", "Bash", "run"]);
+    expect(names(decloakToolNames(body, new Map([["Other_ide", "Other"]]), true))).toEqual(["Execute_ide", "Execute", "Bash", "run"]);
+    expect(names(decloakToolNames(body, new Map([["run_ide", "run_ide"], ["Execute_ide", "Exec"]]), true))).toEqual(["Execute_ide", "Exec", "Bash", "run_ide"]);
   });
 
   it("fails closed when a native Claude stream ends before message_stop", async () => {

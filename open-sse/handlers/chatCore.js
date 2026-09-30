@@ -571,6 +571,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   let translatedBody;
   let toolNameMap;
   let customToolNames;
+  let claudeCloaked = false;
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(body), model: cleanUpstreamModel };
@@ -629,6 +630,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     /** Carry Responses custom-tool identity to buffered response routes (upstream PR #3373). */
     customToolNames = translatedBody._customToolNames;
     delete translatedBody._customToolNames;
+    claudeCloaked = translatedBody._claudeCloaked === true;
+    delete translatedBody._claudeCloaked;
     delete translatedBody._toolNameMap;
     // Kiro carries the provider model inside every native userInputMessage.
     // Adding a stray OpenAI-style top-level model obscures boundary validation.
@@ -1691,7 +1694,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
     try {
-      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, trackDone, appendLog, streamToClient, signal: providerSignal });
+      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal });
       return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
@@ -1702,7 +1705,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
   abandonStreamingDetail = onStreamAbandoned;
   try {
-    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
+    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
     if (!result?.success) await settleQuota(false, "stream_error");
     return await finalizeResponse(result);
   } catch (error) {

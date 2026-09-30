@@ -53,6 +53,8 @@ function stripContentTypes(body, stripList = []) {
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   ensureInitialized();
   let result = body;
+  // Role the client actually ended on, before any translator drops an emptied turn.
+  const clientLastRole = Array.isArray(body?.messages) ? body.messages[body.messages.length - 1]?.role : undefined;
   // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)
   // replace `result` wholesale, dropping any metadata OpenAI-stage translators
   // stash on it. Capture it here and reattach after the envelope translator runs.
@@ -236,11 +238,11 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
        * Ollama implements the Messages wire contract but not Anthropic's model beta matrix.
        * Normalize against its model id while preserving the caller's assistant-prefill policy.
        */
-      result = normalizeClaudePassthrough(result, "", provider, null, { rawHeaders: credentials?.rawHeaders });
+      result = normalizeClaudePassthrough(result, "", provider, null, { rawHeaders: credentials?.rawHeaders, clientLastRole });
     }
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     const customMaxOutput = resolvedTranslationContext.modelCapabilities?.maxOutput ?? null;
-    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput);
+    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput, clientLastRole);
     /**
      * Forced tool choice is rejected by every thinking model, so this must run
      * on the TRANSLATED path too — not just native Claude passthrough. An

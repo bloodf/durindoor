@@ -1,3 +1,23 @@
+# 4.9.3
+
+## Fixes
+
+- fix(models): reconcile current catalogs and paginate Gemini models (#1026)
+
+## Upstream ports
+
+- port(upstream): ec669280 - isolate web search failures from chat (#1029)
+- port(upstream): 2fd99eae - read Claude session header fallback (#1028)
+- port(omniroute): avoid conversation-creating web probes (#1027)
+- port(upstream): #4334 - expose and price Cline free tier (#1025)
+- port(upstream): c4690307 - preserve Claude auth token on apply (#1024)
+- port(upstream): #4342 - restore cloaked Claude tool names (#1023)
+- port(upstream): #4492 - pin model tests to the selected connection (#1033)
+- port(omniroute): preserve Poe image-only user turns (#1032)
+- port(upstream): #4482 - restore trailing user turn after Claude cleanup (#1031)
+- port(upstream): #4481 - preserve Claude cache usage in OpenAI responses (#1030)
+
+
 # Unreleased
 
 ## Upstream ports

@@ -114,12 +114,14 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const estimatedTokens = String(body.prompt || "").length / 4;
+  const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};
+
 
   // Explicit no-auth providers still pass through the shared account selector:
   // scoped keys cannot escape to an anonymous/local endpoint.
   if (NO_AUTH_PROVIDERS.has(provider)) {
     const credentials = await getNoAuthProviderCredentials(provider, model, {
-      preferredConnectionId,
+      ...pinOptions,
       apiKeyId,
       allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
       restrictionApplied: comboRouting?.restrictionApplied === true
@@ -150,7 +152,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
 
   while (true) {
     const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
-      preferredConnectionId,
+      ...pinOptions,
       apiKeyId,
       allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
       restrictionApplied: comboRouting?.restrictionApplied === true

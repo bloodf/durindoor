@@ -88,6 +88,16 @@ describe("public no-auth fallback is restricted to the canonical roster", () => 
     expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
+  it("refuses anonymous fallback when a stored connection was explicitly pinned", async () => {
+    mocks.getProviderConnections.mockResolvedValue([]);
+
+    const { getProviderCredentials, getNoAuthProviderCredentials } = await import("../../src/sse/services/auth.js");
+    const options = { preferredConnectionId: "missing", strictConnectionId: "missing" };
+    expect(await getProviderCredentials("mimocode", null, null, options)).toBeNull();
+    expect(await getNoAuthProviderCredentials("mimocode", null, options)).toBeNull();
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
+
   it("does not return public credentials when stored Mimocode rows are excluded", async () => {
     mocks.getProviderConnections.mockResolvedValue([{
       id: "mimocode-stored",

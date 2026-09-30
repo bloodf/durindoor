@@ -116,10 +116,14 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     if (testingModelId) return;
     setTestingModelId(modelId);
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
+        body: JSON.stringify({
+          model: `${providerStorageAlias}/${modelId}`,
+          connectionId,
+        }),
       });
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
@@ -250,6 +254,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     });
 
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const models = currentSelected.map((m) => ({
         model: `${providerStorageAlias}/${m.id}`,
         kind: "llm",
@@ -257,7 +262,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       const res = await fetch("/api/models/test/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ models }),
+        body: JSON.stringify({ models, connectionId }),
         signal: abortCtrl.signal,
       });
 

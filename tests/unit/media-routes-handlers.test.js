@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   handleTtsCore: vi.fn(),
   handleEmbeddingsCore: vi.fn(),
+  handleRerankCore: vi.fn(),
   handleSttCore: vi.fn(),
   handleMusicGenerationCore: vi.fn(),
   handleImageGenerationCore: vi.fn(),
@@ -65,6 +66,7 @@ vi.mock("../../src/sse/utils/requestCorrelation.js", () => ({
   withRequestCorrelation: (fn) => (...args) => fn(...args)
 }));
 vi.mock("../../open-sse/handlers/ttsCore.js", () => ({ handleTtsCore: mocks.handleTtsCore }));
+vi.mock("../../open-sse/handlers/rerankCore.js", () => ({ handleRerankCore: mocks.handleRerankCore }));
 vi.mock("../../open-sse/handlers/embeddingsCore.js", () => ({ handleEmbeddingsCore: mocks.handleEmbeddingsCore }));
 vi.mock("../../open-sse/handlers/sttCore.js", async (importOriginal) => ({ ...(await importOriginal()), handleSttCore: mocks.handleSttCore }));
 vi.mock("../../open-sse/handlers/musicGenerationCore.js", () => ({ handleMusicGenerationCore: mocks.handleMusicGenerationCore }));
@@ -76,6 +78,7 @@ vi.mock("../../open-sse/handlers/search/index.js", () => ({ handleSearchCore: mo
 const { handleTts } = await import("../../src/sse/handlers/tts.js");
 const { handleEmbeddings } = await import("../../src/sse/handlers/embeddings.js");
 const { handleStt } = await import("../../src/sse/handlers/stt.js");
+const { handleRerank } = await import("../../src/sse/handlers/rerank.js");
 const { handleMusicGeneration } = await import("../../src/sse/handlers/music.js");
 const { handleImageGeneration } = await import("../../src/sse/handlers/imageGeneration.js");
 const { handleVideoGeneration, handleVideoCreate, handleVideoGet } = await import("../../src/sse/handlers/video.js");
@@ -97,6 +100,43 @@ beforeEach(() => {
   mocks.getSettings.mockResolvedValue({ requireApiKey: false });
   mocks.getProviderCredentialsWithQuotaPreflight.mockResolvedValue({ connectionId: "c1", connectionName: "c1", apiKey: "k" });
   mocks.getNoAuthProviderCredentials.mockResolvedValue({});
+});
+
+describe("model test connection pins", () => {
+  const form = () => {
+    const data = new FormData();
+    data.set("model", "openai/whisper-1");
+    data.set("file", new Blob(["audio"], { type: "audio/wav" }), "sample.wav");
+    return data;
+  };
+  const probes = [
+    ["embedding", handleEmbeddings, () => post("/v1/embeddings", { model: "openai/text-embedding-3-small", input: "hi" }), mocks.handleEmbeddingsCore],
+    ["image", handleImageGeneration, () => post("/v1/images/generations", { model: "openai/dall-e-3", prompt: "a cat" }), mocks.handleImageGenerationCore],
+    ["rerank", handleRerank, () => post("/v1/rerank", { model: "openai/rerank", query: "hi", documents: ["doc"] }), mocks.handleRerankCore],
+    ["stt", handleStt, () => new Request("http://localhost/v1/audio/transcriptions", { method: "POST", body: form() }), mocks.handleSttCore],
+  ];
+
+  it.each(probes)("%s uses the requested account and never substitutes another", async (_kind, handler, makeRequest, core) => {
+    mocks.getProviderCredentialsWithQuotaPreflight.mockImplementation(async (_provider, _excluded, _model, options) => {
+      if (options.strictConnectionId === "missing") return null;
+      const connectionId = options.strictConnectionId === "conn-2" ? "conn-2" : "conn-1";
+      return { connectionId, connectionName: connectionId, apiKey: connectionId };
+    });
+    core.mockImplementation(async ({ credentials }) => ok({ account: credentials.connectionId }));
+    const request = makeRequest();
+    request.headers.set("x-connection-id", "conn-2");
+    const response = await handler(request);
+    expect(response.status).toBe(200);
+    expect((await response.json()).account).toBe("conn-2");
+    expect(core).toHaveBeenCalledTimes(1);
+
+    core.mockClear();
+    const missing = makeRequest();
+    missing.headers.set("x-connection-id", "missing");
+    const denied = await handler(missing);
+    expect(denied.status).toBe(400);
+    expect(core).not.toHaveBeenCalled();
+  });
 });
 
 describe("media endpoints without a model", () => {

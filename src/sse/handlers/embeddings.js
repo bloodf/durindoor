@@ -83,13 +83,16 @@ async function handleEmbeddingsHandler(request) {
     log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
   }
 
+  const connectionId = request.headers.get("x-connection-id") || null;
+  const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
+
   // Credential + fallback loop (mirrors handleChat)
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId: apiKeyAuth.apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { ...pinOptions, apiKeyId: apiKeyAuth.apiKeyId });
 
     // All accounts unavailable or provider disabled
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {

@@ -67,6 +67,9 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const connectionId = request.headers.get("x-connection-id") || null;
+  const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
+
   // Audio bytes are not model tokens. Stage 1 records the successful request;
   // authoritative speech usage accounting is completed in the quota program.
   const estimatedTokens = 0;
@@ -75,7 +78,7 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
   // Local/no-auth execution remains unrestricted only for keys with zero
   // provider-account relations.
   if (!CREDENTIALED_PROVIDERS.has(provider)) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(provider, model, { ...pinOptions, apiKeyId });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -98,7 +101,7 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { ...pinOptions, apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

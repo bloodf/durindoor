@@ -1471,10 +1471,14 @@ export default function ProviderDetailPage() {
     if (testingModelIds.has(modelId)) return;
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
+      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` })
+        body: JSON.stringify({
+          model: `${providerStorageAlias}/${modelId}`,
+          connectionId,
+        })
       });
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
@@ -2421,6 +2425,7 @@ export default function ProviderDetailPage() {
         providerAlias={providerStorageAlias}
         providerDisplayAlias={providerDisplayAlias}
         initialModel={editingCustomModel}
+        connections={connections}
         onSave={async (payload) => {
           // OmniRoute #14356 (port(omniroute)): a registry/synced row opens
           // this same editor with `editingCustomModel` set, but (unlike a

@@ -66,6 +66,9 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const connectionId = request.headers.get("x-connection-id") || null;
+  const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
+
   const estimatedTokens = (String(body.query).length + JSON.stringify(body.documents).length) / 4;
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -76,7 +79,7 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
   const { getExecutor } = await import("open-sse/executors/index.js");
   const executor = getExecutor(provider);
   if (executor?.noAuth) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId });
+    const credentials = await getNoAuthProviderCredentials(provider, model, { ...pinOptions, apiKeyId });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -99,7 +102,7 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { apiKeyId });
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { ...pinOptions, apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {

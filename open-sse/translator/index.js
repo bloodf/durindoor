@@ -264,10 +264,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     const apiKey = credentials?.accessToken || credentials?.apiKey || null;
     if (apiKey?.includes("sk-ant-oat")) {
       const { body: cloakedBody, toolNameMap } = cloakClaudeTools(result);
+      const cloakApplied = cloakedBody !== result;
       result = cloakedBody;
       if (toolNameMap?.size > 0) {
         result._toolNameMap = toolNameMap;
       }
+      // Explicit signal, independent of the map: cloaking was applied to this
+      // request, so the response path may strip the suffix if the map is lost.
+      if (cloakApplied) result._claudeCloaked = true;
     }
   }
 

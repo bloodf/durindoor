@@ -9,6 +9,7 @@
 ## Fixes
 
 - fix(models): dashboard model tests now pin probes to the first active connection selected by the caller rather than another account of that provider; unavailable pins fail closed. Operator-only pinning prevents API keys from probing accounts outside their scope. Ports decolua/9router#4492.
+- fix(claude): strip the `_ide` cloak suffix from tool_use names when the tool-name map is lost or misses (retry/reconnect), streaming and non-streaming, only for requests that were actually OAuth-cloaked (explicit `_claudeCloaked` context); legitimate client tools ending in `_ide` are left alone on non-cloaked requests; CC decoy names are left as-is (ports upstream #4342)
 
 
 # 4.9.2

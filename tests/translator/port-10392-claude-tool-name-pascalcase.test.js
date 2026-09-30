@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { createPassthroughStreamWithLogger } from "../../open-sse/utils/stream.js";
+import { decloakToolName } from "../../open-sse/utils/claudeCloaking.js";
 import "./registerAll.js";
 import { normalizeClaudeToolName } from "../../open-sse/services/claudeCodeToolRemapper.js";
 import { restoreOpenAIToolNames } from "../../open-sse/translator/concerns/toolCall.js";
@@ -196,5 +198,44 @@ describe("port(omniroute): #10392 - normalize Claude tool call names to PascalCa
       expect(changed).toBe(true);
       expect(parsed.content_block.name).toBe("execute_ide");
     });
+  });
+});
+
+describe("claude→claude passthrough decloak when toolNameMap is lost or misses (upstream #4342)", () => {
+  async function run(toolNameMap, name, claudeCloaked = true) {
+    const stream = createPassthroughStreamWithLogger("claude", null, toolNameMap, "claude-opus-4", "conn-1", {}, null, "sk-ant-oat-test", null, null, null, claudeCloaked);
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    const frame = `data: ${JSON.stringify({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_01", name, input: {} } })}\n\n`;
+    const readAll = (async () => {
+      const dec = new TextDecoder();
+      let out = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return out;
+        out += dec.decode(value);
+      }
+    })();
+    await writer.write(new TextEncoder().encode(frame));
+    await writer.close();
+    return readAll;
+  }
+
+  it("strips the suffix when the map is null or misses the name", async () => {
+    for (const map of [null, new Map([["Other_ide", "Other"]])]) {
+      const out = await run(map, "Execute_ide");
+      expect(out).not.toContain("Execute_ide");
+      expect(out).toContain('"name":"Execute"');
+    }
+  });
+
+  it("keeps decoy and uncloaked names untouched", async () => {
+    expect(await run(null, "Bash")).toContain('"name":"Bash"');
+    expect(await run(null, "uncloaked_tool")).toContain('"name":"uncloaked_tool"');
+    expect(await run(null, "run_ide", false)).toContain('"name":"run_ide"');
+  });
+
+  it("map hit wins over suffix stripping for a genuine client id ending in the suffix", () => {
+    expect(decloakToolName("run_ide", new Map([["run_ide", "run_ide"]]))).toBe("run_ide");
   });
 });

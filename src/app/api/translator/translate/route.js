@@ -87,6 +87,7 @@ export async function POST(request) {
           },
         );
         delete result._toolNameMap;
+        delete result._claudeCloaked;
 
         return NextResponse.json({ success: true, result: { body: result } });
       }

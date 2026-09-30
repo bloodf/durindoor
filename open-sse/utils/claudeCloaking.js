@@ -92,14 +92,25 @@ export function cloakClaudeTools(body) {
   };
 }
 
+// Resolve a possibly-cloaked tool name. Map hit wins. When the request was
+// actually cloaked (claudeCloaked) but the map is lost or misses
+// (retry/reconnect), strip the literal CLAUDE_TOOL_SUFFIX instead of leaking
+// "<tool>_ide" to the client. Non-cloaked requests never strip: a legitimate
+// client tool may itself end in "_ide". Reserved CC decoy names pass through.
+export function decloakToolName(name, toolNameMap, claudeCloaked = false) {
+  const mapped = toolNameMap?.get(name);
+  if (mapped) return mapped;
+  if (!claudeCloaked || !isString(name) || !name.endsWith(CLAUDE_TOOL_SUFFIX) || CC_DEFAULT_TOOLS.has(name)) return name;
+  return name.length > CLAUDE_TOOL_SUFFIX.length ? name.slice(0, -CLAUDE_TOOL_SUFFIX.length) : name;
+}
+
 // Decloak tool_use names in non-streaming Claude response body (INPUT side)
-export function decloakToolNames(body, toolNameMap) {
-  if (!toolNameMap?.size || !Array.isArray(body?.content)) return body;
+export function decloakToolNames(body, toolNameMap, claudeCloaked = false) {
+  if (!Array.isArray(body?.content)) return body;
   const content = body.content.map((block) => {
-    if (block?.type === "tool_use" && toolNameMap.has(block.name)) {
-      return { ...block, name: toolNameMap.get(block.name) };
-    }
-    return block;
+    if (block?.type !== "tool_use") return block;
+    const name = decloakToolName(block.name, toolNameMap, claudeCloaked);
+    return name === block.name ? block : { ...block, name };
   });
   return { ...body, content };
 }

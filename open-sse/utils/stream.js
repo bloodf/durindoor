@@ -12,6 +12,7 @@ import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "../handlers/chatCore/inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
+import { decloakToolName } from "./claudeCloaking.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
@@ -102,6 +103,7 @@ export function createSSEStream(options = {}) {
     provider = null,
     reqLogger = null,
     toolNameMap = null,
+    claudeCloaked = false,
     model = null,
     connectionId = null,
     body = null,
@@ -689,9 +691,9 @@ export function createSSEStream(options = {}) {
               // applies toolNameMap in TRANSLATE mode), so without this the client
               // receives suffixed names (e.g. "Execute_ide") it doesn't recognize.
               let toolNameDecloaked = false;
-              if (toolNameMap?.size > 0 && parsed?.type === "content_block_start" && parsed?.content_block?.type === "tool_use") {
-                const original = toolNameMap?.get(parsed.content_block.name);
-                if (original) {
+              if (parsed?.type === "content_block_start" && parsed?.content_block?.type === "tool_use") {
+                const original = decloakToolName(parsed.content_block.name, toolNameMap, claudeCloaked);
+                if (original !== parsed.content_block.name) {
                   parsed.content_block = { ...parsed.content_block, name: original };
                   toolNameDecloaked = true;
                 }
@@ -1418,7 +1420,7 @@ export function createSSEStream(options = {}) {
   return transformStream;
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, credentials = null) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, credentials = null, claudeCloaked = false) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -1434,11 +1436,12 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     providerBody,
     apiKey,
     claudeClassifierCompat,
-    credentials
+    credentials,
+    claudeCloaked
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null, onCoherentTerminal = null, providerBody = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null, onCoherentTerminal = null, providerBody = null, claudeCloaked = false) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     targetFormat,
@@ -1451,6 +1454,7 @@ export function createPassthroughStreamWithLogger(provider = null, reqLogger = n
     onStreamComplete,
     onCoherentTerminal,
     providerBody,
-    apiKey
+    apiKey,
+    claudeCloaked
   });
 }

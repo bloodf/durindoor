@@ -17,7 +17,7 @@ Open **Providers**, then **Claude Code**, then Connect.
 Sign in at claude.ai and approve access. DurinDoor asks for `org:create_api_key user:profile user:inference` with a PKCE challenge.
 </Step>
 <Step>
-The redirect goes to `http://localhost:<dashboard port>/callback`. On a loopback host the popup finishes by itself. From any other host the modal switches to a paste step: copy the full callback URL and paste it. A pasted `code#state` value also works. A state that does not match the one DurinDoor issued is rejected.
+Anthropic sends the authorization result to its code page (`https://platform.claude.com/oauth/code/callback`), not the dashboard. Copy the code shown there and paste it into the Claude Connect dialog, on local or hosted dashboards. DurinDoor binds pasted codes to the current login attempt; if you paste a full callback URL with a state, that state must match.
 </Step>
 </Steps>
 

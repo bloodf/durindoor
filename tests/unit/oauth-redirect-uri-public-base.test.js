@@ -60,51 +60,23 @@ describe("publicBaseUrl", () => {
 });
 
 describe("buildOAuthRedirectUri", () => {
-  // The regression: the old code hardcoded http://localhost and took the port
-  // from the public origin's scheme, producing http://localhost:443/callback.
-  // The authorization server sent the browser to a loopback origin that does
-  // not exist on the client, so the consent flow failed with
-  // ERR_CONNECTION_REFUSED even though the code itself was still valid.
-  it("redirects to the public base URL on an https deployment", () => {
-    const redirectUri = buildOAuthRedirectUri(httpsPublic, "claude");
-    expect(redirectUri).toBe("https://router.ai.public.domain/callback");
-    expect(redirectUri).not.toContain("localhost");
-    expect(redirectUri).not.toContain("127.0.0.1");
+  // Hosted dashboards cannot use arbitrary Claude redirect origins: Anthropic
+  // accepts its own manual-code callback for this OAuth client.
+  it("uses Claude's registered manual-code redirect on a hosted dashboard", () => {
+    expect(buildOAuthRedirectUri(httpsPublic, "claude"))
+      .toBe("https://console.anthropic.com/oauth/code/callback");
   });
 
-  it("never emits the implicit-port loopback URL from #4054", () => {
-    expect(buildOAuthRedirectUri(httpsPublic, "claude")).not.toBe("http://localhost:443/callback");
+  it("uses Claude's registered redirect on loopback installs too", () => {
+    expect(buildOAuthRedirectUri(localhostApp, "claude"))
+      .toBe("https://console.anthropic.com/oauth/code/callback");
   });
 
-  it("keeps the explicit port of a remote http deployment", () => {
-    expect(
-      buildOAuthRedirectUri(
-        { hostname: "10.0.0.5", port: "20128", protocol: "http:", origin: "http://10.0.0.5:20128" },
-        "claude",
-      ),
-    ).toBe("http://10.0.0.5:20128/callback");
-  });
-
-  it("keeps the loopback callback for a localhost install", () => {
-    expect(buildOAuthRedirectUri(localhostApp, "claude")).toBe("http://localhost:20128/callback");
-  });
-
-  it("falls back to the implicit port on a bare loopback install", () => {
-    expect(
-      buildOAuthRedirectUri(
-        { hostname: "localhost", port: "", protocol: "http:", origin: "http://localhost" },
-        "claude",
-      ),
-    ).toBe("http://localhost:80/callback");
-    // Redirects to literal "localhost", not the accessed loopback hostname:
-    // Claude Code's OAuth client is registered against
-    // http://localhost:<app-port>/callback specifically.
-    expect(
-      buildOAuthRedirectUri(
-        { hostname: "127.0.0.1", port: "", protocol: "https:", origin: "https://127.0.0.1" },
-        "claude",
-      ),
-    ).toBe("http://localhost:443/callback");
+  it("keeps the dashboard callback for other providers", () => {
+    expect(buildOAuthRedirectUri(localhostApp, "gemini-cli"))
+      .toBe("http://localhost:20128/callback");
+    expect(buildOAuthRedirectUri({ hostname: "10.0.0.5", origin: "http://10.0.0.5:20128" }, "iflow"))
+      .toBe("http://10.0.0.5:20128/callback");
   });
 
   it("leaves the fixed-port loopback redirects for codex and xai untouched", () => {
@@ -112,8 +84,8 @@ describe("buildOAuthRedirectUri", () => {
     expect(buildOAuthRedirectUri(httpsPublic, "xai")).toBe("http://127.0.0.1:56121/callback");
   });
 
-  it("follows the public base URL for every non-fixed-port provider", () => {
-    for (const provider of ["claude", "gemini-cli", "iflow", "qoder", "cursor", "kimi", "zed"]) {
+  it("follows the public base URL for providers with dashboard callbacks", () => {
+    for (const provider of ["gemini-cli", "iflow", "qoder", "cursor", "kimi", "zed"]) {
       expect(buildOAuthRedirectUri(httpsPublic, provider)).toBe(
         "https://router.ai.public.domain/callback",
       );
@@ -125,6 +97,6 @@ describe("buildOAuthRedirectUri", () => {
     // reverse proxy that rewrites Host to an internal name); NEXT_PUBLIC_BASE_URL
     // is the browser-visible override documented in docs/reference/environment.mdx.
     process.env.NEXT_PUBLIC_BASE_URL = "https://durindoor.example.com";
-    expect(buildOAuthRedirectUri(httpsPublic, "claude")).toBe("https://durindoor.example.com/callback");
+    expect(buildOAuthRedirectUri(httpsPublic, "gemini-cli")).toBe("https://durindoor.example.com/callback");
   });
 });

@@ -29,6 +29,7 @@
 - port(upstream): ec669280 - isolate web-search failures and status from chat on shared provider connections, except confirmed account-wide exhaustion; search success clears only search lock and error status.
 
 ## Fixes
+- fix(claude): use Anthropic's registered code callback for hosted and local OAuth logins; paste displayed code in Connect dialog instead of redirecting to dashboard `/callback`.
 
 - fix(models): dashboard model tests now pin probes to the first active connection selected by the caller rather than another account of that provider; unavailable pins fail closed. Operator-only pinning prevents API keys from probing accounts outside their scope. Ports decolua/9router#4492.
 - fix(claude): strip the `_ide` cloak suffix from tool_use names when the tool-name map is lost or misses (retry/reconnect), streaming and non-streaming, only for requests that were actually OAuth-cloaked (explicit `_claudeCloaked` context); legitimate client tools ending in `_ide` are left alone on non-cloaked requests; CC decoy names are left as-is (ports upstream #4342)

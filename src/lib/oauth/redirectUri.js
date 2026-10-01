@@ -1,28 +1,9 @@
-// OAuth redirect_uri construction for the authorization-code flow.
-//
-// The authorization server sends the browser to redirect_uri verbatim, so it
-// has to name an origin that exists on the *user's* machine:
-//
-// - On a loopback install (local dev, or the CLI running DurinDoor locally) the
-//   loopback callback is the only thing that can work, and Claude Code's client
-//   is registered against http://localhost:<app-port>/callback.
-// - On a hosted or reverse-proxied install the browser is somewhere else
-//   entirely, so a hardcoded http://localhost sends the user to their own
-//   machine where nothing is listening. It is also worse than a plain loopback
-//   guess: on an https origin window.location.port is empty and the implicit
-//   port is 443, so the previous code emitted http://localhost:443/callback
-//   (upstream #4054) - a loopback origin that cannot exist behind a public
-//   domain.
-//
-// For any non-loopback origin the correct redirect target is the operator's
-// configured public base URL (NEXT_PUBLIC_BASE_URL - see
-// docs/reference/environment.mdx, the browser-visible counterpart of
-// server-side BASE_URL in src/lib/auth/requestOrigin.js) when set, otherwise
-// window.location.origin - the origin the user actually reached the dashboard
-// on.
+// OAuth redirect_uri construction. Claude uses Anthropic's manual-code callback;
+// other non-loopback providers redirect to the browser-visible dashboard URL.
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 export const CODEX_LOOPBACK_REDIRECT_URI = "http://localhost:1455/auth/callback";
+export const CLAUDE_MANUAL_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
 export const XAI_LOOPBACK_REDIRECT_URI = "http://127.0.0.1:56121/callback";
 
 export function isLoopbackHostname(hostname) {
@@ -52,11 +33,10 @@ export function buildOAuthRedirectUri(location, provider) {
   // known port, so the redirect is not ours to choose.
   if (provider === "codex") return CODEX_LOOPBACK_REDIRECT_URI;
   if (provider === "xai") return XAI_LOOPBACK_REDIRECT_URI;
+  if (provider === "claude") return CLAUDE_MANUAL_REDIRECT_URI;
 
   if (isLoopbackHostname(location?.hostname)) {
-    // Literal "localhost", not location.hostname: Claude Code's OAuth client is
-    // registered against http://localhost:<app-port>/callback specifically, so
-    // an install reached via 127.0.0.1 must still redirect to that exact host.
+    // Other loopback providers use the app's local callback listener.
     const appPort = location.port || (location?.protocol === "https:" ? "443" : "80");
     return `http://localhost:${appPort}/callback`;
   }

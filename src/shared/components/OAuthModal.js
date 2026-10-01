@@ -292,10 +292,8 @@ export default function OAuthModal({
       }
 
       const appPort = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
-      // Loopback installs keep the loopback callback. A hosted or reverse-proxied
-      // install must redirect back to the public base URL instead, otherwise the
-      // consent flow lands on http://localhost:<port> on the user's machine
-      // (upstream #4054).
+      // Claude uses Anthropic's registered manual-code callback, not the
+      // dashboard origin. Other hosted providers use the public dashboard URL.
       const redirectUri = buildOAuthRedirectUri(window.location, flow.provider);
       const response = await fetch(`/api/oauth/${flow.provider}/authorize`, {
         method: "POST",
@@ -357,8 +355,8 @@ export default function OAuthModal({
         xaiServerSide: flow.provider === "xai" && serverSide
       });
       const isLocalhost = browserIsLoopback;
-      const canUsePopup = fixedProxyActive ||
-      !FIXED_PORT_PROVIDERS.has(flow.provider) && isLocalhost;
+      const canUsePopup = flow.provider !== "claude" && (fixedProxyActive ||
+      !FIXED_PORT_PROVIDERS.has(flow.provider) && isLocalhost);
       if (canUsePopup) {
         const popup = window.open(data.authUrl, "oauth_popup", "width=600,height=700");
         lifecycle.bindPopup(flow, popup);
@@ -496,6 +494,13 @@ export default function OAuthModal({
       setError(null);
       const input = callbackUrl.trim();
       if (input.startsWith("eyJ") && input.includes(".")) {
+        const callback = { code: input, state: flow.expectedState };
+        if (lifecycle.claimCallback(flow, callback)) {
+          await exchangeClaimedCallback(flow, input, flow.expectedState);
+        }
+        return;
+      }
+      if (provider === "claude" && input && !input.includes("://") && !input.includes("?") && !input.includes("code=")) {
         const callback = { code: input, state: flow.expectedState };
         if (lifecycle.claimCallback(flow, callback)) {
           await exchangeClaimedCallback(flow, input, flow.expectedState);
@@ -651,16 +656,18 @@ export default function OAuthModal({
 
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-dd-border" />
-              <span className="text-xs uppercase tracking-wider text-dd-muted">Paste callback URL manually</span>
+              <span className="text-xs uppercase tracking-wider text-dd-muted">{provider === "claude" ? "Paste authorization code manually" : "Paste callback URL manually"}</span>
               <div className="h-px flex-1 bg-dd-border" />
             </div>
 
             <div className="flex flex-col gap-1.5">
               <p className="text-[13px] font-medium text-dd-text">
-                Paste the {provider === "xai" ? "callback URL or copied code" : isKimchiProvider ? "callback URL or copied token" : "callback URL"} here
+                Paste the {provider === "claude" ? "Claude authorization code" : provider === "xai" ? "callback URL or copied code" : isKimchiProvider ? "callback URL or copied token" : "callback URL"} here
               </p>
               <p className="text-xs text-dd-muted">
-                {provider === "xai"
+                {provider === "claude"
+                  ? "After authorization, copy the code shown by Anthropic and paste it here."
+                  : provider === "xai"
                   ? "If xAI shows a code instead of redirecting, paste that code here."
                   : isKimchiProvider
                   ? "After authorization, copy the full callback URL or token from your browser."

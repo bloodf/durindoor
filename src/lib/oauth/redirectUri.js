@@ -3,7 +3,7 @@
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 export const CODEX_LOOPBACK_REDIRECT_URI = "http://localhost:1455/auth/callback";
-export const CLAUDE_MANUAL_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
+export const CLAUDE_MANUAL_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
 export const XAI_LOOPBACK_REDIRECT_URI = "http://127.0.0.1:56121/callback";
 
 export function isLoopbackHostname(hostname) {

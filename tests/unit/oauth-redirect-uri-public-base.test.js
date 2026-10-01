@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildOAuthRedirectUri,
   isLoopbackHostname,
   publicBaseUrl,
 } from "../../src/lib/oauth/redirectUri.js";
+import { generateAuthData, getProvider } from "../../src/lib/oauth/providers.js";
 
 // A TLS-terminating reverse proxy in front of DurinDoor: the dashboard is
 // reached at https://router.ai.public.domain, so window.location.port is ""
@@ -64,13 +65,36 @@ describe("buildOAuthRedirectUri", () => {
   // accepts its own manual-code callback for this OAuth client.
   it("uses Claude's registered manual-code redirect on a hosted dashboard", () => {
     expect(buildOAuthRedirectUri(httpsPublic, "claude"))
-      .toBe("https://console.anthropic.com/oauth/code/callback");
+      .toBe("https://platform.claude.com/oauth/code/callback");
   });
 
   it("uses Claude's registered redirect on loopback installs too", () => {
     expect(buildOAuthRedirectUri(localhostApp, "claude"))
-      .toBe("https://console.anthropic.com/oauth/code/callback");
+      .toBe("https://platform.claude.com/oauth/code/callback");
   });
+  it("uses one registered redirect for authorization and token exchange", async () => {
+    const redirectUri = buildOAuthRedirectUri(httpsPublic, "claude");
+    const auth = await generateAuthData("claude", redirectUri);
+    const url = new URL(auth.authUrl);
+    expect(url.searchParams.get("redirect_uri")).toBe(redirectUri);
+    expect(url.searchParams.get("state")).toBe(auth.state);
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => ({}) });
+    try {
+      await getProvider("claude").exchangeToken(
+        getProvider("claude").config, "one-use-code", redirectUri, auth.codeVerifier, auth.state,
+      );
+      expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({
+        redirect_uri: redirectUri,
+        state: auth.state,
+        code_verifier: auth.codeVerifier,
+      });
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
 
   it("keeps the dashboard callback for other providers", () => {
     expect(buildOAuthRedirectUri(localhostApp, "gemini-cli"))

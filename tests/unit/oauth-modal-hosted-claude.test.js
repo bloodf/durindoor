@@ -22,7 +22,7 @@ vi.mock("@/shared/hooks/useCopyToClipboard", () => ({
 import OAuthModal from "@/shared/components/OAuthModal.js";
 
 const state = "generated-state";
-const redirectUri = "https://console.anthropic.com/oauth/code/callback";
+const redirectUri = "https://platform.claude.com/oauth/code/callback";
 const authUrl = `https://claude.ai/oauth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 const response = (data) => ({ ok: true, status: 200, json: async () => data });
 let container;

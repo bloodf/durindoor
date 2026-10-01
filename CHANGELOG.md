@@ -1,3 +1,10 @@
+# 4.9.4
+
+## Fixes
+
+- fix(claude): use registered manual-code OAuth redirect
+
+
 # 4.9.3
 
 ## Fixes

@@ -157,6 +157,14 @@ try {
       path.join(process.cwd(), "src", "shared", "constants", "processExitCodes.js"),
       path.join(sharedConstantsDir, "processExitCodes.js"),
     );
+    // Fail the build (and CI) if the shipped egress code cannot resolve undici
+    // from inside the bundle — the 4.9.4 tarball shipped without it. Resolution
+    // walks up into the repo's own node_modules, so require an in-bundle path.
+    const undiciResolved = createRequire(path.join(standaloneDir, "open-sse", "utils", "proxyFetch.js"))
+      .resolve("undici");
+    if (!undiciResolved.startsWith(standaloneDir + path.sep)) {
+      throw new Error(`undici resolves outside the standalone bundle (${undiciResolved})`);
+    }
   }
 } finally {
   fs.rmSync(buildRoot, { recursive: true, force: true });

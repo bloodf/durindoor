@@ -112,7 +112,8 @@ export function selectAnthropicBeta(model = "") {
  * Client-sent betas that are forwarded per request. Claude Code 2.1.278+ sends
  * `dangerous-tool-use-2026-09-03` with a `safeguards` body field; Fable 5.1 and
  * Opus 5.5 need the thinking betas for `thinking.block_binding` / `thinking.display`.
- * Dropping them turns those body fields into 400s.
+ * Claude Code 2.1.284 also sends timing and inline-tools per turn; inline-tools
+ * gates message-level `tool_addition` blocks. Dropping these causes HTTP 400s.
  */
 export const FORWARDABLE_CLIENT_BETAS = new Set([
   "thinking-binding-controls-2026-08-01",
@@ -121,7 +122,9 @@ export const FORWARDABLE_CLIENT_BETAS = new Set([
   // auto mode is active; without it the upstream never sees the full
   // auto-mode negotiation (OmniRoute #14694).
   "dangerous-tool-use-2026-09-03",
-  "afk-mode-2026-01-31"
+  "afk-mode-2026-01-31",
+  "timing-2026-09-09",
+  "inline-tools-2026-09-15"
 ]);
 
 /**

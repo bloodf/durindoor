@@ -69,6 +69,7 @@ describe("grok-cli device-code OAuth (#2502)", () => {
     expect(url).toBe("https://auth.x.ai/oauth2/device/code");
     expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    expect(init.headers["User-Agent"]).toBe("grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)");
     const form = formOf(fetchMock.mock.calls[0]);
     expect(form.get("client_id")).toBe("b1a00492-073a-47ea-816f-4c329264a828");
     expect(form.get("scope")).toContain("grok-cli:access");
@@ -92,7 +93,25 @@ describe("grok-cli device-code OAuth (#2502)", () => {
     expect(form.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:device_code");
     expect(form.get("device_code")).toBe("dc-1");
     expect(init.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    expect(init.headers["User-Agent"]).toBe("grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)");
     expect(result).toMatchObject({ success: false, error: "authorization_pending", pending: true });
+  });
+
+  it("postExchange requests user profile with current CLI identity", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ access_token: "token", refresh_token: "refresh" }), {
+      status: 200, headers: { "content-type": "application/json" },
+    }));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ email: "user@example.com" }), {
+      status: 200, headers: { "content-type": "application/json" },
+    }));
+
+    await pollForToken("grok-cli", "dc-1");
+
+    const [url, init] = fetchMock.mock.calls[1];
+    expect(url).toBe("https://cli-chat-proxy.grok.com/v1/user");
+    expect(init.headers.Authorization).toBe("Bearer token");
+    expect(init.headers["User-Agent"]).toBe("grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)");
+    expect(init.headers["x-grok-client-version"]).toBe("1.0.44");
   });
 
   it("pollForToken survives a non-JSON error body without throwing", async () => {

@@ -11,6 +11,7 @@
  * Ported from decolua/9router#2502 (device-code OAuth + Responses executor).
  */
 import xai from "./xai.js";
+import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "../../config/grokCli.js";
 
 export default {
   id: "grok-cli",
@@ -46,14 +47,14 @@ export default {
     forceStream: true,
     modelsUrl: "https://cli-chat-proxy.grok.com/v1/models",
     userUrl: "https://cli-chat-proxy.grok.com/v1/user",
-    clientVersion: "0.2.93",
+    clientVersion: GROK_CLI_VERSION,
     clientIdentifier: "grok-pager",
     tokenAuth: "xai-grok-cli",
     headers: {
-      "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+      "User-Agent": GROK_CLI_PAGER_USER_AGENT,
       "x-xai-token-auth": "xai-grok-cli",
       "x-grok-client-identifier": "grok-pager",
-      "x-grok-client-version": "0.2.93",
+      "x-grok-client-version": GROK_CLI_VERSION,
       "x-authenticateresponse": "authenticate-response",
     },
     // Chat accepts the Responses `prompt_cache_key` extension after lowering.

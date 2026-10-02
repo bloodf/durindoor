@@ -17,7 +17,9 @@ const SHARED_OUTPUT = "Code first. Then at most three short lines: what was skip
 
 const SHARED_NOT_LAZY = "Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, anything explicitly requested. User insists on the full version → build it, no re-arguing. Never lazy about understanding the problem. The ladder shortens the solution, never the reading. Trace the whole thing first — every file the change touches, the actual flow — before picking a rung. Laziness that skips comprehension to ship a small diff is the dangerous kind: it dresses up as efficiency and ships a confident wrong fix. Read fully, then be lazy. Hardware is never the ideal on paper: a real clock drifts, a real sensor reads off, a PCA9685 runs a few percent fast. Leave the calibration knob, not just less code, the physical world needs tuning a minimal model can't see. Lazy code without its check is unfinished. Non-trivial logic (a branch, a loop, a parser, a money/security path) leaves ONE runnable check behind, the smallest thing that fails if the logic breaks: an `assert`-based `demo()`/`__main__` self-check or one small `test_*.py`. No frameworks, no fixtures, no per-function suites unless asked. Trivial one-liners need no test, YAGNI applies to tests too.";
 
-const SHARED_PERSISTENCE = "ACTIVE EVERY RESPONSE. No drift back to over-building. Still active if unsure. Off only: \"stop ponytail\" / \"normal mode\". Default: full. Switch: `/ponytail lite|full|ultra`. Ponytail governs what you build, not how you talk (pair with Caveman for terse prose). \"stop ponytail\" / \"normal mode\": revert. Level persists until changed or session end.";
+// Upstream slash-command/off-switch/level-persistence text omitted: DurinDoor's
+// dashboard owns the toggle and level, so the model cannot honor them.
+const SHARED_PERSISTENCE = "ACTIVE EVERY RESPONSE. No drift back to over-building. Still active if unsure. Ponytail governs what you build, not how you talk.";
 
 export const PONYTAIL_PROMPTS = {
   [PONYTAIL_LEVELS.LITE]: [

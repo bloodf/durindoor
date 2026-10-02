@@ -292,9 +292,15 @@ function isCoherentOpenAICompletion(chunk) {
 /** Validate a fully buffered provider response before clearing runtime health. */
 export function isCoherentNonStreamingResponse(chunk, format = FORMATS.OPENAI) {
   if (!chunk || !isObject(chunk) || chunk.error || chunk.type === "error") return false;
-  if ([FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE, FORMATS.CODEX].includes(format)) {
+  if ([FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(format)) {
     const status = responseStatus(chunk);
+    if (["queued", "in_progress"].includes(status)) {
+      return chunk.object === "response" && isString(chunk.id) && chunk.id.trim().length > 0;
+    }
     return ["completed", "incomplete"].includes(status) && Array.isArray(chunk.output);
+  }
+  if (format === FORMATS.CODEX) {
+    return ["completed", "incomplete"].includes(responseStatus(chunk)) && Array.isArray(chunk.output);
   }
   if (format === FORMATS.CLAUDE) {
     if (isCoherentOpenAICompletion(chunk)) return true;

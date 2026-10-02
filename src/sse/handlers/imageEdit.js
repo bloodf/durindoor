@@ -7,7 +7,7 @@ import {
 "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
-import { handleImageEditCore } from "open-sse/handlers/imageEditCore.js";
+import { handleImageEditCore, isImageSource } from "open-sse/handlers/imageEditCore.js";
 import { runWithModelFallback } from "open-sse/services/modelFallback.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -16,8 +16,9 @@ import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 // Allow large image uploads (mask + image can be several MB).
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 export const maxDuration = 300;
+
 
 /**
  * Handle image-edit request — OpenAI /v1/images/edits multipart passthrough.
@@ -30,11 +31,14 @@ async function handleImageEditHandler(request) {
   try {
     if ((request.headers.get("content-type") || "").includes("application/json")) {
       jsonBody = await request.json();
-      if (!jsonBody || typeof jsonBody !== "object" || Array.isArray(jsonBody) || !isString(jsonBody.model) || !jsonBody.model.trim() || !isString(jsonBody.prompt) || !jsonBody.prompt.trim() || !(isString(jsonBody.image) && jsonBody.image.trim() || Array.isArray(jsonBody.image) && jsonBody.image.length > 0 && jsonBody.image.every((image) => isString(image) && image.trim()))) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Image edit JSON requires nonempty string model, prompt, and image URL(s)");
+      const hasImage = jsonBody?.image !== undefined;
+      const hasImages = jsonBody?.images !== undefined;
+      const validImages = hasImage ? isImageSource(jsonBody.image) : Array.isArray(jsonBody?.images) && jsonBody.images.length > 0 && jsonBody.images.every(isImageSource);
+      if (!jsonBody || !isObject(jsonBody) || Array.isArray(jsonBody) || !isString(jsonBody.model) || !jsonBody.model.trim() || !isString(jsonBody.prompt) || !jsonBody.prompt.trim() || hasImage === hasImages || !validImages) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Image edit JSON requires nonempty string model, prompt, and image or images source(s)");
       formData = new FormData();
-      formData.append("model", jsonBody.model || "");
-      formData.append("prompt", jsonBody.prompt || "");
-      if (jsonBody.image) formData.append("image", "json-image");
+      formData.append("model", jsonBody.model);
+      formData.append("prompt", jsonBody.prompt);
+      formData.append("image", "json-image");
     } else formData = await request.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid image edit body");

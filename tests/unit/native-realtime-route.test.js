@@ -4,14 +4,11 @@ import handoff from "../../open-sse/handlers/nativeRealtimeHandoff.cjs";
 
 const previousControlSecret = process.env.DURINDOOR_CONTROL_PROOF_SECRET;
 const mocks = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  resolveClientApiKey: vi.fn(),
-  getProviderCredentialsWithQuotaPreflight: vi.fn(),
-  enforceApiKeyModelPolicy: vi.fn(),
-  getModelInfo: vi.fn(),
-  registry: [],
+  getSettings: vi.fn(), getApiKeyByKey: vi.fn(), getApiKeyUsageLimitStatus: vi.fn(), saveRequestUsage: vi.fn(),
+  resolveClientApiKey: vi.fn(), getProviderCredentialsWithQuotaPreflight: vi.fn(),
+  enforceApiKeyModelPolicy: vi.fn(), getModelInfo: vi.fn(), registry: [],
 }));
-vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings }));
+vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings, getApiKeyByKey: mocks.getApiKeyByKey, getApiKeyUsageLimitStatus: mocks.getApiKeyUsageLimitStatus, saveRequestUsage: mocks.saveRequestUsage }));
 vi.mock("@/sse/services/auth", () => ({ resolveClientApiKey: mocks.resolveClientApiKey, getProviderCredentialsWithQuotaPreflight: mocks.getProviderCredentialsWithQuotaPreflight }));
 vi.mock("@/sse/services/apiKeyPolicy", () => ({ enforceApiKeyModelPolicy: mocks.enforceApiKeyModelPolicy }));
 vi.mock("@/sse/services/model", () => ({ getModelInfo: mocks.getModelInfo }));
@@ -38,7 +35,10 @@ describe("native realtime credential boundary", () => {
     mocks.resolveClientApiKey.mockResolvedValue({ apiKey: "gateway-key", auth: { ok: true, apiKeyId: "gateway" } });
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "gpt-realtime-2.1" });
-    mocks.getProviderCredentialsWithQuotaPreflight.mockResolvedValue({ apiKey: "private-provider-secret", providerSpecificData: {
+    mocks.getApiKeyByKey.mockResolvedValue(null);
+    mocks.getApiKeyUsageLimitStatus.mockResolvedValue({ exceeded: false });
+    mocks.saveRequestUsage.mockResolvedValue(true);
+    mocks.getProviderCredentialsWithQuotaPreflight.mockResolvedValue({ connectionId: "conn-a", apiKey: "private-provider-secret", providerSpecificData: {
       connectionProxyEnabled: true, connectionProxyUrl: "http://user:private-proxy-secret@127.0.0.1:9000", strictProxy: true, disableEnvProxy: true
     } });
   });
@@ -86,5 +86,40 @@ describe("native realtime credential boundary", () => {
     const afterExpiry = Date.now() + 10001;
     vi.spyOn(Date, "now").mockReturnValue(afterExpiry);
     expect(handoff.consumeNativeRealtimeHandoff(id)).toBeNull();
+  });
+
+
+  it("uses canonical ACL without RPM for authorizeModel callbacks", async () => {
+    const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
+    const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }, { model: "openai/gpt-realtime-2.1", path: "/v1/realtime", authorizeModel: "gpt-realtime-2.1" }));
+    expect(result.status).toBe(204);
+    expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(expect.any(Request), "openai/gpt-realtime-2.1", "gateway-key", { limits: false });
+  });
+
+  it("records terminal realtime provider usage through opaque handoff", async () => {
+    const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
+    const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }));
+    const { handoffId } = await result.json();
+    const prepared = handoff.consumeNativeRealtimeHandoff(handoffId);
+    expect(await prepared.onProviderEvent({ type: "response.completed", response: { id: "resp-a", usage: { input_tokens: 3, output_tokens: 5 } } })).toBe(true);
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "gateway-key", provider: "openai", model: "gpt-realtime-2.1", usageEventId: "openai:conn-a:resp-a:terminal" }));
+  });
+
+  it("stops realtime relay when terminal usage cannot commit", async () => {
+    mocks.saveRequestUsage.mockRejectedValueOnce(new Error("disk unavailable"));
+    const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
+    const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }));
+    const { handoffId } = await result.json();
+    const prepared = handoff.consumeNativeRealtimeHandoff(handoffId);
+    await expect(prepared.onProviderEvent({ type: "response.completed", response: { id: "resp-fail", usage: { input_tokens: 1, output_tokens: 1 } } })).rejects.toThrow("disk unavailable");
+  });
+
+  it("stops realtime relay after daily limit becomes exhausted", async () => {
+    mocks.getApiKeyUsageLimitStatus.mockResolvedValueOnce({ exceeded: false }).mockResolvedValueOnce({ exceeded: true });
+    const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
+    const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }));
+    const { handoffId } = await result.json();
+    const prepared = handoff.consumeNativeRealtimeHandoff(handoffId);
+    expect(await prepared.onProviderEvent({ type: "response.completed", response: { id: "resp-limit", usage: { input_tokens: 1, output_tokens: 1 } } })).toBe(false);
   });
 });

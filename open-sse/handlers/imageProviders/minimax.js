@@ -8,6 +8,7 @@
 // response nests URLs under `data.image_urls` (not `data[].url`).
 import { nowSec, sizeToAspectRatio } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const BASE_URL = PROVIDER_MEDIA["minimax"]?.imageConfig?.baseUrl;
 
@@ -50,10 +51,12 @@ export default {
   },
   buildBody: (model, body) => {
     const requested = body.response_format === "base64" || body.response_format === "b64_json" ? "base64" : "url";
+    const requestedRatio = body.size || body.aspect_ratio;
+    const hasDimensions = body.width !== undefined && body.height !== undefined;
     const request = {
       model: model || "image-01",
       prompt: body.prompt,
-      aspect_ratio: mapMinimaxAspectRatio(body.size || body.aspect_ratio),
+      ...(requestedRatio || !hasDimensions ? { aspect_ratio: mapMinimaxAspectRatio(requestedRatio) } : null),
       n: body.n ?? 1,
       response_format: requested,
     };
@@ -65,7 +68,7 @@ export default {
     if (references) {
       const values = Array.isArray(references) ? references : [references];
       request.subject_reference = values.map((reference) =>
-        typeof reference === "string" ? { type: "character", image_file: reference } : reference,
+        isString(reference) ? { type: "character", image_file: reference } : reference,
       );
     }
     return request;

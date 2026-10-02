@@ -637,8 +637,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   provider === "ollama" ||
   provider === "ollama-local";
   const allowCacheControl = !dropsClaudeCacheControl;
-  // quirk: MiniMax's Claude-compatible endpoint rejects Anthropic's output_config (400 invalid params)
-  if (PROVIDERS[provider]?.quirks?.dropOutputConfig) {
+  // Most MiniMax Claude-compatible models reject Anthropic output_config, but
+  // M3.1 accepts its native effort and JSON schema format.
+  const preserveOutputConfig = PROVIDERS[provider]?.quirks?.preserveOutputConfigModels?.includes(body.model);
+  if (PROVIDERS[provider]?.quirks?.dropOutputConfig && !preserveOutputConfig) {
     delete body.output_config;
   }
 

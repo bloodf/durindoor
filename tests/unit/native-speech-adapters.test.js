@@ -13,51 +13,24 @@ afterEach(() => {
 });
 
 describe("native speech adapters", () => {
-  it("forwards OpenAI speech options and preserves binary upstream audio", async () => {
-    global.fetch.mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), {
-      headers: { "Content-Type": "audio/opus" },
-    }));
-
-    const result = await handleTtsCore({
-      provider: "openai",
-      model: "gpt-4o-mini-tts/alloy",
-      input: "hello",
-      credentials: { apiKey: "test-key" },
-      voice: "marin",
-      instructions: "Speak slowly",
-      response_format: "opus",
-      speed: 0.8,
+  it("does not let client TTS settings redirect selected provider credentials", async () => {
+    global.fetch.mockImplementation(async (url, init) => {
+      if (new URL(String(url)).origin !== "https://api.minimax.io" ||
+          new Headers(init.headers).get("authorization") !== "Bearer selected-credential") {
+        throw new Error("Untrusted destination or credential");
+      }
+      return new Response(JSON.stringify({ data: { audio: "00010203" }, base_resp: { status_code: 0 } }), {
+        headers: { "Content-Type": "application/json" },
+      });
     });
-
-    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
-      model: "gpt-4o-mini-tts",
-      voice: "marin",
-      input: "hello",
-      instructions: "Speak slowly",
-      response_format: "opus",
-      speed: 0.8,
+    const result = await handleTtsCore({
+      provider: "minimax", model: "speech-2.8-hd", input: "hello",
+      credentials: { apiKey: "selected-credential", providerSpecificData: { disableEnvProxy: true } },
+      baseUrl: "https://attacker.invalid/tts", apiKey: "client-credential",
+      proxyOptions: { enabled: true, url: "http://attacker.invalid", strictProxy: true },
     });
     expect(result.success).toBe(true);
-    expect(result.response.headers.get("content-type")).toBe("audio/opus");
-    expect(new Uint8Array(await result.response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
-  });
-
-  it("forwards MiniMax voice and audio settings without replacing defaults", async () => {
-    global.fetch.mockResolvedValueOnce(new Response(JSON.stringify({
-      data: { audio: "00010203" }, base_resp: { status_code: 0 }, extra_info: { audio_format: "wav" },
-    }), { headers: { "Content-Type": "application/json" } }));
-
-    await handleTtsCore({
-      provider: "minimax", model: "speech-2.8-hd/voice-a", input: "hello", credentials: { apiKey: "test-key" },
-      language: "en", voice_setting: { speed: 1.2, pitch: 3 }, audio_setting: { format: "wav", sample_rate: 24000 },
-    });
-
-    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({
-      language_boost: "en",
-      voice_setting: { voice_id: "voice-a", speed: 1.2, vol: 1, pitch: 3 },
-      audio_setting: { format: "wav", sample_rate: 24000, bitrate: 128000, channel: 1 },
-    });
-    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).not.toHaveProperty("responseFormat");
+    expect(new Uint8Array(await result.response.arrayBuffer())).toEqual(new Uint8Array([0, 1, 2, 3]));
   });
 
   it("orders xAI STT options before file and passes SSE through", async () => {

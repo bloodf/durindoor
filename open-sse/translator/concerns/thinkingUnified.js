@@ -277,8 +277,9 @@ function ensureGeminiOutputFloor(body, floor, caps) {
   }
 }
 
-// Strip every known thinking field from a body (used before re-applying / when unsupported).
-function stripAll(body, preserveOutputConfig = false) {
+// Strip normalized thinking controls while retaining ordinary Responses reasoning
+// properties (for example summary and mode) that remain valid on that endpoint.
+function stripAll(body, preserveOutputConfig = false, preserveResponsesReasoning = false) {
   const targets = [body];
   if (body.params && isObject(body.params) && Array.isArray(body.params.messages)) {
     targets.push(body.params);
@@ -286,7 +287,12 @@ function stripAll(body, preserveOutputConfig = false) {
   for (const target of targets) {
     delete target.thinking;
     delete target.reasoning_effort;
-    delete target.reasoning;
+    if (preserveResponsesReasoning && target.reasoning && isObject(target.reasoning) && !Array.isArray(target.reasoning)) {
+      delete target.reasoning.effort;
+      if (Object.keys(target.reasoning).length === 0) delete target.reasoning;
+    } else {
+      delete target.reasoning;
+    }
     delete target.thinkingConfig;
     delete target.enable_thinking;
     delete target.thinking_budget;
@@ -323,8 +329,8 @@ export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (Array.isArray(allowed)) {
     if (allowed.includes(level)) return level;
     if (["minimal", "none"].includes(level) && allowed.includes("low")) return "low";
-    if (["ultra", "max"].includes(level) && allowed.includes("xhigh")) return "xhigh";
     if (level === "ultra" && allowed.includes("max")) return "max";
+    if (["ultra", "max"].includes(level) && allowed.includes("xhigh")) return "xhigh";
     if (allowed.includes("high")) return "high";
     return allowed[0] || level;
   }
@@ -572,7 +578,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   // body.thinking, so an explicit client choice survives the reformat.
   const requestedDisplay = isString(body.thinking?.display) ? body.thinking.display : undefined;
   const requestedThinkingType = body.thinking?.type || cfg.thinkingType;
-  stripAll(body, targetFormat === FORMATS.CLAUDE);
+  stripAll(body, targetFormat === FORMATS.CLAUDE, targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE);
   applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType);
   return body;
 }

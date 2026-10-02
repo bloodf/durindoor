@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPricing, updatePricing, resetPricing, resetAllPricing } from "@/lib/localDb.js";
-import { getDefaultPricing } from "open-sse/providers/pricing.js";
+import { getDefaultPricing, getPricingForModel } from "open-sse/providers/pricing.js";
 
 /**
  * GET /api/pricing
@@ -20,7 +20,7 @@ function isValidPrice(value) {
 }
 
 function readOnlyTierMetadata(provider, model) {
-  const defaults = getDefaultPricing()[provider]?.[model] || {};
+  const defaults = getPricingForModel(provider, model) || getDefaultPricing()[provider]?.[model] || {};
   return Object.fromEntries(
     [...READ_ONLY_TIER_FIELDS]
       .filter((key) => defaults[key] !== undefined)

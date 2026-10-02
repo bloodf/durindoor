@@ -37,7 +37,7 @@ export async function synthesizeViaConfig(provider, text, model, credentials, pr
   const ttsModels = cfg.models || (PROVIDER_MODELS[provider] || []).filter(m => (m.kind || m.type) === "tts");
   const defaultModel = ttsModels[0]?.id || "";
   const { modelId, voiceId } = parseModelVoice(model, defaultModel, "", ttsModels);
-  return handler({ baseUrl: cfg.baseUrl, apiKey, text, modelId, voiceId, proxyOptions, ...options });
+  return handler({ ...options, baseUrl: cfg.baseUrl, apiKey, text, modelId, voiceId, proxyOptions });
 }
 
 // Voice fetchers (used by /api/media-providers/tts/voices route)

@@ -131,8 +131,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const coreOptions = { ...body, provider, model, input: body.input, responseFormat, language };
-    if (credentials.connectionId) coreOptions.credentials = credentials;
+    const coreOptions = { ...body, provider, model, input: body.input, credentials, responseFormat, language };
     const result = await handleTtsCore(coreOptions);
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");

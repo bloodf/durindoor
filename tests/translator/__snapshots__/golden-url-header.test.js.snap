@@ -2512,6 +2512,7 @@ exports[`GOLDEN buildHeaders (default executor providers) > minimax → headers 
 }
 `;
 
+
 exports[`GOLDEN buildHeaders (default executor providers) > minimax-cn → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -4930,13 +4931,6 @@ exports[`GOLDEN buildUrl (default executor providers) > minimax → url (stream 
 {
   "nonStream": "https://api.minimax.io/anthropic/v1/messages?beta=true",
   "stream": "https://api.minimax.io/anthropic/v1/messages?beta=true",
-}
-`;
-
-exports[`GOLDEN buildUrl (default executor providers) > minimax-cn → url (stream + non-stream) 1`] = `
-{
-  "nonStream": "https://api.minimaxi.com/anthropic/v1/messages?beta=true",
-  "stream": "https://api.minimaxi.com/anthropic/v1/messages?beta=true",
 }
 `;
 

@@ -504,6 +504,30 @@ describe("Responses reasoning effort wire shape", () => {
     expect(dispatched.reasoning_effort).toBeUndefined();
   });
 
+  it("keeps ordinary Responses reasoning properties while normalizing effort", async () => {
+    const translated = translateRequest(
+      FORMATS.OPENAI,
+      FORMATS.OPENAI_RESPONSES,
+      "gpt-5.6-sol",
+      {
+        messages: [{ role: "user", content: "hello" }],
+        reasoning: { summary: "detailed", mode: "concise" },
+        reasoning_effort: "high",
+      },
+      true,
+      null,
+      "openai",
+    );
+    expect(translated.reasoning).toEqual({ summary: "detailed", mode: "concise" });
+
+    await new DefaultExecutor("openai").execute({
+      model: "gpt-5.6-sol", body: translated, stream: true,
+      credentials: { apiKey: "sk-test", runtimeTransport: { format: FORMATS.OPENAI_RESPONSES, baseUrl: "https://api.openai.com/v1/responses" } },
+    });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).reasoning).toEqual({ effort: "high", summary: "detailed", mode: "concise" });
+  });
+
   it("keeps Chat Completions reasoning effort flat on dispatch", async () => {
     await new DefaultExecutor("openai").execute({
       model: "gpt-5.4",

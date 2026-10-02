@@ -29,6 +29,7 @@ export default {
     headers: { ...CLAUDE_API_HEADERS },
     quirks: {
       dropOutputConfig: true,
+      preserveOutputConfigModels: ["MiniMax-M3.1-Flash-Preview"],
       requireClaudeToolType: true,
       ensureThinkingSignature: true,
     },
@@ -126,7 +127,7 @@ export default {
     legacyModels: ["MiniMax-Hailuo-2.3", "MiniMax-Hailuo-2.3-Fast", "MiniMax-Hailuo-02"],
     legacyT2vConstraints: {
       "MiniMax-Hailuo-2.3": { 6: ["768P", "1080P"], 10: ["768P"] },
-      "MiniMax-Hailuo-02": { 6: ["512P", "768P", "1080P"], 10: ["512P", "768P"] },
+      "MiniMax-Hailuo-02": { 6: ["768P", "1080P"], 10: ["768P"] },
     },
     legacyI2vConstraints: {
       "MiniMax-Hailuo-2.3": { 6: ["768P", "1080P"], 10: ["768P"] },

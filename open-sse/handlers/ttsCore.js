@@ -58,7 +58,7 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
     // Special-case adapters (google-tts, edge-tts, local-device, elevenlabs, openai, openrouter, gemini)
     const adapter = getTtsAdapter(provider);
     if (adapter) {
-      const result = await adapter.synthesize(input.trim(), model, credentials, responseFormat, { language, proxyOptions: resolveCredentialProxyOptions(credentials), ...options });
+      const result = await adapter.synthesize(input.trim(), model, credentials, responseFormat, { ...options, language, proxyOptions: resolveCredentialProxyOptions(credentials) });
       // Adapter may return a full {success, response} (legacy) or {base64, format}
       if (result.success !== undefined) return result;
       return createTtsResponse(result.base64, result.format, responseFormat);
@@ -66,7 +66,7 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
 
     // Generic provider requests inherit the connection's immutable egress policy.
     const proxyOptions = resolveCredentialProxyOptions(credentials);
-    const result = await synthesizeViaConfig(provider, input.trim(), model, credentials, proxyOptions, { language, responseFormat, ...options });
+    const result = await synthesizeViaConfig(provider, input.trim(), model, credentials, proxyOptions, { ...options, language, responseFormat });
     if (result) return result.success !== undefined ? result : createTtsResponse(result.base64, result.format, responseFormat);
 
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support TTS via this route.`);

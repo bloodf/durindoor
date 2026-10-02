@@ -13,6 +13,8 @@ const require = createRequire(import.meta.url);
 const cs = require("../../custom-server.js");
 const realtimeCore = require("../../open-sse/handlers/realtimeCore.js");
 const wsHandshake = require("../../src/shared/utils/wsHandshake.js");
+const handoff = require("../../open-sse/handlers/nativeRealtimeHandoff.cjs");
+const { MAX_REALTIME_PREAUTH_FRAMES } = require("../../src/shared/utils/realtimeConfig.js");
 
 const tick = () => new Promise((r) => queueMicrotask(r));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -394,6 +396,130 @@ describe("integration: eager client frames survive the auth window, in order", (
   });
 });
 
+describe("integration: native realtime async authorization buffer", () => {
+  let server;
+  afterEach(() => { if (server) { try { server.close(); } catch {} server = null; } });
+
+  it.each([
+    { budget: "bytes", padding: 700_000, queuedFrames: 3 },
+    { budget: "frame count", padding: 0, queuedFrames: MAX_REALTIME_PREAUTH_FRAMES }, 
+  ])("closes at the retained $budget ceiling while model authorization stalls", async ({ padding, queuedFrames }) => {
+    let releaseAuthorization;
+    let disposed = false;
+    const authorization = new Promise((resolve) => { releaseAuthorization = resolve; });
+    const handled = [];
+    server = http.createServer((req, res) => {
+      if (req.url === "/api/v1/realtime/auth") {
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return;
+      }
+      if (req.url === "/api/v1/realtime/native") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ handoffId: handoff.createNativeRealtimeHandoff({ wsUrl: "wss://api.openai.com/v1/realtime", authorization: "Bearer provider-secret", binaryAudio: false }) })); return;
+      }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    const relayFactory = vi.fn(async ({ authorizeModel }) => ({
+      native: true,
+      opened: Promise.resolve(),
+      dispose: () => { disposed = true; },
+      handleClientEvent: async (data) => {
+        const event = JSON.parse(data);
+        handled.push(event.session.model);
+        await authorization;
+      }
+    }));
+    cs.installRealtimeUpgradeDispatcher(server, { dashboardPort: port, relayFactory });
+    await tick();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime?model=openai/gpt-realtime-2.1`);
+    await once(ws, "open");
+    const close = once(ws, "close");
+    const frame = (model) => JSON.stringify({ type: "session.update", session: { model, instructions: "x".repeat(padding) } });
+    ws.send(frame("first"));
+    await waitFor(() => handled.length === 1, 3000);
+    for (let index = 0; index < queuedFrames; index++) ws.send(frame("second"));
+    const [code] = await close;
+    releaseAuthorization();
+    await sleep(20);
+    expect(code).toBe(1009);
+    expect(disposed).toBe(true);
+    expect(handled).toEqual(["first"]);
+  });
+
+  it("preserves native frame order below processing ceiling", async () => {
+    let releaseFirst;
+    const first = new Promise((resolve) => { releaseFirst = resolve; });
+    const handled = [];
+    server = http.createServer((req, res) => {
+      if (req.url === "/api/v1/realtime/auth") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return; }
+      if (req.url === "/api/v1/realtime/native") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ handoffId: handoff.createNativeRealtimeHandoff({ wsUrl: "wss://api.openai.com/v1/realtime", authorization: "Bearer provider-secret", binaryAudio: false }) })); return;
+      }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    cs.installRealtimeUpgradeDispatcher(server, { dashboardPort: port, relayFactory: async () => ({
+      native: true, opened: Promise.resolve(), dispose: () => {},
+      handleClientEvent: async (data) => {
+        const model = JSON.parse(data).session.model;
+        handled.push(model);
+        if (model === "first") await first;
+      }
+    }) });
+    await tick();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime?model=openai/gpt-realtime-2.1`);
+    await once(ws, "open");
+    const frame = (model) => JSON.stringify({ type: "session.update", session: { model } });
+    ws.send(frame("first"));
+    await waitFor(() => handled.length === 1, 3000);
+    ws.send(frame("second"));
+    await sleep(20);
+    expect(handled).toEqual(["first"]);
+    releaseFirst();
+    await waitFor(() => handled.length === 2, 3000);
+    expect(handled).toEqual(["first", "second"]);
+    ws.close();
+  });
+  it("forwards upgrade connection pin through native control and model authorization", async () => {
+    const requests = [];
+    let authorizeModel;
+    server = http.createServer((req, res) => {
+      if (req.url === "/api/v1/realtime/auth") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return; }
+      if (req.url === "/api/v1/realtime/native") {
+        let body = "";
+        req.on("data", (chunk) => { body += chunk; });
+        req.on("end", () => {
+          requests.push(JSON.parse(body));
+          if (requests.length === 1) {
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ handoffId: handoff.createNativeRealtimeHandoff({ wsUrl: "wss://api.openai.com/v1/realtime", authorization: "Bearer provider-secret" }) }));
+          } else { res.writeHead(204); res.end(); }
+        });
+        return;
+      }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    cs.installRealtimeUpgradeDispatcher(server, { dashboardPort: port, relayFactory: async (opts) => {
+      authorizeModel = opts.authorizeModel;
+      return { opened: Promise.resolve(), dispose: () => {}, handleClientEvent: async () => {} };
+    } });
+    await tick();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime`, { headers: { "x-connection-id": "pinned-account" } });
+    await once(ws, "open");
+    await waitFor(() => authorizeModel, 3000);
+    await authorizeModel("openai/gpt-4o-mini");
+    expect(requests).toHaveLength(2);
+    expect(requests.map((request) => request.connectionId)).toEqual(["pinned-account", "pinned-account"]);
+    ws.close();
+  });
+});
+
+
 describe("realtimeCore — WSAUD gaps: validation, limits, dispose", () => {
   // 1. Malformed wire frames --------------------------------------------------
   it("malformed JSON → error, no throw", async () => {
@@ -665,6 +791,31 @@ describe("integration: realtime disconnect cleanup + oversize frame", () => {
     expect(code).toBe(1009);
     await waitFor(() => wasAborted(), 3000);
     expect(wasAborted()).toBe(true);
+  });
+
+  it("disposes relay created after client disconnect during setup", async () => {
+    let releaseRelay;
+    let factoryStarted = false;
+    const delayedRelay = new Promise((resolve) => { releaseRelay = resolve; });
+    let disposed = false;
+    server = http.createServer((req, res) => {
+      if (req.url === "/api/v1/realtime/auth") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return; }
+      if (req.url === "/api/v1/realtime/native") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ handoffId: handoff.createNativeRealtimeHandoff({ wsUrl: "wss://api.openai.com/v1/realtime", authorization: "Bearer provider-secret" }) })); return; }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    cs.installRealtimeUpgradeDispatcher(server, { dashboardPort: port, relayFactory: () => { factoryStarted = true; return delayedRelay; } });
+    await tick();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime`);
+    await once(ws, "open");
+    await waitFor(() => factoryStarted, 3000);
+    const closed = once(ws, "close");
+    ws.close();
+    await closed;
+    releaseRelay({ opened: Promise.resolve(), dispose: () => { disposed = true; }, handleClientEvent: async () => {} });
+    await waitFor(() => disposed, 3000);
+    expect(disposed).toBe(true);
   });
 
   it("oversize frame on idle session → ws closes 1009 (maxPayload)", async () => {

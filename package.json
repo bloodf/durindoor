@@ -72,6 +72,7 @@
     "selfsigned": "^5.5.0",
     "socks-proxy-agent": "^10.1.0",
     "sql.js": "^1.14.1",
+    "stream-json": "1.9.1",
     "tls-client-node": "0.2.0",
     "undici": "^7.29.1",
     "uuid": "^14.0.2",

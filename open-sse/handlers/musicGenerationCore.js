@@ -3,6 +3,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 
 const MUSIC_PROVIDERS = {
@@ -70,9 +71,9 @@ async function handleMinimaxMusicGeneration({ provider, model, body, credentials
   const statusCode = Number(parsed?.base_resp?.status_code);
   if (!response.ok || statusCode && statusCode !== 0) return createErrorResult(response.ok ? HTTP_STATUS.BAD_GATEWAY : response.status, parsed?.base_resp?.status_msg || parsed?.message || text || `${provider} returned HTTP ${response.status}`);
   const audio = parsed?.data?.audio;
-  const audioUrl = typeof audio === "string" && /^https?:\/\//i.test(audio) ? audio : null;
-  const hexAudio = typeof audio === "string" && /^(?:[0-9a-f]{2})+$/i.test(audio);
-  const b64Json = hexAudio ? Buffer.from(audio, "hex").toString("base64") : typeof audio === "string" && /^data:audio\/[^;]+;base64,/i.test(audio) ? audio.split(",", 2)[1] : null;
+  const audioUrl = isString(audio) && /^https?:\/\//i.test(audio) ? audio : null;
+  const hexAudio = isString(audio) && /^(?:[0-9a-f]{2})+$/i.test(audio);
+  const b64Json = hexAudio ? Buffer.from(audio, "hex").toString("base64") : isString(audio) && /^data:audio\/[^;]+;base64,/i.test(audio) ? audio.split(",", 2)[1] : null;
   const normalized = { object: "music.generation", provider, model, status: "submitted", data: [{ id: parsed?.task_id || parsed?.data?.audio_id || null, audio_url: audioUrl, ...(b64Json ? { b64_json: b64Json } : null), raw: parsed }], raw: parsed };
   return { success: true, response: new Response(JSON.stringify(normalized), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
 }

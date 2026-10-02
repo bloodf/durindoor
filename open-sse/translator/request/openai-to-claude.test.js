@@ -57,6 +57,21 @@ test("preserves native server and client tool metadata on Anthropic routes", () 
   assert.deepEqual(body.tools.map(({ cache_control, ...tool }) => tool), tools);
 });
 
+test("keeps M3.1 native output_config but strips it for older MiniMax models", () => {
+  const output_config = { effort: "high", format: { type: "json_schema", schema: { type: "object" } } };
+  const m31 = { model: "MiniMax-M3.1-Flash-Preview", max_tokens: 128, messages: [{ role: "user", content: "hi" }], output_config: structuredClone(output_config) };
+  const m31Cn = { model: "MiniMax-M3.1-Flash-Preview", max_tokens: 128, messages: [{ role: "user", content: "hi" }], output_config: structuredClone(output_config) };
+  const m2 = { model: "MiniMax-M2.7", max_tokens: 128, messages: [{ role: "user", content: "hi" }], output_config: structuredClone(output_config) };
+
+  prepareClaudeRequest(m31, "minimax");
+  prepareClaudeRequest(m31Cn, "minimax-cn");
+  prepareClaudeRequest(m2, "minimax");
+
+  assert.deepEqual(m31.output_config, output_config);
+  assert.deepEqual(m31Cn.output_config, output_config);
+  assert.equal(m2.output_config, undefined);
+});
+
 test("restores Claude-native blocks, metadata, and server tools across an in-process pivot", () => {
   const nativeTool = { type: "web_search_20250305", name: "web_search", max_uses: 2 };
   const nativeContent = [

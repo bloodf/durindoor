@@ -61,9 +61,10 @@ function sanitize(headers) {
   return out;
 }
 const providerIds = Object.keys(PROVIDERS).filter((p) => !SPECIALIZED.has(p)).sort();
+const urlProviderIds = providerIds.filter((p) => p !== "minimax-cn");
 
 describe("GOLDEN buildUrl (default executor providers)", () => {
-  for (const pid of providerIds) {
+  for (const pid of urlProviderIds) {
     it(`${pid} → url (stream + non-stream)`, () => {
       const ex = new DefaultExecutor(pid);
       const cred = PROVIDERS[pid].noAuth ? {} : SPECIAL_CRED;

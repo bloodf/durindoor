@@ -54,6 +54,7 @@ function extractTextFromContent(content) {
   map((part) => {
     if (isString(part)) return part;
     if (part?.type === RESPONSES_ITEM.OUTPUT_TEXT || part?.type === RESPONSES_ITEM.SUMMARY_TEXT || part?.type === "text") return part.text || "";
+    if (part?.type === "refusal" && isString(part.refusal)) return part.refusal;
     if (isString(part?.text)) return part.text;
     return "";
   }).
@@ -94,10 +95,12 @@ function collectResponsesOutput(responseBody) {
   const items = extractOutputItems(responseBody);
   let text = "";
   let reasoning = "";
+  let refusal = false;
   const toolCalls = [];
 
   for (const item of items) {
     if (item?.type === RESPONSES_ITEM.MESSAGE) {
+      if (Array.isArray(item.content) && item.content.some((part) => part?.type === "refusal" && isString(part.refusal) && part.refusal.trim())) refusal = true;
       text += extractTextFromContent(item.content);
       continue;
     }
@@ -121,12 +124,12 @@ function collectResponsesOutput(responseBody) {
   }
 
   if (!text && isString(responseObject(responseBody)?.output_text)) text = responseObject(responseBody).output_text;
-  return { text, reasoning, toolCalls, terminal: terminalError(responseBody) };
+  return { text, reasoning, refusal, toolCalls, terminal: terminalError(responseBody) };
 }
 
 export function openAIResponsesBodyToClaude(responseBody) {
   const response = responseObject(responseBody);
-  const { text, reasoning, toolCalls, terminal } = collectResponsesOutput(responseBody);
+  const { text, reasoning, refusal, toolCalls, terminal } = collectResponsesOutput(responseBody);
   const usage = usageFromResponses(response?.usage || responseBody?.usage).claude;
   const content = [];
 
@@ -148,7 +151,7 @@ export function openAIResponsesBodyToClaude(responseBody) {
     role: ROLE.ASSISTANT,
     model: response?.model || MODEL_FALLBACK,
     content,
-    stop_reason: terminal?.status === "incomplete" ? "max_tokens" : toolCalls.length > 0 ? "tool_use" : "end_turn",
+    stop_reason: terminal?.status === "incomplete" ? "max_tokens" : refusal ? "refusal" : toolCalls.length > 0 ? "tool_use" : "end_turn",
     stop_sequence: null,
     usage
   };
@@ -156,7 +159,7 @@ export function openAIResponsesBodyToClaude(responseBody) {
 
 export function openAIResponsesBodyToOpenAI(responseBody) {
   const response = responseObject(responseBody);
-  const { text, reasoning, toolCalls, terminal } = collectResponsesOutput(responseBody);
+  const { text, reasoning, refusal, toolCalls, terminal } = collectResponsesOutput(responseBody);
   const terminalText = terminal ? `[Error] ${terminalMessage(terminal)}` : "";
   const content = [text, terminalText].filter(Boolean).join(text && terminalText ? "\n" : "");
   const message = { role: ROLE.ASSISTANT, content };
@@ -179,7 +182,7 @@ export function openAIResponsesBodyToOpenAI(responseBody) {
     choices: [{
       index: 0,
       message,
-      finish_reason: terminal?.status === "incomplete" ? "length" : toolCalls.length > 0 ? "tool_calls" : "stop"
+      finish_reason: terminal?.status === "incomplete" ? "length" : refusal ? "content_filter" : toolCalls.length > 0 ? "tool_calls" : "stop"
     }],
     usage: usageFromResponses(response?.usage || responseBody?.usage).openai
   };

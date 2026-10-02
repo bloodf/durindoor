@@ -182,9 +182,9 @@ describe("xAI cross-model aliases", () => {
     expect(out.reasoning_effort).toBe("high");
   });
 
-  it.each(["grok-code-fast", "grok-code-fast-1-0825"])("bills %s at Grok Build 0.1 rates", (model) => {
+  it.each(["grok-code-fast", "grok-code-fast-1-0825"])("resolves %s to Grok Build 0.1 pricing and supported context", (model) => {
     expect(getPricingForModel("xai", model)).toMatchObject({ input: 1, output: 2, cached: 0.2, longContextThreshold: 200_000 });
-    expect(getCapabilitiesForModel("xai", model).contextWindow).toBe(262144);
+    expect(getCapabilitiesForModel("xai", model).contextWindow).toBe(256000);
   });
 
   it.each(["grok-4.20-multi-agent-0309", "grok-4.20-0309-reasoning"])("clamps a disable request on %s to low", (model) => {

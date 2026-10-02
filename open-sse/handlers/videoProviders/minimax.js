@@ -1,6 +1,6 @@
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
-import { isBoolean, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const STATUS_MAP = {
   queued: "pending",
@@ -35,7 +35,7 @@ export function prepareMinimaxVideoRequest(config, { action, requestId, rawBody,
   } catch {
     return badRequest("Invalid JSON body");
   }
-  if (!input || typeof input !== "object" || Array.isArray(input)) return badRequest("MiniMax video generation requires a JSON object");
+  if (!input || !isObject(input) || Array.isArray(input)) return badRequest("MiniMax video generation requires a JSON object");
 
   const suppliedContent = Array.isArray(input.content) ? input.content : [];
   const textPart = suppliedContent.find((part) => part?.type === "text" && isString(part.text) && part.text.trim());
@@ -70,10 +70,11 @@ export function prepareMinimaxLegacyVideoRequest(config, { action, requestId, ra
   if (!contentType?.includes("application/json")) return badRequest("MiniMax legacy video generation requires an application/json request body");
   let input;
   try { input = JSON.parse(String(rawBody || "")); } catch { return badRequest("Invalid JSON body"); }
-  if (!input || typeof input !== "object" || Array.isArray(input)) return badRequest("MiniMax legacy video generation requires a JSON object");
+  if (!input || !isObject(input) || Array.isArray(input)) return badRequest("MiniMax legacy video generation requires a JSON object");
   const model = input.model;
   const imageToVideo = isString(input.first_frame_image) && input.first_frame_image.trim().length > 0;
   if (!config.legacyModels?.includes(model)) return badRequest(`Unsupported MiniMax legacy video model: ${model}`);
+  if (!imageToVideo && !config.legacyT2vConstraints?.[model]) return badRequest(`${model} requires first_frame_image for image-to-video`);
   if (!imageToVideo && (!isString(input.prompt) || !input.prompt.trim())) return badRequest("MiniMax legacy text-to-video requires a prompt");
   if (isString(input.prompt) && input.prompt.length > 2000) return badRequest("MiniMax legacy video prompts must not exceed 2000 characters");
   const allowed = (imageToVideo ? config.legacyI2vConstraints : config.legacyT2vConstraints)?.[model]?.[input.duration];

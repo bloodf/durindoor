@@ -28,6 +28,7 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("claude", "claude-mythos-5")).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive" });
   });
 
+
   it("reports Kiro Claude Opus 4.8 as a 1M context model", () => {
     expect(getCapabilitiesForModel("kiro", "claude-opus-4.8").contextWindow).toBe(1000000);
     expect(getCapabilitiesForModel("kiro", "anthropic/claude-opus-4.8").contextWindow).toBe(1000000);

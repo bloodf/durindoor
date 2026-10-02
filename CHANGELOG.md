@@ -27,6 +27,19 @@
 
 # Unreleased
 
+## Features
+
+- Reconcile Anthropic, OpenAI, MiniMax, and xAI model capabilities, canonical aliases, lifecycle status, native formats, and provider-specific limits. Keep API and OAuth/subscription catalogs separate and unpublished ceilings unknown.
+- Add allowlisted native HTTP and same-process WebSocket transports, including media/document fields, structured outputs, reasoning, and consumer-executed tools. Preserve selected account/proxy policy and keep provider credentials out of realtime handoffs.
+
+## Capability fixes
+
+- Preserve Claude JSON schemas, Responses reasoning/string inputs and queued acknowledgements, non-text Responses output, MiniMax adaptive reasoning and explicit image dimensions, and xAI JSON/multipart image edits.
+- Protect TTS trusted routing/credentials from client overrides. Account for native JSON/SSE/WS token usage with strict writes, terminal-event delivery ordering, resource creator attribution, and deduplication. Deny unobservable native delegated work for capped keys.
+- Expose the video-output capability ceiling in both combo editors. Correct Hailuo Fast's image-to-video-only contract and Hailuo 02's direction-specific resolutions.
+- Bundle native proxy agents, JSON editing, streaming tokenization, and Undici dependencies in the CLI artifact.
+
+
 ## Upstream ports
 
 - port(upstream): #4481 - expose Claude cache read and creation tokens to OpenAI streaming clients without charging cached prompts as uncached input

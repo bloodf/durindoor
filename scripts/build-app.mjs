@@ -113,6 +113,15 @@ try {
       const wsRoot = path.dirname(require.resolve("ws/package.json"));
       fs.cpSync(wsRoot, standaloneWs, { recursive: true });
     }
+    // open-sse/utils/proxyFetch.js and outboundUrlGuard.js `import "undici"`.
+    // NFT does not trace it into standalone, and ESM resolution ignores
+    // NODE_PATH, so the shipped bundle fails with ERR_MODULE_NOT_FOUND.
+    // undici has no runtime dependencies, so the package dir is the closure.
+    const standaloneUndici = path.join(standaloneDir, "node_modules", "undici");
+    if (!fs.existsSync(standaloneUndici)) {
+      const undiciRoot = path.dirname(require.resolve("undici/package.json"));
+      fs.cpSync(undiciRoot, standaloneUndici, { recursive: true });
+    }
     // PxPipe transform runs from the standalone server via dynamic ESM import.
     // The package is only reachable through its ESM exports and is not a
     // Next NFT trace target, so copy it explicitly to the standalone node_modules.

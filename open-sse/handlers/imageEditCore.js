@@ -8,9 +8,15 @@ function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);
 }
 
-// Derive a provider's /images/edits endpoint from its image generations URL.
-// Only OpenAI-style providers whose imageConfig.baseUrl ends in /generations
-// are supported (DALL-E edits). Returns null otherwise.
+// OpenAI-compatible providers derive `/images/edits` from generations. Native
+// providers may declare their distinct endpoint and wire format explicitly.
+export function getImageEditConfig(mediaCfg) {
+  const nativeConfig = isRecord(mediaCfg?.imageEditConfig) ? mediaCfg.imageEditConfig : null;
+  if (nativeConfig) return nativeConfig;
+  const baseUrl = deriveImageEditsUrl(isRecord(mediaCfg) ? mediaCfg.imageConfig : undefined);
+  return baseUrl ? { baseUrl, format: "multipart" } : null;
+}
+
 export function deriveImageEditsUrl(imageConfig) {
   const rec = isRecord(imageConfig) ? imageConfig : undefined;
   const base = isString(rec?.baseUrl) ? rec.baseUrl : undefined;
@@ -26,14 +32,15 @@ export function deriveImageEditsUrl(imageConfig) {
  *
  * @param {object} options
  * @param {FormData} options.formData
+ * @param {object|null} [options.jsonBody]
  * @param {object} options.modelInfo - { provider, model }
- * @param {object} [options.credentials]
  * @param {object} [options.log]
  * @param {function} [options.onRequestSuccess]
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
 export async function handleImageEditCore({
   formData,
+  jsonBody = null,
   modelInfo,
   credentials = null,
   log = null,
@@ -41,54 +48,55 @@ export async function handleImageEditCore({
 }) {
   const { provider, model } = modelInfo;
   const mediaCfg = PROVIDER_MEDIA[provider];
-  const imageConfig = isRecord(mediaCfg) ? mediaCfg.imageConfig : undefined;
-  const url = deriveImageEditsUrl(imageConfig);
-  if (!url) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not expose an OpenAI-style /images/edits endpoint`);
+  const editConfig = getImageEditConfig(mediaCfg);
+  if (!editConfig?.baseUrl) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not expose an image edit endpoint`);
   }
 
-  // Rebuild formData with the resolved upstream model id (preserve File names).
-  const upstream = new FormData();
-  for (const [key, value] of formData.entries()) {
-    if (key === "model") continue;
-    if (value instanceof Blob) upstream.append(key, value, value.name || key);else
-    upstream.append(key, value);
+  const isNativeJson = editConfig.format === "json";
+  if (jsonBody && !isNativeJson) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' requires multipart image edits`);
   }
-  upstream.append("model", model);
+  let upstream;
+  if (isNativeJson) {
+    upstream = { ...(jsonBody || {}) };
+    upstream.model = model;
+    upstream.prompt = upstream.prompt || formData.get("prompt");
+    if (!upstream.image) {
+      const images = await Promise.all(formData.getAll("image").map(async (value) => {
+        if (!(value instanceof Blob)) return value;
+        return `data:${value.type || "application/octet-stream"};base64,${Buffer.from(await value.arrayBuffer()).toString("base64")}`;
+      }));
+      upstream.image = images.length === 1 ? images[0] : images;
+    }
+  } else {
+    upstream = new FormData();
+    for (const [key, value] of formData.entries()) {
+      if (key === "model") continue;
+      if (value instanceof Blob) upstream.append(key, value, value.name || key);else upstream.append(key, value);
+    }
+    upstream.append("model", model);
+  }
 
   const headers = {};
-  const cfg = isRecord(imageConfig) ? imageConfig : {};
-  const cfgHeaders = isRecord(cfg.headers) ? cfg.headers : {};
+  const cfgHeaders = isRecord(editConfig.headers) ? editConfig.headers : {};
   for (const [k, v] of Object.entries(cfgHeaders)) headers[k] = v;
+  if (isNativeJson) headers["Content-Type"] = "application/json";
   const key = credentials?.apiKey || credentials?.accessToken;
   if (key) headers.Authorization = `Bearer ${key}`;
 
-  log?.debug?.("IMAGE-EDIT", `${provider} | ${model} | ${url}`);
-
+  log?.debug?.("IMAGE-EDIT", `${provider} | ${model} | ${editConfig.baseUrl}`);
   let res;
   try {
-    res = await proxyAwareFetch(url, { method: "POST", headers, body: upstream });
+    res = await proxyAwareFetch(editConfig.baseUrl, { method: "POST", headers, body: isNativeJson ? JSON.stringify(upstream) : upstream });
   } catch (err) {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Image edit request failed");
   }
-
   if (!res.ok) {
     const errInfo = await parseUpstreamError(res, null);
     return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
   }
-
   if (onRequestSuccess) await onRequestSuccess();
-
   const text = await res.text();
-  return {
-    success: true,
-    status: res.status,
-    response: new Response(text, {
-      status: 200,
-      headers: {
-        "Content-Type": res.headers.get("content-type") || "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
-    })
-  };
+  return { success: true, status: res.status, response: new Response(text, { status: 200, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
 }

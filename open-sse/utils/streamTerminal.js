@@ -30,6 +30,7 @@ function choiceHasOutput(choice) {
   Array.isArray(message.content) && message.content.length > 0 ||
   isString(message.reasoning_content) && message.reasoning_content.trim().length > 0 ||
   isString(message.reasoning) && message.reasoning.trim().length > 0 ||
+  isString(message.audio?.data) && message.audio.data.length > 0 ||
   hasToolCall ||
   isString(message.function_call?.name) && message.function_call.name.length > 0;
 }

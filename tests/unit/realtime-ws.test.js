@@ -141,12 +141,19 @@ describe("createOwnerAwareHandler regression", () => {
 });
 
 describe("wsHandshake primitives", () => {
-  it("isRealtimePath matches only /v1/realtime", () => {
+  it("isRealtimePath matches supported native paths", () => {
     expect(wsHandshake.isRealtimePath("/v1/realtime")).toBe(true);
     expect(wsHandshake.isRealtimePath("/v1/realtime/")).toBe(true);
     expect(wsHandshake.isRealtimePath("/v1/realtime?model=x/y")).toBe(true);
     expect(wsHandshake.isRealtimePath("/v1/chat/completions")).toBe(false);
     expect(wsHandshake.isRealtimePath("/_next/webpack-hmr")).toBe(false);
+  });
+
+  it("recognizes native translation and live paths only", () => {
+    expect(wsHandshake.isRealtimePath("/v1/realtime/translations?model=openai/gpt-realtime-translate")).toBe(true);
+    expect(wsHandshake.isRealtimePath("/v1/live/sessions?model=openai/gpt-live-1")).toBe(true);
+    expect(wsHandshake.isRealtimePath("/v1/realtime/transcription_sessions")).toBe(false);
+    expect(wsHandshake.isRealtimePath("/v1/realtime/other")).toBe(false);
   });
 
   it("extractRealtimeKey honors Bearer, subprotocol token, and ?key= — and never echoes the key protocol", () => {
@@ -251,6 +258,9 @@ describe("integration: eager client frames survive the auth window, in order", (
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+      if (req.url === "/api/v1/realtime/native") {
+        res.writeHead(204); res.end(); return;
+      }
       if (req.url === "/api/v1/chat/completions") {
         let body = "";
         req.on("data", (c) => { body += c; });
@@ -303,6 +313,9 @@ describe("integration: eager client frames survive the auth window, in order", (
         res.writeHead(req.headers["x-9r-cli-token"] === "operator-token" ? 200 : 401, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: req.headers["x-9r-cli-token"] === "operator-token" }));
         return;
+      }
+      if (req.url === "/api/v1/realtime/native") {
+        res.writeHead(204); res.end(); return;
       }
       if (req.url === "/api/v1/chat/completions") {
         seen.push(["chat", req.headers["x-9r-cli-token"]]);
@@ -580,6 +593,9 @@ describe("integration: realtime disconnect cleanup + oversize frame", () => {
       if (req.url === "/api/v1/realtime/auth") {
         res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return;
       }
+      if (req.url === "/api/v1/realtime/native") {
+        res.writeHead(204); res.end(); return;
+      }
       if (req.url === "/api/v1/chat/completions") {
         req.on("data", () => {});
         req.on("end", () => {
@@ -654,6 +670,7 @@ describe("integration: realtime disconnect cleanup + oversize frame", () => {
   it("oversize frame on idle session → ws closes 1009 (maxPayload)", async () => {
     server = http.createServer((req, res) => {
       if (req.url === "/api/v1/realtime/auth") { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); return; }
+      if (req.url === "/api/v1/realtime/native") { res.writeHead(204); res.end(); return; }
       res.writeHead(404); res.end();
     });
     await new Promise((r) => server.listen(0, "127.0.0.1", r));

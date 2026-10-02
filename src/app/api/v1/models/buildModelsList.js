@@ -185,7 +185,7 @@ const LIVE_MODEL_RESOLVERS = {
     ...(await liveResolverOptions(conn)),
     guard
   }),
-  "minimax-cn": async (conn, guard) => resolveLiveModelIds(conn, "https://api.minimaxi.com/v1/models", {
+  "minimax-cn": async (conn, guard) => resolveLiveModelIds(conn, "https://api.minimax.cn/v1/models", {
     ...(await liveResolverOptions(conn)),
     guard
   }),
@@ -383,7 +383,13 @@ const MODEL_TYPE_TO_KIND = {
   imageToText: "imageToText",
   rerank: "rerank",
   video: "video",
-  music: "music"
+  music: "music",
+  realtime: "realtime",
+  audio: "audio",
+  realtimeTranslation: "realtimeTranslation",
+  realtimeTranscription: "realtimeTranscription",
+  live: "live",
+  moderation: "moderation"
 };
 
 function modelKind(model) {
@@ -397,7 +403,12 @@ function modelKind(model) {
 function inferKindFromUnknownModelId(modelId) {
   const lower = String(modelId).toLowerCase();
   if (/embed/.test(lower)) return "embedding";
-  if (/tts|speech|audio|voice/.test(lower)) return "tts";
+  if (/transcribe|whisper|^asr-/.test(lower)) return "stt";
+  if (/realtime|voice-agent/.test(lower)) return "realtime";
+  if (/^music-/.test(lower)) return "music";
+  if (/moderation/.test(lower)) return "moderation";
+  if (/sora|hailuo|^minimax-h3|grok-imagine-video/.test(lower)) return "video";
+  if (/tts|^speech-|text-to-speech/.test(lower)) return "tts";
   if (/image|imagen|dall-?e|flux|sdxl|sd-|stable-diffusion/.test(lower)) return "image";
   return LLM_KIND;
 }
@@ -783,6 +794,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     const enabledModels = storedAllowlist(providerId, alias);
     const hasAllowlist = Array.isArray(enabledModels) && enabledModels.length > 0;
     for (const model of PROVIDER_MODELS[alias] ?? []) {
+      if (model.routingUnavailableReason) continue;
       if (!kindFilter.includes(modelKind(model))) continue;
       if (model.requiresApiKey === true && !hasCredentials) continue;
       if (hasAllowlist && !enabledModels.includes(model.id)) continue;
@@ -1173,6 +1185,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         const perProviderModels = [];
 
         for (const modelId of mergedModelIds) {
+          if (staticModelById.get(modelId)?.routingUnavailableReason) continue;
           if (staticModelById.get(modelId)?.requiresApiKey === true && !hasUsableCredential) continue;
           // Resolve kind: prefer custom/live/static metadata, otherwise infer from ID heuristics
           const customKind = customModelKindById.get(modelId);

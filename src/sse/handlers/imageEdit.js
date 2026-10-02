@@ -26,10 +26,18 @@ export const maxDuration = 300;
  */
 async function handleImageEditHandler(request) {
   let formData;
+  let jsonBody = null;
   try {
-    formData = await request.formData();
+    if ((request.headers.get("content-type") || "").includes("application/json")) {
+      jsonBody = await request.json();
+      if (!jsonBody || typeof jsonBody !== "object" || Array.isArray(jsonBody) || !isString(jsonBody.model) || !jsonBody.model.trim() || !isString(jsonBody.prompt) || !jsonBody.prompt.trim() || !(isString(jsonBody.image) && jsonBody.image.trim() || Array.isArray(jsonBody.image) && jsonBody.image.length > 0 && jsonBody.image.every((image) => isString(image) && image.trim()))) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Image edit JSON requires nonempty string model, prompt, and image URL(s)");
+      formData = new FormData();
+      formData.append("model", jsonBody.model || "");
+      formData.append("prompt", jsonBody.prompt || "");
+      if (jsonBody.image) formData.append("image", "json-image");
+    } else formData = await request.formData();
   } catch {
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart form data");
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid image edit body");
   }
 
   const modelField = formData.get("model");
@@ -53,12 +61,12 @@ async function handleImageEditHandler(request) {
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelImageEdit(m, formData, request, apiKey, apiKeyAuth.apiKeyId),
+    (m) => handleSingleModelImageEdit(m, formData, jsonBody, request, apiKey, apiKeyAuth.apiKeyId),
     log
   );
 }
 
-async function handleSingleModelImageEdit(modelStr, formData, request, apiKey, apiKeyId) {
+async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request, apiKey, apiKeyId) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -96,6 +104,7 @@ async function handleSingleModelImageEdit(modelStr, formData, request, apiKey, a
     const result = toCoreResult(
       await handleImageEditCore({
         formData,
+        jsonBody,
         modelInfo: { provider, model },
         credentials: toExecutorCredentials({ ...credentials }),
         log,

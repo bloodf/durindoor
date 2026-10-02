@@ -1,9 +1,11 @@
 import { Buffer } from "node:buffer";
-import { createErrorResult } from "../utils/error.js";
+import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveLocalWhisperHost } from "../config/providers.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 
 // OpenAI-compatible transcription path appended to a user-supplied origin. The
 // resolver deliberately returns only the origin, so the route stays fixed and a
@@ -35,12 +37,13 @@ function resolveAudioContentType(file) {
   return map[ext] || "application/octet-stream";
 }
 
-async function upstreamError(res) {
+async function upstreamError(res, secrets = []) {
   let txt = "";
   try {txt = await res.text();} catch {}
   let msg = txt || `Upstream error (${res.status})`;
   try {const j = JSON.parse(txt);msg = j?.error?.message || j?.error || j?.message || msg;} catch {}
-  return createErrorResult(res.status, isString(msg) ? msg : JSON.stringify(msg));
+  const serialized = isString(msg) ? msg : JSON.stringify(msg);
+  return createErrorResult(res.status, sanitizeErrorMessageWithSecrets(serialized, secrets));
 }
 
 // Deepgram: raw binary POST + model query param
@@ -59,7 +62,7 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
     headers: { ...buildAuthHeaders(cfg, token), "Content-Type": resolveAudioContentType(file) },
     body: buf
   });
-  if (!res.ok) return upstreamError(res);
+  if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
   return jsonResponse({ text });
@@ -72,7 +75,7 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData) {
   const up = await fetch("https://api.assemblyai.com/v2/upload", {
     method: "POST", headers: { ...auth, "Content-Type": "application/octet-stream" }, body: buf
   });
-  if (!up.ok) return upstreamError(up);
+  if (!up.ok) return upstreamError(up, [token]);
   const { upload_url } = await up.json();
   const payload = { audio_url: upload_url, speech_models: [model] };
   const lang = formData.get("language");
@@ -84,7 +87,7 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData) {
     headers: { ...auth, "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!sub.ok) return upstreamError(sub);
+  if (!sub.ok) return upstreamError(sub, [token]);
   const { id } = await sub.json();
 
   const start = Date.now();
@@ -105,7 +108,7 @@ async function transcribeNvidia(cfg, file, model, token) {
   fd.append("file", file, file.name || "audio.wav");
   fd.append("model", model);
   const res = await fetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd });
-  if (!res.ok) return upstreamError(res);
+  if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   return jsonResponse({ text: data.text || data.transcript || "" });
 }
@@ -130,7 +133,7 @@ async function transcribeGemini(cfg, file, model, token, formData) {
       contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mime, data: b64 } }] }]
     })
   });
-  if (!res.ok) return upstreamError(res);
+  if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join("") || "";
   return jsonResponse({ text });
@@ -146,13 +149,13 @@ async function transcribeHuggingFace(cfg, file, model, token) {
     headers: { ...buildAuthHeaders(cfg, token), "Content-Type": resolveAudioContentType(file) },
     body: buf
   });
-  if (!res.ok) return upstreamError(res);
+  if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   return jsonResponse({ text: data.text || "" });
 }
 
 // Default: OpenAI/Groq/Whisper-compatible multipart
-async function transcribeOpenAICompatible(cfg, file, model, token, formData) {
+async function transcribeOpenAICompatible(cfg, file, model, token, formData, proxyOptions) {
   const fd = new FormData();
   fd.append("file", file, file.name || "audio.wav");
   fd.append("model", model);
@@ -164,17 +167,32 @@ async function transcribeOpenAICompatible(cfg, file, model, token, formData) {
   // A user-supplied host is fetched through the outbound guard so DNS answers
   // are validated on the socket too: a hostname that passes the static check
   // can still resolve to a blocked address (DNS rebinding). Registry-fixed
-  // endpoints keep the plain fetch path.
-  const send = cfg.userConfigurableHost ?
-  (url, init) => guardedProbeFetch(url, init) :
-  fetch;
-  const res = await send(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd });
-  if (!res.ok) return upstreamError(res);
-  const ct = res.headers.get("content-type") || "application/json";
-  const txt = await res.text();
-  return { success: true, response: new Response(txt, { status: 200, headers: { "Content-Type": ct, "Access-Control-Allow-Origin": "*" } }) };
+  // endpoints retain proxy-aware connection routing.
+  const res = cfg.userConfigurableHost ?
+    await guardedProbeFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd }) :
+    await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd }, proxyOptions);
+  if (!res.ok) return upstreamError(res, [token]);
+  return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
 }
 
+// MiniMax and xAI require options before multipart file; MiniMax language is an HTTP header.
+async function transcribeNativeSpeech(cfg, file, model, token, formData, proxyOptions) {
+  const fd = new FormData();
+  for (const [k, v] of formData.entries()) {
+    if (k !== "file" && k !== "model" && v !== null && v !== undefined && v !== "") fd.append(k, v);
+  }
+  if (!(cfg.format === "xai-stt" && model === "stt")) fd.append("model", model);
+  fd.append("file", file, file.name || "audio.wav");
+  const headers = buildAuthHeaders(cfg, token);
+  const language = formData.get("language");
+  if (cfg.format === "minimax-stt" && isString(language) && language.trim()) {
+    headers.language = language.trim();
+    fd.delete("language");
+  }
+  const res = await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers, body: fd }, proxyOptions);
+  if (!res.ok) return upstreamError(res, [token]);
+  return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
+}
 function jsonResponse(obj) {
   return {
     success: true,
@@ -237,15 +255,19 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   }
 
   try {
+    const proxyOptions = resolveCredentialProxyOptions(credentials);
     switch (cfg.format) {
       case "deepgram":return await transcribeDeepgram(cfg, file, model, token, formData);
       case "assemblyai":return await transcribeAssemblyAI(cfg, file, model, token, formData);
       case "nvidia-asr":return await transcribeNvidia(cfg, file, model, token);
       case "huggingface-asr":return await transcribeHuggingFace(cfg, file, model, token);
       case "gemini-stt":return await transcribeGemini(cfg, file, model, token, formData);
-      default:return await transcribeOpenAICompatible(cfg, file, model, token, formData);
+      case "minimax-stt":
+      case "xai-stt":return await transcribeNativeSpeech(cfg, file, model, token, formData, proxyOptions);
+      default:return await transcribeOpenAICompatible(cfg, file, model, token, formData, proxyOptions);
     }
   } catch (err) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "STT request failed");
+    const secrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken];
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeErrorMessageWithSecrets(err?.message || "STT request failed", secrets));
   }
 }

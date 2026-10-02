@@ -50,6 +50,7 @@ function hasUsefulContent(response) {
     Array.isArray(message?.content) && message.content.length > 0 ||
     isString(message?.reasoning_content) && message.reasoning_content.trim().length > 0 ||
     isString(message?.reasoning) && message.reasoning.trim().length > 0 ||
+    isString(message?.audio?.data) && message.audio.data.length > 0 ||
     Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ||
     Boolean(message?.function_call);
   }

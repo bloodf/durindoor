@@ -2,7 +2,7 @@ import { PROVIDER_MODELS } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
-import { resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { projectModelPresentation } from "open-sse/providers/models/presentation.js";
 
 const KIND_ENDPOINT = {
@@ -15,6 +15,14 @@ const KIND_ENDPOINT = {
   webSearch: "/v1/search",
   webFetch: "/v1/fetch",
   rerank: "/v1/rerank",
+  video: "/v1/videos",
+  music: "/v1/music/generations",
+  realtime: "/v1/realtime",
+  moderation: "/v1/moderations",
+  audio: "/v1/chat/completions",
+  realtimeTranslation: "/v1/realtime/translations",
+  realtimeTranscription: "/v1/realtime/transcription_sessions",
+  live: "/v1/live/sessions",
 };
 
 const TTS_VOICES_API = new Set(["elevenlabs", "edge-tts", "deepgram", "inworld", "local-device", "minimax", "minimax-cn"]);
@@ -37,9 +45,14 @@ function buildInfo({ alias, providerId, model, kind, providerInfo }) {
     provider_name: presentation.provider_name,
     provider_alias: presentation.provider_alias,
     gateway_provider: presentation.gateway_provider,
+    ...(model.routingUnavailableReason ? {
+      endpoint: null,
+      routingAvailable: false,
+      routingUnavailableReason: model.routingUnavailableReason
+    } : null),
   };
   if (model.params) out.params = model.params;
-  if (model.capabilities) out.capabilities = model.capabilities;
+  out.capabilities = { ...getCapabilitiesForModel(providerId, model.id), ...model.capabilities };
   if (model.options) out.options = model.options;
   if (model.dimensions) out.dimensions = model.dimensions;
   // Registry field first (it is the model's own declaration), then the shared

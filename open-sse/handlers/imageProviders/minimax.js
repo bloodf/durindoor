@@ -49,17 +49,26 @@ export default {
     };
   },
   buildBody: (model, body) => {
-    // Honor a client-requested response_format. OpenAI clients send "b64_json";
-    // MiniMax calls the same thing "base64". Map both to upstream "base64";
-    // anything else defaults to "url".
     const requested = body.response_format === "base64" || body.response_format === "b64_json" ? "base64" : "url";
-    return {
+    const request = {
       model: model || "image-01",
       prompt: body.prompt,
-      aspect_ratio: mapMinimaxAspectRatio(body.size),
+      aspect_ratio: mapMinimaxAspectRatio(body.size || body.aspect_ratio),
       n: body.n ?? 1,
       response_format: requested,
     };
+    if (body.width !== undefined) request.width = body.width;
+    if (body.height !== undefined) request.height = body.height;
+    if (body.seed !== undefined) request.seed = body.seed;
+    if (body.prompt_optimizer !== undefined) request.prompt_optimizer = body.prompt_optimizer;
+    const references = body.subject_reference || body.image || body.images;
+    if (references) {
+      const values = Array.isArray(references) ? references : [references];
+      request.subject_reference = values.map((reference) =>
+        typeof reference === "string" ? { type: "character", image_file: reference } : reference,
+      );
+    }
+    return request;
   },
   // MiniMax returns 200 even for content-filtered prompts, signalling via
   // base_resp.status_code 1026 and/or an empty image array. A 1026 (or an empty

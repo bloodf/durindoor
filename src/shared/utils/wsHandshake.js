@@ -136,9 +136,9 @@ async function probeApiKey({ key, cliToken = null, authUrl, fetchFn = fetch, tim
     });
     let body = null;
     try {body = await res.json();} catch {/* non-json */}
-    return { ok: res.status === 200, status: res.status, reason: body?.error?.message };
+    return { ok: res.status === 200, status: res.status, reason: body?.error?.message, operator: body?.operator === true };
   } catch (error) {
-    return { ok: false, status: 503, reason: error?.message || "auth probe failed" };
+    return { ok: false, status: 503, reason: error?.message || "auth probe failed", operator: false };
   } finally {
     clearTimeout(timer);
   }
@@ -163,11 +163,19 @@ function loopbackChatUrl(port) {
   return `http://127.0.0.1:${port}/api/v1/chat/completions`;
 }
 
-/** True for `/v1/realtime` (and a trailing slash), the only WS path we own. */
+function loopbackNativeRealtimeUrl(port) {
+  return `http://127.0.0.1:${port}/api/v1/realtime/native`;
+}
+
+/** True for supported native realtime WebSocket paths (trailing slash allowed). */
 function isRealtimePath(url) {
   try {
     const pathname = new URL(url || "/", "http://localhost").pathname;
-    return pathname === "/v1/realtime" || pathname === "/v1/realtime/";
+    return pathname === "/v1/realtime" || pathname === "/v1/realtime/" ||
+      pathname === "/v1/realtime/translations" || pathname === "/v1/realtime/translations/" ||
+      pathname === "/v1/live/sessions" || pathname === "/v1/live/sessions/" ||
+      /^\/v1\/native\/(?:minimax|minimax-cn)\/ws\/v1\/t2a_v2(?:_bidi)?\/?$/.test(pathname) ||
+      /^\/v1\/native\/xai\/v1\/stt\/?$/.test(pathname);
   } catch {
     return false;
   }
@@ -189,6 +197,7 @@ module.exports = {
   isRealtimePath,
   loopbackAuthUrl,
   loopbackChatUrl,
+  loopbackNativeRealtimeUrl,
   modelFromUrl,
   nonKeyProtocols,
   probeApiKey,

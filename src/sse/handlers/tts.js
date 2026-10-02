@@ -34,8 +34,8 @@ async function handleTtsHandler(request) {
 
   const url = new URL(request.url);
   const modelStr = body.model;
-  const responseFormat = url.searchParams.get("response_format") || "mp3"; // mp3 (default) | json
-  const language = body.language || ""; // Optional language hint (currently used by Gemini)
+  const responseFormat = url.searchParams.get("response_format") || "mp3";
+  const language = body.language || "";
   log.request("POST", `${url.pathname} | ${modelStr} | format=${responseFormat}${language ? ` | lang=${language}` : ""}`);
 
   const settings = await getSettings();
@@ -131,7 +131,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const coreOptions = { provider, model, input: body.input, responseFormat, language };
+    const coreOptions = { ...body, provider, model, input: body.input, responseFormat, language };
     if (credentials.connectionId) coreOptions.credentials = credentials;
     const result = await handleTtsCore(coreOptions);
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
@@ -166,7 +166,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleTtsCore({ provider, model, input: body.input, credentials, responseFormat, language });
+    const result = await handleTtsCore({ ...body, provider, model, input: body.input, credentials, responseFormat, language });
 
     if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
 

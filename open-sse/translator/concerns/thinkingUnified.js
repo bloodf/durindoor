@@ -49,6 +49,10 @@ export function extractThinking(body) {
   const t = body.thinking;
   if (t && isObject(t)) {
     if (t.type === "disabled") return { mode: "none" };
+    if (t.type === "between_tools") {
+      const level = isString(effort) ? effort.toLowerCase() : null;
+      return level && level !== "auto" ? { mode: "level", level, thinkingType: "between_tools" } : { mode: "auto", thinkingType: "between_tools" };
+    }
     if (t.type === "adaptive" || t.type === "enabled") {
       const budget = Number(t.budget_tokens);
       if (Number.isFinite(budget) && budget > 0) return { mode: "budget", budget };
@@ -274,7 +278,7 @@ function ensureGeminiOutputFloor(body, floor, caps) {
 }
 
 // Strip every known thinking field from a body (used before re-applying / when unsupported).
-function stripAll(body) {
+function stripAll(body, preserveOutputConfig = false) {
   const targets = [body];
   if (body.params && isObject(body.params) && Array.isArray(body.params.messages)) {
     targets.push(body.params);
@@ -286,7 +290,13 @@ function stripAll(body) {
     delete target.thinkingConfig;
     delete target.enable_thinking;
     delete target.thinking_budget;
-    delete target.output_config;
+    if (preserveOutputConfig && target.output_config && isObject(target.output_config)) {
+      const { effort, ...outputConfig } = target.output_config;
+      if (Object.keys(outputConfig).length) target.output_config = outputConfig;
+      else delete target.output_config;
+    } else {
+      delete target.output_config;
+    }
     delete target.think;
     if (target.generationConfig) delete target.generationConfig.thinkingConfig;
     if (target.request?.generationConfig) delete target.request.generationConfig.thinkingConfig;
@@ -307,22 +317,25 @@ function isAstraMinimalFloorModel(provider, model) {
 // Map requested OpenAI effort to a level the model accepts.
 // Preserve when listed in getThinkingLevels; else nearest high-end sibling.
 // Unknown/empty metadata keeps legacy safe max/ultra → xhigh clamp.
-export function resolveOpenAiEffort(level, provider, model) {
+export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (!level) return level;
-  const allowed = getThinkingLevels(provider, model);
-  if (Array.isArray(allowed) && allowed.includes(level)) return level;
-  if (level === "ultra") {
-    if (Array.isArray(allowed) && allowed.includes("max")) return "max";
-    return "xhigh";
+  const allowed = caps ? getThinkingLevelsFromCapabilities(caps, provider, model) : getThinkingLevels(provider, model);
+  if (Array.isArray(allowed)) {
+    if (allowed.includes(level)) return level;
+    if (["minimal", "none"].includes(level) && allowed.includes("low")) return "low";
+    if (["ultra", "max"].includes(level) && allowed.includes("xhigh")) return "xhigh";
+    if (level === "ultra" && allowed.includes("max")) return "max";
+    if (allowed.includes("high")) return "high";
+    return allowed[0] || level;
   }
-  if (level === "max") return "xhigh";
+  if (level === "ultra" || level === "max") return "xhigh";
   if ((level === "minimal" || level === "none") &&
   (isAstraMinimalFloorModel(provider, model) || /grok-(?:4\.(?:[5-7]|20)|build-latest)/i.test(model || ""))) return "low";
   return level;
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, model = null, provider = null, requestedDisplay = undefined) {
+function applyFormat(fmt, body, cfg, caps, model = null, provider = null, requestedDisplay = undefined, requestedThinkingType = undefined) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -333,7 +346,8 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         if (none && canDisable) {body.reasoning_effort = "none";break;}
         const level = toLevel(eff);
         // Config-driven: preserve supported effort; nearest sibling otherwise.
-        if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model);
+        if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model, caps);
+        if (caps.thinkingType === "adaptive") body.thinking = { type: "adaptive" };
         break;
       }
     case "openai-low-high-max": {
@@ -368,9 +382,17 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "claude-adaptive":{
-        // disabled must NOT carry display (Anthropic rejects display on type:"disabled").
+        // `between_tools` is Sonnet 5.5's only non-adaptive native mode. It
+        // accepts no extra thinking fields and only low|medium|high effort.
+        const effort = toClaudeAdaptiveEffort(eff, caps, provider, model);
+        if (requestedThinkingType === "between_tools" && caps.thinkingModes?.includes("between_tools") &&
+          (cfg.mode === "auto" || (cfg.mode === "level" && ["low", "medium", "high"].includes(cfg.level)))) {
+          body.output_config = { ...body.output_config, effort };
+          body.thinking = { type: "between_tools" };
+          break;
+        }
         if (none && canDisable) {body.thinking = { type: "disabled" };break;}
-        body.output_config = { effort: toClaudeAdaptiveEffort(eff, caps, provider, model) };
+        body.output_config = { ...body.output_config, effort };
         // Opus 4.7/4.8/Sonnet5/Fable5/Mythos5 default thinking.display to "omitted",
         // so default to summarized to keep reasoning summary flowing to clients —
         // but a client that explicitly asked for a display mode (e.g. "omitted"
@@ -521,18 +543,37 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
 
   // Model cannot reason → strip any stray thinking fields.
   if (!caps.reasoning) {
-    stripAll(body);
+    stripAll(body, targetFormat === FORMATS.CLAUDE);
     return body;
   }
   if (!cfg) return body;
+  if ((provider === "minimax" || provider === "minimax-cn") && /^MiniMax-M[23]/.test(cleanModel)) {
+    const reasoningDetails = body.reasoning && isObject(body.reasoning) ? { ...body.reasoning } : {};
+    stripAll(body, targetFormat === FORMATS.CLAUDE);
+    const disabled = cfg.mode === "none" && caps.thinkingCanDisable !== false;
+    const level = cfg.mode === "none" && !disabled ? "low" : toLevel(cfg);
+    if (targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE) {
+      if (disabled || level && level !== "auto") {
+        body.reasoning = { ...reasoningDetails, effort: disabled ? "none" : level };
+      }
+    } else {
+      body.thinking = { type: disabled ? "disabled" : "adaptive" };
+      if (cleanModel === "MiniMax-M3.1-Flash-Preview" && level && level !== "auto") {
+        if (targetFormat === FORMATS.CLAUDE) body.output_config = { ...body.output_config, effort: level };
+        else body.reasoning_effort = level;
+      }
+    }
+    return body;
+  }
 
   const fmt = resolveFormat(targetFormat, cleanModel, provider, caps);
   // Anthropic's `display` (summarized | omitted) decides whether thinking text
   // comes back at all; capture what the client asked for before stripAll wipes
   // body.thinking, so an explicit client choice survives the reformat.
   const requestedDisplay = isString(body.thinking?.display) ? body.thinking.display : undefined;
-  stripAll(body);
-  applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay);
+  const requestedThinkingType = body.thinking?.type || cfg.thinkingType;
+  stripAll(body, targetFormat === FORMATS.CLAUDE);
+  applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType);
   return body;
 }
 

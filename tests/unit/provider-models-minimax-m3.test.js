@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { PROVIDER_MODELS, getModelsByProviderId, getModelTargetFormat } from "../../open-sse/config/providerModels.js";
+import { PROVIDER_MODELS, getModelsByProviderId, getModelTargetFormat, getModelType, getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 
 describe("MiniMax-M3 model registration", () => {
   it("includes MiniMax-M3 in PROVIDER_MODELS.minimax", () => {
@@ -33,12 +33,19 @@ describe("MiniMax-M3 model registration", () => {
     expect(m3.targetFormat).toBeUndefined();
   });
 
-  it("routes MiniMax-M3 through the OpenAI format via getModelTargetFormat (#2533)", () => {
-    expect(getModelTargetFormat("minimax", "MiniMax-M3")).toBe("openai");
-    expect(getModelTargetFormat("minimax-cn", "MiniMax-M3")).toBe("openai");
-    // Other MiniMax models keep format-agnostic routing.
-    expect(getModelTargetFormat("minimax", "MiniMax-M2.7")).toBeNull();
-    expect(getModelTargetFormat("minimax-cn", "MiniMax-M2.7")).toBeNull();
+  it("routes MiniMax M3 family through OpenAI format via getModelTargetFormat (#2533)", () => {
+    for (const provider of ["minimax", "minimax-cn"]) {
+      expect(getModelTargetFormat(provider, "MiniMax-M3")).toBe("openai");
+      expect(getModelTargetFormat(provider, "MiniMax-M3.1-Flash-Preview")).toBe("openai");
+      expect(getModelTargetFormat(provider, "MiniMax-M2.7")).toBeNull();
+    }
+  });
+
+  it("resolves xAI multi-agent aliases to canonical native Responses metadata", () => {
+    const alias = "grok-4.20-multi-agent-latest";
+    expect(getModelTargetFormat("xai", alias)).toBe("openai-responses");
+    expect(getModelType("xai", alias)).toBeNull();
+    expect(getModelUpstreamId("xai", alias)).toBe("grok-4.20-multi-agent-0309");
   });
 
   it("exposes MiniMax-M3 through getModelsByProviderId for both provider IDs", () => {

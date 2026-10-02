@@ -160,11 +160,57 @@ describe("applyThinking per provider format", () => {
     for (const [requested, expected] of [
       ["auto", "high"],
       ["minimal", "low"],
-      ["xhigh", "high"],
+      ["xhigh", "xhigh"],
     ]) {
       const out = apply("claude", "claude-opus-4.8", { reasoning_effort: requested }, "claude");
       expect(out.output_config.effort, requested).toBe(expected);
     }
+  });
+
+  it("keeps M3.1 always-on OpenAI reasoning valid", () => {
+    const caps = {
+      reasoning: true,
+      thinkingFormat: "openai",
+      thinkingCanDisable: false,
+      thinkingEfforts: ["low", "medium", "high", "xhigh", "max"],
+      thinkingType: "adaptive",
+    };
+    const out = structuredClone({ reasoning_effort: "max" });
+    applyThinking("openai", "MiniMax-M3.1-Flash-Preview", out, "minimax", undefined, caps);
+    expect(out.reasoning_effort).toBe("max");
+    expect(out.thinking).toEqual({ type: "adaptive" });
+
+    const disabled = structuredClone({ reasoning_effort: "none" });
+    applyThinking("openai", "MiniMax-M3.1-Flash-Preview", disabled, "minimax", undefined, caps);
+    expect(disabled.reasoning_effort).toBe("low");
+    expect(disabled.reasoning_effort).not.toBe("none");
+    expect(disabled.thinking).toEqual({ type: "adaptive" });
+  });
+
+  it("preserves Sonnet 5.5 between_tools at supported effort", () => {
+    const caps = {
+      reasoning: true,
+      thinkingFormat: "claude-adaptive",
+      thinkingCanDisable: false,
+      thinkingModes: ["adaptive", "between_tools"],
+    };
+    const out = structuredClone({ thinking: { type: "between_tools" }, output_config: { effort: "high" } });
+    applyThinking("claude", "claude-sonnet-5-5", out, "anthropic", undefined, caps);
+    expect(out.thinking).toEqual({ type: "between_tools" });
+    expect(out.output_config).toEqual({ effort: "high" });
+  });
+
+  it("falls back from Sonnet 5.5 between_tools at xhigh", () => {
+    const caps = {
+      reasoning: true,
+      thinkingFormat: "claude-adaptive",
+      thinkingCanDisable: false,
+      thinkingModes: ["adaptive", "between_tools"],
+    };
+    const out = structuredClone({ thinking: { type: "between_tools" }, output_config: { effort: "xhigh" } });
+    applyThinking("claude", "claude-sonnet-5-5", out, "anthropic", undefined, caps);
+    expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
+    expect(out.output_config).toEqual({ effort: "xhigh" });
   });
   it("claude haiku → enabled+budget", () => {
     const out = apply("claude", "claude-haiku-4.5", { reasoning_effort: "high" }, "claude");

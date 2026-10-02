@@ -12,7 +12,9 @@ export const CAVEMAN_LEVELS = {
 
 const SHARED_BOUNDARIES = "Code blocks, file paths, commands, errors, URLs, technical terms, symbols, numbers, and units: keep exact. Never drop not, never, no, only, or except. Security warnings, irreversible action confirmations, multi-step ordered sequences, or ambiguous compression: write normal prose. Resume terse style after.";
 
-const SHARED_PERSISTENCE = 'Use this style every response for this session until user says "stop caveman" or "normal mode". No filler drift. Write normal prose in code, comments, commits, docs, memory files, and third-party messages.';
+// Upstream "stop caveman"/"normal mode" off-switch omitted: DurinDoor's
+// dashboard owns the toggle, so the model cannot honor it.
+const SHARED_PERSISTENCE = "Use this style every response. No filler drift. Write normal prose in code, comments, commits, docs, memory files, and third-party messages.";
 
 const SHARED_NO_INVENTED_ABBREV = "Standard well-known tech acronyms OK (DB, API, HTTP). Never invent abbreviations; use full word when equally short or clearer. Never add words to sound caveman or mangle grammar when correct grammar costs same. Code symbols, function names, API names, error strings: keep verbatim.";
 

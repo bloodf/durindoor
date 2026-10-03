@@ -59,3 +59,7 @@ export function modelSupportedFormats(model) {
 export function modelForceStream(model) {
   return model?.forceStream === true;
 }
+
+export function modelForceNonStreaming(model) {
+  return model?.forceNonStreaming === true;
+}

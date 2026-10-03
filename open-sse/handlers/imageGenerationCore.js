@@ -4,7 +4,7 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
-import { urlToBase64 } from "./imageProviders/_base.js";
+import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 
 function serializeRequestBody(requestBody) {
@@ -72,7 +72,8 @@ export async function handleImageGenerationCore({
         const first = finalBody.data?.[0];
         let b64 = first?.b64_json;
         if (!b64 && first?.url) {
-          try {b64 = await urlToBase64(first.url);} catch {}
+          const image = await fetchImageAsBase64(first.url);
+          b64 = image?.url?.split(",", 2)[1];
         }
         if (b64) {
           const buf = Buffer.from(b64, "base64");
@@ -225,7 +226,8 @@ export async function handleImageGenerationCore({
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      try {b64 = await urlToBase64(first.url);} catch {}
+      const image = await fetchImageAsBase64(first.url);
+      b64 = image?.url?.split(",", 2)[1];
     }
     if (b64) {
       const buf = Buffer.from(b64, "base64");

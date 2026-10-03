@@ -192,15 +192,12 @@ function anthropicCapabilities(entry) {
 
   const enabled = supported(types?.enabled);
   const adaptive = supported(types?.adaptive);
-  const reasoning = Boolean(supported(thinking) || thinking?.supported === true || enabled || adaptive);
+  const reasoning = supported(thinking) || thinking?.supported === true || enabled || adaptive;
   return {
     ...(published.image_input !== undefined ? { vision: supported(published.image_input) } : null),
     ...(published.pdf_input !== undefined ? { pdf: supported(published.pdf_input) } : null),
-    ...(thinking !== undefined ? {
-      reasoning,
-      thinkingCanDisable: reasoning ? enabled : true,
-      thinkingFormat: reasoning ? adaptive ? "claude-adaptive" : "claude-budget" : null
-    } : null)
+    ...(reasoning ? { reasoning: true } : null),
+    ...(adaptive ? { thinkingFormat: "claude-adaptive" } : enabled ? { thinkingFormat: "claude-budget" } : null)
   };
 }
 

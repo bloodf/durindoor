@@ -1,7 +1,6 @@
-// Regression for upstream 9router#2547: GPT-5.6 tool calls with reasoning
-// must use the OpenAI Responses API, even when the client sends Chat
-// Completions format. Routes `gpt-5.6` / `gpt-5.6-sol` to the Responses
-// transport while keeping older GPT-5.x models on Chat Completions.
+// GPT-5.6 tool calls with reasoning must use OpenAI Responses, even when clients
+// send Chat Completions format. Current GPT-5 family also uses Responses; legacy
+// GPT-4.1 remains on Chat Completions.
 import { describe, expect, it } from "vitest";
 
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
@@ -11,10 +10,11 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 
 describe("OpenAI GPT-5.6 Responses routing", () => {
-  it("routes GPT-5.6 models Responses while GPT-5.4 stays on Chat Completions", () => {
+  it("routes GPT-5.6 models Responses while GPT-4.1 stays on Chat Completions", () => {
     const responsesFormat = getModelTargetFormat("openai", "gpt-5.6-sol");
     expect(responsesFormat).toBe(FORMATS.OPENAI_RESPONSES);
-    expect(getModelTargetFormat("openai", "gpt-5.4")).toBeNull();
+    expect(getModelTargetFormat("openai", "gpt-5.4")).toBe(FORMATS.OPENAI_RESPONSES);
+    expect(getModelTargetFormat("openai", "gpt-4.1")).toBeNull();
 
     const responsesTransport = resolveTransport("openai", FORMATS.OPENAI_RESPONSES);
     expect(responsesTransport?.baseUrl).toBe("https://api.openai.com/v1/responses");

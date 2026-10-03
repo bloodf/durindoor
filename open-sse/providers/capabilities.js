@@ -30,6 +30,7 @@ import {
 "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
 import REGISTRY from "./registry/index.js";
+import { AUDITED_PROVIDER_CAPABILITIES } from "./vendorModelCapabilities.js";
 import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
 
 
@@ -47,7 +48,10 @@ export const DEFAULT_CAPABILITIES = {
   // output modalities
   imageOutput: false, // generate images
   audioOutput: false, // generate audio
+  videoOutput: false, // generate videos
   // features
+  structuredOutput: false,
+  promptCaching: false,
   search: false, // built-in web search tool / grounding
   tools: true, // function / tool calling
   reasoning: false, // thinking / reasoning
@@ -55,6 +59,11 @@ export const DEFAULT_CAPABILITIES = {
   // enum: openai|openai-low-high-max|commandcode|claude-adaptive|claude-budget|gemini-level|gemini-budget|zai|qwen|deepseek|kimi|opencode|minimax|hunyuan|step|kiro
   thinkingFormat: null,
   thinkingCanDisable: true, // false → model cannot turn thinking off (clamp to min instead of disable)
+  thinkingEfforts: null,
+  thinkingType: null,
+  thinkingModes: null,
+  supportedTools: null,
+  maxInput: undefined,
   thinkingRange: null, // { min, max } for budget formats; null = no clamp
   // limits (tokens)
   contextWindow: 200000,
@@ -70,15 +79,36 @@ const AI_HORDE_CAPABILITIES = {
   maxOutput: undefined
 };
 
-// User-added model metadata can carry dashboard service kinds instead of the
-// runtime capability names used here. Map those typed model kinds into input /
-// output capabilities so custom vision models are not treated as text-only.
+// Service kinds describe endpoint semantics, not chat-model family names.
+const MEDIA_CAPABILITIES = {
+  vision: false,
+  pdf: false,
+  audioInput: false,
+  videoInput: false,
+  imageOutput: false,
+  audioOutput: false,
+  videoOutput: false,
+  tools: false,
+  reasoning: false,
+  search: false,
+  thinkingFormat: null,
+  contextWindow: null,
+  maxOutput: null
+};
 const SERVICE_KIND_CAPABILITIES = {
   imageToText: { vision: true },
-  image: { imageOutput: true },
-  stt: { audioInput: true },
-  tts: { audioOutput: true },
-  embedding: { tools: false }
+  image: { ...MEDIA_CAPABILITIES, imageOutput: true },
+  stt: { ...MEDIA_CAPABILITIES, audioInput: true },
+  tts: { ...MEDIA_CAPABILITIES, audioOutput: true },
+  video: { ...MEDIA_CAPABILITIES, videoOutput: true },
+  music: { ...MEDIA_CAPABILITIES, audioOutput: true },
+  realtime: { ...MEDIA_CAPABILITIES, audioInput: true, audioOutput: true, tools: true },
+  audio: { ...MEDIA_CAPABILITIES, audioInput: true, audioOutput: true, tools: true },
+  realtimeTranslation: { ...MEDIA_CAPABILITIES, audioInput: true, audioOutput: true },
+  realtimeTranscription: { ...MEDIA_CAPABILITIES, audioInput: true },
+  live: { ...MEDIA_CAPABILITIES, audioInput: true, audioOutput: true, tools: true },
+  moderation: { ...MEDIA_CAPABILITIES },
+  embedding: { ...MEDIA_CAPABILITIES }
 };
 
 export function capabilitiesFromServiceKind(kind) {
@@ -233,6 +263,7 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
+const ANTHROPIC_API_CAPABILITIES = AUDITED_PROVIDER_CAPABILITIES.anthropic;
 // Direct OpenAI GPT-5.4/5.5/5.6 and Astra surfaces override the generic
 // *gpt-5* 400K pattern. Astra's 1.05M context, 922K input, and 128K output
 // are API-only; Codex has a separate exact catalog row below.
@@ -279,14 +310,6 @@ const CODEX_GPT_CAPS = {
   "gpt-5.6-luna-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 }
 };
 
-// Native MiniMax hosts (platform.minimax.io / minimaxi.com) serve M3 at the
-// full 1M-token context with a 131,072 recommended output cap. Third-party
-// hosts (Fireworks, NIM, OpenRouter-style resellers) only guarantee the 512K
-// minimum, which is what the generic *minimax-m3* pattern carries — so the
-// native providers need an explicit override rather than the conservative row.
-const MINIMAX_M3_NATIVE_CAPS = {
-  "MiniMax-M3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 1000000, maxOutput: 131072 }
-};
 
 /**
  * Provider-served limits override trained-model limits. Cloudflare publishes
@@ -376,11 +399,14 @@ const OX_ALPHA_CAPABILITIES = {
 };
 
 export const PROVIDER_CAPABILITIES = {
-  // Direct OpenAI GPT-5.5/5.6 family and Codex/CX aliases expose 1.05M context
-  // window and 128K max output, overriding the generic *gpt-5* 400K fallback pattern.
-  openai: DIRECT_GPT_5_5_6_CAPS,
-  codex: CODEX_GPT_CAPS,
-  cx: CODEX_GPT_CAPS,
+  // Native API metadata is separate from OAuth and reseller contracts.
+  openai: AUDITED_PROVIDER_CAPABILITIES.openai,
+  codex: { ...CODEX_GPT_CAPS, ...AUDITED_PROVIDER_CAPABILITIES.codex },
+  cx: { ...CODEX_GPT_CAPS, ...AUDITED_PROVIDER_CAPABILITIES.cx },
+  anthropic: ANTHROPIC_API_CAPABILITIES,
+  claude: AUDITED_PROVIDER_CAPABILITIES.claude,
+  cc: AUDITED_PROVIDER_CAPABILITIES.cc,
+  xai: AUDITED_PROVIDER_CAPABILITIES.xai,
   "cloudflare-ai": CLOUDFLARE_CAPS,
   cf: CLOUDFLARE_CAPS,
   "xiaomi-tokenplan": XIAOMI_TOKENPLAN_CAPABILITIES,
@@ -418,9 +444,8 @@ export const PROVIDER_CAPABILITIES = {
     "glm-5.3": { vision: false, reasoning: true, thinkingFormat: "openai-low-high-max", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
     "glm-5.3-flash": { vision: true, reasoning: true, thinkingFormat: "openai-low-high-max", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 }
   },
-  // Native MiniMax endpoints serve the full 1M M3 window (see MINIMAX_M3_NATIVE_CAPS).
-  minimax: MINIMAX_M3_NATIVE_CAPS,
-  "minimax-cn": MINIMAX_M3_NATIVE_CAPS,
+  minimax: AUDITED_PROVIDER_CAPABILITIES.minimax,
+  "minimax-cn": AUDITED_PROVIDER_CAPABILITIES["minimax-cn"],
   // Poolside Laguna — OpenAI-compatible, all reasoning-capable (262K context, 32K max output).
   poolside: {
     "laguna-s-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },
@@ -874,11 +899,11 @@ export const PATTERN_CAPABILITIES = [
 // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
 { pattern: "*minimax*image*", caps: { imageOutput: true } },
 { pattern: "*minimax-m3*", caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 512000, maxOutput: 131072 } },
-{ pattern: "*minimax-m2.7*", caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
-{ pattern: "*minimax-m2.5*", caps: { vision: true, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
+{ pattern: "*minimax-m2.7*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
+{ pattern: "*minimax-m2.5*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
 /** MiniMax publishes 204,800 tokens for every M2-family model. */
-{ pattern: "*minimax-m2.1*", caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
-{ pattern: "*minimax-m2", caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 131072 } },
+{ pattern: "*minimax-m2.1*", caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
+{ pattern: "*minimax-m2", caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: 128000 } },
 { pattern: "*minimax*", caps: { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 } },
 
 // ── Xiaomi MiMo (vision + <think>-tag reasoning, always-on, can't disable) ──
@@ -987,6 +1012,7 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     videoInput: allCaps.some((c) => c.videoInput),
     imageOutput: allCaps.some((c) => c.imageOutput),
     audioOutput: allCaps.some((c) => c.audioOutput),
+    videoOutput: allCaps.some((c) => c.videoOutput),
     search: allCaps.some((c) => c.search),
     tools: allCaps.every((c) => c.tools),
     reasoning: first.reasoning,
@@ -1029,6 +1055,7 @@ export function overlayComboCapabilities(derived, cap) {
     "videoInput",
     "imageOutput",
     "audioOutput",
+    "videoOutput",
     "search",
     "tools",
     "reasoning"
@@ -1065,6 +1092,7 @@ const ALLOWED_CAPABILITY_KEYS = new Set([
   "videoInput",
   "imageOutput",
   "audioOutput",
+  "videoOutput",
   "search",
   "tools",
   "reasoning",
@@ -1167,6 +1195,7 @@ export function getCapabilitiesForModel(provider, model) {
     if ((provider === "cloudflare-ai" || provider === "cf") && model?.startsWith("@cf/")) {
       result = { ...result, maxOutput: undefined };
     }
+    if (hasUnpublishedOutput(provider, model)) result = { ...result, maxOutput: undefined };
     return sanitizeModelLimits(result);
   };
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
@@ -1178,8 +1207,17 @@ export function getCapabilitiesForModel(provider, model) {
   const baseModel = normalizedModel.includes("/") ? normalizedModel.split("/").pop() : normalizedModel;
 
   // Kimi's `k3[1m]` is a Claude Code-only inbound spelling of canonical `k3`.
-  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
-    /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel;
+  const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
+  const registryModel = registry?.models?.find((entry) =>
+    entry.id === normalizedModel || entry.id === baseModel ||
+    entry.aliases?.includes(normalizedModel) || entry.aliases?.includes(baseModel));
+  const capabilityBaseModel = registryModel?.id || (/^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
+    /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel);
+  const kindCaps = capabilitiesFromServiceKind(registryModel?.kind || registryModel?.type);
+  if (kindCaps && registryModel?.kind !== "imageToText" && registryModel?.type !== "imageToText") {
+    const declaredCaps = PROVIDER_CAPABILITIES[registry.id]?.[capabilityBaseModel] || MODEL_CAPABILITIES[capabilityBaseModel] || {};
+    return finalize({ ...DEFAULT_CAPABILITIES, ...kindCaps, ...declaredCaps });
+  }
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider];
     if (providerCaps?.[normalizedModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedModel] });
@@ -1256,15 +1294,18 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     };
   }
 
-  // Keep documented bracket suffixes on wire; resolve limits through canonical IDs.
-  const capabilityBaseModel = /^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
-    /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel;
+  // Resolve request aliases before selecting provider-specific limits.
+  const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
+  const registryModel = registry?.models?.find((entry) =>
+    entry.id === model || entry.id === baseModel || entry.aliases?.includes(model) || entry.aliases?.includes(baseModel));
+  const capabilityBaseModel = registryModel?.id || (/^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
+    /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel);
   const positive = (value) => Number.isFinite(value) && value > 0;
   const asLimits = (caps, source, unpublishedOutput = false) => {
     if (!positive(caps?.contextWindow)) return null;
     return {
       contextWindow: caps.contextWindow,
-      maxOutput: unpublishedOutput || requireExplicitOutput && !positive(caps.maxOutput) ? undefined : positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
+      maxOutput: unpublishedOutput || caps.maxOutput === null || requireExplicitOutput && !positive(caps.maxOutput) ? undefined : positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
       known: true,
       source
     };
@@ -1297,6 +1338,9 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     [model, baseModel, capabilityBaseModel, normalizeModelId(model), normalizeModelId(baseModel)] :
     [model, baseModel, capabilityBaseModel];
     for (const id of ids) {
+      if (providerCaps?.[id]?.contextWindow === null) {
+        return applyPreferred({ contextWindow: undefined, maxOutput: undefined, known: false, source: "provider" });
+      }
       const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider", hasUnpublishedOutput(provider, id));
       if (hit) return applyPreferred(hit);
     }
@@ -1307,8 +1351,6 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     if (hit) return applyPreferred(hit);
   }
 
-  const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
-  const registryModel = registry?.models?.find((entry) => entry.id === model || entry.id === baseModel || entry.id === capabilityBaseModel);
   if (registryModel) {
     const hit = asLimits({
       contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,

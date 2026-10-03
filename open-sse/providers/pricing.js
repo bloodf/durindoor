@@ -51,7 +51,20 @@ function registryEntry(providerId) {
 
 function registryModel(entry, modelId) {
   if (!entry?.models) return null;
-  return entry.models.find((m) => m.id === modelId) || null;
+  return entry.models.find((m) => m.id === modelId || m.aliases?.includes(modelId)) || null;
+}
+
+export function canonicalModelId(provider, model) {
+  const baseModel = model?.includes("/") ? model.split("/").pop() : model;
+  return registryModel(registryEntry(resolveProviderId(provider)), baseModel)?.id || baseModel;
+}
+
+function providerPricingFor(provider, model) {
+  const entry = registryEntry(resolveProviderId(provider));
+  for (const key of [provider, entry?.id, entry?.alias, entry?.uiAlias, ...(entry?.aliases || [])]) {
+    if (key && PROVIDER_PRICING[key]?.[model]) return PROVIDER_PRICING[key][model];
+  }
+  return null;
 }
 
 /**
@@ -227,7 +240,6 @@ export const MODEL_PRICING = {
   "gpt-5.6-terra": { input: 2.50, output: 3.125, cached: 0.25, reasoning: 3.125, cache_creation: 2.50 },
   "gpt-5.6-sol": { input: 5.00, output: 6.25, cached: 0.50, reasoning: 6.25, cache_creation: 5.00 },
   "o1": { input: 15.00, output: 60.00, cached: 7.50, reasoning: 60.00, cache_creation: 15.00 },
-  "o1-mini": { input: 3.00, output: 12.00, cached: 1.50, reasoning: 12.00, cache_creation: 3.00 },
   "o1-pro": { input: 150.00, output: 600.00, cached: 150.00, reasoning: 600.00, cache_creation: 150.00 },
   "o3": { input: 2.00, output: 8.00, cached: 0.50, reasoning: 8.00, cache_creation: 2.00 },
   "o3-mini": { input: 1.10, output: 4.40, cached: 0.55, reasoning: 4.40, cache_creation: 1.10 },
@@ -314,7 +326,7 @@ export const MODEL_PRICING = {
   "minimax-m3": { input: 0.30, output: 1.20, cached: 0.06 },
 
   // === Grok ===
-  "grok-code-fast-1": { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 },
+  "grok-build-0.1": { input: 1.00, output: 2.00, cached: 0.20, reasoning: 2.00, cache_creation: 1.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 },
 
   // === OpenRouter fallback ===
   "auto": { input: 2.00, output: 8.00, cached: 1.00, reasoning: 12.00, cache_creation: 2.00 },
@@ -346,10 +358,9 @@ export const PROVIDER_PRICING = {
   gh: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
   },
-  // xAI serves grok-code-fast-1 as an alias of grok-build-0.1 and bills it at
-  // the Grok Build rates. https://docs.x.ai/developers/models/grok-build-0.1
+  // Expose the current canonical tier to pricing management, without alias rows.
   xai: {
-    "grok-code-fast-1": { input: 1.00, output: 2.00, cached: 0.20, reasoning: 2.00, cache_creation: 1.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 },
+    "grok-build-0.1": MODEL_PRICING["grok-build-0.1"],
   },
   // TokenRouter — free-tier model only. Upstream decolua/9router@6efb9790 adds
   // z-ai/glm-5.3-free at 0 pricing. The fuller TokenRouter rate table arrives
@@ -477,7 +488,6 @@ export const PATTERN_PRICING = [
 { pattern: "grok-4.3*", pricing: { input: 1.25, output: 2.50, cached: 0.20, reasoning: 2.50, cache_creation: 1.25, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
 { pattern: "grok-4.20", pricing: { input: 1.25, output: 2.50, cached: 0.20, reasoning: 2.50, cache_creation: 1.25, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
 { pattern: "grok-4.20-*", pricing: { input: 1.25, output: 2.50, cached: 0.20, reasoning: 2.50, cache_creation: 1.25, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
-{ pattern: "grok-build-0.1", pricing: { input: 1.00, output: 2.00, cached: 0.20, reasoning: 2.00, cache_creation: 1.00, longContextThreshold: 200000, longContextInclusive: true, longContextInputMultiplier: 2, longContextOutputMultiplier: 2 } },
 
 { pattern: "grok-*", pricing: { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 } },
 
@@ -496,25 +506,12 @@ export function matchPattern(pattern, model) {
   const regex = new RegExp("^" + pattern.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
   return regex.test(model);
 }
+function priceForCanonicalModel(model) {
+  if (MODEL_PRICING[model]) return MODEL_PRICING[model];
+  return PATTERN_PRICING.find(({ pattern }) => matchPattern(pattern, model))?.pricing || null;
+}
 
-/**
- * Resolve pricing for a model using the 3-step fallback chain:
- *   1. PROVIDER_PRICING[provider][model]
- *   2. MODEL_PRICING[model]
- *   3. PATTERN_PRICING (glob match)
- *
- * @param {string} provider
- * @param {string} model
- * @returns {object|null}
- */
-// A glob cannot send these to their target row (grok-code-* and grok-build*
-// would win), and the catalog drift guard rejects rows for unlisted ids.
-// https://docs.x.ai/developers/models/grok-4.5 https://docs.x.ai/developers/models/grok-build-0.1
-const XAI_PRICING_ALIASES = {
-  "grok-build-latest": "grok-4.5",
-  "grok-code-fast": "grok-build-0.1",
-  "grok-code-fast-1-0825": "grok-build-0.1",
-};
+
 
 /**
  * Namespaces upstream bills at $0. Checked before MODEL_PRICING because the
@@ -530,12 +527,21 @@ export function isFreeNamespace(model) {
   return FREE_MODEL_NAMESPACES.some((ns) => lower.startsWith(ns));
 }
 
+/**
+ * Resolve pricing for a model using provider overrides, canonical aliases,
+ * exact rows, then patterns.
+ *
+ * @param {string} provider
+ * @param {string} model
+ * @returns {object|null}
+ */
+
 export function getPricingForModel(provider, model) {
   if (!model) return null;
 
-  // 1. Provider-specific override
-  if (provider && PROVIDER_PRICING[provider]?.[model]) {
-    return PROVIDER_PRICING[provider][model];
+  if (provider) {
+    const providerPricing = providerPricingFor(provider, model);
+    if (providerPricing) return providerPricing;
   }
 
   // 1b. Free namespaces bill $0 whatever model name sits behind them.
@@ -543,6 +549,16 @@ export function getPricingForModel(provider, model) {
 
   // 2. Canonical model pricing (strip vendor prefix if needed: "deepseek/deepseek-chat" → "deepseek-chat")
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
+  // Registered aliases inherit canonical provider overrides and model prices.
+  // If canonical pricing is unknown, preserve raw-id exact and pattern fallbacks.
+  const canonical = canonicalModelId(provider, baseModel);
+  if (canonical && canonical !== baseModel) {
+    const providerPricing = providerPricingFor(provider, canonical);
+    if (providerPricing) return providerPricing;
+    const canonicalPricing = priceForCanonicalModel(canonical);
+    if (canonicalPricing) return canonicalPricing;
+  }
+
   if (MODEL_PRICING[baseModel]) return MODEL_PRICING[baseModel];
   if (MODEL_PRICING[model]) return MODEL_PRICING[model];
 
@@ -559,9 +575,6 @@ export function getPricingForModel(provider, model) {
     if (MODEL_PRICING[normalized]) return MODEL_PRICING[normalized];
   }
 
-  // 2c. Published xAI aliases that point at a different model's rates.
-  const aliasTarget = XAI_PRICING_ALIASES[baseModel];
-  if (aliasTarget) return getPricingForModel(provider, aliasTarget);
 
   // 3. Pattern match
   for (const { pattern, pricing } of PATTERN_PRICING) {

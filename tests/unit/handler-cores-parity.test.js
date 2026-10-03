@@ -4,6 +4,9 @@ import {
   deriveImageEditsUrl,
   handleImageEditCore,
 } from "../../open-sse/handlers/imageEditCore.js";
+import { __setOriginalFetchForTesting } from "../../open-sse/utils/proxyFetch.js";
+import { handleMusicGenerationCore } from "../../open-sse/handlers/musicGenerationCore.js";
+
 import {
   deriveModerationsUrl,
   handleModerationsCore,
@@ -26,6 +29,48 @@ describe("imageEditCore", () => {
 
   it("deriveImageEditsUrl returns null for non-generations URL", () => {
     expect(deriveImageEditsUrl({ baseUrl: "https://example.com/v1/images/variations" })).toBeNull();
+  });
+
+  it("sends xAI image edits as documented JSON sources", async () => {
+    const fixture = vi.fn(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      const accepted = body.model === "grok-imagine-image-2.0" && body.prompt === "edit it" && Array.isArray(body.images) && body.images.length === 2 && body.images[0]?.url === "https://example.com/a.png" && body.images[1]?.file_id === "file_123" && !body.image;
+      return new Response(JSON.stringify({ data: [] }), { status: accepted ? 200 : 400, headers: { "Content-Type": "application/json" } });
+    });
+    const restoreFetch = __setOriginalFetchForTesting(fixture);
+    try {
+      const formData = new FormData();
+      formData.append("model", "xai/grok-imagine-image-2.0");
+      formData.append("prompt", "edit it");
+      formData.append("image", "json-image");
+      const result = await handleImageEditCore({ formData, jsonBody: { model: "xai/grok-imagine-image-2.0", prompt: "edit it", images: ["https://example.com/a.png", { file_id: "file_123" }], n: 2, response_format: "url", quality: "high", resolution: "2k", aspect_ratio: "16:9" }, modelInfo: { provider: "xai", model: "grok-imagine-image-2.0" }, credentials: { apiKey: "key", providerSpecificData: { vercelRelayUrl: "https://relay.test/forward", disableEnvProxy: true } } });
+      expect(result.success).toBe(true);
+      const [url, init] = fixture.mock.calls[0];
+      expect(url).toBe("https://relay.test/forward");
+      expect(init.headers.get("x-relay-target")).toBe("https://api.x.ai");
+      expect(JSON.parse(init.body)).toEqual({ model: "grok-imagine-image-2.0", prompt: "edit it", images: [{ url: "https://example.com/a.png" }, { file_id: "file_123" }], n: 2, response_format: "url", quality: "high", resolution: "2k", aspect_ratio: "16:9" });
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  it("rejects xAI raw source arrays", async () => {
+    const formData = new FormData();
+    formData.append("model", "xai/grok-imagine-image-2.0");
+    formData.append("prompt", "edit it");
+    formData.append("image", "json-image");
+    const result = await handleImageEditCore({ formData, jsonBody: { model: "xai/grok-imagine-image-2.0", prompt: "edit it", image: ["https://example.com/a.png"] }, modelInfo: { provider: "xai", model: "grok-imagine-image-2.0" }, credentials: { apiKey: "key" } });
+    expect(result.status).toBe(400);
+  });
+});
+
+describe("MiniMax music core", () => {
+  it("normalizes official hex audio", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { audio: "0001" }, base_resp: { status_code: 0 } })));
+    const result = await handleMusicGenerationCore({ provider: "minimax", model: "music-3.0", body: { prompt: "song" }, credentials: { apiKey: "key" } });
+    expect(await result.response.json()).toMatchObject({ data: [{ b64_json: "AAE=" }] });
+    global.fetch = originalFetch;
   });
 });
 

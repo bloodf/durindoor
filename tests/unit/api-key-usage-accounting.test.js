@@ -109,4 +109,21 @@ describe("API-key lifetime usage accounting", () => {
     expect(await database.getApiKeyUsageTotals("key-cost")).toMatchObject({ totalCost: 0.25, totalRequests: 1 });
     expect(db.get(`SELECT cost FROM usageHistory WHERE usageEventId = 'direct-cost'`).cost).toBe(0.25);
   });
+
+  it("commits native terminal usage once per provider account resource", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    const secret = "sk-native-owner";
+    db.run(`INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)`, ["creator-a", secret, "Creator", "2026-01-01T00:00:00.000Z"]);
+    const owners = await import("@/sse/services/nativeResourceOwners.js");
+    await owners.createNativeResourceOwner({ ownerId: "creator-a", provider: "openai", connectionId: "conn-a", resourceId: "resp-a", model: "gpt-test" });
+    await owners.createNativeResourceOwner({ ownerId: "creator-b", provider: "openai", connectionId: "conn-a", resourceId: "resp-a", model: "gpt-test" });
+    expect(await owners.readNativeResourceOwner("openai", "conn-a", "resp-a")).toMatchObject({ ownerId: "creator-a" });
+    const entry = { apiKey: secret, provider: "openai", model: "gpt-test", connectionId: "conn-a", endpoint: "/v1/responses/resp-a", tokens: { input_tokens: 3, output_tokens: 5 }, usageEventId: "openai:conn-a:resp-a:terminal", strict: true };
+    expect(await database.saveRequestUsage(entry)).toBe(true);
+    expect(await database.saveRequestUsage(entry)).toBe(true);
+    expect(await database.getApiKeyUsageTotals("creator-a")).toMatchObject({ totalTokens: 8, totalRequests: 1 });
+    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory WHERE usageEventId = ?`, [entry.usageEventId]).count).toBe(1);
+  });
 });

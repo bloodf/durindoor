@@ -155,24 +155,40 @@ async function tortoise({ baseUrl, text, voiceId }) {
 }
 
 // OpenAI-compatible upstream (qwen3-tts, etc.)
-async function openaiCompat({ baseUrl, apiKey, text, modelId, voiceId }) {
+async function openaiCompat({ baseUrl, apiKey, text, modelId, voiceId, proxyOptions, responseFormat, ...options }) {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  const res = await fetch(baseUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: modelId,
-      input: text,
-      voice: voiceId || "alloy",
-      response_format: "mp3",
-      speed: 1.0
-    })
-  });
+  const { language, model: _model, input: _input, voice, ...bodyOptions } = options;
+  const body = {
+    model: modelId,
+    input: text,
+    voice: voice || voiceId || "alloy",
+    response_format: "mp3",
+    speed: 1.0,
+    ...bodyOptions,
+  };
+  const res = await proxyAwareFetch(baseUrl, {
+    method: "POST", headers, body: JSON.stringify(body)
+  }, proxyOptions);
   if (!res.ok) await throwUpstreamError(res);
-  return responseToBase64(res, "mp3");
+  if (responseFormat !== "json") {
+    return { success: true, response: new Response(res.body, { headers: { "Content-Type": res.headers.get("content-type") || `audio/${body.response_format}`, "Access-Control-Allow-Origin": "*" } }) };
+  }
+  return responseToBase64(res, body.response_format);
 }
 
+// xAI Voice: no model field; raw MP3 by default, JSON when timestamps requested.
+async function xaiTts({ baseUrl, apiKey, text, voiceId, proxyOptions, language, ...options }) {
+  if (!language) throw new Error("xAI TTS requires language");
+  const { model: _model, input: _input, voice, response_format: _responseFormat, ...bodyOptions } = options;
+  const res = await proxyAwareFetch(baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({ text, voice_id: voice || voiceId || "eve", language, ...bodyOptions }),
+  }, proxyOptions);
+  if (!res.ok) await throwUpstreamError(res);
+  return { success: true, response: new Response(res.body, { headers: { "Content-Type": res.headers.get("content-type") || "audio/mpeg", "Access-Control-Allow-Origin": "*" } }) };
+}
 // format → handler dispatcher
 export const FORMAT_HANDLERS = {
   hyperbolic,
@@ -186,5 +202,6 @@ export const FORMAT_HANDLERS = {
   tortoise,
   openai: openaiCompat,
   "minimax-tts": minimaxTts,
+  "xai-tts": xaiTts,
   "fish-audio": fishAudio
 };

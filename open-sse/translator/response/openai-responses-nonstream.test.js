@@ -160,6 +160,30 @@ test("preserves Responses reasoning as OpenAI reasoning_content", () => {
   assert.equal(out.choices[0].message.reasoning_content, "thinking");
 });
 
+test("maps Responses refusal to Claude and OpenAI refusal finish semantics", () => {
+  const response = {
+    id: "resp_refusal",
+    model: "model-a",
+    output: [{ type: "message", content: [{ type: "refusal", refusal: "blocked" }] }],
+  };
+
+  assert.equal(openAIResponsesBodyToClaude(response).stop_reason, "refusal");
+  assert.equal(openAIResponsesBodyToOpenAI(response).choices[0].finish_reason, "content_filter");
+});
+
+test("keeps incomplete Responses terminal precedence over refusal", () => {
+  const response = {
+    id: "resp_incomplete_refusal",
+    model: "model-a",
+    status: "incomplete",
+    incomplete_details: { reason: "max_output_tokens" },
+    output: [{ type: "message", content: [{ type: "refusal", refusal: "blocked" }] }],
+  };
+
+  assert.equal(openAIResponsesBodyToClaude(response).stop_reason, "max_tokens");
+  assert.equal(openAIResponsesBodyToOpenAI(response).choices[0].finish_reason, "length");
+});
+
 test("preserves Responses failure as explicit OpenAI error text", () => {
   const out = openAIResponsesBodyToOpenAI({
     id: "resp_6",

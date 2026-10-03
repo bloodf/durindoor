@@ -37,6 +37,11 @@ describe("isPaidModel (hidePaidModels classifier)", () => {
     expect(getPricingForModel("gh", "gpt-5.3-codex")).toBe(
       PROVIDER_PRICING.gh["gpt-5.3-codex"]
     );
+    // Canonical provider id must retain alias-keyed override priority over
+    // generic MODEL_PRICING after aliases are resolved.
+    expect(getPricingForModel("github", "gpt-5.3-codex")).toBe(
+      PROVIDER_PRICING.gh["gpt-5.3-codex"]
+    );
     expect(isPaidModel("gh/gpt-5.3-codex")).toBe(true);
   });
 

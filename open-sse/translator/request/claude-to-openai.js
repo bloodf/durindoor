@@ -2,7 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -75,16 +75,18 @@ export function claudeToOpenAIRequest(model, body, stream) {
   // (distinct from the global immediate-next check in concerns/toolCall, runs on the openai leg).
   fixMissingToolResponsesOpenAI(result.messages);
 
-  // Tools
+  // Server tools and client toolsets have no OpenAI Chat representation. Carry
+  // complete native tools only across an in-process pivot; omit them on wire.
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map((tool) => {
+    const nativeTools = body.tools.filter((tool) => tool?.type && tool.type !== OPENAI_BLOCK.FUNCTION && tool.type !== "custom");
+    if (nativeTools.length) Object.defineProperty(result, CLAUDE_NATIVE_TOOLS, { value: nativeTools, enumerable: false });
+    const functionTools = body.tools.filter((tool) => !tool?.type || tool.type === OPENAI_BLOCK.FUNCTION || tool.type === "custom");
+    if (functionTools.length) result.tools = functionTools.map((tool) => {
       const fn = {
         name: tool.name,
         description: String(tool.description || ""),
         parameters: tool.input_schema || { type: "object", properties: {} }
       };
-      // Preserve an explicit Claude tool.strict flag through the OpenAI pivot; a
-      // missing flag is left unset so downstream translators keep their own default.
       if (isBoolean(tool.strict)) fn.strict = tool.strict;
       return { type: OPENAI_BLOCK.FUNCTION, function: fn };
     });
@@ -111,6 +113,14 @@ export function claudeToOpenAIRequest(model, body, stream) {
   const userId = body.metadata?.user_id;
   if (isString(userId) && userId.length > 0) {
     result.user = userId;
+  }
+
+  const nativeFields = {};
+  for (const field of ["context_management", "output_config"]) {
+    if (body[field] !== undefined) nativeFields[field] = body[field];
+  }
+  if (Object.keys(nativeFields).length) {
+    Object.defineProperty(result, CLAUDE_NATIVE_REQUEST_FIELDS, { value: nativeFields, enumerable: false });
   }
 
   return result;
@@ -178,6 +188,17 @@ function attachRedactedThinking(message, redactedThinking) {
   return message;
 }
 
+function attachNativeBlocks(message, nativeBlocks) {
+  if (!message || nativeBlocks.length === 0) return message;
+  Object.defineProperty(message, CLAUDE_NATIVE_BLOCKS, {
+    value: nativeBlocks,
+    enumerable: false,
+    writable: false,
+    configurable: false
+  });
+  return message;
+}
+
 // Nested tool-result media cannot be forwarded as a data URI; retain only a
 // bounded media-type label so binary payloads never enter the upstream request.
 function describeOmittedMedia(mediaType) {
@@ -221,6 +242,13 @@ function convertClaudeMessage(msg) {
     const toolResultImages = [];
     let reasoningContent = "";
     const redactedThinking = [];
+    const nativeBlocks = msg.content.some((block) =>
+    block?.type === CLAUDE_BLOCK.DOCUMENT ||
+    block?.type === CLAUDE_BLOCK.SERVER_TOOL_USE ||
+    block?.type === CLAUDE_BLOCK.WEB_SEARCH_TOOL_RESULT ||
+    block?.type === CLAUDE_BLOCK.SEARCH_RESULT ||
+    block?.toolset_name !== undefined
+    ) ? msg.content : null;
 
     for (const block of msg.content) {
       switch (block.type) {
@@ -318,6 +346,7 @@ function convertClaudeMessage(msg) {
 
     // If has tool results, return array of tool messages
     if (toolResults.length > 0) {
+      if (nativeBlocks) attachNativeBlocks(toolResults[0], nativeBlocks);
       const followUp = [...toolResultImages, ...parts];
       if (followUp.length > 0) {
         return [...toolResults, { role: ROLE.USER, content: collapseTextParts(followUp) }];
@@ -335,7 +364,12 @@ function convertClaudeMessage(msg) {
         result.reasoning_content = reasoningContent;
       }
       result.tool_calls = toolCalls;
-      return attachRedactedThinking(result, redactedThinking);
+      return attachNativeBlocks(attachRedactedThinking(result, redactedThinking), nativeBlocks || []);
+    }
+
+    // Native-only blocks can be restored by a subsequent OpenAI → Claude pivot.
+    if (nativeBlocks && parts.length === 0 && !reasoningContent && redactedThinking.length === 0) {
+      return attachNativeBlocks({ role, content: "" }, nativeBlocks);
     }
 
     // Return content (redactedThinking alone must also keep the message
@@ -348,7 +382,7 @@ function convertClaudeMessage(msg) {
       if (reasoningContent) {
         result2.reasoning_content = reasoningContent;
       }
-      return attachRedactedThinking(result2, redactedThinking);
+      return attachNativeBlocks(attachRedactedThinking(result2, redactedThinking), nativeBlocks || []);
     }
 
     // Empty content array

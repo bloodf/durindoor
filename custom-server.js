@@ -26,23 +26,28 @@ const {
   CONTROL_PORT_HEADER,
   CONTROL_PROOF_HEADER,
   CONTROL_SECRET_ENV,
-  createControlProof
+  createControlProof,
+  createRealtimeOperatorProof
 } = require("./src/mitm/controlProof");
 const {
   extractRealtimeKey,
   isRealtimePath,
   loopbackAuthUrl,
   loopbackChatUrl,
+  loopbackNativeRealtimeUrl,
   modelFromUrl,
   probeApiKey,
   selectProtocol
 } = require("./src/shared/utils/wsHandshake");
 const { createRealtimeSession, publicSession: publicRealtimeSession } = require("./open-sse/handlers/realtimeCore");
-const { MAX_REALTIME_FRAME_BYTES } = require("./src/shared/utils/realtimeConfig");
+const { createNativeRealtimeRelay } = require("./open-sse/handlers/nativeRealtimeRelay");
+const { consumeNativeRealtimeHandoff } = require("./open-sse/handlers/nativeRealtimeHandoff.cjs");
+const { MAX_REALTIME_FRAME_BYTES, MAX_REALTIME_PREAUTH_BYTES, MAX_REALTIME_PREAUTH_FRAMES } = require("./src/shared/utils/realtimeConfig");
 // Sidecar copied into the CLI bundle by cli/scripts/standaloneSidecars.js.
 const { applyHeadResponseGuard } = require("./head-response-guard.cjs");
 
 const MITM_CONTROL_PATH = "/api/cli-tools/antigravity-mitm";
+const REALTIME_NATIVE_CONTROL_PATH = "/api/v1/realtime/native";
 const STANDALONE_ROOT_ENV = "DURINDOOR_STANDALONE_ROOT";
 const REALTIME_DISPATCHER = Symbol.for("durindoor.realtimeDispatcher");
 const SINGLE_PROCESS_RUNTIME_ENV = "DURINDOOR_SINGLE_PROCESS_RUNTIME";
@@ -73,8 +78,9 @@ function canonicalizeRuntimePaths() {
 
 function isMitmMutation(req) {
   const pathname = new URL(req.url || "/", "http://localhost").pathname;
-  return (pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`)) &&
-  String(req.method || "GET").toUpperCase() !== "GET";
+  const method = String(req.method || "GET").toUpperCase();
+  return ((pathname === MITM_CONTROL_PATH || pathname.startsWith(`${MITM_CONTROL_PATH}/`)) && method !== "GET") ||
+  (pathname === REALTIME_NATIVE_CONTROL_PATH && method === "POST");
 }
 
 /**
@@ -216,7 +222,7 @@ function isHttpServer(value) {
  * @param {import("http").Server} server
  * @param {{ dashboardPort?: number }} [opts]
  */
-function installRealtimeUpgradeDispatcher(server, { dashboardPort } = {}) {
+function installRealtimeUpgradeDispatcher(server, { dashboardPort, relayFactory = createNativeRealtimeRelay } = {}) {
   // Duck-type guard BEFORE stamping the marker: a handler-shaped object (the
   // createOwnerAwareHandler shim returns a function, and tests pass bare
   // `{ handler }` objects) must be a no-op rather than scheduling `.listeners()`
@@ -232,7 +238,7 @@ function installRealtimeUpgradeDispatcher(server, { dashboardPort } = {}) {
     server.on("upgrade", (req, socket, head) => {
       try {
         if (isRealtimePath(req.url)) {
-          handleRealtimeUpgrade(req, socket, head, { port });
+          handleRealtimeUpgrade(req, socket, head, { port, relayFactory });
           return;
         }
         for (const listener of nextListeners) {
@@ -256,51 +262,92 @@ function installRealtimeUpgradeDispatcher(server, { dashboardPort } = {}) {
  * Handle one realtime upgrade: handshake, auth probe, then event loop.
  * Auth is finalized AFTER upgrade so a rejected key maps to ws close 4001.
  */
-function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
+function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createNativeRealtimeRelay } = {}) {
   realtimeWss.handleUpgrade(req, socket, head, async (ws) => {
+    const setupAbort = new AbortController();
     // Clients frequently fire `session.update` / `conversation.item.create`
     // immediately on `open` — well before our async auth probe resolves.
     // Attach a message listener RIGHT NOW and queue frames so nothing is
     // dropped during the handshake window; drain in order once setup is done.
     const queue = [];
+    let queuedBytes = 0;
     let ready = false;
     let rt = null;
     let closed = false;
-    // Single promise chain serializes EVERY frame — queued (pre-auth) and live
+    // Single queue serializes EVERY frame — queued (pre-auth) and live
     // (post-auth) — so `conversation.item.create` always resolves before a
     // following `response.create`, and two `response.create`s can never both
-    // pass the `inFlight` gate. This is the only place that dispatches frames.
-    let processing = Promise.resolve();
-    const enqueue = (data) => {
-      processing = processing.then(() => {
-        // Drop frames that were already chained before close/error fired — the
-        // `queue` array only holds not-yet-enqueued frames, so without this
-        // guard a queued `response.create` could still start upstream work
-        // after dispose() ran.
-        if (closed || !rt) return undefined;
-        return rt.handleClientEvent(data);
-      }).catch((error) => {
-        process.stderr.write(`[custom-server] realtime event failed: ${error?.message || error}\n`);
-      });
+    // pass the `inFlight` gate. Async native authorization makes live frames
+    // retain input too, so account for its backlog before scheduling it.
+    const processingQueue = [];
+    let processing = false;
+    let processingBytes = 0;
+    let activeProcessingBytes = 0;
+    const clearProcessingQueue = () => {
+      processingQueue.length = 0;
+      processingBytes = activeProcessingBytes;
     };
-
-    ws.on("message", (data, isBinary) => {
-      if (closed || isBinary) return;
-      if (!ready || !rt) {
-        queue.push(data); // hold until session.created + ready; drained below
+    const drainProcessingQueue = async () => {
+      processing = true;
+      while (processingQueue.length) {
+        const frame = processingQueue.shift();
+        activeProcessingBytes = frame.bytes;
+        try {
+          if (!closed && rt) await rt.handleClientEvent(frame.data, frame.isBinary);
+        } catch (error) {
+          process.stderr.write(`[custom-server] realtime event failed: ${error?.message || error}\n`);
+        } finally {
+          processingBytes -= frame.bytes;
+          activeProcessingBytes = 0;
+        }
+      }
+      processing = false;
+    };
+    const enqueue = (data, isBinary = false) => {
+      if (closed) return;
+      const bytes = Buffer.isBuffer(data) ? data.length : Buffer.byteLength(data);
+      if (bytes > MAX_REALTIME_FRAME_BYTES || processingQueue.length + (processing ? 1 : 0) >= MAX_REALTIME_PREAUTH_FRAMES || processingBytes + bytes > MAX_REALTIME_PREAUTH_BYTES) {
+        closed = true;
+        clearProcessingQueue();
+        if (rt) rt.dispose();
+        try {ws.close(1009, "realtime processing buffer exceeded");} catch {/* socket gone */}
         return;
       }
-      // Drain anything that arrived during the auth window FIRST (preserving
-      // arrival order), then this frame — all through the same chain.
+      processingBytes += bytes;
+      processingQueue.push({ data, isBinary, bytes });
+      if (!processing) void drainProcessingQueue();
+    };
+    const hold = (data, isBinary) => {
+      const bytes = Buffer.isBuffer(data) ? data.length : Buffer.byteLength(data);
+      if (queue.length >= MAX_REALTIME_PREAUTH_FRAMES || queuedBytes + bytes > MAX_REALTIME_PREAUTH_BYTES) {
+        closed = true;
+        queue.length = 0;
+        queuedBytes = 0;
+        try {ws.close(1009, "realtime pre-auth buffer exceeded");} catch {/* socket gone */}
+        return;
+      }
+      queuedBytes += bytes;
+      queue.push({ data, isBinary });
+    };
+    ws.on("message", (data, isBinary) => {
+      if (closed) return;
+      if (!ready || !rt) return hold(data, isBinary);
       if (queue.length) {
         const held = queue.splice(0);
-        for (const d of held) enqueue(d);
+        queuedBytes = 0;
+        for (const frame of held) {
+          if (closed) break;
+          if (!frame.isBinary || rt.native) enqueue(frame.data, frame.isBinary);
+        }
       }
-      enqueue(data);
+      if (!closed && (!isBinary || rt.native)) enqueue(data, isBinary);
     });
     ws.on("close", () => {
       closed = true;
+      setupAbort.abort();
       queue.length = 0;
+      queuedBytes = 0;
+      clearProcessingQueue();
       // Abort any upstream chat still streaming for this session so provider
       // connections / tokens aren't stranded after the client goes away.
       // Idempotent and abort-only (owner clears its controller), so it is safe
@@ -317,7 +364,10 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
       // close or send from here: the ws stack already initiates the close with
       // the correct code (e.g. 1009), and a duplicate close/send can throw.
       closed = true;
+      setupAbort.abort();
       queue.length = 0;
+      queuedBytes = 0;
+      clearProcessingQueue();
       process.stderr.write(`[custom-server] realtime socket error: ${error?.message || error}\n`);
       if (rt) rt.dispose();
     });
@@ -350,37 +400,77 @@ function handleRealtimeUpgrade(req, socket, head, { port } = {}) {
       }
 
       const model = modelFromUrl(req.url);
-      const session = {
-        id: `sess_${crypto.randomUUID()}`,
-        model: model || "openai/gpt-4o-mini",
-        instructions: "",
-        modalities: ["text"],
-        temperature: undefined,
-        maxOutputTokens: undefined,
-        items: []
-      };
-      const headers = {};
-      if (key) headers.Authorization = `Bearer ${key}`;
-      if (cliToken) headers["x-9r-cli-token"] = cliToken;
-      const chat = async ({ body, headers: h, signal }) => fetch(loopbackChatUrl(port), {
+      const nativeModel = model || "openai/gpt-4o-mini";
+      const nativeUrl = new URL(req.url, "http://localhost");
+      const nativePath = nativeUrl.pathname.replace(/\/$/, "");
+      const connectionId = isString(req.headers?.["x-connection-id"]) ? req.headers["x-connection-id"] : isString(req.headers?.["x-9router-connection-id"]) ? req.headers["x-9router-connection-id"] : undefined;
+      const operatorExpiresAt = Date.now() + 5_000;
+      const nativeRequest = await fetch(loopbackNativeRealtimeUrl(port), {
         method: "POST",
-        headers: { "content-type": "application/json", ...h },
-        body: JSON.stringify(body),
-        signal
+        signal: AbortSignal.any([setupAbort.signal, AbortSignal.timeout(10_000)]),
+        headers: { "content-type": "application/json", ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt: operatorExpiresAt }) } : null) },
+        body: JSON.stringify({ model: nativeModel, path: nativePath, operatorExpiresAt, query: [...nativeUrl.searchParams], ...(connectionId ? { connectionId } : null) })
       });
+      if (nativeRequest.status === 200) {
+        const { handoffId } = await nativeRequest.json();
+        const native = consumeNativeRealtimeHandoff(handoffId);
+        if (!native) throw new Error("Native realtime handoff unavailable");
+        const authorizeModel = async (value) => {
+          const expiresAt = Date.now() + 5000;
+          const checked = await fetch(loopbackNativeRealtimeUrl(port), {
+            method: "POST", signal: AbortSignal.timeout(5000),
+            headers: { "content-type": "application/json", ...(key ? { "x-9r-realtime-client-key": key } : null), ...(auth.operator ? { "x-9r-realtime-operator-proof": createRealtimeOperatorProof({ model: nativeModel, path: nativePath, expiresAt }) } : null) },
+            body: JSON.stringify({ model: nativeModel, path: nativePath, operatorExpiresAt: expiresAt, authorizeModel: value, ...(connectionId ? { connectionId } : null) })
+          });
+          if (checked.status !== 204) throw new Error("Native realtime model access denied");
+        };
+        rt = await relayFactory({ client: ws, wsUrl: native.wsUrl, authorization: native.authorization, proxy: native.proxy, authorizeModel, binaryAudio: native.binaryAudio, onProviderEvent: native.onProviderEvent, signal: setupAbort.signal });
+        rt.opened.catch(() => {});
+        if (closed) {
+          rt.dispose();
+          await rt.opened.catch(() => {});
+          return;
+        }
+        rt.native = true;
+        await rt.opened;
+        if (closed) {
+          rt.dispose();
+          return;
+        }
+        if (native.sessionType === "transcription") await rt.handleClientEvent(JSON.stringify({ type: "session.update", session: { type: "transcription", audio: { input: { transcription: { model: native.transcriptionModel }, turn_detection: null } } } }));
+        ready = true;
+        if (queue.length) {
+          const held = queue.splice(0);
+          queuedBytes = 0;
+          for (const frame of held) {
+            if (closed) break;
+            enqueue(frame.data, frame.isBinary);
+          }
+        }
+        return;
+      }
+      if (nativeRequest.status !== 204) {
+        queue.length = 0;
+        queuedBytes = 0;
+        ws.close(nativeRequest.status === 401 || nativeRequest.status === 403 ? 4001 : 1011, "native realtime unavailable");
+        return;
+      }
+      const session = { id: `sess_${crypto.randomUUID()}`, model: model || "openai/gpt-4o-mini", instructions: "", modalities: ["text"], temperature: undefined, maxOutputTokens: undefined, items: [] };
+      const headers = { ...(key ? { Authorization: `Bearer ${key}` } : null), ...(cliToken ? { "x-9r-cli-token": cliToken } : null) };
+      const chat = async ({ body, headers: h, signal }) => fetch(loopbackChatUrl(port), { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body), signal });
       rt = createRealtimeSession({ ws, session, chat, headers });
-
-      ws.send(JSON.stringify({
-        type: "session.created",
-        event_id: `evt_${crypto.randomUUID()}`,
-        session: publicRealtimeSession(session)
-      }));
+      ws.send(JSON.stringify({ type: "session.created", event_id: `evt_${crypto.randomUUID()}`, session: publicRealtimeSession(session) }));
       ready = true;
       if (queue.length) {
         const held = queue.splice(0);
-        for (const d of held) enqueue(d);
+        queuedBytes = 0;
+        for (const frame of held) {
+          if (closed) break;
+          if (!frame.isBinary) enqueue(frame.data);
+        }
       }
     } catch (error) {
+      if (closed || setupAbort.signal.aborted) return;
       try {ws.close(1011, "internal error");} catch {/* ignore */}
       process.stderr.write(`[custom-server] realtime setup failed: ${error?.message || error}\n`);
     }

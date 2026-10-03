@@ -42,6 +42,35 @@ function isJsonRecord(value) {
  * Translation can emit a shape other than the client's source dialect, so the
  * body itself—not sourceFormat—selects the content fields inspected here.
  */
+function hasNonemptyResponseValue(value) {
+  return isString(value) ? value.trim().length > 0 :
+  value !== null && isObject(value) && !Array.isArray(value) && Object.keys(value).length > 0;
+}
+
+function hasResponsesContentItem(item) {
+  if (!item || !isObject(item)) return false;
+  if (item.type === "image_generation_call") return hasNonemptyResponseValue(item.result);
+  if (item.type === "mcp_approval_request") {
+    const id = item.id || item.approval_request_id;
+    return isString(id) && id.trim().length > 0 &&
+    hasNonemptyResponseValue(item.name || item.server_label || item.arguments);
+  }
+  if (["function_call", "custom_tool_call", "computer_call", "shell_call", "local_shell_call", "apply_patch_call"].includes(item.type)) {
+    const id = item.call_id || item.id;
+    return isString(id) && id.trim().length > 0 &&
+    hasNonemptyResponseValue(item.name || item.action || item.operation || item.command || item.arguments || item.input);
+  }
+  if (item.type === "reasoning") {
+    return isString(item.reasoning) && item.reasoning.trim() ||
+    Array.isArray(item.summary) && item.summary.some((part) => isString(part?.text) && part.text.trim());
+  }
+  if (item.type !== "message" || !Array.isArray(item.content)) return false;
+  return item.content.some((part) =>
+  isString(part?.text) && part.text.trim() ||
+  isString(part?.refusal) && part.refusal.trim());
+}
+
+/** Check the emitted response shape for client-usable text, reasoning, or tools. */
 function hasUsefulContent(response) {
   /** Translation may emit OpenAI choices regardless of the client's source dialect. */
   if (Array.isArray(response?.choices)) {
@@ -50,26 +79,21 @@ function hasUsefulContent(response) {
     Array.isArray(message?.content) && message.content.length > 0 ||
     isString(message?.reasoning_content) && message.reasoning_content.trim().length > 0 ||
     isString(message?.reasoning) && message.reasoning.trim().length > 0 ||
+    isString(message?.audio?.data) && message.audio.data.length > 0 ||
     Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ||
     Boolean(message?.function_call);
   }
   if (response?.type === "message") {
-    return Array.isArray(response.content) && response.content.some((block) =>
+    return response.stop_reason === "refusal" ||
+    Array.isArray(response.content) && response.content.some((block) =>
     block?.type === "tool_use" ||
     block?.type === "thinking" && isString(block.thinking) && block.thinking.trim() ||
     block?.type === "text" && isString(block.text) && block.text.trim());
   }
 
-  if (Array.isArray(response?.output)) {
-    return response.output.some((item) =>
-    item?.type === "function_call" ||
-    item?.type === "custom_tool_call" ||
-    item?.type === "reasoning" && (
-    isString(item.reasoning) && item.reasoning.trim() ||
-    Array.isArray(item.summary) && item.summary.some((part) => isString(part?.text) && part.text.trim())) ||
-    item?.type === "message" && Array.isArray(item.content) && item.content.some((part) =>
-    isString(part?.text) && part.text.trim()));
-  }
+  // Background Responses acknowledge acceptance with an empty output array.
+  if (response?.object === "response" && isString(response.id) && response.id.trim() && ["queued", "in_progress"].includes(response.status)) return true;
+  if (Array.isArray(response?.output)) return response.output.some(hasResponsesContentItem);
 
   const candidates = response?.candidates ?? response?.response?.candidates;
   if (Array.isArray(candidates)) {

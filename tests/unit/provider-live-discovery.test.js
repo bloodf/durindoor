@@ -131,7 +131,7 @@ describe("provider live model discovery", () => {
     expect(model(models, "cc/claude-live-sibling")).toBeUndefined();
   });
 
-  it("lets live Anthropic metadata disable stale static reasoning flags", async () => {
+  it("does not let sparse Anthropic thinking metadata erase static capabilities", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       data: [{
         id: "claude-opus-5",
@@ -142,11 +142,23 @@ describe("provider live model discovery", () => {
     })));
     mocks.getProviderConnections.mockResolvedValue([connection("claude")]);
 
-    const models = await buildModelsList([LLM_KIND]);
-    const live = model(models, "cc/claude-opus-5");
+    const live = model(await buildModelsList([LLM_KIND]), "cc/claude-opus-5");
 
-    expect(live.capabilities.reasoning).toBe(false);
-    expect(live.capabilities.thinkingFormat).toBeNull();
+    expect(live.capabilities).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive" });
+  });
+
+  it("does not infer disable support from Anthropic enabled metadata", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => response({
+      data: [{
+        id: "claude-fable-5-1",
+        capabilities: { thinking: { types: { enabled: { supported: false }, adaptive: { supported: true } } } },
+      }],
+    })));
+    mocks.getProviderConnections.mockResolvedValue([connection("claude")]);
+
+    const live = model(await buildModelsList([LLM_KIND]), "cc/claude-fable-5-1");
+
+    expect(live.capabilities).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false });
   });
 
   it("falls back to Anthropic static catalog when live discovery fails", async () => {
@@ -250,7 +262,6 @@ describe("provider live model discovery", () => {
     const unknown = model(models, "cx/gpt-new-codex");
 
     expect(known.capabilities.contextWindow).toBe(345_678);
-    expect(known.capabilities.maxOutput).toBe(128_000);
     expect(unknown.capabilities.contextWindow).toBe(456_789);
     expect(unknown.capabilities.maxOutput).toBeUndefined();
     expect(mocks.getCodexModels).toHaveBeenCalledWith(

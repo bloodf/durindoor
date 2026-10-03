@@ -145,6 +145,20 @@ describe("injectReasoningContent — MiniMax thinking round-trip", () => {
     expect(out.messages[0].reasoning_content).toBe(original);
   });
 
+  it("keeps M3.1 native reasoning history exact and does not fabricate missing content", () => {
+    const real = "native MiniMax reasoning";
+    const out = injectReasoningContent({
+      provider: "minimax",
+      model: "MiniMax-M3.1-Flash-Preview",
+      body: bodyWith([
+        { role: "assistant", content: "missing" },
+        { role: "assistant", content: "real", reasoning_content: real },
+      ]),
+    });
+    expect(out.messages[0].reasoning_content).toBeUndefined();
+    expect(out.messages[1].reasoning_content).toBe(real);
+  });
+
   it("DefaultExecutor transformRequest runs the injector for minimax", async () => {
     const { DefaultExecutor } = await import("../../open-sse/executors/default.js");
     const executor = new DefaultExecutor("minimax");

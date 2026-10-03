@@ -2,7 +2,7 @@ import { getAdapter } from "../driver.js";
 import { stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
 import { DEFAULT_CAPABILITIES } from "open-sse/providers/capabilities.js";
-import { isBoolean, isObject } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const aliasKv = makeKv("modelAliases");
 const customKv = makeKv("customModels");
@@ -64,13 +64,16 @@ const BOOLEAN_CAPS = [
 "videoInput",
 "imageOutput",
 "audioOutput",
+"videoOutput",
 "search",
+"structuredOutput",
+"promptCaching",
 "reasoning",
 "tools",
 "thinkingCanDisable"];
 
 
-const INTEGER_CAPS = ["contextWindow", "maxOutput"];
+const INTEGER_CAPS = ["contextWindow", "maxOutput", "maxInput"];
 
 function isPositiveInteger(value) {
   return Number.isInteger(value) && value > 0 && value <= Number.MAX_SAFE_INTEGER;
@@ -127,6 +130,24 @@ export function normalizeCustomCapabilities(raw) {
       return { ok: false, error: `${key} must be a positive integer` };
     }
     out[key] = value;
+  }
+  for (const key of ["thinkingEfforts", "thinkingModes", "supportedTools"]) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (value === null) {
+      out[key] = null;
+      continue;
+    }
+    if (!Array.isArray(value) || value.some((entry) => !isString(entry) || !entry.trim())) {
+      return { ok: false, error: `${key} must be an array of non-empty strings` };
+    }
+    out[key] = [...new Set(value)];
+  }
+  if (raw.thinkingType !== undefined) {
+    if (raw.thinkingType !== null && !["adaptive", "between_tools"].includes(raw.thinkingType)) {
+      return { ok: false, error: "invalid thinkingType" };
+    }
+    out.thinkingType = raw.thinkingType;
   }
   if (raw.thinkingFormat !== undefined) {
     if (raw.thinkingFormat === null) {

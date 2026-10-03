@@ -86,6 +86,17 @@ describe("handleImageGenerationCore", () => {
     expect(responseBody.data[0].url).toBe("https://example.com/image.png");
   });
 
+  it("forwards current GPT Image generation fields", async () => {
+    global.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ created: 1, data: [] }), { headers: { "Content-Type": "application/json" } }));
+    await handleImageGenerationCore({
+      body: { prompt: "A transparent icon", background: "transparent", output_format: "webp", output_compression: 80, moderation: "low" },
+      modelInfo: { provider: "openai", model: "gpt-image-2.5-sunburst" },
+      credentials: { apiKey: "test-key" },
+      log: null,
+    });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ background: "transparent", output_format: "webp", output_compression: 80, moderation: "low" });
+  });
+
   it("generates image with Gemini format", async () => {
     global.fetch.mockResolvedValueOnce(
       new Response(
@@ -183,14 +194,14 @@ describe("handleImageGenerationCore", () => {
 
     await handleImageGenerationCore({
       body: { prompt: "A forest", size: "1024x1024" },
-      modelInfo: { provider: "minimax", model: "image-01-live" },
+      modelInfo: { provider: "minimax", model: "image-01" },
       credentials: { apiKey: "test-key" },
       log: null,
     });
 
     const sentBody = JSON.parse(global.fetch.mock.calls[0][1].body);
     expect(sentBody.aspect_ratio).toBe("1:1");
-    expect(sentBody.model).toBe("image-01-live");
+    expect(sentBody.model).toBe("image-01");
   });
 
   it("surfaces MiniMax upstream errors through the core error path", async () => {

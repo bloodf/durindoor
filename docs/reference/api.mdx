@@ -5,7 +5,7 @@ description: Method, path, body, streaming, and provider support for every /v1 r
 
 Point clients at `http://localhost:20128/v1`. Production listens on port `20128`. Next rewrites `/v1/:path*` to `/api/v1/:path*`, so the files live under `src/app/api/v1` while the public path stays `/v1`. A second rewrite maps `/v1/v1/:path*` onto the same handlers for clients that already put `/v1` in both the base URL and the path. `/codex/:path*` and `/responses` land on `POST /v1/responses`. `/v1beta` is a separate tree.
 
-This page has one row per `route.js` under `src/app/api/v1` (41 files), plus the two Gemini-shaped routes under `src/app/api/v1beta`. A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
+The tables cover the public inference routes and the allowlisted native-provider facade. A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
 
 Key policy, minting, and lifetime caps are on [API keys](../guides/api-keys.mdx). SDK snippets are on [SDK examples](../guides/sdk-examples.mdx).
 
@@ -84,7 +84,7 @@ Combos only help when every member can run the client workflow (tools, images, J
 
 Every media endpoint on this page, plus web search, web fetch, and embeddings below, accepts a request without `model` (or `"model": "auto"`) except image edit and voices. It then runs the endpoint's [media route](../features/media-routes.mdx): the dashboard-ordered models from connected providers of that kind, with fallback. The 400 `no_provider_for_kind` fires when no connected provider serves the kind, when a saved route has no available model, or when a saved route's models are available but none can run on this endpoint; see [media routes](../features/media-routes.mdx) for the exact message per case.
 
-Image generate is JSON `{ model, prompt }`. Optional `Accept: text/event-stream` and `?response_format=binary`. `sdwebui` and `comfyui` need no stored key. Image edit is multipart: `model`, `image`, `prompt`.
+Image generation accepts JSON `{ model, prompt }`, optional `Accept: text/event-stream`, and `?response_format=binary`. Image edits accept multipart or provider-native JSON on supported models. xAI accepts `image: { url }` or `image: { file_id }`, or up to five sources in `images`; the adapter preserves `storage_options` and converts multipart `n` to a number. `sdwebui` and `comfyui` need no stored key.
 
 TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
 
@@ -106,6 +106,41 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 | POST, OPTIONS | `/v1/audio/music` | same (re-export) | no | same as music generations |
 | POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
 | POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, MiniMax CN, OrcaRouter) |
+
+## Native provider APIs
+
+Use `/v1/native/{provider}/{vendor-path}` for vendor-specific fields that the common chat/media APIs cannot express. Supported providers are `openai`, `anthropic`, `minimax`, `minimax-cn`, and `xai`. The server uses fixed vendor origins and an operation allowlist; clients cannot choose an upstream host or supply provider credentials.
+
+Supply a gateway identity in `?model=provider/model`, or in the operation's execution-model field. The server resolves aliases, checks the key's model and account scope, and rewrites execution-model strings without rounding other JSON numbers. Nested Live, transcription, advisor-tool, and batch model fields receive the same checks. Prompts and tool schemas retain their own strings.
+
+| Provider | Native operation families |
+| --- | --- |
+| OpenAI | Responses create/retrieve/cancel/delete, Chat Completions, Realtime/translation/transcription ephemeral sessions, Live sessions |
+| Anthropic | Messages, native Files and Message Batches |
+| MiniMax / CN | OpenAI/Anthropic-compatible text, speech, image, music/lyrics/cover preprocessing, voice management, files, Hailuo/H3 jobs |
+| xAI | Responses, image generation/edits, video generation/edits/extensions/polling, TTS and STT |
+
+For account-bound operations, send `x-connection-id` with the account returned in the creation response's `x-9router-connection-id`. Missing pins return 400; unavailable pins fail instead of switching accounts. Tracked OpenAI Responses and MiniMax/xAI resource operations require the creator key, or local operator access. Completion polling uses the creation model and creator key, and repeated terminal usage does not charge twice. Deleted creator keys cannot redirect charges to the polling key.
+
+Native Anthropic file/batch lists and MiniMax voice-category lists expose the selected account's resources. Share those accounts only with trusted clients. MiniMax `POST /v1/get_voice` takes `voice_type`, not an individual `voice_id`; see the [vendor schema](https://platform.minimax.io/docs/api-reference/voice-management-get.md).
+
+Native background and batch inference require keys without usage/rate caps: the gateway cannot meter work after a client leaves. Direct ephemeral sessions have the same restriction. Gateway-relayed native WebSockets remain available to scoped keys; see [Realtime](../features/realtime.mdx).
+
+Native JSON/SSE/WS accounting commits reported token usage before the terminal result becomes usable. OpenAI and MiniMax streaming chat requests force `stream_options.include_usage: true`. Spending the last allowance preserves that result and rejects the next request. Media responses without token usage use a text-input estimate; token/USD caps do not bound vendor charges per character, image, second, or generation. Use vendor account budgets for those charges.
+
+Tools execute in the client or the vendor's declared server-tool service. DurinDoor does not execute consumer function, computer, or browser tools on the gateway host.
+
+### Native background Responses
+
+```bash
+curl http://localhost:20128/v1/native/openai/v1/responses \
+  -H "Authorization: Bearer <gateway-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openai/gpt-6.1-sol","input":"Summarize this request.","background":true,"stream":false}'
+```
+
+Keep the returned response id and connection header, then poll the same native path with `/responses/{id}?model=openai/gpt-6.1-sol` and `x-connection-id`. Use an uncapped key. The common `/v1/responses` router retains released provider streaming/conversion behavior.
+
 
 ## Embeddings, rerank, and moderation
 

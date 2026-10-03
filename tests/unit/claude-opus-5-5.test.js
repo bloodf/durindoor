@@ -139,6 +139,40 @@ describe("client beta forwarding", () => {
     const beta = headers["Anthropic-Beta"] || headers["anthropic-beta"];
     expect(beta.split(",")).toContain("thinking-binding-controls-2026-08-01");
   });
+
+  it("forwards timing and inline-tools only when requested, without duplicate or unknown betas", () => {
+    const executor = new DefaultExecutor("claude");
+    const credentials = { accessToken: "sk-ant-oat-x" };
+    const requested = executor.buildHeaders(credentials, true, {
+      clientHeaders: {
+        "anthropic-beta": "timing-2026-09-09,inline-tools-2026-09-15,timing-2026-09-09,unknown-2099-01-01",
+      },
+    }, "claude-opus-5-5");
+    const without = executor.buildHeaders(credentials, true, { clientHeaders: {} }, "claude-opus-5-5");
+    const tokens = requested["Anthropic-Beta"].split(",");
+    expect(tokens.filter((token) => token === "timing-2026-09-09")).toHaveLength(1);
+    expect(tokens.filter((token) => token === "inline-tools-2026-09-15")).toHaveLength(1);
+    expect(tokens).not.toContain("unknown-2099-01-01");
+    expect(without["Anthropic-Beta"].split(",")).not.toContain("timing-2026-09-09");
+    expect(without["Anthropic-Beta"].split(",")).not.toContain("inline-tools-2026-09-15");
+  });
+
+  it("preserves compatible Claude model beta flags while forwarding per-turn flags", () => {
+    const executor = new DefaultExecutor("anthropic-compatible-official");
+    const headers = executor.buildHeaders({ apiKey: "key" }, true, {
+      clientHeaders: { "Anthropic-Beta": "inline-tools-2026-09-15,timing-2026-09-09" },
+    }, "claude-sonnet-5-5");
+    const tokens = headers["Anthropic-Beta"].split(",");
+    expect(tokens).toContain("context-management-2025-06-27");
+    expect(tokens).toContain("effort-2025-11-24");
+    expect(tokens.filter((token) => token === "inline-tools-2026-09-15")).toHaveLength(1);
+    expect(tokens.filter((token) => token === "timing-2026-09-09")).toHaveLength(1);
+    const otherModel = executor.buildHeaders({ apiKey: "key" }, true, {
+      clientHeaders: { "Anthropic-Beta": "inline-tools-2026-09-15" },
+    }, "kimi-k3");
+    expect(otherModel["Anthropic-Beta"]).toBeUndefined();
+    expect(otherModel["anthropic-beta"]).toBeUndefined();
+  });
 });
 
 describe("Claude model discovery headers", () => {

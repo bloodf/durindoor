@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { GROK_CLI_SHELL_USER_AGENT, GROK_CLI_VERSION } from "../config/grokCli.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials } from
@@ -45,19 +46,13 @@ const HOSTED_TOOL_TYPES = new Set([
 "local_shell"]
 );
 
-// Grok Build subscription protocol fingerprint (wire capture of official
-// @xai-official/grok 0.2.99; upstream decolua/9router#2590). The official
-// Grok Build client omits the legacy grok-pager headers (x-xai-token-auth,
-// x-authenticateresponse, x-compaction-at) and never sends reasoning effort,
-// so requests whose resolved upstream model is grok-build are re-fingerprinted
-// at dispatch to match the captured wire protocol. Non-Build models keep the
-// legacy 0.2.93 header path untouched.
+// Grok Build keeps its grok-shell fingerprint and omits legacy grok-pager
+// headers; non-Build models retain grok-pager headers and reasoning effort.
+// Captured protocol: decolua/9router#2590.
 const GROK_BUILD_MODEL = "grok-build";
-const GROK_BUILD_CLIENT_VERSION = "0.2.99";
 const GROK_BUILD_CLIENT_IDENTIFIER = "grok-shell";
-const GROK_BUILD_USER_AGENT = `grok-shell/${GROK_BUILD_CLIENT_VERSION} (linux; x86_64)`;
 
-// Headers the official 0.2.99 Grok Build client never sends for grok-build.
+// Headers the official Grok Build client never sends for grok-build.
 const GROK_BUILD_OMITTED_HEADERS = [
 "x-xai-token-auth",
 "x-authenticateresponse",
@@ -353,10 +348,10 @@ export class GrokCliExecutor extends BaseExecutor {
     headers["x-xai-token-auth"] = this.config.tokenAuth || "xai-grok-cli";
     const isGrokBuild = model === GROK_BUILD_MODEL;
     if (isGrokBuild) {
-      // Grok Build subscription protocol: official 0.2.99 wire fingerprint.
-      headers["User-Agent"] = GROK_BUILD_USER_AGENT;
+      // Grok Build subscription protocol: grok-shell wire fingerprint.
+      headers["User-Agent"] = GROK_CLI_SHELL_USER_AGENT;
       headers["x-grok-client-identifier"] = GROK_BUILD_CLIENT_IDENTIFIER;
-      headers["x-grok-client-version"] = GROK_BUILD_CLIENT_VERSION;
+      headers["x-grok-client-version"] = GROK_CLI_VERSION;
       for (const k of GROK_BUILD_OMITTED_HEADERS) delete headers[k];
     }
     if (!headers.Accept) headers.Accept = "application/json";

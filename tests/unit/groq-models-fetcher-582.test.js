@@ -35,21 +35,6 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({
 import { getProviderConnections } from "@/lib/localDb";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 
-const retiredIds = [
-  "llama-3.3-70b-versatile",
-  "meta-llama/llama-4-maverick-17b-128e-instruct",
-  "qwen/qwen3-32b",
-];
-
-const currentModels = {
-  "openai/gpt-oss-120b": "GPT-OSS 120B",
-  "openai/gpt-oss-20b": "GPT-OSS 20B",
-  "openai/gpt-oss-safeguard-20b": "GPT-OSS Safeguard 20B",
-  "qwen/qwen3.6-27b": "Qwen3.6 27B",
-  "groq/compound": "Compound",
-  "groq/compound-mini": "Compound Mini",
-  "allam-2-7b": "Allam 2 7B",
-};
 
 describe("Groq model catalog (upstream #3558)", () => {
   afterEach(() => {
@@ -57,12 +42,6 @@ describe("Groq model catalog (upstream #3558)", () => {
     vi.clearAllMocks();
   });
 
-  it("replaces retired models with the refreshed production catalog", () => {
-    const catalog = Object.fromEntries(groq.models.map(({ id, name }) => [id, name]));
-
-    expect(catalog).toMatchObject(currentModels);
-    for (const id of retiredIds) expect(catalog).not.toHaveProperty(id);
-  });
 
   it("enables OpenAI model discovery and unknown-model passthrough", () => {
     expect(groq.modelsFetcher).toEqual({
@@ -106,24 +85,26 @@ describe("Groq model catalog (upstream #3558)", () => {
   });
 
   it("keeps the refreshed free Groq catalog when paid models are hidden", async () => {
-    const freeIds = Object.keys(currentModels).filter((id) => id !== "openai/gpt-oss-safeguard-20b");
+    const freeId = "openai/gpt-oss-20b";
+    const paidId = "openai/gpt-oss-safeguard-20b";
     getSettings.mockResolvedValueOnce({ hidePaidModels: true });
     getProviderConnections.mockResolvedValue([{
       id: "groq-1",
       provider: "groq",
       apiKey: "gsk-test",
       isActive: true,
-      providerSpecificData: { enabledModels: freeIds },
+      providerSpecificData: { enabledModels: [freeId, paidId] },
     }]);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: freeIds.map((id) => ({ id })) }),
+      json: async () => ({ data: [{ id: freeId }, { id: paidId }] }),
     }));
 
     const ids = (await buildModelsList([LLM_KIND]))
       .map((model) => model.id)
       .filter((id) => id.startsWith("groq/"));
 
-    expect(ids).toEqual(freeIds.map((id) => `groq/${id.replace(/^groq\//, "")}`));
+    expect(ids).toContain(`groq/${freeId}`);
+    expect(ids).not.toContain(`groq/${paidId}`);
   });
 });

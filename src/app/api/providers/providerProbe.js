@@ -27,6 +27,7 @@ const SPECIALTY_VALIDATORS = {
   // Ported from OmniRoute #6894 (diegosouzapw#6142, parity with `jules`).
   devin: validateDevinCloudAgentProvider,
   bedrock: validateBedrockSignedProvider,
+  dify: validateDifyProvider,
   "chatgpt-web": validateChatgptWebSession,
 };
 
@@ -107,6 +108,29 @@ export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch 
   if (response.ok) return { valid: true, status: response.status };
   return { valid: false, status: response.status, error: `Provider validation failed (HTTP ${response.status ?? "unknown"})` };
 }
+/** Validate Dify app key and its published app metadata without invoking the app. */
+export async function validateDifyProvider({ apiKey, fetcher = fetch }) {
+  const guard = getProviderValidationGuard();
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  const urls = ["https://api.dify.ai/v1/info", "https://api.dify.ai/v1/parameters"];
+  let responses;
+  try {
+    responses = await Promise.all(urls.map((url) => guardedProbeFetch(url, {
+      method: "GET",
+      headers,
+      redirect: "manual",
+      signal: AbortSignal.timeout(8000),
+    }, guard, fetcher)));
+  } catch (err) {
+    if (err instanceof OutboundUrlGuardError) return { valid: false, status: null, blocked: true, error: err.message };
+    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+  }
+  const failed = responses.find((response) => !response.ok);
+  if (!failed) return { valid: true, status: 200 };
+  if (AUTH_FAILURE_STATUSES.has(failed.status)) return { valid: false, status: failed.status, error: "Invalid API key" };
+  return { valid: false, status: failed.status, error: `Dify app validation failed (HTTP ${failed.status})` };
+}
+
 
 /**
  * Bedrock with static AWS keys or a local AWS profile. The generic probe would send `apiKey` as a

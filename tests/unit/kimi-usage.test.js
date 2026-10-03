@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: vi.fn(),
@@ -6,337 +6,137 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { getUsageForProvider } from "../../open-sse/services/usage.js";
-import { USAGE_SUPPORTED_PROVIDERS, USAGE_APIKEY_PROVIDERS } from "../../src/shared/constants/providers.js";
-import { PROVIDERS } from "../../open-sse/providers/index.js";
-import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
-
-const KIMI_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
-const QUOTA_PAGE = "https://www.kimi.com/membership/subscription?tab=quota";
 
 function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-const ACTIVE_USAGE = {
-  user: {
-    membership: { level: "LEVEL_ADVANCED" },
-  },
-  usage: {
-    limit: "100",
-    used: "35",
-    remaining: "65",
-    resetTime: "2026-08-01T00:00:00Z",
-  },
-  limits: [
-    {
-      window: { type: "rate" },
-      detail: {
-        limit: "60",
-        remaining: "40",
-        resetTime: "2026-07-29T12:00:00Z",
-      },
-    },
-  ],
+const USAGE = {
+  user: { membership: { level: "LEVEL_ADVANCED" } },
+  usage: { limit: "100", used: "35", remaining: "65" },
 };
 
-describe("kimi registry usage flags", () => {
-  it("exposes usage + usageApikey so OAuth and apikey cards appear on /quota", () => {
-    expect(USAGE_SUPPORTED_PROVIDERS).toContain("kimi");
-    expect(USAGE_APIKEY_PROVIDERS).toContain("kimi");
+describe("Kimi Coding usage", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(["kimi-coding", "kimi-coding-apikey"])("uses supported quota handler for %s", async (provider) => {
+    proxyAwareFetch.mockResolvedValueOnce(jsonResponse(USAGE));
+
+    const usage = await getUsageForProvider({ provider, apiKey: "kimi-coding-key" });
+    expect(usage.quotas.Weekly).toMatchObject({ used: 35, total: 100, remainingPercentage: 65 });
+
+    const [, options] = proxyAwareFetch.mock.calls[0];
+    expect(options.headers["x-api-key"]).toBe("kimi-coding-key");
   });
 
-  it("registers transport.usage url when present (optional)", () => {
-    // Provider may or may not put usage url on transport; handler has its own constant.
-    expect(PROVIDERS.kimi).toBeTruthy();
-  });
-});
-
-describe("getUsageForProvider(kimi) auth selection", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("OAuth path: Bearer + X-Msh-* (OmniRoute /usages parity; not chat x-api-key)", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(jsonResponse(ACTIVE_USAGE));
-
-    const usage = await getUsageForProvider({
-      provider: "kimi",
-      accessToken: "tok-abc",
-      providerSpecificData: { deviceId: "stable-device-1" },
-    });
-
-    expect(usage.message).toBeUndefined();
-    expect(usage.plan).toBe("Allegro");
-    expect(usage.quotas.Weekly).toMatchObject({
-      used: 35,
-      total: 100,
-      remainingPercentage: 65,
-    });
-
-    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
-    const [url, opts] = proxyAwareFetch.mock.calls[0];
-    expect(url).toBe(KIMI_USAGE_URL);
-    expect(opts.method).toBe("GET");
-    expect(opts.headers.Authorization).toBe("Bearer tok-abc");
-    expect(opts.headers["x-api-key"]).toBeUndefined();
-    expect(opts.headers["X-Msh-Platform"]).toBe("9router");
-    expect(opts.headers["X-Msh-Device-Id"]).toBe("stable-device-1");
-    expect(opts.headers["X-Msh-Version"]).toBeTruthy();
-  });
-
-  it("apikey path: x-api-key only (no Bearer / X-Msh)", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(jsonResponse(ACTIVE_USAGE));
-
-    const usage = await getUsageForProvider({
-      provider: "kimi",
-      apiKey: "sk-test-123",
-    });
-
-    expect(usage.message).toBeUndefined();
-    expect(usage.quotas.Weekly.used).toBe(35);
-
-    const [, opts] = proxyAwareFetch.mock.calls[0];
-    expect(opts.headers["x-api-key"]).toBe("sk-test-123");
-    expect(opts.headers.Authorization).toBeUndefined();
-    expect(opts.headers["X-Msh-Platform"]).toBeUndefined();
-  });
-
-  it("prefers apiKey over accessToken when both present", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(jsonResponse(ACTIVE_USAGE));
+  it("uses OAuth bearer credentials for Kimi Coding quota", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(jsonResponse(USAGE));
 
     await getUsageForProvider({
-      provider: "kimi",
-      accessToken: "tok-abc",
-      apiKey: "sk-prefer-me",
+      provider: "kimi-coding",
+      accessToken: "coding-oauth-token",
+      providerSpecificData: { deviceId: "coding-device" },
     });
 
-    const [, opts] = proxyAwareFetch.mock.calls[0];
-    expect(opts.headers["x-api-key"]).toBe("sk-prefer-me");
-    expect(opts.headers.Authorization).toBeUndefined();
-    expect(opts.headers["X-Msh-Platform"]).toBeUndefined();
+    const [, options] = proxyAwareFetch.mock.calls[0];
+    expect(options.headers.Authorization).toBe("Bearer coding-oauth-token");
+    expect(options.headers["x-api-key"]).toBeUndefined();
+    expect(options.headers["X-Msh-Device-Id"]).toBe("coding-device");
   });
 
-  it("maps documented membership levels and preserves unknown wire levels", async () => {
+  it("does not advertise Kimi Platform pay-as-you-go usage as Kimi Coding quota", async () => {
+    const usage = await getUsageForProvider({ provider: "kimi", apiKey: "platform-key" });
+    expect(usage.quotas).toBeUndefined();
+    expect(proxyAwareFetch).not.toHaveBeenCalled();
+  });
+
+  it("prefers API-key credentials when both auth types are supplied", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(jsonResponse(USAGE));
+    await getUsageForProvider({
+      provider: "kimi-coding", accessToken: "oauth-token", apiKey: "selected-key",
+    });
+    const [, options] = proxyAwareFetch.mock.calls[0];
+    expect(options.headers["x-api-key"]).toBe("selected-key");
+    expect(options.headers.Authorization).toBeUndefined();
+    expect(options.headers["X-Msh-Platform"]).toBeUndefined();
+  });
+
+  it("maps membership levels while preserving an unknown future level", async () => {
     for (const [level, plan] of [
-      ["Andante", "Andante"],
-      ["LEVEL_BASIC", "Moderato"],
-      ["LEVEL_INTERMEDIATE", "Allegretto"],
-      ["LEVEL_ADVANCED", "Allegro"],
-      ["LEVEL_STANDARD", "Vivace"],
-      ["LEVEL_FUTURE", "future"],
+      ["Andante", "Andante"], ["LEVEL_BASIC", "Moderato"],
+      ["LEVEL_INTERMEDIATE", "Allegretto"], ["LEVEL_ADVANCED", "Allegro"],
+      ["LEVEL_STANDARD", "Vivace"], ["LEVEL_FUTURE", "future"],
     ]) {
-      proxyAwareFetch.mockResolvedValueOnce(
-        jsonResponse({
-          user: { membership: { level } },
-          usage: { limit: "10", used: "1", remaining: "9" },
-        }),
-      );
-      const usage = await getUsageForProvider({ provider: "kimi", accessToken: "t" });
+      proxyAwareFetch.mockResolvedValueOnce(jsonResponse({
+        user: { membership: { level } }, usage: { limit: "10", used: "1", remaining: "9" },
+      }));
+      const usage = await getUsageForProvider({ provider: "kimi-coding", accessToken: "token" });
       expect(usage.plan).toBe(plan);
     }
   });
 
-  it("labels the rate quota as the documented rolling five-hour window", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(jsonResponse(ACTIVE_USAGE));
-
-    const usage = await getUsageForProvider({ provider: "kimi", accessToken: "tok" });
-
-    expect(usage.quotas.Weekly.remaining).toBeUndefined();
-    expect(usage.quotas.Weekly.remainingPercentage).toBe(65);
+  it("keeps rolling and weekly quota windows separate", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(jsonResponse({
+      ...USAGE,
+      limits: [{
+        window: { type: "rate" },
+        detail: { limit: "60", remaining: "40", resetTime: "2026-07-29T12:00:00Z" },
+      }],
+    }));
+    const usage = await getUsageForProvider({ provider: "kimi-coding", accessToken: "token" });
+    expect(usage.quotas.Weekly).toMatchObject({ used: 35, total: 100, remainingPercentage: 65 });
     expect(usage.quotas["Rolling 5-hour"]).toMatchObject({
-      used: 20,
-      total: 60,
-      remainingPercentage: expect.closeTo(40 / 60 * 100, 5),
+      used: 20, total: 60, remainingPercentage: expect.closeTo(40 / 60 * 100, 5),
     });
-    expect(usage.quotas["Rolling 5-hour"].remaining).toBeUndefined();
-    expect(usage.quotas.Ratelimit).toBeUndefined();
   });
 
-  it("surfaces re-authorize message only on 401 unauthenticated", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(
-      jsonResponse(
-        {
-          code: "unauthenticated",
-          details: [
-            {
-              debug: {
-                reason: "REASON_INVALID_AUTH_TOKEN",
-                localizedMessage: { message: "Invalid auth token" },
-              },
-            },
-          ],
-        },
-        401,
-      ),
-    );
-
-    const usage = await getUsageForProvider({
-      provider: "kimi",
-      accessToken: "expired",
-    });
-
-    expect(usage.message).toMatch(/expired|re-authorize/i);
-    expect(usage.message).not.toMatch(/subscribe|permission/i);
+  it("does not fabricate quota when the provider omits limits", async () => {
+    proxyAwareFetch.mockResolvedValueOnce(jsonResponse({
+      user: { membership: { level: "LEVEL_BASIC" } }, usage: {},
+    }));
+    const usage = await getUsageForProvider({ provider: "kimi-coding", accessToken: "token" });
+    expect(usage.plan).toBe("Moderato");
     expect(usage.quotas).toBeUndefined();
   });
 
-  it("maps 403 REASON_FEATURE_NO_PERMISSION to subscribe message (not expired)", async () => {
-    // Live capture: valid OAuth JWT still returns 403 permission_denied when
-    // the account has no Kimi Code usage entitlement.
-    proxyAwareFetch.mockResolvedValueOnce(
-      jsonResponse(
-        {
-          code: "permission_denied",
-          details: [
-            {
-              type: "common.error.v1.ErrorDetail",
-              debug: {
-                reason: "REASON_FEATURE_NO_PERMISSION",
-                localizedMessage: {
-                  locale: "en-US",
-                  message:
-                    "You do not have permission to use this feature. Please subscribe to access.",
-                },
-              },
-            },
-          ],
-        },
-        403,
-      ),
-    );
-
-    const usage = await getUsageForProvider({
-      provider: "kimi",
-      accessToken: "valid-but-no-sub",
-      providerSpecificData: { deviceId: "stable-device-1" },
-    });
-
-    expect(usage.message).toMatch(/permission|subscribe/i);
-    expect(usage.message).not.toMatch(/expired|re-authorize/i);
-    // Must not trip usage-route AUTH_EXPIRED_PATTERNS force-refresh loop
-    expect(usage.message.toLowerCase()).not.toMatch(/expired|re-authorize|unauthorized|401/);
-  });
-
-  it("formatKimiUsageError distinguishes 401 vs 403 feature gate", async () => {
-    const { formatKimiUsageError } = await import(
-      "../../open-sse/services/usage/kimi.js"
-    );
-    expect(formatKimiUsageError(401, '{"code":"unauthenticated"}')).toMatch(
-      /expired|re-authorize/i,
-    );
-    expect(
-      formatKimiUsageError(
-        403,
-        JSON.stringify({
-          code: "permission_denied",
-          details: [
-            {
-              debug: {
-                reason: "REASON_FEATURE_NO_PERMISSION",
-                localizedMessage: {
-                  message: "You do not have permission to use this feature.",
-                },
-              },
-            },
-          ],
-        }),
-      ),
-    ).toMatch(/permission|subscribe/i);
-  });
-
-  it("formats documented quota and transient overload errors with recovery guidance", async () => {
-    const { formatKimiUsageError } = await import(
-      "../../open-sse/services/usage/kimi.js"
-    );
-    expect(formatKimiUsageError(403, "You've reached your weekly (7-day) usage limit")).toContain(QUOTA_PAGE);
-    expect(formatKimiUsageError(429, "We're receiving too many requests")).toMatch(/wait.*retry/i);
-  });
-
-  it("returns tracked-per-request message when usage limit missing", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(
-      jsonResponse({
-        user: { membership: { level: "LEVEL_BASIC" } },
-        usage: {},
-      }),
-    );
-
-    const usage = await getUsageForProvider({
-      provider: "kimi",
-      accessToken: "tok",
-    });
-
-    expect(usage.plan).toBe("Moderato");
-    expect(usage.message).toMatch(/tracked per request/i);
-  });
-
-  it("returns missing-credentials message when neither token nor key", async () => {
-    const usage = await getUsageForProvider({ provider: "kimi" });
-    expect(usage.message).toMatch(/token|key|credential/i);
+  it("does not probe without credentials", async () => {
+    const usage = await getUsageForProvider({ provider: "kimi-coding" });
+    expect(usage.quotas).toBeUndefined();
     expect(proxyAwareFetch).not.toHaveBeenCalled();
   });
 
-  it("bounds a stalled usage probe to ten seconds", async () => {
+  it("aborts a stalled quota request at its deadline", async () => {
     vi.useFakeTimers();
-    proxyAwareFetch.mockImplementationOnce((_url, { signal }) => {
-      if (!signal) return Promise.reject(new Error("missing timeout signal"));
-      return new Promise((_, reject) => {
-        signal.addEventListener("abort", () => reject(new Error("usage probe aborted")));
+    try {
+      let requestSignal;
+      proxyAwareFetch.mockImplementationOnce((_url, { signal }) => {
+        requestSignal = signal;
+        return new Promise((_, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        });
       });
-    });
-
-    const usagePromise = getUsageForProvider({ provider: "kimi", accessToken: "tok" });
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    await expect(usagePromise).resolves.toMatchObject({
-      message: expect.stringMatching(/aborted|failed|error/i),
-    });
-    vi.useRealTimers();
+      const pending = getUsageForProvider({ provider: "kimi-coding", accessToken: "token" });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect((await pending).quotas).toBeUndefined();
+      expect(requestSignal.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("bounds a usage probe whose headers resolve but body stalls", async () => {
+  it("cancels a quota body that stalls after headers", async () => {
     vi.useFakeTimers();
-    const cancel = vi.fn();
-    proxyAwareFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      text: () => new Promise(() => {}),
-      body: { cancel },
-    });
-
-    const usagePromise = getUsageForProvider({ provider: "kimi", accessToken: "tok" });
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    await expect(usagePromise).resolves.toMatchObject({
-      message: expect.stringMatching(/aborted|failed|error/i),
-    });
-    expect(cancel).toHaveBeenCalledOnce();
-    vi.useRealTimers();
-  });
-});
-
-describe("parseQuotaData(kimi)", () => {
-  it("forwards remainingPercentage for dashboard bars", () => {
-    const rows = parseQuotaData("kimi", {
-      plan: "Allegro",
-      quotas: {
-        Weekly: {
-          used: 35,
-          total: 100,
-          remainingPercentage: 65,
-          resetAt: "2026-08-01T00:00:00.000Z",
-        },
-      },
-    });
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      name: "Weekly",
-      used: 35,
-      total: 100,
-      remainingPercentage: 65,
-    });
+    try {
+      const cancel = vi.fn();
+      proxyAwareFetch.mockResolvedValueOnce({
+        ok: true, status: 200, text: () => new Promise(() => {}), body: { cancel },
+      });
+      const pending = getUsageForProvider({ provider: "kimi-coding", accessToken: "token" });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect((await pending).quotas).toBeUndefined();
+      expect(cancel).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

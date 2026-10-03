@@ -7,8 +7,8 @@ import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
-import { AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, isCustomEmbeddingProvider, isLocalOllamaProvider } from "@/shared/constants/providers";
+import { AddCustomEmbeddingModal, AddSystemoneCompatibleModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
+import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, isLocalOllamaProvider } from "@/shared/constants/providers";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
 import ModelsCard from "@/app/(dashboard)/dashboard/providers/components/ModelsCard";
 import { KIND_EXAMPLE_CONFIG } from "./components/exampleShared";
@@ -22,7 +22,7 @@ export default function MediaProviderDetailPage() {
   const { kind, id } = useParams();
   const router = useRouter();
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
-  const isCustom = isCustomEmbeddingProvider(id) && kind === "embedding";
+  const isCustom = (isCustomEmbeddingProvider(id) && kind === "embedding") || (isSystemoneCompatibleProvider(id) && kind === "systemone");
 
   const handleDeleteCustom = async () => {
     setDeleteError("");
@@ -46,7 +46,7 @@ export default function MediaProviderDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  // Fetch custom node info from API for custom embedding nodes
+  // Fetch custom node info from API for custom provider nodes
   useEffect(() => {
     if (!isCustom) return;
     let cancelled = false;
@@ -66,7 +66,7 @@ export default function MediaProviderDetailPage() {
   const builtInProvider = AI_PROVIDERS[id];
 
   const provider = isCustom
-    ? (customNode ? { id, name: customNode.name || "Custom Embedding", textIcon: "CE" } : null)
+    ? (customNode ? { id, name: customNode.name || (kind === "systemone" ? "Custom System One" : "Custom Embedding"), textIcon: kind === "systemone" ? "S1" : "CE" } : null)
     : builtInProvider;
 
   if (!isCustom && !builtInProvider) return notFound();
@@ -78,7 +78,7 @@ export default function MediaProviderDetailPage() {
   const baseKinds = provider.serviceKinds ?? ["llm"];
   const localEmbeddingOverride = isLocalOllamaProvider(provider.id) && kind === "embedding";
   const kinds = isCustom
-    ? ["embedding"]
+    ? [kind]
     : (localEmbeddingOverride ? Array.from(new Set([...baseKinds, "embedding"])) : baseKinds);
   if (!isCustom && !kinds.includes(kind)) return notFound();
 
@@ -114,7 +114,7 @@ export default function MediaProviderDetailPage() {
         <ConnectionsCard providerId={id} isOAuth={false} />
       )}
 
-      {/* Models - hidden for tts/webSearch/webFetch (provider IS the model); custom uses prefix as alias */}
+      {/* Models are manually registered for custom nodes; no synthetic defaults. */}
       {kind !== "tts" && kind !== "webSearch" && kind !== "webFetch" && (
         <ModelsCard
           providerId={id}
@@ -139,19 +139,20 @@ export default function MediaProviderDetailPage() {
         />
       )}
 
-      {/* Example — per kind */}
       {kind === "embedding" && (
         <EmbeddingExampleCard providerId={id} customAlias={customNode?.prefix} />
       )}
+      {kind === "systemone" && <GenericExampleCard providerId={id} kind={kind} providerAliasOverride={isCustom ? customNode?.prefix : undefined} />}
       {kind === "tts" && <TtsExampleCard providerId={id} />}
       {kind === "stt" && !isCustom && <SttExampleCard providerId={id} />}
-      {!isCustom && KIND_EXAMPLE_CONFIG[kind] && <GenericExampleCard providerId={id} kind={kind} />}
+      {!isCustom && kind !== "systemone" && KIND_EXAMPLE_CONFIG[kind] && <GenericExampleCard providerId={id} kind={kind} />}
 
-      {isCustom && <AddCustomEmbeddingModal isOpen={showEditModal} node={customNode} onClose={() => setShowEditModal(false)} onSaved={(updated) => { setCustomNode(updated); setShowEditModal(false); }} />}
+      {isCustom && kind === "embedding" && <AddCustomEmbeddingModal isOpen={showEditModal} node={customNode} onClose={() => setShowEditModal(false)} onSaved={(updated) => { setCustomNode(updated); setShowEditModal(false); }} />}
+      {isCustom && kind === "systemone" && <AddSystemoneCompatibleModal isOpen={showEditModal} node={customNode} onClose={() => setShowEditModal(false)} onSaved={(updated) => { setCustomNode(updated); setShowEditModal(false); }} />}
       <ConfirmDialog
         open={showDeleteConfirm}
-        title="Delete custom embedding node?"
-        message="This removes the custom embedding node and cannot be undone."
+        title={`Delete custom ${kind === "systemone" ? "System One" : "embedding"} node?`}
+        message={`This removes custom ${kind === "systemone" ? "System One" : "embedding"} node and all its connections. This cannot be undone.`}
         confirmLabel="Delete"
         cancelLabel="Cancel"
         tone="danger"

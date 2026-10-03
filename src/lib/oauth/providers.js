@@ -5,6 +5,7 @@
 
 // Ensure outbound fetch respects HTTP(S)_PROXY/ALL_PROXY in Node runtime
 import "open-sse/index.js";
+import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import crypto from "crypto";
 
 import { generatePKCE, generateState } from "./utils/pkce";
@@ -419,7 +420,7 @@ const PROVIDERS = {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
-          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)"
+          "User-Agent": GROK_CLI_PAGER_USER_AGENT
         },
         body,
         proxyOptions
@@ -438,7 +439,7 @@ const PROVIDERS = {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
-          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)"
+          "User-Agent": GROK_CLI_PAGER_USER_AGENT
         },
         body: new URLSearchParams({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
@@ -467,9 +468,9 @@ const PROVIDERS = {
           headers: {
             Authorization: `Bearer ${tokens.access_token}`,
             Accept: "application/json",
-            "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+            "User-Agent": GROK_CLI_PAGER_USER_AGENT,
             "x-xai-token-auth": "xai-grok-cli",
-            "x-grok-client-version": "0.2.93"
+            "x-grok-client-version": GROK_CLI_VERSION
           },
           proxyOptions
         });

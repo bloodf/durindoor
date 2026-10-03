@@ -1,9 +1,11 @@
 import { Buffer } from "node:buffer";
-import { createErrorResult } from "../utils/error.js";
+import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveLocalWhisperHost } from "../config/providers.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 
 // OpenAI-compatible transcription path appended to a user-supplied origin. The
 // resolver deliberately returns only the origin, so the route stays fixed and a
@@ -35,12 +37,13 @@ function resolveAudioContentType(file) {
   return map[ext] || "application/octet-stream";
 }
 
-async function upstreamError(res) {
+async function upstreamError(res, secrets = []) {
   let txt = "";
   try {txt = await res.text();} catch {}
   let msg = txt || `Upstream error (${res.status})`;
   try {const j = JSON.parse(txt);msg = j?.error?.message || j?.error || j?.message || msg;} catch {}
-  return createErrorResult(res.status, isString(msg) ? msg : JSON.stringify(msg));
+  const serialized = isString(msg) ? msg : JSON.stringify(msg);
+  return createErrorResult(res.status, sanitizeErrorMessageWithSecrets(serialized, secrets));
 }
 
 // Deepgram: raw binary POST + model query param
@@ -59,7 +62,7 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
     headers: { ...buildAuthHeaders(cfg, token), "Content-Type": resolveAudioContentType(file) },
     body: buf
   });
-  if (!res.ok) return upstreamError(res);
+  if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
   return jsonResponse({ text });
@@ -72,7 +75,7 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData) {
   const up = await fetch("https://api.assemblyai.com/v2/upload", {
     method: "POST", headers: { ...auth, "Content-Type": "application/octet-stream" }, body: buf
   });
-  if (!up.ok) return upstreamError(up);
+  if (!up.ok) return upstreamError(up, [token]);
   const { upload_url } = await up.json();
   const payload = { audio_url: upload_url, speech_models: [model] };
   const lang = formData.get("language");
@@ -84,7 +87,7 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData) {
     headers: { ...auth, "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!sub.ok) return upstreamError(sub);
+  if (!sub.ok) return upstreamError(sub, [token]);
   const { id } = await sub.json();
 
   const start = Date.now();
@@ -99,41 +102,74 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData) {
   return createErrorResult(504, "AssemblyAI timeout after 120s");
 }
 
-// Nvidia NIM: multipart, normalize response
-async function transcribeNvidia(cfg, file, model, token) {
+// Hosted NVIDIA NIM: the configured function selects the model, not a form field.
+async function transcribeNvidia(cfg, file, model, token, formData, proxyOptions) {
+  if (!cfg.models?.some((candidate) => candidate.id === model)) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Unsupported NVIDIA transcription model: ${model}`);
+  }
   const fd = new FormData();
   fd.append("file", file, file.name || "audio.wav");
-  fd.append("model", model);
-  const res = await fetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd });
-  if (!res.ok) return upstreamError(res);
+  fd.append("language", formData.get("language") || "en-US");
+  for (const field of ["word_time_offsets", "response_format", "temperature"]) {
+    const value = formData.get(field);
+    if (value !== null) fd.append(field, value);
+  }
+  const res = await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd }, proxyOptions);
+  if (!res.ok) return upstreamError(res, [token]);
+  if (formData.get("response_format") === "text") {
+    return { success: true, response: new Response(await res.text(), { headers: { "Content-Type": "text/plain" } }) };
+  }
   const data = await res.json();
-  return jsonResponse({ text: data.text || data.transcript || "" });
+  if (!isString(data?.text)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "NVIDIA ASR returned no transcript");
+  return jsonResponse(data);
 }
 
-// Gemini: generateContent with inline_data audio + transcription prompt
-async function transcribeGemini(cfg, file, model, token, formData) {
+// Gemini 3.5 Transcribe uses Files + Interactions; other Gemini models retain generateContent fallback.
+async function transcribeGemini(cfg, file, model, token, formData, proxyOptions) {
+  if (model !== "gemini-3.5-transcribe") return transcribeGeminiGenerateContent(cfg, file, model, token, formData, proxyOptions);
+  const mime = resolveAudioContentType(file);
+  const content = await file.arrayBuffer();
+  const language = formData.get("language");
+  const vocabulary = formData.getAll("custom_vocabulary").flatMap((value) => {
+    if (!isString(value)) return [];
+    try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : [value]; } catch { return [value]; }
+  }).map((value) => String(value).trim()).filter(Boolean);
+  const mode = String(formData.get("mode") || "verbatim");
+  const diarization = String(formData.get("diarization_mode") || "");
+  const timestamps = formData.getAll("timestamp_granularities").map(String).filter(Boolean);
+  if (vocabulary.length > 1000) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Gemini custom_vocabulary supports at most 1000 terms");
+  if (vocabulary.length && (diarization || timestamps.length)) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Gemini custom_vocabulary cannot be combined with diarization or timestamps");
+  if (!["smart", "verbatim"].includes(mode)) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Gemini transcription mode must be smart or verbatim");
+  if (mode === "smart" && (diarization || timestamps.length)) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Gemini smart mode cannot be combined with diarization or timestamps");
+  if (diarization && diarization !== "speaker") return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Gemini diarization_mode must be speaker");
+  if (timestamps.some((value) => value !== "word")) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Gemini timestamp_granularities only supports word");
+  const start = await proxyAwareFetch("https://generativelanguage.googleapis.com/upload/v1beta/files", { method: "POST", headers: { "x-goog-api-key": token, "X-Goog-Upload-Protocol": "resumable", "X-Goog-Upload-Command": "start", "X-Goog-Upload-Header-Content-Length": String(content.byteLength), "X-Goog-Upload-Header-Content-Type": mime, "Content-Type": "application/json" }, body: JSON.stringify({ file: { display_name: file.name || "audio" } }) }, proxyOptions);
+  if (!start.ok) return upstreamError(start, [token]);
+  const uploadUrl = start.headers.get("x-goog-upload-url");
+  if (!uploadUrl) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Gemini upload did not provide a resumable URL");
+  const upload = await proxyAwareFetch(uploadUrl, { method: "POST", headers: { "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize" }, body: content }, proxyOptions);
+  if (!upload.ok) return upstreamError(upload, [token]);
+  const uploaded = await upload.json();
+  if (!uploaded?.file?.uri) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Gemini upload did not provide a file URI");
+  const transcription = { language_codes: language ? [String(language)] : [], ...(vocabulary.length ? { custom_vocabulary: vocabulary } : null), mode: mode === "smart" ? "smart" : { type: "verbatim", ...(diarization ? { diarization_mode: diarization } : null), ...(timestamps.length ? { timestamp_granularities: timestamps } : null) } };
+  const interaction = await proxyAwareFetch("https://generativelanguage.googleapis.com/v1beta/interactions", { method: "POST", headers: { "x-goog-api-key": token, "Content-Type": "application/json" }, body: JSON.stringify({ model, input: [{ type: "audio", uri: uploaded?.file?.uri, mime_type: uploaded?.file?.mime_type || mime }], generation_config: { transcription_config: transcription } }) }, proxyOptions);
+  if (!interaction.ok) return upstreamError(interaction, [token]);
+  const data = await interaction.json();
+  return jsonResponse({ text: data?.output_text || data?.outputs?.flatMap((output) => output.content || []).map((contentPart) => contentPart.text).filter(Boolean).join("") || "" });
+}
+
+async function transcribeGeminiGenerateContent(cfg, file, model, token, formData, proxyOptions) {
   const buf = await file.arrayBuffer();
   const b64 = Buffer.from(buf).toString("base64");
   const mime = resolveAudioContentType(file);
   const lang = formData.get("language");
   const userPrompt = formData.get("prompt");
-  let promptText = userPrompt && isString(userPrompt) && userPrompt.trim() ?
-  userPrompt.trim() :
-  "Generate a transcript of the speech. Return only the transcribed text, no commentary.";
+  let promptText = userPrompt && isString(userPrompt) && userPrompt.trim() ? userPrompt.trim() : "Generate a transcript of the speech. Return only the transcribed text, no commentary.";
   if (isString(lang) && lang.trim()) promptText += ` Language: ${lang.trim()}.`;
-
-  const url = `${cfg.baseUrl}/${model}:generateContent?key=${token}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mime, data: b64 } }] }]
-    })
-  });
-  if (!res.ok) return upstreamError(res);
+  const res = await proxyAwareFetch(`${cfg.baseUrl}/${model}:generateContent?key=${token}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mime, data: b64 } }] }] }) }, proxyOptions);
+  if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join("") || "";
-  return jsonResponse({ text });
+  return jsonResponse({ text: data?.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("") || "" });
 }
 
 // HuggingFace: POST raw binary to {baseUrl}/{model_id}
@@ -146,13 +182,13 @@ async function transcribeHuggingFace(cfg, file, model, token) {
     headers: { ...buildAuthHeaders(cfg, token), "Content-Type": resolveAudioContentType(file) },
     body: buf
   });
-  if (!res.ok) return upstreamError(res);
+  if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   return jsonResponse({ text: data.text || "" });
 }
 
 // Default: OpenAI/Groq/Whisper-compatible multipart
-async function transcribeOpenAICompatible(cfg, file, model, token, formData) {
+async function transcribeOpenAICompatible(cfg, file, model, token, formData, proxyOptions) {
   const fd = new FormData();
   fd.append("file", file, file.name || "audio.wav");
   fd.append("model", model);
@@ -164,17 +200,32 @@ async function transcribeOpenAICompatible(cfg, file, model, token, formData) {
   // A user-supplied host is fetched through the outbound guard so DNS answers
   // are validated on the socket too: a hostname that passes the static check
   // can still resolve to a blocked address (DNS rebinding). Registry-fixed
-  // endpoints keep the plain fetch path.
-  const send = cfg.userConfigurableHost ?
-  (url, init) => guardedProbeFetch(url, init) :
-  fetch;
-  const res = await send(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd });
-  if (!res.ok) return upstreamError(res);
-  const ct = res.headers.get("content-type") || "application/json";
-  const txt = await res.text();
-  return { success: true, response: new Response(txt, { status: 200, headers: { "Content-Type": ct, "Access-Control-Allow-Origin": "*" } }) };
+  // endpoints retain proxy-aware connection routing.
+  const res = cfg.userConfigurableHost ?
+    await guardedProbeFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd }) :
+    await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd }, proxyOptions);
+  if (!res.ok) return upstreamError(res, [token]);
+  return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
 }
 
+// MiniMax and xAI require options before multipart file; MiniMax language is an HTTP header.
+async function transcribeNativeSpeech(cfg, file, model, token, formData, proxyOptions) {
+  const fd = new FormData();
+  for (const [k, v] of formData.entries()) {
+    if (k !== "file" && k !== "model" && v !== null && v !== undefined && v !== "") fd.append(k, v);
+  }
+  if (!(cfg.format === "xai-stt" && model === "stt")) fd.append("model", model);
+  fd.append("file", file, file.name || "audio.wav");
+  const headers = buildAuthHeaders(cfg, token);
+  const language = formData.get("language");
+  if (cfg.format === "minimax-stt" && isString(language) && language.trim()) {
+    headers.language = language.trim();
+    fd.delete("language");
+  }
+  const res = await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers, body: fd }, proxyOptions);
+  if (!res.ok) return upstreamError(res, [token]);
+  return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
+}
 function jsonResponse(obj) {
   return {
     success: true,
@@ -186,8 +237,8 @@ function jsonResponse(obj) {
 }
 
 /** OpenAI-format STT configs have a sibling `/audio/translations` endpoint. */
-export function supportsSttTranslation(cfg) {
-  return cfg?.format === "openai" && TRANSCRIPTION_SUFFIX_RE.test(cfg.baseUrl || "");
+export function supportsSttTranslation(cfg, model = null) {
+  return cfg?.format === "openai" && TRANSCRIPTION_SUFFIX_RE.test(cfg.baseUrl || "") && (!Array.isArray(cfg.translationModels) || cfg.translationModels.includes(model));
 }
 
 /**
@@ -204,8 +255,8 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   if (!cfg) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support STT`);
 
   const translate = kind === "translation";
-  if (translate && !supportsSttTranslation(cfg)) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support audio translations`);
+  if (translate && !supportsSttTranslation(cfg, model)) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Model '${model}' does not support audio translations for provider '${provider}'`);
   }
 
   // A self-hosted server's host belongs to the user, not the registry. Rebuild
@@ -236,16 +287,24 @@ export async function handleSttCore({ provider, model, formData, credentials, st
     return createErrorResult(HTTP_STATUS.UNAUTHORIZED, `No credentials for STT provider: ${provider}`);
   }
 
+  if (cfg.format === "cohere-stt" && (!isString(formData.get("language")) || !formData.get("language").trim())) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Cohere transcription requires language");
+  }
   try {
+    const proxyOptions = resolveCredentialProxyOptions(credentials);
     switch (cfg.format) {
       case "deepgram":return await transcribeDeepgram(cfg, file, model, token, formData);
       case "assemblyai":return await transcribeAssemblyAI(cfg, file, model, token, formData);
-      case "nvidia-asr":return await transcribeNvidia(cfg, file, model, token);
+      case "nvidia-asr":return await transcribeNvidia(cfg, file, model, token, formData, proxyOptions);
       case "huggingface-asr":return await transcribeHuggingFace(cfg, file, model, token);
-      case "gemini-stt":return await transcribeGemini(cfg, file, model, token, formData);
-      default:return await transcribeOpenAICompatible(cfg, file, model, token, formData);
+      case "gemini-stt":return await transcribeGemini(cfg, file, model, token, formData, proxyOptions);
+      case "minimax-stt":
+      case "xai-stt":return await transcribeNativeSpeech(cfg, file, model, token, formData, proxyOptions);
+      case "cohere-stt":return await transcribeNativeSpeech(cfg, file, model, token, formData, proxyOptions);
+      default:return await transcribeOpenAICompatible(cfg, file, model, token, formData, proxyOptions);
     }
   } catch (err) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err.message || "STT request failed");
+    const secrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken];
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeErrorMessageWithSecrets(err?.message || "STT request failed", secrets));
   }
 }

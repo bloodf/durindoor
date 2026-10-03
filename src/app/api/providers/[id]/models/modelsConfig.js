@@ -2,12 +2,15 @@ import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/to
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
+import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
 import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
@@ -565,18 +568,46 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   "ollama-local": {
     customResolver: async (connection, proxyOptions = null) => {
-      const url = `${resolveOllamaLocalHost(connection)}/api/tags`;
-      const response = await proxyAwareFetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" }
-      }, proxyOptions);
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.log("Error fetching models from ollama-local:", sanitizeErrorMessage(errorText));
-        return { error: `Failed to fetch models: ${response.status}`, status: response.status };
+      const host = resolveOllamaLocalHost(connection);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        return await discoverOllamaCatalog({
+          host,
+          accountId: connection.id || "",
+          fetchImpl: (path, init) => guardedProbeFetch(`${host}${path}`, { ...init, cache: "no-store", signal: controller.signal }, getProviderValidationGuard(), (url, options) => proxyAwareFetch(url, options, proxyOptions))
+        });
+      } finally {
+        clearTimeout(timeoutId);
       }
+    }
+  },
+  typesafe: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const token = connection.accessToken || connection.apiKey;
+      if (!token) return { error: "No valid token found", status: 401 };
+      const response = await proxyAwareFetch("https://api.typesafe.ai/v1/models", {
+        method: "GET", headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(8000)
+      }, proxyOptions);
+      if (!response.ok) return { error: `Failed to fetch models: ${response.status}`, status: response.status };
       const data = await response.json();
-      return { models: parseOpenAIStyleModels(data) };
+      const models = Array.isArray(data?.models) ? data.models.flatMap((model) => {
+        const id = isString(model?.name) ? model.name : "";
+        return id ? [{ ...model, id, kind: "systemone" }] : [];
+      }) : [];
+      return { models };
+    }
+  },
+  venice: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const token = connection.accessToken || connection.apiKey;
+      if (!token) return { error: "No valid token found", status: 401 };
+      const response = await proxyAwareFetch("https://api.venice.ai/api/v1/models", {
+        method: "GET", headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(8000)
+      }, proxyOptions);
+      if (!response.ok) return { error: `Failed to fetch models: ${response.status}`, status: response.status };
+      const data = await response.json();
+      return { models: parseOpenAIStyleModels(data).map(normalizeVeniceModel).filter(Boolean) };
     }
   },
   // OrcaRouter's catalog is capability-scoped (`?capability=`), so it needs the

@@ -58,6 +58,19 @@ CommandCode `meta/muse-spark-1.2-contributor` keeps `thinkingFormat: "commandcod
 
 Direct OpenAI `gpt-5.4` is 1,050,000 / 128,000 on `PROVIDER_CAPABILITIES.openai`. Codex and `cx` overlay the same id at 272,000 with unpublished output, so OAuth catalog windows do not leak the API ceiling.
 
+## Audited vendor limits
+
+Keep direct API, subscription/OAuth, and reseller model contracts separate. Claude Code and Codex publish authenticated catalogs that can differ from the vendor's direct API models. Codex/CX audited windows remain 272,000 with no published output ceiling; direct OpenAI limits must not replace those values.
+
+Canonical aliases use the same capability, format, limit, and pricing row as their target. Deprecated models can remain callable until the vendor retires them. Retired models leave selectable catalogs. A published id with no documented routing endpoint, such as `gpt-rosalind-research`, remains inventory-only with `routingAvailable: false`.
+
+An audited `maxOutput: null` means the vendor has not published a ceiling. It must not acquire the generic missing-field fallback. Restricted-model and media rows also keep unknown token limits unknown.
+
+MiniMax Hailuo 2.3 Fast supports image-to-video only. Hailuo 02 supports 512P for image-to-video, not text-to-video. H3-Max accepts reference image, video, and audio inputs in the detailed V2 schema. See [MiniMax models](https://platform.minimax.io/docs/guides/models-intro.md) and [V2 video inputs](https://platform.minimax.io/docs/api-reference/video-generation-v2-create.md).
+
+MiniMax M3.1 access requires an eligible M Plan or MiniMax Code connection. Video/audio/music products can require separate paid entitlements. Music API availability for new customers also differs from existing paying accounts; a catalog capability flag does not grant that entitlement.
+
+
 ## Ingress preflight
 
 `handleChatCore` runs the check after request shaping and immediately before executor dispatch.

@@ -12,41 +12,20 @@ import { openaiToClaudeResponse } from "../../open-sse/translator/response/opena
 
 describe("openaiToClaudeRequest", () => {
   describe("response_format handling", () => {
-    it("should inject JSON schema instructions for json_schema type", () => {
-      const body = {
-        messages: [{ role: "user", content: "What is 2+2?" }],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "math_response",
-            schema: {
-              type: "object",
-              properties: {
-                answer: { type: "number" },
-                explanation: { type: "string" }
-              },
-              required: ["answer", "explanation"]
-            }
-          }
-        }
-      };
 
-      const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+    it("maps json_schema to native output_config without prompt injection", () => {
+      const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
+      const result = openaiToClaudeRequest("claude-sonnet-4.5", {
+        messages: [
+          { role: "system", content: "Answer briefly." },
+          { role: "user", content: "What is two plus two?" },
+        ],
+        response_format: { type: "json_schema", json_schema: { name: "answer", strict: true, schema } },
+      }, false);
 
-      // Should have system array with instructions
-      expect(result.system).toBeDefined();
-      expect(Array.isArray(result.system)).toBe(true);
-      
-      // Check that system prompt includes schema
-      const systemText = result.system
-        .filter(s => s.type === "text")
-        .map(s => s.text)
-        .join("\n");
-      
-      expect(systemText).toContain("You must respond with valid JSON");
-      expect(systemText).toContain("\"answer\"");
-      expect(systemText).toContain("\"explanation\"");
-      expect(systemText).toContain("Respond ONLY with the JSON object");
+      expect(result.output_config.format).toEqual({ type: "json_schema", schema });
+      expect(result.system.map((block) => block.text).join("\n")).toContain("Answer briefly.");
+      expect(result.system.map((block) => block.text).join("\n")).not.toContain("Respond ONLY with the JSON object");
     });
 
     it("should inject basic JSON instructions for json_object type", () => {
@@ -91,36 +70,6 @@ describe("openaiToClaudeRequest", () => {
       expect(systemText).not.toContain("You must respond with valid JSON");
     });
 
-    it("should preserve existing system messages when adding response_format", () => {
-      const body = {
-        messages: [
-          { role: "system", content: "You are a helpful math tutor." },
-          { role: "user", content: "What is 2+2?" }
-        ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            schema: {
-              type: "object",
-              properties: {
-                result: { type: "number" }
-              }
-            }
-          }
-        }
-      };
-
-      const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
-
-      // Should preserve original system message
-      const systemText = result.system
-        .filter(s => s.type === "text")
-        .map(s => s.text)
-        .join("\n");
-      
-      expect(systemText).toContain("You are a helpful math tutor");
-      expect(systemText).toContain("You must respond with valid JSON");
-    });
   });
 
   describe("tool_choice handling", () => {

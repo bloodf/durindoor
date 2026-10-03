@@ -700,10 +700,12 @@ export async function saveRequestUsage(entry) {
       // and the tokens-per-minute window is fed from this event.
       if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
     }
+    return true;
   } catch (e) {
     console.error("Failed to save usage stats:", e);
     const msg = String(e && e.message || "");
-    if (/syntax error|does not exist|collation/i.test(msg)) throw e;
+    if (entry.strict || /syntax error|does not exist|collation/i.test(msg)) throw e;
+    return false;
   }
 }
 

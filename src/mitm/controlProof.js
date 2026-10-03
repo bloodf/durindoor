@@ -45,10 +45,23 @@ function verifyControlProof({ method, pathname, remotePort, proof, secret = proc
   return crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(String(proof), "hex"));
 }
 
+function createRealtimeOperatorProof({ model, path, expiresAt, secret = process.env[CONTROL_SECRET_ENV] }) {
+  if (!isString(model) || !isString(path) || !Number.isSafeInteger(expiresAt) || !isValidSecret(secret)) return null;
+  return crypto.createHmac("sha256", secret).update(`${model}\n${path}\n${expiresAt}`).digest("hex");
+}
+
+function verifyRealtimeOperatorProof({ proof, model, path, expiresAt, now = Date.now(), secret = process.env[CONTROL_SECRET_ENV] }) {
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < now || expiresAt > now + 30_000 || !/^[a-f0-9]{64}$/i.test(String(proof || ""))) return false;
+  const expected = createRealtimeOperatorProof({ model, path, expiresAt, secret });
+  return Boolean(expected && crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(String(proof), "hex")));
+}
+
 module.exports = {
   CONTROL_PORT_HEADER,
   CONTROL_PROOF_HEADER,
   CONTROL_SECRET_ENV,
   createControlProof,
-  verifyControlProof
+  createRealtimeOperatorProof,
+  verifyControlProof,
+  verifyRealtimeOperatorProof
 };

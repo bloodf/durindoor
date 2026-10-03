@@ -1071,7 +1071,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
             <legend className="px-1 text-sm font-medium text-dd-text">Capability ceiling</legend>
             <p className="mb-2 text-[10px] text-dd-muted">Optional. Only disables derived features or lowers derived limits; blank fields preserve member-derived capabilities.</p>
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-              {["vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput", "search", "tools", "reasoning"].map((key) => (
+              {["vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput", "videoOutput", "search", "tools", "reasoning"].map((key) => (
                 <Checkbox
                   key={key}
                   checked={capabilities[key] === false}

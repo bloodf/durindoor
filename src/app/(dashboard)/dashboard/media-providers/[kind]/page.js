@@ -7,7 +7,7 @@ import Button from "@/shared/ui/components/Button.jsx";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
-import { AddCustomEmbeddingModal } from "@/shared/components";
+import { AddCustomEmbeddingModal, AddSystemoneCompatibleModal } from "@/shared/components";
 import { MEDIA_PROVIDER_KINDS, getProvidersByKind } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 import { MediaProviderCard } from "../components/MediaProviderCard";
@@ -50,6 +50,7 @@ export default function MediaProviderKindPage() {
   const [customNodes, setCustomNodes] = useState([]);
   const [combos, setCombos] = useState([]);
   const [showAddCustomEmbedding, setShowAddCustomEmbedding] = useState(false);
+  const [showAddSystemone, setShowAddSystemone] = useState(false);
   const [localEmbeddingProviders, setLocalEmbeddingProviders] = useState([]);
   const [createError, setCreateError] = useState("");
   // webSearch/webFetch listing pages are merged into /web
@@ -61,6 +62,7 @@ export default function MediaProviderKindPage() {
 
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
   const isEmbedding = kind === "embedding";
+  const isSystemone = kind === "systemone";
   const supportsCombo = COMBO_KINDS.has(kind);
 
   useEffect(() => {
@@ -87,10 +89,10 @@ export default function MediaProviderKindPage() {
       catch(() => {if (!cancelled) setLocalEmbeddingProviders([]);});
     });
 
-    if (isEmbedding) {
+    if (isEmbedding || isSystemone) {
       fetch("/api/provider-nodes", { cache: "no-store" }).
       then((r) => r.json()).
-      then((d) => {if (!cancelled) setCustomNodes((d.nodes || []).filter((n) => n.type === "custom-embedding"));}).
+      then((d) => {if (!cancelled) setCustomNodes((d.nodes || []).filter((n) => n.type === (isSystemone ? "systemone-compatible" : "custom-embedding")));}).
       catch(() => {});
     }
     if (supportsCombo) {
@@ -100,7 +102,7 @@ export default function MediaProviderKindPage() {
       catch(() => {});
     }
     return () => {cancelled = true;};
-  }, [isEmbedding, supportsCombo, kindConfig]);
+  }, [isEmbedding, isSystemone, supportsCombo, kindConfig]);
 
   if (!kindConfig) return notFound();
 
@@ -109,11 +111,11 @@ export default function MediaProviderKindPage() {
 
   const customProviders = customNodes.map((n) => ({
     id: n.id,
-    name: n.name || "Custom Embedding",
-    textIcon: "CE"
+    name: n.name || (isSystemone ? "Custom System One" : "Custom Embedding"),
+    textIcon: isSystemone ? "S1" : "CE"
   }));
 
-  const allProviders = [...providers, ...(isEmbedding ? [...localEmbeddingProviders, ...customProviders] : [])];
+  const allProviders = [...providers, ...(isEmbedding ? [...localEmbeddingProviders, ...customProviders] : isSystemone ? customProviders : [])];
 
   const handleToggleProvider = async (providerId, newActive) => {
     const providerConns = connections.filter((c) => c.provider === providerId);
@@ -154,10 +156,11 @@ export default function MediaProviderKindPage() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
       {createError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{createError}</p>}
-      {(isEmbedding || supportsCombo) && (
+      {(isEmbedding || isSystemone || supportsCombo) && (
         <div className="flex flex-wrap justify-end gap-2">
           {supportsCombo && <Button size="sm" variant="primary" icon="add" onClick={handleCreateCombo}>{translate("Create Combo")}</Button>}
           {isEmbedding && <Button size="sm" variant="primary" icon="add" onClick={() => setShowAddCustomEmbedding(true)}>{translate("Add Custom Embedding")}</Button>}
+          {isSystemone && <Button size="sm" variant="primary" icon="add" onClick={() => setShowAddSystemone(true)}>Add Custom System One</Button>}
         </div>
       )}
       {supportsCombo && kindCombos.length > 0 && <ComboList combos={kindCombos} />}
@@ -167,10 +170,11 @@ export default function MediaProviderKindPage() {
         <section aria-label={`${kindConfig.label} providers`} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {providers.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} />)}
           {isEmbedding && localEmbeddingProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} />)}
-          {isEmbedding && customProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} isCustom onToggle={handleToggleProvider} />)}
+          {(isEmbedding || isSystemone) && customProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} isCustom onToggle={handleToggleProvider} />)}
         </section>
       )}
       {isEmbedding && <AddCustomEmbeddingModal isOpen={showAddCustomEmbedding} onClose={() => setShowAddCustomEmbedding(false)} onCreated={(node) => { setCustomNodes((prev) => [...prev, node]); setShowAddCustomEmbedding(false); }} />}
+      {isSystemone && <AddSystemoneCompatibleModal isOpen={showAddSystemone} onClose={() => setShowAddSystemone(false)} onCreated={(node) => { setCustomNodes((prev) => [...prev, node]); setShowAddSystemone(false); }} />}
     </div>
   );
 

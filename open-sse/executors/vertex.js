@@ -94,7 +94,9 @@ export class VertexExecutor extends BaseExecutor {
         );
       }
       const location = credentials?.providerSpecificData?.location || "us-central1";
-      let url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:${action}`;
+      // EU multi-region requires matching representative host and /locations/eu path.
+      const host = location === "eu" ? "aiplatform.eu.rep.googleapis.com" : "aiplatform.googleapis.com";
+      let url = `https://${host}/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
       return url;
     }

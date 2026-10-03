@@ -677,8 +677,12 @@ export async function deleteProviderConnectionsByProvider(providerId) {
   const db = await getAdapter();
   let count = 0;
   db.transaction(() => {
-    assertNoActiveQuotaReservationsForTargetSync(db, { provider: providerId });
     const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
+    for (let offset = 0; offset < rows.length; offset += 1024) {
+      assertNoActiveQuotaReservationsForTargetSync(db, {
+        connectionIds: rows.slice(offset, offset + 1024).map((row) => row.id)
+      });
+    }
     assertDeletionDoesNotBroadenScopedKeys(db, rows.map((row) => row.id));
     for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);

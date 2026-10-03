@@ -1,9 +1,10 @@
-import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import { createErrorResult, parseUpstreamError, formatProviderError, readBoundedResponseText } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 
 /**
  * Core embeddings handler — orchestrator only. Provider-specific URL/headers/body/normalize
@@ -18,7 +19,8 @@ export async function handleEmbeddingsCore({
   credentials,
   log,
   onCredentialsRefreshed,
-  onRequestSuccess
+  onRequestSuccess,
+  signal = null
 }) {
   const { provider, model } = modelInfo;
   const proxyOptions = resolveCredentialProxyOptions(credentials);
@@ -32,6 +34,12 @@ export async function handleEmbeddingsCore({
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "input must be a string or array of strings");
   }
 
+  if (provider === "cohere" && !["search_document", "search_query", "classification", "clustering"].includes(body.input_type)) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Cohere embeddings require input_type: search_document, search_query, classification, or clustering");
+  }
+  if (provider === "cohere" && Array.isArray(input) && input.some((value) => !isString(value))) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Cohere text embeddings require strings; use the native Embed endpoint for multimodal input");
+  }
   const adapter = getEmbeddingAdapter(provider);
   if (!adapter) {
     return createErrorResult(
@@ -54,17 +62,19 @@ export async function handleEmbeddingsCore({
 
   let providerResponse;
   try {
-    providerResponse = await fetch(url, {
+    providerResponse = await proxyAwareFetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
-      proxyOptions
-    });
+      signal
+    }, proxyOptions);
   } catch (error) {
+    if (signal?.aborted || error?.name === "AbortError") return createErrorResult(499, "Embeddings request aborted");
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     log?.debug?.("EMBEDDINGS", `Fetch error: ${errMsg}`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
   }
+  if (signal?.aborted) return createErrorResult(499, "Embeddings request aborted");
 
   // Handle 401/403 — try token refresh (skip for noAuth providers)
   const executor = getExecutor(provider);
@@ -87,12 +97,12 @@ export async function handleEmbeddingsCore({
       try {
         const retryHeaders = adapter.buildHeaders(credentials, ctx);
         const retryUrl = adapter.buildUrl(model, credentials, ctx);
-        providerResponse = await fetch(retryUrl, {
+        providerResponse = await proxyAwareFetch(retryUrl, {
           method: "POST",
           headers: retryHeaders,
           body: JSON.stringify(requestBody),
-          proxyOptions
-        });
+          signal
+        }, proxyOptions);
       } catch {
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
       }
@@ -102,7 +112,13 @@ export async function handleEmbeddingsCore({
   }
 
   if (!providerResponse.ok) {
-    const { statusCode, message } = await parseUpstreamError(providerResponse);
+    let statusCode, message;
+    try {
+      ({ statusCode, message } = await parseUpstreamError(providerResponse, null, { signal, credentials, proxyOptions }));
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") return createErrorResult(499, "Embeddings request aborted");
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Unable to read embedding provider error");
+    }
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     log?.debug?.("EMBEDDINGS", `Provider error: ${errMsg}`);
     return createErrorResult(statusCode, errMsg);
@@ -110,14 +126,19 @@ export async function handleEmbeddingsCore({
 
   let responseBody;
   try {
-    responseBody = await providerResponse.json();
-  } catch {
+    responseBody = provider === "cohere" ?
+      JSON.parse(await readBoundedResponseText(providerResponse, { signal, maxBytes: 8 * 1024 * 1024, timeoutMs: 10000, throwOnTimeout: true })) :
+      await providerResponse.json();
+  } catch (error) {
+    if (signal?.aborted || error?.name === "AbortError") return createErrorResult(499, "Embeddings request aborted");
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
   }
 
+  let normalized;
+  try { normalized = adapter.normalize(responseBody, model); } catch {
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid embeddings response from ${provider}`);
+  }
   if (onRequestSuccess) await onRequestSuccess();
-
-  const normalized = adapter.normalize(responseBody, model);
   log?.debug?.("EMBEDDINGS", `Success | usage=${JSON.stringify(normalized.usage || {})}`);
 
   return {

@@ -1,4 +1,4 @@
-import { isChatProvider, isSystemoneModel } from "open-sse/providers/chatCapability.js";
+import { isChatProvider, isNativeOnlyModel } from "open-sse/providers/chatCapability.js";
 import { KIMI_CODING_MODELS_URL } from "../../../open-sse/providers/shared.js";
 import "open-sse/index.js";
 
@@ -199,7 +199,7 @@ export function isImageOnlyModel(provider, model) {
  * (see open-sse/providers/chatCapability.js).
  */
 export function isNonChatModel(provider, model) {
-  return isSystemoneModel(provider, model) || !isChatProvider(provider);
+  return isNativeOnlyModel(provider, model) || !isChatProvider(provider);
 }
 
 // Keep quota-only combo inspection distinct from the single-model resolution

@@ -4,7 +4,7 @@ import { refreshTokenByProvider } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
-import { prepareMinimaxVideoRequest, normalizeMinimaxVideoResponse } from "./videoProviders/minimax.js";
+import { MINIMAX_V1_JOB_PREFIX, prepareMinimaxVideoRequest, normalizeMinimaxVideoResponse, prepareMinimaxLegacyVideoRequest, normalizeMinimaxLegacyVideoResponse } from "./videoProviders/minimax.js";
 
 // Upstream fetch deadline for video job submission/polling (the job itself is
 // async upstream — this only bounds the HTTP round-trip, not video rendering).
@@ -39,15 +39,23 @@ function buildUpstreamUrl(config, action, requestId) {
   return requestId ? `${base}/${encodeURIComponent(requestId)}` : `${base}/${action}`;
 }
 
+function modelFromRawBody(rawBody) {
+  try { return JSON.parse(String(rawBody || "{}")).model; } catch { return null; }
+}
+
 function prepareRequest(config, options) {
   if (config.format === "minimax-v2") return prepareMinimaxVideoRequest(config, options);
+  if (config.format === "minimax-multi") {
+    if (options.requestId?.startsWith(MINIMAX_V1_JOB_PREFIX)) return prepareMinimaxLegacyVideoRequest(config, { ...options, requestId: options.requestId.slice(MINIMAX_V1_JOB_PREFIX.length) });
+    return config.legacyModels?.includes(modelFromRawBody(options.rawBody)) ? prepareMinimaxLegacyVideoRequest(config, options) : prepareMinimaxVideoRequest(config, options);
+  }
+  if (config.format === "together") {
+    if (options.requestId) return { method: "GET", url: `${config.queryUrl.replace(/\/$/, "")}/${encodeURIComponent(options.requestId)}`, body: undefined, contentType: null };
+    if (options.action !== "generations") return { error: createErrorResult(HTTP_STATUS.BAD_REQUEST, "Together video generation supports the generations action only") };
+    return { method: "POST", url: config.createUrl, body: options.rawBody, contentType: options.contentType };
+  }
   const method = options.requestId ? "GET" : "POST";
-  return {
-    method,
-    url: buildUpstreamUrl(config, options.action, options.requestId),
-    body: method === "POST" ? options.rawBody : undefined,
-    contentType: method === "POST" ? options.contentType : null
-  };
+  return { method, url: buildUpstreamUrl(config, options.action, options.requestId), body: method === "POST" ? options.rawBody : undefined, contentType: method === "POST" ? options.contentType : null };
 }
 
 function buildHeaders({ token, contentType, idempotencyKey }) {
@@ -164,16 +172,33 @@ export async function handleVideoProxyCore({
     }
   }
 
-  const bodyText = await upstream.text().catch(() => "");
+  let bodyText = await upstream.text().catch(() => "");
 
   if (!upstream.ok) {
     const message = sanitizeSecrets(bodyText || `HTTP ${upstream.status}`, credentials);
     return createErrorResult(upstream.status, `[${provider}] ${message.slice(0, 2000)}`);
   }
+  if (config.format === "minimax-multi" && requestId?.startsWith(MINIMAX_V1_JOB_PREFIX) && config.legacyFileRetrieveUrl) {
+    try {
+      const legacyTask = JSON.parse(bodyText);
+      const status = String(legacyTask?.status || legacyTask?.task?.status || "").toLowerCase();
+      const fileId = legacyTask?.file_id || legacyTask?.task?.file_id;
+      if (status === "success" && fileId) {
+        const fileResponse = await proxyAwareFetch(`${config.legacyFileRetrieveUrl}?file_id=${encodeURIComponent(fileId)}`, { headers: buildHeaders({ token: credentials?.accessToken || credentials?.apiKey, contentType: null, idempotencyKey: null }), signal: fetchSignal }, proxyOptions);
+        const filePayload = fileResponse.ok ? await fileResponse.json() : null;
+        if (filePayload?.file?.download_url) bodyText = JSON.stringify({ ...legacyTask, content: { url: filePayload.file.download_url } });
+      }
+    } catch {}
+  }
 
   let responseBody = bodyText;
   if (config.format === "minimax-v2") {
     const normalized = normalizeMinimaxVideoResponse(bodyText, requestId);
+    if (normalized.error) return normalized.error;
+    responseBody = normalized.bodyText;
+  } else if (config.format === "minimax-multi") {
+    const legacy = requestId?.startsWith(MINIMAX_V1_JOB_PREFIX) || !requestId && config.legacyModels?.includes(modelFromRawBody(rawBody));
+    const normalized = legacy ? normalizeMinimaxLegacyVideoResponse(bodyText, requestId?.slice(MINIMAX_V1_JOB_PREFIX.length)) : normalizeMinimaxVideoResponse(bodyText, requestId);
     if (normalized.error) return normalized.error;
     responseBody = normalized.bodyText;
   }

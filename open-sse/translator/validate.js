@@ -57,7 +57,10 @@ OPENAI_BLOCK.IMAGE_URL,
 OPENAI_BLOCK.IMAGE,
 OPENAI_BLOCK.INPUT_AUDIO,
 OPENAI_BLOCK.AUDIO_URL,
-OPENAI_BLOCK.FILE]
+OPENAI_BLOCK.FILE,
+"video_url",
+"video",
+"input_video"]
 );
 
 function pushError(errors, path, message) {
@@ -472,13 +475,13 @@ function validateOpenAIResponses(body, errors) {
   {
     pushError(errors, "model", "model is required for openai-responses target");
   }
-  const hasInput = Array.isArray(body.input) && body.input.length > 0;
+  const hasInput = isString(body.input) || Array.isArray(body.input) && body.input.length > 0;
   const hasMessages = Array.isArray(body.messages) && body.messages.length > 0;
   if (!hasInput && !hasMessages) {
     pushError(
       errors,
       "input",
-      "openai-responses target requires input[] or messages[]"
+      "openai-responses target requires input text, input[] or messages[]"
     );
   }
   if (body.tools != null) {

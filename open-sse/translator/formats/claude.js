@@ -637,8 +637,10 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   provider === "ollama" ||
   provider === "ollama-local";
   const allowCacheControl = !dropsClaudeCacheControl;
-  // quirk: MiniMax's Claude-compatible endpoint rejects Anthropic's output_config (400 invalid params)
-  if (PROVIDERS[provider]?.quirks?.dropOutputConfig) {
+  // Most MiniMax Claude-compatible models reject Anthropic output_config, but
+  // M3.1 accepts its native effort and JSON schema format.
+  const preserveOutputConfig = PROVIDERS[provider]?.quirks?.preserveOutputConfigModels?.includes(body.model);
+  if (PROVIDERS[provider]?.quirks?.dropOutputConfig && !preserveOutputConfig) {
     delete body.output_config;
   }
 
@@ -766,19 +768,14 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     }
   }
 
-  // 3. Tools: filter built-in tools for non-Anthropic providers, then handle cache_control
+  // Preserve complete native tool definitions for Anthropic and Anthropic-
+  // compatible routes. This includes server tools and client toolsets; gateway
+  // only forwards them, never executes their calls.
   if (body.tools && Array.isArray(body.tools)) {
-    // Strip built-in tools (e.g. web_search_20250305) and normalize to Anthropic-native shape
-    // (drop `type` field, fold `function.{name,description,parameters}`) for non-Anthropic providers.
-    //
-    // A provider may declare `quirks.claudeSupportedToolTypes` to whitelist the
-    // Anthropic tool `type` values its upstream actually accepts. Whitelisted
-    // tools survive the filter AND keep their `type`, because the upstream needs
-    // it to route built-ins. Without the quirk the prior behaviour holds: drop
-    // every non-function tool and strip `type`.
     const supportedToolTypes = PROVIDERS[provider]?.quirks?.claudeSupportedToolTypes;
     const hasToolTypeWhitelist = Array.isArray(supportedToolTypes);
-    if (provider !== "claude") {
+    const nativeClaudeRoute = provider === "claude" || provider?.startsWith("anthropic-compatible");
+    if (!nativeClaudeRoute) {
       body.tools = body.tools.
       filter((tool) => {
         const type = tool?.type;
@@ -790,7 +787,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           return {
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: tool.function.parameters
+            input_schema: tool.function.parameters,
+            ...(tool.function.strict !== undefined && { strict: tool.function.strict })
           };
         }
         if (hasToolTypeWhitelist && tool.type) return tool;

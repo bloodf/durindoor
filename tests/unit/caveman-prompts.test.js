@@ -28,52 +28,31 @@ describe("Caveman prompt coverage", () => {
     }
   });
 
-  it("adds no-invented-abbreviations guidance to every level", () => {
+  it("keeps upstream shared safety and clarity rules at every level", () => {
     for (const level of LEVEL_KEYS) {
-      expect(CAVEMAN_PROMPTS[level]).toContain("No invented abbreviations");
+      const prompt = CAVEMAN_PROMPTS[level];
+      expect(prompt).toContain("Never drop not, never, no, only, or except");
+      expect(prompt).toContain("Security warnings, irreversible action confirmations");
+      expect(prompt).toContain("Never invent abbreviations");
+      expect(prompt).toContain("mangle grammar when correct grammar costs same");
+      expect(prompt).toContain("preserve user's dominant language");
+      expect(prompt).toContain("keep grammar particles and postpositions");
+      expect(prompt).toContain("No self-reference or style announcement");
+      expect(prompt).toContain("No tool-call narration");
+      expect(prompt).toContain("Tool calls: fire direct");
+      expect(prompt).toContain("One idea per sentence, target 20 words");
+      expect(prompt).toContain("Write normal prose in code, comments, commits, docs");
+      expect(prompt).toContain("Compression changes style only, never adds words");
     }
   });
 
-  it("adds preserve-user-language guidance to every level", () => {
-    for (const level of LEVEL_KEYS) {
-      expect(CAVEMAN_PROMPTS[level]).toContain("Preserve the user's dominant language");
-    }
+  it("keeps upstream intensity contracts distinct", () => {
+    expect(CAVEMAN_PROMPTS[CAVEMAN_LEVELS.LITE]).toContain("Keep grammar and full sentences");
+    expect(CAVEMAN_PROMPTS[CAVEMAN_LEVELS.FULL]).toContain("Drop articles (a/an/the)");
+    expect(CAVEMAN_PROMPTS[CAVEMAN_LEVELS.ULTRA]).toContain("cause and effect stay unambiguous");
+    expect(CAVEMAN_PROMPTS[CAVEMAN_LEVELS.WENYAN_LITE]).toContain("semi-classical Chinese");
+    expect(CAVEMAN_PROMPTS[CAVEMAN_LEVELS.WENYAN]).toContain("80-90% character reduction, not token reduction");
+    expect(CAVEMAN_PROMPTS[CAVEMAN_LEVELS.WENYAN_ULTRA]).toContain("extreme classical Chinese compression");
   });
 
-  it("adds no-self-reference guidance to every level", () => {
-    for (const level of LEVEL_KEYS) {
-      expect(CAVEMAN_PROMPTS[level]).toContain("No self-reference");
-    }
-  });
-
-  it("adds no-decorative-emoji guidance to every level", () => {
-    for (const level of LEVEL_KEYS) {
-      expect(CAVEMAN_PROMPTS[level]).toContain("No decorative emoji");
-    }
-  });
-});
-
-describe("Caveman internal consistency", () => {
-  it("no level uses Unicode arrow (SHARED_NO_DECORATION bans arrow shorthand)", () => {
-    // SHARED_NO_DECORATION uses ASCII -> to quote the banned pattern.
-    // Unicode → is the character old ULTRA used in "Pattern: [thing] → [result]".
-    // Verify no level now uses it.
-    for (const level of LEVEL_KEYS) {
-      expect(CAVEMAN_PROMPTS[level]).not.toContain("→");
-    }
-  });
-});
-
-describe("Caveman ULTRA targeted sync", () => {
-  it("does not encourage invented abbreviations", () => {
-    const ultra = CAVEMAN_PROMPTS[CAVEMAN_LEVELS.ULTRA];
-    expect(ultra).not.toContain("req/res/fn/impl");
-    expect(ultra).not.toContain("Abbreviate (DB/auth/config/req/res/fn/impl)");
-  });
-
-  it("does not encourage arrow shorthand", () => {
-    const ultra = CAVEMAN_PROMPTS[CAVEMAN_LEVELS.ULTRA];
-    expect(ultra).not.toContain("use arrows for causality");
-    expect(ultra).not.toContain("X → Y");
-  });
 });

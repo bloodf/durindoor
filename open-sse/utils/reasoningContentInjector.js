@@ -9,7 +9,10 @@ const PLACEHOLDER = " ";
 // Provider-level rules derive from registry transport.reasoningInject (single source)
 const providerRuleFor = (provider) => PROVIDERS[provider]?.reasoningInject;
 
-// Model-level rules: matched by predicate against model id
+// M3.1 requires exact native reasoning_content history. Do not fabricate
+// placeholders when its provider rule would otherwise inject every assistant turn.
+const M3_1_FLASH_PREVIEW = "MiniMax-M3.1-Flash-Preview";
+const MINIMAX_PROVIDERS = new Set(["minimax", "minimax-cn"]);
 const MODEL_RULES = [
 { match: (m) => /^kimi-/i.test(m || ""), scope: "toolCalls" },
 { match: (m) => /deepseek/i.test(m || ""), scope: "all" }];
@@ -85,7 +88,7 @@ export function applyDeepSeekV4ProAlias({ provider, model, body, transportFormat
 export function injectReasoningContent({ provider, model, body }) {
   const providerRule = providerRuleFor(provider);
   const modelRule = MODEL_RULES.find((r) => r.match(model));
-  const rule = providerRule || modelRule;
+  const rule = MINIMAX_PROVIDERS.has(provider) && model === M3_1_FLASH_PREVIEW ? null : providerRule || modelRule;
   const nextBody = applyDeepSeekV4ProAlias({ provider, model, body });
   return applyRule(nextBody, rule);
 }

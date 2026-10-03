@@ -3,6 +3,7 @@
 import { responseToBase64, throwUpstreamError } from "./_base.js";
 import minimaxTts from "./minimax.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { createErrorResult } from "../../utils/error.js";
 
 // Hyperbolic: POST { text } → { audio: base64 }
 async function hyperbolic({ baseUrl, apiKey, text }) {
@@ -29,13 +30,22 @@ async function deepgram({ baseUrl, apiKey, text, modelId }) {
   return responseToBase64(res, "mp3");
 }
 
-// Nvidia NIM: POST { input: { text }, voice, model } → binary
-async function nvidia({ baseUrl, apiKey, text, modelId, voiceId }) {
-  const res = await fetch(baseUrl, {
+// Hosted Magpie's HTTP API uses multipart fields and returns WAV, not JSON input.
+async function nvidia({ baseUrl, apiKey, text, modelId, voiceId, language, proxyOptions }) {
+  if (modelId !== "nvidia/magpie-tts-multilingual") {
+    return createErrorResult(400, `Unsupported NVIDIA speech model: ${modelId}`);
+  }
+  const body = new FormData();
+  body.append("text", text);
+  body.append("language", language || "en-US");
+  body.append("voice", voiceId || "Magpie-Multilingual.EN-US.Aria");
+  body.append("encoding", "LINEAR_PCM");
+  body.append("sample_rate_hz", "44100");
+  const res = await proxyAwareFetch(baseUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify({ input: { text }, voice: voiceId || "default", model: modelId })
-  });
+    headers: { "Authorization": `Bearer ${apiKey}` },
+    body,
+  }, proxyOptions);
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "wav");
 }
@@ -155,24 +165,40 @@ async function tortoise({ baseUrl, text, voiceId }) {
 }
 
 // OpenAI-compatible upstream (qwen3-tts, etc.)
-async function openaiCompat({ baseUrl, apiKey, text, modelId, voiceId }) {
+async function openaiCompat({ baseUrl, apiKey, text, modelId, voiceId, proxyOptions, responseFormat, ...options }) {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  const res = await fetch(baseUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model: modelId,
-      input: text,
-      voice: voiceId || "alloy",
-      response_format: "mp3",
-      speed: 1.0
-    })
-  });
+  const { language, model: _model, input: _input, voice, ...bodyOptions } = options;
+  const body = {
+    model: modelId,
+    input: text,
+    voice: voice || voiceId || "alloy",
+    response_format: "mp3",
+    speed: 1.0,
+    ...bodyOptions,
+  };
+  const res = await proxyAwareFetch(baseUrl, {
+    method: "POST", headers, body: JSON.stringify(body)
+  }, proxyOptions);
   if (!res.ok) await throwUpstreamError(res);
-  return responseToBase64(res, "mp3");
+  if (responseFormat !== "json") {
+    return { success: true, response: new Response(res.body, { headers: { "Content-Type": res.headers.get("content-type") || `audio/${body.response_format}`, "Access-Control-Allow-Origin": "*" } }) };
+  }
+  return responseToBase64(res, body.response_format);
 }
 
+// xAI Voice: no model field; raw MP3 by default, JSON when timestamps requested.
+async function xaiTts({ baseUrl, apiKey, text, voiceId, proxyOptions, language, ...options }) {
+  if (!language) throw new Error("xAI TTS requires language");
+  const { model: _model, input: _input, voice, response_format: _responseFormat, ...bodyOptions } = options;
+  const res = await proxyAwareFetch(baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({ text, voice_id: voice || voiceId || "eve", language, ...bodyOptions }),
+  }, proxyOptions);
+  if (!res.ok) await throwUpstreamError(res);
+  return { success: true, response: new Response(res.body, { headers: { "Content-Type": res.headers.get("content-type") || "audio/mpeg", "Access-Control-Allow-Origin": "*" } }) };
+}
 // format → handler dispatcher
 export const FORMAT_HANDLERS = {
   hyperbolic,
@@ -186,5 +212,6 @@ export const FORMAT_HANDLERS = {
   tortoise,
   openai: openaiCompat,
   "minimax-tts": minimaxTts,
+  "xai-tts": xaiTts,
   "fish-audio": fishAudio
 };

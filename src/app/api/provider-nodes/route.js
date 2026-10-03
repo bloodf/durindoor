@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createProviderNode, getProviderNodes } from "@/models";
-import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
+import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX, SYSTEMONE_COMPATIBLE_PREFIX } from "@/shared/constants/providers";
+import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
+
 import { generateId } from "@/shared/utils";
+
 import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +82,27 @@ export async function POST(request) {
         type: "custom-embedding",
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
+        name: name.trim(),
+        ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
+      });
+      return NextResponse.json({ node }, { status: 201 });
+    }
+
+    const isReservedPrefix = (value) => REGISTRY.some((provider) => [provider.id, provider.alias, provider.uiAlias, ...(provider.aliases || [])].includes(value));
+    if (nodeType === "systemone-compatible" && (isReservedPrefix(prefix.trim()) || (await getProviderNodes()).some((node) => node.prefix === prefix.trim()))) {
+      return NextResponse.json({ error: "Provider prefix already exists or is reserved" }, { status: 409 });
+    }
+
+    if (nodeType === "systemone-compatible") {
+      let normalizedBaseUrl;
+      try { normalizedBaseUrl = normalizeSystemoneBaseUrl(baseUrl); } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      const node = await createProviderNode({
+        id: `${SYSTEMONE_COMPATIBLE_PREFIX}${generateId()}`,
+        type: "systemone-compatible",
+        prefix: prefix.trim(),
+        baseUrl: normalizedBaseUrl,
         name: name.trim(),
         ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
       });

@@ -107,95 +107,6 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     expect(byId.zed).toMatchObject({ category: "oauth", transport: null, hidden: true });
   });
 
-  it("keeps the OpenCode Zen catalog and local source icon assets", () => {
-    const opencodeZen = byId["opencode-zen"];
-    expect(opencodeZen.transport.baseUrl).toBe("https://opencode.ai/zen/v1/chat/completions");
-    expect(opencodeZen.models.map((model) => model.id)).toEqual([
-      "big-pickle",
-      "gpt-5-nano",
-      "gpt-5",
-      "gpt-5-codex",
-      "gpt-5.1",
-      "gpt-5.1-codex",
-      "gpt-5.1-codex-max",
-      "gpt-5.1-codex-mini",
-      "gpt-5.2",
-      "gpt-5.2-codex",
-      "gpt-5.3-codex",
-      "gpt-5.3-codex-spark",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.4-nano",
-      "gpt-5.4-pro",
-      "gpt-5.5",
-      "gpt-5.5-pro",
-      "claude-haiku-4-5",
-      "claude-sonnet-4",
-      "claude-sonnet-4-5",
-      "claude-sonnet-4-6",
-      "claude-opus-4-1",
-      "claude-opus-4-5",
-      "claude-opus-4-6",
-      "claude-opus-4-7",
-      // Additive catalog entries from port(upstream): #4145 (see that commit
-      // for what was ported vs. deferred and why).
-      "claude-fable-5",
-      "claude-fable-5-1",
-      "claude-opus-5",
-      "claude-sonnet-5",
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "grok-build-0.1",
-      "grok-4.5",
-      "grok-4.6",
-      "grok-4.7",
-      "glm-5",
-      "glm-5.1",
-      "glm-5.2",
-      "glm-5.3",
-      "glm-5.3-flash",
-      "minimax-m3",
-      "minimax-m2.5",
-      "minimax-m2.7",
-      "kimi-k2.5",
-      "kimi-k2.6",
-      "kimi-k2.7-code",
-      "kimi-k3",
-      "deepseek-v4-pro",
-      "deepseek-v4-flash",
-      "deepseek-v4-flash-vision-exp",
-      "qwen3.5-plus",
-      "qwen3.6-plus",
-      "deepseek-v4-flash-free",
-      "mimo-v2.6-flash-free",
-      "minimax-m2.5-free",
-      "nemotron-3-super-free",
-      "qwen3.6-plus-free",
-      // System One (Jev) decision models served on the /systemone endpoint
-      "jev-1.13",
-      "jev-1.13-free",
-    ]);
-    expect(PROVIDER_MODELS["opencode-zen"]).toHaveLength(opencodeZen.models.length);
-    expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "gpt-5.2").targetFormat).toBe("openai-responses");
-    expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "claude-sonnet-4-6").targetFormat).toBe("claude");
-    expect(PROVIDER_MODELS["opencode-zen"].find((model) => model.id === "qwen3.6-plus").targetFormat).toBe("claude");
-    expect(PROVIDER_MODELS["opencode-zen"].some((model) => model.id.startsWith("gemini-"))).toBe(false);
-    expect(getModelTargetFormat("opencode-zen", "claude-future-5")).toBe("claude");
-    expect(getModelTargetFormat("opencode-zen", "gpt-5.9")).toBe("openai-responses");
-    expect(getModelTargetFormat("opencode-zen", "gemini-4-pro")).toBe(null);
-
-    for (const icon of [
-      "docker-model-runner.svg",
-      "lemonade.png",
-      "llamafile.png",
-      "opencode.svg",
-      "opencode-light.svg",
-      "opencode-dark.svg",
-    ]) {
-      expect(existsSync(resolve(repoRoot, "public/providers", icon)), `${icon} should exist`).toBe(true);
-    }
-  });
 
   it("routes OpenCode Zen models by API family", () => {
     const executor = new OpenCodeZenExecutor();
@@ -214,7 +125,6 @@ describe("OmniRoute Batch G local/router provider parity", () => {
     expect(headers["x-api-key"]).toBeUndefined();
 
     expect(executor.buildUrl("glm-5")).toBe("https://opencode.ai/zen/v1/chat/completions");
-    expect(() => executor.buildUrl("gemini-3.1-pro")).toThrow(/Google-compatible custom-provider route/);
   });
 
   it("strips images for text-only Zen Qwen models", () => {

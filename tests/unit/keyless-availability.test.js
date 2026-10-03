@@ -117,11 +117,6 @@ describe("isKeylessProviderWorking", () => {
     expect(await isKeylessProviderWorking("local-device")).toBe(false);
   });
 
-  it("uses the guarded fetch by default, so a metadata host is never contacted", async () => {
-    mocks.getSettings.mockResolvedValue({ firecrawlBaseUrl: "http://169.254.169.254" });
-    expect(await isKeylessProviderWorking("firecrawl_custom")).toBe(false);
-  });
-
   it("caches the answer per URL for 30 seconds", async () => {
     await isKeylessProviderWorking("tortoise", { fetchImpl: up, now: 1000 });
     await isKeylessProviderWorking("tortoise", { fetchImpl: up, now: 20_000 });

@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Outbound wire proof for the Grok Build subscription protocol.
- * Ported from decolua/9router#2590: the official @xai-official/grok 0.2.99
+ * Ported from decolua/9router#2590: the official @xai-official/grok
  * client talks to cli-chat-proxy.grok.com with a grok-shell fingerprint, omits
  * the legacy grok-pager headers, and never sends reasoning.effort for
  * grok-build — while still requesting encrypted-reasoning continuity.
- * Non-Build models must keep the legacy 0.2.93 header path preserved.
+ * Non-Build models retain the grok-pager header path.
  */
 
 const GROK_CLI_URL = "https://cli-chat-proxy.grok.com/v1/responses";
@@ -71,14 +71,13 @@ describe("grok-cli Grok Build subscription wire protocol (#2590)", () => {
     return { headers: options.headers, body: JSON.parse(options.body) };
   }
 
-  it("grok-build posts the official 0.2.99 grok-shell fingerprint", async () => {
+  it("grok-build posts the current grok-shell fingerprint", async () => {
     await executeWithModel("grok-build");
     const { headers, body } = parsePostedCall();
 
-    // Official 0.2.99 client fingerprint
-    expect(headers["User-Agent"]).toBe("grok-shell/0.2.99 (linux; x86_64)");
+    expect(headers["User-Agent"]).toBe("grok-shell/1.0.44 (linux; x86_64)");
     expect(headers["x-grok-client-identifier"]).toBe("grok-shell");
-    expect(headers["x-grok-client-version"]).toBe("0.2.99");
+    expect(headers["x-grok-client-version"]).toBe("1.0.44");
 
     // Legacy grok-pager headers omitted on the Build wire
     expect(headers["x-xai-token-auth"]).toBeUndefined();
@@ -118,15 +117,15 @@ describe("grok-cli Grok Build subscription wire protocol (#2590)", () => {
     expect(body.include).toContain("reasoning.encrypted_content");
   });
 
-  it("non-Build models keep the legacy 0.2.93 header path and effort", async () => {
+  it("non-Build models send the current grok-pager header path and effort", async () => {
     await executeWithModel("grok-4.5", { reasoning_effort: "low" });
     const { headers, body } = parsePostedCall();
 
-    // Legacy fingerprint unchanged
-    expect(headers["User-Agent"]).toBe("grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)");
+    // grok-pager identity and effort remain distinct from grok-build.
+    expect(headers["User-Agent"]).toBe("grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)");
     expect(headers["x-xai-token-auth"]).toBe("xai-grok-cli");
     expect(headers["x-grok-client-identifier"]).toBe("grok-pager");
-    expect(headers["x-grok-client-version"]).toBe("0.2.93");
+    expect(headers["x-grok-client-version"]).toBe("1.0.44");
     expect(headers["x-authenticateresponse"]).toBe("authenticate-response");
     expect(headers["x-compaction-at"]).toBe("400000");
 

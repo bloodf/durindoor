@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
@@ -103,6 +104,9 @@ function aggregateParsedChunks(chunks, fallbackModel, {
           role: "assistant",
           contentParts: [],
           reasoningParts: [],
+          audio: null,
+          audioParts: [],
+          transcriptParts: [],
           toolCallMap: new Map(),
           finishReason: null,
           nativeFinishReason: null
@@ -113,6 +117,11 @@ function aggregateParsedChunks(chunks, fallbackModel, {
       const delta = choice?.delta || {};
       if (isString(delta.role) && delta.role) accumulator.role = delta.role;
       if (isString(delta.content) && delta.content.length > 0) accumulator.contentParts.push(delta.content);
+      if (delta.audio && isObject(delta.audio)) {
+        accumulator.audio = { ...accumulator.audio, ...delta.audio };
+        if (isString(delta.audio.data)) accumulator.audioParts.push(Buffer.from(delta.audio.data, "base64"));
+        if (isString(delta.audio.transcript)) accumulator.transcriptParts.push(delta.audio.transcript);
+      }
       const reasoning = extractReasoningText(delta);
       if (reasoning) accumulator.reasoningParts.push(reasoning);
       if (choice?.finish_reason) accumulator.finishReason = choice.finish_reason;
@@ -158,6 +167,14 @@ function aggregateParsedChunks(chunks, fallbackModel, {
     };
     if (accumulator.reasoningParts.length > 0) {
       message.reasoning_content = accumulator.reasoningParts.join("");
+    }
+    if (accumulator.audio) {
+      message.audio = {
+        ...accumulator.audio,
+        ...(accumulator.audioParts.length ? { data: Buffer.concat(accumulator.audioParts).toString("base64") } : null),
+        ...(accumulator.transcriptParts.length ? { transcript: accumulator.transcriptParts.join("") } : null)
+      };
+      if (!text) message.content = null;
     }
     if (accumulator.toolCallMap.size > 0) {
       message.tool_calls = [...accumulator.toolCallMap.entries()].

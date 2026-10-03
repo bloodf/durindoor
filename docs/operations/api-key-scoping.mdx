@@ -36,3 +36,15 @@ Clear the restriction first: dashboard keys UI, or `PUT /api/keys/[id]` with `pr
 | `DELETE /api/keys/[id]` | Removes the key. Join rows cascade (`ON DELETE CASCADE`). |
 
 Dashboard **API Keys** is the usual editor. Use one key per tool so a scoped leak cannot ride every account on the box.
+
+## Native inference and resources
+
+Native HTTP and WebSocket routes enforce model scope after alias resolution and apply the selected provider-account scope. Nested execution models receive the same checks. Account-bound operations require `x-connection-id`; failed pins cannot select a sibling account.
+
+Tracked native resources store the creator's stable API-key id with the provider, connection, resource id, and creation model. Completion usage belongs to that creator, not to an operator or another polling key. GET/cancel/delete ownership checks precede vendor dispatch. Missing/deleted creator keys cannot transfer completion charges to the polling key. Local/operator-owned resources do not charge an unrelated key.
+
+Native Anthropic file/batch operations and MiniMax voice-category lists retain vendor account-wide semantics. Assign those accounts only to clients you trust with the account's resources.
+
+Keys with usage/rate limits cannot submit native background/batch inference or mint direct ephemeral sessions. Those paths can continue outside the gateway's observable response. Gateway-relayed WebSockets can account for reported terminal usage.
+
+Reported token usage commits before a terminal HTTP/SSE/WS result becomes usable. A request that spends the last allowance keeps its successful output; the next admission fails. Unsupported media billing units remain outside token/USD accounting: text-input estimates do not measure charges per character, image, second, or generation. Set vendor-side budgets for those products.

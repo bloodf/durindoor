@@ -37,5 +37,5 @@ export default {
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
     },
   ],
-  serviceKinds: ["llm"],
+  serviceKinds: ["llm", "embedding"],
 };

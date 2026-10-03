@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
 import { resolveLayaHost } from "../config/laya.js";
-import { createErrorResult, parseUpstreamError } from "../utils/error.js";
+import { createErrorResult, parseUpstreamError, readBoundedResponseText, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch } from "../utils/outboundUrlGuard.js";
+import { SYSTEMONE_COMPATIBLE_PREFIX, systemoneEndpoint } from "../config/systemone.js";
 import { isObject } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
@@ -41,21 +42,33 @@ export async function handleSystemoneCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null
+  onRequestSuccess = null,
+  signal = null,
+  proxyOptions = null
 }) {
   const { provider, model } = modelInfo;
+  const isCustom = provider.startsWith(SYSTEMONE_COMPATIBLE_PREFIX);
   const cfg = PROVIDER_MEDIA[provider]?.systemoneConfig;
-  if (!isRecord(cfg) || !cfg.baseUrl) {
+  if (!isCustom && (!isRecord(cfg) || !cfg.baseUrl)) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support System One.`);
   }
 
-  // noAuth free lanes carry an accessToken stub; paid lanes carry apiKey.
-  // A self-hosted engine (Laya) keeps its origin on the connection; only the
-  // origin is taken, the path stays the registry's, and the host goes through
-  // the outbound guard (including the resolved-address check).
-  let baseUrl = cfg.baseUrl;
-  let send = proxyAwareFetch;
-  if (cfg.userConfigurableHost) {
+  // Custom System One nodes receive their validated endpoint only from selected
+  // connection metadata. Request body never selects an upstream host.
+  let baseUrl;
+  let send = (url, init) => proxyAwareFetch(url, init, proxyOptions);
+  if (isCustom) {
+    try {
+      baseUrl = systemoneEndpoint(credentials?.providerSpecificData?.baseUrl);
+      assertOutboundUrlAllowed(baseUrl);
+      send = (url, init) => guardedProbeFetch(url, init, undefined, (guardedUrl, guardedInit) => proxyAwareFetch(guardedUrl, guardedInit, proxyOptions));
+    } catch (err) {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, err?.message || `Invalid ${provider} server URL`);
+    }
+  } else {
+    baseUrl = cfg.baseUrl;
+  }
+  if (cfg?.userConfigurableHost) {
     try {
       // Laya is the one provider with a user-set host; resolveLayaHost refuses
       // (null) anything that is not an http(s) origin.
@@ -66,15 +79,15 @@ export async function handleSystemoneCore({
     } catch (err) {
       return createErrorResult(HTTP_STATUS.BAD_REQUEST, err?.message || `Invalid ${provider} server URL`);
     }
-    send = (url, init) => guardedProbeFetch(url, init);
+    send = (url, init) => guardedProbeFetch(url, init, undefined, (guardedUrl, guardedInit) => proxyAwareFetch(guardedUrl, guardedInit, proxyOptions));
   }
 
   const key = credentials?.apiKey || credentials?.accessToken;
   const headers = { "Content-Type": "application/json" };
   if (key) headers.Authorization = `Bearer ${key}`;
-  if (isRecord(cfg.headers)) Object.assign(headers, cfg.headers);
-  // Zen lanes expect the official client session header on every request.
-  headers["x-opencode-session"] = generateOpencodeSessionId();
+  if (isRecord(cfg?.headers)) Object.assign(headers, cfg.headers);
+  // This header is OpenCode-native protocol metadata, never generic System One.
+  if (provider === "opencode" || provider === "opencode-zen") headers["x-opencode-session"] = generateOpencodeSessionId();
   const requestBody = { ...body, model };
 
   log?.debug?.("SYSTEMONE", `${provider} | ${model} | ${baseUrl}`);
@@ -84,22 +97,47 @@ export async function handleSystemoneCore({
     res = await send(baseUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: signal || undefined
     });
   } catch (err) {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "System One request failed");
+    if (signal?.aborted || err?.name === "AbortError") {
+      return createErrorResult(499, "System One request aborted");
+    }
+    if (err?.code === "OUTBOUND_URL_GUARD_BLOCKED" && err?.message === "Guarded provider probe cannot use an outbound proxy") {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Outbound proxies are not supported for guarded System One server URLs");
+    }
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeErrorMessageWithSecrets(err?.message || "System One request failed", [credentials?.apiKey, credentials?.accessToken]));
   }
 
   if (!res.ok) {
-    const errInfo = await parseUpstreamError(res, null);
-    return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
+    let errInfo;
+    try {
+      errInfo = await parseUpstreamError(res, null, { signal, credentials, proxyOptions });
+    } catch (err) {
+      if (signal?.aborted || err?.name === "AbortError") {
+        return createErrorResult(499, "System One request aborted");
+      }
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Unable to read System One provider error");
+    }
+    return createErrorResult(
+      errInfo.statusCode || res.status,
+      sanitizeErrorMessageWithSecrets(errInfo.message || `Upstream error from ${provider}`, [credentials?.apiKey, credentials?.accessToken]),
+      errInfo.resetsAtMs,
+      errInfo.errorBody,
+      errInfo.rateLimitEvidence,
+      credentials,
+    );
   }
 
   let responseBody;
   try {
-    responseBody = await res.json();
-  } catch {
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+    responseBody = JSON.parse(await readBoundedResponseText(res, { signal, maxBytes: 8 * 1024 * 1024, timeoutMs: 10000, throwOnTimeout: true }));
+  } catch (err) {
+    if (signal?.aborted || err?.name === "AbortError") {
+      return createErrorResult(499, "System One request aborted");
+    }
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeErrorMessageWithSecrets(`Invalid JSON response from ${provider}: ${err?.message || "invalid response"}`, [credentials?.apiKey, credentials?.accessToken]));
   }
 
   if (onRequestSuccess) await onRequestSuccess();

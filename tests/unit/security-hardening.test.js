@@ -227,10 +227,12 @@ describe("#3313 DNS guard wiring for provider probe sinks", () => {
 
   function mockCustomEmbeddingRoute(baseUrl) {
     const provider = "embedding-custom-rebind";
-    vi.doMock("@/models", () => ({
+    vi.doMock("@/models", async (importOriginal) => ({
+      ...(await importOriginal()),
       getProviderNodeById: vi.fn(async () => ({ baseUrl })),
     }));
-    vi.doMock("@/shared/constants/providers", () => ({
+    vi.doMock("@/shared/constants/providers", async (importOriginal) => ({
+      ...(await importOriginal()),
       isOpenAICompatibleProvider: () => false,
       isAnthropicCompatibleProvider: () => false,
       isCustomEmbeddingProvider: (id) => id === provider,
@@ -377,7 +379,8 @@ describe("wiring — POST handler (azure + openai-compatible branches, real hand
       ...(await importOriginal()),
       getProviderNodeById: vi.fn(async () => ({ baseUrl: METADATA_URL })),
     }));
-    vi.doMock("@/shared/constants/providers", () => ({
+    vi.doMock("@/shared/constants/providers", async (importOriginal) => ({
+      ...(await importOriginal()),
       isOpenAICompatibleProvider: (p) => p === "openai-compatible",
       isAnthropicCompatibleProvider: () => false,
       isCustomEmbeddingProvider: () => false,
@@ -427,7 +430,8 @@ describe("SECAUD gap regressions", () => {
       ...(await importOriginal()),
       getProviderNodeById: vi.fn(async () => ({ baseUrl: ATTACKER })),
     }));
-    vi.doMock("@/shared/constants/providers", () => ({
+    vi.doMock("@/shared/constants/providers", async (importOriginal) => ({
+      ...(await importOriginal()),
       isOpenAICompatibleProvider: (p) => p === "openai-compatible",
       isAnthropicCompatibleProvider: () => false,
       isCustomEmbeddingProvider: () => false,

@@ -6,6 +6,7 @@ import { AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { CODEX_CLI_USER_AGENT } from "open-sse/config/appConstants.js";
+import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
@@ -81,9 +82,9 @@ export const OAUTH_TEST_CONFIG = {
     extraHeaders: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      "x-grok-client-version": "0.2.72",
-      "x-grok-client-identifier": "grok_cli_rs",
-      "User-Agent": "grok-cli/0.2.72 (Windows 10.0.26200; x64)"
+      "x-grok-client-version": GROK_CLI_VERSION,
+      "x-grok-client-identifier": "grok-pager",
+      "User-Agent": GROK_CLI_PAGER_USER_AGENT
     },
     // Minimal invalid body: a 400 means auth reached the upstream service.
     body: JSON.stringify({ model: "grok-build", messages: [] }),

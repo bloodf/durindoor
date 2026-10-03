@@ -133,7 +133,7 @@ describe("VisibleModelsModal round-3 review fixes", () => {
     await flush();
 
     const ids = Array.from(document.querySelectorAll("label code")).map((el) => el.textContent);
-    expect(ids).toEqual(expect.arrayContaining(["dall-e-3", "text-embedding-3-small", "tts-1", "whisper-1"]));
+    expect(ids).toEqual(expect.arrayContaining(["gpt-image-2", "text-embedding-3-small", "tts-1", "whisper-1"]));
   });
 
   it("shows custom models stored under the registry alias as always exposed", async () => {

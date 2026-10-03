@@ -332,6 +332,9 @@ async function handleVideoGetHandler(request, requestId) {
     const pinnedConnection = await getProviderConnectionById(preferredConnectionId);
     if (pinnedConnection?.provider && getVideoConfig(pinnedConnection.provider)) provider = pinnedConnection.provider;
   }
+  if (!preferredConnectionId && requestId.startsWith("minimax-v1:")) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "MiniMax video polling requires x-9router-connection-id from creation response");
+  }
   // Jobs are account-bound, so an unpinned poll is only safe to guess when a
   // single async video provider is connected; otherwise the client must echo
   // the create response's connection header.

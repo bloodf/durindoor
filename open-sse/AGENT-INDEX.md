@@ -243,7 +243,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mimo-free` |  | free | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
 | `mimocode` | openai | free | `https://api.xiaomimimo.com` |
 | `minimax` | claude | apikey | `https://api.minimax.io/anthropic/v1/messages` |
-| `minimax-cn` | claude | apikey | `https://api.minimaxi.com/anthropic/v1/messages` |
+| `minimax-cn` | claude | apikey | `https://api.minimax.cn/anthropic/v1/messages` |
 | `mistral` |  | apikey | `https://api.mistral.ai/v1/chat/completions` |
 | `mmf` |  | apikey | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
 | `modal` | openai | apikey | `https://api.modal.ai/v1/chat/completions` |

@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 
 import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "../providers/shared.js";
-import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -192,15 +192,12 @@ function anthropicCapabilities(entry) {
 
   const enabled = supported(types?.enabled);
   const adaptive = supported(types?.adaptive);
-  const reasoning = Boolean(supported(thinking) || thinking?.supported === true || enabled || adaptive);
+  const reasoning = supported(thinking) || thinking?.supported === true || enabled || adaptive;
   return {
     ...(published.image_input !== undefined ? { vision: supported(published.image_input) } : null),
     ...(published.pdf_input !== undefined ? { pdf: supported(published.pdf_input) } : null),
-    ...(thinking !== undefined ? {
-      reasoning,
-      thinkingCanDisable: reasoning ? enabled : true,
-      thinkingFormat: reasoning ? adaptive ? "claude-adaptive" : "claude-budget" : null
-    } : null)
+    ...(reasoning ? { reasoning: true } : null),
+    ...(adaptive ? { thinkingFormat: "claude-adaptive" } : enabled ? { thinkingFormat: "claude-budget" } : null)
   };
 }
 
@@ -327,4 +324,28 @@ export function extractLiveModelLimits(model) {
     ...(contextWindow ? { contextWindow } : null),
     ...(maxOutput ? { maxOutput } : null)
   };
+}
+
+export function normalizeVeniceModel(model) {
+  const id = isString(model?.id) ? model.id : "";
+  if (!id) return null;
+  const limit = (value) => {
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number > 0 && number <= MAX_SANE_TOKEN_LIMIT ? number : undefined;
+  };
+  const contextWindow = limit(model.context_length ?? model.model_spec?.availableContextTokens);
+  const maxOutput = limit(model.model_spec?.maxCompletionTokens);
+  const capabilities = {
+    ...(contextWindow ? { contextWindow } : null),
+    ...(maxOutput ? { maxOutput } : null),
+    ...(isBoolean(model.capabilities?.supportsFunctionCalling) ? { tools: model.capabilities.supportsFunctionCalling } : null),
+    ...(isBoolean(model.capabilities?.supportsVision) ? { vision: model.capabilities.supportsVision } : null),
+    ...(isBoolean(model.capabilities?.supportsAudioInput) ? { audioInput: model.capabilities.supportsAudioInput } : null),
+    ...(isBoolean(model.capabilities?.supportsVideoInput) ? { videoInput: model.capabilities.supportsVideoInput } : null),
+    ...(isBoolean(model.capabilities?.supportsReasoning) ? { reasoning: model.capabilities.supportsReasoning } : null),
+    ...(isBoolean(model.capabilities?.supportsWebSearch) ? { search: model.capabilities.supportsWebSearch } : null),
+    ...(isBoolean(model.capabilities?.supportsResponseSchema) ? { structuredOutput: model.capabilities.supportsResponseSchema } : null),
+  };
+  const kind = ({ text: "llm", chat: "llm", embedding: "embedding", image: "image" })[String(model.type || "").toLowerCase()];
+  return { id, ...(kind ? { kind } : null), ...(Object.keys(capabilities).length ? { capabilities } : null) };
 }

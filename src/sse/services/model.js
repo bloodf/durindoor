@@ -49,10 +49,11 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
     // providerAlias, while getModelInfo resolves to the internal node id. A
     // bare alias (requestPrefix null) or id-addressed request would miss the
     // row, so retry with the node's prefix as the effective alias.
-    if (provider && (provider.startsWith("openai-compatible") || provider.startsWith("anthropic-compatible") || /^[0-9a-f-]{16,}$/i.test(provider))) {
+    if (provider && (provider.startsWith("openai-compatible") || provider.startsWith("anthropic-compatible") || provider.startsWith("systemone-compatible") || /^[0-9a-f-]{16,}$/i.test(provider))) {
       const nodes = [
       ...(await getProviderNodes({ type: "openai-compatible" })),
-      ...(await getProviderNodes({ type: "anthropic-compatible" }))];
+      ...(await getProviderNodes({ type: "anthropic-compatible" })),
+      ...(await getProviderNodes({ type: "systemone-compatible" }))];
 
       const node = nodes.find((n) => n.id === provider);
       if (node?.prefix && node.prefix !== requestPrefix) {
@@ -137,7 +138,7 @@ export async function resolveModelAlias(alias) {
   return resolveModelAliasFromMap(alias, aliases);
 }
 
-const DOCUMENTED_BRACKET_MODEL = /^(glm-5\.3|k3)\[1m\]$/i;
+const DOCUMENTED_BRACKET_MODEL = /^glm-5\.3\[1m\]$/i;
 
 function registryHasModel(modelStr) {
   const parsed = parseModel(modelStr);
@@ -162,6 +163,7 @@ export function createRoutableModelIdChecker() {
     getModelAliases(),
     getProviderNodes({ type: "openai-compatible" }),
     getProviderNodes({ type: "anthropic-compatible" }),
+    getProviderNodes({ type: "systemone-compatible" }),
     getCustomModels(),
   ]);
 
@@ -169,7 +171,7 @@ export function createRoutableModelIdChecker() {
     if (!modelStr) return false;
     if (registryHasModel(modelStr)) return true;
 
-    const [combos, aliases, openaiNodes, anthropicNodes, customModels] = await loadSources();
+    const [combos, aliases, openaiNodes, anthropicNodes, systemoneNodes, customModels] = await loadSources();
     if (combos.some((combo) => combo.name?.toLowerCase() === modelStr.toLowerCase())) return true;
     if (resolveModelAliasFromMap(modelStr, aliases)) return true;
 
@@ -177,6 +179,12 @@ export function createRoutableModelIdChecker() {
     if (!parsed.providerAlias || !parsed.model) return false;
     if ([...openaiNodes, ...anthropicNodes].some((node) =>
       node.id === parsed.providerAlias || node.prefix === parsed.providerAlias)) return true;
+    const systemoneNode = systemoneNodes.find((node) => node.id === parsed.providerAlias || node.prefix === parsed.providerAlias);
+    if (systemoneNode) {
+      return customModels.some((model) =>
+        (model.providerAlias === systemoneNode.prefix || model.providerAlias === systemoneNode.id) &&
+        model.id === parsed.model && (model.kind || model.type) === "systemone");
+    }
     return customModels.some((model) =>
       model.providerAlias === parsed.providerAlias && model.id === parsed.model);
   };
@@ -186,7 +194,14 @@ export function createRoutableModelIdChecker() {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
-  const parsed = parseModel(modelStr);
+  let parsed = parseModel(modelStr);
+  if (parsed.isAlias) {
+    const combo = await getComboForModel(parsed.model);
+    if (combo) return { provider: null, model: combo.name };
+    const resolved = await getModelInfoCore(modelStr, getModelAliases);
+    if (!resolved.provider || !resolved.model) return resolved;
+    parsed = parseModel(`${resolved.provider}/${resolved.model}`);
+  }
 
   if (!parsed.isAlias) {
     // Provider-node prefixes are user-defined. They must not override built-in
@@ -215,6 +230,17 @@ export async function getModelInfo(modelStr) {
       if (matchedEmbedding) {
         return { provider: matchedEmbedding.id, model: parsed.model };
       }
+
+      const systemoneNodes = await getProviderNodes({ type: "systemone-compatible" });
+      const matchedSystemone = systemoneNodes.find((node) => node.prefix === parsed.providerAlias || node.id === parsed.providerAlias);
+      if (matchedSystemone) {
+        const model = stripRedundantNodePrefix(parsed.model, matchedSystemone.prefix);
+        const customModels = await getCustomModels();
+        const registered = customModels.some((row) =>
+          (row.providerAlias === matchedSystemone.prefix || row.providerAlias === matchedSystemone.id) &&
+          row.id === model && (row.kind || row.type) === "systemone");
+        return registered ? { provider: matchedSystemone.id, model } : { provider: null, model: null };
+      }
     }
     return {
       provider: parsed.provider,
@@ -222,15 +248,6 @@ export async function getModelInfo(modelStr) {
     };
   }
 
-  // Check if this is a combo name before resolving as alias
-  // This prevents combo names from being incorrectly routed to providers
-  const combo = await getComboForModel(parsed.model);
-  if (combo) {
-    // Return the persisted name so downstream combo routing preserves casing.
-    return { provider: null, model: combo.name };
-  }
-
-  return getModelInfoCore(modelStr, getModelAliases);
 }
 
 /**

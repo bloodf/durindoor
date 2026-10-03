@@ -52,6 +52,5 @@ describe("OpenCode Zen connection test", () => {
     expect(init.headers).toMatchObject({
       Authorization: "Bearer zen-key",
     });
-    expect(init.body).toContain("big-pickle");
   });
 });

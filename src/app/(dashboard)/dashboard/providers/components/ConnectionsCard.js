@@ -6,7 +6,9 @@ import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/
 import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
+import { isSystemoneCompatibleProvider } from "@/shared/constants/providers";
 import HostAwareAddApiKeyModal from "../[id]/AddApiKeyModal";
+
 
 // ── CooldownTimer ──────────────────────────────────────────────
 function CooldownTimer({ until }) {
@@ -202,15 +204,17 @@ ConnectionRow.propTypes = {
 };
 
 // ── AddApiKeyModal ─────────────────────────────────────────────
-function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, onClose }) {
+function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = false, proxyPools, error, onSave, onClose }) {
   const NONE = "__none__";
   const [formData, setFormData] = useState({ name: "", apiKey: "", priority: 1, proxyPoolId: NONE, cx: "" });
+  const credentialLabel = credentialOptional ? "API Key (optional)" : "API Key";
+
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const handleValidate = async () => {
-    if (!formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx)) return;
+    if ((!credentialOptional && !formData.apiKey) || !isGooglePseReadyForSave(provider, formData.cx)) return;
     setValidating(true);
     try {
       const res = await fetch("/api/providers/validate", {
@@ -225,7 +229,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
   };
 
   const handleSubmit = async () => {
-    if (!provider || !formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx)) return;
+    if (!provider || (!credentialOptional && !formData.apiKey) || !isGooglePseReadyForSave(provider, formData.cx)) return;
     setSaving(true);
     try {
       let isValid = false;
@@ -256,19 +260,21 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
   if (!provider) return null;
 
   return (
-    <Modal isOpen={isOpen} title={`Add ${providerName || provider} API Key`} onClose={onClose}>
+    <Modal isOpen={isOpen} title={credentialOptional ? `Add ${providerName || provider} Connection` : `Add ${providerName || provider} API Key`} onClose={onClose}>
       <div className="flex flex-col gap-4">
+        {error && <p role="alert" className="text-sm text-dd-danger">{error}</p>}
+        {credentialOptional && <p className="text-sm text-dd-muted">Guarded System One server URLs use direct egress. Outbound proxy pools are unsupported.</p>}
         <div>
           <label className="text-xs text-dd-muted mb-1 block">Name</label>
           <input className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Production Key" />
         </div>
         <div className="flex gap-2">
           <div className="flex-1">
-            <label className="text-xs text-dd-muted mb-1 block">API Key</label>
+            <label className="text-xs text-dd-muted mb-1 block">{credentialLabel}</label>
             <input type="password" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.apiKey} onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })} />
           </div>
           <div className="pt-6">
-            <Button onClick={handleValidate} disabled={!formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx) || validating || saving} variant="secondary">
+            <Button onClick={handleValidate} disabled={(!credentialOptional && !formData.apiKey) || !isGooglePseReadyForSave(provider, formData.cx) || validating || saving} variant="secondary">
               {validating ? "Checking..." : "Check"}
             </Button>
           </div>
@@ -288,10 +294,10 @@ function AddApiKeyModal({ isOpen, provider, providerName, proxyPools, onSave, on
           <label className="text-xs text-dd-muted mb-1 block">Priority</label>
           <input type="number" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value) || 1 })} />
         </div>
-        <Select label="Proxy Pool" value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
-        options={[{ value: NONE, label: "None" }, ...(proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />
+        <Select label="Proxy Pool" disabled={credentialOptional} value={formData.proxyPoolId} onChange={(e) => setFormData({ ...formData, proxyPoolId: e.target.value })}
+        options={[{ value: NONE, label: "None" }, ...(credentialOptional ? [] : proxyPools || []).map((p) => ({ value: p.id, label: p.name }))]} />
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={!formData.name || !formData.apiKey || !isGooglePseReadyForSave(provider, formData.cx) || saving}>
+          <Button onClick={handleSubmit} fullWidth disabled={!formData.name || (!credentialOptional && !formData.apiKey) || !isGooglePseReadyForSave(provider, formData.cx) || saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>Cancel</Button>
@@ -305,7 +311,9 @@ AddApiKeyModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   provider: PropTypes.string,
   providerName: PropTypes.string,
+  credentialOptional: PropTypes.bool,
   proxyPools: PropTypes.array,
+  error: PropTypes.string,
   onSave: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired
 };
@@ -524,9 +532,11 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       <AddApiKeyModal
         isOpen={showAddModal}
         provider={providerId}
+        credentialOptional={isSystemoneCompatibleProvider(providerId)}
         proxyPools={proxyPools}
+        error={addError}
         onSave={handleSaveApiKey}
-        onClose={() => setShowAddModal(false)} />
+        onClose={() => {setShowAddModal(false);setAddError(null);}} />
       }
       
       <EditConnectionModal

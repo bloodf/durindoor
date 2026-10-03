@@ -1,5 +1,6 @@
 // Provider definitions
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { SYSTEMONE_COMPATIBLE_PREFIX } from "open-sse/config/systemone.js";
 import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
 import { isString } from "../utils/typeChecks.js";
 
@@ -112,6 +113,12 @@ export function isCustomEmbeddingProvider(providerId) {
   return isString(providerId) && providerId.startsWith(CUSTOM_EMBEDDING_PREFIX);
 }
 
+export { SYSTEMONE_COMPATIBLE_PREFIX };
+
+export function isSystemoneCompatibleProvider(providerId) {
+  return isString(providerId) && providerId.startsWith(SYSTEMONE_COMPATIBLE_PREFIX);
+}
+
 /**
  * Classify a provider by its free-tier status for badge rendering.
  * @param {string} providerId
@@ -165,7 +172,9 @@ export function isRoutableProvider(aliasOrId) {
   if (getProviderByAlias(aliasOrId)) return true;
   return (
     (isOpenAICompatibleProvider(aliasOrId) && aliasOrId.length > OPENAI_COMPATIBLE_PREFIX.length) ||
-    (isAnthropicCompatibleProvider(aliasOrId) && aliasOrId.length > ANTHROPIC_COMPATIBLE_PREFIX.length)
+    (isAnthropicCompatibleProvider(aliasOrId) && aliasOrId.length > ANTHROPIC_COMPATIBLE_PREFIX.length) ||
+    (isCustomEmbeddingProvider(aliasOrId) && aliasOrId.length > CUSTOM_EMBEDDING_PREFIX.length) ||
+    (isSystemoneCompatibleProvider(aliasOrId) && aliasOrId.length > SYSTEMONE_COMPATIBLE_PREFIX.length)
   );
 }
 

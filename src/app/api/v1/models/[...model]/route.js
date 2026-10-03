@@ -16,6 +16,14 @@ const KIND_SLUG_MAP = {
   "rerank": ["rerank"],
   "video": ["video"],
   "music": ["music"],
+  "realtime": ["realtime"],
+  "moderation": ["moderation"],
+  "audio": ["audio"],
+  "realtime-translation": ["realtimeTranslation"],
+  "realtime-transcription": ["realtimeTranscription"],
+  "live": ["live"],
+  "systemone": ["systemone"],
+  "document-parsing": ["documentParsing"],
 };
 
 const CORS_HEADERS = { "Access-Control-Allow-Origin": "*" };

@@ -38,7 +38,7 @@ export async function getPricing() {
   if (cache.value && cache.expiresAt > now) return cache.value;
 
   const userPricing = await getUserPricing();
-  const { PROVIDER_PRICING } = await import("open-sse/providers/pricing.js");
+  const { PROVIDER_PRICING, getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
   const merged = {};
 
   for (const [provider, models] of Object.entries(PROVIDER_PRICING)) {
@@ -57,7 +57,7 @@ export async function getPricing() {
     if (!merged[provider]) merged[provider] = {};
     for (const [model, pricing] of Object.entries(models)) {
       if (!merged[provider][model]) {
-        merged[provider][model] = mergeCurrentPricing(null, pricing);
+        merged[provider][model] = mergeCurrentPricing(resolveConst(provider, model), pricing);
       }
     }
   }
@@ -79,8 +79,12 @@ export async function getPricingForModel(provider, model) {
     const canonical = stripKiroSyntheticSuffixes(model);
     if (canonical !== model) customPricing = userPricing[provider]?.[canonical];
   }
-  const { getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
+  const { canonicalModelId, getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
   const defaultPricing = resolveConst(provider, model);
+  if (!customPricing) {
+    const canonical = canonicalModelId(provider, model);
+    if (canonical !== model) customPricing = userPricing[provider]?.[canonical];
+  }
   return customPricing
     ? mergeCurrentPricing(defaultPricing, customPricing)
     : defaultPricing;

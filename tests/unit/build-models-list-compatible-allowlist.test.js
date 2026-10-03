@@ -190,15 +190,28 @@ describe("buildModelsList — compatible provider public allowlist", () => {
     );
   });
 
-  it("preserves Kimi live model merging", async () => {
+  it("merges Kimi Platform live metadata for supported native model", async () => {
     stubCatalog({ connections: [connection("kimi", "kimi")] });
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [{ id: "k3", context_length: 999_999 }] }),
+      json: async () => ({ data: [
+        { id: "kimi-k3", context_length: 999_999, supports_image_in: false, supports_video_in: true, supports_reasoning: false },
+        { id: "kimi-k2.7-code", context_length: 262_144 },
+      ] }),
     });
 
     const models = await buildModelsList([LLM_KIND]);
-    expect(models.find((model) => model.id === "kimi/k3")?.capabilities.contextWindow).toBe(999_999);
+    expect(models.find((model) => model.id === "kimi/kimi-k3")?.capabilities).toMatchObject({
+      contextWindow: 999_999,
+      vision: false,
+      videoInput: true,
+      reasoning: false,
+    });
+    expect(models.some((model) => model.id === "kimi/kimi-k2.7-code")).toBe(false);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.moonshot.ai/v1/models",
+      expect.any(Object),
+    );
   });
 
   it("preserves local passthrough discovery", async () => {

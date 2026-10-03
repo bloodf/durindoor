@@ -52,7 +52,13 @@ const MODEL_KINDS = Object.freeze([
   "stt",
   "imageToText",
   "rerank",
-  "video"
+  "video",
+  "systemone",
+  "realtime",
+  "realtimeTranslation",
+  "realtimeTranscription",
+  "live",
+  "documentParsing"
 ]);
 
 /** Auto-ping settings are connection-scoped; the flat PATCH surface rejects them. */

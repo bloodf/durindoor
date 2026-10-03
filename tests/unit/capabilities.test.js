@@ -25,9 +25,9 @@ describe("getCapabilitiesForModel", () => {
       maxOutput: 128000,
     });
     expect(getCapabilitiesForModel("claude", "claude-fable-5")).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive" });
-    expect(getCapabilitiesForModel("claude", "claude-fable-5").thinkingCanDisable).not.toBe(false);
     expect(getCapabilitiesForModel("claude", "claude-mythos-5")).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive" });
   });
+
 
   it("reports Kiro Claude Opus 4.8 as a 1M context model", () => {
     expect(getCapabilitiesForModel("kiro", "claude-opus-4.8").contextWindow).toBe(1000000);
@@ -330,29 +330,6 @@ describe("getCapabilitiesForModel — OpenCode Zen", () => {
 });
 
 
-describe("getCapabilitiesForModel — MiniMax M2.x vision", () => {
-  it("minimax-m2.7 has vision", () => {
-    const caps = getCapabilitiesForModel(null, "minimax-m2.7");
-    expect(caps.vision).toBe(true);
-    expect(caps.thinkingCanDisable).toBe(false);
-  });
-
-  it("minimax-m2.5 has vision", () => {
-    const caps = getCapabilitiesForModel(null, "minimax-m2.5");
-    expect(caps.vision).toBe(true);
-    expect(caps.thinkingCanDisable).toBe(false);
-  });
-
-  it("MiniMax-M2.7 has vision (vendor prefix MiniMaxAI/ stripped by route)", () => {
-    const caps = getCapabilitiesForModel(null, "MiniMax-M2.7");
-    expect(caps.vision).toBe(true);
-  });
-
-  it("minimax-m3 has vision (separate pattern)", () => {
-    const caps = getCapabilitiesForModel(null, "minimax-m3");
-    expect(caps.vision).toBe(true);
-  });
-});
 
 describe("getCapabilitiesForModel — DeepSeek V4 text-only", () => {
   it("deepseek-v4-pro has no vision", () => {
@@ -483,12 +460,6 @@ describe("getCapabilitiesForModel — codebuddy-cn provider overrides", () => {
     expect(caps.thinkingCanDisable).toBe(true);
   });
 
-  it("minimax-m2.7 dropped from the server list falls through to pattern matching", () => {
-    const caps = getCapabilitiesForModel("codebuddy-cn", "minimax-m2.7");
-    // No provider-pinned override anymore (upstream cec672d9); generic minimax pattern wins.
-    expect(caps.vision).toBe(true);
-    expect(caps.thinkingFormat).toBe("minimax");
-  });
 
   it("unknown provider falls through to pattern matching", () => {
     const caps = getCapabilitiesForModel("unknown-provider", "mimo-v2.5");

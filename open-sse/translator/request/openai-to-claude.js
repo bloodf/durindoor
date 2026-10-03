@@ -5,7 +5,7 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
 import { extractTextContent } from "../formats/gemini.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
@@ -77,6 +77,13 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
 
     for (const msg of nonSystemMessages) {
       const newRole = msg.role === ROLE.USER || msg.role === ROLE.TOOL ? ROLE.USER : ROLE.ASSISTANT;
+      const nativeBlocks = msg[CLAUDE_NATIVE_BLOCKS];
+      if (Array.isArray(nativeBlocks)) {
+        flushCurrentMessage();
+        result.messages.push({ role: newRole, content: nativeBlocks });
+        currentRole = undefined;
+        continue;
+      }
       const blocks = getContentBlocksFromMessage(msg, toolNameMap);
       const hasToolUse = blocks.some((b) => b.type === CLAUDE_BLOCK.TOOL_USE);
       const hasToolResult = blocks.some((b) => b.type === CLAUDE_BLOCK.TOOL_RESULT);
@@ -131,16 +138,23 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     }
   }
 
-  // Handle response_format for JSON mode
+  // Preserve native fields OpenAI-compatible clients may carry through this
+  // bridge. A json_schema response format augments, never replaces, effort.
+  if (isObject(body.output_config)) result.output_config = { ...body.output_config };
+  if (body.context_management !== undefined) result.context_management = body.context_management;
+  const nativeFields = body[CLAUDE_NATIVE_REQUEST_FIELDS];
+  if (isObject(nativeFields)) Object.assign(result, nativeFields);
+
+  // Claude structured outputs require native output_config.format. Prompting alone
+  // cannot provide JSON-schema enforcement. Keep json_object as an instruction:
+  // Anthropic has no equivalent unconstrained JSON-object response format.
   if (body.response_format) {
     const responseFormat = body.response_format;
-    if (responseFormat.type === "json_schema" && responseFormat.json_schema?.schema) {
-      const schemaJson = JSON.stringify(responseFormat.json_schema.schema, null, 2);
-      systemParts.push(`You must respond with valid JSON that strictly follows this JSON schema:
-\`\`\`json
-${schemaJson}
-\`\`\`
-Respond ONLY with the JSON object, no other text.`);
+    if (responseFormat.type === "json_schema" && isObject(responseFormat.json_schema?.schema)) {
+      result.output_config = {
+        ...(result.output_config || {}),
+        format: { type: "json_schema", schema: responseFormat.json_schema.schema }
+      };
     } else if (responseFormat.type === "json_object") {
       systemParts.push("You must respond with valid JSON. Respond ONLY with a JSON object, no other text.");
     }
@@ -190,13 +204,18 @@ Respond ONLY with the JSON object, no other text.`);
       result.tools.push({
         name: toolName,
         description: toolData.description || "",
-        input_schema: toolData.parameters || toolData.input_schema || { type: "object", properties: {}, required: [] }
+        input_schema: toolData.parameters || toolData.input_schema || { type: "object", properties: {}, required: [] },
+        ...(toolData.strict !== undefined && { strict: toolData.strict })
       });
     }
 
     if (result.tools.length > 0) {
       result.tools[result.tools.length - 1].cache_control = { type: "ephemeral", ttl: "1h" };
     }
+  }
+  const nativeTools = body[CLAUDE_NATIVE_TOOLS];
+  if (Array.isArray(nativeTools) && nativeTools.length) {
+    result.tools = [...nativeTools, ...(result.tools || [])];
   }
 
   // Tool choice
@@ -220,6 +239,28 @@ openaiToClaudeRequest.finalize = (_model, body) => {
 };
 
 // Get content blocks from single message
+function claudePdfDocumentSource(part) {
+  if (part?.type === CLAUDE_BLOCK.DOCUMENT && isObject(part.source)) {
+    const source = part.source;
+    if (source.type === "base64" && source.media_type === "application/pdf" && isString(source.data)) return source;
+    if (source.type === "url" && isString(source.url)) return source;
+    // Only pre-existing native document blocks may carry Anthropic Files IDs.
+    // OpenAI file IDs are provider-local and cannot be reused here.
+    if (source.type === "file" && isString(source.file_id)) return source;
+    return null;
+  }
+
+  if (part?.type !== OPENAI_BLOCK.FILE || !isObject(part.file)) return null;
+  const file = part.file;
+  const parsed = parseDataUri(file.file_data);
+  if (parsed?.mimeType === "application/pdf") {
+    return { type: "base64", media_type: parsed.mimeType, data: parsed.base64 };
+  }
+  const url = isString(file.file_url) ? file.file_url : isString(file.file_data) ? file.file_data : null;
+  if (url?.startsWith("http://") || url?.startsWith("https://")) return { type: "url", url };
+  return null;
+}
+
 function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
   const blocks = [];
 
@@ -261,16 +302,9 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
           }
         } else if (part.type === OPENAI_BLOCK.IMAGE && part.source) {
           blocks.push({ type: CLAUDE_BLOCK.IMAGE, source: part.source });
-        } else if (part.type === OPENAI_BLOCK.FILE && part.file) {
-          // OpenAI file block -> Claude document (PDF only; Claude rejects other mimes).
-          const fileData = part.file.file_data;
-          const parsed = parseDataUri(fileData);
-          if (parsed && parsed.mimeType === "application/pdf") {
-            blocks.push({
-              type: CLAUDE_BLOCK.DOCUMENT,
-              source: { type: "base64", media_type: parsed.mimeType, data: parsed.base64 }
-            });
-          }
+        } else if (part.type === OPENAI_BLOCK.FILE || part.type === CLAUDE_BLOCK.DOCUMENT) {
+          const source = claudePdfDocumentSource(part);
+          if (source) blocks.push({ type: CLAUDE_BLOCK.DOCUMENT, source });
         }
       }
     }

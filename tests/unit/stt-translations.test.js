@@ -54,4 +54,15 @@ describe("STT translations", () => {
     expect(result.status).toBe(400);
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it("allows Together Whisper translation and rejects other Together STT models", async () => {
+    const translated = await handleSttCore({ provider: "together", model: "openai/whisper-large-v3", formData: formDataWithAudio(), credentials: { apiKey: "sk-test" }, sttConfig: sttConfig("together"), kind: "translation" });
+    expect(translated.success).toBe(true);
+    expect(global.fetch.mock.calls[0][0]).toBe("https://api.together.ai/v1/audio/translations");
+
+    global.fetch.mockClear();
+    const rejected = await handleSttCore({ provider: "together", model: "nvidia/parakeet-tdt-0.6b-v3", formData: formDataWithAudio(), credentials: { apiKey: "sk-test" }, sttConfig: sttConfig("together"), kind: "translation" });
+    expect(rejected.status).toBe(400);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });

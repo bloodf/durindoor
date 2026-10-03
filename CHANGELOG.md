@@ -49,6 +49,7 @@
 ## Upstream ports
 - port(upstream): 6b9dc54 - identify Grok CLI as 1.0.44 on chat, model/probe, billing and OAuth requests to avoid HTTP 426; keep grok-shell versus grok-pager header behavior.
 
+- port(omniroute): forward client-requested Claude Code timing and inline-tools betas to Anthropic-family Claude requests; keep unrelated betas blocked (#15102)
 - port(upstream): #4481 - expose Claude cache read and creation tokens to OpenAI streaming clients without charging cached prompts as uncached input
 - port(9router): keep a trailing user turn after empty-message cleanup when the client ended on a user turn, including under the preserve-prefill header (decolua/9router#4482)
 - port(omniroute): prepend a text part to image-only user turns sent to Poe, which rejects them with 400 (upstream #15179)

@@ -1,3 +1,28 @@
+# 4.10.0
+
+## Features
+
+- Add direct TypeSafe Jev and custom System One-compatible nodes with optional keys, native model registration, scoped discovery, aliases, and strict account pins (#1044).
+- Discover Ollama completion/embedding capabilities and observed served windows without advertising trained windows as host limits (#1044).
+- Refresh the Caveman and Ponytail upstream style prompts (#1042, #1043).
+
+## Fixes
+
+- Reconcile Anthropic, OpenAI, MiniMax, and xAI model capabilities, canonical aliases, lifecycle status, native formats, and provider-specific limits. Keep API and OAuth/subscription catalogs separate and unpublished ceilings unknown (#1037).
+- Add allowlisted native HTTP and same-process WebSocket transports, including documented Gemini, Cohere, Together, NVIDIA, and OpenCode Zen adapters. Keep provider credentials out of realtime handoffs (#1037, #1044).
+- Preserve Claude JSON schemas, Responses reasoning and non-text output, MiniMax adaptive reasoning and explicit image dimensions, and xAI JSON/multipart image edits (#1037).
+- Protect trusted TTS routing, selected rerank egress, and native account/proxy policy. Account for native JSON/SSE/WS usage with terminal-event ordering, resource attribution, and deduplication; reject unregistered native models before dispatch (#1037, #1044).
+- Expose video-output capability limits in combo editors and correct direction-specific Hailuo formats and resolutions (#1037).
+- Separate Kimi Platform Messages from Coding subscription quotas and route OpenCode models through their declared transport (#1044).
+- Ship Undici, native proxy agents, JSON editing, and streaming tokenization dependencies in standalone and CLI artifacts (#1037, #1041, #1044).
+
+## Upstream ports
+
+- Identify Grok CLI as 1.0.44 on chat, model/probe, billing, and OAuth requests while preserving grok-shell versus grok-pager headers (#1038).
+- Route project-scoped Vertex Gemini requests at location `eu` through the EU residency endpoint without changing global, partner, or raw-key endpoints (#1039).
+- Forward client-requested Claude Code timing and inline-tools betas while keeping unrelated betas blocked (#1040).
+
+
 # 4.9.4
 
 ## Fixes
@@ -23,50 +48,6 @@
 - port(omniroute): preserve Poe image-only user turns (#1032)
 - port(upstream): #4482 - restore trailing user turn after Claude cleanup (#1031)
 - port(upstream): #4481 - preserve Claude cache usage in OpenAI responses (#1030)
-
-
-# Unreleased
-
-## Features
-
-- Reconcile Anthropic, OpenAI, MiniMax, and xAI model capabilities, canonical aliases, lifecycle status, native formats, and provider-specific limits. Keep API and OAuth/subscription catalogs separate and unpublished ceilings unknown.
-- Add allowlisted native HTTP and same-process WebSocket transports, including media/document fields, structured outputs, reasoning, and consumer-executed tools. Preserve selected account/proxy policy and keep provider credentials out of realtime handoffs.
-- Add direct TypeSafe Jev and custom System One-compatible nodes with optional keys, native model registration, scoped discovery, and operator controls.
-- Discover Ollama completion/embedding capabilities and observed served windows without advertising trained windows as host limits.
-
-## Capability fixes
-
-- Preserve Claude JSON schemas, Responses reasoning/string inputs and queued acknowledgements, non-text Responses output, MiniMax adaptive reasoning and explicit image dimensions, and xAI JSON/multipart image edits.
-- Protect TTS trusted routing/credentials from client overrides. Account for native JSON/SSE/WS token usage with strict writes, terminal-event delivery ordering, resource creator attribution, and deduplication. Deny unobservable native delegated work for capped keys.
-- Expose the video-output capability ceiling in both combo editors. Correct Hailuo Fast's image-to-video-only contract and Hailuo 02's direction-specific resolutions.
-- Expand documented Gemini, Cohere, Together, NVIDIA and OpenCode Zen native transports; separate Kimi Platform Messages from Coding subscription quotas and leave unpublished limits unknown.
-- Preserve selected rerank egress and reject unregistered built-in native models before account selection or dispatch.
-- Bundle native proxy agents, JSON editing, streaming tokenization, and Undici dependencies in the CLI artifact.
-- Route current OpenCode models through their declared Messages, Responses, Chat Completions, or native Google endpoint.
-- Preserve native System One account pins, aliases, cancellation, and windowed usage accounting; reject decision models at chat boundaries.
-
-
-## Upstream ports
-- port(upstream): 6b9dc54 - identify Grok CLI as 1.0.44 on chat, model/probe, billing and OAuth requests to avoid HTTP 426; keep grok-shell versus grok-pager header behavior.
-
-- port(omniroute): forward client-requested Claude Code timing and inline-tools betas to Anthropic-family Claude requests; keep unrelated betas blocked (#15102)
-- port(upstream): #4481 - expose Claude cache read and creation tokens to OpenAI streaming clients without charging cached prompts as uncached input
-- port(9router): keep a trailing user turn after empty-message cleanup when the client ended on a user turn, including under the preserve-prefill header (decolua/9router#4482)
-- port(omniroute): prepend a text part to image-only user turns sent to Poe, which rejects them with 400 (upstream #15179)
-- port(omniroute): route project-scoped Vertex Gemini requests at location `eu` through `aiplatform.eu.rep.googleapis.com` while keeping global, partner, and raw-key endpoints unchanged (upstream #15178).
-- port(upstream): #4334 - price `cline-free/*` and Cline's exact `(Free)` catalog models at zero without changing paid twins; merge the recommended-models `free[]` feed additively into the live catalog (catalog entries win on shared ids). Feed is unauthenticated and fails soft.
-- port(upstream): ec669280 - isolate web-search failures and status from chat on shared provider connections, except confirmed account-wide exhaustion; search success clears only search lock and error status.
-
-## Fixes
-- fix(claude): use Anthropic's registered code callback for hosted and local OAuth logins; paste displayed code in Connect dialog instead of redirecting to dashboard `/callback`.
-
-- fix(models): dashboard model tests now pin probes to the first active connection selected by the caller rather than another account of that provider; unavailable pins fail closed. Operator-only pinning prevents API keys from probing accounts outside their scope. Ports decolua/9router#4492.
-- fix(claude): strip the `_ide` cloak suffix from tool_use names when the tool-name map is lost or misses (retry/reconnect), streaming and non-streaming, only for requests that were actually OAuth-cloaked (explicit `_claudeCloaked` context); legitimate client tools ending in `_ide` are left alone on non-cloaked requests; CC decoy names are left as-is (ports upstream #4342)
-- fix(claude-settings): keep an existing `ANTHROPIC_AUTH_TOKEN` in `~/.claude/settings.json` when applying settings from the dashboard; the token is only written when absent and Reset still clears it (ports upstream c4690307)
-- fix(models): Gemini models.list follows `nextPageToken` (`pageSize=1000`); a failed later page, repeated cursor, or page-cap overrun now errors instead of storing a truncated catalog
-- fix(models): add `claude-sonnet-5-5` to anthropic/claude registries with its own $2/$10 pricing; drop retired `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-5-sonnet-20241022` from the anthropic bootstrap
-- fix(providers): stop creating conversations on web-session accounts from model tests, connection tests, and key validation; report them as skipped, never failed (#14818)
-- fix(session): in Claude scope, read the Claude Code session id from `x-claude-code-session-id` when `metadata.user_id` carries none (port of upstream 2fd99eae; other scopes ignore the header)
 
 
 # 4.9.2

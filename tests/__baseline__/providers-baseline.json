@@ -877,14 +877,14 @@
     "forceStream": true,
     "modelsUrl": "https://cli-chat-proxy.grok.com/v1/models",
     "userUrl": "https://cli-chat-proxy.grok.com/v1/user",
-    "clientVersion": "0.2.93",
+    "clientVersion": "1.0.44",
     "clientIdentifier": "grok-pager",
     "tokenAuth": "xai-grok-cli",
     "headers": {
-      "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+      "User-Agent": "grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)",
       "x-xai-token-auth": "xai-grok-cli",
       "x-grok-client-identifier": "grok-pager",
-      "x-grok-client-version": "0.2.93",
+      "x-grok-client-version": "1.0.44",
       "x-authenticateresponse": "authenticate-response"
     },
     "compactionAt": 400000,

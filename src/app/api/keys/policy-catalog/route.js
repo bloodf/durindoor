@@ -17,6 +17,12 @@ const POLICY_KINDS = [
   "webFetch",
   "music",
   "video",
+  "systemone",
+  "realtime",
+  "realtimeTranslation",
+  "realtimeTranscription",
+  "live",
+  "documentParsing",
 ];
 
 export async function buildApiKeyPolicyCatalog() {

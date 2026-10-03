@@ -1,10 +1,11 @@
 // Gemini TTS — generateContent with AUDIO modality returns PCM L16, wrap as WAV
 import { Buffer } from "node:buffer";
 import { PROVIDER_MEDIA, PROVIDER_MODELS } from "../../providers/index.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
 const TTS_CFG = PROVIDER_MEDIA["gemini"]?.ttsConfig || {};
 const TTS_BASE = TTS_CFG.baseUrl;
-const FALLBACK_MODEL = "gemini-3.1-flash-tts-preview";
+const FALLBACK_MODEL = TTS_CFG.defaultModel || "gemini-3.8-flash-tts";
 const KNOWN_MODELS = [
   ...(TTS_CFG.models || []),
   ...(PROVIDER_MODELS["gemini-tts-models"] || []),
@@ -62,29 +63,33 @@ export default {
   async synthesize(text, model, credentials, _responseFormat, opts = {}) {
     if (!credentials?.apiKey) throw new Error("No Gemini API key configured");
     const { modelId, voiceId } = parseGeminiModelVoice(model);
-    const url = `${TTS_BASE}/${modelId}:generateContent?key=${credentials.apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildPrompt(text, opts.language) }] }],
-        generationConfig: {
-          responseModalities: ["AUDIO"],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } } },
-        },
-      }),
-    });
+    const isGemini38 = modelId.startsWith("gemini-3.8-");
+    const url = isGemini38 ? "https://generativelanguage.googleapis.com/v1beta/interactions" : `${TTS_BASE}/${modelId}:generateContent?key=${credentials.apiKey}`;
+    const body = isGemini38 ? {
+      model: modelId,
+      input: [{ type: "user_input", content: [{ type: "text", text, ...(opts.style ? { annotations: [{ type: "speech_metadata", style: opts.style }] } : null) }] }],
+      response_format: { type: "audio", mime_type: "audio/wav" },
+      generation_config: { speech_config: [{ voice: voiceId }] },
+    } : {
+      contents: [{ parts: [{ text: buildPrompt(text, opts.language) }] }],
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } } } },
+    };
+    const res = await proxyAwareFetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(isGemini38 ? { "x-goog-api-key": credentials.apiKey } : null) }, body: JSON.stringify(body), signal: opts.signal }, opts.proxyOptions);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err?.error?.message || `Gemini TTS failed: ${res.status}`);
     }
     const data = await res.json();
-    const b64 = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData?.data;
-    if (!b64) {
+    const audio = isGemini38 ? data?.steps?.filter((step) => step.type === "model_output").flatMap((step) => step.content || []).filter((content) => content.type === "audio").at(-1) : data?.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData;
+    if (!audio?.data) {
       const reason = data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || "unknown";
       throw new Error(`Gemini TTS returned no audio (finishReason: ${reason}, voice: ${voiceId}, model: ${modelId})`);
     }
-    const wav = pcmToWav(Buffer.from(b64, "base64"));
+    const bytes = Buffer.from(audio.data, "base64");
+    const mime = audio.mime_type || audio.mimeType;
+    const isWav = mime === "audio/wav" || bytes.subarray(0, 4).toString("ascii") === "RIFF";
+    if (mime && mime !== "audio/wav" && mime !== "audio/l16" && mime !== "audio/pcm") throw new Error(`Unsupported Gemini audio MIME type: ${mime}`);
+    const wav = isWav ? bytes : pcmToWav(bytes);
     return { base64: wav.toString("base64"), format: "wav" };
   },
 };

@@ -1,7 +1,7 @@
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
-import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, modelForceStream, normalizeModelId } from "../providers/models/schema.js";
+import { modelQuotaFamily, modelStrip, modelTargetFormat, modelSupportedFormats, modelForceStream, modelForceNonStreaming, normalizeModelId } from "../providers/models/schema.js";
 import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { KIRO_FAMILY_PROVIDERS } from "../providers/models/kiroVariants.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
@@ -35,12 +35,12 @@ const DOT_VERSION_PROVIDERS = KIRO_FAMILY_PROVIDERS;
 function findModel(models, modelId, aliasOrId) {
   if (!models) return undefined;
   const { cleanModel } = parseSuffix(modelId);
-  const found = models.find((m) => m.id === cleanModel);
+  const found = models.find((m) => m.id === cleanModel || m.aliases?.includes(cleanModel));
   if (found) return found;
   if (!DOT_VERSION_PROVIDERS.has(aliasOrId)) return undefined;
   const normalized = normalizeModelId(cleanModel);
   if (normalized === cleanModel) return undefined;
-  return models.find((m) => m.id === normalized);
+  return models.find((m) => m.id === normalized || m.aliases?.includes(normalized));
 }
 
 export function isValidModel(aliasOrId, modelId, passthroughProviders = new Set()) {
@@ -65,16 +65,16 @@ function getOpenCodeZenPassthroughTargetFormat(modelId) {
   return null;
 }
 
-// Upstream decolua/9router#2533: MiniMax documents MiniMax-M3 tool calling on the
-// standard OpenAI API surface, so M3 is routed through the OpenAI wire format +
-// chatcompletion_v2 endpoint even for Claude-source clients.
+// MiniMax M3 and M3.1 Flash Preview tool/vision calls use native OpenAI Chat
+// Completions even for Claude-source clients.
 const OPENAI_FORMAT_MINIMAX_PROVIDERS = new Set(["minimax", "minimax-cn"]);
+const MINIMAX_OPENAI_TOOL_MODELS = new Set(["MiniMax-M3", "MiniMax-M3.1-Flash-Preview"]);
 
 export function getModelTargetFormat(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   const configuredTargetFormat = models ? modelTargetFormat(findModel(models, modelId, aliasOrId)) : null;
   if (configuredTargetFormat) return configuredTargetFormat;
-  if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && modelId === "MiniMax-M3") return "openai";
+  if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && MINIMAX_OPENAI_TOOL_MODELS.has(parseSuffix(modelId).cleanModel)) return "openai";
   // OpenCode Zen allows passthrough model IDs, but API-family prefixes still need
   // their native translators instead of the provider default Chat Completions route.
   if (aliasOrId === "opencode-zen") return getOpenCodeZenPassthroughTargetFormat(modelId);
@@ -86,7 +86,18 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 export function getModelSupportedFormats(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
-  return modelSupportedFormats(findModel(models, modelId, aliasOrId));
+  const model = findModel(models, modelId, aliasOrId);
+  const declared = modelSupportedFormats(model);
+  if (declared || !model) return declared;
+  if ((aliasOrId === "minimax" || aliasOrId === "minimax-cn") && /^MiniMax-M[23]/.test(model.id)) {
+    return ["openai", "claude", "openai-responses"];
+  }
+  if (model.kind && model.kind !== "llm") return null;
+  if (aliasOrId === "xai") return ["openai", "openai-responses"];
+  if (aliasOrId === "openai") {
+    return /^(?:gpt-3\.5|gpt-4(?:-|$))/.test(model.id) ? ["openai"] : ["openai", "openai-responses"];
+  }
+  return null;
 }
 
 // Per-model streaming requirement. False keeps the provider-level
@@ -95,6 +106,10 @@ export function getModelForceStream(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return false;
   return modelForceStream(findModel(models, modelId, aliasOrId));
+}
+
+export function getModelForceNonStreaming(aliasOrId, modelId) {
+  return modelForceNonStreaming(findModel(PROVIDER_MODELS[aliasOrId], modelId, aliasOrId));
 }
 
 export function getModelType(aliasOrId, modelId) {

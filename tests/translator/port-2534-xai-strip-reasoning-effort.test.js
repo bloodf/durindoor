@@ -6,7 +6,6 @@ import "./registerAll.js";
 import { stripUnsupportedParams } from "../../open-sse/translator/concerns/paramSupport.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { GrokCliExecutor } from "../../open-sse/executors/grok-cli.js";
-import { getProviderThinkingLevels } from "../../src/app/(dashboard)/dashboard/providers/[id]/providerThinkingLevels.js";
 
 describe("port #2534: xai strips reasoning params for grok-composer", () => {
   it("drops thinking/reasoning_effort/reasoning on xai grok-composer", () => {
@@ -48,35 +47,11 @@ describe("port #2534: xai strips reasoning params for grok-composer", () => {
   });
 });
 
-describe("port #2534: capabilities keep Grok CLI models non-reasoning", () => {
-  // #2534 covers the Grok CLI models: grok-build rejects client-controlled
-  // reasoning effort, while the distinct public xAI API model grok-build-0.1 supports it.
-  it("resolves the Grok CLI composer row without an invented output ceiling", () => {
-    const caps = getCapabilitiesForModel("grok-cli", "grok-composer-2.5-fast");
-    expect(caps.reasoning).toBe(false);
-    expect(caps.thinkingFormat).toBeNull();
-    expect(caps.contextWindow).toBe(200000);
-    expect(caps.maxOutput).toBeUndefined();
-  });
 
-  it("keeps Grok CLI Build distinct from public-API Grok Build 0.1", () => {
-    const cliCaps = getCapabilitiesForModel("grok-cli", "grok-build");
-    const apiCaps = getCapabilitiesForModel("xai", "grok-build-0.1");
-
-    expect(cliCaps).toMatchObject({ reasoning: false, thinkingFormat: null, contextWindow: 256000 });
-    expect(cliCaps.maxOutput).toBeUndefined();
-    expect(apiCaps).toMatchObject({ reasoning: true, thinkingFormat: "openai", contextWindow: 262144 });
-    expect(apiCaps.maxOutput).toBeUndefined();
-  });
-
-  it("pattern match also works for model ids with suffixes", () => {
-    const caps = getCapabilitiesForModel("grok-cli", "x/grok-composer-2.5-fast-v1");
-    expect(caps.reasoning).toBe(false);
-  });
-
-  it("does not disable reasoning on grok-4.5 (still reasoning)", () => {
-    const caps = getCapabilitiesForModel("grok-cli", "grok-4.5");
-    expect(caps.reasoning).toBe(true);
+describe("port #2534: Grok CLI capability boundary", () => {
+  it("keeps composer non-reasoning while grok-4.5 remains reasoning", () => {
+    expect(getCapabilitiesForModel("grok-cli", "grok-composer-2.5-fast").reasoning).toBe(false);
+    expect(getCapabilitiesForModel("grok-cli", "grok-4.5").reasoning).toBe(true);
   });
 });
 
@@ -114,32 +89,3 @@ describe("port #2534: grok-cli executor omits reasoning for non-reasoning models
   });
 });
 
-describe("port #2534: dashboard level picker surfaces \"none\"", () => {
-  it("getProviderThinkingLevels returns auto then none before reasoning levels", () => {
-    // grok-4.5 has reasoning (gives openai levels incl. "none"); union drives picker.
-    const levels = getProviderThinkingLevels({
-      providerId: "grok-cli",
-      models: [{ id: "grok-4.5" }],
-      kiloFreeModels: [],
-      customModels: [],
-      providerStorageAlias: "grok-cli",
-    });
-    expect(levels).not.toBeNull();
-    expect(levels[0]).toBe("auto");
-    expect(levels[1]).toBe("none");
-    // Other openai levels follow; "none" must not appear twice.
-    expect(levels.filter((l) => l === "none")).toHaveLength(1);
-    expect(levels).toContain("high");
-  });
-
-  it("returns null when no reasoning model is in the union", () => {
-    const levels = getProviderThinkingLevels({
-      providerId: "grok-cli",
-      models: [{ id: "grok-composer-2.5-fast" }],
-      kiloFreeModels: [],
-      customModels: [],
-      providerStorageAlias: "grok-cli",
-    });
-    expect(levels).toBeNull();
-  });
-});

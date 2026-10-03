@@ -12,6 +12,7 @@ export { VALID_OPENAI_CONTENT_TYPES, VALID_OPENAI_MESSAGE_TYPES };
 export function filterToOpenAIFormat(body, opts = {}) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
   const keepCache = !!opts.preserveCacheControl;
+  const keepVideo = opts.preserveVideo === true;
 
   function stripBlock(block) {
     const { signature, cache_control, ...rest } = block;
@@ -40,7 +41,8 @@ export function filterToOpenAIFormat(body, opts = {}) {
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) continue;
 
         // Only keep valid OpenAI content types
-        if (VALID_OPENAI_CONTENT_TYPES.includes(block.type)) {
+        if (VALID_OPENAI_CONTENT_TYPES.includes(block.type) ||
+          keepVideo && ["video_url", "video", "input_video"].includes(block.type)) {
           filteredContent.push(stripBlock(block));
         } else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
           // Convert tool_use to tool_calls format (handled separately)

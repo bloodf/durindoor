@@ -27,6 +27,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cursor` | CursorExecutor | `./cursor.js` |
 | `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
+| `dify` | DifyExecutor | `./dify.js` |
 | `duckduckgo-web` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `gemini-cli` | GeminiCLIExecutor | `./gemini-cli.js` |
 | `ghe-copilot` | GheCopilotExecutor | `./ghe-copilot.js` |
@@ -135,7 +136,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `codestral` |  | apikey | `https://codestral.mistral.ai/v1/chat/completions` |
 | `codex` | openai-responses | oauth | `https://chatgpt.com/backend-api/codex/responses` |
 | `codex-cloud` |  | apikey | `` |
-| `cohere` |  | apikey | `https://api.cohere.ai/v1/chat/completions` |
+| `cohere` |  | apikey | `https://api.cohere.ai/compatibility/v1/chat/completions` |
 | `comfyui` |  | apikey | `` |
 | `command-code` | commandcode | apikey | `https://api.commandcode.ai/alpha/generate` |
 | `commandcode` | commandcode | apikey | `https://api.commandcode.ai/alpha/generate` |
@@ -154,7 +155,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
 | `dgrid` |  | apikey | `https://api.dgrid.ai/v1/chat/completions` |
-| `dify` |  | apikey | `https://api.dify.ai/v1/chat/completions` |
+| `dify` |  | apikey | `` |
 | `digitalocean` |  | apikey | `https://inference.do-ai.run/v1/chat/completions` |
 | `dit` |  | apikey | `https://api.dit.ai/v1/chat/completions` |
 | `docker-model-runner` | openai | apikey | `http://localhost:12434/v1` |
@@ -218,7 +219,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `kilo-gateway` |  | apikey | `https://api.kilo.ai/api/gateway/chat/completions` |
 | `kilocode` |  | oauth | `https://api.kilo.ai/api/openrouter/chat/completions` |
 | `kimchi` | openai | oauth | `https://llm.kimchi.dev/openai/v1/chat/completions` |
-| `kimi` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
+| `kimi` | claude | apikey | `https://api.moonshot.ai/anthropic/v1/messages` |
 | `kimi-coding` | claude | oauth | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-coding-apikey` | claude | apikey | `https://api.kimi.com/coding/v1/messages` |
 | `kimi-web` | openai | webCookie | `https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat` |
@@ -324,6 +325,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `tortoise` |  | freeTier | `` |
 | `trae` | openai | oauth | `https://core-normal.trae.ai/api/remote/v1` |
 | `triton` | openai | apikey | `http://localhost:8000/v1` |
+| `typesafe` |  | apikey | `` |
 | `typhoon` | openai | apikey | `https://api.opentyphoon.ai/v1/chat/completions` |
 | `udio` | openai | webCookie | `https://www.udio.com/api/generate-proxy` |
 | `uncloseai` |  | freeTier | `https://hermes.ai.unturf.com/v1/chat/completions` |

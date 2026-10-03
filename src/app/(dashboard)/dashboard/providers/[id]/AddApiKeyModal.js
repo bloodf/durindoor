@@ -53,7 +53,7 @@ function ChatgptWebCookieSteps() {
   );
 }
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, authSnippet, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, credentialOptional = false, authType, authHint, authSnippet, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isLocalWhisper = provider === "local-whisper";
@@ -158,6 +158,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const sessionToken = usesAwsCredentialForm && awsData.sessionToken.trim() ? awsData.sessionToken.trim() : undefined;
 
   const apiKeySatisfied = () =>
+  credentialOptional ||
   !!formData.apiKey ||
   !!(apiKeyOptionalWith && buildProviderSpecificData()?.[apiKeyOptionalWith]);
 
@@ -579,6 +580,7 @@ AddApiKeyModal.propTypes = {
   providerName: PropTypes.string,
   isCompatible: PropTypes.bool,
   isAnthropic: PropTypes.bool,
+  credentialOptional: PropTypes.bool,
   authType: PropTypes.string,
   authHint: PropTypes.string,
   authSnippet: PropTypes.string,

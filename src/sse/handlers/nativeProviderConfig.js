@@ -66,6 +66,12 @@ export const NATIVE_OPERATIONS = {
     exact("POST", "/v1/tts", { kind: "tts" }),
     exact("POST", "/v1/stt", { kind: "stt" }),
   ],
+  cohere: [
+    exact("POST", "/v2/parse", { kind: "documentParsing" }),
+    exact("POST", "/v2/embed", { kind: "embedding" }),
+    exact("POST", "/v2/rerank", { kind: "rerank" }),
+    exact("POST", "/v2/audio/transcriptions", { kind: "stt" }),
+  ],
 };
 NATIVE_OPERATIONS["minimax-cn"] = NATIVE_OPERATIONS.minimax;
 
@@ -84,6 +90,12 @@ export const NATIVE_WEBSOCKETS = {
       kind: "stt", wsUrl: "wss://api.x.ai/v1/stt", modelInQuery: true, omitModelIds: ["stt"], binaryAudio: true,
       queryParameters: ["sample_rate", "encoding", "interim_results", "endpointing", "language", "diarize", "filler_words", "multichannel", "channels", "keyterm", "smart_turn", "smart_turn_timeout", "vad_threshold"]
     }
+  },
+  gemini: {
+    "/live": {
+      kind: "live", wsUrl: "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+      queryAuth: "key", geminiLive: true
+    }
   }
 };
 
@@ -93,6 +105,7 @@ const ORIGINS = {
   "minimax-cn": "https://api.minimax.cn",
   anthropic: "https://api.anthropic.com",
   xai: "https://api.x.ai",
+  cohere: "https://api.cohere.com",
 };
 
 export function nativeOrigin(provider) {

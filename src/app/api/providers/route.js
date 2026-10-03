@@ -7,7 +7,7 @@ import {
   getProxyPoolById } from
 "@/models";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
-import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isHiddenProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, isHiddenProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
@@ -217,7 +217,8 @@ export async function POST(request) {
     isWebCookieProvider ||
     isOpenAICompatibleProvider(provider) ||
     isAnthropicCompatibleProvider(provider) ||
-    isCustomEmbeddingProvider(provider);
+    isCustomEmbeddingProvider(provider) ||
+    isSystemoneCompatibleProvider(provider);
 
     if (!provider || !isValidProvider) {
       return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
@@ -242,7 +243,7 @@ export async function POST(request) {
     const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
     const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
-    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !hasApiKeySubstitute) {
+    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !hasApiKeySubstitute) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;
@@ -301,6 +302,17 @@ export async function POST(request) {
         nodeName: node.name
       };
     }
+    else if (isSystemoneCompatibleProvider(provider)) {
+      const node = await getProviderNodeById(provider);
+      if (!node || node.type !== "systemone-compatible") {
+        return NextResponse.json({ error: "System One compatible node not found" }, { status: 404 });
+      }
+      providerSpecificData = {
+        prefix: node.prefix,
+        baseUrl: node.baseUrl,
+        nodeName: node.name
+      };
+    }
 
     const mergedProviderSpecificData = {
       ...(providerSpecificData || {}),
@@ -311,6 +323,10 @@ export async function POST(request) {
 
     if (proxyPoolId !== null) {
       mergedProviderSpecificData.proxyPoolId = proxyPoolId;
+    }
+    if ((provider === "laya" || isSystemoneCompatibleProvider(provider)) &&
+      (proxyPoolId !== null || mergedProviderSpecificData.connectionProxyEnabled || mergedProviderSpecificData.vercelRelayUrl || mergedProviderSpecificData.oauthProxy?.mode === "strict-pool")) {
+      return NextResponse.json({ error: "Outbound proxies are not supported for guarded System One server URLs" }, { status: 400 });
     }
 
     // Bulk add sends createOnly so a name collision never silently overwrites

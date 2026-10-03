@@ -174,6 +174,7 @@ function isRealtimePath(url) {
     return pathname === "/v1/realtime" || pathname === "/v1/realtime/" ||
       pathname === "/v1/realtime/translations" || pathname === "/v1/realtime/translations/" ||
       pathname === "/v1/live/sessions" || pathname === "/v1/live/sessions/" ||
+      pathname === "/v1/native/gemini/live" || pathname === "/v1/native/gemini/live/" ||
       /^\/v1\/native\/(?:minimax|minimax-cn)\/ws\/v1\/t2a_v2(?:_bidi)?\/?$/.test(pathname) ||
       /^\/v1\/native\/xai\/v1\/stt\/?$/.test(pathname);
   } catch {

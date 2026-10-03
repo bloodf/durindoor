@@ -11,9 +11,6 @@ vi.mock("../../open-sse/services/tokenRefresh.js", () => ({
   refreshWithRetry: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
-  default: vi.fn(),
-}));
 
 import { handleEmbeddingsCore } from "../../open-sse/handlers/embeddingsCore.js";
 

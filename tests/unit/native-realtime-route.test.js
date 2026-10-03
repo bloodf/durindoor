@@ -65,6 +65,46 @@ describe("native realtime credential boundary", () => {
     expect(verifyRealtimeOperatorProof({ proof, model: "openai/gpt-realtime-2.1", path: "/v1/realtime", expiresAt: Date.now() - 1 })).toBe(false);
   });
 
+  it("keeps Gemini credentials private and records each generation even when later usage is smaller", async () => {
+    mocks.registry.length = 0;
+    mocks.registry.push({ id: "gemini", models: [{ id: "gemini-3.8-live", kind: "live" }] });
+    mocks.getModelInfo.mockResolvedValue({ provider: "gemini", model: "gemini-3.8-live" });
+    const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
+    const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }, { model: "gemini/gemini-3.8-live", path: "/v1/native/gemini/live", connectionId: "conn-a" }));
+    const payload = await result.clone().json();
+    const { handoffId } = payload;
+    expect(Object.keys(payload)).toEqual(["handoffId"]);
+    expect(await result.text()).not.toContain("private-provider-secret");
+    const prepared = handoff.consumeNativeRealtimeHandoff(handoffId);
+    expect(new URL(prepared.wsUrl).searchParams.getAll("key")).toEqual(["private-provider-secret"]);
+    expect(prepared).toMatchObject({ authorization: null, queryAuthParameter: "key", pinnedModel: "gemini-3.8-live", geminiLive: true });
+    await prepared.onProviderEvent({ usageMetadata: { promptTokenCount: 3, responseTokenCount: 2, totalTokenCount: 5 } });
+    await prepared.onProviderEvent({ serverContent: { turnComplete: true } });
+    await prepared.onProviderEvent({ usageMetadata: { promptTokenCount: 2, responseTokenCount: 1, totalTokenCount: 3 }, serverContent: { turnComplete: true } });
+    await prepared.onProviderEvent({ serverContent: { turnComplete: true } });
+    expect(mocks.saveRequestUsage.mock.calls.map(([entry]) => entry.tokens)).toEqual([
+      expect.objectContaining({ input_tokens: 3, output_tokens: 2, total_tokens: 5 }),
+      expect.objectContaining({ input_tokens: 2, output_tokens: 1, total_tokens: 3 }),
+    ]);
+  });
+
+  it("deduplicates interrupted completion and resets usage before the next generation", async () => {
+    mocks.registry.length = 0;
+    mocks.registry.push({ id: "gemini", models: [{ id: "gemini-3.8-live", kind: "live" }] });
+    mocks.getModelInfo.mockResolvedValue({ provider: "gemini", model: "gemini-3.8-live" });
+    const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
+    const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof }, { model: "gemini/gemini-3.8-live", path: "/v1/native/gemini/live" }));
+    const prepared = handoff.consumeNativeRealtimeHandoff((await result.json()).handoffId);
+    const first = { promptTokenCount: 10, responseTokenCount: 5, totalTokenCount: 15 };
+    await prepared.onProviderEvent({ usageMetadata: first, serverContent: { interrupted: true } });
+    await prepared.onProviderEvent({ usageMetadata: first, serverContent: { turnComplete: true } });
+    await prepared.onProviderEvent({ usageMetadata: { promptTokenCount: 1, responseTokenCount: 1, totalTokenCount: 2 }, serverContent: { turnComplete: true } });
+    await prepared.onProviderClose();
+    expect(mocks.saveRequestUsage.mock.calls.map(([entry]) => entry.tokens.total_tokens)).toEqual([15, 2]);
+    const identities = mocks.saveRequestUsage.mock.calls.map(([entry]) => entry.usageEventId);
+    expect(new Set(identities).size).toBe(2);
+  });
+
   it("returns only an opaque single-use handoff, never provider or proxy credentials", async () => {
     const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
     const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }));

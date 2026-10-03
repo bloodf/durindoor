@@ -22,6 +22,8 @@ const KIND_SLUG_MAP = {
   "realtime-translation": ["realtimeTranslation"],
   "realtime-transcription": ["realtimeTranscription"],
   "live": ["live"],
+  "systemone": ["systemone"],
+  "document-parsing": ["documentParsing"],
 };
 
 const CORS_HEADERS = { "Access-Control-Allow-Origin": "*" };

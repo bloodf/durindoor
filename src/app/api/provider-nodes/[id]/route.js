@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
+import { deleteCustomModel, deleteProviderConnectionsByProvider, deleteProviderNode, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/models";
 import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
+import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
+
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -20,6 +23,13 @@ export async function PUT(request, { params }) {
 
     if (!prefix?.trim()) {
       return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
+    }
+    if (node.type === "systemone-compatible") {
+      const value = prefix.trim();
+      const reserved = REGISTRY.some((provider) =>
+        [provider.id, provider.alias, provider.uiAlias, ...(provider.aliases || [])].includes(value));
+      const duplicate = (await getProviderNodes()).some((candidate) => candidate.id !== id && candidate.prefix === value);
+      if (reserved || duplicate) return NextResponse.json({ error: "Provider prefix already exists or is reserved" }, { status: 409 });
     }
 
     if (iconUrl !== undefined && !isValidProviderIconUrl(iconUrl)) {
@@ -50,6 +60,20 @@ export async function PUT(request, { params }) {
       sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/$/, "");
       if (sanitizedBaseUrl.endsWith("/embeddings")) {
         sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -"/embeddings".length);
+      }
+    }
+
+    if (node.type === "systemone-compatible") {
+      try { sanitizedBaseUrl = normalizeSystemoneBaseUrl(sanitizedBaseUrl); } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+    }
+
+    if (node.type === "systemone-compatible" && prefix.trim() !== node.prefix) {
+      const registered = (await getCustomModels()).some((model) =>
+        (model.providerAlias === node.prefix || model.providerAlias === node.id) && (model.kind || model.type) === "systemone");
+      if (registered) {
+        return NextResponse.json({ error: "Remove and re-register System One models before changing prefix" }, { status: 409 });
       }
     }
 
@@ -97,6 +121,11 @@ export async function DELETE(request, { params }) {
     }
 
     await deleteProviderConnectionsByProvider(id);
+    if (node.type === "systemone-compatible") {
+      const models = (await getCustomModels()).filter((model) =>
+        (model.providerAlias === node.prefix || model.providerAlias === node.id) && (model.kind || model.type) === "systemone");
+      await Promise.all(models.map((model) => deleteCustomModel({ providerAlias: model.providerAlias, id: model.id, type: model.type || model.kind || "systemone" })));
+    }
     await deleteProviderNode(id);
 
     return NextResponse.json({ success: true });

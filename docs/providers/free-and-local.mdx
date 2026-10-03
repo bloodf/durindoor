@@ -17,6 +17,8 @@ Some providers never take a paid API key. They are local processes, anonymous pu
 
 `ollama-local` talks to `http://localhost:11434` unless the connection sets `providerSpecificData.baseUrl`. The add-key dialog shows an Ollama Host URL field. Local Ollama does not validate keys; DurinDoor still sends Bearer when a key is present.
 
+Discovery reads native `/api/tags`, `/api/show`, and `/api/ps` data per saved host/account. Completion and embedding capabilities remain distinct. An observed served `context_length` or explicit connection model limit is used when available; a trained maximum, a cloud model with the same name, and the gateway's own localhost port do not establish the local served window. Unknown limits stay unknown.
+
 LM Studio is registry id `lm-studio` (alias `lmstudio`). It is `noAuth: true` with default base URL `http://localhost:1234/v1`. API key is optional. Models are passthrough: DurinDoor forwards whatever LM Studio currently serves.
 
 <Steps>
@@ -73,10 +75,17 @@ server. Laya is not a chat model. Its checkpoints (`auto`, `english`,
 `multilingual`, `typed-decisions`) are System One models: call them on
 `POST /v1/systemone` with `model: "laya/english"` (send `x-connection-id` to use
 one connection only; the request then never runs on another), or try them from **Dashboard →
-Media Providers → System One → Laya (local)**. They never appear in
-`/v1/models`, and chat requests naming a Laya model get a 400. An active connection replaces Jev as the classifier for
+Media Providers → System One → Laya (local)**. They appear in
+`GET /v1/models/systemone`, not the default chat catalog, and chat requests naming a Laya model get a 400. An active connection replaces Jev as the classifier for
 `smart` combos. A keyless `laya-serve` running on the default host is picked up
 without a connection. See [Complexity-aware routing](../features/combos.mdx).
+Other Jev-compatible servers use **Add Custom System One** on the same page.
+Save the node, add a keyless or keyed connection, then open **Edit** to discover
+and register native model IDs, or add an ID manually under **Models**. A missing
+`/models` endpoint does not block setup. The node's saved URL determines routing;
+a request body cannot change the upstream. Outbound proxy pools are unsupported
+for guarded System One/Laya URLs.
+
 
 ## OpenCode free
 

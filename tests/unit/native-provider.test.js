@@ -21,6 +21,13 @@ function request(url, body, headers = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks(); mocks.registry.length = 0;
+  mocks.registry.push(
+    { id: "openai", models: ["gpt-realtime", "gpt-4.1", "gpt-4.1-mini", "gpt-live-1", "gpt-6-astra"].map((id) => ({ id })) },
+    { id: "minimax", models: [{ id: "H3" }, { id: "M3" }] },
+    { id: "xai", models: [{ id: "video" }] },
+    { id: "anthropic", models: [{ id: "claude-haiku-4-5" }, { id: "claude-opus-5-5" }] },
+    { id: "cohere", models: [{ id: "embed-v5.0-fast" }] },
+  );
   mocks.getSettings.mockResolvedValue({ requireApiKey: true });
   mocks.resolveClientApiKey.mockResolvedValue({ apiKey: "gateway", auth: { ok: true, apiKeyId: "key" } });
   mocks.model.mockImplementation(async (id) => ({ provider: id.split("/")[0], model: id.slice(id.indexOf("/") + 1) }));
@@ -40,6 +47,15 @@ describe("native provider facade", () => {
   it("rejects unknown operation before auth", async () => {
     const result = await handleNativeProvider(request("http://local/v1/native/openai/nope?model=openai/gpt-realtime"), "openai", "/nope");
     expect(result.status).toBe(404); expect(mocks.resolveClientApiKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unregistered built-in native model before credential selection or dispatch", async () => {
+    const result = await handleNativeProvider(request("http://local/v1/native/cohere/v2/embed", {
+      model: "cohere/not-a-model", texts: ["fixture"], input_type: "search_document",
+    }), "cohere", "/v2/embed");
+    expect(result.status).toBe(400);
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("rejects provider mismatch before credential selection", async () => {
@@ -164,7 +180,7 @@ describe("native provider facade", () => {
   });
 
   it("blocks unavailable model before credentials", async () => {
-    mocks.registry.push({ id: "openai", models: [{ id: "gpt-realtime", routingUnavailableReason: "Unavailable" }] });
+    mocks.registry.find((provider) => provider.id === "openai").models[0].routingUnavailableReason = "Unavailable";
     const result = await handleNativeProvider(request("http://local/v1/realtime/client_secrets?model=openai/gpt-realtime"), "openai", "/v1/realtime/client_secrets");
     expect(result.status).toBe(400); expect(mocks.credentials).not.toHaveBeenCalled();
   });

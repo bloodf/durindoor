@@ -65,6 +65,12 @@ async function assertCommitted(eventId, tokens = 8) {
   expect((await usage.nativeUsageAdmission(key.key))?.status).toBe(429);
 }
 
+describe("Gemini Live usage normalization", () => {
+  it("normalizes Live usageMetadata counters", () => {
+    expect(usage.nativeUsageFromValue({ usageMetadata: { promptTokenCount: 3, responseTokenCount: 5, totalTokenCount: 8 } })).toMatchObject({ input_tokens: 3, output_tokens: 5, total_tokens: 8 });
+  });
+});
+
 describe("native usage framing and quota transitions", () => {
   it("normalizes total-only and partial native metrics without losing committed input", () => {
     expect(usage.nativeUsageFromValue({ usage: { total_tokens: 9 } })).toMatchObject({ input_tokens: 9, total_tokens: 9 });

@@ -13,6 +13,7 @@ import runwayml from "./runwayml.js";
 import cloudflareAi from "./cloudflareAi.js";
 import antigravity from "./antigravity.js";
 import minimax from "./minimax.js";
+import together from "./together.js";
 
 const ADAPTERS = {
   openai: createOpenAIAdapter("openai"),
@@ -22,6 +23,7 @@ const ADAPTERS = {
   openrouter: createOpenAIAdapter("openrouter"),
   recraft: createOpenAIAdapter("recraft"),
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),
+  together,
   xai: createOpenAIAdapter("xai"),
   gemini,
   codex,

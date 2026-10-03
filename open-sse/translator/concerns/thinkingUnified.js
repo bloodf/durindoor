@@ -415,7 +415,12 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "gemini-level":{
-        const level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        let level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        const allowed = caps.thinkingEfforts;
+        if (Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {
+          level = ["none", "minimal"].includes(level) && allowed.includes("low") ?
+            "low" : allowed.includes("high") ? "high" : allowed[0];
+        }
         setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
         ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
         break;
@@ -580,6 +585,12 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   const requestedThinkingType = body.thinking?.type || cfg.thinkingType;
   stripAll(body, targetFormat === FORMATS.CLAUDE, targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE);
   applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType);
+  if (provider === "kimi" && targetFormat === FORMATS.CLAUDE) {
+    // Moonshot Messages exposes effort through output_config, not OpenAI reasoning_effort.
+    if (body.reasoning_effort) body.output_config = { ...body.output_config, effort: body.reasoning_effort };
+    delete body.reasoning_effort;
+    delete body.thinking;
+  }
   return body;
 }
 

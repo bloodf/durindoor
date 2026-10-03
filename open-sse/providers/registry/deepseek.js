@@ -52,12 +52,10 @@ export default {
     },
   ],
   models: [
-    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", supportedFormats: ["openai", "claude"] },
-    { id: "deepseek-v4-pro-max", name: "DeepSeek V4 Pro Max", upstreamModelId: "deepseek-v4-pro", supportedFormats: ["openai", "claude"] },
-    { id: "deepseek-v4-pro-none", name: "DeepSeek V4 Pro No Thinking", upstreamModelId: "deepseek-v4-pro", supportedFormats: ["openai", "claude"] },
-    { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", supportedFormats: ["openai", "claude"] },
-    { id: "deepseek-chat", name: "DeepSeek V3.2 Chat", supportedFormats: ["openai", "claude"] },
-    { id: "deepseek-reasoner", name: "DeepSeek V3.2 Reasoner", supportedFormats: ["openai", "claude"] },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", aliases: ["deepseek-v4-pro-max", "deepseek-v4-pro-none"], supportedFormats: ["openai", "claude"], toolCalling: true },
+    { id: "deepseek-flash", name: "DeepSeek V4.1 Flash", supportedFormats: ["openai", "claude"], contextLength: 1000000, maxOutputTokens: 384000, toolCalling: true, supportsReasoning: true, supportsVision: true },
+    { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash (legacy alias)", upstreamModelId: "deepseek-flash", supportedFormats: ["openai", "claude"], contextLength: 1000000, maxOutputTokens: 384000, toolCalling: true, supportsReasoning: true, supportsVision: true },
+    { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision (legacy alias)", upstreamModelId: "deepseek-flash", supportedFormats: ["openai", "claude"], contextLength: 1000000, maxOutputTokens: 384000, toolCalling: true, supportsReasoning: true, supportsVision: true },
   ],
   features: {
     usage: true,

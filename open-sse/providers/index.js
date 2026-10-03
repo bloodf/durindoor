@@ -25,7 +25,7 @@ function buildTransport(entry, oauth) {
 }
 
 const MEDIA_KEYS = new Set([
-  "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
+  "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig", "rerankConfig",
   "imageConfig", "imageEditConfig", "imageToTextConfig", "videoConfig", "musicConfig", "realtimeConfig",
   "searchViaChat", "searchConfig", "fetchConfig", "systemoneConfig",
   "modelsFetcher", "mediaPriority", "hiddenKinds",

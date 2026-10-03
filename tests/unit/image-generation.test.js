@@ -81,9 +81,24 @@ describe("handleImageGenerationCore", () => {
       })
     );
 
+
     const responseBody = await result.response.json();
     expect(responseBody.data).toHaveLength(1);
     expect(responseBody.data[0].url).toBe("https://example.com/image.png");
+  });
+  it("routes Together images through its OpenAI-compatible endpoint", async () => {
+    global.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ created: 1, data: [{ url: "https://example.com/together.png" }] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const result = await handleImageGenerationCore({ body: { prompt: "A lantern" }, modelInfo: { provider: "together", model: "google/flash-image-2.5" }, credentials: { apiKey: "test-key" }, log: null });
+    expect(result.success).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith("https://api.together.ai/v1/images/generations", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("maps Together image size and native options", async () => {
+    global.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: "i", model: "google/flash-image-2.5", object: "list", data: [] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const result = await handleImageGenerationCore({ body: { prompt: "A lantern", size: "1280x720", steps: 30, seed: 7, negative_prompt: "blur", guidance_scale: 8, reference_images: ["https://example.com/ref.png"] }, modelInfo: { provider: "together", model: "google/flash-image-2.5" }, credentials: { apiKey: "test-key" }, log: null });
+    expect(result.success).toBe(true);
+    expect(global.fetch.mock.calls[0][0]).toBe("https://api.together.ai/v1/images/generations");
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toMatchObject({ model: "google/flash-image-2.5", prompt: "A lantern", width: 1280, height: 720, steps: 30, seed: 7, negative_prompt: "blur", guidance_scale: 8, reference_images: ["https://example.com/ref.png"] });
   });
 
   it("forwards current GPT Image generation fields", async () => {

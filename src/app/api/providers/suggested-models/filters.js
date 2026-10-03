@@ -57,6 +57,19 @@ export const FILTERS = {
     name: m.name || m.id,
     ...(m.context_length != null ? { contextLength: m.context_length } : null)
   })),
+  systemone: (models) =>
+  (Array.isArray(models) ? models : []).
+  flatMap((model) => {
+    const id = isString(model?.name) ? model.name : "";
+    return id ? [{
+      id,
+      name: id,
+      kind: "systemone",
+      ...(isString(model.description) ? { description: model.description } : null),
+      ...(isString(model.release_date) ? { release_date: model.release_date } : null),
+    }] : [];
+  }),
+
 
   // models.dev returns a large catalog; keep only mimo models
   "mimo-free": (models) =>

@@ -16,7 +16,7 @@ process.emit = function (name, warning, ...args) {
 
 
 
-const { isFunction, isString } = require("./src/shared/utils/typeChecks.cjs");
+const { isFunction, isObject, isString } = require("./src/shared/utils/typeChecks.cjs");
 
 const crypto = require("crypto");
 const http = require("http");
@@ -274,6 +274,8 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
     let ready = false;
     let rt = null;
     let closed = false;
+    let resolveFirstFrame;
+    const firstFrame = new Promise((resolve) => { resolveFirstFrame = resolve; });
     // Single queue serializes EVERY frame — queued (pre-auth) and live
     // (post-auth) — so `conversation.item.create` always resolves before a
     // following `response.create`, and two `response.create`s can never both
@@ -328,6 +330,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
       }
       queuedBytes += bytes;
       queue.push({ data, isBinary });
+      resolveFirstFrame?.(queue[0]);
     };
     ws.on("message", (data, isBinary) => {
       if (closed) return;
@@ -348,11 +351,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
       queue.length = 0;
       queuedBytes = 0;
       clearProcessingQueue();
-      // Abort any upstream chat still streaming for this session so provider
-      // connections / tokens aren't stranded after the client goes away.
-      // Idempotent and abort-only (owner clears its controller), so it is safe
-      // to run from both `close` and `error`.
-      if (rt) rt.dispose();
+      if (rt) void Promise.resolve(rt.dispose()).catch((error) => process.stderr.write(`[custom-server] realtime usage settlement failed: ${error?.message || error}\n`));
     });
     ws.on("error", (error) => {
       // Covers frame-oversize (ws emits error then closes 1009), protocol
@@ -369,7 +368,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
       queuedBytes = 0;
       clearProcessingQueue();
       process.stderr.write(`[custom-server] realtime socket error: ${error?.message || error}\n`);
-      if (rt) rt.dispose();
+      if (rt) void Promise.resolve(rt.dispose()).catch((cause) => process.stderr.write(`[custom-server] realtime usage settlement failed: ${cause?.message || cause}\n`));
     });
 
     try {
@@ -399,10 +398,22 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
         return;
       }
 
-      const model = modelFromUrl(req.url);
-      const nativeModel = model || "openai/gpt-4o-mini";
+      const requestedModel = modelFromUrl(req.url);
       const nativeUrl = new URL(req.url, "http://localhost");
       const nativePath = nativeUrl.pathname.replace(/\/$/, "");
+      let nativeModel = requestedModel || "openai/gpt-4o-mini";
+      if (nativePath === "/v1/native/gemini/live") {
+        const first = queue[0] || await Promise.race([firstFrame, new Promise((resolve) => setTimeout(() => resolve(null), 10_000)), new Promise((resolve) => setupAbort.signal.addEventListener("abort", () => resolve(null), { once: true }))]);
+        if (!first || first.isBinary) { ws.close(1007, "invalid Gemini Live setup"); return; }
+        let setup;
+        try { setup = JSON.parse(first.data.toString()); } catch { ws.close(1007, "invalid Gemini Live setup"); return; }
+        if (Object.keys(setup).length !== 1 || !setup.setup || !isObject(setup.setup) || Array.isArray(setup.setup) || !isString(setup.setup.model) || !setup.setup.model.startsWith("models/")) {
+          ws.close(1007, "invalid Gemini Live setup"); return;
+        }
+        const setupModel = `gemini/${setup.setup.model.slice(7)}`;
+        if (requestedModel && requestedModel !== setupModel) { ws.close(4001, "native realtime model access denied"); return; }
+        nativeModel = setupModel;
+      }
       const connectionId = isString(req.headers?.["x-connection-id"]) ? req.headers["x-connection-id"] : isString(req.headers?.["x-9router-connection-id"]) ? req.headers["x-9router-connection-id"] : undefined;
       const operatorExpiresAt = Date.now() + 5_000;
       const nativeRequest = await fetch(loopbackNativeRealtimeUrl(port), {
@@ -424,7 +435,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
           });
           if (checked.status !== 204) throw new Error("Native realtime model access denied");
         };
-        rt = await relayFactory({ client: ws, wsUrl: native.wsUrl, authorization: native.authorization, proxy: native.proxy, authorizeModel, binaryAudio: native.binaryAudio, onProviderEvent: native.onProviderEvent, signal: setupAbort.signal });
+        rt = await relayFactory({ client: ws, wsUrl: native.wsUrl, authorization: native.authorization, queryAuthParameter: native.queryAuthParameter, proxy: native.proxy, authorizeModel, binaryAudio: native.binaryAudio, geminiLive: native.geminiLive, pinnedModel: native.pinnedModel, onProviderEvent: native.onProviderEvent, onProviderClose: native.onProviderClose, signal: setupAbort.signal });
         rt.opened.catch(() => {});
         if (closed) {
           rt.dispose();
@@ -455,7 +466,7 @@ function handleRealtimeUpgrade(req, socket, head, { port, relayFactory = createN
         ws.close(nativeRequest.status === 401 || nativeRequest.status === 403 ? 4001 : 1011, "native realtime unavailable");
         return;
       }
-      const session = { id: `sess_${crypto.randomUUID()}`, model: model || "openai/gpt-4o-mini", instructions: "", modalities: ["text"], temperature: undefined, maxOutputTokens: undefined, items: [] };
+      const session = { id: `sess_${crypto.randomUUID()}`, model: nativeModel, instructions: "", modalities: ["text"], temperature: undefined, maxOutputTokens: undefined, items: [] };
       const headers = { ...(key ? { Authorization: `Bearer ${key}` } : null), ...(cliToken ? { "x-9r-cli-token": cliToken } : null) };
       const chat = async ({ body, headers: h, signal }) => fetch(loopbackChatUrl(port), { method: "POST", headers: { "content-type": "application/json", ...h }, body: JSON.stringify(body), signal });
       rt = createRealtimeSession({ ws, session, chat, headers });

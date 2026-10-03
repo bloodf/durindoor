@@ -52,6 +52,8 @@ import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadr
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
+import { getOllamaCatalogModel } from "../services/ollamaCatalog.js";
+import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
@@ -142,11 +144,9 @@ function isOpenCodeMuse(provider, alias, model, credentials) {
 }
 
 /**
- * Pick the request-scoped transport that speaks the final outbound body format.
- * A model-pinned targetFormat overrides a supported client sourceFormat because
- * the transport also selects the upstream endpoint, headers, and auth scheme.
- * Kimi API-key credentials retain their dedicated transport override, while
- * unpinned models keep the existing source-format and provider-default behavior.
+ * Pick request-scoped transport matching final outbound body format.
+ * Model-pinned target format overrides supported client source format.
+ * Otherwise preserve existing source-format and provider-default behavior.
  */
 export function resolveRequestTransport({ provider, alias, model, sourceFormat, credentials, body = null }) {
   const forceOpenCodeMuseResponses = isOpenCodeMuse(provider, alias, model, credentials);
@@ -159,12 +159,9 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
     FORMATS.OPENAI_RESPONSES : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model);
-  const apikeyTransportFormat = provider === "kimi" && credentials?.authType === "apikey" ?
-  "openai-apikey" :
-  null;
   const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
   const defaultFormat = getTargetFormat(provider, credentials);
-  const preferredFormat = apikeyTransportFormat || modelTargetFormat || directFormat || defaultFormat;
+  const preferredFormat = modelTargetFormat || directFormat || defaultFormat;
   let runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;
 
   // Custom OpenAI-compatible nodes have no registry `transports` array, so
@@ -181,9 +178,9 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const transportFormat = runtimeTransport?.format?.replace(/-apikey$/, "") || null;
   const targetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
   transportFormat === sourceFormat ? sourceFormat :
-  apikeyTransportFormat ? transportFormat : credentials ? modelTargetFormat || transportFormat || defaultFormat : defaultFormat;
+  credentials ? modelTargetFormat || transportFormat || defaultFormat : defaultFormat;
 
-  return { runtimeTransport, targetFormat, apikeyTransportFormat };
+  return { runtimeTransport, targetFormat };
 }
 
 /**
@@ -402,7 +399,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const cleanModel = parsedModel.cleanModel;
   const modelThinkingIntent = parsedModel.override;
   body = { ...body, model: cleanModel };
-  const { runtimeTransport: defaultRuntimeTransport, targetFormat: defaultTargetFormat, apikeyTransportFormat } = resolveRequestTransport({
+  const ollamaCatalogModel = provider === "ollama-local" ?
+  getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel) ||
+  getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel) :
+  null;
+  const effectiveModelCapabilities = { ...getCapabilitiesForModel(provider, cleanModel), ...(ollamaCatalogModel?.capabilities || {}), ...(modelCapabilities || {}) };
+  const { runtimeTransport: defaultRuntimeTransport, targetFormat: defaultTargetFormat } = resolveRequestTransport({
     provider,
     alias,
     model: cleanModel,
@@ -525,7 +527,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
   if (!passthrough) {
-    const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
+    const caps = effectiveModelCapabilities;
     if (stripUnsupportedModalities(body, sourceFormat, caps)) {
       log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${cleanModel}`);
     }
@@ -810,7 +812,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         adaptive: {
           ...COMPRESSION_ADAPTIVE_CONFIG,
           estimatedTokens: estimateTokens(translatedBody),
-          modelContextLimit: (modelCapabilities || getCapabilitiesForModel(provider, cleanModel)).contextWindow,
+          modelContextLimit: effectiveModelCapabilities.contextWindow,
           requestMaxTokens: translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null
         },
         log
@@ -949,9 +951,11 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // isDeterministicPayloadError classifier treats it as terminal and the
   // fallback chain is skipped for a request no other model would accept.
   const baseModel = isString(cleanModel) && cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel;
+  const ollamaModel = provider === "ollama-local" ?
+  ollamaCatalogModel || getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", baseModel) :
+  null;
   /** Read the server-owned cache without letting client-shared capabilities import it. */
-  // OpenRouter's public catalog is account-independent, so it is cached per provider.
-  const cachedLiveLimits = getCachedLiveLimits(provider, cleanModel, credentials) ||
+  const cachedLiveLimits = ollamaModel?.capabilities || getCachedLiveLimits(provider, cleanModel, credentials) ||
   getCachedLiveLimits(provider, baseModel, credentials);
   const catalogLimits = !cachedLiveLimits && provider === "openrouter" ? getOpenRouterModelCapabilities(cleanModel) : null;
   const liveLimits = cachedLiveLimits || catalogLimits;

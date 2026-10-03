@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
@@ -13,8 +14,11 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { nativeUsageAdmission, recordNativeUsage } from "../services/nativeUsage.js";
 import { isObject } from "../../shared/utils/typeChecks.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
+import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredentialManager.js";
 
 /**
  * Handle System One (Jev) decision requests — native /v1/systemone passthrough.
@@ -23,11 +27,34 @@ import { isObject } from "../../shared/utils/typeChecks.js";
  * @param {Request} request
  * @returns {Promise<Response>}
  */
+
+function proxyOptionsFromCredentials(credentials) {
+  return resolveCredentialProxyOptions(credentials);
+}
+
+async function recordSystemoneUsage({ apiKey, provider, model, credentials, usage }) {
+  return recordNativeUsage({
+    apiKey,
+    provider,
+    model,
+    connectionId: credentials?.connectionId || null,
+    endpoint: "/v1/systemone",
+    value: { usage },
+    usageEventId: randomUUID(),
+  });
+}
+
+function isNoAuthSystemoneProvider(provider) {
+  return REGISTRY.some((entry) => entry.id === provider && entry.noAuth === true);
+}
+
 async function handleSystemoneHandler(request) {
+  if (request.signal.aborted) return errorResponse(499, "Request aborted");
   let body;
   try {
     body = await request.json();
   } catch {
+    if (request.signal.aborted) return errorResponse(499, "Request aborted");
     log.warn("SYSTEMONE", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
@@ -65,6 +92,9 @@ async function handleSystemoneHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: questions");
   }
 
+  const usageAdmissionError = await nativeUsageAdmission(apiKey);
+  if (usageAdmissionError) return usageAdmissionError;
+
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("SYSTEMONE", "Invalid model format", { model: modelStr });
@@ -74,7 +104,6 @@ async function handleSystemoneHandler(request) {
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
-  const estimatedTokens = (String(body.state).length + JSON.stringify(body.questions).length) / 4;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -82,10 +111,11 @@ async function handleSystemoneHandler(request) {
     log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
   }
 
-  const { getExecutor } = await import("open-sse/executors/index.js");
-  const executor = getExecutor(provider);
-  if (executor?.noAuth) {
-    const credentials = await getNoAuthProviderCredentials(provider, model, { apiKeyId: apiKeyAuth.apiKeyId });
+  const pin = request.headers.get("x-connection-id") || null;
+  const pinOptions = pin ? { preferredConnectionId: pin, strictConnectionId: pin } : {};
+  const noAuth = isNoAuthSystemoneProvider(provider);
+  if (noAuth) {
+    const credentials = await getNoAuthProviderCredentials(provider, model, { ...pinOptions, apiKeyId: apiKeyAuth.apiKeyId });
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -96,18 +126,27 @@ async function handleSystemoneHandler(request) {
       );
     }
     const result = toCoreResult(
-      await handleSystemoneCore({ body, modelInfo: { provider, model }, credentials, log }),
+      await handleSystemoneCore({
+        body,
+        modelInfo: { provider, model },
+        credentials,
+        log,
+        signal: request.signal,
+        proxyOptions: proxyOptionsFromCredentials(credentials),
+      }),
       "System One request failed",
     );
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) {
+      await recordSystemoneUsage({ apiKey, provider, model, credentials, usage: result.usage });
+      return result.response;
+    }
+    if (result.status === 499) return result.response;
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "System One request failed");
   }
 
   // Credential + fallback loop (mirrors handleRerank). The dashboard example
   // sends x-connection-id for the selected connection; a pinned request uses
   // only that connection (strict), so it never reaches another host or key.
-  const pin = request.headers.get("x-connection-id") || null;
-  const pinOptions = pin ? { preferredConnectionId: pin, strictConnectionId: pin } : {};
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
@@ -142,6 +181,8 @@ async function handleSystemoneHandler(request) {
         modelInfo: { provider, model },
         credentials: toExecutorCredentials({ ...credentials }),
         log,
+        signal: request.signal,
+        proxyOptions: proxyOptionsFromCredentials(credentials),
         onRequestSuccess: async () => {
           await clearAccountError(credentials.connectionId, credentials, model);
         },
@@ -149,7 +190,12 @@ async function handleSystemoneHandler(request) {
       "System One request failed",
     );
 
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) {
+      await recordSystemoneUsage({ apiKey, provider, model, credentials, usage: result.usage });
+      return result.response;
+    }
+
+    if (result.status === 499) return result.response;
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       usedCredential: credentials.accessToken || credentials.apiKey || null
@@ -162,7 +208,7 @@ async function handleSystemoneHandler(request) {
       continue;
     }
 
-    return result.response;
+    return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "System One request failed");
   }
 }
 export const handleSystemone = withRequestCorrelation(handleSystemoneHandler);

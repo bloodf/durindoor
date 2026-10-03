@@ -16,6 +16,7 @@ export default {
   },
   models: [
     { id: "qwen-max", name: "Qwen Max" },
+    { id: "qwen3.8-max", name: "Qwen3.8 Max" },
     { id: "qwen-max-2025-01-25", name: "Qwen Max (2025-01-25)" },
     { id: "qwen-plus", name: "Qwen Plus" },
     { id: "qwen-plus-2025-07-14", name: "Qwen Plus (2025-07-14)" },

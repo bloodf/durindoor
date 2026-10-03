@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById, getProviderNodeById } from "@/models";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
@@ -14,11 +14,12 @@ import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
-import { isString } from "../../../../shared/utils/typeChecks.js";
+import { isString, isObject } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
 import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
+import { readBoundedResponseText } from "open-sse/utils/error.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -218,7 +219,7 @@ export async function POST(request) {
     const apiKeySubstitute = providerInfo.apiKeyOptionalWith;
     const substituteValue = apiKeySubstitute ? providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
-    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !hasApiKeySubstitute) {
+    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !hasApiKeySubstitute) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
     if (isNoAuth && !apiKey) {
@@ -239,6 +240,44 @@ export async function POST(request) {
 
     // Validate with each provider
     try {
+      if (providerInfo.modelsFetcher?.type === "systemone") {
+        const res = await fetchValidationProbe(providerInfo.modelsFetcher.url, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          redirect: "error",
+          signal: request.signal,
+        });
+        if (!res.ok) return NextResponse.json({ valid: false, error: `Native model discovery rejected (${res.status})` });
+        let payload;
+        try {
+          payload = JSON.parse(await readBoundedResponseText(res, { signal: request.signal, maxBytes: 1024 * 1024, timeoutMs: 10000, throwOnTimeout: true }));
+        } catch {
+          return NextResponse.json({ valid: false, error: "Invalid native model catalog" });
+        }
+        const models = payload?.models;
+        const valid = Array.isArray(models) && models.length > 0 && models.every((row) => isString(row?.name) && row.name.trim());
+        return NextResponse.json({ valid, error: valid ? null : "Invalid native model catalog", inferenceVerified: false });
+      }
+      if (isSystemoneCompatibleProvider(provider)) {
+        const node = await getProviderNodeById(provider);
+        if (!node || node.type !== "systemone-compatible") {
+          return NextResponse.json({ error: "System One compatible node not found" }, { status: 404 });
+        }
+        let res;
+        try {
+          res = await fetchValidationProbe(`${node.baseUrl.replace(/\/$/, "")}/models`, {
+            headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+            redirect: "manual"
+          }, guardedProbeFetch);
+        } catch (err) {
+          if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+          throw err;
+        }
+        if (res.ok) return NextResponse.json({ valid: false, skipped: true, error: "Model endpoint reachable; credentials not verified" });
+        if (res.status === 401 || res.status === 403) return NextResponse.json({ valid: false, error: apiKey ? "Invalid API key" : "API key required" });
+        return NextResponse.json({ valid: false, unsupported: true, error: "Model discovery unavailable. Register native model ID manually." });
+      }
+
       if (isOpenAICompatibleProvider(provider)) {
         const node = await getProviderNodeById(provider);
         if (!node) {

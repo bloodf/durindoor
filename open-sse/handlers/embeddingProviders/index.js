@@ -1,6 +1,7 @@
 // Embeddings provider adapter registry
 import createOpenAIEmbeddingAdapter from "./openai.js";
 import cloudflare from "./cloudflare.js";
+import cohere from "./cohere.js";
 import gemini from "./gemini.js";
 import openaiCompatNode from "./openaiCompatNode.js";
 import ollamaLocal from "./ollama-local.js";
@@ -14,6 +15,7 @@ const OPENAI_COMPAT_PROVIDERS = [
 const ADAPTERS = {
   ...Object.fromEntries(OPENAI_COMPAT_PROVIDERS.map((id) => [id, createOpenAIEmbeddingAdapter(id)])),
   "cloudflare-ai": cloudflare,
+  cohere,
   gemini,
   google_ai_studio: gemini,
   "ollama-local": ollamaLocal,

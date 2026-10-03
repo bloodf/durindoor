@@ -16,6 +16,7 @@ import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { discoverOllamaCatalog, isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
@@ -23,6 +24,8 @@ import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveClineModels } from "open-sse/services/clineModels.js";
 import { resolveOpenRouterModels } from "open-sse/services/openrouterCatalog.js";
 import {
+  extractLiveModelLimits,
+  normalizeVeniceModel,
   resolveLiveAnthropicModels,
   resolveLiveCloudflareModels,
   resolveLiveModelIds,
@@ -43,7 +46,7 @@ import { projectModelPresentation } from "open-sse/providers/models/presentation
 // in-flight promise is shared — settled results are NEVER cached (the key is
 // deleted in `finally`), so DB/credential changes are observed on the next
 // request and a rejection cannot poison future calls.
-import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { isModelExposureAllowed } from "../../../../shared/utils/modelExposureList.js";
 const modelsInFlight = new Map();
 
@@ -58,73 +61,8 @@ function isRecord(value) {
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
 // Adding a provider here makes /v1/models prefer the live catalog for it.
-// Known Ollama embedding families plus the `embed` substring heuristic.
-// Rationale: Ollama `/api/tags` exposes only `name`/`model` and optional
-// `details.family/families`; not every embedding model has "embed" in its
-// tag (e.g. `bge-m3`, `all-minilm`). We match these known families against the
-// normalized model ID and any available family metadata, falling back to the
-// substring heuristic. A capability probe (`/api/show`) would be one extra
-// round-trip per model, so we avoid it here in favor of this cheap, tested
-// classification. Expand this list as new Ollama embedding families appear.
-//
-// Match is exact on the normalized token sequence (e.g. `snowflake-arctic-embed`
-// matches only `snowflake arctic embed`, not `snowflake-arctic-instruct`).
-const OLLAMA_EMBEDDING_FAMILIES = [
-"bge",
-"minilm",
-"nomic-embed",
-"mxbai-embed",
-"snowflake-arctic-embed",
-"all-minilm",
-"e5",
-"gte"];
-
-
-function normalizeEmbeddingHaystack(...parts) {
-  return parts.
-  filter((p) => isString(p)).
-  join(" ").
-  toLowerCase().
-  replace(/[^a-z0-9]+/g, " ").
-  trim();
-}
-
-function tokenSequenceMatches(tokens, sequence) {
-  if (sequence.length === 0) return false;
-  if (sequence.length === 1) return tokens.includes(sequence[0]);
-  for (let i = 0; i <= tokens.length - sequence.length; i++) {
-    let match = true;
-    for (let j = 0; j < sequence.length; j++) {
-      if (tokens[i + j] !== sequence[j]) {
-        match = false;
-        break;
-      }
-    }
-    if (match) return true;
-  }
-  return false;
-}
-
-function isOllamaEmbeddingModel(model) {
-  if (!isRecord(model)) return false;
-  const id = isString(model.id) ? model.id : "";
-  const name = isString(model.name) ? model.name : "";
-  if (!id && !name) return false;
-
-  if (/embed/.test(id.toLowerCase()) || /embed/.test(name.toLowerCase())) return true;
-
-  const details = isRecord(model.details) ? model.details : {};
-  const families = Array.isArray(details.families) ? details.families : [];
-  const haystack = normalizeEmbeddingHaystack(id, name, details.family, ...families);
-  const tokens = haystack.split(/\s+/).filter(Boolean);
-
-  for (const family of OLLAMA_EMBEDDING_FAMILIES) {
-    const sequence = normalizeEmbeddingHaystack(family).split(/\s+/).filter(Boolean);
-    if (tokenSequenceMatches(tokens, sequence)) return true;
-  }
-  return false;
-}
-// Kimi Code live IDs are canonical; no static remapping is required.
+// Ollama capability classification comes from `/api/show`, not model names.
+// Kimi Platform and Kimi Code publish credential-scoped live catalogs.
 const KIMI_LIVE_MODEL_PROVIDERS = new Set(["kimi", "kimi-coding", "kimi-coding-apikey"]);
 
 // ponytail: Keep dedicated-resolver union coverage until every provider declares a registry
@@ -306,57 +244,27 @@ const LIVE_MODEL_RESOLVERS = {
   },
   "ollama-local": async (conn, guard) => {
     const host = resolveOllamaLocalHost(conn);
+    const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+    const proxyOptions = await resolveConnectionProxyConfig(psd);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     try {
-      // /api/tags lists installed models but no served num_ctx. /api/ps is the
-      // authoritative live source for context_length; merge it when available.
-      const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
-      const proxyOptions = await resolveConnectionProxyConfig(psd);
-      const proxiedFetch = (fetchUrl, init) => proxyAwareFetch(fetchUrl, init, proxyOptions || null);
-      const fetchJson = async (path, required = false) => {
-        try {
-          const response = await guardedProbeFetch(`${host}${path}`, {
-            method: "GET",
-            headers: { "Content-Type": "application/json" },
-            cache: "no-store",
-            signal: controller.signal
-          }, guard, proxiedFetch);
-          return response.ok ? response.json() : null;
-        } catch (error) {
-          if (required) throw error;
-          return null;
-        }
-      };
-      const tags = await fetchJson("/api/tags", true);
-      const list = parseOpenAIStyleModels(tags);
-      if (!Array.isArray(list)) return null;
-      const running = parseOpenAIStyleModels(await fetchJson("/api/ps"));
-      const liveContexts = new Map(
-        running.
-        map((m) => [m?.name || m?.model, Number(m?.context_length)]).
-        filter(([id, contextWindow]) => isString(id) && Number.isFinite(contextWindow) && contextWindow > 0)
-      );
-      const models = list.
-      map((m) => {
-        if (!isRecord(m)) return null;
-        const id = isString(m.id) ? m.id : isString(m.name) ? m.name : "";
-        if (!id) return null;
-        const isEmbedding = isOllamaEmbeddingModel(m);
-        const contextWindow = liveContexts.get(id);
-        return {
-          id,
-          name: id,
-          ...(isEmbedding ? { kind: "embedding" } : null),
-          ...(contextWindow ? { capabilities: { contextWindow } } : null)
-        };
-      }).
-      filter(Boolean);
-      return models.length ? { models } : null;
+      return await discoverOllamaCatalog({ host, accountId: conn.id || "", fetchImpl: (path, init) => guardedProbeFetch(`${host}${path}`, { ...init, cache: "no-store", signal: controller.signal }, guard, (url, options) => proxyAwareFetch(url, options, proxyOptions || null)) });
     } finally {
       clearTimeout(timeoutId);
     }
-  }
+  },
+  typesafe: async (conn, guard) => resolveLiveOpenAIModels(conn, {
+    ...(await liveResolverOptions(conn)), provider: "typesafe", guard, endpoint: "https://api.typesafe.ai/v1/models",
+    normalizeModel: (model) => {
+      const id = isString(model?.name) ? model.name : "";
+      return id ? { ...model, id, kind: "systemone" } : null;
+    }
+  }),
+  venice: async (conn, guard) => resolveLiveOpenAIModels(conn, {
+    ...(await liveResolverOptions(conn)), provider: "venice", guard, endpoint: "https://api.venice.ai/api/v1/models",
+    normalizeModel: normalizeVeniceModel
+  })
 };
 
 const parseOpenAIStyleModels = (data) => {
@@ -365,6 +273,17 @@ const parseOpenAIStyleModels = (data) => {
   const list = data.data ?? data.models ?? data.results;
   return Array.isArray(list) ? list : [];
 };
+
+function normalizeKimiPlatformModel(model) {
+  if (!isRecord(model) || !isString(model.id) || !model.id) return null;
+  const capabilities = {
+    ...extractLiveModelLimits(model),
+    ...(isBoolean(model.supports_image_in) ? { vision: model.supports_image_in } : null),
+    ...(isBoolean(model.supports_video_in) ? { videoInput: model.supports_video_in } : null),
+    ...(isBoolean(model.supports_reasoning) ? { reasoning: model.supports_reasoning } : null),
+  };
+  return { id: model.id, ...(Object.keys(capabilities).length ? { capabilities } : null) };
+}
 
 const OPENAI_MODELS_FETCHER_TYPES = new Set(["openai", "openai-compatible"]);
 
@@ -389,7 +308,9 @@ const MODEL_TYPE_TO_KIND = {
   realtimeTranslation: "realtimeTranslation",
   realtimeTranscription: "realtimeTranscription",
   live: "live",
-  moderation: "moderation"
+  moderation: "moderation",
+  systemone: "systemone",
+  documentParsing: "documentParsing"
 };
 
 function modelKind(model) {
@@ -413,10 +334,10 @@ function inferKindFromUnknownModelId(modelId) {
   return LLM_KIND;
 }
 
-function customModelKind(m) {
+function customModelKind(m, defaultKind = LLM_KIND) {
   const raw = m.kind || m.type;
-  if (!isString(raw)) return LLM_KIND;
-  return MODEL_TYPE_TO_KIND[raw] ?? LLM_KIND;
+  if (!isString(raw)) return defaultKind;
+  return MODEL_TYPE_TO_KIND[raw] ?? defaultKind;
 }
 
 function getCompatiblePublicIds({ customModelIds, modelAliases, providerId, staticAlias, outputAlias }) {
@@ -651,6 +572,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   } catch (e) {
     console.log("Could not fetch custom models");
   }
+  let systemoneNodes = [];
+  try {
+    const { getProviderNodes } = await import("@/lib/localDb");
+    if (isFunction(getProviderNodes)) systemoneNodes = await getProviderNodes({ type: "systemone-compatible" });
+  } catch (e) {
+    console.log("Could not fetch System One provider nodes");
+  }
+  const systemoneNodeAliases = new Set(systemoneNodes.flatMap((node) => [node.id, node.prefix]).filter(isString));
 
   let modelAliases = {};
   try {
@@ -722,6 +651,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       activeConnectionByProvider.set(conn.provider, conn);
     }
   }
+  const activeConnectionEntries = Array.from(activeConnectionByProvider.entries());
+  // Multiple local endpoints require model-service connection-prefix routing.
+  // Until that contract exists, preserve first active connection semantics.
 
   // Model auto-sync (src/lib/modelAutoSync): a provider with auto-sync on and
   // a successful synced catalog lists exactly that catalog instead of its
@@ -932,8 +864,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
 
   for (const customModel of customModels) {
-    if (!customModel.id || (customModel.kind || customModel.type) && (customModel.kind || customModel.type) !== "llm") continue;
-    if (!kindFilter.includes(LLM_KIND)) continue;
+    const kind = customModelKind(customModel, systemoneNodeAliases.has(customModel.providerAlias) ? "systemone" : LLM_KIND);
+    if (!customModel.id || !kindFilter.includes(kind)) continue;
     const providerAlias = customModel.providerAlias;
     if (!providerAlias) continue;
     if (compatibleStorageAliases.has(providerAlias)) continue;
@@ -950,8 +882,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       owned_by: providerAlias,
       capabilities: { ...staticCaps, ...customCaps },
       ...projectModelPresentation({ model: customModel, modelId, providerId, outputAlias: providerAlias }),
+      ...(kind !== LLM_KIND ? { kind } : null),
     };
-    attachModelLimits(entry, providerId, modelId, customCaps);
+    if (kind === LLM_KIND) attachModelLimits(entry, providerId, modelId, customCaps);
     models.push(entry);
   }
 
@@ -963,7 +896,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }
   } else {
     const providerResults = await Promise.all(
-      Array.from(activeConnectionByProvider.entries()).map(async ([providerId, conn]) => {
+      activeConnectionEntries.map(async ([providerId, conn]) => {
         if (!providerMatchesKinds(providerId, kindFilter)) return [];
         if (isFreeNoAuthDisabled(providerId)) return [];
 
@@ -1065,9 +998,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             provider: providerId,
             guard: liveGuard,
             proxyOptions,
-            endpoint: genericFetcher?.url || (isKimiLiveProvider ? KIMI_CODING_MODELS_URL : undefined),
+            endpoint: genericFetcher?.url || (providerId === "kimi" ? "https://api.moonshot.ai/v1/models" : isKimiLiveProvider ? KIMI_CODING_MODELS_URL : undefined),
             anthropic: false,
-            modelAliases: undefined
+            modelAliases: undefined,
+            normalizeModel: providerId === "kimi" ? normalizeKimiPlatformModel : undefined,
           });
         } :
         null;
@@ -1190,7 +1124,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           // Resolve kind: prefer custom/live/static metadata, otherwise infer from ID heuristics
           const customKind = customModelKindById.get(modelId);
           const liveKind = liveModelKindById.get(modelId);
-          const kind = customKind || liveKind || staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
+          const kind = customKind || liveKind || staticModelKindById.get(modelId) ||
+            (providerId === "ollama-local" && isLegacyOllamaEmbeddingModel({ id: modelId }) ? "embedding" : inferKindFromUnknownModelId(modelId));
           // imageToText custom models stay in the LLM list (vision-capable chat models)
           const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
           if (!kindFilter.includes(kind) && !allowAsLlm) continue;

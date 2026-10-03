@@ -3,6 +3,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { PROVIDERS, PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function isRecord(value) {
@@ -15,16 +16,13 @@ function isRecord(value) {
 //     (these have transport:null, so they are absent from PROVIDERS)
 // Returns null when no rerank endpoint can be derived.
 export function deriveRerankUrl(transportCfg, mediaCfg) {
+  const mc = isRecord(mediaCfg) ? mediaCfg : undefined;
+  if (isString(mc?.rerankConfig?.baseUrl)) return mc.rerankConfig.baseUrl;
   const tc = isRecord(transportCfg) ? transportCfg : undefined;
   const chat = isString(tc?.baseUrl) ? tc.baseUrl : undefined;
   if (chat && /\/chat\/completions$/.test(chat)) return chat.replace(/\/chat\/completions$/, "/rerank");
-
-  const mc = isRecord(mediaCfg) ? mediaCfg : undefined;
-  const embeddingConfig = mc?.embeddingConfig;
-  const embCfg = isRecord(embeddingConfig) ? embeddingConfig : undefined;
-  const emb = isString(embCfg?.baseUrl) ? embCfg.baseUrl : undefined;
+  const emb = isString(mc?.embeddingConfig?.baseUrl) ? mc.embeddingConfig.baseUrl : undefined;
   if (emb && /\/embeddings$/.test(emb)) return emb.replace(/\/embeddings$/, "/rerank");
-
   return null;
 }
 
@@ -65,7 +63,7 @@ export async function handleRerankCore({
       method: "POST",
       headers,
       body: JSON.stringify({ ...body, model })
-    });
+    }, resolveCredentialProxyOptions(credentials));
   } catch (err) {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Rerank request failed");
   }

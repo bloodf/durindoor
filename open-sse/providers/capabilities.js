@@ -108,7 +108,9 @@ const SERVICE_KIND_CAPABILITIES = {
   realtimeTranscription: { ...MEDIA_CAPABILITIES, audioInput: true },
   live: { ...MEDIA_CAPABILITIES, audioInput: true, audioOutput: true, tools: true },
   moderation: { ...MEDIA_CAPABILITIES },
-  embedding: { ...MEDIA_CAPABILITIES }
+  embedding: { ...MEDIA_CAPABILITIES },
+  systemone: { ...MEDIA_CAPABILITIES },
+  documentParsing: { ...MEDIA_CAPABILITIES, vision: true }
 };
 
 export function capabilitiesFromServiceKind(kind) {
@@ -407,6 +409,38 @@ export const PROVIDER_CAPABILITIES = {
   claude: AUDITED_PROVIDER_CAPABILITIES.claude,
   cc: AUDITED_PROVIDER_CAPABILITIES.cc,
   xai: AUDITED_PROVIDER_CAPABILITIES.xai,
+  // Exact hosted limits/capabilities, not the upstream model's trained maximum.
+  // https://api.cerebras.ai/public/v1/models
+  cerebras: {
+    "gpt-oss-120b": { vision: false, tools: true, reasoning: true, structuredOutput: true, thinkingFormat: "openai", contextWindow: 131072, maxOutput: 40960 },
+    "qwen-3.8-27b": { vision: true, tools: true, reasoning: true, structuredOutput: true, thinkingFormat: "openai", contextWindow: 65536, maxOutput: 32768 }
+  },
+  // https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
+  gemini: {
+    "gemini-3.8-flash": { vision: true, pdf: true, audioInput: true, videoInput: true, tools: true, reasoning: true, structuredOutput: true, promptCaching: true, search: true, imageOutput: false, audioOutput: false, videoOutput: false, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxInput: 1048576, maxOutput: 65536 }
+  },
+  dify: {
+    "configured-app": { vision: false, tools: false, reasoning: false, contextWindow: null, maxOutput: null }
+  },
+  // https://docs.cohere.com/docs/models publishes modalities but only K-labelled limits.
+  cohere: {
+    "command-a-plus-05-2026": { vision: true, reasoning: true, contextWindow: null, maxOutput: null },
+    "command-a-03-2025": { vision: false, contextWindow: null, maxOutput: null },
+    "command-r7b-12-2024": { vision: false, contextWindow: null, maxOutput: null },
+    "command-a-translate-08-2025": { vision: false, contextWindow: null, maxOutput: null },
+    "command-a-reasoning-08-2025": { vision: false, reasoning: true, contextWindow: null, maxOutput: null },
+    "command-a-vision-07-2025": { vision: true, contextWindow: null, maxOutput: null },
+    "command-r-plus-08-2024": { vision: false, contextWindow: null, maxOutput: null },
+    "command-r-08-2024": { vision: false, contextWindow: null, maxOutput: null },
+    "north-small-translate-1-0": { vision: false, contextWindow: null, maxOutput: null },
+    "north-mini-code-1-0": { vision: false, contextWindow: null, maxOutput: null },
+    "tiny-aya-global": { vision: false, contextWindow: null, maxOutput: null },
+    "tiny-aya-earth": { vision: false, contextWindow: null, maxOutput: null },
+    "tiny-aya-fire": { vision: false, contextWindow: null, maxOutput: null },
+    "tiny-aya-water": { vision: false, contextWindow: null, maxOutput: null },
+    "c4ai-aya-expanse-32b": { vision: false, contextWindow: null, maxOutput: null },
+    "c4ai-aya-vision-32b": { vision: true, contextWindow: null, maxOutput: null }
+  },
   "cloudflare-ai": CLOUDFLARE_CAPS,
   cf: CLOUDFLARE_CAPS,
   "xiaomi-tokenplan": XIAOMI_TOKENPLAN_CAPABILITIES,
@@ -417,11 +451,6 @@ export const PROVIDER_CAPABILITIES = {
   // shares the intl Qoder capability table verbatim.
   "qoder-cn": QODER_CAPABILITIES,
   qdc: QODER_CAPABILITIES,
-  // Ollama's trained 131,072-token window is not its served window. The local
-  // daemon's /api/ps reports 4,096 for llama3.2:1b; /api/tags exposes no num_ctx.
-  "ollama-local": {
-    "llama3.2:1b": { contextWindow: 4096, maxOutput: undefined }
-  },
   cursor: { default: VARIABLE_TARGET_CAPS },
   cu: { default: VARIABLE_TARGET_CAPS },
   "9router": { auto: VARIABLE_TARGET_CAPS },
@@ -446,11 +475,11 @@ export const PROVIDER_CAPABILITIES = {
   },
   minimax: AUDITED_PROVIDER_CAPABILITIES.minimax,
   "minimax-cn": AUDITED_PROVIDER_CAPABILITIES["minimax-cn"],
-  // Poolside Laguna — OpenAI-compatible, all reasoning-capable (262K context, 32K max output).
+  // Poolside labels do not establish exact served context/output limits.
   poolside: {
-    "laguna-s-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },
-    "laguna-xs-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 },
-    "laguna-m.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 32000 }
+    "laguna-s-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: null, maxOutput: null },
+    "laguna-xs-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: null, maxOutput: null },
+    "laguna-m.1": { reasoning: true, thinkingFormat: "openai", contextWindow: null, maxOutput: null }
   },
   // Kiro GPT-5.6 family (decolua/9router#2596): 1.05M context, Kiro-native
   // thinking (<thinking_mode> prefix), vision + search. thinkingFormat "kiro"
@@ -476,6 +505,12 @@ export const PROVIDER_CAPABILITIES = {
     "cline-pass/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "cline-pass/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 }
   },
+  // Kimi Platform lists exact served limits per credential at `/v1/models`.
+  // Keep cold-cache limits unknown rather than expanding documentation labels.
+  kimi: {
+    "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: null, maxOutput: null },
+  },
+
   // Kimi Web (www.kimi.com) consumer chat — OpenAI-shaped transport. The
   // `k2d6-thinking` tier supports reasoning via the OpenAI `reasoning_effort`
   // wire format and can be disabled (`reasoning_effort: "none"`); the plain
@@ -1198,6 +1233,10 @@ export function getCapabilitiesForModel(provider, model) {
     if (hasUnpublishedOutput(provider, model)) result = { ...result, maxOutput: undefined };
     return sanitizeModelLimits(result);
   };
+  // Local names are operator aliases; cloud-family limits cannot describe their served window.
+  if (provider === "ollama-local") {
+    return finalize({ ...DEFAULT_CAPABILITIES, tools: false, contextWindow: null, maxOutput: null });
+  }
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
   if (provider === "aihorde" || provider === "horde") {
     return finalize({ ...DEFAULT_CAPABILITIES, ...AI_HORDE_CAPABILITIES });
@@ -1281,7 +1320,7 @@ export function getCapabilitiesForModel(provider, model) {
  */
 export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null, requireExplicitOutput = false) {
   const baseModel = isString(model) && model.includes("/") ? model.split("/").pop() : model;
-  if (provider === "aihorde" || provider === "horde") {
+  if (provider === "aihorde" || provider === "horde" || provider === "ollama-local") {
     const customContext = Number.isFinite(customCaps?.contextWindow) && customCaps.contextWindow > 0 ? customCaps.contextWindow : undefined;
     const liveContext = Number.isFinite(liveLimits?.contextWindow) && liveLimits.contextWindow > 0 ? liveLimits.contextWindow : undefined;
     const customOutput = Number.isFinite(customCaps?.maxOutput) && customCaps.maxOutput > 0 ? customCaps.maxOutput : undefined;

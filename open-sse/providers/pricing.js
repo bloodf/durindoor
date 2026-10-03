@@ -1,4 +1,5 @@
 import REGISTRY from "./registry/index.js";
+import { JEV_INPUT_PRICE_PER_MTOK, JEV_OUTPUT_PRICE_PER_MTOK } from "../config/jev.js";
 import {
   isFreeModel,
   providerHasFreeModels } from
@@ -344,6 +345,12 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  // https://docs.typesafe.ai/models — native System One input is billed, output is free.
+  typesafe: {
+    "jev-latest": { input: JEV_INPUT_PRICE_PER_MTOK, output: JEV_OUTPUT_PRICE_PER_MTOK },
+    "jev-preview": { input: JEV_INPUT_PRICE_PER_MTOK, output: JEV_OUTPUT_PRICE_PER_MTOK },
+    "jev-1.13.0": { input: JEV_INPUT_PRICE_PER_MTOK, output: JEV_OUTPUT_PRICE_PER_MTOK }
+  },
   // OpenAI API list price. Over 272K input, whole request uses long-context rates.
   openai: {
     "gpt-6-astra": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },

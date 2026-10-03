@@ -49,6 +49,11 @@ function prepareRequest(config, options) {
     if (options.requestId?.startsWith(MINIMAX_V1_JOB_PREFIX)) return prepareMinimaxLegacyVideoRequest(config, { ...options, requestId: options.requestId.slice(MINIMAX_V1_JOB_PREFIX.length) });
     return config.legacyModels?.includes(modelFromRawBody(options.rawBody)) ? prepareMinimaxLegacyVideoRequest(config, options) : prepareMinimaxVideoRequest(config, options);
   }
+  if (config.format === "together") {
+    if (options.requestId) return { method: "GET", url: `${config.queryUrl.replace(/\/$/, "")}/${encodeURIComponent(options.requestId)}`, body: undefined, contentType: null };
+    if (options.action !== "generations") return { error: createErrorResult(HTTP_STATUS.BAD_REQUEST, "Together video generation supports the generations action only") };
+    return { method: "POST", url: config.createUrl, body: options.rawBody, contentType: options.contentType };
+  }
   const method = options.requestId ? "GET" : "POST";
   return { method, url: buildUpstreamUrl(config, options.action, options.requestId), body: method === "POST" ? options.rawBody : undefined, contentType: method === "POST" ? options.contentType : null };
 }

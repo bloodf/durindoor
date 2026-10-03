@@ -1,6 +1,6 @@
 import { getSettings } from "@/lib/localDb";
 import { enforceApiKeyModelPolicy } from "@/sse/services/apiKeyPolicy";
-import { isNativeTerminalUsageEvent, nativeUsageAdmission, recordNativeUsage } from "@/sse/services/nativeUsage.js";
+import { isNativeTerminalUsageEvent, nativeUsageAdmission, nativeUsageFromValue, recordNativeUsage } from "@/sse/services/nativeUsage.js";
 import { getProviderCredentialsWithQuotaPreflight, resolveClientApiKey } from "@/sse/services/auth";
 import { getModelInfo } from "@/sse/services/model";
 import { getModelQuotaFamily, getModelUpstreamId, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels";
@@ -86,6 +86,7 @@ export async function POST(request) {
   if (!secret) return response(503, "Provider unavailable");
   const endpoint = new URL(protocol.wsUrl);
   const upstreamModel = getModelUpstreamId(providerAlias, model);
+  if (protocol.queryAuth) endpoint.searchParams.set(protocol.queryAuth, secret);
   if (protocol.modelInQuery === true && !protocol.omitModelIds?.includes(upstreamModel)) endpoint.searchParams.set("model", upstreamModel);
   for (const [name, value] of body.query || []) {
     if (protocol.queryParameters?.includes(name)) endpoint.searchParams.append(name, value);
@@ -94,18 +95,46 @@ export async function POST(request) {
   try { proxy = resolveWebSocketProxyRoute(endpoint.toString(), credentials.providerSpecificData); }
   catch { return response(503, "Configured egress does not support native WebSocket transport"); }
   const usageSessionId = crypto.randomUUID();
+  let geminiTurn = 1;
+  let geminiUsagePart = 0;
+  let geminiObservedUsage = null;
+  let geminiCommittedUsage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+  let geminiSettling = Promise.resolve(true);
+  const settleGeminiUsage = (turnComplete = false) => geminiSettling = geminiSettling.then(async () => {
+    let allowed = true;
+    if (geminiObservedUsage) {
+      const observed = geminiObservedUsage;
+      const delta = Object.fromEntries(["input_tokens", "output_tokens", "total_tokens"].map((key) => [key, Math.max(0, (observed[key] || 0) - (geminiCommittedUsage[key] || 0))]));
+      if (delta.input_tokens || delta.output_tokens || delta.total_tokens) {
+        allowed = await recordNativeUsage({ apiKey, provider, model, connectionId: credentials.connectionId, endpoint: body.path, value: { usage: delta }, usageEventId: `${provider}:${credentials.connectionId}:${usageSessionId}:turn:${geminiTurn}:part:${geminiUsagePart}` });
+        geminiUsagePart++;
+        geminiCommittedUsage = observed;
+      }
+    }
+    if (turnComplete) {
+      geminiTurn++;
+      geminiUsagePart = 0;
+      geminiObservedUsage = null;
+      geminiCommittedUsage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+    }
+    return allowed;
+  });
   const handoffId = handoff.createNativeRealtimeHandoff({
-    wsUrl: endpoint.toString(),
-    authorization: `${entry.realtimeConfig?.authScheme || "Bearer"} ${secret}`,
-    sessionType: protocol.sessionType || null,
-    transcriptionModel: protocol.sessionType === "transcription" ? upstreamModel : null,
-    binaryAudio: protocol.binaryAudio === true,
-    proxy,
+    wsUrl: endpoint.toString(), authorization: protocol.queryAuth ? null : `${entry.realtimeConfig?.authScheme || "Bearer"} ${secret}`,
+    queryAuthParameter: protocol.queryAuth || null, sessionType: protocol.sessionType || null,
+    transcriptionModel: protocol.sessionType === "transcription" ? upstreamModel : null, binaryAudio: protocol.binaryAudio === true,
+    geminiLive: protocol.geminiLive === true, pinnedModel: protocol.geminiLive === true ? upstreamModel : null, proxy,
     onProviderEvent: async (event) => {
+      if (protocol.geminiLive) {
+        const observed = nativeUsageFromValue(event);
+        if (observed) geminiObservedUsage = observed;
+        return event?.serverContent?.turnComplete ? settleGeminiUsage(true) : event?.serverContent?.interrupted ? settleGeminiUsage() : true;
+      }
       if (!isNativeTerminalUsageEvent(event)) return true;
       return recordNativeUsage({ apiKey, provider, model, connectionId: credentials.connectionId, endpoint: body.path, value: event,
         usageEventId: `${provider}:${credentials.connectionId}:${event?.response?.id || event?.id || usageSessionId}:terminal` });
-    }
+    },
+    onProviderClose: protocol.geminiLive ? settleGeminiUsage : null
   });
   return Response.json({ handoffId }, { headers: { "Cache-Control": "no-store" } });
 }

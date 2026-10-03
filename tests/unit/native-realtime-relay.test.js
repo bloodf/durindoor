@@ -40,6 +40,42 @@ describe("native realtime authorization", () => {
     relay.dispose();
   });
 
+  it("pins first Gemini setup and rejects later setup or model escapes", async () => {
+    const { relay, upstream, client } = await fixture({
+      wsUrl: "wss://generativelanguage.googleapis.com/ws?key=fixture", authorization: null, queryAuthParameter: "key", geminiLive: true, pinnedModel: "gemini-3.8-live",
+      authorizeModel: vi.fn(async (model) => expect(model).toBe("gemini/gemini-3.8-live"))
+    });
+    const setup = '{"setup":{"model":"models/gemini-3.8-live","generationConfig":{"temperature":0.25}}}';
+    await relay.handleClientEvent(setup, false);
+    expect(upstream.send).toHaveBeenCalledWith(setup, { binary: false });
+    await relay.handleClientEvent('{"setup":{"model":"models/gemini-3.8-live"}}', false);
+    expect(client.close).toHaveBeenCalledWith(4001, "native realtime model access denied");
+    relay.dispose();
+  });
+
+  it("rejects Gemini setup model mismatch before provider send", async () => {
+    const { relay, upstream, client } = await fixture({ wsUrl: "wss://generativelanguage.googleapis.com/ws?key=fixture", authorization: null, queryAuthParameter: "key", geminiLive: true, pinnedModel: "gemini-3.8-live", authorizeModel: vi.fn() });
+    await relay.handleClientEvent('{"setup":{"model":"models/gemini-3.5-transcribe-live"}}', false);
+    expect(client.close).toHaveBeenCalledWith(4001, "native realtime model access denied");
+    expect(upstream.send).not.toHaveBeenCalled();
+    relay.dispose();
+  });
+  it("rejects duplicate or escaped Gemini setup identities", async () => {
+    const { relay, upstream, client } = await fixture({ wsUrl: "wss://generativelanguage.googleapis.com/ws?key=fixture", authorization: null, queryAuthParameter: "key", geminiLive: true, pinnedModel: "gemini-3.8-live", authorizeModel: vi.fn() });
+    await relay.handleClientEvent('{"\\u0073etup":{"model":"models/gemini-3.8-live"},"setup":{"model":"models/gemini-3.8-live"}}', false);
+    expect(client.close).toHaveBeenCalledWith(4001, "native realtime model access denied");
+    expect(upstream.send).not.toHaveBeenCalled();
+    relay.dispose();
+  });
+
+  it("settles observed Live usage once when client relay disposes", async () => {
+    const onProviderClose = vi.fn(async () => false);
+    const { relay, client } = await fixture({ onProviderClose });
+    await relay.dispose();
+    expect(onProviderClose).toHaveBeenCalledOnce();
+    expect(client.close).toHaveBeenCalledWith(1008, "Usage limit reached");
+  });
+
   it("does not expose terminal provider output when strict accounting throws", async () => {
     const { relay, upstream, client } = await fixture({ onProviderEvent: async () => { throw new Error("disk unavailable"); } });
     upstream.emit("message", '{"type":"response.done","response":{"usage":{"total_tokens":3}}}', false);

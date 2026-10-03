@@ -144,3 +144,29 @@ describe("MiniMax video generation (#3258)", () => {
     });
   });
 });
+
+describe("Together video generation", () => {
+  beforeEach(() => { global.fetch = vi.fn(); });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it("forwards documented Together create and retrieve jobs", async () => {
+    const body = JSON.stringify({ model: "minimax/video-01-director", prompt: "A lantern" });
+    global.fetch.mockResolvedValueOnce(jsonResponse({ id: "video-123", object: "video", model: "minimax/video-01-director", status: "in_progress", size: "720p", seconds: "5", created_at: 1 }));
+    const created = await handleVideoProxyCore({ provider: "together", action: "generations", rawBody: body, contentType: "application/json", credentials: { apiKey: "test-key" } });
+    expect(created.success).toBe(true);
+    expect(global.fetch.mock.calls[0][0]).toBe("https://api.together.ai/v2/videos");
+    expect(global.fetch.mock.calls[0][1].body).toBe(body);
+
+    global.fetch.mockResolvedValueOnce(jsonResponse({ id: "video-123", object: "video", model: "minimax/video-01-director", status: "completed", size: "720p", seconds: "5", created_at: 1, outputs: { cost: 1, video_url: "https://cdn.example/video.mp4" } }));
+    const retrieved = await handleVideoProxyCore({ provider: "together", requestId: "video-123", credentials: { apiKey: "test-key" } });
+    expect(retrieved.success).toBe(true);
+    expect(global.fetch.mock.calls[1][0]).toBe("https://api.together.ai/v2/videos/video-123");
+    expect(await retrieved.response.json()).toEqual(expect.objectContaining({ id: "video-123", outputs: { cost: 1, video_url: "https://cdn.example/video.mp4" } }));
+  });
+
+  it("rejects unsupported Together video actions", async () => {
+    const result = await handleVideoProxyCore({ provider: "together", action: "edits", rawBody: "{}", contentType: "application/json", credentials: { apiKey: "test-key" } });
+    expect(result.success).toBe(false);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isValidGitHubCreditLimit } from "open-sse/services/githubCreditLimit.js";
 import {
   getProviderConnectionById,
+  getProviderNodeById,
   getProxyPoolById,
   updateProviderConnection,
   deleteProviderConnection } from
@@ -15,7 +16,7 @@ import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
-import { AI_PROVIDERS } from "@/shared/constants/providers";
+import { AI_PROVIDERS, isSystemoneCompatibleProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
@@ -347,6 +348,25 @@ export async function PUT(request, { params }) {
         };
       } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+    }
+
+    if (isSystemoneCompatibleProvider(existing.provider)) {
+      const node = await getProviderNodeById(existing.provider);
+      if (!node || node.type !== "systemone-compatible") {
+        return NextResponse.json({ error: "System One compatible node not found" }, { status: 404 });
+      }
+      updateData.providerSpecificData = {
+        ...(updateData.providerSpecificData || existing.providerSpecificData || {}),
+        baseUrl: node.baseUrl,
+        prefix: node.prefix,
+        nodeName: node.name
+      };
+    }
+    if (existing.provider === "laya" || isSystemoneCompatibleProvider(existing.provider)) {
+      const metadata = updateData.providerSpecificData || existing.providerSpecificData || {};
+      if (metadata.proxyPoolId || metadata.connectionProxyEnabled || metadata.vercelRelayUrl || metadata.oauthProxy?.mode === "strict-pool") {
+        return NextResponse.json({ error: "Outbound proxies are not supported for guarded System One server URLs" }, { status: 400 });
       }
     }
 

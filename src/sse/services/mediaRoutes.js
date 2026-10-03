@@ -65,7 +65,7 @@ export async function listMediaRouteCandidates(kind, { apiKeyId = null } = {}) {
 
 /** /v1/videos runs async job APIs; veoaifree-web's videoConfig is the sync generator. */
 export const supportsVideoJobs = (providerId) => !!getVideoConfig(providerId) && !supportsVideoGeneration(providerId);
-export const supportsTranslation = (providerId) => supportsSttTranslation(AI_PROVIDERS[providerId]?.sttConfig);
+export const supportsTranslation = (providerId, model) => supportsSttTranslation(AI_PROVIDERS[providerId]?.sttConfig, model);
 
 /** Endpoints that can run only part of their kind's models, shown per endpoint on the dashboard. */
 export const MEDIA_ROUTE_ENDPOINTS = Object.freeze({
@@ -100,12 +100,12 @@ function noRouteResponse(kind, reason) {
  * @param {string} kind - one of MEDIA_ROUTE_KINDS
  * @param {object} options
  * @param {object} options.settings - current settings
- * @param {(providerId: string) => boolean} [options.supports] - endpoint-specific provider filter
+ * @param {(providerId: string, model: string) => boolean} [options.supports] - endpoint-specific model filter
  * @param {string|null} [options.apiKeyId] - the caller's key, which decides the host a keyless provider is probed at
  */
 export async function describeMediaRoute(kind, { settings, supports = null, apiKeyId = null } = {}) {
   const all = await listMediaRouteCandidates(kind, { apiKeyId });
-  const candidates = supports ? all.filter((m) => supports(providerOfModelId(m.id))) : all;
+  const candidates = supports ? all.filter((m) => supports(providerOfModelId(m.id), String(m.id).slice(String(m.id).indexOf("/") + 1))) : all;
   const saved = savedRoute(settings, kind);
   const available = new Set(candidates.map((m) => m.id));
   // A saved route is the user's choice: an endpoint that can run none of its

@@ -1,12 +1,10 @@
-// Jev (TypeSafe "System One") routing-classifier config — constants only.
-// Per open-sse/AGENTS.md: ALL config lives here, nothing is hardcoded elsewhere.
+// Jev (TypeSafe "System One") optional internal classifier config.
+// Direct TypeSafe requests are served by the native System One provider and
+// handler; this file only configures combo task classification.
 //
-// Jev is NOT a provider or a combo member — it does not generate text. It is a
-// decision model: unstructured `state` in, typed probabilities out. DurinDoor
-// uses it as an optional upgrade to the local heuristic task classifier that
-// drives the `smart` / `task` combo strategies. When it answers confidently its
-// tier replaces the heuristic level; the existing task-weight model scoring and
-// the availability/quota fallback ladder then run untouched.
+// Jev evaluates typed questions over state. The classifier uses one `choice`
+// question to map task complexity to DurinDoor levels. It does not translate
+// System One requests into chat completions or alter direct API payloads.
 
 export const JEV_ENDPOINT_PATH = "/v1/systemone";
 export const JEV_DEFAULT_BASE = "https://api.typesafe.ai";

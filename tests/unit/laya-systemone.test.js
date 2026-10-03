@@ -30,6 +30,7 @@ describe("Laya System One passthrough", () => {
     const [url, init] = guarded.mock.calls[0];
     expect(url).toBe("http://192.168.1.30:9000/v1/systemone");
     expect(init.headers.Authorization).toBeUndefined();
+    expect(init.headers["x-opencode-session"]).toBeUndefined();
     expect(JSON.parse(init.body).model).toBe("english");
   });
 
@@ -50,6 +51,23 @@ describe("Laya System One passthrough", () => {
     expect(result.success).toBeFalsy();
     expect(result.status).toBe(400);
     expect(guarded).not.toHaveBeenCalled();
+  });
+});
+
+describe("custom System One passthrough", () => {
+  it("uses selected connection endpoint and no OpenCode header", async () => {
+    guarded.mockResolvedValue(layaAnswer());
+    const result = await handleSystemoneCore({
+      body,
+      modelInfo: { provider: "systemone-compatible-local", model: "decision-v1" },
+      credentials: { apiKey: "local-key", providerSpecificData: { baseUrl: "https://systemone.example/api/v1/custom" } },
+    });
+    expect(result.success).toBe(true);
+    const [url, init] = guarded.mock.calls[0];
+    expect(url).toBe("https://systemone.example/api/v1/custom/systemone");
+    expect(init.headers.Authorization).toBe("Bearer local-key");
+    expect(init.headers["x-opencode-session"]).toBeUndefined();
+    expect(JSON.parse(init.body).model).toBe("decision-v1");
   });
 });
 

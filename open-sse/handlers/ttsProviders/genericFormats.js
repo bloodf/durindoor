@@ -3,6 +3,7 @@
 import { responseToBase64, throwUpstreamError } from "./_base.js";
 import minimaxTts from "./minimax.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { createErrorResult } from "../../utils/error.js";
 
 // Hyperbolic: POST { text } → { audio: base64 }
 async function hyperbolic({ baseUrl, apiKey, text }) {
@@ -29,13 +30,22 @@ async function deepgram({ baseUrl, apiKey, text, modelId }) {
   return responseToBase64(res, "mp3");
 }
 
-// Nvidia NIM: POST { input: { text }, voice, model } → binary
-async function nvidia({ baseUrl, apiKey, text, modelId, voiceId }) {
-  const res = await fetch(baseUrl, {
+// Hosted Magpie's HTTP API uses multipart fields and returns WAV, not JSON input.
+async function nvidia({ baseUrl, apiKey, text, modelId, voiceId, language, proxyOptions }) {
+  if (modelId !== "nvidia/magpie-tts-multilingual") {
+    return createErrorResult(400, `Unsupported NVIDIA speech model: ${modelId}`);
+  }
+  const body = new FormData();
+  body.append("text", text);
+  body.append("language", language || "en-US");
+  body.append("voice", voiceId || "Magpie-Multilingual.EN-US.Aria");
+  body.append("encoding", "LINEAR_PCM");
+  body.append("sample_rate_hz", "44100");
+  const res = await proxyAwareFetch(baseUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify({ input: { text }, voice: voiceId || "default", model: modelId })
-  });
+    headers: { "Authorization": `Bearer ${apiKey}` },
+    body,
+  }, proxyOptions);
   if (!res.ok) await throwUpstreamError(res);
   return responseToBase64(res, "wav");
 }

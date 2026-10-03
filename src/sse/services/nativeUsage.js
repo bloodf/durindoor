@@ -21,11 +21,11 @@ function numericMetric(value) {
 }
 
 export function nativeUsageFromValue(value) {
-  const usage = value?.usage || value?.response?.usage || value?.message?.usage || value?.data?.usage;
+  const usage = value?.usageMetadata || value?.usage || value?.meta?.tokens || value?.response?.usage || value?.message?.usage || value?.data?.usage;
   if (!usage || !isObject(usage) || Array.isArray(usage)) return null;
-  const input = numericMetric(usage.input_tokens ?? usage.prompt_tokens);
-  const output = numericMetric(usage.output_tokens ?? usage.completion_tokens);
-  const total = numericMetric(usage.total_tokens ?? usage.total_token_count);
+  const input = numericMetric(usage.promptTokenCount ?? usage.input_tokens ?? usage.prompt_tokens);
+  const output = numericMetric(usage.responseTokenCount ?? usage.output_tokens ?? usage.completion_tokens);
+  const total = numericMetric(usage.totalTokenCount ?? usage.total_tokens ?? usage.total_token_count);
   if (input === undefined && output === undefined && total === undefined) return null;
   const normalized = { ...usage };
   if (input !== undefined) normalized.input_tokens = input;
@@ -86,7 +86,8 @@ function createJsonCollector() {
     if (!key || frames.length === 0 || frames.length > 4 || frames.some((frame) => frame.kind !== "object")) return null;
     const rootMetadata = frames.length === 1 || frames.length === 2 && METADATA_WRAPPERS.has(frames[1].segment);
     if (rootMetadata && METADATA_FIELDS.has(key)) return { metadata: key, root: frames.length === 1 };
-    const usageIndex = frames[1]?.segment === "usage" ? 1 :
+    const usageIndex = frames[1]?.segment === "meta" && frames[2]?.segment === "tokens" ? 2 :
+      frames[1]?.segment === "usage" ? 1 :
       WRAPPERS.has(frames[1]?.segment) && frames[2]?.segment === "usage" ? 2 : -1;
     if (usageIndex < 0 || !TOKEN_FIELDS.has(key)) return null;
     if (frames.length === usageIndex + 1) return { metric: key };

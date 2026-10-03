@@ -2,30 +2,12 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { getModelTargetFormat } from "../config/providerModels.js";
 
 const BASE = "https://opencode.ai/zen/v1";
 
-const MESSAGES_FORMAT_MODELS = new Set([
-"qwen3.5-plus",
-"qwen3.6-plus",
-"qwen3.6-plus-free"]
-);
-
-function isClaudeModel(model) {
-  return isString(model) && model.startsWith("claude-");
-}
-
-function isGeminiModel(model) {
-  return isString(model) && model.startsWith("gemini-");
-}
-
-function isMessagesModel(model) {
-  return isClaudeModel(model) || MESSAGES_FORMAT_MODELS.has(model);
-}
-
-function isResponsesModel(model) {
-  return isString(model) && /^gpt-5(?:[.-]|$)/.test(model);
+function targetFormat(model) {
+  return getModelTargetFormat("opencode-zen", model);
 }
 
 export class OpenCodeZenExecutor extends BaseExecutor {
@@ -33,12 +15,13 @@ export class OpenCodeZenExecutor extends BaseExecutor {
     super("opencode-zen", PROVIDERS["opencode-zen"]);
   }
 
-  buildUrl(model) {
-    if (isGeminiModel(model)) {
-      throw new Error("OpenCode Zen Gemini models require the Google-compatible custom-provider route, which is not implemented yet");
+  buildUrl(model, stream = false) {
+    const format = targetFormat(model);
+    if (format === "gemini") {
+      return `${BASE}/models/${encodeURIComponent(model)}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
     }
-    if (isMessagesModel(model)) return `${BASE}/messages`;
-    if (isResponsesModel(model)) return `${BASE}/responses`;
+    if (format === "claude") return `${BASE}/messages`;
+    if (format === "openai-responses") return `${BASE}/responses`;
     return `${BASE}/chat/completions`;
   }
 
@@ -46,9 +29,11 @@ export class OpenCodeZenExecutor extends BaseExecutor {
     const key = credentials?.apiKey || credentials?.accessToken;
     const headers = { "Content-Type": "application/json" };
 
-    if (isMessagesModel(model)) {
+    if (targetFormat(model) === "claude") {
       headers["x-api-key"] = key;
       headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+    } else if (targetFormat(model) === "gemini") {
+      headers["x-goog-api-key"] = key;
     } else {
       headers["Authorization"] = `Bearer ${key}`;
     }

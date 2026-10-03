@@ -93,7 +93,11 @@ export async function handleNativeProvider(request, provider, path) {
     if (!resolved.provider || resolved.provider !== provider || !resolved.model) return fail(HTTP_STATUS.BAD_REQUEST, "Model does not belong to native provider");
     const registryProvider = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.aliases?.includes(provider));
     const registryModel = registryProvider?.models?.find((entry) => entry.id === resolved.model || entry.aliases?.includes(resolved.model));
+    if (!registryModel) return fail(HTTP_STATUS.BAD_REQUEST, "Unknown native provider model");
     if (registryModel?.routingUnavailableReason) return fail(HTTP_STATUS.BAD_REQUEST, registryModel.routingUnavailableReason);
+    if (operation.kind === "documentParsing" && registryModel?.kind !== "documentParsing") {
+      return fail(HTTP_STATUS.BAD_REQUEST, "Model does not support native document parsing");
+    }
     const canonicalIdentity = `${provider}/${resolved.model}`;
     const policyError = await enforceApiKeyModelPolicy(request, canonicalIdentity, apiKey, { limits: false });
     if (policyError) return policyError;

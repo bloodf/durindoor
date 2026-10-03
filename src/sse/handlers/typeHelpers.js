@@ -134,7 +134,8 @@ export function toCoreResult(result, fallbackError) {
       response: result.response,
       status: result.status,
       error: fallbackError,
-      resetsAtMs: null
+      resetsAtMs: null,
+      usage: result.usage ?? null
     };
   }
   return {

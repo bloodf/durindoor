@@ -94,6 +94,8 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 
 `/v1/videos` is the async job surface: xAI Grok Imagine, MiniMax, MiniMax CN, and OrcaRouter (any provider with a `videoConfig` that is not the sync `veoaifree-web` generator). `POST /v1/videos/generations`, `/edits`, `/extensions` create a job. JSON or multipart is forwarded byte-for-byte. The `model` field (a JSON key or a multipart form field) picks the provider. A `provider/` prefix is stripped: JSON is rewritten, and multipart is re-encoded with a new boundary. With no `model`, the first video-route model whose provider runs async jobs is used, and its id is written into the body (JSON, or the re-encoded multipart form). A bare id must exactly match one connected video model; if two providers serve it, the request returns 400 and asks for `provider/model`. Combos are rejected. POST returns `{ request_id, status, ... }` and `x-9router-connection-id`. Poll `GET /v1/videos/{request_id}` and echo that value as `x-connection-id`. Done responses include `video.url`.
 
+Together uses this same async job surface with its native `/v2/videos` upstream. Common video polls are scoped to the provider connection: two gateway keys authorized for the same account can access that account's jobs. This is not creator-key isolation; the tracked native facade below has a separate ownership contract.
+
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
 | POST, OPTIONS | `/v1/images/generations` | JSON `model`, `prompt` | SSE if Accept SSE | image-kind models; `sdwebui`, `comfyui` no-auth |
@@ -105,13 +107,15 @@ STT and translation are multipart: `model`, `file`. Translation forwards to the 
 | POST, OPTIONS | `/v1/music/generations` | JSON `model`, `prompt` | no | music-kind models |
 | POST, OPTIONS | `/v1/audio/music` | same (re-export) | no | same as music generations |
 | POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
-| POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, MiniMax CN, OrcaRouter) |
+| POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, MiniMax CN, Together, OrcaRouter) |
 
 ## Native provider APIs
 
-Use `/v1/native/{provider}/{vendor-path}` for vendor-specific fields that the common chat/media APIs cannot express. Supported providers are `openai`, `anthropic`, `minimax`, `minimax-cn`, and `xai`. The server uses fixed vendor origins and an operation allowlist; clients cannot choose an upstream host or supply provider credentials.
+Use `/v1/native/{provider}/{vendor-path}` for vendor-specific fields that the common chat/media APIs cannot express. Supported HTTP providers are `openai`, `anthropic`, `minimax`, `minimax-cn`, `xai`, and `cohere`. The server uses fixed vendor origins and an operation allowlist; clients cannot choose an upstream host or supply provider credentials.
 
 Supply a gateway identity in `?model=provider/model`, or in the operation's execution-model field. The server resolves aliases, checks the key's model and account scope, and rewrites execution-model strings without rounding other JSON numbers. Nested Live, transcription, advisor-tool, and batch model fields receive the same checks. Prompts and tool schemas retain their own strings.
+
+Built-in native HTTP operations require a registered model or its canonical alias. Unknown models receive HTTP 400 before account selection or upstream dispatch. Custom System One nodes use their separate operator-managed model registration.
 
 | Provider | Native operation families |
 | --- | --- |
@@ -119,6 +123,7 @@ Supply a gateway identity in `?model=provider/model`, or in the operation's exec
 | Anthropic | Messages, native Files and Message Batches |
 | MiniMax / CN | OpenAI/Anthropic-compatible text, speech, image, music/lyrics/cover preprocessing, voice management, files, Hailuo/H3 jobs |
 | xAI | Responses, image generation/edits, video generation/edits/extensions/polling, TTS and STT |
+| Cohere | Embed, Rerank, multipart Audio Transcriptions, image-only Parse |
 
 For account-bound operations, send `x-connection-id` with the account returned in the creation response's `x-9router-connection-id`. Missing pins return 400; unavailable pins fail instead of switching accounts. Tracked OpenAI Responses and MiniMax/xAI resource operations require the creator key, or local operator access. Completion polling uses the creation model and creator key, and repeated terminal usage does not charge twice. Deleted creator keys cannot redirect charges to the polling key.
 
@@ -127,6 +132,10 @@ Native Anthropic file/batch lists and MiniMax voice-category lists expose the se
 Native background and batch inference require keys without usage/rate caps: the gateway cannot meter work after a client leaves. Direct ephemeral sessions have the same restriction. Gateway-relayed native WebSockets remain available to scoped keys; see [Realtime](../features/realtime.mdx).
 
 Native JSON/SSE/WS accounting commits reported token usage before the terminal result becomes usable. OpenAI and MiniMax streaming chat requests force `stream_options.include_usage: true`. Spending the last allowance preserves that result and rejects the next request. Media responses without token usage use a text-input estimate; token/USD caps do not bound vendor charges per character, image, second, or generation. Use vendor account budgets for those charges.
+
+Gemini speech uses Files plus Interactions for transcription and Interactions for WAV speech. Gemini Live uses the gateway's same-process WebSocket relay, not the HTTP facade. NVIDIA hosted Parakeet and Magpie use their published function-specific multipart HTTP endpoints. Together video uses `/v2/videos`; its translation route supports Whisper, not arbitrary transcription models.
+
+Dify exposes the configured published chat app, not an upstream model catalog. Its stateless chat adapter rejects client tools and media. Key checks use guarded `/info` and `/parameters` requests; a selected outbound proxy is rejected because it cannot preserve that probe's DNS guard. Inference retains the selected connection's egress policy.
 
 Tools execute in the client or the vendor's declared server-tool service. DurinDoor does not execute consumer function, computer, or browser tools on the gateway host.
 
@@ -156,11 +165,24 @@ JSON bodies. Embeddings need `model` and `input`. Rerank needs `model`, `query`,
 
 Native pass-through for Jev-shaped decision models, with no chat translation layer. Body needs `model`, `state` (the situation to evaluate), and `questions` (an object, not an array). The provider's JSON response (typed `answers`, `usage`) is forwarded unchanged.
 
-`systemoneConfig` models include the Jev models (`opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, `openrouter/typesafe/jev-1.13`) and self-hosted [Laya](../features/combos.mdx#local-laya-instead-of-jev) (`laya/auto`, `laya/english`, `laya/multilingual`, `laya/typed-decisions`), served by a `laya-serve` connection. A request naming a connection's provider goes through the normal credential + fallback loop, but `x-connection-id` pins it strictly to that connection: the request never falls back to another connection or host on failure.
+Direct TypeSafe uses `jev/jev-latest`, `jev/jev-preview`, or `jev/jev-1.13.0` with a TypeSafe connection. Existing reseller routes remain separate: `opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, and `openrouter/typesafe/jev-1.13`. Self-hosted [Laya](../features/combos.mdx#local-laya-instead-of-jev) exposes `laya/auto`, `laya/english`, `laya/multilingual`, and `laya/typed-decisions`.
+
+Create a **Custom System One** node under **Media Providers → System One** for another compatible server. Enter an API base URL or complete `/systemone` endpoint, save a connection with an optional key, and register the server's native model ID. Use `your-prefix/native-model` in requests. Servers without `/models`, including Laya, support manual registration. Model discovery does not prove inference or authentication on a public listing endpoint.
+
+`x-connection-id` pins either a credentialed or free route to that account. Aliases receive the same native-model registration and API-key model checks. Structured `state` values and native controls such as Laya's `lang`, `task`, `max_len`, and `min_confidence` pass through unchanged. Responses have an 8 MiB proxy limit. Successful usage enters the normal windowed API-key ledger; TypeSafe output is free and input costs $0.042 per million tokens.
+
+Custom System One and Laya URLs retain the resolved-address outbound guard. Outbound proxy pools are unsupported for these guarded URLs; setup rejects that combination instead of falling back to direct traffic. Fixed hosted providers retain their selected egress policy. Ollama remains a chat/embedding backend, not a Jev probability adapter.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
-| POST, OPTIONS | `/v1/systemone` | JSON `model`, `state`, `questions`; optional `x-connection-id` header to pin a connection | no | `systemoneConfig` models (Jev, Laya) |
+| POST, OPTIONS | `/v1/systemone` | JSON `model`, `state`, `questions`; optional `x-connection-id` header | no | TypeSafe, native Jev reseller routes, Laya, custom System One nodes |
+
+List configured decision models with the dedicated kind; the ordinary chat catalog excludes them:
+
+```bash
+curl "$DURINDOOR_BASE_URL/v1/models/systemone" \
+  -H "Authorization: Bearer $DURINDOOR_API_KEY"
+```
 
 ## Web search and fetch
 

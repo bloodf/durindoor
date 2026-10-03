@@ -37,6 +37,7 @@ export { default as OrcaModelDropdown } from "./OrcaModelDropdown";
 export { default as ImportTokenModal } from "./ImportTokenModal";
 export { default as EditConnectionModal } from "./EditConnectionModal";
 export { default as AddCustomEmbeddingModal } from "./AddCustomEmbeddingModal";
+export { default as AddSystemoneCompatibleModal } from "./AddSystemoneCompatibleModal";
 export { default as NoAuthProxyCard } from "./NoAuthProxyCard";
 export { default as SegmentedControl } from "./SegmentedControl";
 export { default as Tooltip } from "./Tooltip";

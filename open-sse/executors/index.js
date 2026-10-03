@@ -11,6 +11,7 @@ import { MuseCodeExecutor } from "./muse-code.js";
 import { IFlowExecutor } from "./iflow.js";
 import { InnerAiExecutor } from "./inner-ai.js";
 import { QoderExecutor } from "./qoder.js";
+import { DifyExecutor } from "./dify.js";
 import { DuckDuckGoWebExecutor } from "./duckduckgo-web.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
@@ -72,6 +73,7 @@ const executors = {
   "inner-ai": new InnerAiExecutor(),
   "in-ai": new InnerAiExecutor(), // Alias for inner-ai
   qoder: new QoderExecutor(),
+  dify: new DifyExecutor(),
   "qoder-cn": new QoderExecutor("qoder-cn"),
   "duckduckgo-web": new DuckDuckGoWebExecutor(),
   ddgw: new DuckDuckGoWebExecutor(),
@@ -182,6 +184,7 @@ export { GeminiCLIExecutor } from "./gemini-cli.js";
 export { GithubExecutor } from "./github.js";
 export { GheCopilotExecutor } from "./ghe-copilot.js";
 export { MuseCodeExecutor } from "./muse-code.js";
+export { DifyExecutor } from "./dify.js";
 export { IFlowExecutor } from "./iflow.js";
 export { InnerAiExecutor } from "./inner-ai.js";
 export { QoderExecutor } from "./qoder.js";

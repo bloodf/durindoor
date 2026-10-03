@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
@@ -39,24 +40,25 @@ function toImagePreviewSrc(value) {
   return `data:image/png;base64,${trimmed}`;
 }
 
-export function GenericExampleCard({ providerId, kind }) {
-  const providerAlias = getProviderAlias(providerId);
+export function GenericExampleCard({ providerId, kind, providerAliasOverride }) {
+  const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const resolvedId = resolveProviderId(providerAlias);
-  const safeProviderAlias = resolvedId === providerId ? providerAlias : providerId;
+  const safeProviderAlias = providerAliasOverride || (resolvedId === providerId ? providerAlias : providerId);
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
   const exConfig = KIND_EXAMPLE_CONFIG[kind];
   const safeExConfig = exConfig || {};
 
   // Get models for this kind (e.g., type="image")
-  const kindModels = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === kind);
+  const [registeredModels, setRegisteredModels] = useState([]);
+  const kindModels = [...getModelsByProviderId(providerId).filter((m) => getModelKind(m) === kind), ...registeredModels];
   // Kinds that need a model identifier in the request (image/video/music/systemone)
   const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText", "systemone"]);
   const needsModel = KIND_NEEDS_MODEL.has(kind);
   const allowManualModel = needsModel && kindModels.length === 0;
   const [selectedModel, setSelectedModel] = useState(kindModels[0]?.id ?? "");
   const selectedModelObj = kindModels.find((m) => m.id === selectedModel);
-  const supportsEdit = !!selectedModelObj?.capabilities?.includes("edit");
-  const supportsMask = !!selectedModelObj?.capabilities?.includes("mask");
+  const supportsEdit = Array.isArray(selectedModelObj?.capabilities) && selectedModelObj.capabilities.includes("edit");
+  const supportsMask = Array.isArray(selectedModelObj?.capabilities) && selectedModelObj.capabilities.includes("mask");
 
   const [input, setInput] = useState(safeExConfig.defaultInput || "");
   const [question, setQuestion] = useState("Does this request require urgent attention?");
@@ -96,6 +98,15 @@ export function GenericExampleCard({ providerId, kind }) {
     }).
     catch(() => {});
   }, [providerId]);
+
+  useEffect(() => {
+    if (kind !== "systemone") return;
+    fetch("/api/models/custom", { cache: "no-store" }).then((r) => r.json()).then((data) => {
+      const models = (data.models || []).filter((row) => row.providerAlias === safeProviderAlias && (row.kind || row.type) === "systemone");
+      setRegisteredModels(models);
+      setSelectedModel((current) => current || models[0]?.id || "");
+    }).catch(() => setRegisteredModels([]));
+  }, [kind, safeProviderAlias]);
 
   // Safe to early-return now that all hooks are declared
   if (!kindConfig || !exConfig) return null;
@@ -385,3 +396,9 @@ export function GenericExampleCard({ providerId, kind }) {
     </Card>
   );
 }
+
+GenericExampleCard.propTypes = {
+  providerId: PropTypes.string.isRequired,
+  kind: PropTypes.string.isRequired,
+  providerAliasOverride: PropTypes.string
+};

@@ -515,6 +515,23 @@ export function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
   return normalizeProxyUrl(proxyUrlRaw);
 }
 
+/** Resolve a WebSocket's immutable egress route using the HTTP proxy policy. */
+export function resolveWebSocketProxyRoute(wsUrl, proxyOptions = null) {
+  const target = new URL(wsUrl);
+  target.protocol = "https:";
+  if (normalizeString(proxyOptions?.vercelRelayUrl)) {
+    throw new Error("Configured HTTP relay does not support WebSocket transport");
+  }
+  const connection = resolveConnectionProxyUrl(target.toString(), proxyOptions);
+  const ambient = connection || proxyOptions?.disableEnvProxy === true ?
+    null : normalizeProxyUrl(getEnvProxyUrl(target.toString()));
+  const url = connection || ambient;
+  if (proxyOptions?.strictProxy === true && !url) {
+    throw new Error("WebSocket proxy required but unavailable");
+  }
+  return { enabled: Boolean(url), url: url || "", strict: proxyOptions?.strictProxy === true };
+}
+
 /**
  * Create and cache one bounded undici proxy pool per selected proxy URL.
  * Reusing the dispatcher preserves proxy affinity while limiting connections

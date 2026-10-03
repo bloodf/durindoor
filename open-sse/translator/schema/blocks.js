@@ -61,6 +61,12 @@ export const VALID_OPENAI_CONTENT_TYPES = [
 // not preserved. Upgrade path: store per-entry order/length metadata alongside
 // the redacted blocks and re-slice reasoning_content on restore.
 export const CLAUDE_REDACTED_THINKING_BLOCKS = Symbol("claudeRedactedThinkingBlocks");
+
+// Non-enumerable in-process carriers for native Claude-only request data during
+// a Claude → OpenAI → Claude pivot. They never enter an OpenAI wire body.
+export const CLAUDE_NATIVE_BLOCKS = Symbol("claudeNativeBlocks");
+export const CLAUDE_NATIVE_TOOLS = Symbol("claudeNativeTools");
+export const CLAUDE_NATIVE_REQUEST_FIELDS = Symbol("claudeNativeRequestFields");
 export const VALID_OPENAI_MESSAGE_TYPES = [
   OPENAI_BLOCK.TEXT, OPENAI_BLOCK.IMAGE_URL, OPENAI_BLOCK.IMAGE, "tool_calls", CLAUDE_BLOCK.TOOL_RESULT,
 ];

@@ -48,4 +48,8 @@ export default {
     { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
   ],
   defaultContextLength: 262144,
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
 };

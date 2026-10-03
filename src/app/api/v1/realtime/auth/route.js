@@ -22,7 +22,7 @@ export async function GET(request) {
     required: settings.requireApiKey === true,
   });
   if (auth.ok) {
-    return Response.json({ ok: true }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    return Response.json({ ok: true, operator: auth.operator === true }, { headers: { "Access-Control-Allow-Origin": "*" } });
   }
   const message = auth.reason === "missing" ? "Missing API key" : "Invalid API key";
   return Response.json(

@@ -34,7 +34,16 @@ const MAX_SESSION_ITEMS = envPositiveInt("REALTIME_MAX_SESSION_ITEMS", 100);
 // Env: REALTIME_MAX_FRAME_BYTES.
 const MAX_REALTIME_FRAME_BYTES = envPositiveInt("REALTIME_MAX_FRAME_BYTES", 1024 * 1024);
 
+// Bound frames held while gateway auth and native credential selection finish.
+// Native audio can arrive before that async control-plane work completes.
+const MAX_REALTIME_PREAUTH_FRAMES = envPositiveInt("REALTIME_MAX_PREAUTH_FRAMES", 32);
+
+// Bound aggregate bytes held before auth; one frame remains capped by maxPayload.
+const MAX_REALTIME_PREAUTH_BYTES = envPositiveInt("REALTIME_MAX_PREAUTH_BYTES", 2 * 1024 * 1024);
+
 module.exports = {
   MAX_SESSION_ITEMS,
   MAX_REALTIME_FRAME_BYTES,
+  MAX_REALTIME_PREAUTH_FRAMES,
+  MAX_REALTIME_PREAUTH_BYTES,
 };

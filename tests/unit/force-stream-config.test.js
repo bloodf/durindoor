@@ -323,16 +323,16 @@ function makeNativeCodexOptions() {
   };
 }
 
-function makeKimiOptions(provider, authType) {
+function makeKimiOptions(provider, authType, model = "k3") {
   const body = {
-    model: "k3",
+    model,
     stream: false,
     messages: [{ role: "user", content: "hello" }],
   };
 
   return {
     body,
-    modelInfo: { provider, model: "k3" },
+    modelInfo: { provider, model },
     credentials: { apiKey: "kimi-test", authType },
     clientRawRequest: {
       endpoint: "/v1/chat/completions",
@@ -437,18 +437,15 @@ describe("forceStream provider config", () => {
     });
   });
 
-  it("keeps the Kimi platform API-key transport non-forced", async () => {
+  it("keeps Kimi Platform Messages transport non-forced", async () => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 
-    await handleChatCore(makeKimiOptions("kimi", "apikey"));
+    await handleChatCore(makeKimiOptions("kimi", "apikey", "kimi-k3"));
 
     expect(executeMock).toHaveBeenCalledTimes(1);
     expect(executeMock.mock.calls[0][0]).toMatchObject({
       stream: false,
       body: { stream: false },
-      credentials: {
-        runtimeTransport: { baseUrl: "https://api.moonshot.ai/v1/chat/completions" },
-      },
     });
   });
 

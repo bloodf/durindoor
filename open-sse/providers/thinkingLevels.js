@@ -10,7 +10,8 @@ const L = {
   base: ["none", "low", "medium", "high"],                          // qwen, step, hunyuan, gemini-budget
   onOff: ["none", "thinking"],                                      // zai (binary), minimax (adaptive)
   openai: ["none", "minimal", "low", "medium", "high", "xhigh"],    // GPT-5.x / o-series (no "max")
-  levelMax: ["none", "low", "medium", "high", "max"],               // claude-adaptive, kimi
+  claudeAdaptive: ["none", "low", "medium", "high", "xhigh", "max"], // native adaptive Claude
+  levelMax: ["none", "low", "medium", "high", "max"],               // kimi
   budgetX: ["none", "low", "medium", "high", "xhigh", "max"],       // claude-budget
   gemini: ["minimal", "low", "medium", "high"],                     // gemini-3 thinkingLevel (no disable)
   hi: ["none", "high"],                                              // DeepSeek legacy models
@@ -26,7 +27,7 @@ const FORMAT_LEVELS = {
   "openai-low-high-max": ["low", "high", "max"],
   ollama: L.levelMax,
   commandcode: ["low", "medium", "high", "xhigh", "max"],
-  "claude-adaptive": L.levelMax,
+  "claude-adaptive": L.claudeAdaptive,
   "claude-budget": L.budgetX,
   "gemini-level": L.gemini,
   "gemini-budget": L.base,
@@ -140,7 +141,7 @@ export function getThinkingLevelsFromCapabilities(caps, provider = null, model =
     (!p.provider || p.provider === provider) && matchPattern(p.pattern, modelId));
   const format = caps.thinkingFormat === "openai-low-high-max" ? caps.thinkingFormat :
   (provider ? PROVIDERS[provider]?.thinkingFormat : null) || caps.thinkingFormat;
-  let levels = hit?.levels || (format === "deepseek" && isNativeDeepSeekV4(provider, modelId)
+  let levels = Array.isArray(caps.thinkingEfforts) ? caps.thinkingEfforts : hit?.levels || (format === "deepseek" && isNativeDeepSeekV4(provider, modelId)
     ? L.hiMax
     : FORMAT_LEVELS[format] || L.base);
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");

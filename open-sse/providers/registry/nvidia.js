@@ -81,16 +81,20 @@ export default {
     { id: "stockmark/stockmark-2-100b-instruct", name: "Stockmark 2 100B Instruct" },
     { id: "upstage/solar-10.7b-instruct", name: "Solar 10.7B Instruct" },
     { id: "nvidia/nv-embedqa-e5-v5", name: "NV EmbedQA E5 v5", kind: "embedding" },
-    { id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B", params: ["language"], kind: "stt" },
-    { id: "fastpitch", name: "FastPitch", kind: "tts" },
-    { id: "tacotron2", name: "Tacotron2", kind: "tts" },
+    { id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B ASR", kind: "stt" },
+    { id: "nvidia/magpie-tts-multilingual", name: "Magpie TTS Multilingual", kind: "tts" },
   ],
-  serviceKinds: ["llm","tts","embedding"],
-  ttsConfig: {
-    baseUrl: "https://integrate.api.nvidia.com/v1/audio/speech",
-    authType: "apikey",
-    authHeader: "bearer",
-    format: "nvidia-tts",
-  },
+  serviceKinds: ["llm", "embedding", "stt", "tts"],
   embeddingConfig: { baseUrl: "https://integrate.api.nvidia.com/v1/embeddings", authType: "apikey", authHeader: "bearer" },
+  // Hosted HTTP endpoints published by each model's NVIDIA API reference.
+  sttConfig: {
+    baseUrl: "https://1598d209-5e27-4d3c-8079-4751568b1081.invocation.api.nvcf.nvidia.com/v1/audio/transcriptions",
+    format: "nvidia-asr", authType: "apikey", authHeader: "bearer",
+    models: [{ id: "nvidia/parakeet-ctc-1.1b-asr", name: "Parakeet CTC 1.1B ASR" }],
+  },
+  ttsConfig: {
+    baseUrl: "https://877104f7-e885-42b9-8de8-f6e4c6303969.invocation.api.nvcf.nvidia.com/v1/audio/synthesize",
+    format: "nvidia-tts", authType: "apikey", authHeader: "bearer",
+    models: [{ id: "nvidia/magpie-tts-multilingual", name: "Magpie TTS Multilingual" }],
+  },
 };

@@ -190,11 +190,11 @@ try {
 // Windows EBUSY during global CLI updates. node:sqlite (Node ≥22.5) is also
 // available as a no-install middle tier.
 console.log("3️⃣ b Configuring SQLite drivers...");
-function ensureModuleInBundle(pkg) {
+function ensureModuleInBundle(pkg, { required = false } = {}) {
   const dest = path.join(cliAppDir, "node_modules", pkg);
   if (fs.existsSync(dest)) {
     console.log(`✅ ${pkg} already bundled`);
-    return;
+    return dest;
   }
   const candidates = [
     path.join(appDir, "node_modules", pkg),
@@ -202,14 +202,28 @@ function ensureModuleInBundle(pkg) {
   ];
   const src = candidates.find((p) => fs.existsSync(p));
   if (!src) {
+    if (required) throw new Error(`Required standalone dependency ${pkg} not found locally`);
     console.warn(`⚠️  ${pkg} not found locally — bundle will rely on node:sqlite or runtime install`);
-    return;
+    return null;
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   copyRecursive(src, dest);
   console.log(`✅ Bundled ${pkg}`);
+  return dest;
+}
+function ensureModuleTree(pkg, seen = new Set()) {
+  if (seen.has(pkg)) return;
+  seen.add(pkg);
+  const dest = ensureModuleInBundle(pkg, { required: true });
+  const manifest = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf8"));
+  for (const dependency of Object.keys(manifest.dependencies || {})) ensureModuleTree(dependency, seen);
 }
 ensureModuleInBundle("sql.js");
+ensureModuleTree("https-proxy-agent");
+ensureModuleTree("socks-proxy-agent");
+ensureModuleTree("jsonc-parser");
+ensureModuleTree("undici");
+ensureModuleTree("stream-json");
 const betterDir = path.join(cliAppDir, "node_modules", "better-sqlite3");
 if (fs.existsSync(betterDir)) {
   fs.rmSync(betterDir, { recursive: true, force: true });

@@ -89,7 +89,7 @@ describe("MiniMax TTS", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(global.fetch.mock.calls[0][0]).toBe("https://api.minimaxi.com/v1/t2a_v2");
+    expect(global.fetch.mock.calls[0][0]).toBe("https://api.minimax.cn/v1/t2a_v2");
 
     const sent = JSON.parse(global.fetch.mock.calls[0][1].body);
     expect(sent.model).toBe("speech-2.8-turbo");

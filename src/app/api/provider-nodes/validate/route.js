@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
 import { guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import { readBoundedResponseText } from "open-sse/utils/error.js";
+import { isString, isObject } from "../../../../shared/utils/typeChecks.js";
 
 /**
  * Guard every provider-node probe against SSRF and bound it to ten seconds,
@@ -12,6 +15,19 @@ const guardedFetch = (url, options = {}, timeout = 10000) => {
     : timeoutSignal;
   return guardedProbeFetch(url, { ...options, signal });
 };
+
+const MAX_DISCOVERY_BYTES = 1024 * 1024;
+const MAX_DISCOVERED_MODELS = 1000;
+
+async function readDiscoveryJson(response, signal) {
+  const text = await readBoundedResponseText(response, {
+    signal,
+    maxBytes: MAX_DISCOVERY_BYTES,
+    timeoutMs: 10000,
+    throwOnTimeout: true,
+  });
+  try { return JSON.parse(text); } catch { throw new Error("Invalid model discovery response"); }
+}
 
 // Validate URL format. Only http(s) is allowed; the SSRF guard below adds
 // the hostname policy. Reject here so we can return a friendly 400 instead
@@ -60,6 +76,7 @@ const ALLOWED_TYPES = new Set([
   "openai-compatible",
   "anthropic-compatible",
   "custom-embedding",
+  "systemone-compatible",
 ]);
 
 // Uniform SSRF-guard rejection. Never echo the parsed hostname back — the
@@ -75,7 +92,10 @@ export async function POST(request) {
     const body = await request.json();
     const { baseUrl, apiKey, type, modelId } = body;
 
-    if (!baseUrl || !apiKey) {
+    if (!baseUrl) {
+      return NextResponse.json({ error: "Base URL required" }, { status: 400 });
+    }
+    if (type !== "systemone-compatible" && !apiKey) {
       return NextResponse.json({ error: "Base URL and API key required" }, { status: 400 });
     }
 
@@ -96,6 +116,48 @@ export async function POST(request) {
     // reject LAN/loopback for remote callers.
     // The fetch helper itself (guardedProbeFetch) re-runs
     // `assertOutboundUrlAllowed` on every URL it opens.
+
+    if (type === "systemone-compatible") {
+      let modelsUrl;
+      try { modelsUrl = `${normalizeSystemoneBaseUrl(baseUrl)}/models`; } catch (error) {
+        return NextResponse.json({ valid: false, error: error.message }, { status: 400 });
+      }
+      const probeSignal = AbortSignal.any([request.signal, AbortSignal.timeout(10000)]);
+      let res;
+      try {
+        res = await guardedFetch(modelsUrl, { method: "GET", headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, redirect: "manual", signal: probeSignal });
+      } catch (err) {
+        if (err instanceof OutboundUrlGuardError) return blockedResponse(err);
+        throw err;
+      }
+      if (res.ok) {
+        let payload;
+        try { payload = await readDiscoveryJson(res, probeSignal); } catch (error) {
+          return NextResponse.json({ valid: false, error: error.message }, { status: 400 });
+        }
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.models) ? payload.models : null;
+        if (!rows || rows.length > MAX_DISCOVERED_MODELS) {
+          return NextResponse.json({ valid: false, error: "Invalid or oversized model catalog" }, { status: 400 });
+        }
+        const models = [];
+        const ids = new Set();
+        for (const row of rows) {
+          const id = isString(row) ? row : row && isObject(row) ? row.id ?? row.name : null;
+          const cleanId = isString(id) ? id.trim() : "";
+          if (!cleanId || cleanId.length > 256 || ids.has(cleanId)) continue;
+          ids.add(cleanId);
+          if (isString(row?.name) && row.name.trim()) {
+            models.push({ id: cleanId, name: row.name.trim().slice(0, 256) });
+          } else {
+            models.push({ id: cleanId });
+          }
+        }
+        return NextResponse.json({ valid: true, discovery: "models", models });
+      }
+      if (res.status === 401 || res.status === 403) return NextResponse.json({ valid: false, error: apiKey ? "API key unauthorized" : "API key required" });
+      if ([404, 405, 501].includes(res.status)) return NextResponse.json({ valid: false, skipped: true, unsupported: true, discoverySupported: false, error: "Model discovery unavailable. Register native model ID manually." });
+      return NextResponse.json({ valid: false, error: `Model discovery failed (${res.status})` });
+    }
 
     // Custom Embedding Validation - test POST /embeddings directly
     if (type === "custom-embedding") {

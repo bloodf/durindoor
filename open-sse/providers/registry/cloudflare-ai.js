@@ -55,6 +55,7 @@ export default {
     { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code" },
     { id: "@cf/ibm-granite/granite-4.0-h-micro", name: "Granite 4.0 H Micro" },
     { id: "@cf/zai-org/glm-5.2", name: "GLM 5.2" },
+    { id: "@cf/zai-org/glm-5.3", name: "GLM 5.3", contextLength: 1000000, toolCalling: true, supportsReasoning: true },
     { id: "@cf/nvidia/nemotron-3-120b-a12b", name: "Nemotron 3 120B A12B" },
     { id: "@cf/aisingapore/gemma-sea-lion-v4-27b-it", name: "Gemma SEA-LION v4 27B IT" },
     { id: "@cf/qwen/qwen3-30b-a3b-fp8", name: "Qwen3 30B A3B FP8" },

@@ -9,6 +9,7 @@ import { captureSessionId } from "../utils/sessionManager.js";
 import { AntigravityExecutor } from "../executors/antigravity.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
 import { PROVIDERS } from "../providers/index.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
@@ -211,7 +212,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
   if (targetFormat === FORMATS.OPENAI) {
     result = filterToOpenAIFormat(result, {
-      preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl
+      preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
+      preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||
+        getCapabilitiesForModel(provider, translationModel).videoInput === true
     });
     // Poe rejects image-only user turns with 400; Poe-only, other providers unchanged.
     if (Array.isArray(result?.messages)) result.messages = ensurePoeUserTurnHasText(result.messages, provider);

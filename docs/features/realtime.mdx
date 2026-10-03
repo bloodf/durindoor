@@ -1,13 +1,39 @@
 ---
 title: Realtime
-description: Text WebSocket at GET /v1/realtime in the OpenAI Realtime shape. Audio is refused.
+description: Native provider WebSockets, ephemeral sessions, and the legacy text Realtime facade.
 ---
 
-`GET /v1/realtime` (trailing slash allowed) upgrades to a WebSocket. Other paths, including `/_next/webpack-hmr`, stay with Next.js. `custom-server.js` owns the upgrade so it does not race Next's listener. Each `response.create` is turned into an ordinary `POST /api/v1/chat/completions` on loopback `127.0.0.1` (the same `handleChat` → `handleChatCore` path) and the SSE is reframed as Realtime events. Pass `?model=provider/model` on the upgrade URL to set the session model.
+## Native transports
+
+Select a registry model with a native Realtime, transcription, translation, Live, TTS, or STT protocol. The custom server relays its WebSocket to the fixed vendor endpoint. OpenAI supports its native Realtime families; MiniMax supports its speech transports; xAI supports native voice and binary STT. Protocol availability depends on the selected model and provider connection.
+
+```text
+ws://localhost:20128/v1/realtime?model=openai/gpt-realtime
+ws://localhost:20128/v1/native/xai/v1/stt?model=xai/stt&sample_rate=16000&encoding=linear16
+```
+
+Send the gateway API key with the auth mechanisms below. Scoped keys keep their account and model restrictions, including nested session/transcription/advisor models and escaped JSON keys. An unavailable `x-connection-id` pin fails closed.
+
+The owner and HTTP control handler exchange a single-use opaque handoff in the same process. Provider credentials, proxy credentials, and accounting callbacks do not enter the HTTP response. Run the packaged `custom-server.js`; a separate Next process cannot consume that handoff. Configured proxy construction failures cannot fall back to a direct connection.
+
+Frames retain their order across auth and accounting. A single frame defaults to 1 MiB; the pre-auth queue defaults to 32 frames and 2 MiB aggregate. JSON model rewrites preserve unrelated numbers, and binary STT frames retain their bytes. Disconnects cancel pending setup and close the owned upstream.
+
+The relay commits terminal token usage before exposing the terminal provider frame. A persistence error closes before delivery. Successful use of the last allowance delivers the result, then closes with 1008. Further work needs a key with available allowance.
+
+HTTP native ephemeral-session endpoints let an uncapped client connect to the vendor without the relay. Keys with usage/rate limits cannot mint those sessions because DurinDoor cannot observe subsequent inference. Vendor entitlements and regional availability still apply.
+
+Verify an upgrade with a permitted model, then send a valid native session event. Check the selected account, vendor response, and gateway usage counters. Test a denied nested model and an unavailable account pin; neither should reach another vendor account.
+
+## Text facade
+
+The remaining sections describe chat models without a declared native protocol.
+
+
+`GET /v1/realtime` (trailing slash allowed) upgrades to a WebSocket. Other paths, including `/_next/webpack-hmr`, stay with Next.js. `custom-server.js` owns the upgrade so it does not race Next's listener. In the text facade, each `response.create` becomes an ordinary `POST /api/v1/chat/completions` on loopback `127.0.0.1`, and the server reframes its SSE as Realtime events. Pass `?model=provider/model` on the upgrade URL to set the session model.
 
 There is no Realtime dashboard page. See [API](../reference/api.mdx) for the route list, and **Dashboard → Usage** to see the loopback chat calls.
 
-Audio is not supported. Declaring `audio` in `session.modalities` and then sending `response.create` yields an `error` event with code `modality_not_supported`. The socket stays open. Audio is never faked.
+The text facade does not support audio. Declaring `audio` in `session.modalities` and then sending `response.create` yields an `error` event with code `modality_not_supported`. The socket stays open.
 
 ## Auth
 

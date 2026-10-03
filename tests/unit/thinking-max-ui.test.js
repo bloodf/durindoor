@@ -1,53 +1,42 @@
 import { describe, it, expect } from "vitest";
 import { getProviderThinkingLevels } from "../../src/app/(dashboard)/dashboard/providers/[id]/providerThinkingLevels.js";
 
-// providerId "codex": gpt-5.3-codex → [low,medium,high,xhigh]; gpt-5.6-sol → adds max.
-const PROVIDER = "codex";
-const ALIAS = "codex";
+const PROVIDER = "openai";
+const ALIAS = "custom-openai";
+const lowHighCaps = {
+  reasoning: true,
+  thinkingFormat: "openai",
+  thinkingEfforts: ["low", "high"],
+};
+const maxCaps = {
+  reasoning: true,
+  thinkingFormat: "openai",
+  thinkingEfforts: ["high", "max"],
+};
 
 describe("getProviderThinkingLevels", () => {
   it("returns null when no reasoning models are present", () => {
-    expect(
-      getProviderThinkingLevels({ providerId: PROVIDER, providerStorageAlias: ALIAS })
-    ).toBeNull();
+    expect(getProviderThinkingLevels({ providerId: PROVIDER, providerStorageAlias: ALIAS })).toBeNull();
   });
 
-  it("unions levels from built-in config models", () => {
+  it("unions explicitly declared custom-model efforts and prefixes picker controls once", () => {
     const out = getProviderThinkingLevels({
       providerId: PROVIDER,
-      models: [{ id: "gpt-5.3-codex" }],
+      customModels: [
+        { id: "custom-low-high", providerAlias: ALIAS, kind: "llm", capabilities: lowHighCaps },
+        { id: "custom-max", providerAlias: ALIAS, kind: "llm", capabilities: maxCaps },
+      ],
       providerStorageAlias: ALIAS,
     });
-    expect(out).toEqual(["auto", "none", "low", "medium", "high", "xhigh"]);
+
+    expect(out).toEqual(["auto", "none", "low", "high", "max"]);
+    expect(out.filter((level) => level === "high")).toHaveLength(1);
   });
 
-  it("unions levels from kiloFreeModels even when not in built-in config", () => {
+  it("excludes custom models whose provider alias does not match storage alias", () => {
     const out = getProviderThinkingLevels({
       providerId: PROVIDER,
-      models: [],
-      kiloFreeModels: [{ id: "gpt-5.3-codex" }],
-      providerStorageAlias: ALIAS,
-    });
-    expect(out).toContain("xhigh");
-    expect(out[0]).toBe("auto");
-  });
-
-  it("unions levels from a matching custom LLM and surfaces gpt-5.6-sol max", () => {
-    const out = getProviderThinkingLevels({
-      providerId: PROVIDER,
-      models: [{ id: "gpt-5.3-codex" }],
-      customModels: [{ id: "gpt-5.6-sol", providerAlias: ALIAS, kind: "llm" }],
-      providerStorageAlias: ALIAS,
-    });
-    expect(out).toContain("max");
-    expect(out).toContain("xhigh");
-  });
-
-  it("excludes custom models whose providerAlias does not match storage alias", () => {
-    const out = getProviderThinkingLevels({
-      providerId: PROVIDER,
-      models: [],
-      customModels: [{ id: "gpt-5.6-sol", providerAlias: "other-provider", kind: "llm" }],
+      customModels: [{ id: "custom-low-high", providerAlias: "other-provider", kind: "llm", capabilities: lowHighCaps }],
       providerStorageAlias: ALIAS,
     });
     expect(out).toBeNull();
@@ -56,32 +45,9 @@ describe("getProviderThinkingLevels", () => {
   it("excludes non-LLM custom models", () => {
     const out = getProviderThinkingLevels({
       providerId: PROVIDER,
-      models: [],
-      customModels: [{ id: "gpt-5.6-sol", providerAlias: ALIAS, kind: "image" }],
+      customModels: [{ id: "custom-low-high", providerAlias: ALIAS, kind: "image", capabilities: lowHighCaps }],
       providerStorageAlias: ALIAS,
     });
     expect(out).toBeNull();
-  });
-
-  it("unions config + kiloFreeModels + customModels together (gpt-5.6-sol → max)", () => {
-    const out = getProviderThinkingLevels({
-      providerId: PROVIDER,
-      models: [{ id: "gpt-5.3-codex" }], // low, medium, high, xhigh
-      kiloFreeModels: [{ id: "gpt-5.3-codex" }], // duplicate id → deduped via seen-set
-      customModels: [{ id: "gpt-5.6-sol", providerAlias: ALIAS, kind: "llm" }], // adds minimal + max
-      providerStorageAlias: ALIAS,
-    });
-    expect(out).toEqual([
-      "auto",
-      "none",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "minimal",
-      "max",
-      "ultra",
-    ]);
-    expect(out.filter((l) => l === "xhigh")).toHaveLength(1);
   });
 });

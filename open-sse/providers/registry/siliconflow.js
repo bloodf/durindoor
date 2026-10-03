@@ -35,5 +35,11 @@ export default {
     { id: "openai/gpt-oss-120b", name: "GPT OSS 120B" },
     { id: "MiniMaxAI/MiniMax-M2.5", name: "MiniMax M2.5" },
     { id: "inclusionAI/Ling-flash-2.0", name: "Ling Flash 2.0" },
+    { id: "zai-org/GLM-5V-Turbo", name: "GLM 5V Turbo" },
+    { id: "Qwen/Qwen3.6-27B", name: "Qwen 3.6 27B" },
+    { id: "Qwen/Qwen3.6-35B-A3B", name: "Qwen 3.6 35B A3B" },
+    { id: "google/gemma-4-31B-it", name: "Gemma 4 31B" },
   ],
+  modelsFetcher: { url: "https://api.siliconflow.com/v1/models", type: "openai" },
+  passthroughModels: true,
 };

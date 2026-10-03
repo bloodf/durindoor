@@ -45,14 +45,14 @@ describe("buildModelsList — top-level context_length / max_completion_tokens (
     expect(claude.capabilities.maxOutput).toBe(128_000);
   });
 
-  it("uses static limits for partial live caps and omits unknown-model defaults", async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({
+  it("does not infer local runtime limits from a cloud model name", async () => {
+    const fetchSpy = vi.fn().mockImplementation(async (url) => ({
       ok: true,
-      json: async () => ({ models: [
-        { id: "gpt-5.6", capabilities: { tools: true } },
-        { id: "unknown-live-model", capabilities: { tools: true } },
-      ] }),
-    });
+      json: async () => ({ models: String(url).endsWith("/api/tags") ? [
+        { name: "gpt-5.6", capabilities: ["completion", "tools"] },
+        { name: "unknown-live-model", capabilities: ["completion", "tools"] },
+      ] : [] }),
+    }));
     vi.stubGlobal("fetch", fetchSpy);
 
     stubConnections([
@@ -68,8 +68,8 @@ describe("buildModelsList — top-level context_length / max_completion_tokens (
     const models = await buildModelsList(["llm"]);
     const known = models.find((x) => x.id === "ollama-local/gpt-5.6");
     expect(known).toBeDefined();
-    expect(known.context_length).toBe(400_000);
-    expect(known.max_completion_tokens).toBe(128_000);
+    expect(known.context_length).toBeUndefined();
+    expect(known.max_completion_tokens).toBeUndefined();
     expect(known.capabilities.tools).toBe(true);
 
     const unknown = models.find((x) => x.id === "ollama-local/unknown-live-model");

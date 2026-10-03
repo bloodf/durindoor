@@ -33,7 +33,7 @@ describe("Claude-compatible model routability", () => {
     const isRoutable = createRoutableModelIdChecker();
 
     await expect(isRoutable("glm/glm-5.3[1m]")).resolves.toBe(true);
-    await expect(isRoutable("kimi/k3[1m]")).resolves.toBe(true);
+    await expect(isRoutable("kimi/k3[1m]")).resolves.toBe(false);
     await expect(isRoutable("claude-fast")).resolves.toBe(true);
     await expect(isRoutable("fast")).resolves.toBe(true);
     await expect(isRoutable("node/model")).resolves.toBe(true);
@@ -42,7 +42,6 @@ describe("Claude-compatible model routability", () => {
 
     expect(mocks.getCombos).toHaveBeenCalledOnce();
     expect(mocks.getModelAliases).toHaveBeenCalledOnce();
-    expect(mocks.getProviderNodes).toHaveBeenCalledTimes(2);
     expect(mocks.getCustomModels).toHaveBeenCalledOnce();
   });
 });

@@ -20,6 +20,7 @@ export default {
   authType: "apikey",
   transport: null,
   models: [
+    { id: "flux-2-pro-preview", name: "FLUX.2 Pro Preview", params: ["size"], kind: "image" },
     { id: "flux-pro-1.1", name: "FLUX Pro 1.1", params: ["n","size"], kind: "image" },
     { id: "flux-pro-1.1-ultra", name: "FLUX Pro 1.1 Ultra", params: ["size"], kind: "image" },
     { id: "flux-pro", name: "FLUX Pro", params: ["n","size"], kind: "image" },

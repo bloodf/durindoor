@@ -67,5 +67,4 @@ export default {
     { id: "glm-5.1", name: "GLM 5.1" },
     { id: "deepseek-v3.2", name: "DeepSeek V3.2", targetFormat: "openai" },
   ],
-  passthroughModels: true,
 };

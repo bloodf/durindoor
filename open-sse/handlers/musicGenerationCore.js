@@ -1,5 +1,10 @@
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { PROVIDER_MEDIA } from "../providers/index.js";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
+
 
 const MUSIC_PROVIDERS = {
   suno: {
@@ -45,7 +50,36 @@ function normalizeMusicResponse(provider, model, parsed) {
   };
 }
 
+async function handleMinimaxMusicGeneration({ provider, model, body, credentials }) {
+  const config = PROVIDER_MEDIA[provider]?.musicConfig;
+  if (!config?.baseUrl) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support music generation`);
+  const instrumental = body.is_instrumental ?? body.instrumental ?? false;
+  if (model === "music-cover") {
+    if (!body.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "music-cover requires a prompt");
+    if (["audio_url", "audio_base64", "cover_feature_id"].filter((field) => body[field]).length !== 1) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "music-cover requires exactly one of audio_url, audio_base64, or cover_feature_id");
+  } else if (instrumental ? !body.prompt : !body.prompt && !body.lyrics) return createErrorResult(HTTP_STATUS.BAD_REQUEST, instrumental ? "Instrumental music requires a prompt" : "Music requires prompt or lyrics");
+  const payload = { model };
+  for (const field of ["prompt", "lyrics", "stream", "output_format", "audio_setting", "audio_url", "audio_base64", "cover_feature_id", "is_instrumental", "lyrics_optimizer", "aigc_watermark"]) if (body[field] !== undefined) payload[field] = body[field];
+  if (payload.is_instrumental === undefined) payload.is_instrumental = instrumental;
+  const key = credentials?.apiKey || credentials?.accessToken;
+  if (!key) return createErrorResult(HTTP_STATUS.UNAUTHORIZED, `${provider} requires an API key`);
+  let response;
+  try { response = await proxyAwareFetch(config.baseUrl, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${key}` }, body: JSON.stringify(payload) }, resolveCredentialProxyOptions(credentials)); } catch (err) { return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${provider} music request failed: ${err?.message || err}`); }
+  const text = await response.text().catch(() => "");
+  let parsed;
+  try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { body: text }; }
+  const statusCode = Number(parsed?.base_resp?.status_code);
+  if (!response.ok || statusCode && statusCode !== 0) return createErrorResult(response.ok ? HTTP_STATUS.BAD_GATEWAY : response.status, parsed?.base_resp?.status_msg || parsed?.message || text || `${provider} returned HTTP ${response.status}`);
+  const audio = parsed?.data?.audio;
+  const audioUrl = isString(audio) && /^https?:\/\//i.test(audio) ? audio : null;
+  const hexAudio = isString(audio) && /^(?:[0-9a-f]{2})+$/i.test(audio);
+  const b64Json = hexAudio ? Buffer.from(audio, "hex").toString("base64") : isString(audio) && /^data:audio\/[^;]+;base64,/i.test(audio) ? audio.split(",", 2)[1] : null;
+  const normalized = { object: "music.generation", provider, model, status: "submitted", data: [{ id: parsed?.task_id || parsed?.data?.audio_id || null, audio_url: audioUrl, ...(b64Json ? { b64_json: b64Json } : null), raw: parsed }], raw: parsed };
+  return { success: true, response: new Response(JSON.stringify(normalized), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
+}
+
 export async function handleMusicGenerationCore({ provider, model, body, credentials }) {
+  if (provider === "minimax" || provider === "minimax-cn") return handleMinimaxMusicGeneration({ provider, model, body, credentials });
   const config = MUSIC_PROVIDERS[provider];
   if (!config) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support music generation`);
   if (!body?.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");

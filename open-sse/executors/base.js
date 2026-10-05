@@ -74,13 +74,13 @@ export function waitForRetryDelay(delayMs, signal = null) {
  */
 export class BaseExecutor {
   /**
-   * Clamp token-limit fields to a custom-model maxOutput override.
+   * Clamp token-limit fields to the resolved published/operator maxOutput.
    * Runs centrally in execute() after transformRequest, covering every
    * executor: OpenAI-style (max_tokens/max_completion_tokens), Responses
    * (max_output_tokens), Claude (max_tokens), and Gemini-envelope bodies
    * (generationConfig.maxOutputTokens, incl. Antigravity's request wrapper).
    * Executors building non-JSON/binary bodies clamp in their own transform.
-   * No-op without a custom cap; never invents absent fields.
+   * No-op without a known ceiling; never invents absent fields.
    */
   clampCustomMaxOutput(body, requestContext, fields = ["max_tokens", "max_completion_tokens", "max_output_tokens"]) {
     const customMax = requestContext?.modelCapabilities?.maxOutput;
@@ -100,21 +100,25 @@ export class BaseExecutor {
   }
 
   /**
-   * Output tokens the request will actually reserve against the context
-   * window — i.e. exactly what {@link clampCustomMaxOutput} will let through.
-   *
-   * The client's explicit value wins, but only up to the catalog cap, because
-   * the clamp rewrites anything larger down to that cap. Returning the raw
-   * client number would over-reserve and reject requests the provider would
-   * have accepted. Absent/zero/negative client values fall back to the cap, so
-   * a request naming no output limit is still charged the provider's default.
+   * Reserve the output actually requested/sent, not a published maximum.
+   * Explicit body values are clamped to maxOutput. With no body value, an
+   * operator maxOutput retains its explicit reservation semantics; otherwise
+   * use the executor's sent default or the documented defaultOutput. A ceiling
+   * alone supplies no default reservation. customKeys distinguishes operator
+   * declarations from inherited catalog fields.
    *
    * Mirrors the clamp's field list, including both Gemini-envelope shapes.
    */
   resolveEffectiveOutputReservation(body, requestContext) {
-    const customMax = requestContext?.modelCapabilities?.maxOutput;
-    const cap = Number.isFinite(customMax) && customMax > 0 ? customMax : 0;
-    if (!body || !isObject(body)) return cap;
+    const caps = requestContext?.modelCapabilities;
+    const maxOutput = caps?.maxOutput;
+    const cap = Number.isFinite(maxOutput) && maxOutput > 0 ? maxOutput : 0;
+    const operatorCap = cap > 0 && (!(caps?.customKeys instanceof Set) || caps.customKeys.has("maxOutput"));
+    const configuredDefault = this.config?.requestDefaults?.maxTokens;
+    const defaultOutput = Number.isFinite(configuredDefault) && configuredDefault > 0 ? configuredDefault : caps?.defaultOutput;
+    const fallback = operatorCap ? cap : Number.isFinite(defaultOutput) && defaultOutput > 0
+      ? cap > 0 ? Math.min(defaultOutput, cap) : defaultOutput : 0;
+    if (!body || !isObject(body)) return fallback;
     const candidates = [
     body.max_tokens,
     body.max_completion_tokens,
@@ -125,7 +129,7 @@ export class BaseExecutor {
     for (const value of candidates) {
       if (Number.isFinite(value) && value > 0) return cap > 0 ? Math.min(value, cap) : value;
     }
-    return cap;
+    return fallback;
   }
 
   constructor(provider, config) {

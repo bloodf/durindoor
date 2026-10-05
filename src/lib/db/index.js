@@ -353,6 +353,7 @@ export {
 export {
   getSyncedModelCatalogs, getSyncedModelCatalog, saveSyncedModelCatalog } from
 "./repos/syncedModelsRepo.js";
+export { getCachedSharedModelMetadata, saveCachedSharedModelMetadata } from "./repos/sharedModelMetadataRepo.js";
 
 // Usage
 export {

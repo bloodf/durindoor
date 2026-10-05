@@ -1,6 +1,6 @@
-import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
-import { isString } from "../../../../shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../../../shared/utils/typeChecks.js";
 import { projectClaudeCodeModel } from "./_claudeCompat.js";
+import { projectDiscoveryMetadata } from "open-sse/services/modelMetadata.js";
 
 function isCodexUserAgent(request) {
   const originator = request.headers.get("originator") ?? "";
@@ -14,25 +14,19 @@ function isAnthropicRequest(request) {
 }
 
 function toCodexModel(m) {
-  const provider =
-  isString(m.id) && m.id.includes("/") ?
-  m.id.split("/")[0] ?? "" :
-  m.owned_by ?? "";
-  const caps = getCapabilitiesForModel(provider, m.id);
-  // Advertise the window only when it is a real catalog value. resolveModelLimits
-  // reports `known: false` for the generic floor, and publishing that as fact is
-  // how clients end up truncating against a limit the model does not have.
-  const limits = resolveModelLimits(provider, m.id);
+  // The resolved record is authoritative. Re-resolving here can replace
+  // operator/live values with provider defaults or invent limits for unknowns.
+  const metadata = projectDiscoveryMetadata(m);
+  const caps = metadata.capabilities;
   return {
+    ...metadata,
     slug: m.id,
-    display_name: m.id,
+    display_name: m.display_name || m.name || m.id,
     supported_in_api: true,
-    supports_search_tool: !!caps?.search,
+    ...(isBoolean(caps.search) ? { supports_search_tool: caps.search } : null),
     tool_mode: "auto",
     multi_agent_version: null,
-    ...(limits.known ?
-    { context_window: limits.contextWindow, max_output_tokens: limits.maxOutput } : null)
-
+    ...(metadata.max_model_len !== undefined ? { context_window: metadata.max_model_len } : null),
   };
 }
 
@@ -42,13 +36,26 @@ function toAnthropicModel(m) {
     (isString(m.display_name) && m.display_name) ||
     (isString(m.name) && m.name) ||
     id;
+  const metadata = projectDiscoveryMetadata(m);
+  const caps = metadata.capabilities;
+  const capabilities = {
+    ...(isBoolean(caps.vision) ? { image_input: { supported: caps.vision } } : null),
+    ...(isBoolean(caps.pdf) ? { pdf_input: { supported: caps.pdf } } : null),
+    ...(isBoolean(caps.reasoning) ? { thinking: { supported: caps.reasoning } } : null),
+    ...(isBoolean(caps.structuredOutput) ? { structured_outputs: { supported: caps.structuredOutput } } : null),
+  };
   return {
+    // Native ModelInfo only: no OpenAI modality/limit extensions here.
+    // Null represents unknown native ceilings, never a guessed fallback.
     type: "model",
     id: projectClaudeCodeModel(m),
     display_name: displayName,
     // Anthropic ModelInfo.created_at is a required ISO string; epoch when unknown.
     created_at:
       isString(m.created_at) && m.created_at ? m.created_at : "1970-01-01T00:00:00Z",
+    max_input_tokens: caps.maxInput ?? metadata.max_model_len ?? null,
+    max_tokens: metadata.limits?.max_output_tokens ?? null,
+    capabilities: Object.keys(capabilities).length ? capabilities : null,
   };
 }
 
@@ -94,5 +101,5 @@ export function buildModelsResponse(request, data) {
   if (isCodexUserAgent(request)) {
     return Response.json({ models: data.map(toCodexModel) }, { headers });
   }
-  return Response.json({ object: "list", data }, { headers });
+  return Response.json({ object: "list", data: data.map(projectDiscoveryMetadata) }, { headers });
 }

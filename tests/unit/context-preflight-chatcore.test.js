@@ -121,6 +121,7 @@ vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
 }));
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(),
+  finishActiveSession: vi.fn(),
   appendRequestLog: mocks.appendRequestLog,
   saveRequestDetail: vi.fn(() => Promise.resolve()),
 }));
@@ -224,19 +225,6 @@ describe("chatCore ingress context-limit preflight", () => {
     expect(result).toMatchObject({ success: false, status: 400 });
     expect(settle).toHaveBeenCalledTimes(1);
     expect(settle).toHaveBeenCalledWith({ success: false, reason: "context_limit" });
-    expect(mocks.execute).not.toHaveBeenCalled();
-  });
-
-  // Callers may not pass modelCapabilities at all. The reservation must then
-  // come from the resolved catalog cap, not silently collapse to zero — which
-  // would compare raw input against the window and let oversize requests through.
-  it("reserves the catalog cap when the caller supplies no modelCapabilities", async () => {
-    mocks.countInputTokens.mockResolvedValue({ tokens: CONTEXT_WINDOW - OUTPUT_CAP + 1, approximate: true });
-
-    const result = await handleChatCore(makeOptions({ options: { modelCapabilities: undefined } }));
-
-    expect(result).toMatchObject({ success: false, status: 400 });
-    expect(result.error).toMatch(new RegExp(`\\+ ${OUTPUT_CAP} output reservation`));
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 

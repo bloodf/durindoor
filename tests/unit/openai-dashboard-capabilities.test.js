@@ -18,7 +18,7 @@ describe("provider-scoped dashboard capabilities", () => {
     const sibling = { vision: false, contextWindow: 200000 };
     const result = lookup("codex/gpt-6-sol", {}, { "gpt-6-sol": sibling });
     expect(result.vision).toBe(true);
-    expect(result.contextWindow).toBe(272000);
+    expect(result.contextWindow).toBe(1050000);
   });
 
   it("resolves canonical provider IDs to alias-scoped live metadata", () => {

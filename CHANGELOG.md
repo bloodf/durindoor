@@ -2,9 +2,18 @@
 
 ## Fixes
 
-- Preserve provider-scoped model capabilities in dashboard APIs, auto-synced model cards, and selectors instead of borrowing a sibling provider's metadata or showing the 200K unknown-model floor.
-- Decode Codex input/output modalities and reasoning efforts during auto-sync; keep explicit text-only flags and served limits authoritative.
-- Recognize verified GPT-6 families on compatible routes and restore vision on GPT-5 Codex variants while keeping Spark text-only. Omit unpublished output ceilings from public discovery.
+- Preserve strict provider/model identity and operator overrides across dashboard APIs, auto-sync, request capability resolution, and public discovery; omit unknown token capacities rather than advertise fabricated defaults.
+- Enrich provider rosters from cached models.dev specifications through the existing auto-sync runner, retaining usable stale metadata on refresh failure without granting additional model access or importing transport settings.
+- Share limit/capability decoding across discovery paths and expose rich OpenAI, Codex, and Anthropic model metadata, including native modalities, known input/output budgets, JSON/schema support, prompt caching, tools, and provider-scoped reasoning efforts.
+- Use API-equivalent capacity for known Codex models instead of treating the 272,000-token default/compaction budget as a ceiling: GPT-6 Astra, Sol, Luna, and GPT-6.1 Sol advertise 1,050,000 context, 922,000 maximum input, and 128,000 maximum output tokens while access and efforts remain scoped.
+- Correct native Kimi K3's 1,048,576-token output ceiling versus its 131,072-token default; identify Kimi Code `kimi-for-coding` as K2.8 Preview with 1,048,576 context. Keep Coding output ceilings unknown where unpublished.
+- Include MiniMax `MiniMax-M3.1-Flash-Preview` with 1,000,000 context, M Plan / MiniMax Code access, image/video input, and mandatory tunable thinking; leave its unpublished output ceiling unknown.
+- Distinguish native model output from tool-mediated image/video features; document Pi/OMP discovery sources and isolated, non-inference `omp models ... --json` verification.
+- Preserve native Anthropic and Gemini windows through protocol-aware discovery; retain independent input/output limits without adding native output allowances to context.
+- Reserve actual requested output, explicit operator caps, or documented generation defaults—not the published maximum—and carry the selected default consistently into native request shaping.
+- Preserve model-info endpoint fields and image-operation arrays alongside enriched discovery metadata; include inherited scoped capacities in combo filtering and sorting without promoting transport defaults.
+- Keep inherited discovered/shared capacities and defaults when a partial operator capability override wins public model-list deduplication.
+- Retain safe provider attribution and thinking-budget bounds in compatible discovery; canonical unsupported flags remain authoritative over native capability hints.
 
 # 4.10.0
 

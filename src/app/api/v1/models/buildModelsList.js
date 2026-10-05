@@ -8,7 +8,8 @@ import {
   isLocalOllamaProvider } from
 "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getSyncedModelCatalogs } from "@/lib/localDb";
-import { effectiveSyncedModels, isModelAutoSyncEnabled } from "@/lib/modelAutoSync/catalog.js";
+import { effectiveSyncedModels, isModelAutoSyncEnabled, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
+import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { getEnabledModels } from "@/lib/enabledModelsDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -24,13 +25,13 @@ import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveClineModels } from "open-sse/services/clineModels.js";
 import { resolveOpenRouterModels } from "open-sse/services/openrouterCatalog.js";
 import {
-  extractLiveModelLimits,
   normalizeVeniceModel,
   resolveLiveAnthropicModels,
   resolveLiveCloudflareModels,
   resolveLiveModelIds,
   resolveLiveOpenAIModels } from
 "open-sse/services/liveModelLimits.js";
+import { extractApiCapabilities, extractLiveModelLimits } from "open-sse/services/modelMetadata.js";
 import { getCodexModels } from "open-sse/services/usage/codex.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
@@ -146,13 +147,12 @@ const LIVE_MODEL_RESOLVERS = {
     const models = entries.flatMap((entry) => {
       const id = isString(entry?.slug) ? entry.slug.trim() : "";
       if (!id) return [];
-      const contextWindow = Number(entry.context_window);
-      return [{
+      return [materializeSyncedModel("codex", {
         id,
-        ...(Number.isSafeInteger(contextWindow) && contextWindow > 0 ?
-        { capabilities: { contextWindow } } : null)
-
-      }];
+        name: entry.display_name || id,
+        kind: "llm",
+        capabilities: extractApiCapabilities(entry),
+      })];
     });
     return models.length ? { models } : null;
   },
@@ -588,6 +588,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     console.log("Could not fetch model aliases");
   }
 
+  const sharedMetadata = await getSharedModelMetadata().catch(() => null);
   let disabledByAlias = {};
   try {
     disabledByAlias = await getDisabledModels();
@@ -867,6 +868,25 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     models.push(entry);
   }
 
+  // Resolve cached rosters once. Custom rows win first-wins dedup below, so
+  // they must inherit the same scoped metadata before operator fields apply.
+  // Shared metadata only enriches these existing IDs; it never adds models.
+  const syncedModelsByProvider = new Map();
+  const inheritedCustomModelsByProvider = new Map();
+  for (const [providerId] of activeConnectionEntries) {
+    if (isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId) ||
+      !isModelAutoSyncEnabled(providerId, settings)) continue;
+    const staticAlias = PROVIDER_ID_TO_ALIAS[providerId] ?? providerId;
+    const syncedModels = effectiveSyncedModels(
+      syncedCatalogs[providerId], PROVIDER_MODELS[staticAlias] ?? [], providerId, sharedMetadata
+    );
+    syncedModelsByProvider.set(providerId, syncedModels);
+    if (syncedModels) {
+      inheritedCustomModelsByProvider.set(providerId, new Map(
+        syncedModels.map((model) => [`${modelKind(model)}\0${model.id}`, model])
+      ));
+    }
+  }
 
   for (const customModel of customModels) {
     const kind = customModelKind(customModel, systemoneNodeAliases.has(customModel.providerAlias) ? "systemone" : LLM_KIND);
@@ -879,17 +899,34 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     if (!modelId) continue;
 
     const providerId = aliasToProviderId[providerAlias] ?? providerAlias;
+    const inherited = inheritedCustomModelsByProvider.get(providerId)?.get(`${kind}\0${modelId}`) ||
+      materializeSyncedModel(providerId, { id: modelId, kind }, sharedMetadata);
+    const inheritedCaps = inherited.capabilities;
     const staticCaps = getCapabilitiesForModel(providerId, modelId);
-    const customCaps = isRecord(customModel.capabilities) ? customModel.capabilities : {};
+    const customCaps = isRecord(customModel.capabilities) ? { ...customModel.capabilities } : {};
+    const customKeys = new Set(Object.keys(customCaps));
+    Object.defineProperty(customCaps, "customKeys", { value: customKeys, enumerable: false });
     const entry = {
       id: `${providerAlias}/${modelId}`,
       object: "model",
       owned_by: providerAlias,
-      capabilities: { ...staticCaps, ...customCaps },
-      ...projectModelPresentation({ model: customModel, modelId, providerId, outputAlias: providerAlias }),
+      capabilities: {
+        ...staticCaps,
+        ...inheritedCaps,
+        // Runtime compatibility floors are not discovered token budgets.
+        contextWindow: inheritedCaps.contextWindow,
+        maxOutput: inheritedCaps.maxOutput,
+        maxInput: inheritedCaps.maxInput,
+        defaultOutput: inheritedCaps.defaultOutput,
+        ...customCaps,
+      },
+      ...projectModelPresentation({
+        model: { ...inherited, ...customModel }, modelId, providerId, outputAlias: providerAlias,
+      }),
       ...(kind !== LLM_KIND ? { kind } : null),
     };
-    if (kind === LLM_KIND) attachModelLimits(entry, providerId, modelId, customCaps);
+    if (kind === LLM_KIND) attachModelLimits(entry, providerId, modelId, customCaps, inheritedCaps);
+    Object.defineProperty(entry.capabilities, "customKeys", { value: customKeys, enumerable: false });
     models.push(entry);
   }
 
@@ -970,9 +1007,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         // Auto-synced providers publish exactly the synced list (plus custom
         // models below). The allowlist still narrows it, and the synced rows
         // stand in for live metadata, so no per-request discovery runs.
-        const syncedModels = isCompatibleProvider || !isModelAutoSyncEnabled(providerId, settings) ?
-        null :
-        effectiveSyncedModels(syncedCatalogs[providerId], providerModels);
+        const syncedModels = syncedModelsByProvider.get(providerId) ?? null;
         const syncedModelIds = syncedModels ? new Set(syncedModels.map((m) => m.id)) : null;
         if (syncedModels) {
           rawModelIds = hasExplicitEnabledModels ?
@@ -1227,18 +1262,6 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }
   }
 
-  /**
-   * Final catalog boundary: dynamic/custom metadata can override static caps,
-   * so omit structurally impossible ceilings after every source is merged.
-   * Source registry objects stay unchanged for separate vendor verification.
-   */
-  for (const model of models) {
-    const caps = model?.capabilities;
-    if (!Number.isFinite(caps?.contextWindow) || !Number.isFinite(caps?.maxOutput)) continue;
-    if (caps.maxOutput < caps.contextWindow) continue;
-    model.capabilities = { ...caps, maxOutput: undefined };
-    delete model.max_completion_tokens;
-  }
 
   const dedupedModels = [];
   const seenModelIds = new Set();

@@ -404,6 +404,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel) :
   null;
   const effectiveModelCapabilities = { ...getCapabilitiesForModel(provider, cleanModel), ...(ollamaCatalogModel?.capabilities || {}), ...(modelCapabilities || {}) };
+  Object.defineProperty(effectiveModelCapabilities, "customKeys", {
+    value: modelCapabilities?.customKeys instanceof Set
+      ? modelCapabilities.customKeys : new Set(Object.keys(modelCapabilities || {})),
+    enumerable: false,
+  });
+  const executor = getExecutor(provider);
   const { runtimeTransport: defaultRuntimeTransport, targetFormat: defaultTargetFormat } = resolveRequestTransport({
     provider,
     alias,
@@ -590,9 +596,21 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   let toolNameMap;
   let customToolNames;
   let claudeCloaked = false;
+  // Messages requires max_tokens even when the source Chat request omits it.
+  // Feed its translator the operator/sent/documented default, never the model
+  // maximum. The resulting body is also what preflight reserves.
+  let translationBody = body;
+  if (targetFormat === FORMATS.CLAUDE &&
+      body.max_tokens === undefined && body.max_completion_tokens === undefined &&
+      body.max_output_tokens === undefined) {
+    const defaultOutput = executor.resolveEffectiveOutputReservation?.({}, {
+      ...requestContext, modelCapabilities: effectiveModelCapabilities,
+    }) ?? 0;
+    if (defaultOutput > 0) translationBody = { ...body, max_tokens: defaultOutput };
+  }
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
-    translatedBody = { ...structuredClone(body), model: cleanUpstreamModel };
+    translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
     applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent, modelCapabilities);
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
@@ -624,7 +642,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         sourceFormat,
         targetFormat,
         translationModel,
-        body,
+        translationBody,
         stream,
         credentials,
         provider,
@@ -937,8 +955,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     return buildDefaultAllowClaudeMessage(classifierFormat);
   }
 
-  const executor = getExecutor(provider);
-
   // Ingress context-limit preflight (C1/C2). estimateTokens only fed compression
   // planning, so an oversize request was still shipped upstream just to come back
   // as a 400. Reject here instead, using the SAME output reservation the executor
@@ -957,34 +973,31 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   /** Read the server-owned cache without letting client-shared capabilities import it. */
   const cachedLiveLimits = ollamaModel?.capabilities || getCachedLiveLimits(provider, cleanModel, credentials) ||
   getCachedLiveLimits(provider, baseModel, credentials);
-  const catalogLimits = !cachedLiveLimits && provider === "openrouter" ? getOpenRouterModelCapabilities(cleanModel) : null;
-  const liveLimits = cachedLiveLimits || catalogLimits;
-  const preflightLimits = resolveModelLimits(provider, cleanModel, requestContext?.modelCapabilities, credentials, liveLimits);
-  if (preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0) {
-    // Always reserve the output ceiling chosen by resolveModelLimits. It has
-    // already applied explicit-custom > live > static precedence; reusing the
-    // caller's inherited static caps here would make the window and reservation
-    // come from different sources.
-    const reservationContext = {
-      ...requestContext,
-      modelCapabilities: {
-        ...requestContext?.modelCapabilities,
-        maxOutput: preflightLimits.maxOutput
-      }
-    };
-    // OpenRouter's catalog max_completion_tokens is a ceiling, not a default:
-    // it often sits near the window (29491 of 32768), so charging it to a
-    // request that names no output limit would reject ordinary prompts. Only
-    // an explicit client value (clamped to the ceiling) is reserved there.
-    // Mirror resolveModelLimits: an operator maxOutput (a customKeys entry, or
-    // caps with no marker) wins over the catalog and is reserved as usual.
-    const callerCaps = requestContext?.modelCapabilities;
-    const operatorOutput = Number.isFinite(callerCaps?.maxOutput) && callerCaps.maxOutput > 0 && (
-    !(callerCaps.customKeys instanceof Set) || callerCaps.customKeys.has("maxOutput"));
-    const catalogCeilingOnly = catalogLimits && !operatorOutput;
-    const explicitOutput = executor.resolveEffectiveOutputReservation?.(translatedBody, { ...requestContext, modelCapabilities: {} }) ?? 0;
-    const reservation = catalogCeilingOnly && !explicitOutput ? 0 :
-    executor.resolveEffectiveOutputReservation?.(translatedBody, reservationContext) ?? 0;
+  const catalogLimits = provider === "openrouter" ? getOpenRouterModelCapabilities(cleanModel) : null;
+  const callerCaps = requestContext?.modelCapabilities;
+  // Materialized request metadata is live/inherited, not operator data. Keep
+  // account-scoped cache values above provider-level synced/shared metadata.
+  const inheritedCaps = callerCaps?.customKeys instanceof Set ? callerCaps : null;
+  const liveLimits = inheritedCaps || catalogLimits || cachedLiveLimits
+    ? { ...inheritedCaps, ...catalogLimits, ...cachedLiveLimits } : null;
+  const preflightLimits = resolveModelLimits(provider, cleanModel, callerCaps, credentials, liveLimits, true);
+  const operatorKeys = callerCaps?.customKeys instanceof Set ? callerCaps.customKeys : new Set(Object.keys(callerCaps || {}));
+  const operator = Object.fromEntries([...operatorKeys].map((key) => [key, callerCaps[key]]));
+  const preflightCaps = {
+    ...effectiveModelCapabilities,
+    ...liveLimits,
+    ...operator,
+    contextWindow: preflightLimits.known ? preflightLimits.contextWindow : undefined,
+    maxOutput: preflightLimits.maxOutput,
+  };
+  Object.defineProperty(preflightCaps, "customKeys", { value: new Set(operatorKeys), enumerable: false });
+  // Dispatch/clamping and preflight consume the same resolved ceiling, while
+  // BaseExecutor separately reserves explicit output or a documented default.
+  requestContext = Object.freeze({ ...requestContext, modelCapabilities: preflightCaps });
+  const knownContext = preflightLimits.known && Number.isFinite(preflightLimits.contextWindow) && preflightLimits.contextWindow > 0;
+  const maxInput = Number.isFinite(preflightCaps.maxInput) && preflightCaps.maxInput > 0 ? preflightCaps.maxInput : null;
+  if (knownContext || maxInput !== null) {
+    const reservation = executor.resolveEffectiveOutputReservation?.(translatedBody, requestContext) ?? 0;
     // Prefer the provider's own /messages/count_tokens when it exposes one —
     // the 4-chars-per-token heuristic is only a fallback, and rejecting on a
     // bad count is worse than not rejecting at all. countInputTokens itself
@@ -997,8 +1010,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       signal: abortSignal
     });
     const required = countedInput + reservation;
-    if (required > preflightLimits.contextWindow) {
-      const detail = `input is too long: ${required} tokens required (${countedInput} input + ${reservation} output reservation) exceeds the ${preflightLimits.contextWindow}-token context length of ${provider}/${cleanModel}`;
+    if (knownContext && required > preflightLimits.contextWindow || maxInput !== null && countedInput > maxInput) {
+      const detail = maxInput !== null && countedInput > maxInput
+        ? `input is too long: ${countedInput} input tokens exceeds the ${maxInput}-token input length of ${provider}/${cleanModel}`
+        : `input is too long: ${required} tokens required (${countedInput} input + ${reservation} output reservation) exceeds the ${preflightLimits.contextWindow}-token context length of ${provider}/${cleanModel}`;
       log?.warn?.("CHAT", `preflight reject | ${detail}`);
       // The reservation was taken before translation; releasing it here keeps a
       // locally-rejected request from holding provider capacity until the lease

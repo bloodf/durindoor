@@ -7,20 +7,13 @@
 //   4. DEFAULT_CAPABILITIES                     — safe floor (always returned)
 //
 // ── HOW TO ADD / UPDATE A MODEL ──────────────────────────────────────
-// Authoritative data source: https://models.dev/api.json (145 providers, 4000+
-// models, MIT). Each model exposes the exact fields we map below:
-//   modalities.input  ["text","image","pdf","audio","video"] -> vision / pdf / audioInput / videoInput
-//   modalities.output ["text","image","audio"]               -> imageOutput / audioOutput
-//   reasoning   -> reasoning      tool_call    -> tools
-//   limit.context -> contextWindow   limit.output -> maxOutput
-// Look up the model id, then:
-//   • If a PATTERN below already covers it correctly -> nothing to do.
-//   • If it is an exception (pattern would mis-match) -> add an exact entry to
-//     MODEL_CAPABILITIES (only the fields that differ from DEFAULT).
-//   • If a whole new family -> add an ordered PATTERN (specific before generic).
-// NOTE: models.dev has NO "search" flag (web search is a runtime tool, not a
-// model spec); set `search` from vendor docs (Claude 4.x+, GPT-5.x/4o, Gemini
-// 2.0+, Grok, Perplexity). Verify with: curl -s https://models.dev/api.json
+// First-party model pages are authoritative for curated native metadata:
+//   vendorModelCapabilities.js — OpenAI, Anthropic, xAI, and MiniMax
+// Provider rows describe the served API/OAuth/reseller contract, not merely a
+// model's trained maximum. models.dev can corroborate other families, but
+// cannot override verified vendor maxima or turn defaults into ceilings.
+// `vision`/`audioInput`/`videoInput` describe native input; hosted search and
+// image-generation tools belong in `search`/`supportedTools`, not modalities.
 
 import { matchPattern } from "./pricing.js";
 import {
@@ -35,8 +28,8 @@ import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
 
 
 /**
- * Safe floor — every resolved result is merged over this so consumers
- * never need null-checks. Most modern LLMs meet these limits.
+ * Safe feature floor — every resolved result is merged over this.
+ * Unknown token limits remain unknown, not a 200K/64K provider guarantee.
  */
 import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export const DEFAULT_CAPABILITIES = {
@@ -66,8 +59,8 @@ export const DEFAULT_CAPABILITIES = {
   maxInput: undefined,
   thinkingRange: null, // { min, max } for budget formats; null = no clamp
   // limits (tokens)
-  contextWindow: 200000,
-  maxOutput: 64000
+  contextWindow: null,
+  maxOutput: null
 };
 
 /** AI Horde's OpenAI text-template facade exposes text generation only and publishes no fixed limits. */
@@ -151,33 +144,27 @@ export const MODEL_CAPABILITIES = {
   "deepseek-flash": { vision: true, reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 128000, maxOutput: 64000 },
 
   /** Kimi Code docs: canonical K3 supports 1M on Allegretto+ and can disable thinking. */
-  k3: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 },
+  k3: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: null },
+  "k3-256k": { vision: true, videoInput: false, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, thinkingEfforts: ["low", "high", "max"], contextWindow: 262144, maxOutput: null },
+  // Kimi Code's shortened registry names still serve K2.8 Preview and K2.7 HighSpeed.
+  // https://www.kimi.com/code/docs/en/kimi-code/models.html
+  "for-coding": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: null },
+  "for-coding-highspeed": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null },
   /** Third-party registries retain the upstream `kimi-k3` ID and its verified 1M context. */
-  "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 262144 },
-  /** Claude Opus 5.5: native 1M context, 128K output, adaptive thinking that cannot be disabled. */
-  "claude-opus-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
-  // Claude Opus 5: native 1M context window + adaptive thinking.
-  "claude-opus-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-fable-5-1": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
+  "kimi-k3": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
   "claude-opus-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.7": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-7": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.8": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-8": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.8-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4-8-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  // 4.6/4.7 thinking variants keep the 1M window; without these exact rows the
-  // dash forms fall to the generic *claude*opus* budget pattern (200K default).
+  // Explicit thinking variants keep the generation's 1M window rather than
+  // falling through to the legacy budget-thinking family.
   "claude-opus-4.6-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4-6-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4-7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  // Kiro exposes -agentic / -thinking-agentic variants of Opus 4.7/4.8 (registry
-  // kiro.js). Without exact rows the dot forms hit *claude*opus-4.7|4.8* (which
-  // carry no limits → 200K/64K floor) and the dash forms fall further to the
-  // generic *claude*opus* budget pattern. Both keep the 1M adaptive contract.
+  // Kiro's agentic variants retain the verified generation's 1M window.
   "claude-opus-4.7-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4-7-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.7-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -187,17 +174,9 @@ export const MODEL_CAPABILITIES = {
   "claude-opus-4.8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4-8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-4-6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  /** Anthropic Models API 2026-08-13 publishes exact per-ID input and output limits. */
-  "claude-opus-4-5-20251101": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget", contextWindow: 200000, maxOutput: 64000 },
-  "claude-sonnet-4-5-20250929": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget", contextWindow: 1000000, maxOutput: 64000 },
-
-  // Gemini image-gen / OpenAI image / xai image variants
-  "gpt-image-1": { imageOutput: true, tools: false },
 
   /** Z.ai documents GLM-4.6V's 128K-token context and 32,768-token output limit. */
   "glm-4.6v": { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
@@ -230,26 +209,16 @@ export const MODEL_CAPABILITIES = {
   "vision-model": { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
   "coder-model": { reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
 
-  /**
-   * Current xAI API catalog. Keep exact ids: Grok windows differ within the
-   * same family, and reasoning can be disabled only on grok-4.3. xAI documents
-   * 128K as the default generated-token budget but explicitly allows larger
-   * values; the ceiling is unpublished, so leave maxOutput unset.
-   */
-  "grok-4.7": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
-  "grok-4.6": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
-  "grok-4.5": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 },
-  "grok-4.3": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000 },
-  "grok-4.20-0309-reasoning": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
-  // xAI documents the non-reasoning 4.20 variant as "Reasoning: No".
-  "grok-4.20-0309-non-reasoning": { vision: true, tools: true, reasoning: false, search: true, thinkingFormat: null, contextWindow: 1000000 },
-  "grok-4.20-multi-agent-0309": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 },
-  "grok-build-0.1": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 },
-  "grok-code-fast-1": { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 },
 
   // Grok CLI windows come from decolua/9router#2502's HAR-captured /v1/models; xAI documents 128K as a default, not an output ceiling.
   "grok-composer-2.5-fast": { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000 },
-  "grok-build": { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 256000 }
+  "grok-build": { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 256000, maxOutput: null },
+  // Canonical native IDs inherit the full audited metadata on compatible routes.
+  // Explicit provider rows retain higher priority for OAuth and hosted variants.
+  ...AUDITED_PROVIDER_CAPABILITIES.openai,
+  ...AUDITED_PROVIDER_CAPABILITIES.anthropic,
+  ...AUDITED_PROVIDER_CAPABILITIES.xai,
+  ...AUDITED_PROVIDER_CAPABILITIES.minimax,
 };
 
 /**
@@ -266,50 +235,11 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
 );
 
 const ANTHROPIC_API_CAPABILITIES = AUDITED_PROVIDER_CAPABILITIES.anthropic;
-// Direct OpenAI GPT-5.4/5.5/5.6 and Astra surfaces override the generic
-// *gpt-5* 400K pattern. Astra's 1.05M context, 922K input, and 128K output
-// are API-only; Codex has a separate exact catalog row below.
-const DIRECT_GPT_5_5_6_CAPS = {
-  "gpt-6-astra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxInput: 922000, maxOutput: 128000 },
-  "gpt-6-sol": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-6-luna": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.4": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.5": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-terra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-luna": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 1050000, maxOutput: 128000 }
-};
-
-/**
- * ChatGPT Codex catalog reports currently served context windows but no output
- * ceilings. Exact IDs prevent generic direct-API limits leaking into OAuth.
- */
-const CODEX_GPT_CAPS = {
-  ...DIRECT_GPT_5_5_6_CAPS,
-  "gpt-6-astra": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.5": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.5-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.5-medium": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.5-high": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.5-xhigh": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.4": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.4-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.4-mini": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.4-mini-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  "gpt-5.3-codex-spark": { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
-  "gpt-5.3-codex-spark-review": { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: undefined },
-  "codex-auto-review": { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: undefined },
-  // Codex's GPT-5.6 family rejects `reasoning_effort: "none"` outright, unlike
-  // the direct OpenAI API surface these override; clamp instead of disable. #4031
-  "gpt-5.6": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-terra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-luna": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-sol-ultra": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-terra-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 },
-  "gpt-5.6-luna-review": { vision: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1050000, maxOutput: 128000 }
+// Codex-only models have no direct API counterpart. Published API model sizes
+// live in vendorModelCapabilities.js and are reused by all Codex aliases.
+const CODEX_ONLY_CAPABILITIES = {
+  "gpt-5.3-codex-spark": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: null },
+  "gpt-5.3-codex-spark-review": { vision: false, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: null },
 };
 
 
@@ -403,8 +333,8 @@ const OX_ALPHA_CAPABILITIES = {
 export const PROVIDER_CAPABILITIES = {
   // Native API metadata is separate from OAuth and reseller contracts.
   openai: AUDITED_PROVIDER_CAPABILITIES.openai,
-  codex: { ...CODEX_GPT_CAPS, ...AUDITED_PROVIDER_CAPABILITIES.codex },
-  cx: { ...CODEX_GPT_CAPS, ...AUDITED_PROVIDER_CAPABILITIES.cx },
+  codex: { ...CODEX_ONLY_CAPABILITIES, ...AUDITED_PROVIDER_CAPABILITIES.codex },
+  cx: { ...CODEX_ONLY_CAPABILITIES, ...AUDITED_PROVIDER_CAPABILITIES.cx },
   anthropic: ANTHROPIC_API_CAPABILITIES,
   claude: AUDITED_PROVIDER_CAPABILITIES.claude,
   cc: AUDITED_PROVIDER_CAPABILITIES.cc,
@@ -505,10 +435,11 @@ export const PROVIDER_CAPABILITIES = {
     "cline-pass/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 },
     "cline-pass/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 50000 }
   },
-  // Kimi Platform lists exact served limits per credential at `/v1/models`.
-  // Keep cold-cache limits unknown rather than expanding documentation labels.
+  // Native K3 defaults to 131072 output tokens but permits up to 1048576.
+  // Coding-plan routes have separately scoped, unpublished output limits/defaults.
+  // https://platform.kimi.ai/docs/guide/kimi-k3-quickstart#important-limits
   kimi: {
-    "kimi-k3": { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: null, maxOutput: null },
+    "kimi-k3": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072 },
   },
 
   // Kimi Web (www.kimi.com) consumer chat — OpenAI-shaped transport. The
@@ -868,24 +799,26 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*grok*image*", caps: { imageOutput: true } },
 // Composer keeps the 200K window from decolua/9router#2502's HAR-captured Grok CLI /v1/models response.
 { pattern: "*grok-composer*", caps: { vision: true, reasoning: false, search: false, thinkingFormat: null, contextWindow: 200000 } },
-// Public aliases follow xAI's Grok Build 0.1 docs (256 Ki tokens, vision/tools/reasoning); exact CLI `grok-build` above keeps the HAR-reported 256K/non-reasoning caps.
+// Public aliases follow xAI's decimal 256,000-token Build 0.1 contract; the
+// exact CLI `grok-build` above retains its separate non-reasoning metadata.
 // Published aliases resolve to other models: grok-build-latest is grok-4.5,
 // grok-code-fast[-1-0825] is grok-build-0.1. They must win over the families below.
 // https://docs.x.ai/developers/models/grok-4.5 https://docs.x.ai/developers/models/grok-build-0.1
-{ pattern: "*grok-build-latest*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
-{ pattern: "*grok-code-fast*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
-{ pattern: "*grok-build*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 262144 } },
+{ pattern: "*grok-build-latest*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.5"] },
+{ pattern: "*grok-code-fast*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-build-0.1"] },
+{ pattern: "*grok-build*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-build-0.1"] },
 { pattern: "*grok-code*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 256000 } },
 // Current 4.x models are 500K or 1M; 500K is the conservative floor that cannot over-promise.
 // Aliases and effort-suffixed ids (grok-4.3-latest, grok-4.20-non-reasoning,
 // grok-4.7-high) miss the exact rows, so the families carry their published
 // windows and reasoning rules here. https://docs.x.ai/developers/models
-{ pattern: "*grok-4.20*non-reasoning*", caps: { vision: true, tools: true, reasoning: false, search: true, thinkingFormat: null, contextWindow: 1000000 } },
-{ pattern: "*grok-4.20*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000 } },
-{ pattern: "*grok-4.3*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000 } },
-{ pattern: "*grok-4.7*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
-{ pattern: "*grok-4.6*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
-{ pattern: "*grok-4.5*", caps: { vision: true, tools: true, reasoning: true, search: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 500000 } },
+{ pattern: "*grok-4.20*non-reasoning*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.20-0309-non-reasoning"] },
+{ pattern: "*grok-4.20*multi-agent*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.20-multi-agent"] },
+{ pattern: "*grok-4.20*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.20-0309-reasoning"] },
+{ pattern: "*grok-4.3*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.3"] },
+{ pattern: "*grok-4.7*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.7"] },
+{ pattern: "*grok-4.6*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.6"] },
+{ pattern: "*grok-4.5*", caps: AUDITED_PROVIDER_CAPABILITIES.xai["grok-4.5"] },
 { pattern: "*grok-4*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000 } },
 // Keep retired Grok 3 ids usable for stored user configurations.
 { pattern: "*grok-3*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 131072 } },
@@ -911,13 +844,14 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*qwen*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 
 // ── Kimi Code (explicit first-party IDs before generic third-party fallbacks) ──
-/** Context values verified by `/coding/v1/models`; availability remains server tier-gated. */
-{ pattern: "k3-256k", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: 262144 } },
-{ pattern: "k3", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 262144 } },
-{ pattern: "kimi-for-coding*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: 262144 } },
+/** K3's 1M ceiling requires Pro/Allegretto+; Plus/Moderato is limited to 262144. */
+{ pattern: "k3-256k", caps: { vision: true, videoInput: false, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, thinkingEfforts: ["low", "high", "max"], contextWindow: 262144, maxOutput: null } },
+{ pattern: "k3", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: null } },
+{ pattern: "kimi-for-coding-highspeed", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null } },
+{ pattern: "kimi-for-coding", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: true, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: null } },
 /** Generic Kimi arms preserve third-party registry IDs; exact first-party IDs above win first. */
-{ pattern: "*kimi*k2.7*code*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: undefined } },
-{ pattern: "*kimi*k2*", caps: { vision: true, reasoning: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: undefined } },
+{ pattern: "*kimi*k2.7*code*", caps: { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null } },
+{ pattern: "*kimi*k2*", caps: { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", contextWindow: 262144, maxOutput: null } },
 { pattern: "*kimi*", caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
 
 // ── GLM / Z.ai (thinking.enabled; disable via enable_thinking:false) ─
@@ -941,7 +875,8 @@ export const PATTERN_CAPABILITIES = [
 
 // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
 { pattern: "*minimax*image*", caps: { imageOutput: true } },
-{ pattern: "*minimax-m3*", caps: { vision: true, reasoning: true, thinkingFormat: "minimax", contextWindow: 512000, maxOutput: 131072 } },
+{ pattern: "*minimax-m3.1-flash-preview*", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3.1-Flash-Preview"] },
+{ pattern: "*minimax-m3", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3"] },
 { pattern: "*minimax-m2.7*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
 { pattern: "*minimax-m2.5*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
 /** MiniMax publishes 204,800 tokens for every M2-family model. */
@@ -1065,7 +1000,7 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     contextWindow: minKnownLimit(allCaps, "contextWindow"),
     maxOutput: minKnownLimit(allCaps, "maxOutput")
   };
-  return sanitizeModelLimits(combined);
+  return combined;
 }
 /**
  * Apply an operator-declared capability ceiling to a member-derived cap set.
@@ -1125,7 +1060,7 @@ export function overlayComboCapabilities(derived, cap) {
     out.thinkingCanDisable = true;
     out.thinkingRange = null;
   }
-  return sanitizeModelLimits(out);
+  return out;
 }
 
 const ALLOWED_CAPABILITY_KEYS = new Set([
@@ -1179,11 +1114,6 @@ export function normalizeComboCapabilities(input) {
 
 
 
-/** Omit structurally impossible output ceilings while preserving source metadata. */
-function sanitizeModelLimits(caps) {
-  if (!Number.isFinite(caps?.contextWindow) || !Number.isFinite(caps?.maxOutput)) return caps;
-  return caps.maxOutput < caps.contextWindow ? caps : { ...caps, maxOutput: undefined };
-}
 
 // Mirrors Command Code CLI's `isKnownTextOnlyModel` (no image input). New models
 // default to vision; only this denylist stays text-only (port of decolua/9router 13b468b8).
@@ -1239,7 +1169,7 @@ export function getCapabilitiesForModel(provider, model) {
       result = { ...result, maxOutput: undefined };
     }
     if (hasUnpublishedOutput(provider, model)) result = { ...result, maxOutput: undefined };
-    return sanitizeModelLimits(result);
+    return result;
   };
   // Local names are operator aliases; cloud-family limits cannot describe their served window.
   if (provider === "ollama-local") {
@@ -1266,7 +1196,7 @@ export function getCapabilitiesForModel(provider, model) {
     return finalize({ ...DEFAULT_CAPABILITIES, ...kindCaps, ...declaredCaps });
   }
   if (provider) {
-    const providerCaps = PROVIDER_CAPABILITIES[provider];
+    const providerCaps = PROVIDER_CAPABILITIES[provider] || PROVIDER_CAPABILITIES[registry?.id];
     if (providerCaps?.[normalizedModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedModel] });
     if (providerCaps?.[capabilityBaseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[capabilityBaseModel] });
     if (isKiroFamilyProvider(provider)) {
@@ -1314,24 +1244,30 @@ export function getCapabilitiesForModel(provider, model) {
  * Resolve the input/output limits advertised for a routed model.
  *
  * Explicit request-scoped custom limits win when supplied. Caller-provided
- * live limits are next, then static catalogs; a cold cache preserves the
- * unknown-floor semantics instead of turning the default into an enforceable
- * guarantee. This client-shared module stays synchronous and cache-agnostic.
+ * live limits are next, then static catalogs. Only explicit model limits count
+ * as registry capacity: transport defaults configure requests, not supported
+ * maxima, and cannot replace family specifications. This module is cache-agnostic.
  *
  * @param {string} provider
  * @param {string} model
  * @param {object|null} customCaps
  * @param {object|null} connection Reserved for request context compatibility.
  * @param {object|null} liveLimits Already-resolved server-side cache value.
- * @param {boolean} [requireExplicitOutput] Leave maxOutput unset unless the selected source declares it.
- * @returns {{contextWindow: number, maxOutput: number|undefined, known: boolean, source: "custom"|"live"|"provider"|"exact"|"pattern"|"registry"|"default"}}
+ * @param {boolean} [requireExplicitOutput] Unknown output ceilings are omitted regardless of this option.
+ * @returns {{contextWindow: number|undefined, maxOutput: number|undefined, known: boolean, source: "custom"|"live"|"provider"|"exact"|"pattern"|"registry"|"default"}}
  */
 export function resolveModelLimits(provider, model, customCaps = null, connection = null, liveLimits = null, requireExplicitOutput = false) {
   const baseModel = isString(model) && model.includes("/") ? model.split("/").pop() : model;
+  const positive = (value) => Number.isFinite(value) && value > 0;
+  const customKeys = customCaps?.customKeys instanceof Set ? customCaps.customKeys : null;
+  const customContext = positive(customCaps?.contextWindow) && (!customKeys || customKeys.has("contextWindow")) ?
+  customCaps.contextWindow :
+  undefined;
+  const customOutput = positive(customCaps?.maxOutput) && (!customKeys || customKeys.has("maxOutput")) ?
+  customCaps.maxOutput :
+  undefined;
   if (provider === "aihorde" || provider === "horde" || provider === "ollama-local") {
-    const customContext = Number.isFinite(customCaps?.contextWindow) && customCaps.contextWindow > 0 ? customCaps.contextWindow : undefined;
     const liveContext = Number.isFinite(liveLimits?.contextWindow) && liveLimits.contextWindow > 0 ? liveLimits.contextWindow : undefined;
-    const customOutput = Number.isFinite(customCaps?.maxOutput) && customCaps.maxOutput > 0 ? customCaps.maxOutput : undefined;
     const liveOutput = Number.isFinite(liveLimits?.maxOutput) && liveLimits.maxOutput > 0 ? liveLimits.maxOutput : undefined;
     return {
       contextWindow: customContext ?? liveContext,
@@ -1347,23 +1283,17 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     entry.id === model || entry.id === baseModel || entry.aliases?.includes(model) || entry.aliases?.includes(baseModel));
   const capabilityBaseModel = registryModel?.id || (/^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
     /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel);
-  const positive = (value) => Number.isFinite(value) && value > 0;
   const asLimits = (caps, source, unpublishedOutput = false) => {
-    if (!positive(caps?.contextWindow)) return null;
+    const contextWindow = positive(caps?.contextWindow) ? caps.contextWindow : undefined;
+    const maxOutput = !unpublishedOutput && positive(caps?.maxOutput) ? caps.maxOutput : undefined;
+    if (contextWindow === undefined && maxOutput === undefined) return null;
     return {
-      contextWindow: caps.contextWindow,
-      maxOutput: unpublishedOutput || caps.maxOutput === null || requireExplicitOutput && !positive(caps.maxOutput) ? undefined : positive(caps.maxOutput) ? caps.maxOutput : DEFAULT_CAPABILITIES.maxOutput,
+      contextWindow,
+      maxOutput,
       known: true,
       source
     };
   };
-  const customKeys = customCaps?.customKeys instanceof Set ? customCaps.customKeys : null;
-  const customContext = positive(customCaps?.contextWindow) && (!customKeys || customKeys.has("contextWindow")) ?
-  customCaps.contextWindow :
-  undefined;
-  const customOutput = positive(customCaps?.maxOutput) && (!customKeys || customKeys.has("maxOutput")) ?
-  customCaps.maxOutput :
-  undefined;
   const liveCaps = liveLimits;
   const preferredContext = customContext ?
   { value: customContext, source: "custom" } :
@@ -1376,31 +1306,38 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
       known: true,
       source: preferredContext.source
     } : null),
-    ...(preferredOutput ? { maxOutput: preferredOutput } : null)
+    ...(preferredOutput ? {
+      maxOutput: preferredOutput,
+      known: true,
+      ...(!preferredContext && !fallback.known ? { source: customOutput ? "custom" : "live" } : null)
+    } : null)
   });
 
   if (provider) {
-    const providerCaps = PROVIDER_CAPABILITIES[provider];
+    const providerCaps = PROVIDER_CAPABILITIES[provider] || PROVIDER_CAPABILITIES[registry?.id];
     const ids = isKiroFamilyProvider(provider) ?
     [model, baseModel, capabilityBaseModel, normalizeModelId(model), normalizeModelId(baseModel)] :
     [model, baseModel, capabilityBaseModel];
     for (const id of ids) {
+      const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider", hasUnpublishedOutput(provider, id));
+      if (hit) return applyPreferred(hit);
       if (providerCaps?.[id]?.contextWindow === null) {
         return applyPreferred({ contextWindow: undefined, maxOutput: undefined, known: false, source: "provider" });
       }
-      const hit = providerCaps?.[id] && asLimits(providerCaps[id], "provider", hasUnpublishedOutput(provider, id));
-      if (hit) return applyPreferred(hit);
     }
   }
 
   for (const id of [capabilityBaseModel, baseModel, model]) {
     const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact", hasUnpublishedOutput(provider, id));
     if (hit) return applyPreferred(hit);
+    if (MODEL_CAPABILITIES[id]?.contextWindow === null) {
+      return applyPreferred({ contextWindow: undefined, maxOutput: undefined, known: false, source: "exact" });
+    }
   }
 
   if (registryModel) {
     const hit = asLimits({
-      contextWindow: registryModel.contextLength ?? registry.transport?.defaultContextLength,
+      contextWindow: registryModel.contextLength,
       maxOutput: registryModel.maxOutputTokens
     }, "registry", hasUnpublishedOutput(provider, baseModel));
     if (hit) return applyPreferred(hit);
@@ -1414,8 +1351,8 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
   }
 
   return applyPreferred({
-    contextWindow: DEFAULT_CAPABILITIES.contextWindow,
-    maxOutput: requireExplicitOutput ? undefined : DEFAULT_CAPABILITIES.maxOutput,
+    contextWindow: undefined,
+    maxOutput: undefined,
     known: false,
     source: "default"
   });

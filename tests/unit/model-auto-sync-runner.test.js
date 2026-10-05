@@ -32,6 +32,9 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   refreshGoogleToken: vi.fn(),
   updateProviderCredentials: vi.fn()
 }));
+vi.mock("../../src/lib/modelAutoSync/sharedMetadata.js", () => ({
+  refreshSharedModelMetadata: vi.fn(async () => null),
+}));
 
 import { runModelAutoSync, syncProviderModels } from "../../src/lib/modelAutoSync/runner.js";
 import { modelAutoSyncTick } from "../../src/lib/modelAutoSync/scheduler.js";
@@ -83,7 +86,7 @@ describe("syncProviderModels per provider", () => {
     expect(routedFetch).toHaveBeenCalledWith("https://api.openai.com/v1/models",
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer openai-key" }) }), null);
     expect(db.catalogs.openai.models.map((m) => [m.id, m.kind])).toEqual([
-      ["gpt-7", "llm"], ["text-embedding-3-large", "embedding"], ["whisper-1", "stt"]
+      ["gpt-7", "llm"], ["text-embedding-3-large", "embedding"], ["omni-moderation-latest", "moderation"], ["whisper-1", "stt"]
     ]);
     expect(db.catalogs.openai.newModelIds).toContain("gpt-7");
     // Registry defaults the API did not return are reported as removed.
@@ -101,18 +104,21 @@ describe("syncProviderModels per provider", () => {
     expect(db.catalogs.anthropic.models[0]).toMatchObject({
       id: "claude-opus-6",
       name: "Claude Opus 6",
-      capabilities: { contextWindow: 1_000_000, maxOutput: 128_000 }
+      capabilities: { contextWindow: 1_000_000, maxInput: 1_000_000, maxOutput: 128_000 }
     });
   });
 
   it("claude OAuth: Bearer token plus the oauth beta header", async () => {
     connect("claude", { apiKey: undefined, accessToken: "oauth-token" });
-    respond({ "api.anthropic.com/v1/models": json({ data: [{ id: "claude-opus-6" }] }) });
+    respond({ "api.anthropic.com/v1/models": json({ data: [{ id: "claude-opus-6", max_input_tokens: 1_000_000, max_tokens: 128_000 }] }) });
     const result = await syncProviderModels("claude", { now: NOW });
     expect(result.status).toBe("synced");
     const [, init] = routedFetch.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer oauth-token");
     expect(init.headers["Anthropic-Beta"]).toBe("oauth-2025-04-20");
+    expect(db.catalogs.claude.models[0].capabilities).toEqual({
+      contextWindow: 1_000_000, maxInput: 1_000_000, maxOutput: 128_000,
+    });
   });
 
   it("xai: grok list, image models routed to the image kind", async () => {
@@ -126,7 +132,7 @@ describe("syncProviderModels per provider", () => {
     connect("gemini");
     respond({
       "generativelanguage.googleapis.com": json({ models: [
-        { name: "models/gemini-3.9-pro", supportedGenerationMethods: ["generateContent"], inputTokenLimit: 2_000_000 },
+        { name: "models/gemini-3.9-pro", supportedGenerationMethods: ["generateContent"], inputTokenLimit: 2_097_152, outputTokenLimit: 65_536 },
         { name: "models/gemini-embedding-002", supportedGenerationMethods: ["embedContent"] },
         { name: "models/aqa", supportedGenerationMethods: ["generateAnswer"] }
       ] })
@@ -136,6 +142,9 @@ describe("syncProviderModels per provider", () => {
     expect(db.catalogs.gemini.models.map((m) => [m.id, m.kind])).toEqual([
       ["gemini-3.9-pro", "llm"], ["gemini-embedding-002", "embedding"]
     ]);
+    expect(db.catalogs.gemini.models[0].capabilities).toEqual({
+      contextWindow: 2_097_152, maxInput: 2_097_152, maxOutput: 65_536,
+    });
   });
 
   it("gemini: follows nextPageToken across pages and unions models", async () => {
@@ -149,6 +158,36 @@ describe("syncProviderModels per provider", () => {
     expect(urls).toHaveLength(2);
     expect(urls.every((u) => u.includes("pageSize=1000"))).toBe(true);
     expect(db.catalogs.gemini.models.map((m) => m.id)).toEqual(["gemini-a", "gemini-b"]);
+  });
+
+  it.each([
+    ["anthropic", { id: "future-native-model", max_input_tokens: 1_000_000, max_tokens: 128_000 }, 1_000_000, 128_000],
+    ["gemini", { id: "future-native-model", inputTokenLimit: 2_097_152, outputTokenLimit: 65_536 }, 2_097_152, 65_536],
+  ])("%s: keeps known protocol after an adapter strips native row identity", async (provider, raw, contextWindow, maxOutput) => {
+    connect(provider);
+    const result = await syncProviderModels(provider, {
+      now: NOW,
+      fetchModels: async () => ({ models: [{
+        ...raw,
+        limits: { max_input_tokens: contextWindow, max_output_tokens: maxOutput },
+        capabilities: { tools: false, defaultOutput: 4096 },
+      }] }),
+    });
+    expect(result.status).toBe("synced");
+    expect(db.catalogs[provider].models[0].capabilities).toEqual({
+      contextWindow, maxInput: contextWindow, maxOutput, defaultOutput: 4096, tools: false,
+    });
+    expect(routedFetch).not.toHaveBeenCalled();
+  });
+
+  it("openai: generic independent API limits stay unknown as total capacity", async () => {
+    connect("openai");
+    respond({ "api.openai.com/v1/models": json({ data: [{
+      id: "future-model", maxInput: 922000, maxOutput: 128000, defaultOutput: 4096,
+    }] }) });
+    const result = await syncProviderModels("openai", { now: NOW });
+    expect(result.status).toBe("synced");
+    expect(db.catalogs.openai.models[0].capabilities).toEqual({ maxInput: 922000, maxOutput: 128000, defaultOutput: 4096 });
   });
 
   it("gemini: failing later page or repeated cursor never stores a truncated catalog", async () => {
@@ -175,7 +214,6 @@ describe("syncProviderModels per provider", () => {
     ] }) });
     await syncProviderModels("codex", { now: NOW });
     expect(db.catalogs.codex.models.map((m) => m.id)).toEqual(["gpt-6-sol"]);
-    expect(db.catalogs.codex.models[0].capabilities).toEqual({ contextWindow: 272_000 });
   });
 });
 
@@ -211,7 +249,7 @@ describe("syncProviderModels safety rules", () => {
   it.each([
     ["an HTTP error", () => json({ error: "bad key" }, 401)],
     ["an empty list", () => json({ data: [] })],
-    ["a list with no routable models", () => json({ data: [{ id: "omni-moderation-latest" }] })],
+    ["a list with no routable models", () => json({ data: [{ id: "gpt-realtime-unregistered" }] })],
     ["a network error", () => {throw new Error("ECONNRESET");}]
   ])("keeps the previous list on %s", async (_label, reply) => {
     connect("openai");

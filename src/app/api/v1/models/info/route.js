@@ -1,8 +1,10 @@
-import { PROVIDER_MODELS } from "open-sse/config/providerModels.js";
+import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
-import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { effectiveSyncedModels } from "@/lib/modelAutoSync/catalog.js";
+import { loadModelMetadataSnapshot, materializeRequestModel } from "@/sse/services/model.js";
+import { projectDiscoveryMetadata } from "open-sse/services/modelMetadata.js";
 import { projectModelPresentation } from "open-sse/providers/models/presentation.js";
 
 const KIND_ENDPOINT = {
@@ -27,7 +29,8 @@ const KIND_ENDPOINT = {
 
 const TTS_VOICES_API = new Set(["elevenlabs", "edge-tts", "deepgram", "inworld", "local-device", "minimax", "minimax-cn"]);
 
-function buildInfo({ alias, providerId, model, kind, providerInfo }) {
+function buildInfo({ alias, providerId, model, kind, providerInfo, snapshot }) {
+  const enriched = materializeRequestModel(providerId, { ...model, kind }, alias, snapshot);
   // Presentation is additive on /v1/models/info: keep the registry `name`
   // (or id fallback) and only attach the extra display fields.
   const presentation = projectModelPresentation({
@@ -52,22 +55,19 @@ function buildInfo({ alias, providerId, model, kind, providerInfo }) {
     } : null),
   };
   if (model.params) out.params = model.params;
-  out.capabilities = { ...getCapabilitiesForModel(providerId, model.id), ...model.capabilities };
+  out.capabilities = enriched.capabilities;
+  // Image operation declarations are arrays, not numeric capability keys.
+  if (Array.isArray(model.capabilities)) out.operations = model.capabilities;
+  else if (Array.isArray(model.operations)) out.operations = model.operations;
   if (model.options) out.options = model.options;
   if (model.dimensions) out.dimensions = model.dimensions;
-  // Registry field first (it is the model's own declaration), then the shared
-  // resolver so capability-only models — pattern or PROVIDER_CAPABILITIES rows,
-  // which carry no registry contextWindow — stop reporting nothing at all.
-  // Unknown stays absent rather than advertising the generic floor as fact.
-  if (model.contextWindow) {
-    out.contextWindow = model.contextWindow;
-    if (model.maxOutputTokens) out.maxOutput = model.maxOutputTokens;
-  } else if (kind === "llm") {
-    const limits = resolveModelLimits(providerId, model.id);
-    if (limits.known) {
-      out.contextWindow = limits.contextWindow;
-      out.maxOutput = limits.maxOutput;
-    }
+  // Published limits come from the same scoped resolver as chat requests.
+  // Never promote the generic runtime floor or a stale registry field.
+  if (Number.isFinite(out.capabilities.contextWindow) && out.capabilities.contextWindow > 0) {
+    out.contextWindow = out.capabilities.contextWindow;
+  }
+  if (Number.isFinite(out.capabilities.maxOutput) && out.capabilities.maxOutput > 0) {
+    out.maxOutput = out.capabilities.maxOutput;
   }
   if (kind === "tts" && TTS_VOICES_API.has(providerId)) {
     out.voicesUrl = `/v1/audio/voices?provider=${providerId}`;
@@ -78,12 +78,14 @@ function buildInfo({ alias, providerId, model, kind, providerInfo }) {
     if (cfg.maxMaxResults) out.maxResults = cfg.maxMaxResults;
     if (cfg.requiredOptions) out.required = cfg.requiredOptions;
   }
-  return out;
+  // The public info contract also exposes endpoint routing and camelCase
+  // limits; the data-only discovery projection intentionally omits those.
+  return { ...out, ...projectDiscoveryMetadata(out) };
 }
 
 // id format: "{alias}/{modelId}" - alias may also be providerId
 // requestedKind: optional, disambiguates duplicate ids across kinds (e.g. gemini-2.5-pro llm vs stt)
-function lookup(fullId, requestedKind) {
+async function lookup(fullId, requestedKind) {
   if (!fullId || !fullId.includes("/")) return null;
   const slash = fullId.indexOf("/");
   const alias = fullId.slice(0, slash);
@@ -91,26 +93,49 @@ function lookup(fullId, requestedKind) {
   const providerId = ALIAS_TO_ID[alias] || alias;
   const providerInfo = AI_PROVIDERS[providerId];
 
-  // PROVIDER_MODELS lookup (by alias key, fallback to providerId)
-  const list = PROVIDER_MODELS[alias] || PROVIDER_MODELS[providerId] || [];
-  const m = requestedKind
-    ? list.find((x) => x.id === modelId && getModelKind(x, "llm") === requestedKind)
-    : list.find((x) => x.id === modelId);
-  if (m) {
+  // Cached discovery enriches known rows and makes newly synced/custom models
+  // inspectable. Shared metadata alone never grants a new callable model id.
+  const staticModels = PROVIDER_MODELS[alias] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[providerId]] || PROVIDER_MODELS[providerId] || [];
+  const snapshot = await loadModelMetadataSnapshot(providerId);
+  const synced = effectiveSyncedModels(snapshot.syncedCatalogs[providerId], staticModels) || [];
+  const registeredId = staticModels.find((entry) =>
+    (entry.id === modelId || entry.aliases?.includes(modelId)) &&
+    (!requestedKind || getModelKind(entry, "llm") === requestedKind)
+  )?.id;
+  const matches = (entry) => entry &&
+    (entry.id === modelId || entry.id === registeredId || entry.aliases?.includes(modelId)) &&
+    (!requestedKind || getModelKind(entry, "llm") === requestedKind);
+  const registered = staticModels.find(matches);
+  const live = synced.find((entry) => matches(entry) && (!registered || getModelKind(entry, "llm") === getModelKind(registered, "llm")));
+  const selected = live || registered;
+  const custom = snapshot.customModels.find((entry) =>
+    entry && [alias, providerId, PROVIDER_ID_TO_ALIAS[providerId]].includes(entry.providerAlias) && matches(entry) &&
+    (!selected || getModelKind(entry, "llm") === getModelKind(selected, "llm"))
+  );
+  if (registered || live || custom) {
+    // Preserve params/routing declarations and the friendly registry name when
+    // upstream echoes only its wire id. Operator names still win.
+    const m = {
+      ...registered,
+      ...live,
+      ...(Array.isArray(registered?.capabilities) ? { operations: registered.capabilities } : null),
+      ...(custom ? { id: custom.id, kind: getModelKind(custom, "llm"), ...(custom.name ? { name: custom.name } : null) } : null),
+      name: custom?.name || (live?.name && live.name !== modelId ? live.name : registered?.name) || live?.name || modelId,
+    };
     const kind = getModelKind(m, "llm");
-    return buildInfo({ alias, providerId, model: m, kind, providerInfo });
+    return buildInfo({ alias, providerId, model: m, kind, providerInfo, snapshot });
   }
 
   // Web search/fetch — virtual model id "search" / "fetch"
   if (modelId === "search" && providerInfo?.searchConfig) {
     return buildInfo({
-      alias, providerId, kind: "webSearch", providerInfo,
+      alias, providerId, kind: "webSearch", providerInfo, snapshot,
       model: { id: "search", name: `${providerInfo.name} Search`, params: ["query", "max_results", "country", "language", "time_range", "domain_filter", "search_type"] },
     });
   }
   if (modelId === "fetch" && providerInfo?.fetchConfig) {
     return buildInfo({
-      alias, providerId, kind: "webFetch", providerInfo,
+      alias, providerId, kind: "webFetch", providerInfo, snapshot,
       model: { id: "fetch", name: `${providerInfo.name} Fetch`, params: ["url", "format", "max_characters"] },
     });
   }
@@ -137,7 +162,7 @@ export async function HEAD(request) {
       headers: { "content-type": "application/json", "Access-Control-Allow-Origin": "*" },
     });
   }
-  const info = lookup(id, kind);
+  const info = await lookup(id, kind);
   if (!info) return headNotFoundResponse();
   return headOkResponse();
 }
@@ -153,7 +178,7 @@ export async function GET(request) {
       { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   }
-  const info = lookup(id, kind);
+  const info = await lookup(id, kind);
   if (!info) {
     return Response.json(
       { error: { message: `Model not found: ${id}`, type: "not_found" } },

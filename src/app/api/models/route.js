@@ -1,38 +1,51 @@
 import { NextResponse } from "next/server";
 import { getModelAliases, setModelAlias } from "@/models";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
-import { AI_MODELS } from "@/shared/constants/config";
-import { getProviderAlias } from "@/shared/constants/providers";
-import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { PROVIDER_MODELS } from "@/shared/constants/models";
+import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers";
+import { getSettings } from "@/lib/localDb";
+import { effectiveSyncedModels, isModelAutoSyncEnabled } from "@/lib/modelAutoSync/catalog.js";
+import { loadModelMetadataSnapshot, materializeRequestModel } from "@/sse/services/model.js";
 
-// GET /api/models - Get models with aliases
+// GET /api/models - Cache-only, provider-scoped models with aliases.
 export async function GET() {
   try {
-    const modelAliases = await getModelAliases();
-    const disabled = await getDisabledModels();
-
-    const models = AI_MODELS
-      .filter((m) => {
-        const alias = getProviderAlias(m.provider) || m.provider;
-        const list = disabled[alias] || disabled[m.provider] || [];
-        return !list.includes(m.model);
-      })
-      .map((m) => {
-        const fullModel = `${m.provider}/${m.model}`;
-        const c = getCapabilitiesForModel(m.provider, m.model);
-        const limits = resolveModelLimits(m.provider, m.model, null, null, null, true);
-        return {
-          ...m,
+    const [modelAliases, disabled, settings, snapshot] = await Promise.all([
+      getModelAliases(), getDisabledModels(), getSettings(), loadModelMetadataSnapshot(),
+    ]);
+    const staticByProvider = new Map();
+    for (const [alias, rows] of Object.entries(PROVIDER_MODELS)) {
+      const providerId = resolveProviderId(alias);
+      if (!staticByProvider.has(providerId)) staticByProvider.set(providerId, rows);
+    }
+    const providerIds = new Set([...staticByProvider.keys(), ...Object.keys(snapshot.syncedCatalogs)]);
+    const models = [];
+    for (const providerId of providerIds) {
+      const provider = getProviderAlias(providerId);
+      const staticRows = staticByProvider.get(providerId) || [];
+      // Shared metadata enriches only the selected roster; it never grants
+      // access. A successful scoped sync replaces static rows only when enabled.
+      const synced = isModelAutoSyncEnabled(providerId, settings)
+        ? effectiveSyncedModels(snapshot.syncedCatalogs[providerId], staticRows)
+        : null;
+      const rows = synced || staticRows;
+      const blocked = disabled[provider] || disabled[providerId] || [];
+      for (const row of rows) {
+        if (blocked.includes(row.id)) continue;
+        const resolved = materializeRequestModel(providerId, row, provider, snapshot);
+        const fullModel = `${provider}/${row.id}`;
+        models.push({
+          provider,
+          model: row.id,
+          name: row.name || row.id,
           fullModel,
-          alias: modelAliases[fullModel] || m.model,
-          caps: {
-            ...c,
-            contextWindow: limits.known ? limits.contextWindow : undefined,
-            maxOutput: limits.known ? limits.maxOutput : undefined,
-          },
-        };
-      });
-
+          alias: modelAliases[fullModel] || row.id,
+          // Includes independently known limits/defaults and every resolved
+          // capability. Unknown ceilings stay unknown; no runtime token floor.
+          caps: resolved.capabilities,
+        });
+      }
+    }
     return NextResponse.json({ models });
   } catch (error) {
     console.log("Error fetching models:", error);

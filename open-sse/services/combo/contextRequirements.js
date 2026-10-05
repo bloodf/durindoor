@@ -34,22 +34,15 @@
  * Additive and order-preserving: when no requirement is configured, the SAME
  * array reference is returned unchanged so existing fallback order is intact.
  *
- * IMPORTANT — known-only resolution: this module deliberately does NOT use
- * getCapabilitiesForModel() for context size, because that resolver always
- * merges DEFAULT_CAPABILITIES.contextWindow (=200000) and would make every
- * unknown model look "known". We only trust explicit, authoritative values:
- *   1. the provider registry entry (`models[].contextLength` / `defaultContextLength`)
- *   2. an exact-id or glob-pattern capability that declares `contextWindow`
- * Anything else returns null (unknown) so strict/lenient behaves correctly.
+ * Known-only resolution shares resolveModelLimits() with request preflight:
+ * operator limits win, then cached/scoped metadata, then curated model limits.
+ * customKeys records operator provenance; it does not exclude inherited limits.
+ * Transport defaults are not capacities. Missing context remains unknown so
+ * strict/lenient filtering behaves correctly.
  */
 
 import REGISTRY from "../../providers/registry/index.js";
-import {
-  PROVIDER_CAPABILITIES,
-  MODEL_CAPABILITIES,
-  PATTERN_CAPABILITIES } from
-"../../providers/capabilities.js";
-import { matchPattern } from "../../providers/pricing.js";
+import { resolveModelLimits } from "../../providers/capabilities.js";
 import { getOpenRouterModelCapabilities } from "../openrouterCatalog.js";
 
 // Alias→entry map for resolving the provider half of a model string.
@@ -77,63 +70,14 @@ export function getKnownContextWindow(modelStr, capabilitiesMap = null) {
   const model = slash > 0 ? modelStr.slice(slash + 1) : String(modelStr || "");
   if (!model) return null;
 
-  const caps = capabilitiesMap?.get?.(modelStr);
-  // Trust the map's contextWindow only when the custom row explicitly set it
-  // (customKeys marker); merged static/default values fall through to the
-  // catalog lookups below so unknown models stay unknown in strict mode.
-  if (
-  caps && isObject(caps) && Number.isFinite(caps.contextWindow) && caps.contextWindow > 0 && (
-  !(caps.customKeys instanceof Set) || caps.customKeys.has("contextWindow")))
-  {
-    return caps.contextWindow;
-  }
-
-  const valid = (v) => isNumber(v) && Number.isFinite(v) && v > 0 ? v : null;
-
-  // 0. OpenRouter's published window beats the family patterns below
-  // (e.g. `*glm-5*` = 200K against 32768 for z-ai/glm-5.2:free).
+  const caps = capabilitiesMap?.get?.(modelStr) ?? null;
   const entry = provider ? PROVIDER_BY_ID[provider] || null : null;
-  if (entry?.id === "openrouter") {
-    const fromCatalog = valid(getOpenRouterModelCapabilities(model)?.contextWindow);
-    if (fromCatalog !== null) return fromCatalog;
-  }
-
-  // 1. Provider registry: per-model contextLength, then provider defaultContextLength.
-  if (entry) {
-    const list = Array.isArray(entry.models) ? entry.models : [];
-    const rec = list.find((m) => m && m.id === model);
-    const fromModel = valid(rec?.contextLength);
-    if (fromModel !== null) return fromModel;
-    const fromDefault = valid(entry.defaultContextLength);
-    if (fromDefault !== null) return fromDefault;
-    const fromTransportDefault = valid(entry.transport?.defaultContextLength);
-    if (fromTransportDefault !== null) return fromTransportDefault;
-  }
-
-  // 2a. Provider-specific capability override declaring contextWindow.
-  // Key by the CANONICAL registry id (entry.id), not the raw alias — combo model
-  // strings may use an alias while PROVIDER_CAPABILITIES is keyed by registry id.
   const canonicalProvider = entry?.id || provider;
-  const fromProvider = valid(PROVIDER_CAPABILITIES?.[canonicalProvider]?.[model]?.contextWindow);
-  if (fromProvider !== null) return fromProvider;
-
-  // 2b. Canonical exact-id capability (strip vendor prefix) declaring contextWindow.
-  const baseModel = model.includes("/") ? model.split("/").pop() : model;
-  const fromExact =
-  valid(MODEL_CAPABILITIES?.[baseModel]?.contextWindow) ??
-  valid(MODEL_CAPABILITIES?.[model]?.contextWindow);
-  if (fromExact !== null) return fromExact;
-
-  // 2c. Glob-pattern capability declaring contextWindow (first match wins).
-  for (const { pattern, caps } of PATTERN_CAPABILITIES || []) {
-    if (matchPattern(pattern, baseModel) || matchPattern(pattern, model)) {
-      const fromPattern = valid(caps?.contextWindow);
-      if (fromPattern !== null) return fromPattern;
-      break; // matched a pattern that declares no explicit context → treat as unknown
-    }
-  }
-
-  return null;
+  // OpenRouter's cached published window beats inherited family metadata;
+  // resolveModelLimits still gives explicit operator keys first precedence.
+  const catalog = canonicalProvider === "openrouter" ? getOpenRouterModelCapabilities(model) : null;
+  const inherited = Number.isFinite(catalog?.contextWindow) && catalog.contextWindow > 0 ? catalog : caps;
+  return resolveModelLimits(canonicalProvider, model, caps, null, inherited).contextWindow ?? null;
 }
 
 // Parse + normalize the requirement config. Returns null when no active

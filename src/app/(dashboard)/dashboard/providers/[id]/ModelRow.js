@@ -60,9 +60,7 @@ export default function ModelRow({
             <CapacityBadges caps={caps} colorOverride="text-dd-subtle" size={12} />
             {caps?.contextWindow ? (
               <span className="shrink-0 rounded-dd bg-dd-surface-2 px-1 text-xs font-medium text-dd-subtle">
-                {caps.contextWindow >= 1000000
-                  ? `${(caps.contextWindow / 1000000).toFixed(caps.contextWindow % 1000000 ? 1 : 0)}M`
-                  : `${Math.round(caps.contextWindow / 1000)}K`}{" "}
+                {caps.contextWindow.toLocaleString("en-US")}{" "}
                 ctx
               </span>
             ) : null}

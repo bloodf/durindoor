@@ -63,6 +63,7 @@ export default {
   },
   models: [
     { id: "gpt-6-astra", name: "GPT 6 Astra" },
+    { id: "gpt-6.1-sol", name: "GPT 6.1 Sol" },
     { id: "gpt-6-sol", name: "GPT 6 Sol" },
     { id: "gpt-6-luna", name: "GPT 6 Luna" },
     { id: "gpt-5.5", name: "GPT 5.5" },

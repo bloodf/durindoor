@@ -1,32 +1,40 @@
-import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
-import { getOpenRouterModelCapabilities, warmOpenRouterCatalog } from "open-sse/services/openrouterCatalog.js";
+import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
+import { getOpenRouterModelCapabilities } from "open-sse/services/openrouterCatalog.js";
+import { effectiveSyncedModels, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
+import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
-export function resolveCustomCapabilities(provider, model, requestPrefix, customModels) {
+export function resolveCustomCapabilities(provider, model, requestPrefix, customModels, inheritedCaps = null, kind = "llm") {
   if (!Array.isArray(customModels) || !model) return null;
   const { cleanModel } = parseSuffix(model);
   const cleanModelId = String(cleanModel).replace(/^\//, "");
-  const canonicalAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+  const registeredProvider = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider || entry.aliases?.includes(provider));
+  const canonicalAlias = registeredProvider?.alias || PROVIDER_ID_TO_ALIAS[provider] || provider;
+  const registeredModel = registeredProvider?.models?.find((entry) =>
+    (entry.id === cleanModelId || entry.aliases?.includes(cleanModelId)) &&
+    (entry.kind || entry.type || "llm") === kind
+  );
+  // A caller-supplied prefix cannot borrow another registered provider's row.
+  const prefixProvider = REGISTRY.find((entry) => entry.id === requestPrefix || entry.alias === requestPrefix || entry.uiAlias === requestPrefix || entry.aliases?.includes(requestPrefix));
+  const scopedPrefix = (!registeredProvider && !prefixProvider || prefixProvider === registeredProvider) ? requestPrefix : null;
   for (const m of customModels) {
-    if (!m.id || !m.providerAlias) continue;
-    // The same provider/model id may carry sibling records of other types
-    // (image, embedding). Chat capability resolution reads only LLM records.
-    // Same fallback as providerCustomModels: kind || type || "llm".
-    if ((m.kind || m.type || "llm") !== "llm") continue;
+    if (!m?.id || !m.providerAlias) continue;
+    // Duplicate ids across endpoint kinds must not overlay each other's flags.
+    if ((m.kind || m.type || "llm") !== kind) continue;
     const storedId = String(m.id).replace(/^\//, "");
-    if (storedId !== cleanModelId) continue;
+    if (storedId !== cleanModelId && storedId !== registeredModel?.id) continue;
     const alias = m.providerAlias;
-    if (alias === provider || alias === requestPrefix || alias === canonicalAlias) {
-      const staticCaps = getCapabilitiesForModel(provider, String(cleanModel));
+    if (alias === provider || alias === scopedPrefix || alias === canonicalAlias || alias === registeredProvider?.id) {
+      const staticCaps = inheritedCaps || materializeRequestModel(provider, { id: cleanModelId, kind }).capabilities;
       const caps = m.capabilities;
       const hasCaps = caps && isObject(caps) && !Array.isArray(caps) && Object.keys(caps).length > 0;
       const merged = hasCaps ? { ...staticCaps, ...caps } : { ...staticCaps };
-      // Consumers that must distinguish "explicitly persisted on the custom
-      // row" from "inherited static/default" (e.g. strict context routing)
-      // read this non-enumerable marker; spreads/JSON drop it harmlessly.
+      // Only persisted operator keys override inherited/live metadata.
+      // The resolved capacities themselves remain usable without this marker.
       Object.defineProperty(merged, "customKeys", {
         value: new Set(hasCaps ? Object.keys(caps) : []),
         enumerable: false
@@ -37,52 +45,116 @@ export function resolveCustomCapabilities(provider, model, requestPrefix, custom
   return null;
 }
 
-// Async wrapper owning the DB lookup so callers (chat handler) don't fetch
-// the whole custom-model catalog themselves — keeps localDb mocking scoped
-// to this service's tests. Fail-open: lookup errors mean "no custom caps".
-export async function loadCustomCapabilities(provider, model, requestPrefix) {
+async function readOptionalMetadata(read, fallback) {
   try {
-    const customModels = await getCustomModels();
-    const direct = resolveCustomCapabilities(provider, model, requestPrefix, customModels);
-    if (direct) return resolveOpenRouterCapabilities(provider, model, direct);
-    // Compatible-provider nodes store custom rows under the node PREFIX as
-    // providerAlias, while getModelInfo resolves to the internal node id. A
-    // bare alias (requestPrefix null) or id-addressed request would miss the
-    // row, so retry with the node's prefix as the effective alias.
-    if (provider && (provider.startsWith("openai-compatible") || provider.startsWith("anthropic-compatible") || provider.startsWith("systemone-compatible") || /^[0-9a-f-]{16,}$/i.test(provider))) {
-      const nodes = [
-      ...(await getProviderNodes({ type: "openai-compatible" })),
-      ...(await getProviderNodes({ type: "anthropic-compatible" })),
-      ...(await getProviderNodes({ type: "systemone-compatible" }))];
-
-      const node = nodes.find((n) => n.id === provider);
-      if (node?.prefix && node.prefix !== requestPrefix) {
-        return resolveCustomCapabilities(provider, model, node.prefix, customModels);
-      }
-    }
-    return resolveOpenRouterCapabilities(provider, model, null);
+    return await read();
   } catch {
-    return null;
+    return fallback;
   }
 }
 
 /**
- * OpenRouter publishes per-model modalities, tool support and limits in its
- * public catalog. Merge the cached entry over the static table so vision
- * stripping, Vision Bridge and combo capability routing see the real model.
- * A custom model row's explicit keys still win, and only those stay in
- * `customKeys`: chatCore reads the catalog limits as live limits.
- * A cold cache warms in the background and this request uses static caps.
+ * One cache-only snapshot per request/list, never provider discovery. Each
+ * optional source fails independently so a custom-row DB failure cannot erase
+ * usable synced/shared metadata (or vice versa). Single-model reads are scoped.
  */
+export async function loadModelMetadataSnapshot(provider = null) {
+  const registered = provider && REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider || entry.aliases?.includes(provider));
+  const providerId = registered?.id || provider;
+  const [customModels, catalogs, sharedMetadata] = await Promise.all([
+    readOptionalMetadata(() => getCustomModels(), []),
+    provider && !registered ? null : readOptionalMetadata(
+      () => provider ? getSyncedModelCatalog(providerId) : getSyncedModelCatalogs(), null
+    ),
+    provider && !registered ? null : readOptionalMetadata(() => getSharedModelMetadata(), null),
+  ]);
+  return {
+    customModels: Array.isArray(customModels) ? customModels : [],
+    syncedCatalogs: provider ? { [providerId]: catalogs } : catalogs || {},
+    sharedMetadata,
+  };
+}
+
+/**
+ * Share the catalog's curated/shared/live precedence with requests and info.
+ * Only actual operator keys receive the non-enumerable customKeys marker;
+ * missing limits overwrite the runtime floor rather than publishing it.
+ */
+export function materializeRequestModel(provider, model, requestPrefix = null, snapshot = {}) {
+  const enriched = materializeSyncedModel(provider, model, snapshot.sharedMetadata);
+  const kind = model.kind || model.type || enriched.kind;
+  // A single wire id can exist on both chat and media endpoints. If the
+  // catalog selected its chat sibling, keep only the selected service semantics
+  // and this row's live declarations, never the sibling's chat token limits.
+  const kindCaps = enriched.kind !== kind ? capabilitiesFromServiceKind(kind) : null;
+  const caps = {
+    ...getCapabilitiesForModel(provider, model.id),
+    ...enriched.capabilities,
+    contextWindow: enriched.capabilities.contextWindow,
+    maxOutput: enriched.capabilities.maxOutput,
+    maxInput: enriched.capabilities.maxInput,
+    defaultOutput: enriched.capabilities.defaultOutput,
+    ...(kindCaps ? { ...kindCaps, maxInput: undefined, defaultOutput: undefined,
+      ...extractApiCapabilities(model.discoveredCapabilities || model.capabilities) } : null),
+  };
+  const custom = resolveCustomCapabilities(provider, model.id, requestPrefix, snapshot.customModels, caps, kind);
+  if (!custom) Object.defineProperty(caps, "customKeys", { value: new Set(), enumerable: false });
+  return { ...enriched, kind, capabilities: custom || caps };
+}
+
+// Cache-only metadata is enrichment, not a new model-access/routability check.
+export async function loadCustomCapabilities(provider, model, requestPrefix) {
+  if (!isString(model) || !model) return null;
+  const { cleanModel } = parseSuffix(model);
+  const modelId = String(cleanModel).replace(/^\//, "");
+  const registered = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider || entry.aliases?.includes(provider));
+  const providerId = registered?.id || provider;
+  const snapshot = await loadModelMetadataSnapshot(providerId);
+  let custom = resolveCustomCapabilities(providerId, modelId, requestPrefix, snapshot.customModels);
+  // Compatible nodes persist rows under their prefix, not the internal node id.
+  if (!custom && provider && (provider.startsWith("openai-compatible") || provider.startsWith("anthropic-compatible") || provider.startsWith("systemone-compatible") || /^[0-9a-f-]{16,}$/i.test(provider))) {
+    const nodes = await Promise.all(["openai-compatible", "anthropic-compatible", "systemone-compatible"].map(
+      (type) => readOptionalMetadata(() => getProviderNodes({ type }), [])
+    ));
+    const node = nodes.flat().find((entry) => entry?.id === provider);
+    if (node?.prefix && node.prefix !== requestPrefix) {
+      custom = resolveCustomCapabilities(provider, modelId, node.prefix, snapshot.customModels);
+    }
+  }
+  const effective = effectiveSyncedModels(snapshot.syncedCatalogs[providerId], registered?.models || []);
+  const registryModel = registered?.models?.find((entry) =>
+    (entry.id === modelId || entry.aliases?.includes(modelId)) &&
+    (entry.kind || entry.type || "llm") === "llm"
+  );
+  const synced = effective?.find((entry) =>
+    (entry.id === modelId || entry.id === registryModel?.id || entry.aliases?.includes(modelId)) &&
+    (entry.kind || entry.type || "llm") === "llm"
+  );
+  const shared = snapshot.sharedMetadata?.providers?.[providerId];
+  const hasShared = shared?.[modelId] || shared?.[registryModel?.id];
+  if (synced || hasShared && (registryModel || custom)) {
+    const inherited = materializeRequestModel(providerId, synced || { id: modelId, kind: "llm" }, requestPrefix, snapshot).capabilities;
+    const keys = custom?.customKeys || new Set();
+    const operator = Object.fromEntries([...keys].map((key) => [key, custom[key]]));
+    const merged = { ...inherited, ...operator };
+    Object.defineProperty(merged, "customKeys", { value: new Set(keys), enumerable: false });
+    custom = merged;
+  }
+  return resolveOpenRouterCapabilities(providerId, modelId, custom);
+}
+
+/** Cached OpenRouter flags/limits participate without starting chat-path I/O. */
 function resolveOpenRouterCapabilities(provider, model, custom) {
   if (provider !== "openrouter" || !isString(model)) return custom;
-  warmOpenRouterCatalog();
   const { cleanModel } = parseSuffix(model);
   const live = getOpenRouterModelCapabilities(String(cleanModel));
   if (!live) return custom;
   const keys = custom?.customKeys instanceof Set ? custom.customKeys : new Set();
   const operator = Object.fromEntries([...keys].map((key) => [key, custom[key]]));
-  const merged = { ...getCapabilitiesForModel(provider, String(cleanModel)), ...live, ...operator };
+  const merged = {
+    ...materializeRequestModel(provider, { id: String(cleanModel), kind: "llm", capabilities: live }).capabilities,
+    ...operator,
+  };
   Object.defineProperty(merged, "customKeys", { value: new Set(keys), enumerable: false });
   return merged;
 }
@@ -96,6 +168,8 @@ import {
   getProviderNodes,
   getProviderConnections,
   getCustomModels,
+  getSyncedModelCatalog,
+  getSyncedModelCatalogs,
   getSettings } from
 "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";

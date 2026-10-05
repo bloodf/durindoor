@@ -1,3 +1,11 @@
+# Unreleased
+
+## Fixes
+
+- Preserve provider-scoped model capabilities in dashboard APIs, auto-synced model cards, and selectors instead of borrowing a sibling provider's metadata or showing the 200K unknown-model floor.
+- Decode Codex input/output modalities and reasoning efforts during auto-sync; keep explicit text-only flags and served limits authoritative.
+- Recognize verified GPT-6 families on compatible routes and restore vision on GPT-5 Codex variants while keeping Spark text-only. Omit unpublished output ceilings from public discovery.
+
 # 4.10.0
 
 ## Features

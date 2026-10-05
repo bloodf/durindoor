@@ -17,6 +17,12 @@ export const MAX_MODEL_AUTO_SYNC_INTERVAL_HOURS = 720;
 
 const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(value);
 
+const BOOLEAN_CAPABILITY_KEYS = [
+  "vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput",
+  "videoOutput", "tools", "reasoning", "search", "structuredOutput",
+  "promptCaching", "thinkingCanDisable"
+];
+
 /**
  * Auto-sync is on for a provider when the operator enabled it explicitly, or
  * when it is one of the default providers and was not turned off.
@@ -126,8 +132,38 @@ export function extractApiCapabilities(raw) {
   if (raw.isVL === true) caps.vision = true;
   if (raw.isReasoning === true || raw.supportsReasoning === true) caps.reasoning = true;
 
+  // Codex catalogs declare modalities explicitly, including text-only models.
+  const input = raw.input_modalities ?? raw.modalities?.input;
+  if (Array.isArray(input)) {
+    caps.vision = input.includes("image");
+    if (input.includes("pdf")) caps.pdf = true;
+    caps.audioInput = input.includes("audio");
+    caps.videoInput = input.includes("video");
+  }
+  const output = raw.output_modalities ?? raw.modalities?.output;
+  if (Array.isArray(output)) {
+    caps.imageOutput = output.includes("image");
+    caps.audioOutput = output.includes("audio");
+    caps.videoOutput = output.includes("video");
+  }
+  if (Array.isArray(raw.supported_reasoning_levels)) {
+    const efforts = raw.supported_reasoning_levels
+      .map((level) => isString(level) ? level : level?.effort)
+      .filter((level) => isString(level) && level.length > 0);
+    if (efforts.length) {
+      caps.reasoning = true;
+      caps.thinkingEfforts = efforts;
+      caps.thinkingCanDisable = efforts.includes("none");
+    }
+  }
+
   const apiCaps = isRecord(raw.capabilities) ? raw.capabilities : null;
   if (apiCaps) {
+    for (const key of BOOLEAN_CAPABILITY_KEYS) {
+      if (isBoolean(apiCaps[key])) caps[key] = apiCaps[key];
+    }
+    caps.contextWindow ??= positiveInt(apiCaps.contextWindow);
+    caps.maxOutput ??= positiveInt(apiCaps.maxOutput);
     // GitHub Copilot: { limits: {...}, supports: {...} }
     const limits = isRecord(apiCaps.limits) ? apiCaps.limits : {};
     caps.contextWindow ??= positiveInt(limits.max_context_window_tokens) ?? positiveInt(limits.max_prompt_tokens);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { aggregateComboCapabilities, getCapabilitiesForModel, overlayComboCapabilities } from "open-sse/providers/capabilities.js";
+import { aggregateComboCapabilities, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { isString } from "@/shared/utils/typeChecks";
 
@@ -75,13 +75,21 @@ export function useModelCaps(enabled = true) {
   // Custom overrides merge over /api/models; if absent, fall back to static/provider-pattern.
   const getCaps = (key) => {
     if (!key) return null;
-    if (byFull[key]) return byFull[key];
     if (byCombo[key]) return byCombo[key];
-    const bare = key.includes("/") ? key.slice(key.indexOf("/") + 1) : key;
-    if (byId[bare]) return byId[bare];
-    const provider = key.includes("/") ? key.slice(0, key.indexOf("/")) : null;
-    const c = getCapabilitiesForModel(provider, bare);
-    return { vision: c.vision, search: c.search, reasoning: c.reasoning, tools: c.tools, contextWindow: c.contextWindow };
+    const qualified = key.includes("/");
+    const bare = qualified ? key.slice(key.indexOf("/") + 1) : key;
+    const provider = qualified ? key.slice(0, key.indexOf("/")) : null;
+    const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
+    // A qualified lookup must never inherit a sibling provider's bare-id row.
+    const cached = byFull[key] || (qualified ? byFull[`${alias}/${bare}`] : byId[bare]);
+    const caps = getCapabilitiesForModel(provider, bare);
+    const limits = resolveModelLimits(provider, bare, null, null, null, true);
+    return {
+      ...caps,
+      contextWindow: limits.known ? limits.contextWindow : undefined,
+      maxOutput: limits.known ? limits.maxOutput : undefined,
+      ...cached,
+    };
   };
 
   return { getCaps };

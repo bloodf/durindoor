@@ -826,13 +826,20 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*gemma*", caps: { vision: true, contextWindow: 128000 } },
 { pattern: "*nanobanana*", caps: { vision: true, imageOutput: true } },
 
+// Verified GPT-6 families also cover compatible routes and discovered snapshots.
+// Exact provider rows above retain their separate OAuth/reseller contracts.
+{ pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
+{ pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },
+{ pattern: "*gpt-6-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-sol"] },
+{ pattern: "*gpt-6-luna*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-luna"] },
+
 // ── OpenAI GPT-5.x (vision + thinking + web search) ──────────────
 { pattern: "*gpt-5*image*", caps: { imageOutput: true } },
-{ pattern: "*gpt-5*codex*", caps: { reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 } },
+{ pattern: "*gpt-5*codex*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 } },
 { pattern: "*gpt-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 400000, maxOutput: 128000 } },
 { pattern: "*gpt-4o*", caps: { vision: true, search: true, contextWindow: 128000, maxOutput: 16384 } },
-{ pattern: "*gpt-4.1*", caps: { vision: true, contextWindow: 1000000, maxOutput: 32768 } },
-{ pattern: "*gpt-4-turbo*", caps: { vision: true, contextWindow: 128000 } },
+{ pattern: "*gpt-4.1*", caps: { vision: true, contextWindow: 1047576, maxOutput: 32768 } },
+{ pattern: "*gpt-4-turbo*", caps: { vision: true, contextWindow: 128000, maxOutput: 4096 } },
 { pattern: "*gpt-4*", caps: { contextWindow: 128000 } },
 { pattern: "*gpt-3.5*", caps: { contextWindow: 16385, maxOutput: 4096 } },
 { pattern: "*gpt-oss*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 } },
@@ -853,6 +860,7 @@ export const PATTERN_CAPABILITIES = [
 // ── OpenAI o-series (reasoning, vision) ──────────────────────────
 { pattern: "*o1-mini*", caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 } },
 { pattern: "*o1*", caps: { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 100000 } },
+{ pattern: "*o3-mini*", caps: { vision: false, reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 100000 } },
 { pattern: "*o3*", caps: { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 100000 } },
 { pattern: "*o4*", caps: { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 100000 } },
 

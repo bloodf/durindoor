@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCustomCapabilities } from "../../src/app/(dashboard)/dashboard/providers/[id]/customModelCapabilities.js";
+import { buildCustomCapabilities, getCustomModelCapabilities } from "../../src/app/(dashboard)/dashboard/providers/[id]/customModelCapabilities.js";
 import { normalizeCustomCapabilities } from "../../src/lib/db/repos/aliasRepo.js";
 
 describe("buildCustomCapabilities", () => {
@@ -79,6 +79,22 @@ describe("normalizeCustomCapabilities", () => {
     const norm = normalizeCustomCapabilities({ thinkingCanDisable: false });
     expect(norm.ok).toBe(true);
     expect(norm.caps).toEqual({ thinkingCanDisable: false });
+  });
+});
+
+describe("custom model capability lookup", () => {
+  it("does not assign unknown compatible models an invented context window", () => {
+    expect(getCustomModelCapabilities({
+      providerId: "openai-compatible-test", modelId: "unpublished-model",
+      capabilities: { vision: true },
+    })).toMatchObject({ vision: true, contextWindow: undefined, maxOutput: undefined });
+  });
+
+  it("keeps operator limits and false flags over the documented model family", () => {
+    expect(getCustomModelCapabilities({
+      providerId: "openai-compatible-test", modelId: "gpt-6.1-sol",
+      capabilities: { vision: false, contextWindow: 128000, maxOutput: 16000 },
+    })).toMatchObject({ vision: false, contextWindow: 128000, maxOutput: 16000 });
   });
 });
 

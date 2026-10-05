@@ -41,6 +41,7 @@ AI Horde (`aihorde` / `horde`) never uses the static tables. Limits exist only w
 - `GET /v1/models` (Codex projection) omits `context_window` and `max_output_tokens`.
 - `GET /v1/models/info` omits `contextWindow` and `maxOutput`.
 - Ingress preflight does not reject, no matter how large the body is.
+- Dashboard model cards and selectors also omit the unknown floor rather than displaying it as a 200K guarantee.
 
 A registry row counts only for fields it declares. A row without a usable `contextLength` falls through to the pattern chain instead of reporting `known: true` with empty numbers.
 
@@ -61,6 +62,12 @@ Direct OpenAI `gpt-5.4` is 1,050,000 / 128,000 on `PROVIDER_CAPABILITIES.openai`
 ## Audited vendor limits
 
 Keep direct API, subscription/OAuth, and reseller model contracts separate. Claude Code and Codex publish authenticated catalogs that can differ from the vendor's direct API models. Codex/CX audited windows remain 272,000 with no published output ceiling; direct OpenAI limits must not replace those values.
+
+The dashboard `/api/models` response retains the complete capability object, including output limits, PDF/audio/video flags, structured output, prompt caching, supported tools, and reasoning settings. Qualified lookups such as `codex/gpt-6-sol` resolve the provider's `cx` alias; they never borrow a bare-id row from a different provider.
+
+Auto-sync stores only metadata the provider actually declares, including Codex input/output modalities and supported reasoning efforts. `/api/models/auto-sync` carries those capabilities to provider cards and model selectors. Live metadata overlays static metadata, and persisted operator overrides overlay both. Explicit `false` stays false; missing metadata does not prove a capability is unsupported.
+
+GPT-6 Astra, Sol, Luna, and GPT-6.1 Sol support image input and a 1,050,000-token direct API context with 128,000 output tokens. These are not automatic Codex subscription guarantees. Image generation via a Responses tool is recorded in `supportedTools`, not as native image output. See the [OpenAI model catalog](https://developers.openai.com/api/docs/models) and [GPT-6.1 Sol specifications](https://developers.openai.com/api/docs/models/gpt-6.1-sol).
 
 Canonical aliases use the same capability, format, limit, and pricing row as their target. Deprecated models can remain callable until the vendor retires them. Retired models leave selectable catalogs. A published id with no documented routing endpoint, such as `gpt-rosalind-research`, remains inventory-only with `routingAvailable: false`.
 

@@ -465,6 +465,7 @@ export default function ModelSelectModal({
           id: m.id || m.slug || m.model || m.name,
           name: m.name || m.displayName || m.id,
           value: `${nodePrefix}/${m.id || m.slug || m.model || m.name}`,
+          capabilities: m.capabilities,
           isFetched: true
         }));
 
@@ -476,6 +477,7 @@ export default function ModelSelectModal({
           id: m.id,
           name: m.name || m.id,
           value: `${nodePrefix}/${m.id}`,
+          capabilities: m.capabilities,
           isCustom: true
         }));
 
@@ -533,10 +535,10 @@ export default function ModelSelectModal({
         const customAliasIds = new Set(customAliasModels.map((m) => m.id));
         const customRegisteredModels = customModels.
         filter((m) => m.providerAlias === alias && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id)).
-        map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
+        map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, capabilities: m.capabilities, isCustom: true }));
 
         const merged = [
-        ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
+        ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m), capabilities: m.capabilities })),
         ...customAliasModels,
         ...customRegisteredModels];
 
@@ -712,7 +714,10 @@ export default function ModelSelectModal({
             const isSelected = selectedModel === model.value;
             const isPlaceholder = model.isPlaceholder;
             const isAdded = addedModelValues.includes(model.value);
-            return <Chip key={model.value} size="sm" icon={isAdded && !isPlaceholder ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect(model)} title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined} label={isPlaceholder ? <span className="inline-flex items-center gap-1 italic text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[12px]">edit</span>{model.name}</span> : <span className="inline-flex items-center gap-1">{model.name}{model.isCustom ? <span className="text-xs font-normal text-dd-muted">custom</span> : null}{model.isFetched ? <span className="text-xs font-normal text-dd-muted">auto</span> : null}<CapacityBadges caps={getCaps(model.value)} colorOverride="text-dd-muted" size={12} /></span>} />;
+            const customOverride = customModels.find((m) => m.id === model.id && (m.providerAlias === providerId || m.providerAlias === group.alias));
+            const liveCaps = Array.isArray(model.capabilities) ? null : model.capabilities;
+            const caps = { ...getCaps(model.value), ...liveCaps, ...customOverride?.capabilities };
+            return <Chip key={model.value} size="sm" icon={isAdded && !isPlaceholder ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect(model)} title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined} label={isPlaceholder ? <span className="inline-flex items-center gap-1 italic text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[12px]">edit</span>{model.name}</span> : <span className="inline-flex items-center gap-1">{model.name}{model.isCustom ? <span className="text-xs font-normal text-dd-muted">custom</span> : null}{model.isFetched ? <span className="text-xs font-normal text-dd-muted">auto</span> : null}<CapacityBadges caps={caps} colorOverride="text-dd-muted" size={12} /></span>} />;
           })}</div></section>)}
           {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
         </div>

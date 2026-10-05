@@ -111,6 +111,30 @@ describe("model auto-sync: capabilities from provider APIs", () => {
     expect(extractApiCapabilities({ slug: "gpt-6-sol", context_window: 272_000 })).toEqual({ contextWindow: 272_000 });
     expect(normalizeSyncedModels([{ id: "grok-5" }])[0]).toEqual({ id: "grok-5", name: "grok-5", kind: "llm" });
   });
+
+  it("preserves a new Codex model's image input, served window and effort contract", () => {
+    const [row] = normalizeSyncedModels([{
+      slug: "codex-new-model",
+      context_window: 272000,
+      input_modalities: ["text", "image"],
+      output_modalities: ["text"],
+      supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+    }]);
+    expect(row.capabilities).toMatchObject({
+      vision: true, audioInput: false, videoInput: false,
+      imageOutput: false, audioOutput: false, videoOutput: false,
+      contextWindow: 272000, reasoning: true,
+      thinkingEfforts: ["low", "high"], thinkingCanDisable: false,
+    });
+    expect(row.capabilities.maxOutput).toBeUndefined();
+  });
+
+  it("honors explicit text-only flags instead of promoting every discovered model to vision", () => {
+    expect(extractApiCapabilities({
+      input_modalities: ["text"],
+      capabilities: { tools: false, structuredOutput: true, promptCaching: true },
+    })).toMatchObject({ vision: false, tools: false, structuredOutput: true, promptCaching: true });
+  });
 });
 
 describe("model auto-sync: merge and pruning", () => {

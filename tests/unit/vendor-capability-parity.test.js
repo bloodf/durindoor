@@ -53,4 +53,19 @@ describe("vendor capability parity", () => {
     expect(resolveModelLimits("anthropic", "claude-sonnet-4-5-20250929").contextWindow).toBe(200000);
     expect(resolveModelLimits("claude", "claude-sonnet-4-5-20250929").contextWindow).toBe(1000000);
   });
+
+  it("retains Codex image input without promoting its text-only Spark variant", () => {
+    expect(getCapabilitiesForModel("codex", "gpt-5.3-codex-high").vision).toBe(true);
+    expect(getCapabilitiesForModel("cx", "gpt-5.3-codex-spark").vision).toBe(false);
+  });
+
+  it("recognizes verified GPT-6 models on compatible routes without replacing live limits", () => {
+    expect(getCapabilitiesForModel("openai-compatible-test", "gpt-6.1-sol")).toMatchObject({
+      vision: true, structuredOutput: true, promptCaching: true,
+      contextWindow: 1050000, maxOutput: 128000,
+    });
+    expect(resolveModelLimits("openai-compatible-test", "gpt-6.1-sol", null, null, {
+      contextWindow: 262144, maxOutput: 32000,
+    })).toMatchObject({ contextWindow: 262144, maxOutput: 32000, source: "live" });
+  });
 });

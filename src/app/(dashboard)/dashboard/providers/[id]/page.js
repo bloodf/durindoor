@@ -1588,7 +1588,7 @@ export default function ProviderDetailPage() {
           const customOverride = customModels.find(
             (m) => m?.id === model.id && m.providerAlias === providerStorageAlias && (m.kind || m.type || "llm") === "llm"
           );
-          const baseCaps = getCaps(`${providerId}/${model.id}`);
+          const baseCaps = { ...getCaps(`${providerId}/${model.id}`), ...model.capabilities };
           return (
             <ModelRow
               key={model.id}
@@ -1605,7 +1605,7 @@ export default function ProviderDetailPage() {
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
               caps={customOverride ? { ...baseCaps, ...customOverride.capabilities } : baseCaps}
-              thinkingSuffix={resolveThinkingSuffix(model.id)}
+              thinkingSuffix={resolveThinkingSuffix(model.id, { ...baseCaps, ...customOverride?.capabilities })}
               onEdit={() => setEditingCustomModel({ id: model.id, name: model.name, capabilities: customOverride?.capabilities || {} })} />);
 
 

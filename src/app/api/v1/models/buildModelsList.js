@@ -713,11 +713,16 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     let contextWindow = explicitCaps.contextWindow;
     let maxOutput = explicitCaps.maxOutput;
     const explicitKeys = explicitCaps.customKeys instanceof Set ? explicitCaps.customKeys : null;
-    const fallback = resolveModelLimits(providerId, modelId, explicitCaps, null, liveLimits);
+    const fallback = resolveModelLimits(providerId, modelId, explicitCaps, null, liveLimits, true);
     if (!positive(contextWindow) && fallback.known && !explicitKeys?.has("contextWindow")) contextWindow = fallback.contextWindow;
     if (!positive(maxOutput) && fallback.known && !explicitKeys?.has("maxOutput")) maxOutput = fallback.maxOutput;
     if (positive(contextWindow)) model.context_length = contextWindow;
     if (positive(maxOutput)) model.max_completion_tokens = maxOutput;
+    model.capabilities = {
+      ...model.capabilities,
+      contextWindow: positive(contextWindow) ? contextWindow : undefined,
+      maxOutput: positive(maxOutput) ? maxOutput : model.capabilities?.maxOutput === null ? null : undefined,
+    };
     return model;
   };
 
@@ -741,7 +746,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         ...projectModelPresentation({ model, modelId: model.id, providerId, outputAlias: alias }),
       };
       if (modelKind(model) === LLM_KIND) {
-        attachModelLimits(entry, providerId, model.id, caps);
+        attachModelLimits(entry, providerId, model.id);
       }
       models.push(entry);
     }

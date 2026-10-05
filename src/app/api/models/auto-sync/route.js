@@ -28,7 +28,7 @@ function providerStatus(providerId, entry, settings) {
     removedModelIds: entry?.removedModelIds || [],
     // The effective list replaces the registry defaults while auto-sync is on
     // and a sync has succeeded; null means "use the registry".
-    models: effective ? effective.map(({ id, name, kind }) => ({ id, name, kind })) : null
+    models: effective ? effective.map(({ id, name, kind, capabilities }) => ({ id, name, kind, capabilities })) : null
   };
 }
 

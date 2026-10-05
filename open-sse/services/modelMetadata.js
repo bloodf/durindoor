@@ -50,9 +50,12 @@ function boundedThinkingRange(value) {
  * Malformed pairs never discard an independently valid output cap.
  * Native Anthropic ModelInfo rows (type:"model" plus their required native limit
  * fields), or explicit format:"anthropic", treat max_input_tokens as the native
- * window. That root declaration precedes enriched metadata; max_tokens is never
- * added. Native Gemini Model rows (models/ name plus generation methods), or
- * explicit format:"gemini", treat inputTokenLimit as the native window.
+ * window unless max_context_window_tokens is explicitly null (unknown total).
+ * That nullable extension suppresses only input-as-window inference; positive
+ * explicit totals retain their precedence over enriched metadata. Its absence
+ * preserves real native ModelInfo semantics, and max_tokens is never added.
+ * Native Gemini Model rows (models/ name plus generation methods), or explicit
+ * format:"gemini", treat inputTokenLimit as the native window.
  * Untyped/stripped rows need the provider adapter to supply the format.
  * Explicit format:"generic" disables native shape recognition.
  * Generation defaults and compaction thresholds are deliberately not read.
@@ -67,7 +70,8 @@ export function extractLiveModelLimits(model, { format = "auto" } = {}) {
   const native = nativeAnthropic || nativeGemini;
   const sources = [model.limits, model.meta, model.capabilities?.limits, model.capabilities, model.limit, model];
   let contextWindow = native ? readLimit(model, CONTEXT_KEYS) ??
-    positiveLimit(nativeAnthropic ? model.max_input_tokens : model.inputTokenLimit) : undefined;
+    (nativeAnthropic && model.max_context_window_tokens === null ? undefined :
+      positiveLimit(nativeAnthropic ? model.max_input_tokens : model.inputTokenLimit)) : undefined;
   let maxInput;
   let defaultOutput;
   let maxOutput;

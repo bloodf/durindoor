@@ -155,29 +155,38 @@ function derivedStaticModels(staticModels, ids) {
   ids.has(m.upstreamModelId) && !ids.has(m.id));
 }
 
+/**
+ * Materialize declarations within the provider's canonical identity and service
+ * kind. A custom media row may reuse a chat id without inheriting chat facts;
+ * explicit provider discoveries remain scoped to the row's declared kind.
+ */
 export function materializeSyncedModel(providerId, model, sharedMetadata = null) {
   const provider = REGISTRY.find((entry) => entry.id === providerId || entry.alias === providerId ||
     entry.uiAlias === providerId || entry.aliases?.includes(providerId));
   const canonicalProvider = provider?.id || providerId;
   const registered = provider?.models?.find((entry) => entry.id === model.id || entry.aliases?.includes(model.id));
   const canonicalModel = registered?.id || model.id;
-  const kind = registered?.kind || registered?.type || model.kind || "llm";
+  const catalogKind = registered ? registered.kind || registered.type || "llm" : classifyModelKind(canonicalModel);
+  const kind = model.kind || model.type || catalogKind || "llm";
+  const catalogMatchesKind = kind === catalogKind;
   const providerCaps = ownRecord(PROVIDER_CAPABILITIES, canonicalProvider);
-  const providerDeclaration = ownRecord(providerCaps, canonicalModel) || ownRecord(providerCaps, model.id);
-  const exactDeclaration = ownRecord(MODEL_CAPABILITIES, canonicalModel) || ownRecord(MODEL_CAPABILITIES, model.id);
-  const patternDeclaration = !providerDeclaration && !exactDeclaration ?
+  const providerDeclaration = catalogMatchesKind ?
+    ownRecord(providerCaps, canonicalModel) || ownRecord(providerCaps, model.id) : null;
+  const exactDeclaration = catalogMatchesKind ?
+    ownRecord(MODEL_CAPABILITIES, canonicalModel) || ownRecord(MODEL_CAPABILITIES, model.id) : null;
+  const patternDeclaration = catalogMatchesKind && !providerDeclaration && !exactDeclaration ?
     PATTERN_CAPABILITIES.find(({ pattern }) => matchPattern(pattern, canonicalModel) || matchPattern(pattern, model.id))?.caps : null;
   const declared = providerDeclaration || exactDeclaration || patternDeclaration || {};
-  const registryCapabilities = extractApiCapabilities(registered);
+  const registryCapabilities = extractApiCapabilities(catalogMatchesKind ? registered : null);
   const catalogSource = providerDeclaration ? "provider" : exactDeclaration ? "exact" : patternDeclaration ? "pattern" :
     Object.keys(registryCapabilities).length ? "registry" : null;
-  const resolved = getCapabilitiesForModel(canonicalProvider, canonicalModel);
+  const resolved = catalogMatchesKind ? getCapabilitiesForModel(canonicalProvider, canonicalModel) : {};
   // Only fields actually declared by the selected catalog are specifications.
   // getCapabilitiesForModel's compatibility defaults are not discovery facts.
   const curated = { ...registryCapabilities, ...Object.fromEntries(Object.keys(declared).map((key) => [key, resolved[key]])) };
-  const limits = resolveModelLimits(canonicalProvider, canonicalModel, null, null, null, true);
+  const limits = catalogMatchesKind ? resolveModelLimits(canonicalProvider, canonicalModel, null, null, null, true) : null;
   // A transport's configured default is not a model's supported capacity.
-  const usableLimits = limits.known && (limits.source !== "registry" || Number.isFinite(registryCapabilities.contextWindow));
+  const usableLimits = limits?.known && (limits.source !== "registry" || Number.isFinite(registryCapabilities.contextWindow));
   if (usableLimits) {
     curated.contextWindow = limits.contextWindow;
     curated.maxOutput = declared.maxOutput === null ? null : limits.maxOutput;
@@ -186,7 +195,11 @@ export function materializeSyncedModel(providerId, model, sharedMetadata = null)
   const shared = {};
   const sharedEntries = [];
   for (const id of canonicalModel === model.id ? [canonicalModel] : [canonicalModel, model.id]) {
-    const entryCaps = extractApiCapabilities(ownRecord(sharedModels, id));
+    const sharedModel = ownRecord(sharedModels, id);
+    const sharedKind = EXPLICIT_KINDS.has(sharedModel?.kind || sharedModel?.type) ?
+      sharedModel.kind || sharedModel.type : catalogKind;
+    if (sharedKind !== kind) continue;
+    const entryCaps = extractApiCapabilities(sharedModel);
     if (!Object.keys(entryCaps).length) continue;
     Object.assign(shared, entryCaps);
     const provenance = ownRecord(ownRecord(sharedMetadata?.modelMetadata, canonicalProvider), id);
@@ -197,6 +210,11 @@ export function materializeSyncedModel(providerId, model, sharedMetadata = null)
       ...(isString(source) && source.trim() ? { source } : null),
       ...(Number.isSafeInteger(fetchedAt) && fetchedAt >= 0 ? { fetchedAt } : null),
     });
+  }
+  // Embedding input context is meaningful even though curated nulls suppress
+  // chat-generation windows. Keep a proven same-kind shared input capacity.
+  if (kind === "embedding" && curated.contextWindow === null && Number.isFinite(shared.contextWindow)) {
+    delete curated.contextWindow;
   }
   // Old enriched rows are not provider declarations. Without the declaration
   // snapshot, their merged fields have unknown provenance and must be rebuilt.
@@ -209,7 +227,7 @@ export function materializeSyncedModel(providerId, model, sharedMetadata = null)
     ...live,
   };
   // Codex's default/compaction window is not the API model's total capacity.
-  if (canonicalProvider === "codex" && limits.known && limits.source === "provider") {
+  if (canonicalProvider === "codex" && limits?.known && limits.source === "provider") {
     caps.contextWindow = limits.contextWindow;
     caps.maxOutput = limits.maxOutput;
     if (Number.isFinite(curated.maxInput)) caps.maxInput = curated.maxInput;

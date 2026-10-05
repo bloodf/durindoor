@@ -902,7 +902,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     const inherited = inheritedCustomModelsByProvider.get(providerId)?.get(`${kind}\0${modelId}`) ||
       materializeSyncedModel(providerId, { id: modelId, kind }, sharedMetadata);
     const inheritedCaps = inherited.capabilities;
-    const staticCaps = getCapabilitiesForModel(providerId, modelId);
+    // Only chat rows use ID-based compatibility floors. Media declarations
+    // already come from kind-scoped materialization, not a chat namesake.
+    const staticCaps = kind === LLM_KIND ? getCapabilitiesForModel(providerId, modelId) : capabilitiesFromServiceKind(kind);
     const customCaps = isRecord(customModel.capabilities) ? { ...customModel.capabilities } : {};
     const customKeys = new Set(Object.keys(customCaps));
     Object.defineProperty(customCaps, "customKeys", { value: customKeys, enumerable: false });

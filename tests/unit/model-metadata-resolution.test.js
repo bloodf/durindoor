@@ -185,7 +185,17 @@ describe("rich compatible model metadata", () => {
     const native = await buildModelsResponse(new Request("http://localhost/v1/models", {
       headers: { "anthropic-version": "2023-06-01" },
     }), [model]).json();
-    expect(native.data[0]).toMatchObject({ max_input_tokens: 1000000, max_tokens: 128000 });
+    expect(native.data[0]).toMatchObject({
+      max_input_tokens: 1000000, max_tokens: 128000, max_context_window_tokens: null,
+    });
+    for (const options of [undefined, { format: "anthropic" }]) {
+      expect(extractLiveModelLimits(native.data[0], options))
+        .toEqual({ maxInput: 1000000, maxOutput: 128000 });
+      const decoded = extractApiCapabilities(native.data[0], options);
+      expect(decoded).toEqual({ maxInput: 1000000, maxOutput: 128000 });
+      expect(projectDiscoveryMetadata({ id: model.id, capabilities: decoded }))
+        .not.toHaveProperty("max_model_len");
+    }
   });
 
   it("keeps explicit serialized limits above stale capability values in every envelope", async () => {

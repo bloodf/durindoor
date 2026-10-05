@@ -15,6 +15,7 @@
 - Keep inherited discovered/shared capacities and defaults when a partial operator capability override wins public model-list deduplication.
 - Retain safe provider attribution and thinking-budget bounds in compatible discovery; canonical unsupported flags remain authoritative over native capability hints.
 - Resolve missing Pi CLI configuration limits from scoped cached discovery, shared specifications, and operator overrides while preserving hand-tuned per-model settings and unrelated provider configuration.
+- Scope custom media inheritance by service kind and preserve explicitly unknown total windows through native discovery round trips without losing independent input/output ceilings.
 
 # 4.10.0
 

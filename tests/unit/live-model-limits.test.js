@@ -79,6 +79,30 @@ describe("extractLiveModelLimits", () => {
       .toEqual({ maxOutput: 128_000 });
   });
 
+  it.each(["auto", "anthropic"])("keeps an explicitly unknown native total unknown in %s mode", (format) => {
+    const native = {
+      type: "model", max_input_tokens: 1_000_000, max_tokens: 128_000,
+      max_context_window_tokens: null,
+    };
+    expect(extractLiveModelLimits(native, { format }))
+      .toEqual({ maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({
+      ...native, max_context_window_tokens: 1_050_000, max_input_tokens: 922_000,
+    }, { format })).toEqual({ contextWindow: 1_050_000, maxInput: 922_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({
+      ...native, max_model_len: 1_050_000, context_length: 272_000,
+    }, { format })).toEqual({ contextWindow: 1_050_000, maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({
+      ...native, capabilities: { contextWindow: 1_050_000 },
+    }, { format })).toEqual({ contextWindow: 1_050_000, maxInput: 1_000_000, maxOutput: 128_000 });
+  });
+
+  it("does not let the native unknown-total marker change generic additive budgets", () => {
+    expect(extractLiveModelLimits({
+      max_context_window_tokens: null, max_input_tokens: 922_000, max_output_tokens: 128_000,
+    })).toEqual({ contextWindow: 1_050_000, maxInput: 922_000, maxOutput: 128_000 });
+  });
+
   it("keeps explicit total fields authoritative in native mode without dropping defaults", () => {
     expect(extractLiveModelLimits({
       max_model_len: 1_000_000, max_input_tokens: 900_000, max_tokens: 128_000, defaultOutput: 32_000,

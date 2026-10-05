@@ -74,6 +74,10 @@ The [Pi generator](https://github.com/badlogic/pi-mono/blob/main/packages/ai/scr
 
 Generic OpenAI-compatible clients often parse only `id`, `object`, `created`, and `owned_by`; an HTTP 200 alone says nothing about consumed limits or modalities. OMP's `openai-models-list` parser specifically reads `max_model_len`, then `context_length`, and can combine nested input/output limits. It also reads modality declarations to distinguish chat, image, and embedding runners. Silent unknown models can acquire **OMP-local** generic defaults (128,000 context / 32,768 output), not vendor-verified limits. A custom gateway provider does not automatically inherit every sibling provider's metadata, transport policy, reasoning effort, cache policy, or tool support. Inspect the actual client result and configure explicit overrides where its parser cannot carry a required field.
 
+The isolated OMP 18.6.1 check on 2026-10-05 consumed GPT-6/6.1 Sol's 1,050,000 context, 128,000 output, and image input, plus Kimi K3's 1,048,576 context/output. A temporary local override to 100,000 context / 20,000 output remained effective after refresh.
+
+Client inference remains distinct from served facts: MiniMax M3.1's output ceiling was absent from DurinDoor, while OMP selected `maxTokens: 512000`; an opaque model with no declared limits received OMP's 128,000 / 32,768 defaults. Its generic parser inherits reasoning/thinking policy from reference models instead of consuming arbitrary gateway capability flags: a new fixture's served `reasoning: true` materialized as client `reasoning: false`. Video input also remained outside its text/image input representation. These client values are not vendor guarantees; use explicit local overrides when the generic parser cannot express the serving contract.
+
 ## Audited vendor limits and capabilities
 
 These are source-backed catalog facts checked against the linked vendor documentation on 2026-10-05. They are not paid inference results or a statement that a release or production rollout occurred. Account access, quotas, and available efforts remain provider-scoped.

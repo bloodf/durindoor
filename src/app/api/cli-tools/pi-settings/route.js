@@ -14,8 +14,8 @@
  * before writing, keeping hand-tuned limits and metadata (name, modalities,
  * cost, compat options, ...) instead of resetting them to the fixed
  * `DEFAULT_CONTEXT_WINDOW` / `DEFAULT_MAX_TOKENS`. Limits still missing after
- * the merge are resolved through the capability layer (provider/model
- * aliases, or combo aggregation for a combo name) rather than defaulted.
+ * the merge are resolved through scoped cached model metadata (discovered,
+ * shared and operator limits), with capability/combo resolution as fallback.
  * The selected list stays authoritative for order and removal; unrelated
  * provider fields (`authHeader`, custom `headers`, ...) are preserved.
  */
@@ -30,7 +30,7 @@ import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject, isString } from "@/shared/utils/typeChecks";
 import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
 import { getCombos } from "@/lib/localDb";
-import { getModelInfo } from "@/sse/services/model";
+import { getModelInfo, loadCustomCapabilities, parseModel } from "@/sse/services/model";
 import { getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 
 const execAsync = promisify(exec);
@@ -78,10 +78,9 @@ const hasDurinDoorConfig = (config) => {
 const hasValidLimit = (value) => Number.isFinite(value) && value > 0;
 
 /**
- * Resolve missing context/output limits for a model id through the same
- * capability layer /v1/models uses: provider aliases and configured model
- * aliases via `getModelInfo`, or combo aggregation (including nested combos)
- * when the id names a combo rather than a `provider/model` pair.
+ * Resolve missing context/output limits through scoped cached model metadata,
+ * including provider/model aliases, shared metadata and operator overrides.
+ * Combo names continue to use aggregation (including nested combos).
  */
 const resolveMissingCapabilities = async (id, comboLookupRef) => {
   if (!id.includes("/")) {
@@ -92,7 +91,10 @@ const resolveMissingCapabilities = async (id, comboLookupRef) => {
     }
   }
   const resolved = await getModelInfo(id);
-  return getCapabilitiesForModel(resolved.provider, resolved.model || id);
+  const model = resolved.model || id;
+  const requestPrefix = parseModel(id).providerAlias || null;
+  const scoped = await loadCustomCapabilities(resolved.provider, model, requestPrefix);
+  return scoped || getCapabilitiesForModel(resolved.provider, model);
 };
 
 /**

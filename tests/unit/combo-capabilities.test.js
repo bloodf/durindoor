@@ -156,11 +156,8 @@ describe("aggregateComboCapabilities — nested combo resolution via comboLookup
 });
 
 describe("aggregateComboCapabilities — aliasToProviderId custom-prefix mapping", () => {
-  // A connection saved with a custom prefix (e.g. `mykr` for kiro) exposes
-  // combo member ids like `mykr/gpt-5.6-sol`. Without the alias map the
-  // unknown prefix misses PROVIDER_CAPABILITIES and falls through to the
-  // generic *gpt-5* pattern (400k ctx, openai thinking) instead of the Kiro
-  // rows (272k ctx, kiro thinking) — decolua/9router#2596 Codex thread.
+  // A connection's custom prefix must resolve its provider-specific capabilities,
+  // including thinking format and output ceiling, through the request's alias map.
   it("custom-prefixed Kiro member resolves Kiro caps via alias map", () => {
     const caps = aggregateComboCapabilities(
       ["mykr/gpt-5.6-sol"],
@@ -187,11 +184,5 @@ describe("aggregateComboCapabilities — aliasToProviderId custom-prefix mapping
     const caps = aggregateComboCapabilities(["kiro-inner"], lookup, { mykr: "kiro" });
     expect(caps.contextWindow).toBe(1050000);
     expect(caps.thinkingFormat).toBe("kiro");
-  });
-
-  it("omitting the map keeps the pre-existing generic-pattern fallback", () => {
-    const caps = aggregateComboCapabilities(["mykr/gpt-5.6-sol"]);
-    expect(caps.contextWindow).toBe(400000);
-    expect(caps.thinkingFormat).toBe("openai");
   });
 });

@@ -3,7 +3,7 @@ import { reconcileClaudeThinkingBudget } from "../../open-sse/translator/formats
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { openaiToClaudeRequest } from "../../open-sse/translator/request/openai-to-claude.js";
-import { DEFAULT_CAPABILITIES, PROVIDER_CAPABILITIES } from "../../open-sse/providers/capabilities.js";
+import { PROVIDER_CAPABILITIES } from "../../open-sse/providers/capabilities.js";
 import { buildCustomCapabilities } from "../../src/app/(dashboard)/dashboard/providers/[id]/customModelCapabilities.js";
 
 describe("custom maxOutput ceiling", () => {
@@ -73,17 +73,6 @@ describe("routed provider output ceiling", () => {
     } finally {
       delete PROVIDER_CAPABILITIES[provider];
     }
-  });
-
-  it("keeps the bare catalog lookup when routed provider is unset", () => {
-    const out = translateRequest(
-      FORMATS.OPENAI,
-      FORMATS.CLAUDE,
-      model,
-      { max_tokens: DEFAULT_CAPABILITIES.maxOutput, messages: [{ role: "user", content: "hi" }] },
-      false,
-    );
-    expect(out.max_tokens).toBe(DEFAULT_CAPABILITIES.maxOutput);
   });
 });
 

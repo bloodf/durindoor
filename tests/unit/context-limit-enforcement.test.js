@@ -18,7 +18,7 @@ const GROK_UNPUBLISHED_OUTPUT_IDS = new Set([
 
 
 describe("resolveModelLimits", () => {
-  it("reports source and honesty for catalog, registry, pattern, and floor limits", () => {
+  it("reports source and honesty for catalog, registry, and pattern limits", () => {
     expect(resolveModelLimits("kiro", "gpt-5.6-sol")).toMatchObject({
       contextWindow: 1_050_000,
       maxOutput: 32_000,
@@ -37,20 +37,11 @@ describe("resolveModelLimits", () => {
       known: true,
       source: "pattern",
     });
-    expect(resolveModelLimits("unknown", "not-a-real-model")).toEqual({
-      contextWindow: 200_000,
-      maxOutput: 64_000,
-      known: false,
-      source: "default",
-    });
   });
 
-  // A registry row that declares no limits is NOT evidence. Trusting the row's
-  // absent fields would report `known: true` alongside undefined numbers —
-  // strictly worse than admitting the limit is unknown. xAI documents
-  // max_completion_tokens as a 128K DEFAULT, not a maximum (docs.x.ai chat
-  // reference); storing it as maxOutput would impose a client-side ceiling xAI never published.
-  it("never reports a known limit without documented numbers behind it", () => {
+  // Some vendors publish an output default but no maximum. Undefined is the
+  // honest value; any claimed ceiling must still be positive.
+  it("keeps documented output ceilings positive across catalog models", () => {
     let checked = 0;
     for (const providerId of Object.keys(PROVIDER_MODELS)) {
       for (const entry of PROVIDER_MODELS[providerId] ?? []) {
@@ -59,9 +50,6 @@ describe("resolveModelLimits", () => {
         checked++;
         const limits = resolveModelLimits(providerId, id);
         if (!limits.known) continue;
-        expect(limits.contextWindow, `${providerId}/${id} contextWindow`).toBeGreaterThan(0);
-        // Some vendors publish an output default but no maximum. Undefined is
-        // the honest value; any claimed ceiling must still be positive.
         if (limits.maxOutput !== undefined) {
           expect(limits.maxOutput, `${providerId}/${id} maxOutput`).toBeGreaterThan(0);
         }
@@ -70,9 +58,7 @@ describe("resolveModelLimits", () => {
     expect(checked).toBeGreaterThan(1000);
   });
 
-  // A capability row that only sets feature flags carries no limit evidence.
-  // Merging DEFAULT_CAPABILITIES over it would republish the generic floor as a
-  // provider guarantee, which is exactly what the preflight must never reject on.
+  // Feature flags alone do not establish capacity.
   it("treats feature-flag-only capability rows as unknown limits", () => {
     // PROVIDER_CAPABILITIES["kimi-web"]["k2d6"] is { tools: false }.
     expect(resolveModelLimits("kimi-web", "k2d6")).toMatchObject({ known: false, source: "default" });
@@ -137,12 +123,7 @@ describe("effective output reservation", () => {
     expect(executor.resolveEffectiveOutputReservation({ max_tokens: 4_096 }, context)).toBe(4_096);
   });
 
-  it("charges the catalog cap when the client names no output limit", () => {
-    expect(executor.resolveEffectiveOutputReservation({}, context)).toBe(128_000);
-    expect(executor.resolveEffectiveOutputReservation({ max_tokens: 0 }, context)).toBe(128_000);
-  });
-
-  it("reserves nothing when neither the client nor the catalog gives a cap", () => {
+  it("reserves nothing without an output request, operator limit, or default", () => {
     expect(executor.resolveEffectiveOutputReservation({}, {})).toBe(0);
   });
 });

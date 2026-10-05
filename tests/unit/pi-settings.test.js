@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const io = vi.hoisted(() => ({ access: vi.fn(), readFile: vi.fn(), writeFile: vi.fn(), mkdir: vi.fn() }));
-const db = vi.hoisted(() => ({ getCombos: vi.fn() }));
+const db = vi.hoisted(() => ({
+  getCombos: vi.fn(),
+  getCustomModels: vi.fn(),
+  getSyncedModelCatalog: vi.fn(),
+  getCachedSharedModelMetadata: vi.fn(),
+}));
 const modelSvc = vi.hoisted(() => ({ getModelInfo: vi.fn() }));
 
 vi.mock("fs/promises", () => ({ default: io }));
@@ -13,10 +18,12 @@ vi.mock("next/server", () => ({
   NextResponse: { json: (body, init) => Response.json(body, init) },
 }));
 vi.mock("@/lib/localDb", () => db);
-vi.mock("@/sse/services/model", () => modelSvc);
+vi.mock("@/sse/services/model", async (importOriginal) => ({
+  ...await importOriginal(),
+  ...modelSvc,
+}));
 
 import { POST } from "@/app/api/cli-tools/pi-settings/route.js";
-import { getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 
 const save = (body) => POST(new Request("http://localhost/api/cli-tools/pi-settings", {
   method: "POST",
@@ -33,6 +40,9 @@ beforeEach(() => {
   io.writeFile.mockResolvedValue(undefined);
   io.mkdir.mockResolvedValue(undefined);
   db.getCombos.mockResolvedValue([]);
+  db.getCustomModels.mockResolvedValue([]);
+  db.getSyncedModelCatalog.mockResolvedValue(null);
+  db.getCachedSharedModelMetadata.mockResolvedValue(null);
   modelSvc.getModelInfo.mockImplementation(async (id) => {
     const [provider, ...rest] = id.split("/");
     return { provider, model: rest.join("/") || id };
@@ -69,23 +79,57 @@ describe("Pi settings POST", () => {
     expect(modelSvc.getModelInfo).not.toHaveBeenCalled();
   });
 
-  it("resolves missing limits for a newly selected provider/model id through capabilities", async () => {
-    const caps = getCapabilitiesForModel("antigravity", "gemini-3.8-flash");
+  it("merges real scoped metadata without replacing hand-tuned limits or borrowing another provider's row", async () => {
+    db.getSyncedModelCatalog.mockResolvedValue({
+      syncedAt: "2026-10-05T12:00:00Z",
+      models: [{ id: "future-model", kind: "llm", capabilities: { contextWindow: 350000 } }],
+    });
+    db.getCachedSharedModelMetadata.mockResolvedValue({
+      version: 1, fetchedAt: 1791201600000,
+      providers: { openai: { "future-model": { maxOutput: 12000 } } },
+    });
+    db.getCustomModels.mockResolvedValue([
+      { id: "future-model", providerAlias: "xai", capabilities: { maxOutput: 9000 } },
+      { id: "future-model", providerAlias: "openai", capabilities: { maxOutput: 18000 } },
+    ]);
+    io.readFile.mockResolvedValue(JSON.stringify({ providers: { durindoor: { models: [
+      { id: "openai/future-model", name: "Hand tuned", contextWindow: 410000, compat: { supportsStore: false } },
+    ] } } }));
 
-    expect((await save({ models: ["antigravity/gemini-3.8-flash"] })).status).toBe(200);
-
-    expect(modelSvc.getModelInfo).toHaveBeenCalledWith("antigravity/gemini-3.8-flash");
-    expect(models()[0]).toMatchObject({ contextWindow: caps.contextWindow, maxTokens: caps.maxOutput });
+    expect((await save({ models: ["openai/future-model"] })).status).toBe(200);
+    expect(models()[0]).toMatchObject({
+      name: "Hand tuned", contextWindow: 410000, maxTokens: 18000, compat: { supportsStore: false },
+    });
   });
 
-  it("resolves missing limits through combo aggregation, including nested combos, without a model lookup", async () => {
+  it.each(["custom", "catalog"])("retains independent cached metadata when the %s read fails", async (source) => {
+    db.getCachedSharedModelMetadata.mockResolvedValue({
+      version: 1, fetchedAt: 1791201600000,
+      providers: { openai: { "future-model": { contextWindow: 450000, maxOutput: 12000 } } },
+    });
+    db.getCustomModels.mockResolvedValue([
+      { id: "future-model", providerAlias: "openai", capabilities: { maxOutput: 18000 } },
+    ]);
+    db.getSyncedModelCatalog.mockResolvedValue({
+      syncedAt: "2026-10-05T12:00:00Z",
+      models: [{ id: "future-model", kind: "llm", capabilities: { contextWindow: 350000 } }],
+    });
+    if (source === "custom") db.getCustomModels.mockRejectedValue(new Error("custom cache unavailable"));
+    else db.getSyncedModelCatalog.mockRejectedValue(new Error("synced cache unavailable"));
+
+    expect((await save({ models: ["openai/future-model"] })).status).toBe(200);
+    expect(models()[0]).toMatchObject(source === "custom"
+      ? { contextWindow: 350000, maxTokens: 12000 }
+      : { contextWindow: 450000, maxTokens: 18000 });
+  });
+
+  it("handles nested combo selection without a provider-model lookup", async () => {
     const lookup = { inner: ["antigravity/gemini-3.8-flash"], coding: ["inner", "antigravity/gemini-3.8-flash"] };
     db.getCombos.mockResolvedValue(Object.entries(lookup).map(([name, models]) => ({ name, models })));
-    const caps = aggregateComboCapabilities(lookup.coding, lookup);
 
     expect((await save({ models: ["coding"] })).status).toBe(200);
 
-    expect(models()[0]).toMatchObject({ id: "coding", contextWindow: caps.contextWindow, maxTokens: caps.maxOutput });
+    expect(models().map((model) => model.id)).toEqual(["coding"]);
     expect(modelSvc.getModelInfo).not.toHaveBeenCalled();
   });
 

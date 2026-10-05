@@ -14,6 +14,7 @@
 - Preserve model-info endpoint fields and image-operation arrays alongside enriched discovery metadata; include inherited scoped capacities in combo filtering and sorting without promoting transport defaults.
 - Keep inherited discovered/shared capacities and defaults when a partial operator capability override wins public model-list deduplication.
 - Retain safe provider attribution and thinking-budget bounds in compatible discovery; canonical unsupported flags remain authoritative over native capability hints.
+- Resolve missing Pi CLI configuration limits from scoped cached discovery, shared specifications, and operator overrides while preserving hand-tuned per-model settings and unrelated provider configuration.
 
 # 4.10.0
 

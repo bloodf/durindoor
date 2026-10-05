@@ -1,6 +1,7 @@
 import { getCachedSharedModelMetadata, saveCachedSharedModelMetadata } from "@/lib/localDb";
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
+import { classifyModelKind } from "./catalog.js";
 
 const VERSION = 1;
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -29,7 +30,10 @@ function normalizeProviderModels(rawModels) {
   for (const [id, raw] of Object.entries(rawModels)) {
     if (!id.trim() || !isRecord(raw)) continue;
     const caps = extractApiCapabilities(raw);
-    if (Object.keys(caps).length) models[id] = caps;
+    if (Object.keys(caps).length) {
+      const kind = classifyModelKind(id, raw);
+      models[id] = { ...caps, ...(kind !== "llm" && (raw.kind === kind || raw.type === kind) ? { kind } : null) };
+    }
   }
   return models;
 }

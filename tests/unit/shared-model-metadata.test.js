@@ -46,6 +46,17 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe("shared model metadata cache", () => {
+  it("retains an explicit embedding kind through refresh, cache reads, and available-model materialization", async () => {
+    await refreshSharedModelMetadata({ now: NOW, fetchCatalog: async () => reply({
+      openai: { models: { "vector-v1": { kind: "embedding", limit: { context: 8192 }, tool_call: false } } },
+    }) });
+    const cached = await getSharedModelMetadata();
+    const [model] = effectiveSyncedModels({
+      syncedAt: new Date(NOW).toISOString(), models: [{ id: "vector-v1", kind: "embedding" }],
+    }, [], "openai", cached);
+    expect(model.capabilities).toMatchObject({ contextWindow: 8192, tools: false, reasoning: false });
+  });
+
   it("keeps usable metadata after a failed refresh and retries once it is stale", async () => {
     const first = await refreshSharedModelMetadata({ now: NOW, fetchCatalog: async () => reply(catalog) });
     const failed = await refreshSharedModelMetadata({ now: NOW + 25 * HOUR, fetchCatalog: async () => new Response("unavailable", { status: 503 }) });

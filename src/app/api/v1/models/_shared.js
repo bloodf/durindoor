@@ -45,7 +45,7 @@ function toAnthropicModel(m) {
     ...(isBoolean(caps.structuredOutput) ? { structured_outputs: { supported: caps.structuredOutput } } : null),
   };
   return {
-    // Native ModelInfo only: no OpenAI modality/limit extensions here.
+    // Keep a distinct total-window declaration when input has its own ceiling.
     // Null represents unknown native ceilings, never a guessed fallback.
     type: "model",
     id: projectClaudeCodeModel(m),
@@ -55,6 +55,7 @@ function toAnthropicModel(m) {
       isString(m.created_at) && m.created_at ? m.created_at : "1970-01-01T00:00:00Z",
     max_input_tokens: caps.maxInput ?? metadata.max_model_len ?? null,
     max_tokens: metadata.limits?.max_output_tokens ?? null,
+    ...(metadata.max_model_len !== undefined ? { max_context_window_tokens: metadata.max_model_len } : null),
     capabilities: Object.keys(capabilities).length ? capabilities : null,
   };
 }

@@ -163,6 +163,18 @@ describe("rich compatible model metadata", () => {
     expect(curated).toEqual({ contextWindow: 1000000, maxInput: 1000000, maxOutput: 128000 });
   });
 
+  it("retains total context separately from the input ceiling through native discovery", async () => {
+    const model = materializeSyncedModel("codex", {
+      id: "gpt-6.1-sol", kind: "llm", capabilities: { contextWindow: 272000 },
+    });
+    const response = await buildModelsResponse(new Request("http://localhost/v1/models", {
+      headers: { "anthropic-version": "2023-06-01" },
+    }), [{ ...model, id: "cx/gpt-6.1-sol" }]).json();
+    expect(extractLiveModelLimits(response.data[0])).toMatchObject({
+      contextWindow: 1050000, maxInput: 922000, maxOutput: 128000,
+    });
+  });
+
   it("does not turn independent canonical ceilings into an additive discovery window", async () => {
     const model = { id: "unknown-window", capabilities: { maxInput: 1000000, maxOutput: 128000, defaultOutput: 32000 } };
     const projected = projectDiscoveryMetadata(model);

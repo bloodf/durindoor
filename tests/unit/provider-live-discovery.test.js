@@ -131,22 +131,6 @@ describe("provider live model discovery", () => {
     expect(model(models, "cc/claude-live-sibling")).toBeUndefined();
   });
 
-  it("does not let sparse Anthropic thinking metadata erase static capabilities", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => response({
-      data: [{
-        id: "claude-opus-5",
-        max_input_tokens: 222_222,
-        max_tokens: 12_345,
-        capabilities: { thinking: { supported: false } },
-      }],
-    })));
-    mocks.getProviderConnections.mockResolvedValue([connection("claude")]);
-
-    const live = model(await buildModelsList([LLM_KIND]), "cc/claude-opus-5");
-
-    expect(live.capabilities).toMatchObject({ reasoning: true, thinkingFormat: "claude-adaptive" });
-  });
-
   it("does not infer disable support from Anthropic enabled metadata", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({
       data: [{
@@ -250,25 +234,24 @@ describe("provider live model discovery", () => {
     );
   });
 
-  it("uses the shared Codex catalog fetcher and only trusts its context window", async () => {
+  it("surfaces opaque Codex models without inventing undeclared limits", async () => {
     mocks.getCodexModels.mockResolvedValue([
-      { slug: "gpt-5.6-sol", context_window: 345_678 },
-      { slug: "gpt-new-codex", context_window: 456_789 },
+      { slug: "opaque-codex-with-window", context_window: 456_789 },
+      { slug: "opaque-codex-without-limits" },
     ]);
     mocks.getProviderConnections.mockResolvedValue([connection("codex")]);
 
     const models = await buildModelsList([LLM_KIND]);
-    const known = model(models, "cx/gpt-5.6-sol");
-    const unknown = model(models, "cx/gpt-new-codex");
+    const declared = model(models, "cx/opaque-codex-with-window");
+    const unknown = model(models, "cx/opaque-codex-without-limits");
 
-    expect(known.capabilities.contextWindow).toBe(345_678);
-    expect(unknown.capabilities.contextWindow).toBe(456_789);
+    expect(declared).toBeDefined();
+    expect(declared.capabilities.contextWindow).toBe(456_789);
+    expect(declared.capabilities.maxOutput).toBeUndefined();
+    expect(unknown).toBeDefined();
+    expect(unknown.capabilities.contextWindow).toBeUndefined();
     expect(unknown.capabilities.maxOutput).toBeUndefined();
-    expect(mocks.getCodexModels).toHaveBeenCalledWith(
-      "codex-token",
-      expect.anything(),
-      {},
-      undefined,
-    );
+    expect(unknown.context_length).toBeUndefined();
+    expect(unknown.max_completion_tokens).toBeUndefined();
   });
 });

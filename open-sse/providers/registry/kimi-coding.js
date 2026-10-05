@@ -55,7 +55,7 @@ export default {
     /** `k3[1m]` is documented only as a Claude Code inbound spelling; emit canonical `k3`. */
     { id: "k3", name: "Kimi K3", aliases: ["k3[1m]"] },
     { id: "k3-256k", name: "Kimi K3 256K" },
-    { id: "kimi-for-coding", name: "Kimi K2.7 Code" },
+    { id: "kimi-for-coding", name: "Kimi K2.8 Preview" },
     { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed" },
   ],
   oauth: {

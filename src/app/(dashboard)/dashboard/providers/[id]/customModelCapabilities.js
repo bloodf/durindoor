@@ -1,6 +1,6 @@
 // Resolve capabilities for a custom model, merging persisted caps over the
 // provider/pattern fallback so UI and API consumers see declared overrides.
-import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getCapabilitiesForModel, resolveModelLimits } from "open-sse/providers/capabilities.js";
 
 export function buildCustomCapabilities({
   booleanCaps,
@@ -26,7 +26,12 @@ export function buildCustomCapabilities({
 }
 
 export function getCustomModelCapabilities({ providerId, modelId, capabilities }) {
-  const fallback = getCapabilitiesForModel(providerId, modelId);
-  if (!capabilities || Object.keys(capabilities).length === 0) return fallback;
-  return { ...fallback, ...capabilities };
+  const caps = getCapabilitiesForModel(providerId, modelId);
+  const limits = resolveModelLimits(providerId, modelId, null, null, null, true);
+  return {
+    ...caps,
+    contextWindow: limits.known ? limits.contextWindow : undefined,
+    maxOutput: limits.known ? limits.maxOutput : undefined,
+    ...capabilities,
+  };
 }

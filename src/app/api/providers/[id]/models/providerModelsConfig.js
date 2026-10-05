@@ -167,6 +167,8 @@ export const PROVIDER_MODELS_CONFIG = {
     authPrefix: "Bearer ",
     parseResponse: parseCodexModels
   },
+  minimax: createOpenAIModelsConfig("https://api.minimax.io/v1/models"),
+  "minimax-cn": createOpenAIModelsConfig("https://api.minimax.cn/v1/models"),
   antigravity: {
     url: "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models",
     method: "POST",

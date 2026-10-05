@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getKimchiUserAgent } from "../utils/kimchiUserAgent.js";
-import { extractLiveModelLimits } from "./liveModelLimits.js";
+import { extractLiveModelLimits } from "./modelMetadata.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const KIMCHI_API = "https://llm.kimchi.dev";

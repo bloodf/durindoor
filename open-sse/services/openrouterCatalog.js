@@ -1,5 +1,5 @@
 import { readBoundedResponseText } from "../utils/error.js";
-import { extractLiveModelLimits } from "./liveModelLimits.js";
+import { extractLiveModelLimits } from "./modelMetadata.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 /**

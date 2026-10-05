@@ -2,23 +2,13 @@ import { createHash } from "crypto";
 
 import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "../providers/shared.js";
-import { isBoolean, isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { extractApiCapabilities, extractLiveModelLimits } from "./modelMetadata.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const MAX_SANE_TOKEN_LIMIT = 16_777_216;
 // 2^24 tokens is far above current catalogs while bounding corrupted metadata.
-const CONTAINERS = ["limits", "meta"];
-const CONTEXT_KEYS = [
-"context_length",
-"context_window",
-"max_context_length",
-"max_model_len",
-"max_input_tokens",
-"contextLength",
-"contextWindow"];
-
-const OUTPUT_KEYS = ["max_output_tokens", "max_completion_tokens", "max_tokens", "maxOutputTokens", "maxOutput"];
 
 
 /** @type {Map<string, { expiresAt: number, models: object[] | null }>} */
@@ -82,6 +72,8 @@ function modelId(model) {
  * Fetch and cache an OpenAI-compatible model catalog. Positive and negative
  * results share the same per-endpoint, per-credential TTL so a dead or malformed
  * upstream never adds a network call to every `/v1/models` request.
+ * Anthropic-compatible discovery carries its native limit semantics even when
+ * the upstream omits ModelInfo's type discriminator.
  */
 export async function resolveLiveOpenAIModels(connection, options = {}) {
   const token = options.token || connection?.apiKey || connection?.accessToken;
@@ -157,8 +149,8 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
         const upstreamId = modelId(entry);
         if (!upstreamId) return [];
         const id = aliases[upstreamId] || upstreamId;
-        const limits = extractLiveModelLimits(entry);
-        return [{ id, ...(Object.keys(limits).length ? { capabilities: limits } : null) }];
+        const capabilities = extractApiCapabilities(entry, { format: options.anthropic ? "anthropic" : "auto" });
+        return [{ id, ...(Object.keys(capabilities).length ? { capabilities } : null) }];
       });
       if (!models.length) return cacheMiss();
       const expiresAt = Date.now() + CACHE_TTL_MS;
@@ -192,12 +184,13 @@ function anthropicCapabilities(entry) {
 
   const enabled = supported(types?.enabled);
   const adaptive = supported(types?.adaptive);
-  const reasoning = supported(thinking) || thinking?.supported === true || enabled || adaptive;
+  const unsupported = thinking === false || thinking?.supported === false;
+  const reasoning = !unsupported && (supported(thinking) || enabled || adaptive);
   return {
     ...(published.image_input !== undefined ? { vision: supported(published.image_input) } : null),
     ...(published.pdf_input !== undefined ? { pdf: supported(published.pdf_input) } : null),
     ...(reasoning ? { reasoning: true } : null),
-    ...(adaptive ? { thinkingFormat: "claude-adaptive" } : enabled ? { thinkingFormat: "claude-budget" } : null)
+    ...(reasoning && adaptive ? { thinkingFormat: "claude-adaptive" } : reasoning && enabled ? { thinkingFormat: "claude-budget" } : null)
   };
 }
 
@@ -230,10 +223,13 @@ export function resolveLiveAnthropicModels(connection, options = {}) {
     normalizeModel: (entry) => {
       const id = modelId(entry);
       if (!id) return null;
-      const capabilities = {
-        ...extractLiveModelLimits(entry),
-        ...anthropicCapabilities(entry)
-      };
+      // Native types are hints; canonical declarations (including false) win.
+      const native = anthropicCapabilities(entry);
+      const canonical = extractApiCapabilities(entry, { format: "anthropic" });
+      const capabilities = { ...native, ...canonical };
+      if (capabilities.reasoning === false && canonical.thinkingFormat === undefined) {
+        delete capabilities.thinkingFormat;
+      }
       return { id, ...(Object.keys(capabilities).length ? { capabilities } : null) };
     }
   });
@@ -298,32 +294,6 @@ export function clearLiveModelLimitsCache() {
   catalogCache.clear();
   modelLimitsCache.clear();
   inFlight.clear();
-}
-function readLimit(source, keys) {
-  if (!source || !isObject(source) || Array.isArray(source)) return undefined;
-  for (const key of keys) {
-    const raw = source[key];
-    if (!isNumber(raw) && !(isString(raw) && raw.trim() !== "")) continue;
-    const value = Number(raw);
-    if (Number.isSafeInteger(value) && value > 0 && value <= MAX_SANE_TOKEN_LIMIT) return value;
-  }
-  return undefined;
-}
-
-/**
- * Extract trustworthy limits from an OpenAI-compatible `/v1/models` entry.
- * Precedence is `limits` > `meta` > root, then each alias in declaration order.
- * Invalid candidates are skipped so a later valid alias can still be used.
- */
-export function extractLiveModelLimits(model) {
-  if (!model || !isObject(model) || Array.isArray(model)) return {};
-  const sources = [...CONTAINERS.map((key) => model[key]), model];
-  const contextWindow = sources.map((source) => readLimit(source, CONTEXT_KEYS)).find(Boolean);
-  const maxOutput = sources.map((source) => readLimit(source, OUTPUT_KEYS)).find(Boolean);
-  return {
-    ...(contextWindow ? { contextWindow } : null),
-    ...(maxOutput ? { maxOutput } : null)
-  };
 }
 
 export function normalizeVeniceModel(model) {

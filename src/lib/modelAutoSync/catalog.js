@@ -1,4 +1,7 @@
-import { extractLiveModelLimits } from "open-sse/services/liveModelLimits.js";
+import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
+import { capabilitiesFromServiceKind, getCapabilitiesForModel, MODEL_CAPABILITIES, PATTERN_CAPABILITIES, PROVIDER_CAPABILITIES, resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { matchPattern } from "open-sse/providers/pricing.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
 import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 /**
@@ -9,13 +12,15 @@ import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/type
 
 /** Providers whose catalogs auto-update unless the operator turns them off. */
 export const MODEL_AUTO_SYNC_DEFAULT_PROVIDERS = Object.freeze([
-  "openai", "anthropic", "claude", "xai", "gemini", "codex", "github"
+  "openai", "anthropic", "claude", "xai", "gemini", "codex", "github", "kimi", "kimi-coding", "kimi-coding-apikey", "minimax", "minimax-cn"
 ]);
 
 export const DEFAULT_MODEL_AUTO_SYNC_INTERVAL_HOURS = 24;
 export const MAX_MODEL_AUTO_SYNC_INTERVAL_HOURS = 720;
 
 const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(value);
+const ownRecord = (table, key) => isRecord(table) && Object.hasOwn(table, key) && isRecord(table[key]) ? table[key] : null;
+
 
 /**
  * Auto-sync is on for a provider when the operator enabled it explicitly, or
@@ -66,7 +71,7 @@ const KIND_RULES = [
   [/dall-?e|gpt-image|imagen|image-generation|(^|[-_])image([-_]|$)|imagine/, "image"],
   [/(^|[-_])veo|sora/, "video"]
 ];
-const EXPLICIT_KINDS = new Set(["image", "tts", "embedding", "stt", "rerank", "video"]);
+const EXPLICIT_KINDS = new Set(["llm", "image", "imageToText", "tts", "embedding", "stt", "rerank", "video", "music", "audio", "realtime", "realtimeTranslation", "realtimeTranscription", "live", "moderation", "systemone", "documentParsing"]);
 
 /**
  * Service kind for a listed model: "llm" for chat models, a media kind for
@@ -77,7 +82,7 @@ const EXPLICIT_KINDS = new Set(["image", "tts", "embedding", "stt", "rerank", "v
  * @returns {string|null}
  */
 export function classifyModelKind(id, raw = {}) {
-  if (EXPLICIT_KINDS.has(raw?.type)) return raw.type;
+  if (EXPLICIT_KINDS.has(raw?.kind || raw?.type)) return raw.kind || raw.type;
   const methods = Array.isArray(raw?.supportedGenerationMethods) ? raw.supportedGenerationMethods : null;
   const lower = String(id).toLowerCase();
   for (const [pattern, kind] of KIND_RULES) {
@@ -103,57 +108,19 @@ function rawModelName(raw, id) {
   return value && value.replace(/^models\//, "") !== id ? value.trim() : id;
 }
 
-function positiveInt(value) {
-  const n = Number(value);
-  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
-}
-
-/**
- * Capabilities the provider API itself states. Pattern-table capabilities are
- * layered underneath at /v1/models time by buildModelsList, so this only
- * records what the listing proves.
- */
-export function extractApiCapabilities(raw) {
-  if (!isRecord(raw)) return {};
-  const caps = { ...extractLiveModelLimits(raw) };
-  // Gemini
-  caps.contextWindow ??= positiveInt(raw.inputTokenLimit);
-  caps.maxOutput ??= positiveInt(raw.outputTokenLimit);
-  if (raw.thinking === true) caps.reasoning = true;
-  // Qoder / Kimi web style flags
-  caps.contextWindow ??= positiveInt(raw.contextLength);
-  caps.maxOutput ??= positiveInt(raw.maxOutputTokens);
-  if (raw.isVL === true) caps.vision = true;
-  if (raw.isReasoning === true || raw.supportsReasoning === true) caps.reasoning = true;
-
-  const apiCaps = isRecord(raw.capabilities) ? raw.capabilities : null;
-  if (apiCaps) {
-    // GitHub Copilot: { limits: {...}, supports: {...} }
-    const limits = isRecord(apiCaps.limits) ? apiCaps.limits : {};
-    caps.contextWindow ??= positiveInt(limits.max_context_window_tokens) ?? positiveInt(limits.max_prompt_tokens);
-    caps.maxOutput ??= positiveInt(limits.max_output_tokens);
-    const supports = isRecord(apiCaps.supports) ? apiCaps.supports : {};
-    if (isBoolean(supports.vision)) caps.vision = supports.vision;
-    if (isBoolean(supports.tool_calls)) caps.tools = supports.tool_calls;
-    // Anthropic: { image_input: { supported }, pdf_input: {...}, thinking: {...} }
-    const supported = (key) => isRecord(apiCaps[key]) && isBoolean(apiCaps[key].supported) ? apiCaps[key].supported : undefined;
-    if (supported("image_input") !== undefined) caps.vision = supported("image_input");
-    if (supported("pdf_input") !== undefined) caps.pdf = supported("pdf_input");
-    if (supported("thinking") !== undefined) caps.reasoning = supported("thinking");
-  }
-  for (const key of Object.keys(caps)) if (caps[key] === undefined) delete caps[key];
-  return caps;
-}
 
 /**
  * Turn a provider's raw list-models response into catalog rows. Drops models
  * without a gateway route and de-duplicates ids.
  * @param {object[]} rawModels
+ * @param {{ format?: "auto"|"generic"|"anthropic"|"gemini" }} [options]
+ *   Known API format for parsers whose output lacks native row discriminators.
  * @returns {{ id: string, name: string, kind: string, capabilities?: object }[]}
  */
-export function normalizeSyncedModels(rawModels) {
+export function normalizeSyncedModels(rawModels, staticModels = [], options = {}) {
   if (!Array.isArray(rawModels)) return [];
   const seen = new Set();
+  const staticById = new Map(staticModels.flatMap((model) => [model.id, ...(model.aliases || [])].map((id) => [id, model])));
   const out = [];
   for (const raw of rawModels) {
     const entry = isString(raw) ? { id: raw } : raw;
@@ -163,10 +130,11 @@ export function normalizeSyncedModels(rawModels) {
     if (entry.quotaFamily === "review" && entry.upstreamModelId) continue;
     const id = rawModelId(entry);
     if (!id || seen.has(id)) continue;
-    const kind = classifyModelKind(id, entry);
+    const registered = staticById.get(id);
+    const kind = registered?.kind || registered?.type || classifyModelKind(id, entry);
     if (!kind) continue;
     seen.add(id);
-    const capabilities = extractApiCapabilities(entry);
+    const capabilities = extractApiCapabilities(entry, options);
     out.push({
       id,
       name: rawModelName(entry, id),
@@ -188,6 +156,106 @@ function derivedStaticModels(staticModels, ids) {
 }
 
 /**
+ * Materialize declarations within the provider's canonical identity and service
+ * kind. A custom media row may reuse a chat id without inheriting chat facts;
+ * explicit provider discoveries remain scoped to the row's declared kind.
+ */
+export function materializeSyncedModel(providerId, model, sharedMetadata = null) {
+  const provider = REGISTRY.find((entry) => entry.id === providerId || entry.alias === providerId ||
+    entry.uiAlias === providerId || entry.aliases?.includes(providerId));
+  const canonicalProvider = provider?.id || providerId;
+  const registered = provider?.models?.find((entry) => entry.id === model.id || entry.aliases?.includes(model.id));
+  const canonicalModel = registered?.id || model.id;
+  const catalogKind = registered ? registered.kind || registered.type || "llm" : classifyModelKind(canonicalModel);
+  const kind = model.kind || model.type || catalogKind || "llm";
+  const catalogMatchesKind = kind === catalogKind;
+  const providerCaps = ownRecord(PROVIDER_CAPABILITIES, canonicalProvider);
+  const providerDeclaration = catalogMatchesKind ?
+    ownRecord(providerCaps, canonicalModel) || ownRecord(providerCaps, model.id) : null;
+  const exactDeclaration = catalogMatchesKind ?
+    ownRecord(MODEL_CAPABILITIES, canonicalModel) || ownRecord(MODEL_CAPABILITIES, model.id) : null;
+  const patternDeclaration = catalogMatchesKind && !providerDeclaration && !exactDeclaration ?
+    PATTERN_CAPABILITIES.find(({ pattern }) => matchPattern(pattern, canonicalModel) || matchPattern(pattern, model.id))?.caps : null;
+  const declared = providerDeclaration || exactDeclaration || patternDeclaration || {};
+  const registryCapabilities = extractApiCapabilities(catalogMatchesKind ? registered : null);
+  const catalogSource = providerDeclaration ? "provider" : exactDeclaration ? "exact" : patternDeclaration ? "pattern" :
+    Object.keys(registryCapabilities).length ? "registry" : null;
+  const resolved = catalogMatchesKind ? getCapabilitiesForModel(canonicalProvider, canonicalModel) : {};
+  // Only fields actually declared by the selected catalog are specifications.
+  // getCapabilitiesForModel's compatibility defaults are not discovery facts.
+  const curated = { ...registryCapabilities, ...Object.fromEntries(Object.keys(declared).map((key) => [key, resolved[key]])) };
+  const limits = catalogMatchesKind ? resolveModelLimits(canonicalProvider, canonicalModel, null, null, null, true) : null;
+  // A transport's configured default is not a model's supported capacity.
+  const usableLimits = limits?.known && (limits.source !== "registry" || Number.isFinite(registryCapabilities.contextWindow));
+  if (usableLimits) {
+    curated.contextWindow = limits.contextWindow;
+    curated.maxOutput = declared.maxOutput === null ? null : limits.maxOutput;
+  }
+  const sharedModels = ownRecord(sharedMetadata?.providers, canonicalProvider);
+  const shared = {};
+  const sharedEntries = [];
+  for (const id of canonicalModel === model.id ? [canonicalModel] : [canonicalModel, model.id]) {
+    const sharedModel = ownRecord(sharedModels, id);
+    const sharedKind = EXPLICIT_KINDS.has(sharedModel?.kind || sharedModel?.type) ?
+      sharedModel.kind || sharedModel.type : catalogKind;
+    if (sharedKind !== kind) continue;
+    const entryCaps = extractApiCapabilities(sharedModel);
+    if (!Object.keys(entryCaps).length) continue;
+    Object.assign(shared, entryCaps);
+    const provenance = ownRecord(ownRecord(sharedMetadata?.modelMetadata, canonicalProvider), id);
+    const source = provenance ? provenance.source : sharedMetadata?.source;
+    const fetchedAt = provenance ? provenance.fetchedAt : sharedMetadata?.fetchedAt;
+    sharedEntries.push({
+      modelId: id,
+      ...(isString(source) && source.trim() ? { source } : null),
+      ...(Number.isSafeInteger(fetchedAt) && fetchedAt >= 0 ? { fetchedAt } : null),
+    });
+  }
+  // Embedding input context is meaningful even though curated nulls suppress
+  // chat-generation windows. Keep a proven same-kind shared input capacity.
+  if (kind === "embedding" && curated.contextWindow === null && Number.isFinite(shared.contextWindow)) {
+    delete curated.contextWindow;
+  }
+  // Old enriched rows are not provider declarations. Without the declaration
+  // snapshot, their merged fields have unknown provenance and must be rebuilt.
+  const live = extractApiCapabilities(isRecord(model.discoveredCapabilities) ? model.discoveredCapabilities :
+    model.metadataSources ? null : model.capabilities);
+  const caps = {
+    ...capabilitiesFromServiceKind(kind),
+    ...shared,
+    ...curated,
+    ...live,
+  };
+  // Codex's default/compaction window is not the API model's total capacity.
+  if (canonicalProvider === "codex" && limits?.known && limits.source === "provider") {
+    caps.contextWindow = limits.contextWindow;
+    caps.maxOutput = limits.maxOutput;
+    if (Number.isFinite(curated.maxInput)) caps.maxInput = curated.maxInput;
+  }
+  for (const key of Object.keys(caps)) if (caps[key] === undefined) delete caps[key];
+  const hasShared = sharedEntries.length > 0;
+  const sharedSource = hasShared && sharedEntries.every((entry) => entry.source === sharedEntries[0].source) ?
+    sharedEntries[0].source : undefined;
+  const sharedFetchedAt = hasShared && sharedEntries.every((entry) => Number.isSafeInteger(entry.fetchedAt)) ?
+    Math.min(...sharedEntries.map((entry) => entry.fetchedAt)) : undefined;
+  return {
+    ...model,
+    kind,
+    capabilities: caps,
+    discoveredCapabilities: live,
+    metadataSources: {
+      catalog: usableLimits ? limits.source : catalogSource || "default",
+      catalogSource,
+      provider: Object.keys(live).length > 0,
+      shared: hasShared,
+      ...(hasShared ? { sharedEntries } : null),
+      ...(hasShared && isString(sharedSource) && sharedSource.trim() ? { sharedSource } : null),
+      ...(hasShared && Number.isSafeInteger(sharedFetchedAt) && sharedFetchedAt >= 0 ? { sharedFetchedAt } : null),
+    },
+  };
+}
+
+/**
  * The provider's effective model list while auto-sync is on: exactly what
  * the last successful fetch returned (after the chat/non-chat filtering),
  * plus derived registry variants. Returns null when there is no successful
@@ -197,12 +265,23 @@ function derivedStaticModels(staticModels, ids) {
  * @param {object[]} staticModels - the provider's registry models
  * @returns {{ id: string, name: string, kind: string, capabilities?: object }[]|null}
  */
-export function effectiveSyncedModels(entry, staticModels = []) {
-  const models = Array.isArray(entry?.models) ? entry.models.filter((m) => isString(m?.id)) : [];
+export function effectiveSyncedModels(entry, staticModels = [], providerId = null, sharedMetadata = null) {
+  const models = Array.isArray(entry?.models) ? entry.models.filter((model) => isRecord(model) && isString(model.id) && model.id.trim()) : [];
   if (!entry?.syncedAt || models.length === 0) return null;
-  const ids = new Set(models.map((m) => m.id));
-  const derived = derivedStaticModels(staticModels, ids).map((m) => ({ id: m.id, name: m.name || m.id, kind: m.kind || m.type || "llm" }));
-  return [...models, ...derived];
+  const staticById = new Map(staticModels.flatMap((model) => [model.id, ...(model.aliases || [])].map((id) => [id, model])));
+  const ids = new Set(models.flatMap((model) => [model.id, staticById.get(model.id)?.id].filter(Boolean)));
+  const derived = derivedStaticModels(staticModels, ids).map((model) => ({
+    ...model, name: model.name || model.id, kind: model.kind || model.type || "llm",
+    discoveredCapabilities: {},
+  }));
+  const effective = [...models, ...derived];
+  return providerId ? effective.map((model) => {
+    const materialized = materializeSyncedModel(providerId, model, sharedMetadata);
+    if (materialized.metadataSources.provider && isString(entry.syncedAt) && Number.isFinite(Date.parse(entry.syncedAt))) {
+      materialized.metadataSources.providerFetchedAt = entry.syncedAt;
+    }
+    return materialized;
+  }) : effective;
 }
 
 /**
@@ -221,7 +300,9 @@ export function mergeSyncedCatalog(previous, fetched, { now, staticModels = [], 
   staticModels.filter((m) => isString(m?.id) && !(m.quotaFamily === "review" && m.upstreamModelId));
   const beforeIds = new Set(before.map((m) => m.id));
   const fetchedIds = new Set(fetched.map((m) => m.id));
-  const keptDerived = new Set(derivedStaticModels(staticModels, fetchedIds).map((m) => m.id));
+  const staticById = new Map(staticModels.flatMap((model) => [model.id, ...(model.aliases || [])].map((id) => [id, model])));
+  const availableIds = new Set(fetched.flatMap((model) => [model.id, staticById.get(model.id)?.id].filter(Boolean)));
+  const keptDerived = new Set(derivedStaticModels(staticModels, availableIds).map((m) => m.id));
   return {
     syncedAt: at,
     lastAttemptAt: at,

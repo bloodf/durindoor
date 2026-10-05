@@ -18,9 +18,8 @@ const LARGE_ALIAS = "ghm/openai/gpt-4.1"; // same model via alias
 const SMALL = "github-models/microsoft/Phi-4"; // 16384
 const UNKNOWN = "custom/no-catalog-entry"; // no registry entry / capability context
 
-// Transport-default fixture (open-sse/providers/registry/dgrid.js):
-// provider has no per-model contextLength, but transport.defaultContextLength is known.
-const DGRID_TRANSPORT = "dgrid/dgridai/free"; // transport.defaultContextLength 128000
+// DGrid's router has a request default, but no declared model capacity.
+const DGRID_ROUTER = "dgrid/dgridai/free";
 
 // Hard-capability ordering fixtures:
 // VISION is vision-capable but contextWindow is smaller than TEXT_LARGE.
@@ -41,13 +40,7 @@ describe("getKnownContextWindow", () => {
     expect(getKnownContextWindow(LARGE_ALIAS)).toBe(1047576);
   });
 
-  it("falls back to entry.transport.defaultContextLength when no direct entry.defaultContextLength", () => {
-    expect(getKnownContextWindow(DGRID_TRANSPORT)).toBe(128000);
-  });
-
-  it("returns null for a model with no explicit context anywhere (never the DEFAULT floor)", () => {
-    // Critical: getCapabilitiesForModel would merge DEFAULT_CAPABILITIES.contextWindow
-    // (200000) and make this unknown model look known. This resolver must stay null.
+  it("returns null for a model with no declared context", () => {
     expect(getKnownContextWindow(UNKNOWN)).toBeNull();
   });
 });
@@ -141,16 +134,18 @@ describe("applyContextRequirements", () => {
     expect(out).toEqual([LARGE, SMALL, UNKNOWN]);
   });
 
-  it("locks in first-matching-pattern-without-context => unknown (no silent fallthrough)", () => {
-    // A model whose first matching PATTERN_CAPABILITIES entry declares no contextWindow
-    // must be treated as unknown (matches getCapabilitiesForModel first-match behavior),
-    // NOT scanned further into a later pattern that does declare one.
-    const unknown = "custom/no-catalog-entry";
-    expect(getKnownContextWindow(unknown)).toBeNull();
-    // And under strict filtering such a model is excluded.
-    const out = applyContextRequirements([unknown, LARGE], { minContextWindow: 1, contextFilterMode: "strict" }, log);
-    expect(out).toEqual([LARGE]);
+  it("uses curated family capacity instead of a transport default for filtering and sorting", () => {
+    const family = "dgrid/gpt-6.1-sol";
+    const models = [SMALL, DGRID_ROUTER, LARGE, family];
+    expect(applyContextRequirements(models, {
+      minContextWindow: 1050000,
+      contextFilterMode: "strict",
+    }, log)).toEqual([family]);
+    expect(applyContextRequirements(models, {
+      preferLargeContext: true,
+    }, log)).toEqual([family, LARGE, SMALL, DGRID_ROUTER]);
   });
+
 });
 
 describe("handleComboChat context-requirements plumbing", () => {
@@ -186,11 +181,11 @@ describe("handleComboChat context-requirements plumbing", () => {
     resetComboRotation(comboName);
     const tried = [];
 
-    // Pool of 3: SMALL(excluded), MID(200000), LARGE(1047576). Strict min 128000
+    // Pool of 3: SMALL(excluded), MID, LARGE. Strict min 128000
     // excludes SMALL. The eligibility filter runs BEFORE getRotatedModels, so the
     // round-robin pointer advances over the ELIGIBLE set [MID, LARGE] and the
     // survivor sequence is an exact alternation (no pointer skew).
-    const MID = "github-models/openai/gpt-4o"; // contextLength 200000
+    const MID = "github-models/openai/gpt-4o";
     const serve = async () => {
       const res = await handleComboChat({
         body: { messages: [{ role: "user", content: "hi" }] },

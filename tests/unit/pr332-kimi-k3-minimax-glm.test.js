@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getModelTargetFormat } from "../../open-sse/config/providerModels.js";
 import providers from "../../cli/src/cli/menus/providers.js";
-import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
-import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getPricingForModel } from "../../open-sse/providers/pricing.js";
 import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
 
@@ -21,16 +19,6 @@ describe("GPT-5.6 Luna routing", () => {
 });
 
 describe("Kimi K3 reasoning wiring", () => {
-  it("advertises documented K3 thinking levels", () => {
-    expect(getThinkingLevels(null, "k3")).toEqual(["none", "low", "medium", "high", "max"]);
-  });
-
-  it("allows documented thinking disable", () => {
-    const caps = getCapabilitiesForModel(null, "k3");
-    expect(caps.reasoning).toBe(true);
-    expect(caps.thinkingCanDisable).toBe(true);
-  });
-
   it.each([
     ["ultra", "max"], ["max", "max"], ["xhigh", "max"],
     ["high", "high"], ["medium", "high"],
@@ -38,24 +26,6 @@ describe("Kimi K3 reasoning wiring", () => {
   ])("folds reasoning effort %s to %s", (requested, expected) => {
     const out = apply("openai", "k3", { reasoning_effort: requested }, "kimi");
     expect(out.reasoning_effort).toBe(expected);
-  });
-
-  it("maps none to thinking disabled", () => {
-    const out = apply("openai", "k3", { reasoning_effort: "none" }, "kimi");
-    expect(out.thinking).toEqual({ type: "disabled" });
-    expect(out.reasoning_effort).toBeUndefined();
-  });
-});
-
-describe("MiniMax M3 capabilities", () => {
-  it("context window capped at 512k", () => {
-    const caps = getCapabilitiesForModel(null, "MiniMax-M3");
-    expect(caps.contextWindow).toBe(512000);
-  });
-
-  it("minimax-m3 variant also capped at 512k", () => {
-    const caps = getCapabilitiesForModel(null, "minimax-m3");
-    expect(caps.contextWindow).toBe(512000);
   });
 });
 

@@ -12,12 +12,13 @@ import {
   isModelAutoSyncEligible,
   runModelAutoSync
 } from "@/lib/modelAutoSync/runner.js";
+import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
 
 export const dynamic = "force-dynamic";
 
-function providerStatus(providerId, entry, settings) {
+function providerStatus(providerId, entry, settings, sharedMetadata) {
   const enabled = isModelAutoSyncEnabled(providerId, settings);
-  const effective = enabled ? effectiveSyncedModels(entry, getModelsByProviderId(providerId)) : null;
+  const effective = enabled ? effectiveSyncedModels(entry, getModelsByProviderId(providerId), providerId, sharedMetadata) : null;
   return {
     eligible: isModelAutoSyncEligible(providerId),
     enabled,
@@ -28,7 +29,7 @@ function providerStatus(providerId, entry, settings) {
     removedModelIds: entry?.removedModelIds || [],
     // The effective list replaces the registry defaults while auto-sync is on
     // and a sync has succeeded; null means "use the registry".
-    models: effective ? effective.map(({ id, name, kind }) => ({ id, name, kind })) : null
+    models: effective ? effective.map(({ id, name, kind, capabilities }) => ({ id, name, kind, capabilities })) : null
   };
 }
 
@@ -40,14 +41,15 @@ function providerStatus(providerId, entry, settings) {
 export async function GET(request) {
   try {
     const provider = new URL(request.url).searchParams.get("provider");
-    const [settings, catalogs, connections] = await Promise.all([
-      getSettings(), getSyncedModelCatalogs(), getProviderConnections({ isActive: true })
+    const [settings, catalogs, connections, sharedMetadata] = await Promise.all([
+      getSettings(), getSyncedModelCatalogs(), getProviderConnections({ isActive: true }),
+      getSharedModelMetadata().catch(() => null)
     ]);
     const ids = provider ? [provider] : [...new Set([
       ...Object.keys(catalogs),
       ...connections.map((c) => c.provider)
     ])].filter(isModelAutoSyncEligible);
-    const providers = Object.fromEntries(ids.map((id) => [id, providerStatus(id, catalogs[id], settings)]));
+    const providers = Object.fromEntries(ids.map((id) => [id, providerStatus(id, catalogs[id], settings, sharedMetadata)]));
     return NextResponse.json({
       intervalHours: getModelAutoSyncIntervalHours(settings),
       providers,

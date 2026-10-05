@@ -42,10 +42,10 @@ export default {
   ],
   models: [
     /** K3 reaches 1M only for Allegretto+ accounts; lower tiers are server-gated to 256K. */
-    { id: "k3", name: "Kimi K3", aliases: ["k3[1m]"], contextLength: 1048576, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
-    { id: "k3-256k", name: "Kimi K3 256K", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
-    { id: "kimi-for-coding", name: "Kimi K2.7 Code", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
-    { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed", contextLength: 262144, maxOutputTokens: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    { id: "k3", name: "Kimi K3", aliases: ["k3[1m]"], contextLength: 1048576, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    { id: "k3-256k", name: "Kimi K3 256K", contextLength: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    { id: "kimi-for-coding", name: "Kimi K2.8 Preview", contextLength: 1048576, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
+    { id: "kimi-for-coding-highspeed", name: "Kimi K2.7 Code HighSpeed", contextLength: 262144, supportsVision: true, supportsReasoning: true, unsupportedParams: ["temperature", "top_p"] },
   ],
   defaultContextLength: 262144,
   features: {

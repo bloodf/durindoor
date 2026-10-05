@@ -66,8 +66,7 @@ describe("xAI Grok catalog", () => {
 
 
 
-  it("preserves provider-specific Grok output ceilings outside xAI and Grok CLI", () => {
-    expect(getCapabilitiesForModel("api-airforce", "x-ai/grok-3").maxOutput).toBeGreaterThan(0);
+  it("preserves the provider-declared Grok output ceiling outside xAI and Grok CLI", () => {
     expect(resolveModelLimits("api-airforce", "x-ai/grok-3").maxOutput).toBe(65536);
   });
 

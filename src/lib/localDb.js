@@ -41,6 +41,7 @@ export {
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel,
   getSyncedModelCatalogs, getSyncedModelCatalog, saveSyncedModelCatalog,
+  getCachedSharedModelMetadata, saveCachedSharedModelMetadata,
   getMitmAlias, setMitmAliasAll,
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb, exportSelectiveDb, importSelectiveDb, getSelectiveTransferCatalog, previewSelectiveImport,

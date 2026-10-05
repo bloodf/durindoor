@@ -8,13 +8,14 @@ import {
   getSyncedModelCatalogs,
   saveSyncedModelCatalog
 } from "@/lib/localDb";
-import { AI_PROVIDERS, getProviderAlias } from "@/shared/constants/providers";
+import { AI_PROVIDERS, getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import { checkAndRefreshToken } from "@/sse/services/tokenRefresh";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
 import { fetchConnectionModels } from "@/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isString } from "@/shared/utils/typeChecks.js";
+import { refreshSharedModelMetadata } from "./sharedMetadata.js";
 import {
   effectiveSyncedModels,
   findPrunedReferences,
@@ -75,7 +76,7 @@ export async function getPrunedModelReferences(settings = null) {
   const providers = [];
   for (const [providerId, entry] of Object.entries(catalogs)) {
     if (!isModelAutoSyncEnabled(providerId, resolvedSettings)) continue;
-    const effective = effectiveSyncedModels(entry, getModelsByProviderId(providerId));
+    const effective = effectiveSyncedModels(entry, getModelsByProviderId(providerId), providerId);
     if (!effective) continue;
     const aliases = providerModelPrefixes(providerId);
     providers.push({
@@ -113,13 +114,23 @@ export async function syncProviderModels(providerId, {
     const result = await withTimeout(fetchModels(prepared), timeoutMs);
     if (result?.error) throw new Error(`${result.status || ""} ${result.error}`.trim());
 
-    const models = normalizeSyncedModels(result?.models);
+    const staticModels = getModelsByProviderId(providerId);
+    // The native parsers return rows as supplied, including untyped responses.
+    // Keep the API protocol when row discriminators are missing or stripped.
+    const canonicalProvider = getProviderByAlias(providerId)?.id || providerId;
+    const protocol = PROVIDER_MODELS_CONFIG[canonicalProvider]?.type ??
+      AI_PROVIDERS[canonicalProvider]?.modelsFetcher?.type ??
+      (canonicalProvider === "anthropic" || canonicalProvider === "claude" ? "anthropic" :
+        canonicalProvider === "gemini" ? "gemini" : null);
+    const format = protocol === "anthropic" || protocol === "claude" ? "anthropic" :
+      protocol === "gemini" ? "gemini" : protocol === "openai" ? "generic" : "auto";
+    const models = normalizeSyncedModels(result?.models, staticModels, { format });
     // An empty list is never trusted: pruning on it would wipe the provider.
     if (models.length === 0) throw new Error(result?.warning || "Provider returned no models");
 
     const entry = mergeSyncedCatalog(previous, models, {
       now,
-      staticModels: getModelsByProviderId(providerId),
+      staticModels,
       connectionId: connection.id
     });
     await saveSyncedModelCatalog(providerId, entry);
@@ -153,21 +164,26 @@ let inFlight = null;
  * so a manual sync of one provider always runs. Concurrent full runs share
  * one run; a provider-scoped run waits for a full run in flight, then runs.
  *
- * @param {{ providerIds?: string[], force?: boolean, now?: number, fetchModels?: Function }} [options]
+ * @param {{ providerIds?: string[], force?: boolean, now?: number, fetchModels?: Function, fetchCatalog?: Function }} [options]
  */
 export async function runModelAutoSync(options = {}) {
   if (Array.isArray(options.providerIds) && options.providerIds.length > 0) {
-    if (inFlight) await inFlight.catch(() => {});
+    if (inFlight) await inFlight.promise.catch(() => {});
     return runModelAutoSyncImpl(options);
   }
-  if (inFlight) return inFlight;
-  inFlight = runModelAutoSyncImpl(options).finally(() => {
-    inFlight = null;
+  while (inFlight) {
+    if (!options.force || inFlight.force) return inFlight.promise;
+    await inFlight.promise.catch(() => {});
+  }
+  const task = { force: !!options.force, promise: null };
+  task.promise = runModelAutoSyncImpl(options).finally(() => {
+    if (inFlight === task) inFlight = null;
   });
-  return inFlight;
+  inFlight = task;
+  return task.promise;
 }
 
-async function runModelAutoSyncImpl({ providerIds = null, force = false, now = Date.now(), fetchModels } = {}) {
+async function runModelAutoSyncImpl({ providerIds = null, force = false, now = Date.now(), fetchModels, fetchCatalog } = {}) {
   const settings = await getSettings();
   const intervalHours = getModelAutoSyncIntervalHours(settings);
   const explicit = Array.isArray(providerIds) && providerIds.length > 0;
@@ -178,11 +194,16 @@ async function runModelAutoSyncImpl({ providerIds = null, force = false, now = D
     filter((id) => isModelAutoSyncEnabled(id, settings));
   }
   const catalogs = force || explicit ? {} : await getSyncedModelCatalogs();
+  const dueProviders = candidates.filter((providerId) => isModelAutoSyncEligible(providerId) &&
+    (force || explicit || isSyncDue(catalogs[providerId], intervalHours, now)));
+  // Enrich only when a roster is due, or an operator requests a refresh.
+  // The HTTP dependency is independent of the roster fetch dependency.
+  if (dueProviders.length || force || explicit) {
+    await refreshSharedModelMetadata({ now, force: force || explicit, fetchCatalog });
+  }
 
   const results = [];
-  for (const providerId of candidates) {
-    if (!isModelAutoSyncEligible(providerId)) continue;
-    if (!force && !explicit && !isSyncDue(catalogs[providerId], intervalHours, now)) continue;
+  for (const providerId of dueProviders) {
     results.push(await syncProviderModels(providerId, { now, ...(fetchModels ? { fetchModels } : null) }));
   }
 

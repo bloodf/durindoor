@@ -5,9 +5,11 @@ import { normalizeKimchiModel } from "../../open-sse/services/kimchiModels.js";
 import {
   clearLiveModelLimitsCache,
   getCachedLiveLimits,
-  extractLiveModelLimits,
+  resolveLiveAnthropicModels,
   resolveLiveOpenAIModels,
 } from "../../open-sse/services/liveModelLimits.js";
+import { extractLiveModelLimits } from "../../open-sse/services/modelMetadata.js";
+import { buildModelsResponse } from "../../src/app/api/v1/models/_shared.js";
 
 it("does not replace global fetch when imported", () => {
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
@@ -30,7 +32,7 @@ describe("extractLiveModelLimits", () => {
       context_length: 32_000,
       meta: { context_window: 64_000 },
       limits: { max_input_tokens: 128_000, max_output_tokens: 16_000 },
-    })).toEqual({ contextWindow: 128_000, maxOutput: 16_000 });
+    })).toEqual({ contextWindow: 144_000, maxInput: 128_000, maxOutput: 16_000 });
   });
 
   it("rejects non-positive, non-integral, and absurd token limits", () => {
@@ -40,6 +42,98 @@ describe("extractLiveModelLimits", () => {
       max_output_tokens: -1,
       limits: { context_length: 3.5, max_output_tokens: "junk" },
     })).toEqual({});
+  });
+
+  it("keeps input-only budgets unknown as total capacity and does not join different sources", () => {
+    expect(extractLiveModelLimits({ max_input_tokens: 922_000 })).toEqual({ maxInput: 922_000 });
+    expect(extractLiveModelLimits({
+      limits: { max_input_tokens: 922_000 },
+      meta: { max_output_tokens: 128_000 },
+    })).toEqual({ maxInput: 922_000, maxOutput: 128_000 });
+  });
+
+  it("does not sum native max_tokens into an input context window", () => {
+    const native = { max_input_tokens: 1_000_000, max_tokens: 128_000 };
+    expect(extractLiveModelLimits(native)).toEqual({ maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits(native, { format: "anthropic" }))
+      .toEqual({ contextWindow: 1_000_000, maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({ max_input_tokens: 1_000_000 }, { format: "anthropic" }))
+      .toEqual({ contextWindow: 1_000_000, maxInput: 1_000_000 });
+    expect(extractLiveModelLimits({ max_input_tokens: "invalid", max_tokens: 128_000 }, { format: "anthropic" }))
+      .toEqual({ maxOutput: 128_000 });
+  });
+
+  it("recognizes native ModelInfo and keeps its one-million-token window", () => {
+    const native = { type: "model", max_input_tokens: 1_000_000, max_tokens: 128_000 };
+    expect(extractLiveModelLimits(native))
+      .toEqual({ contextWindow: 1_000_000, maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({
+      ...native, limits: { max_input_tokens: 1_000_000, max_output_tokens: 128_000 },
+      capabilities: { contextWindow: 2_000_000 },
+    })).toEqual({ contextWindow: 1_000_000, maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits(native, { format: "generic" }))
+      .toEqual({ maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({ ...native, max_tokens: null }))
+      .toEqual({ contextWindow: 1_000_000, maxInput: 1_000_000 });
+    expect(extractLiveModelLimits({ ...native, max_input_tokens: null }))
+      .toEqual({ maxOutput: 128_000 });
+  });
+
+  it.each(["auto", "anthropic"])("keeps an explicitly unknown native total unknown in %s mode", (format) => {
+    const native = {
+      type: "model", max_input_tokens: 1_000_000, max_tokens: 128_000,
+      max_context_window_tokens: null,
+    };
+    expect(extractLiveModelLimits(native, { format }))
+      .toEqual({ maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({
+      ...native, max_context_window_tokens: 1_050_000, max_input_tokens: 922_000,
+    }, { format })).toEqual({ contextWindow: 1_050_000, maxInput: 922_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({
+      ...native, max_model_len: 1_050_000, context_length: 272_000,
+    }, { format })).toEqual({ contextWindow: 1_050_000, maxInput: 1_000_000, maxOutput: 128_000 });
+    expect(extractLiveModelLimits({
+      ...native, capabilities: { contextWindow: 1_050_000 },
+    }, { format })).toEqual({ contextWindow: 1_050_000, maxInput: 1_000_000, maxOutput: 128_000 });
+  });
+
+  it("does not let the native unknown-total marker change generic additive budgets", () => {
+    expect(extractLiveModelLimits({
+      max_context_window_tokens: null, max_input_tokens: 922_000, max_output_tokens: 128_000,
+    })).toEqual({ contextWindow: 1_050_000, maxInput: 922_000, maxOutput: 128_000 });
+  });
+
+  it("keeps explicit total fields authoritative in native mode without dropping defaults", () => {
+    expect(extractLiveModelLimits({
+      max_model_len: 1_000_000, max_input_tokens: 900_000, max_tokens: 128_000, defaultOutput: 32_000,
+      limits: { max_input_tokens: 950_000, max_output_tokens: 128_000 },
+    }, { format: "anthropic" })).toEqual({
+      contextWindow: 1_000_000, maxInput: 950_000, maxOutput: 128_000, defaultOutput: 32_000,
+    });
+  });
+
+  it("prefers maxima over default windows within each source", () => {
+    expect(extractLiveModelLimits({
+      max_model_len: 2_000_000,
+      limits: { max_model_len: 1_050_000, context_length: 272_000 },
+      meta: { max_model_len: 512_000 },
+    })).toEqual({ contextWindow: 1_050_000 });
+  });
+
+  it("retains valid independent ceilings when a pair exceeds the validation bound", () => {
+    expect(extractLiveModelLimits({
+      limits: { max_input_tokens: 16_777_216, max_output_tokens: 1_048_576 },
+      meta: { context_window: 1_048_576 },
+    })).toEqual({ contextWindow: 1_048_576, maxInput: 16_777_216, maxOutput: 1_048_576 });
+  });
+
+  it("keeps full-window output maxima distinct from generation defaults", () => {
+    expect(extractLiveModelLimits({
+      capabilities: { contextWindow: 1_048_576, maxInput: 1_048_576, maxOutput: 1_048_576, defaultOutput: 131_072 },
+      default_generation_settings: { max_tokens: 4_096 },
+    })).toEqual({ contextWindow: 1_048_576, maxInput: 1_048_576, maxOutput: 1_048_576, defaultOutput: 131_072 });
+    expect(extractLiveModelLimits({ defaultOutput: "131072" })).toEqual({ defaultOutput: 131_072 });
+    expect(extractLiveModelLimits({ defaultOutput: -1, default_generation_settings: { max_tokens: 4_096 } })).toEqual({});
   });
   it("normalizes Kimchi metadata through the same validation", () => {
     expect(normalizeKimchiModel({
@@ -92,6 +186,73 @@ describe("extractLiveModelLimits", () => {
       expect(fetch).toHaveBeenCalledOnce();
       expect(getCachedLiveLimits("provider-a", "model-x", first)).toEqual({ contextWindow: 128_000 });
       expect(getCachedLiveLimits("provider-b", "model-x", second)).toEqual({ contextWindow: 128_000 });
+    } finally {
+      vi.unstubAllGlobals();
+      clearLiveModelLimitsCache();
+    }
+  });
+  it.each([
+    ["root canonical flags", {
+      vision: false, reasoning: false,
+      capabilities: { image_input: { supported: true }, thinking: { supported: true, types: { adaptive: { supported: true } } } },
+    }],
+    ["capability canonical flags", {
+      capabilities: {
+        vision: false, reasoning: false, image_input: { supported: true },
+        thinking: { supported: true, types: { enabled: { supported: true } } },
+      },
+    }],
+    ["unsupported thinking with enabled/adaptive hints", {
+      capabilities: {
+        image_input: { supported: false },
+        thinking: { supported: false, types: { enabled: { supported: true }, adaptive: { supported: true } } },
+      },
+    }],
+    ["unsupported boolean thinking with support hints", {
+      capabilities: { vision: false, thinking: false, supports: { vision: true, reasoning: true } },
+    }],
+  ])("keeps native Anthropic explicit false over %s through cache and serialization", async (_name, declaration) => {
+    clearLiveModelLimitsCache();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: "claude-explicit-false", max_input_tokens: 1000000, max_tokens: 128000, ...declaration }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    const connection = { id: "native-false-connection", apiKey: "test-key" };
+    try {
+      const result = await resolveLiveAnthropicModels(connection, { provider: "anthropic", guard: "none" });
+      expect(result.models[0].capabilities).toMatchObject({
+        vision: false, reasoning: false, contextWindow: 1000000, maxInput: 1000000, maxOutput: 128000,
+      });
+      expect(result.models[0].capabilities).not.toHaveProperty("thinkingFormat");
+      expect(getCachedLiveLimits("anthropic", "claude-explicit-false", connection)).toMatchObject({ vision: false, reasoning: false });
+      const generic = await buildModelsResponse(new Request("http://localhost/v1/models"), result.models).json();
+      expect(generic.data[0]).toMatchObject({ reasoning: false, input: ["text"], capabilities: { vision: false, reasoning: false } });
+      const native = await buildModelsResponse(new Request("http://localhost/v1/models", {
+        headers: { "anthropic-version": "2023-06-01" },
+      }), result.models).json();
+      expect(native.data[0]).toMatchObject({
+        max_input_tokens: 1000000, max_tokens: 128000,
+        capabilities: { image_input: { supported: false }, thinking: { supported: false } },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      clearLiveModelLimitsCache();
+    }
+  });
+
+  it.each([
+    ["enabled", "claude-budget"],
+    ["adaptive", "claude-adaptive"],
+  ])("retains genuine native Anthropic %s thinking support", async (type, thinkingFormat) => {
+    clearLiveModelLimitsCache();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: "claude-supported", capabilities: { thinking: { types: { [type]: { supported: true } } } } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    try {
+      const result = await resolveLiveAnthropicModels({ apiKey: "test-key" }, { guard: "none" });
+      const generic = await buildModelsResponse(new Request("http://localhost/v1/models"), result.models).json();
+      expect(generic.data[0].capabilities).toMatchObject({ reasoning: true, thinkingFormat });
+      expect(generic.data[0]).not.toHaveProperty("max_model_len");
+      expect(generic.data[0]).not.toHaveProperty("max_output_tokens");
     } finally {
       vi.unstubAllGlobals();
       clearLiveModelLimitsCache();

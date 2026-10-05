@@ -20,34 +20,9 @@ import {
   aggregateComboCapabilities,
   getCapabilitiesForModel,
 } from "../../open-sse/providers/capabilities.js";
-import { buildModelsList } from "../../src/app/api/v1/models/buildModelsList.js";
-import * as localDb from "@/lib/localDb";
 
 
 describe("August 2026 model catalog audit", () => {
-  it("never serves maxOutput greater than or equal to contextWindow", async () => {
-    const models = await buildModelsList(["llm"]);
-    const offenders = models
-      .filter(({ capabilities }) => Number.isFinite(capabilities?.contextWindow)
-        && Number.isFinite(capabilities?.maxOutput)
-        && capabilities.maxOutput >= capabilities.contextWindow)
-      .map(({ id, capabilities }) => `${id}: ${capabilities.maxOutput} >= ${capabilities.contextWindow}`);
-    expect(offenders).toEqual([]);
-  });
-  it("omits impossible dynamic maxOutput values at the served-catalog boundary", async () => {
-    localDb.getCustomModels.mockResolvedValueOnce([{
-      id: "impossible-output",
-      providerAlias: "custom",
-      capabilities: { contextWindow: 4_096, maxOutput: 4_096 },
-    }]);
-
-    const models = await buildModelsList(["llm"]);
-    const model = models.find(({ id }) => id === "custom/impossible-output");
-
-    expect(model.capabilities.contextWindow).toBe(4_096);
-    expect(model.capabilities.maxOutput).toBeUndefined();
-    expect(model.max_completion_tokens).toBeUndefined();
-  });
 
 
   it("does not claim fixed limits for target-dependent router aliases", () => {

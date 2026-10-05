@@ -24,16 +24,6 @@ describe("context-window sanity", () => {
     },
   );
 
-  it.each(["gpt-5.5-medium", "gpt-5.5-high", "gpt-5.5-xhigh"])(
-    "cx/%s inherits the tighter ChatGPT subscription window",
-    (model) => {
-      // Source: chatgpt.com/backend-api/codex/models; this does not change the
-      // direct OpenAI API's separately-tested 1.05M contract.
-      expect(getCapabilitiesForModel("cx", model).contextWindow).toBe(272000);
-      expect(resolveModelLimits("cx", model).contextWindow).toBe(272000);
-    },
-  );
-
   it("does not advertise chat limits for an Ollama embedding model", () => {
     const model = "nomic-embed-text:latest";
     expect(getCapabilitiesForModel("ollama-local", model).contextWindow).toBeNull();

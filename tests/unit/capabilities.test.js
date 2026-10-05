@@ -122,11 +122,9 @@ describe("getCapabilitiesForModel", () => {
     }
   });
 
-  // Direct OpenAI GPT-5.4 ships the 1.05M context window
-  // (developers.openai.com/api/docs/models/gpt-5.4 — >272K input prompts are
-  // repriced for "models with a 1.05M context window"). The ChatGPT Codex
-  // surface independently reports 272K through backend-api/codex/models.
-  it("keeps direct OpenAI GPT-5.4 at 1.05M without leaking the Codex cap", () => {
+  // Codex exposes the same model capacity; a catalog default/compaction
+  // window must not replace the published API model specification.
+  it("keeps API-equivalent GPT-5.4 capacity across Codex and review aliases", () => {
     const direct = {
       contextWindow: 1050000,
       maxOutput: 128000,
@@ -137,16 +135,14 @@ describe("getCapabilitiesForModel", () => {
     };
     expect(getCapabilitiesForModel("openai", "gpt-5.4")).toMatchObject(direct);
 
-    // Release-3.15 integration: Codex live discovery intentionally supersedes
-    // the old shared direct-API expectation for cx/codex provider resolution.
     for (const provider of ["codex", "cx"]) {
       expect(getCapabilitiesForModel(provider, "gpt-5.4"), `${provider}/gpt-5.4`).toMatchObject({
-        contextWindow: 272000,
-        maxOutput: undefined,
+        contextWindow: 1050000,
+        maxOutput: 128000,
       });
       expect(getCapabilitiesForModel(provider, "gpt-5.4-review"), `${provider}/gpt-5.4-review`).toMatchObject({
-        contextWindow: 272000,
-        maxOutput: undefined,
+        contextWindow: 1050000,
+        maxOutput: 128000,
       });
     }
   });

@@ -23,11 +23,16 @@ export default function StartupConfiguration({ startupEnv, password, onUnauthori
     setBusy(true);
     setResult(null);
     try {
-      const response = await fetch(`/api/settings/database/startup-env${action === "test" ? "?test=1" : ""}`, {
+      const options = {
         method: action === "remove" ? "DELETE" : "POST",
         headers: { "content-type": "application/json", "x-9r-password": password },
-        ...(action === "remove" ? {} : { body: JSON.stringify({ ...draft, ...(passwordChanged ? { password: credential } : {}) }) }),
-      });
+      };
+      if (action !== "remove") {
+        const payload = { ...draft };
+        if (passwordChanged) payload.password = credential;
+        options.body = JSON.stringify(payload);
+      }
+      const response = await fetch(`/api/settings/database/startup-env${action === "test" ? "?test=1" : ""}`, options);
       if (response.status === 401) { onUnauthorized(); return; }
       const body = await response.json();
       if (!response.ok || !body.ok) throw new Error(body.error || "Startup configuration request failed");

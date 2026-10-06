@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DATA_DIR } from "../dataDir.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 export const DATABASE_ENV_KEYS = ["DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE"];
 const SOURCE_KEY = "DURINDOOR_DATABASE_ENV_SOURCE_JSON";
@@ -25,10 +26,12 @@ export function readDatabaseEnvFile() {
 
 function processSources() {
   if (process.env[SOURCE_KEY]) return JSON.parse(process.env[SOURCE_KEY]);
-  return Object.fromEntries(DATABASE_ENV_KEYS.map((key) => [key, {
-    source: Object.hasOwn(process.env, key) ? "process" : null,
-    ...(Object.hasOwn(process.env, key) ? { processValue: process.env[key] } : {}),
-  }]));
+  return Object.fromEntries(DATABASE_ENV_KEYS.map((key) => {
+    const hasProcessValue = Object.hasOwn(process.env, key);
+    const entry = { source: hasProcessValue ? "process" : null };
+    if (hasProcessValue) entry.processValue = process.env[key];
+    return [key, entry];
+  }));
 }
 
 /** Apply once per startup, not again after a dashboard save awaiting restart. */
@@ -60,7 +63,7 @@ export function writeDatabaseEnvFile(partial) {
     const value = partial[key];
     if (value === null) delete values[key];
     else {
-      if (typeof value !== "string" || /[\r\n\0]/.test(value)) throw new Error("Invalid database environment value");
+      if (!isString(value) || /[\r\n\0]/.test(value)) throw new Error("Invalid database environment value");
       values[key] = value;
     }
   }
@@ -110,10 +113,10 @@ export function describeDatabaseStartup(fallbackUrl) {
 
 /** Build a candidate without ever returning its password to the client. */
 export function composeDatabaseStartup(body) {
-  if (!body || typeof body !== "object" || Array.isArray(body) || !["sqlite", "postgres"].includes(body.engine)) throw new Error("engine must be sqlite or postgres");
+  if (!body || !isObject(body) || Array.isArray(body) || !["sqlite", "postgres"].includes(body.engine)) throw new Error("engine must be sqlite or postgres");
   if (body.engine === "sqlite") return { DURINDOOR_DATABASE_ENGINE: "sqlite", DURINDOOR_PG_URL: null, DURINDOOR_PG_SSLMODE: null };
   for (const key of ["host", "database", "user"]) {
-    if (typeof body[key] !== "string" || !body[key].trim() || /[\r\n\0]/.test(body[key])) throw new Error(`${key} is required`);
+    if (!isString(body[key]) || !body[key].trim() || /[\r\n\0]/.test(body[key])) throw new Error(`${key} is required`);
   }
   const port = String(body.port ?? "5432");
   if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error("port must be between 1 and 65535");
@@ -125,7 +128,7 @@ export function composeDatabaseStartup(body) {
     const inherited = processSources().DURINDOOR_PG_URL?.processValue;
     try { password = decodeURIComponent(new URL(stored ?? inherited).password); } catch { password = ""; }
   }
-  if (typeof password !== "string" || /[\r\n\0]/.test(password)) throw new Error("Invalid password");
+  if (!isString(password) || /[\r\n\0]/.test(password)) throw new Error("Invalid password");
   const host = body.host.trim();
   if (/[\s/@?#]/.test(host)) throw new Error("Invalid host");
   let url;

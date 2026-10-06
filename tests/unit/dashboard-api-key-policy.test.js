@@ -51,6 +51,30 @@ describe("dashboard API-key policy drafts", () => {
     });
   });
 
+  it("treats empty draft limits as unlimited rather than a zero limit", () => {
+    const usage = { totalTokens: 30599943242, totalCost: 50605.3334 };
+    const result = formatPolicyUsage(usage, { maxTokens: "", maxCostUsd: "" });
+    expect(result.tokens).toBe("30,599,943,242 used");
+    expect(result.cost).toBe("$50605.3334 used");
+    expect(result.tokensExceeded).toBe(false);
+    expect(result.costExceeded).toBe(false);
+    expect(result.remainingTokens).toBeNull();
+    expect(result.remainingCostUsd).toBeNull();
+    expect(formatPolicyUsage(usage, { maxTokens: "abc", maxCostUsd: "x" })).toMatchObject({
+      tokensExceeded: false,
+      costExceeded: false,
+    });
+  });
+
+  it("keeps an explicit zero limit as a real, exceeded limit", () => {
+    expect(formatPolicyUsage({ totalTokens: 5, totalCost: 1 }, { maxTokens: "0", maxCostUsd: "0" })).toMatchObject({
+      tokensExceeded: true,
+      costExceeded: true,
+      remainingTokens: 0,
+    });
+    expect(formatPolicyUsage({ totalTokens: 0, totalCost: 0 }, { maxTokens: 0 }).tokensExceeded).toBe(true);
+  });
+
   it("rejects object-shaped malformed stored policies from the editor", () => {
     expect(isEditableApiKeyPolicy({ allowedModels: "openai/gpt" })).toBe(false);
     expect(isEditableApiKeyPolicy({ maxTokens: "bad" })).toBe(false);

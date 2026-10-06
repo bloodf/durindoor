@@ -62,8 +62,10 @@ export function toggleApiKeyPolicyModel(draft, modelId) {
 export function formatPolicyUsage(usage, policy) {
   const totalTokens = Number(usage?.totalTokens) || 0;
   const totalCost = Number(usage?.totalCost) || 0;
-  const maxTokens = policy?.maxTokens == null ? null : Number(policy.maxTokens);
-  const maxCostUsd = policy?.maxCostUsd == null ? null : Number(policy.maxCostUsd);
+  // Empty drafts ("") and non-numeric values mean unlimited; an explicit 0 stays a real limit.
+  const toLimit = (value) => (value == null || value === "" ? null : (Number.isFinite(Number(value)) ? Number(value) : null));
+  const maxTokens = toLimit(policy?.maxTokens);
+  const maxCostUsd = toLimit(policy?.maxCostUsd);
   const remainingTokens = maxTokens == null ? null : Math.max(0, maxTokens - totalTokens);
   const remainingCostUsd = maxCostUsd == null ? null : Math.max(0, maxCostUsd - totalCost);
   return {

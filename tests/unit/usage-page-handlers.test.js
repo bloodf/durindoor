@@ -32,13 +32,16 @@ describe("usage reset", () => {
     await act(async () => root.render(React.createElement(UsagePage)));
     const before = state.stats.at(-1);
     await click(button("Reset"));
-    const dialog = document.body.querySelector('[role="dialog"]');
+    const dialog = document.body.querySelector("dialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog.open).toBe(true);
+    expect(document.getElementById(dialog.getAttribute("aria-labelledby")).textContent).toBe("Reset usage data");
     const confirm = [...dialog.querySelectorAll("button")].find((node) => node.textContent.trim() === "Reset");
     await click(confirm);
     expect(fetch).toHaveBeenCalledWith("/api/usage/reset", expect.objectContaining({ method: "POST", body: JSON.stringify({ period: "all" }) }));
     expect(state.stats.at(-1).resetNonce).toBe(before.resetNonce + 1);
     expect(state.stats.at(-1).period).toBe(before.period);
     expect(state.stats.at(-1).customRange).toEqual(before.customRange);
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector("dialog")).toBeNull();
   });
 });

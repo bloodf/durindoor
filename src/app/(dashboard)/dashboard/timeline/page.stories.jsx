@@ -15,8 +15,28 @@ const trace = {
   total_ms: 342,
 };
 
+// The swimlane only draws traces inside the requested window, so the fixture
+// stamps traces relative to the request's own endDate.
+function windowTraces(request) {
+  const url = new URL(request.url, "http://storybook.local");
+  const end = Date.parse(url.searchParams.get("endDate")) || Date.now();
+  const ago = (ms) => new Date(end - ms).toISOString();
+  return [
+    { ...trace, started_at: ago(4 * 60_000) },
+    { ...trace, id: "trace-002", status: "error", provider: "claude", model: "claude-sonnet-4-5", connection_id: "fixture-connection-b", event_count: 4, total_ms: 900, started_at: ago(2 * 60_000) },
+    { ...trace, id: "trace-003", status: "running", model: "gpt-5-mini", event_count: 2, total_ms: null, started_at: ago(30_000) },
+  ];
+}
+
 const defaultRoutes = {
-  "GET /api/timeline": { body: { traces: [trace], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } } },
+  "GET /api/timeline": (request) => {
+    const url = new URL(request.url, "http://storybook.local");
+    if (url.searchParams.get("endDate")) {
+      const traces = windowTraces(request);
+      return { body: { traces, pagination: { page: 1, pageSize: 100, totalItems: traces.length, totalPages: 1 } } };
+    }
+    return { body: { traces: [trace], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } } };
+  },
   "GET /api/settings": { body: { enableProxyTimeline: true } },
   "GET /api/timeline/stream": { body: {}, events: [{ traceId: trace.id }] },
 };
@@ -27,12 +47,46 @@ export default {
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/timeline", params: {}, routes: defaultRoutes } },
 };
 
-// Loaded covers private TimelineSkeleton completion, status badges, provider logo cells, and DataTable rows.
-export const Loaded = {};
+// Loaded covers the default swimlane view: window controls, lanes, and status-coloured bars.
+export const Loaded = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("group", { name: "Trace swimlanes by provider" })).toBeVisible();
+    await expect(canvas.getByRole("radio", { name: "Timeline" })).toHaveAttribute("aria-checked", "true");
+    await expect(canvas.getByRole("radio", { name: "15m" })).toHaveAttribute("aria-checked", "true");
+    await expect(canvas.getAllByRole("button", { name: /events$/ })).toHaveLength(3);
+  },
+};
+export const SelectBar = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const bar = await canvas.findByRole("button", { name: /claude-sonnet-4-5 · error · 900 ms · 4 events/ });
+    bar.focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(globalThis.__STORYBOOK_NAV__.__current()).toBe("/dashboard/timeline/trace-002");
+  },
+};
+export const ConnectionLanes = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/timeline?lane=connection_id&window=1h", params: {}, routes: defaultRoutes } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("group", { name: "Trace swimlanes by connection" })).toBeVisible();
+    await expect(canvas.getByRole("radio", { name: "1h" })).toHaveAttribute("aria-checked", "true");
+  },
+};
+// TableView covers private TimelineSkeleton completion, status badges, provider logo cells, and DataTable rows.
+export const TableView = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("radio", { name: "Table" }));
+    await expect(await canvas.findByText("gpt-5")).toBeVisible();
+    await expect(globalThis.__STORYBOOK_NAV__.__current()).toBe("/dashboard/timeline?view=table");
+  },
+};
 export const LiveUpdates = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("switch", { name: "Live timeline updates" }));
+    await userEvent.click(await canvas.findByRole("switch", { name: "Live timeline updates" }));
     await canvas.findByText("Listening for updates");
   },
 };
@@ -53,7 +107,7 @@ export const AllRows = {
   parameters: {
     storyFixture: {
       scenario: "default",
-      pathname: "/dashboard/timeline?pageSize=all&page=1",
+      pathname: "/dashboard/timeline?view=table&pageSize=all&page=1",
       params: {},
       routes: {
         "GET /api/timeline": (request) => {

@@ -8,8 +8,10 @@ import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import KeyValue from "@/shared/ui/components/KeyValue.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
-import { isString } from "@/shared/utils/typeChecks.js";
 import { buildConnectionNameMap, connectionDisplayName } from "@/shared/utils/connectionDisplay.js";
+import { statusTone } from "../timelineStatus.js";
+import EventRow from "./components/EventRow.jsx";
+import TraceWaterfall from "./components/TraceWaterfall.jsx";
 import TimelineDetailSkeleton from "./TimelineDetailSkeleton.jsx";
 
 function groupEvents(events) {
@@ -20,31 +22,6 @@ function groupEvents(events) {
     else groups.push({ type: event.type, events: [event] });
   }
   return groups;
-}
-function statusTone(status) {
-  if (status === "ok") return "success";
-  if (status === "aborted") return "warning";
-  if (status === "error") return "danger";
-  if (status === "running") return "info";
-  return "neutral";
-}
-
-function EventRow({ event }) {
-  return (
-    <div className="py-1.5">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-dd-muted">
-        <span className="font-mono dd-tnum">#{event.seq}</span>
-        <span>{event.type}</span>
-        <span>{event.direction}</span>
-        {event.summary ? <span className="text-dd-text">{event.summary}</span> : null}
-      </div>
-      {event.payload != null ? (
-        <pre tabIndex={0} aria-label={`Timeline event #${event.seq} details`} className="mt-1.5 overflow-x-auto rounded-dd bg-dd-surface-2 p-2.5 text-xs text-dd-text" role="region">
-          {isString(event.payload) ? event.payload : JSON.stringify(event.payload, null, 2)}
-        </pre>
-      ) : null}
-    </div>
-  );
 }
 
 function EventGroup({ group, index, open, onToggle }) {
@@ -162,6 +139,14 @@ export default function TimelineDetailPage() {
           ]} />
         </CardContent>
       </Card>
+      {row.events?.length ? (
+        <Card padding={false}>
+          <CardHeader icon="waterfall_chart" title="Waterfall" subtitle={trace.total_ms == null ? "Trace still running" : `${trace.total_ms} ms total`} />
+          <CardContent>
+            <TraceWaterfall trace={trace} events={row.events} />
+          </CardContent>
+        </Card>
+      ) : null}
       <Card padding={false}>
         <CardHeader icon="list_alt" title="Events" subtitle={`${groups.length} event group${groups.length === 1 ? "" : "s"}`} />
         {groups.length === 0 ? (

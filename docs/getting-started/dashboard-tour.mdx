@@ -7,7 +7,7 @@ Open `http://localhost:20128/dashboard`. Next.js serves that tree from `src/app/
 
 ## Monitor
 
-**Usage** (`/dashboard/usage`) is the home after that redirect. It shows token totals, cost estimates, request history, provider topology, and per-request detail (provider, model, latency, fallback).
+**Usage** (`/dashboard/usage`) is the home after that redirect. Its overview starts with gateway, 24-hour activity, latency, and storage cards, followed by in-flight requests and recorded provider health. Monitoring refreshes every 15 seconds independently of the usage date filter; pause it or refresh manually. Token totals, cost estimates, request history, provider topology, and per-request detail follow. The former `/dashboard/monitoring` URL redirects here.
 
 **Timeline** (`/dashboard/timeline`) is a live tail of proxy hops and SSE history. Open a row for one request's hop list.
 
@@ -21,13 +21,13 @@ Open `http://localhost:20128/dashboard`. Next.js serves that tree from `src/app/
 
 **Playground** (`/dashboard/playground`) is an in-dashboard chat box against the same `/v1` path your tools use.
 
-**Combos** (`/dashboard/combos`) builds an ordered fallback chain and exposes it as one model name.
+**Combos** (`/dashboard/combos`) builds an ordered fallback chain and exposes it as one model name. The Connection usage section at the bottom reports the last seven days of combo/account attribution, including unattributed requests.
 
 **Providers** (`/dashboard/providers`) is the connection grid: OAuth, API keys, cookies, compatible nodes, and local providers. Open a row for that provider's accounts and models.
 
 **Endpoint** (`/dashboard/endpoint`) shows local, tunnel, and Tailscale URLs, plus API-auth settings for clients.
 
-**API Keys** (`/dashboard/keys`) creates, pauses, revokes, expires, and scopes DurinDoor keys. The full secret is shown once at create time.
+**API Keys** (`/dashboard/keys`) creates, pauses, revokes, expires, and scopes DurinDoor keys. The full secret is shown once at create time. The API key limits card below the key list shows configured limits, current consumption, remaining allowance, and reset hints.
 
 **Proxy Pools** (`/dashboard/proxy-pools`) defines outbound HTTP/SOCKS pools that provider traffic (including OAuth) can be pinned to.
 

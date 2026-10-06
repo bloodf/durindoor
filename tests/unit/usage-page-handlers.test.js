@@ -1,54 +1,44 @@
-import { describe, expect, it } from "vitest";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 
-// ponytail: source-level regression guard — the repo has no jsdom/react-testing-library
-// harness, so handler wiring is asserted against source text instead of rendered
-// components. Upgrade to a rendered-component test when/if a DOM test harness lands.
-const root = resolve(__dirname, "../..");
-const pageSrc = readFileSync(resolve(root, "src/app/(dashboard)/dashboard/usage/page.js"), "utf8");
-const statsSrc = readFileSync(resolve(root, "src/shared/components/UsageStats.js"), "utf8");
-const loggerSrc = readFileSync(resolve(root, "src/shared/components/RequestLogger.js"), "utf8");
-const detailsSrc = readFileSync(
-  resolve(root, "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"),
-  "utf8"
-);
+const state = vi.hoisted(() => ({ stats: [], params: new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => state.params, useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/shared/components", () => ({
+  CardSkeleton: () => null,
+  RequestLogger: () => null,
+  UsageStats: (props) => { state.stats.push(props); return React.createElement("div", null, "Usage totals"); },
+}));
+vi.mock("@/app/(dashboard)/dashboard/usage/components/RequestDetailsTab", () => ({ default: () => null }));
+vi.mock("@/app/(dashboard)/dashboard/usage/components/MonitoringWidgets", () => ({ default: () => null }));
+import UsagePage from "@/app/(dashboard)/dashboard/usage/page.js";
 
-describe("usage page handleReset (CR-D-2)", () => {
-  it("handleReset bumps a resetNonce counter instead of toggling the period", () => {
-    expect(pageSrc).toMatch(/setResetNonce\(\(n\) => n \+ 1\)/);
-    // Old hack: clobbered the user's selected period to force a re-render.
-    expect(pageSrc).not.toContain('setPeriod((p) => p === "today" ? "24h" : "today")');
-  });
+let root;
+let host;
+const click = async (element) => act(async () => { element.click(); });
+const button = (label) => [...document.querySelectorAll("button")].find((node) => node.textContent.trim().endsWith(label));
+beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  state.stats = [];
+  state.params = new URLSearchParams();
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+});
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
-  it("handleReset never calls setPeriod", () => {
-    // Extract only the handleReset function body (up to its closing brace).
-    const start = pageSrc.indexOf("const handleReset");
-    const end = pageSrc.indexOf("};", start);
-    const handleReset = pageSrc.slice(start, end);
-    expect(handleReset).toContain("setResetNonce");
-    // "setPeriod" as a standalone call ("resetPeriod" must not match).
-    expect(handleReset).not.toMatch(/\bsetPeriod\(/);
-  });
-
-  it("passes resetNonce to UsageStats, RequestLogger and RequestDetailsTab", () => {
-    expect(pageSrc).toMatch(/<UsageStats\b[^>]*\bresetNonce=\{resetNonce\}[^>]*\/>/);
-    expect(pageSrc).toContain("<RequestLogger resetNonce={resetNonce} />");
-    expect(pageSrc).toContain("<RequestDetailsTab resetNonce={resetNonce} />");
-  });
-
-  it("UsageStats accepts resetNonce and refetches stats on change", () => {
-    expect(statsSrc).toMatch(/resetNonce = 0/);
-    expect(statsSrc).toMatch(/\}, \[period,[^\]]*resetNonce\]\);/);
-  });
-
-  it("RequestLogger accepts resetNonce and refetches logs on change", () => {
-    expect(loggerSrc).toMatch(/function RequestLogger\(\{ resetNonce = 0 \} = \{\}\)/);
-    expect(loggerSrc).toMatch(/fetchLogs\(\);(?:\s|\/\/[^\n]*)*\}, \[resetNonce\]\);/);
-  });
-
-  it("RequestDetailsTab accepts resetNonce and refetches details on change", () => {
-    expect(detailsSrc).toMatch(/function RequestDetailsTab\(\{ resetNonce = 0 \} = \{\}\)/);
-    expect(detailsSrc).toMatch(/\}, \[fetchDetails, resetNonce\]\);/);
+describe("usage reset", () => {
+  it("refreshes totals after a successful reset without changing the selected range", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true }); vi.stubGlobal("fetch", fetch);
+    await act(async () => root.render(React.createElement(UsagePage)));
+    const before = state.stats.at(-1);
+    await click(button("Reset"));
+    const dialog = document.body.querySelector('[role="dialog"]');
+    const confirm = [...dialog.querySelectorAll("button")].find((node) => node.textContent.trim() === "Reset");
+    await click(confirm);
+    expect(fetch).toHaveBeenCalledWith("/api/usage/reset", expect.objectContaining({ method: "POST", body: JSON.stringify({ period: "all" }) }));
+    expect(state.stats.at(-1).resetNonce).toBe(before.resetNonce + 1);
+    expect(state.stats.at(-1).period).toBe(before.period);
+    expect(state.stats.at(-1).customRange).toEqual(before.customRange);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 });

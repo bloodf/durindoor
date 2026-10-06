@@ -27,6 +27,7 @@ import { translate } from "@/i18n/runtime";
 import ConnectionGroupsPanel from "./ConnectionGroupsPanel.jsx";
 import ComboAllowListEditor from "./ComboAllowListEditor.jsx";
 import { sortComboModels } from "@/lib/combos/comboSort.js";
+import ComboUsageReport from "./components/ComboUsageReport";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -525,6 +526,11 @@ export default function CombosPage() {
       )}
 
       <ConnectionGroupsPanel connections={providerConnections} onGroupsChange={setGroups} />
+
+      <section className="flex min-w-0 flex-col gap-4" aria-labelledby="connection-usage-heading">
+        <h2 id="connection-usage-heading" className="text-lg font-semibold text-dd-text">{translate("Connection usage")}</h2>
+        <ComboUsageReport period="7d" customRange={null} resetNonce={0} />
+      </section>
 
       {/* Create Modal - Use key to force remount and reset state */}
       <ComboFormModal

@@ -58,7 +58,7 @@ function LimitRow({ row }) {
 
 LimitRow.propTypes = { row: PropTypes.object.isRequired };
 
-/** Usage overview card: each key's configured limits, used and remaining. */
+/** Keys-page card: each key's configured limits, used and remaining. */
 export default function ApiKeyLimitsCard() {
   const [keys, setKeys] = useState(null);
   const [usage, setUsage] = useState({});

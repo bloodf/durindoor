@@ -261,3 +261,46 @@ export const LoadFailureError = {
     await expect(within(dialog).getByText("No models added yet")).toBeVisible();
   },
 };
+
+const spacingParameters = {
+  storyFixture: {
+    scenario: "default",
+    pathname: "/dashboard/combos",
+    routes: {
+      ...fixtureRoutes("default"),
+      "GET /api/models/alias": { body: { aliases: {} } },
+    },
+  },
+};
+
+const mobile390 = { name: "Mobile 390", styles: { width: "390px", height: "844px" } };
+
+const assertSpacingModal = async () => {
+  const canvas = within(document.body);
+  await userEvent.click(await canvas.findByRole("button", { name: "Create Combo" }));
+  const dialog = await canvas.findByRole("dialog");
+  const footer = dialog.querySelector("footer");
+  await expect(footer).toBeInTheDocument();
+  await expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(within(footer).getByRole("button", { name: "Create" })).toBeVisible();
+  const fieldset = within(dialog).getByText("Capability ceiling").closest("fieldset");
+  await expect(fieldset).toHaveClass("rounded-dd-lg", "border", "border-dd-border", "p-4");
+};
+
+export const CreateComboSpacing = {
+  parameters: spacingParameters,
+  play: assertSpacingModal,
+};
+
+export const CreateComboSpacingMobile = {
+  parameters: {
+    ...spacingParameters,
+    viewport: {
+      defaultViewport: "mobile390",
+      viewports: { mobile390 },
+      options: { mobile390 },
+    },
+  },
+  globals: { viewport: { value: "mobile390", isRotated: false } },
+  play: assertSpacingModal,
+};

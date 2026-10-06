@@ -57,6 +57,14 @@ The percent is the stack input vs final output token estimate, rounded to two de
 
 `POST /api/compression/preview` dry-runs the catalog against a JSON body. Test Savers posts here with the dashboard session, not a DurinDoor API key. Status values: `compressed` / `unchanged` (ran), `unavailable` (placeholder), `error` (`apply()` threw). Fallback runs include `fallbackReasons`.
 
+Token Saver → Settings also has **Preview injected output instructions** beside Caveman.
+Expand it to see the complete instruction block for the selected intensity, including
+the technical-content and language-preservation boundaries. The preview and injector
+read the same prompt catalog; no abbreviated UI copy or extra marker is added.
+It remains a preview when Caveman is off. Injection requires Token Saver to be active
+and skips media requests. This output-style instruction is separate from the
+compression seam's rule-based `caveman` engine and the Test Savers dry-run.
+
 ## PXPIPE
 
 Image-compression transform `pxpipe-proxy` ships as a dependency. There is no install endpoint. If status is `DEPENDENCY_MISSING`, reinstall the app. **Dashboard → PXPIPE** (`/dashboard/pxpipe`) lists transform events. Management routes need a dashboard session or machine-bound CLI token even when `requireLogin` is off; API keys do not grant them.

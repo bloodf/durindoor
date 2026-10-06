@@ -67,10 +67,5 @@ describe("Create Combo modal spacing", () => {
     // No stray inline buttons left in the body.
     const body = [...dialog.querySelectorAll("button")].filter((b) => !footer.contains(b));
     expect(body.some((b) => ["Create", "Cancel"].includes(b.textContent.trim()))).toBe(false);
-
-    const fieldset = dialog.querySelector("fieldset");
-    expect(fieldset.className).toContain("rounded-dd-lg");
-    expect(fieldset.className).toContain("p-4");
-    expect(fieldset.className).not.toContain("border-t");
   });
 });

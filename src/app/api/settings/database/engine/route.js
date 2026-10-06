@@ -18,6 +18,8 @@ import { requireDatabaseDualAuth } from "../route";
 import { evaluateCapabilities, listOperatorDisabled } from "@/lib/db/postgresCapabilityGate";
 import { getActiveEngine } from "@/lib/db/driver";
 import { listSnapshots } from "@/lib/db/dialects/postgres/snapshot";
+import { describeDatabaseStartup } from "@/lib/db/databaseEnvFile";
+import { resolvePostgresSecret } from "@/lib/db/secrets";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,7 @@ export async function GET(request) {
   void publicSettings;
   return NextResponse.json({
     activeEngine,
+    startupEnv: describeDatabaseStartup(await resolvePostgresSecret()),
     servingFallback: activeEngine !== (settings.databaseEngine || "sqlite"),
     databaseEngine: settings.databaseEngine,
     databaseEngineError: settings.databaseEngineError,

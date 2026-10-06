@@ -7,6 +7,23 @@ SQLite remains the default for unconfigured installations. `DURINDOOR_PG_URL` se
 
 The dashboard page is **Settings → Database** (`/dashboard/settings/database`). Cutover, test, and rollback routes require a dashboard JWT or CLI token plus the current dashboard password (`x-9r-password`).
 
+## Managed startup configuration
+
+**Settings → Database → Startup configuration** shows password-free connection fields and
+the source of each database key. **Save** probes PostgreSQL before atomically writing
+`DATA_DIR/durindoor-database.env` (file mode `0600`, directory mode `0700`).
+The file overrides process environment values for `DURINDOOR_DATABASE_ENGINE`,
+`DURINDOOR_PG_URL`, and `DURINDOOR_PG_SSLMODE` only. Other environment keys are ignored.
+An explicit managed SQLite selection clears inherited PostgreSQL selectors at startup.
+
+Passwords are write-only: leaving the field untouched preserves the password from the
+managed URL, or the process URL when no managed URL exists. **Test** probes without
+saving. **Remove override** deletes the managed file; the next startup uses the
+process environment again. Saving or removing an override requires restarting DurinDoor.
+Neither action changes the active adapter or migrates data. Complete a data cutover
+before selecting PostgreSQL startup; selecting SQLite does not copy PostgreSQL-era writes.
+
+
 ## Version policy
 
 Compose ships profile-gated clusters: `postgres16`, `postgres17`, `postgres18`. `DURINDOOR_PG_PREFERRED_VERSION` defaults to `18` in Compose. The runtime reads `server_version_num` at boot and turns off features whose `requires` floor is above the cluster major. You can also pin `databasePgVersion` in the dashboard.
@@ -30,7 +47,7 @@ docker compose --profile postgres18 up -d
 
 </Step>
 <Step>
-For a SQLite installation, configure the connection through **Settings → Database** first. **Test connection** with persist stores it encrypted on the settings row. Do not set the PostgreSQL-only environment settings until the data cutover has completed: direct PostgreSQL startup does not copy existing SQLite data.
+For a SQLite installation, complete the cutover using the existing configured target before saving PostgreSQL startup settings. Direct PostgreSQL startup does not copy existing SQLite data.
 
 Compose user, password, and database are all `durindoor`; the service hostname is `postgres18`. `DURINDOOR_PG_SSLMODE` is appended when the URL has no `sslmode=` already.
 </Step>
@@ -43,7 +60,7 @@ docker compose restart durindoor
 
 </Step>
 <Step>
-Open **Settings → Database**. Paste the URL. Run **Test connection**. On success the probe returns latency and `serverVersion`. Then **Cut over to Postgres**.
+Open **Settings → Database**. **Test** in Startup configuration probes the supplied fields without saving. **Save** validates and stages the startup override; restart only after any required data cutover has completed.
 </Step>
 </Steps>
 
@@ -53,11 +70,12 @@ After a later restart on a healthy PG boot, the log line is `[DB] Driver: pg | e
 
 Resolved in this order:
 
-1. `DURINDOOR_PG_URL` (always wins at boot)
-2. `settings.postgresUrl` (AES-256-GCM blob in the settings row; dashboard persist writes here)
-3. Legacy `DATA_DIR/durindoor-secrets.json` (mode `0600`, read-only)
+1. `DATA_DIR/durindoor-database.env` overrides the three database environment keys at startup
+2. `DURINDOOR_PG_URL` from the process environment when not overridden
+3. `settings.postgresUrl` (AES-256-GCM blob in the settings row; legacy dashboard persist writes here)
+4. Legacy `DATA_DIR/durindoor-secrets.json` (mode `0600`, read-only)
 
-New writes go only to the settings row. `GET /api/settings/database/engine` returns redacted host, port, database, user, sslmode, and authSource. It never returns the password or `postgresUrl`.
+Startup configuration writes only the managed environment file. Legacy cutover configuration remains in the settings row. `GET /api/settings/database/engine` returns redacted host, port, database, user, sslmode, and source badges under `startupEnv`. It never returns the password or URL.
 
 ## PostgreSQL-only installations
 

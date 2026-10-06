@@ -60,3 +60,40 @@ export const Default = {
     await expect(canvas.getByText("sqlite")).toBeVisible();
   },
 };
+
+function startupStory(source) {
+  const startupEnv = {
+    path: "/data/durindoor-database.env",
+    exists: source === "file",
+    keys: Object.fromEntries(["DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE"].map((key) => [key, {
+      source, hasFileValue: source === "file", hasProcessValue: source === "process",
+    }])),
+    effective: { engine: "postgres", host: "db.example.com", port: "5432", database: "durindoor", user: "durindoor", sslmode: "require" },
+  };
+  return {
+    args: Default.args,
+    parameters: {
+      storyFixture: {
+        ...meta.parameters.storyFixture,
+        routes: {
+          "GET /api/settings/database/engine": {
+            body: { ...meta.parameters.storyFixture.routes["GET /api/settings/database/engine"].body, startupEnv },
+          },
+          "POST /api/settings/database/startup-env": {
+            body: { ok: true, restartRequired: true, startupEnv: { ...startupEnv, exists: true } },
+          },
+        },
+      },
+    },
+    play: async ({ canvasElement }) => {
+      const canvas = within(canvasElement);
+      await expect(await canvas.findByRole("heading", { name: "Startup configuration" })).toBeVisible();
+      await expect(canvas.getByLabelText("Host")).toHaveValue("db.example.com");
+      await expect(canvas.getByLabelText("Password")).toHaveValue("");
+      await expect(canvas.getAllByText(source === "file" ? "from managed file" : "from environment")).toHaveLength(3);
+    },
+  };
+}
+
+export const StartupEnvFromEnvironment = startupStory("process");
+export const StartupEnvFromFile = startupStory("file");

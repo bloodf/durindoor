@@ -134,6 +134,20 @@ export const CreateInstance = {
   },
 };
 
+export const SelectServerPreset = {
+  parameters: { storyFixture: defaultFixture() },
+  render: () => <McpGatewayPage />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "New instance" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "New instance" }));
+    await userEvent.click(dialog.getByRole("combobox", { name: "Server preset" }));
+    await userEvent.click(await within(document.body).findByRole("option", { name: /Notion/ }));
+    await expect(dialog.getByRole("textbox", { name: "URL", exact: true })).toHaveValue("https://mcp.notion.com/mcp");
+    await expect(dialog.getByRole("switch", { name: "Requires OAuth" })).toBeChecked();
+  },
+};
+
 export const EditInstance = {
   parameters: { storyFixture: defaultFixture() },
   render: () => <McpGatewayPage />,

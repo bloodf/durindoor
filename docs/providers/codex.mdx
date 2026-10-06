@@ -52,7 +52,7 @@ When Codex answers 401 with an invalidated or reused token message, DurinDoor qu
 
 ## Codex CLI version
 
-OpenAI gates some models on the Codex client version, answering with messages like `The 'gpt-6-astra' model requires a newer version of Codex.` DurinDoor pins `0.155.0` (`CODEX_CLI_VERSION` in `open-sse/providers/registry/codex.js`) and sends it as `Version` and `User-Agent: codex_cli_rs/0.155.0`.
+OpenAI gates some models on the Codex client version, answering with messages like `The 'gpt-6-astra' model requires a newer version of Codex.` DurinDoor pins `0.160.1` (`CODEX_CLI_VERSION` in `open-sse/providers/registry/codex.js`) and sends it as `Version` and `User-Agent: codex_cli_rs/0.160.1`.
 
 When the caller is a real Codex CLI, its own version wins. DurinDoor reads the incoming `Version` header, or a `codex_cli_rs/x.y.z` style user agent, and forwards that version instead of the pin. A newer `codex` pointed at DurinDoor can therefore reach models the pin cannot. Other clients get the pin.
 

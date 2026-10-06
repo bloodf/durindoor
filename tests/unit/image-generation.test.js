@@ -506,7 +506,7 @@ describe("handleImageGenerationCore", () => {
     expect(responseBody.data[0].b64_json).toBeTruthy();
   });
 
-  it.each(["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"])("generates image with Codex %s-image using current Codex version header", async (model) => {
+  it.each(["gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"])("generates an image through the Codex %s-image route", async (model) => {
     global.fetch.mockResolvedValueOnce(
       new Response(
         [
@@ -541,7 +541,6 @@ describe("handleImageGenerationCore", () => {
         headers: expect.objectContaining({
           authorization: "Bearer codex-token",
           "chatgpt-account-id": "account-123",
-          version: "0.155.0",
         }),
       })
     );

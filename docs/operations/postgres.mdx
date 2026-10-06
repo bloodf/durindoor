@@ -3,7 +3,7 @@ title: Postgres
 description: Opt-in PostgreSQL engine, compose profiles, cutover lock, snapshot abort, and rollback that discards PG-era writes.
 ---
 
-SQLite is the default. PostgreSQL is opt-in. Setting `DURINDOOR_PG_URL` does not switch the engine. Boot opens PostgreSQL only when `settings.databaseEngine === "postgres"`. The cutover pipeline is what flips that flag.
+SQLite remains the default for unconfigured installations. `DURINDOOR_PG_URL` selects PostgreSQL directly; `DURINDOOR_DATABASE_ENGINE=postgres` additionally keeps startup PostgreSQL-only when the URL is missing or empty. This explicit mode never reads SQLite settings or falls back to SQLite. Installations without either environment setting retain the dashboard-managed cutover workflow below.
 
 The dashboard page is **Settings → Database** (`/dashboard/settings/database`). Cutover, test, and rollback routes require a dashboard JWT or CLI token plus the current dashboard password (`x-9r-password`).
 
@@ -30,14 +30,9 @@ docker compose --profile postgres18 up -d
 
 </Step>
 <Step>
-Optional: seed the connection URL in `.env`. **Test connection** with persist also stores it encrypted on the settings row. `DURINDOOR_PG_SSLMODE` is appended when the URL has no `sslmode=` already.
+For a SQLite installation, configure the connection through **Settings → Database** first. **Test connection** with persist stores it encrypted on the settings row. Do not set the PostgreSQL-only environment settings until the data cutover has completed: direct PostgreSQL startup does not copy existing SQLite data.
 
-```bash
-echo 'DURINDOOR_PG_URL=postgres://durindoor:durindoor@postgres18:5432/durindoor' >> .env
-echo 'DURINDOOR_PG_SSLMODE=prefer' >> .env
-```
-
-Compose user, password, and database are all `durindoor`. The service hostname is `postgres18`.
+Compose user, password, and database are all `durindoor`; the service hostname is `postgres18`. `DURINDOOR_PG_SSLMODE` is appended when the URL has no `sslmode=` already.
 </Step>
 <Step>
 Restart DurinDoor. It is still on SQLite.
@@ -64,6 +59,27 @@ Resolved in this order:
 
 New writes go only to the settings row. `GET /api/settings/database/engine` returns redacted host, port, database, user, sslmode, and authSource. It never returns the password or `postgresUrl`.
 
+## PostgreSQL-only installations
+
+After migrating the main database, set both `DURINDOOR_DATABASE_ENGINE=postgres` and `DURINDOOR_PG_URL` in the service's protected environment file. The independent engine selector prevents an empty or missing URL from recreating SQLite. PostgreSQL connection, cluster-probe, and migration failures reject initialization.
+
+PostgreSQL supports individual query results up to 32 MiB. Larger results return an error; a failed large query does not prevent a subsequent small query.
+
+Proxy timeline storage uses PostgreSQL tables `proxyTimelineTraces` and `proxyTimelineEvents` in this mode. To preserve an existing SQLite timeline:
+
+1. Stop DurinDoor and any watchdog that restarts it; archive the sidecar with its WAL checkpointed.
+2. Apply PostgreSQL migration 025 using the new runtime against the existing database, without admitting inference traffic.
+3. With a private HDD staging directory, run:
+
+   ```bash
+   TMPDIR=/private/staging \
+     scripts/copy-proxy-timeline-to-pg.sh /archive/proxy-timeline.sqlite
+   ```
+
+   Supply `DURINDOOR_PG_URL` through the protected environment. The helper also accepts `DURINDOOR_PG_COPY_URL` for a privileged connection to the same database: server-side COPY requires a superuser or `pg_read_server_files`. It refuses nonempty target tables, verifies counts and semantic aggregates, repairs the event sequence, and commits both tables atomically. Keep privileged credentials out of shell history.
+
+4. Verify timeline reads, new inference traces, and PostgreSQL usage writes before removing live SQLite files. Keep the archived sidecar and a verified PostgreSQL dump for rollback.
+
 ## Cutover
 
 **Cut over to Postgres** runs `runCutover`, which calls `acquireCutoverLock`. While that lock is held, HTTP writes on the live adapter (`INSERT` / `UPDATE` / `DELETE` / DDL / `BEGIN`) throw `database cutover in progress` (`CUTOVER_IN_FLIGHT`). `SELECT` still works. The pipeline opens its own unguarded adapters for migrate, snapshot, and mirror.
@@ -75,7 +91,7 @@ A second `POST /api/settings/database/cutover` while the lock is held returns HT
 `testConnection(url)` opens a transient client and runs `SELECT version() AS v, 1 AS n`. Fail-fast. On failure the engine stays SQLite and `databaseEngineError` is set.
 </Step>
 <Step>
-Open the persistent PG adapter. Run the parallel PG migration set (latest version 19, `019-pg-cutover-log`). Shared versions 001-018 keep the same `{version,name}` as SQLite; PG 018 is `api-key-groups` (no-op, tables already come from 001).
+Open the persistent PG adapter. Run the parallel PG migration set through version 25 (`025-proxy-timeline`). Shared versions 001-018 keep the same `{version,name}` as SQLite; PG 018 is `api-key-groups` (no-op, tables already come from 001).
 </Step>
 <Step>
 Checkpoint the live SQLite WAL (`checkpoint`, or `flush` if the adapter has no checkpoint). Then `snapshotSqlite()` copies `currentDataFile()` to `currentBackupsDir()` as `data.sqlite.postgres-cutover-<ts>-<appVersion>.sqlite` (mode `0600`). If the copy returns empty while `data.sqlite` exists, cutover throws `cutover snapshot failed` and **aborts the flip**.
@@ -84,7 +100,7 @@ Checkpoint the live SQLite WAL (`checkpoint`, or `flush` if the adapter has no c
 `runMirror` copies tables in 500-row chunks, one transaction per table. Each table is `TRUNCATE`d first (quoted camelCase identifiers). Then `COUNT(*)` is asserted. `_meta` is copied except `schemaVersion` (the PG runner owns that key). `requestDetails` is skipped unless `includeRequestDetails` is true.
 </Step>
 <Step>
-Persist `databaseEngine: "postgres"` on **both** the live PG settings row and the SQLite file. Boot still reads the engine from SQLite.
+Persist `databaseEngine: "postgres"` on both the live PG settings row and the SQLite file. Legacy dashboard-managed boot still reads the engine from SQLite; explicit PostgreSQL-only boot does not.
 </Step>
 <Step>
 `setActiveAdapter(pg)` closes the previous SQLite adapter and flips the live adapter.
@@ -119,7 +135,7 @@ Any failed step before the settings write keeps SQLite live.
 
 ## Boot fallback
 
-If `databaseEngine` is `postgres` and `openActiveAdapter` cannot use the cluster (no URL, connect error, migration failure), it records `databaseEngineError` and returns a SQLite adapter. `GET /api/settings/database/engine` then has `servingFallback: true` (`activeEngine !== databaseEngine`). The dashboard banner says settings still claim PostgreSQL while this process is reading the pre-cutover SQLite file. New writes on that process do not land on PG.
+Only legacy dashboard-managed installations use this fallback. If `databaseEngine` is `postgres` and `openActiveAdapter` cannot use the cluster (no URL, connect error, migration failure), it records `databaseEngineError` and returns a SQLite adapter. Explicit `DURINDOOR_DATABASE_ENGINE=postgres` or `DURINDOOR_PG_URL` startup instead rejects the failure without opening SQLite.
 
 Known `databaseEngineError` strings:
 
@@ -136,6 +152,8 @@ The boot log still prints `engine: postgres` for the requested engine even when 
 
 <Callout type="warn">
 Rollback restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live (keys, usage, settings) are not copied back. The PG cluster is left untouched. The confirm dialog on **Switch back to SQLite** says so.
+
+For an explicit PostgreSQL-only deployment, remove `DURINDOOR_DATABASE_ENGINE=postgres` and `DURINDOOR_PG_URL` from the protected service environment before restarting on a SQLite recovery snapshot. Leaving either selector in place selects PostgreSQL again. Preserve the archived timeline sidecar alongside the main SQLite recovery file; main-database rollback does not copy PostgreSQL timeline writes back.
 </Callout>
 
 **Switch back to SQLite** restores an allowlisted snapshot from `currentBackupsDir()` into `currentDataFile()`, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. Snapshot paths outside that backups directory are refused. A literal `~/.9router` path is never used; `path.join` does not expand `~`.

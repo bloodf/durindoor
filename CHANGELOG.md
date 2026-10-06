@@ -1,3 +1,12 @@
+# Unreleased
+
+## Fixes
+
+- Support explicit PostgreSQL-only startup without SQLite configuration reads or outage fallback, including PostgreSQL proxy timeline storage and an atomic sidecar migration helper.
+- Preserve large PostgreSQL query results and original error status with bounded shared-memory transfer instead of truncating timeline reads at 8 MiB.
+- Refresh Codex discovery with the supported client version so GPT-6.1 Sol appears in live catalogs; preserve its provider-specific reasoning efforts without inventing a review variant.
+- Add MCP server presets for vetted hosted and local servers, with credential/path guards and operator-only activation.
+
 # 4.10.1
 
 ## Fixes

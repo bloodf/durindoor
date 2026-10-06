@@ -71,6 +71,7 @@ function resolveWorkerPath() {
 }
 const SAB_BYTES = 8 * 1024 * 1024;
 const HEADER_BYTES = 8;
+const MAX_RESULT_BYTES = 32 * 1024 * 1024;
 const WAIT_MS = 120_000;
 
 function rewritePlaceholders(sql) {
@@ -148,21 +149,35 @@ function createSyncBridge(url) {
   const worker = new Worker(resolveWorkerPath(), { workerData: { url, sab } });
   let closed = false;
 
-  function call(msg) {
-    if (closed) throw new Error("[DB][pg] adapter is closed");
+  function sendAndWait(msg) {
     Atomics.store(i32, 0, 0);
     worker.postMessage(msg);
-    const rc = Atomics.wait(i32, 0, 0, WAIT_MS);
-    if (rc === "timed-out") {
+    if (Atomics.wait(i32, 0, 0, WAIT_MS) === "timed-out") {
       throw new Error("[DB][pg] query timed out");
     }
-    const status = Atomics.load(i32, 0);
-    const len = Atomics.load(i32, 1);
-    const json = Buffer.from(sab, HEADER_BYTES, len).toString("utf8");
-    const parsed = json ? JSON.parse(json) : {};
-    if (status !== 1) {
-      throw sanitizePgError(parsed);
+  }
+
+  function call(msg) {
+    if (closed) throw new Error("[DB][pg] adapter is closed");
+    sendAndWait(msg);
+    let status = Atomics.load(i32, 0);
+    let json;
+    if (status === 3) {
+      const resultBytes = Atomics.load(i32, 1);
+      if (resultBytes <= SAB_BYTES - HEADER_BYTES || resultBytes > MAX_RESULT_BYTES) {
+        throw new Error("[DB][pg] query result exceeds the 32 MiB transport limit");
+      }
+      const resultBuffer = new SharedArrayBuffer(resultBytes);
+      sendAndWait({ op: "read-result", resultBuffer });
+      status = Atomics.load(i32, 0);
+      if (Atomics.load(i32, 1) === 0) json = Buffer.from(resultBuffer).toString("utf8");
     }
+    if (json === undefined) {
+      const len = Atomics.load(i32, 1);
+      json = len ? Buffer.from(sab, HEADER_BYTES, len).toString("utf8") : "";
+    }
+    const parsed = json ? JSON.parse(json) : {};
+    if (status !== 1) throw sanitizePgError(parsed);
     return parsed;
   }
 

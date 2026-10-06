@@ -467,6 +467,8 @@ export function initState(sourceFormat, requestBody) {
       funcCustomInput: {},
       funcCustomDeltaEmitted: {},
       awaitingTrailingUsage: false,
+      // Isolated from provider-native state.usage used by the first pivot hop.
+      responsesUsage: null,
       completedSent: false
     };
   }

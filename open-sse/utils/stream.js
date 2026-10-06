@@ -622,6 +622,21 @@ export function createSSEStream(options = {}) {
     };
   };
 
+  // A wire [DONE] closes the opportunity for trailing usage, even when the
+  // upstream keeps the transport open. Do not wait for EOF to complete Codex.
+  const flushPendingResponsesCompletion = (controller) => {
+    if (targetFormat !== FORMATS.OPENAI || sourceFormat !== FORMATS.OPENAI_RESPONSES ||
+        !state?.awaitingTrailingUsage || state.completedSent) return;
+    const completed = translateResponse(targetFormat, sourceFormat, null, state);
+    for (const item of completed || []) {
+      if (item == null) continue;
+      const output = formatSSE(item, sourceFormat);
+      reqLogger?.appendConvertedChunk?.(output);
+      controller.enqueue(sharedEncoder.encode(output));
+      sseEmittedCount++;
+    }
+  };
+
   const transformStream = new TransformStream({
     transform(chunk, controller) {
       if (!ttftAt) ttftAt = Date.now();
@@ -1030,6 +1045,7 @@ export function createSSEStream(options = {}) {
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate
         // For other formats: done=true is the [DONE] sentinel, skip
         if (parsed && parsed.done && targetFormat !== FORMATS.OLLAMA) {
+          flushPendingResponsesCompletion(controller);
           // Synthesize response.failed if the Responses stream never sent a terminal event
           if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
             const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();

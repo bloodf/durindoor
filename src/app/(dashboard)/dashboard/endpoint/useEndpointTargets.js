@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getCompositeEndpointEnabled, getLocalEndpointUrl } from "./endpointConstants";
-import { isString } from "@/shared/utils/typeChecks";
+import { isBrowser, isString } from "@/shared/utils/typeChecks";
 
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
@@ -71,7 +71,7 @@ export function useEndpointTargets(localPort = 20128) {
         // Status is optional: fall back to the local (and browser-origin) rows.
       }
       if (cancelled) return;
-      const location = typeof window === "undefined" ? null : window.location;
+      const location = isBrowser() ? window.location : null;
       setEndpoints(buildEndpointTargets(status, { localPort, location }));
       setLoading(false);
     })();

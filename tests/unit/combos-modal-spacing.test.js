@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import { within } from "@testing-library/dom";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -46,26 +47,26 @@ describe("Create Combo modal spacing", () => {
     vi.restoreAllMocks();
   });
 
-  const byRole = (root, role, name) =>
-    [...root.querySelectorAll(role)].find((el) => el.textContent.trim() === name);
   const flush = async () => { await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
 
   it("renders Cancel and Create inside the dialog footer", async () => {
     await act(async () => { root.render(React.createElement(CombosPage)); });
     await flush();
     await flush();
-    const open = byRole(document.body, "button", "Create Combo");
-    expect(open).toBeTruthy();
+    // Empty state renders a second "Create Combo" button; either opens the modal.
+    const [open] = await within(document.body).findAllByRole("button", { name: "Create Combo" });
     await act(async () => { open.click(); });
 
     const dialog = document.body.querySelector("dialog");
     expect(dialog).not.toBeNull();
     const footer = dialog.querySelector("footer");
     expect(footer).not.toBeNull();
-    expect(byRole(footer, "button", "Create")).toBeTruthy();
-    expect(byRole(footer, "button", "Cancel")).toBeTruthy();
+    expect(within(footer).getByRole("button", { name: "Create" })).toBeTruthy();
+    expect(within(footer).getByRole("button", { name: "Cancel" })).toBeTruthy();
     // No stray inline buttons left in the body.
-    const body = [...dialog.querySelectorAll("button")].filter((b) => !footer.contains(b));
-    expect(body.some((b) => ["Create", "Cancel"].includes(b.textContent.trim()))).toBe(false);
+    const strays = within(dialog)
+      .queryAllByRole("button", { name: /^(Create|Cancel)$/ })
+      .filter((b) => !footer.contains(b));
+    expect(strays).toHaveLength(0);
   });
 });

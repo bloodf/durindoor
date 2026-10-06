@@ -42,7 +42,7 @@ Live usage is the `usageHistory` table in the active database. `src/lib/usageDb.
 
 There is no `DATA_DIR/log.txt`. That name is not created.
 
-`ENABLE_REQUEST_LOGS=true` writes metadata-only session folders under `logs/` in `process.cwd()`, not under `DATA_DIR`. MITM dumps use `DATA_DIR/logs/mitm`. Dashboard **Console log** is an in-memory ring of 200 lines.
+`ENABLE_REQUEST_LOGS=true` writes metadata-only session folders under `logs/` in `process.cwd()`, not under `DATA_DIR`. MITM dumps use `DATA_DIR/logs/mitm`. Dashboard **Console log** is an in-memory ring of 2000 lines.
 
 If you still have a 9router tree and need provider-section labels rewritten in TOML or JSON configs, run the one-shot cutover:
 

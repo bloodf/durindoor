@@ -10,6 +10,7 @@ import { AntigravityExecutor } from "../executors/antigravity.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
 
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
@@ -50,13 +51,23 @@ function stripContentTypes(body, stripList = []) {
   }
 }
 
+// Capture the source-format tail before translation drops empty turns. Gemini
+// calls assistants "model"; Responses uses input[] rather than messages[].
+function detectClientLastRole(body) {
+  const items = Array.isArray(body?.messages) ? body.messages :
+    Array.isArray(body?.contents) ? body.contents :
+    Array.isArray(body?.input) ? body.input : null;
+  const role = items?.[items.length - 1]?.role;
+  return role === GEMINI_ROLE.MODEL ? ROLE.ASSISTANT : role;
+}
+
 // Translate request: source -> openai -> target. `translationContext` carries
 // request-scoped routing intent (never serialized into the provider body).
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   ensureInitialized();
   let result = body;
   // Role the client actually ended on, before any translator drops an emptied turn.
-  const clientLastRole = Array.isArray(body?.messages) ? body.messages[body.messages.length - 1]?.role : undefined;
+  const clientLastRole = detectClientLastRole(body);
   // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)
   // replace `result` wholesale, dropping any metadata OpenAI-stage translators
   // stash on it. Capture it here and reattach after the envelope translator runs.

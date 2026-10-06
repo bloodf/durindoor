@@ -43,6 +43,9 @@ const STREAM_MODE = {
   PASSTHROUGH: "passthrough" // No translation, normalize output, extract usage
 };
 const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "gemini-cli", "gc", "vertex"]);
+// Bound finish_reason -> real usage deferral when the upstream never sends a
+// usage trailer or [DONE]. This is not a general stream inactivity timeout.
+const PENDING_COMPLETION_FLUSH_MS = 3000;
 
 function normalizeStreamError(error) {
   if (!error || !isObject(error)) {
@@ -622,6 +625,37 @@ export function createSSEStream(options = {}) {
     };
   };
 
+  let completionFlushTimer = null;
+  let translatedStreamFinalized = false;
+  const clearCompletionFlushTimer = () => {
+    clearTimeout(completionFlushTimer);
+    completionFlushTimer = null;
+  };
+  // Clients commonly cancel immediately after response.completed, so EOF is
+  // too late for accounting and the completion callback on this path.
+  const finalizeTranslatedStream = () => {
+    clearCompletionFlushTimer();
+    if (translatedStreamFinalized) return;
+    translatedStreamFinalized = true;
+    if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
+      state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
+    }
+    if (hasValidUsage(state?.usage)) {
+      logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
+    } else {
+      appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => {});
+    }
+    if (onStreamComplete && !onStreamCompleteFired) {
+      onStreamCompleteFired = true;
+      onStreamComplete({
+        ...getAccumulatedCompletion(),
+        ...(hadToolCalls ? { hadToolCalls: true } : null),
+        ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
+        ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
+      }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
+    }
+  };
+
   // A wire [DONE] closes the opportunity for trailing usage, even when the
   // upstream keeps the transport open. Do not wait for EOF to complete Codex.
   const flushPendingResponsesCompletion = (controller) => {
@@ -635,6 +669,7 @@ export function createSSEStream(options = {}) {
       controller.enqueue(sharedEncoder.encode(output));
       sseEmittedCount++;
     }
+    finalizeTranslatedStream();
   };
 
   const transformStream = new TransformStream({
@@ -1014,6 +1049,7 @@ export function createSSEStream(options = {}) {
         if (upstreamErrorForwarded) continue;
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
         if (parsed.error) {
+          clearCompletionFlushTimer();
           const output = formatTranslatedStreamError(parsed.error, sourceFormat);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
@@ -1189,10 +1225,29 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
         }
+        if (targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI_RESPONSES) {
+          if (state.completedSent) {
+            finalizeTranslatedStream();
+          } else if (state.awaitingTrailingUsage && completionFlushTimer === null) {
+            completionFlushTimer = setTimeout(() => {
+              completionFlushTimer = null;
+              if (state.completedSent || upstreamErrorForwarded) return;
+              try {
+                flushPendingResponsesCompletion(controller);
+              } catch (error) {
+                // Cancellation closes the readable side; callback or enqueue
+                // failures propagate through the transform, not success.
+                controller.error(error);
+              }
+            }, PENDING_COMPLETION_FLUSH_MS);
+            completionFlushTimer.unref?.();
+          }
+        }
       }
     },
 
     flush(controller) {
+      clearCompletionFlushTimer();
       const evtSummary = Object.entries(eventTypeCounts).map(([k, v]) => `${k}=${v}`).join(",") || "none";
       dbg("SSE", `flush | provider=${provider} | model=${model} | recvLines=${sseLineCount} | emitted=${sseEmittedCount} | events=[${evtSummary}]`);
       try {
@@ -1401,25 +1456,7 @@ export function createSSEStream(options = {}) {
           streamDoneSent = true;
         }
 
-        if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
-          state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
-        }
-
-        if (hasValidUsage(state?.usage)) {
-          logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
-        } else {
-          appendRequestLog({ model, provider, connectionId, tokens: null, status: "200 OK" }).catch(() => {});
-        }
-
-        if (onStreamComplete && !onStreamCompleteFired) {
-          onStreamCompleteFired = true;
-          onStreamComplete({
-            ...getAccumulatedCompletion(),
-            ...(hadToolCalls ? { hadToolCalls: true } : null),
-            ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
-            ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
-          }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
-        }
+        finalizeTranslatedStream();
       } catch (error) {
         console.log("Error in flush:", error);
         // A native Claude stream without message_stop is truncated, not a

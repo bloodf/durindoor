@@ -12,7 +12,8 @@ vi.mock("@/shared/hooks/useCopyToClipboard", () => ({
 }));
 import McpGatewayPage from "@/app/(dashboard)/dashboard/mcp-gateway/page.js";
 import McpGatewayErrorView from "@/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx";
-import { within } from "@testing-library/dom";
+import { InstanceEditModal } from "@/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx";
+import { fireEvent, within } from "@testing-library/dom";
 function mockJsonResponse(body, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
 }
@@ -112,5 +113,63 @@ describe("MCP Gateway production UI", () => {
     });
     expect(container.textContent).toContain("MCP Gateway failed to load");
     expect(container.textContent).toContain("Try again");
+  });
+  it("applies a preset without carrying HTTP credentials into local stdio", async () => {
+    const save = vi.fn();
+    await act(async () => {
+      root.render(/* @__PURE__ */ React.createElement(InstanceEditModal, { initial: { slug: "", headers: '{"x-trace-id":"old"}', env: '{"PRIOR_SECRET":"do-not-carry"}', providerConnectionId: "conn-old", oauth: true, enabled: false }, onClose: vi.fn(), onSave: save }));
+    });
+    const dialog = document.body.querySelector("dialog");
+    const preset = dialog.querySelector('[aria-label="Server preset"]');
+    await act(async () => { preset.click(); });
+    await act(async () => { [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes("Context7")).click(); });
+    await act(async () => { fireEvent.change(within(dialog).getByRole("textbox", { name: "Headers (JSON object)" }), { target: { value: '{"x-trace-id":"previous-server"}' } }); });
+    await act(async () => { fireEvent.change(within(dialog).getByRole("textbox", { name: "Provider connection ID (optional)" }), { target: { value: "conn-previous-server" } }); });
+    await act(async () => { preset.click(); });
+    await act(async () => { [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes("Playwright")).click(); });
+    expect(dialog.querySelector('input[value="npx"]')).not.toBeNull();
+    expect(dialog.querySelector('input[value="{}"]')).not.toBeNull();
+    expect(dialog.querySelector('input[value="https://mcp.context7.com/mcp"]')).toBeNull();
+    await act(async () => { within(dialog).getByRole("button", { name: /Save$/ }).click(); });
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0]).toMatchObject({ url: "", headers: "{}", env: "{}", oauth: false, enabled: false });
+    expect(save.mock.calls[0][0].providerConnectionId).toBeUndefined();
+  });
+  it("blocks incomplete preset secrets and filesystem paths but preserves custom saves", async () => {
+    const save = vi.fn();
+    await act(async () => {
+      root.render(/* @__PURE__ */ React.createElement(InstanceEditModal, { initial: {}, onClose: vi.fn(), onSave: save }));
+    });
+    const dialog = document.body.querySelector("dialog");
+    const preset = dialog.querySelector('[aria-label="Server preset"]');
+    await act(async () => { preset.click(); });
+    await act(async () => { [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes("Brave Search")).click(); });
+    await act(async () => { within(dialog).getByRole("button", { name: /Save$/ }).click(); });
+    expect(save).not.toHaveBeenCalled();
+    expect(dialog.textContent).toContain("Set BRAVE_API_KEY");
+    await act(async () => { preset.click(); });
+    await act(async () => { [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes("Filesystem")).click(); });
+    await act(async () => { within(dialog).getByRole("button", { name: /Save$/ }).click(); });
+    expect(save).not.toHaveBeenCalled();
+    const args = within(dialog).getByRole("textbox", { name: "Args (JSON array)" });
+    for (const paths of [["/"], ["/approved", "/"], ["/."], ["/tmp/.."], ["////"]]) {
+      await act(async () => { fireEvent.change(args, { target: { value: JSON.stringify(["-y", "@modelcontextprotocol/server-filesystem", ...paths]) } }); });
+      await act(async () => { within(dialog).getByRole("button", { name: /Save$/ }).click(); });
+      expect(save).not.toHaveBeenCalled();
+    }
+    await act(async () => { fireEvent.change(args, { target: { value: '["-y","@modelcontextprotocol/server-filesystem","/approved"]' } }); });
+    await act(async () => { preset.click(); });
+    await act(async () => { [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes("Custom")).click(); });
+    await act(async () => { within(dialog).getByRole("button", { name: /Save$/ }).click(); });
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0].args).toBe('["-y","@modelcontextprotocol/server-filesystem","/approved"]');
+  });
+  it("leaves existing instances in custom edit mode", async () => {
+    await act(async () => {
+      root.render(/* @__PURE__ */ React.createElement(InstanceEditModal, { initial: { id: "existing", slug: "manual", title: "Manual", kind: "http", transport: "http", url: "https://manual.invalid/mcp", args: "[]", env: "{}", headers: "{}", oauth: false, enabled: true }, onClose: vi.fn(), onSave: vi.fn() }));
+    });
+    const dialog = document.body.querySelector("dialog");
+    expect(dialog.querySelector('[aria-label="Server preset"]')).toBeNull();
+    expect(dialog.querySelector('input[value="https://manual.invalid/mcp"]')).not.toBeNull();
   });
 });

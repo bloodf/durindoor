@@ -87,7 +87,7 @@ describe("vendor capability parity", () => {
   });
 
   it.each(["codex", "cx"])("retains API capacities and separate Codex-only contracts on %s", (provider) => {
-    for (const model of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol"]) {
+    for (const model of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
       expect(getCapabilitiesForModel(provider, `${model}-review`)).toMatchObject({
         contextWindow: 1050000, maxInput: 922000, maxOutput: 128000,
       });
@@ -95,6 +95,10 @@ describe("vendor capability parity", () => {
         contextWindow: 1050000, maxOutput: 128000, known: true,
       });
     }
+    expect(getCapabilitiesForModel(provider, "gpt-6.1-sol")).toMatchObject({
+      contextWindow: 1050000, maxOutput: 128000,
+      thinkingEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+    });
     expect(resolveModelLimits(provider, "gpt-5.3-codex-high")).toMatchObject({
       contextWindow: 400000, maxOutput: 128000,
     });

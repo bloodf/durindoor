@@ -1,6 +1,6 @@
 ---
 title: Data management
-description: SQLite file, backups, restore, and the files that do not follow DATA_DIR.
+description: SQLite and PostgreSQL storage, backups, restore, and the files that do not follow DATA_DIR.
 ---
 
 Persistent state lives under `DATA_DIR`. Unset, that is `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. Docker images set `DATA_DIR=/app/data` and expect a volume there. A Unix-style path on Windows is ignored and the default is used.
@@ -28,15 +28,17 @@ DATA_DIR/
 └── durindoor-secrets.json  # legacy Postgres URL
 ```
 
-`DATA_DIR/db/data.sqlite` is the main store (`currentDataFile()`). Pre-upgrade copies go in `DATA_DIR/db/backups` (`currentBackupsDir()`). Postgres cutover copies use the same backups directory with prefix `data.sqlite.postgres-cutover-`. They are not the three-directory migration safety copies. Procedure: [Postgres](./postgres.mdx). Credential directories and the SQLite files are chmod'd owner-only on POSIX (`0700` / `0600`). Windows ACLs are left alone.
+For SQLite installations, `DATA_DIR/db/data.sqlite` is the main store (`currentDataFile()`). Pre-upgrade copies go in `DATA_DIR/db/backups` (`currentBackupsDir()`). Postgres cutover copies use the same backups directory with prefix `data.sqlite.postgres-cutover-`. They are not the three-directory migration safety copies. Procedure: [Postgres](./postgres.mdx). Credential directories and the SQLite files are chmod'd owner-only on POSIX (`0700` / `0600`). Windows ACLs are left alone.
 
 SQLite adapter order: Bun uses `bun:sqlite` then `sql.js`. Node uses `better-sqlite3`, then `node:sqlite` on Node 22.5+, then `sql.js`. The `sql.js` fallback exports the full image to an owner-only sibling, fsyncs, then renames over `data.sqlite`. A failed stage leaves the previous file in place.
 
+PostgreSQL installations keep the main store, usage, and proxy timeline in the selected PostgreSQL database. Copying `DATA_DIR` alone does not back up those rows. Take a full custom-format dump with `pg_dump -Fc`, verify its table listing with `pg_restore -l`, and rehearse the restore into an isolated database. Keep the dump owner-only and preserve the matching master key, machine ID, JWT secret, and protected service environment alongside it. A database dump without its encryption keys cannot recover provider credentials.
+
 ## Files that do not follow DATA_DIR
 
-Live usage is the `usageHistory` table in `data.sqlite`. `src/lib/usageDb.js` re-exports that layer.
+Live usage is the `usageHistory` table in the active database. `src/lib/usageDb.js` re-exports that layer.
 
-`DATA_DIR/usage.json` is a one-shot JSON import (`LEGACY_FILES.usage`). Startup can read it once, then writes a `.migrated-from-json` marker. Runtime inserts go to SQLite, not back to that JSON file.
+`DATA_DIR/usage.json` is a one-shot JSON import (`LEGACY_FILES.usage`). Startup can read it once, then writes a `.migrated-from-json` marker. Runtime inserts go to the active database, not back to that JSON file.
 
 There is no `DATA_DIR/log.txt`. That name is not created.
 

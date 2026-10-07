@@ -24,6 +24,7 @@ import {
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
+import { withCodexReviewModels } from "open-sse/providers/models/helpers.js";
 
 const KIMI_WEB_MODELS_PATH = "/apiv2/kimi.gateway.config.v1.ConfigService/GetAvailableModels";
 
@@ -134,30 +135,13 @@ export const parseGeminiCliModels = (data) => {
   return [];
 };
 
-export const appendCodexReviewModels = (models) => models.flatMap((model) => {
-  const id = model?.id || model?.slug || model?.model || model?.name;
-  if (!id) return [];
-  const name = model?.display_name || model?.displayName || model?.name || id;
-  const normalized = { ...model, id, name };
-  const isChatModel = (model?.type || "llm") !== "image" && !id.toLowerCase().includes("embed");
-  if (!isChatModel || id.endsWith("-review")) return [normalized];
-  return [
-  normalized,
-  {
-    ...normalized,
-    id: `${id}-review`,
-    name: `${name} Review`,
-    upstreamModelId: id,
-    quotaFamily: "review"
-  }];
-
-});
-
-// Drop catalog entries the pinned Codex CLI version is too old to call
-// (`minimal_client_version` gate) before expanding review variants.
-// Upstream provenance: diegosouzapw/OmniRoute d5452d03e (#12933).
-export const parseCodexModels = (data) => appendCodexReviewModels(
-  parseOpenAIStyleModels(data).filter((model) => meetsMinimalCodexClientVersion(model?.minimal_client_version))
+export const parseCodexModels = (data) => withCodexReviewModels(
+  parseOpenAIStyleModels(data).filter((model) => meetsMinimalCodexClientVersion(model?.minimal_client_version)).flatMap((model) => {
+    const id = model?.id || model?.slug || model?.model || model?.name;
+    if (!id) return [];
+    const name = model?.display_name || model?.displayName || model?.name || id;
+    return [{ ...model, id, name }];
+  })
 );
 
 export const createOpenAIModelsConfig = (url) => ({

@@ -29,6 +29,12 @@ function seq(id) { const n = (seqs.get(id) || 0) + 1; seqs.set(id, n); return n;
 function noteDrop(id) { dropped.set(id, (dropped.get(id) || 0) + 1); }
 function isChunk(item) { return item.kind === "event" && item.event.type === "sse_chunk" && item.event.direction !== "system"; }
 
+const POSTGRES_TABLES = { traces: '"proxyTimelineTraces"', events: '"proxyTimelineEvents"' };
+const SQLITE_TABLES = { traces: "traces", events: "events" };
+function timelineTables(db) {
+  return db.capabilities?.isPostgres ? POSTGRES_TABLES : SQLITE_TABLES;
+}
+
 function enqueue(item) {
   const size = bytes(item);
   const over = () => queue.length >= QUEUE_CAP || queuedBytes + size > QUEUE_BYTE_LIMIT;
@@ -223,18 +229,19 @@ async function flushBatch() {
     }
     if (generation !== flushGeneration) return;
     try {
+      const tables = timelineTables(adapter);
       adapter.transaction(() => {
         for (const item of batch) {
           if (item.kind === "trace") {
             const t = item.trace;
-            adapter.run(`INSERT INTO traces(id,started_at,ended_at,status,provider,model,connection_id,api_key_id,endpoint,client_format,provider_format,fallback_count,ttft_ms,total_ms,event_count,payload_bytes,redacted,truncated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,1,0) ON CONFLICT(id) DO NOTHING`, [t.id, t.started_at, null, t.status || "running", t.provider || null, t.model || null, t.connection_id || null, t.api_key_id || null, t.endpoint || null, t.client_format || null, t.provider_format || null, t.fallback_count || 0, t.ttft_ms ?? null, t.total_ms ?? null]);
+            adapter.run(`INSERT INTO ${tables.traces}(id,started_at,ended_at,status,provider,model,connection_id,api_key_id,endpoint,client_format,provider_format,fallback_count,ttft_ms,total_ms,event_count,payload_bytes,redacted,truncated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,1,0) ON CONFLICT(id) DO NOTHING`, [t.id, t.started_at, null, t.status || "running", t.provider || null, t.model || null, t.connection_id || null, t.api_key_id || null, t.endpoint || null, t.client_format || null, t.provider_format || null, t.fallback_count || 0, t.ttft_ms ?? null, t.total_ms ?? null]);
           } else if (item.kind === "event") {
             const e = item.event;
-            adapter.run(`INSERT OR IGNORE INTO events(trace_id,seq,t_ms,type,direction,summary,payload) VALUES(?,?,?,?,?,?,?)`, [e.traceId, e.seq, e.t_ms, e.type, e.direction, e.summary, e.payload]);
-            adapter.run(`UPDATE traces SET event_count=event_count+1,payload_bytes=payload_bytes+?,truncated=MAX(truncated,?) WHERE id=?`, [Buffer.byteLength(e.payload, "utf8"), e.truncated ? 1 : 0, e.traceId]);
+            adapter.run(`INSERT OR IGNORE INTO ${tables.events}(trace_id,seq,t_ms,type,direction,summary,payload) VALUES(?,?,?,?,?,?,?)`, [e.traceId, e.seq, e.t_ms, e.type, e.direction, e.summary, e.payload]);
+            adapter.run(`UPDATE ${tables.traces} SET event_count=event_count+1,payload_bytes=payload_bytes+?,truncated=CASE WHEN truncated > ? THEN truncated ELSE ? END WHERE id=?`, [Buffer.byteLength(e.payload, "utf8"), e.truncated ? 1 : 0, e.truncated ? 1 : 0, e.traceId]);
           } else {
             const u = item.updates;
-            adapter.run(`UPDATE traces SET ended_at=COALESCE(?,ended_at),status=COALESCE(?,status),total_ms=COALESCE(?,total_ms),ttft_ms=COALESCE(?,ttft_ms),fallback_count=COALESCE(?,fallback_count) WHERE id=?`, [u.ended_at, u.status, u.total_ms, u.ttft_ms, u.fallback_count, item.id]);
+            adapter.run(`UPDATE ${tables.traces} SET ended_at=COALESCE(?,ended_at),status=COALESCE(?,status),total_ms=COALESCE(?,total_ms),ttft_ms=COALESCE(?,ttft_ms),fallback_count=COALESCE(?,fallback_count) WHERE id=?`, [u.ended_at, u.status, u.total_ms, u.ttft_ms, u.fallback_count, item.id]);
           }
         }
       });
@@ -290,24 +297,27 @@ export async function listTraces(filter = {}) {
     const page = Number.isInteger(Number(filter.page)) && Number(filter.page) > 0 ? Number(filter.page) : 1;
     const pageSize = Number.isInteger(Number(filter.pageSize)) && Number(filter.pageSize) > 0 ? Math.min(Number(filter.pageSize), 100) : 20;
     const db = await getProxyTimelineAdapter();
-    const totalItems = db.get(`SELECT COUNT(*) AS total FROM traces${where}`, values)?.total ?? 0;
+    const { traces } = timelineTables(db);
+    const totalItems = db.get(`SELECT COUNT(*) AS total FROM ${traces}${where}`, values)?.total ?? 0;
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    const traces = db.all(`SELECT * FROM traces${where} ORDER BY started_at DESC LIMIT ? OFFSET ?`, [...values, pageSize, (page - 1) * pageSize]);
-    return { traces, pagination: { page, pageSize, totalItems, totalPages, hasNext: page < totalPages, hasPrev: page > 1 } };
+    const rows = db.all(`SELECT * FROM ${traces}${where} ORDER BY started_at DESC LIMIT ? OFFSET ?`, [...values, pageSize, (page - 1) * pageSize]);
+    return { traces: rows, pagination: { page, pageSize, totalItems, totalPages, hasNext: page < totalPages, hasPrev: page > 1 } };
   } catch { return { traces: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, hasNext: false, hasPrev: false } }; }
 }
 export async function getTrace(id) {
   try {
-    const db = await getProxyTimelineAdapter(); const trace = db.get("SELECT * FROM traces WHERE id=?", [id]);
+    const db = await getProxyTimelineAdapter();
+    const tables = timelineTables(db); const trace = db.get(`SELECT * FROM ${tables.traces} WHERE id=?`, [id]);
     if (!trace) return null;
-    return { ...trace, events: db.all("SELECT * FROM events WHERE trace_id=? ORDER BY seq,id", [id]).map((e) => ({ ...e, payload: e.payload ? JSON.parse(e.payload) : null })) };
+    return { ...trace, events: db.all(`SELECT * FROM ${tables.events} WHERE trace_id=? ORDER BY seq,id`, [id]).map((e) => ({ ...e, payload: e.payload ? JSON.parse(e.payload) : null })) };
   } catch { return null; }
 }
 export async function getTraceMeta(id) {
   try {
     const db = await getProxyTimelineAdapter();
+    const { traces } = timelineTables(db);
     return db.get(
-      "SELECT id,started_at,status,provider,model,connection_id,api_key_id,endpoint FROM traces WHERE id=?",
+      `SELECT id,started_at,status,provider,model,connection_id,api_key_id,endpoint FROM ${traces} WHERE id=?`,
       [id],
     ) || null;
   } catch { return null; }
@@ -324,22 +334,33 @@ export async function clearTraces() {
   finishedTraces.clear();
   flushedStarts.clear();
   if (timer) { clearTimeout(timer); timer = null; }
-  try { const db = await getProxyTimelineAdapter(); db.run("DELETE FROM events"); db.run("DELETE FROM traces"); } catch {}
+  try { const db = await getProxyTimelineAdapter(); const tables = timelineTables(db); db.run(`DELETE FROM ${tables.events}`); db.run(`DELETE FROM ${tables.traces}`); } catch {}
 }
 /** Delete traces (and their events) started before `cutoffIso`, whatever the retention setting says. */
 export async function pruneTimelineOlderThan(cutoffIso) {
   let db;
   try { db = await getProxyTimelineAdapter(); } catch { return 0; }
-  const before = db.get("SELECT COUNT(*) AS cnt FROM traces WHERE started_at < ?", [cutoffIso]);
-  db.transaction(() => { db.run("DELETE FROM traces WHERE started_at < ?", [cutoffIso]); db.run("DELETE FROM events WHERE trace_id NOT IN (SELECT id FROM traces)"); });
+  const tables = timelineTables(db);
+  const before = db.get(`SELECT COUNT(*) AS cnt FROM ${tables.traces} WHERE started_at < ?`, [cutoffIso]);
+  db.transaction(() => {
+    db.run(`DELETE FROM ${tables.traces} WHERE started_at < ?`, [cutoffIso]);
+    if (!db.capabilities?.isPostgres) {
+      db.run(`DELETE FROM ${tables.events} WHERE trace_id NOT IN (SELECT id FROM ${tables.traces})`);
+    }
+  });
   return Number(before?.cnt) || 0;
 }
 export async function pruneExpired() {
   try {
     if (!enabled()) return;
     const days = Number(getSettingsSync().proxyTimelineRetentionDays); if (!Number.isFinite(days) || days <= 0) return;
-    const db = await getProxyTimelineAdapter(); const cutoff = new Date(Date.now() - days * 86400000).toISOString();
-    db.transaction(() => { db.run("DELETE FROM traces WHERE started_at < ?", [cutoff]); db.run("DELETE FROM events WHERE trace_id NOT IN (SELECT id FROM traces)"); });
+    const db = await getProxyTimelineAdapter(); const tables = timelineTables(db); const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+    db.transaction(() => {
+      db.run(`DELETE FROM ${tables.traces} WHERE started_at < ?`, [cutoff]);
+      if (!db.capabilities?.isPostgres) {
+        db.run(`DELETE FROM ${tables.events} WHERE trace_id NOT IN (SELECT id FROM ${tables.traces})`);
+      }
+    });
   } catch {}
 }
 if (!global._proxyTimelinePruneTimer) { global._proxyTimelinePruneTimer = setInterval(() => { pruneExpired(); }, 3600000); global._proxyTimelinePruneTimer.unref?.(); }

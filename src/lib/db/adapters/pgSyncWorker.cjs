@@ -23,15 +23,16 @@ function sanitize(message) {
   return String(message || "").replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "postgres://***");
 }
 
+let pendingResult = null;
+let pendingResultStatus = 1;
+
 function reply(ok, data) {
   const json = Buffer.from(JSON.stringify(data), "utf8");
   if (HEADER_BYTES + json.length > sab.byteLength) {
-    const tooBig = Buffer.from(JSON.stringify({
-      message: `PG result too large for sync bridge (${json.length} bytes)`,
-    }), "utf8");
-    tooBig.copy(payload, HEADER_BYTES);
-    Atomics.store(i32, LENGTH, tooBig.length);
-    Atomics.store(i32, STATUS, 2);
+    pendingResult = json;
+    pendingResultStatus = ok ? 1 : 2;
+    Atomics.store(i32, LENGTH, json.length);
+    Atomics.store(i32, STATUS, 3);
     Atomics.notify(i32, STATUS);
     return;
   }
@@ -61,6 +62,21 @@ async function ensurePool() {
 
 async function handle(msg) {
   const op = msg && msg.op;
+  if (op === "read-result") {
+    const result = pendingResult;
+    const status = pendingResultStatus;
+    pendingResult = null;
+    if (!result || !(msg.resultBuffer instanceof SharedArrayBuffer) ||
+      msg.resultBuffer.byteLength !== result.length) {
+      throw new Error("Invalid PostgreSQL result buffer");
+    }
+    result.copy(Buffer.from(msg.resultBuffer));
+    Atomics.store(i32, LENGTH, 0);
+    Atomics.store(i32, STATUS, status);
+    Atomics.notify(i32, STATUS);
+    return null;
+  }
+  pendingResult = null;
   if (op === "close") {
     if (txClient) {
       try { txClient.release(true); } catch { /* noop */ }
@@ -122,7 +138,7 @@ async function handle(msg) {
 parentPort.on("message", async (msg) => {
   try {
     const result = await handle(msg);
-    reply(true, result);
+    if (result !== null) reply(true, result);
   } catch (err) {
     reply(false, { message: sanitize(err && err.message), code: err && err.code });
   }

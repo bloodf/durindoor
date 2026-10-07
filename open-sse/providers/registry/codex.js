@@ -1,9 +1,7 @@
-import { withCodexReviewModels } from "../models/helpers.js";
 
-// Codex CLI version OpenAI's backend sees. Single source for the `Version` and
-// `User-Agent` identity headers across transport, image, usage and quota paths.
-// Bump when the upstream codex CLI is upgraded.
-const CODEX_CLI_VERSION = "0.155.0";
+// Codex CLI version OpenAI's backend sees. It gates model catalog entries and
+// must stay current with the published @openai/codex release.
+const CODEX_CLI_VERSION = "0.160.1";
 
 export default {
   id: "codex",

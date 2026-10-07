@@ -1,4 +1,4 @@
-import { openSqliteAdapter } from "./driver.js";
+import { getAdapter, openSqliteAdapter } from "./driver.js";
 import { ensureDirs, currentProxyTimelineFile, hardenPermissions } from "./paths.js";
 import { PRAGMA_SQL } from "./schema.js";
 
@@ -25,13 +25,27 @@ CREATE INDEX IF NOT EXISTS idx_pt_status ON traces(status);
 CREATE INDEX IF NOT EXISTS idx_pt_events ON events(trace_id, seq);
 `;
 
-if (!global._proxyTimelineAdapter) global._proxyTimelineAdapter = { instance: null, initPromise: null, file: null };
+if (!global._proxyTimelineAdapter) global._proxyTimelineAdapter = { instance: null, initPromise: null, file: null, owned: false };
 const state = global._proxyTimelineAdapter;
 
 export async function getProxyTimelineAdapter() {
+  const main = await getAdapter();
+  if (main.capabilities?.isPostgres) {
+    if (state.owned && state.instance) {
+      try { await state.instance.close?.(); } catch {}
+    }
+    state.instance = null;
+    state.initPromise = null;
+    state.file = null;
+    state.owned = false;
+    return main;
+  }
+
   const file = currentProxyTimelineFile();
   if (state.instance && state.file !== file) {
-    try { await state.instance.close?.(); } catch {}
+    if (state.owned) {
+      try { await state.instance.close?.(); } catch {}
+    }
     state.instance = null;
     state.initPromise = null;
   }
@@ -45,6 +59,7 @@ export async function getProxyTimelineAdapter() {
       hardenPermissions();
       state.file = file;
       state.instance = adapter;
+      state.owned = true;
       return adapter;
     })().catch((error) => {
       state.initPromise = null;

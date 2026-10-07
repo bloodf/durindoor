@@ -1,19 +1,15 @@
-// Boot-time fallback wrapper for the opt-in PostgreSQL engine.
+// Boot-time PostgreSQL selection and legacy SQLite fallback.
 //
-// The runtime is SQLite by default. When `settings.databaseEngine ===
-// "postgres"`, this module opens a PG adapter, reads the cluster's
-// `server_version_num` and per-feature GUCs, evaluates the capability
-// gate, and either returns the PG adapter or falls back to SQLite on
-// any failure (PG unreachable, auth rejected, migrations fail, etc.).
+// DURINDOOR_DATABASE_ENGINE=postgres or an environment DURINDOOR_PG_URL
+// opens PostgreSQL without reading SQLite. Connection, cluster-probe,
+// and migration failures reject initialization in this explicit mode.
 //
-// The fallback is one-shot per process: the first successful PG boot
-// wins, and the first failure sticks. Repeated PG outages do not loop;
-// the operator sees `databaseEngineError` in the settings page and acts.
+// Without either selector, settings.databaseEngine controls boot. This
+// legacy mode records databaseEngineError and falls back to SQLite on
+// PostgreSQL failure. The driver caches that choice until restart.
 //
-// IMPORTANT: this module deliberately avoids the full `getAdapter()`
-// path on the read side, because the driver calls back into this module
-// during init. Instead, it opens a transient SQLite adapter just to
-// read the `settings` row, then closes it.
+// Avoid getAdapter() here: the driver calls this module during init.
+// Only legacy selection uses a transient SQLite settings connection.
 
 import { openSqliteAdapter } from "./driver.js";
 import { currentDataFile } from "./paths.js";
@@ -24,10 +20,9 @@ import { resolvePostgresSecret } from "./secrets.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 
 /**
- * Test seam: when set, `openActiveAdapter()` skips the live PG path
- * and goes straight to SQLite. The `noPgImportWhenSqlite` guard the
- * plan calls for uses this hook in a test that asserts the `pg` module
- * is never imported under SQLite-only boots.
+ * Test seam for legacy settings-based selection: skip the live PG path
+ * and use SQLite. Explicit environment-selected PostgreSQL remains
+ * authoritative and fail-closed.
  */
 let sqliteOnlyOverride = false;
 export function __setSqliteOnlyForTests(value) {
@@ -133,6 +128,27 @@ export const readClusterInfoForTest = readClusterInfo;
  * back to SQLite.
  */
 export async function openActiveAdapter() {
+  // An environment URL is an explicit production mode. Do not read or write
+  // SQLite here: configuration, connection, and migration failures must stop boot.
+  if (process.env.DURINDOOR_DATABASE_ENGINE === "postgres" ||
+    Object.hasOwn(process.env, "DURINDOOR_PG_URL")) {
+    const pg = await createPostgresAdapter({
+      url: process.env.DURINDOOR_PG_URL,
+      sslmode: process.env.DURINDOOR_PG_SSLMODE,
+    });
+    if (!await readClusterInfo(pg)) {
+      try { await pg.close(); } catch { /* noop */ }
+      throw new Error("[DB][pg] cluster version query failed");
+    }
+    try {
+      await runMigrationOnce(pg);
+    } catch (error) {
+      try { await pg.close(); } catch { /* noop */ }
+      throw error;
+    }
+    return pg;
+  }
+
   let settings = null;
   try {
     settings = await readSettingsViaTransientSqlite();
@@ -140,70 +156,30 @@ export async function openActiveAdapter() {
     // Settings row unreadable; fall through to the default SQLite path.
   }
   const engine = settings && settings.databaseEngine === "postgres" ? "postgres" : "sqlite";
-  if (engine !== "postgres" || sqliteOnlyOverride) {
-    return openSqliteAdapter(currentDataFile());
-  }
+  if (engine !== "postgres" || sqliteOnlyOverride) return openSqliteAdapter(currentDataFile());
   const url = await resolvePostgresSecret();
   if (!url) {
-    try {
-      await writeSettingsViaTransientSqlite({
-        databaseEngineError: "PG engine is on but no connection URL is configured",
-      });
-    } catch { /* noop */ }
+    try { await writeSettingsViaTransientSqlite({ databaseEngineError: "PG engine is on but no connection URL is configured" }); } catch {}
     return openSqliteAdapter(currentDataFile());
   }
   let pg;
   try {
-    pg = await createPostgresAdapter({
-      url,
-      sslmode: settings.postgresSslmode || process.env.DURINDOOR_PG_SSLMODE,
-    });
-  } catch (err) {
-    try {
-      await writeSettingsViaTransientSqlite({
-        databaseEngineError: `PG connect failed: ${err.message}`,
-      });
-    } catch { /* noop */ }
-    return openSqliteAdapter(currentDataFile());
-  }
-  const clusterInfo = await readClusterInfo(pg);
-  if (!clusterInfo) {
-    try { await pg.close(); } catch { /* noop */ }
-    try {
-      await writeSettingsViaTransientSqlite({
-        databaseEngineError: "PG cluster reachable but version query failed",
-      });
-    } catch { /* noop */ }
-    return openSqliteAdapter(currentDataFile());
-  }
-  const cap = settings.databasePgVersion || 18;
-  const features = settings.databasePgFeatures || {};
-  const gate = evaluateCapabilities(clusterInfo, cap, features);
-  if (gate.versionMismatch) {
-    try {
-      await writeSettingsViaTransientSqlite({
-        databaseEngineError:
-          `PG version cap is ${cap} but cluster reports ${gate.clusterMajor}; ` +
-          `${cap}-only features disabled`,
-      });
-    } catch { /* noop */ }
-  }
-  try {
+    pg = await createPostgresAdapter({ url, sslmode: settings.postgresSslmode || process.env.DURINDOOR_PG_SSLMODE });
+    const clusterInfo = await readClusterInfo(pg);
+    if (!clusterInfo) throw new Error("PG cluster reachable but version query failed");
+    const cap = settings.databasePgVersion || 18;
+    const gate = evaluateCapabilities(clusterInfo, cap, settings.databasePgFeatures || {});
+    if (gate.versionMismatch) {
+      try { await writeSettingsViaTransientSqlite({ databaseEngineError: `PG version cap is ${cap} but cluster reports ${gate.clusterMajor}; ${cap}-only features disabled` }); } catch {}
+    }
     await runMigrationOnce(pg);
-  } catch (err) {
-    try { await pg.close(); } catch { /* noop */ }
-    try {
-      await writeSettingsViaTransientSqlite({
-        databaseEngineError: `PG migration failed: ${err.message}`,
-      });
-    } catch { /* noop */ }
+    try { await writeSettingsViaTransientSqlite({ databaseEngineError: null }); } catch {}
+    return pg;
+  } catch (error) {
+    try { await pg?.close(); } catch { /* noop */ }
+    try { await writeSettingsViaTransientSqlite({ databaseEngineError: `PG boot failed: ${error.message}` }); } catch {}
     return openSqliteAdapter(currentDataFile());
   }
-  // Clear the engine error on a clean boot.
-  try {
-    await writeSettingsViaTransientSqlite({ databaseEngineError: null });
-  } catch { /* noop */ }
-  return pg;
 }
 
 /**

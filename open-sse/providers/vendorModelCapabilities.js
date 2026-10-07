@@ -119,8 +119,7 @@ for (const id of ["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5", "Min
 const CODEX_CATALOG_CAPABILITIES = Object.fromEntries([
   ["gpt-6-astra", ["low", "medium", "high", "xhigh", "max", "ultra"]],
   ["gpt-6-astra-review", ["low", "medium", "high", "xhigh", "max", "ultra"]],
-  ["gpt-6.1-sol", ["low", "medium", "high", "xhigh", "max"]],
-  ["gpt-6.1-sol-review", ["low", "medium", "high", "xhigh", "max"]],
+  ["gpt-6.1-sol", ["low", "medium", "high", "xhigh", "max", "ultra"]],
   ["gpt-6-sol", ["low", "medium", "high", "xhigh", "max", "ultra"]],
   ["gpt-6-sol-review", ["low", "medium", "high", "xhigh", "max", "ultra"]],
   ["gpt-6-luna", ["low", "medium", "high", "xhigh", "max"]],

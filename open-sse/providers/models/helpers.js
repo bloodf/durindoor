@@ -1,11 +1,12 @@
-// Codex auto-generates a "-review" variant for each llm model (review quota family)
+// Codex review models require provider catalog or quota-contract evidence.
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 export const CODEX_REVIEW_SUFFIX = "-review";
+const CODEX_REVIEW_UNSUPPORTED = new Set(["gpt-6.1-sol"]);
 
 export function withCodexReviewModels(models) {
   return models.flatMap((model) => {
-    if ((model.kind || model.type || "llm") !== "llm" || model.id.endsWith(CODEX_REVIEW_SUFFIX)) {
+    if ((model.kind || model.type || "llm") !== "llm" || model.id.toLowerCase().includes("embed") || model.id.endsWith(CODEX_REVIEW_SUFFIX) || CODEX_REVIEW_UNSUPPORTED.has(model.id)) {
       return [model];
     }
     return [

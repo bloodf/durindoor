@@ -6,7 +6,7 @@ import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;

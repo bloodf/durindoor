@@ -1,165 +1,86 @@
 ---
 title: Model limits
-description: How DurinDoor resolves context windows and max output, and when chat rejects oversize requests.
+description: Context windows, output caps, discovery metadata, and oversized request errors.
 ---
 
-`resolveModelLimits(provider, model)` in `open-sse/providers/capabilities.js` resolves numeric limits for the router, executors, and model APIs. Discovery and auto-sync decode provider declarations through `open-sse/services/modelMetadata.js`; consuming routes combine those declarations with the curated catalog and operator overrides.
+DurinDoor reports known model limits and checks chat input before dispatch. A missing limit means unknown capacity. It does not mean unlimited capacity or a guaranteed default.
 
-```js
-import { resolveModelLimits } from "open-sse/providers/capabilities.js";
+## Limit precedence
 
-resolveModelLimits(provider, model);
-// { contextWindow, maxOutput, known, source }
-```
+An explicit operator override wins over live provider metadata and the bundled catalog. Otherwise, lookup uses the provider's model declaration, the exact model ID, the provider registry, then the first matching model-family pattern. Provider and model aliases resolve within their selected provider.
 
-`source` identifies the selected context-limit row, not the provenance of every capability or output limit. Custom request caps and supplied live values can overlay that row.
-
-| `source` | Origin |
+| Limit source | Meaning |
 | --- | --- |
-| `custom` | Explicit operator `customCaps` keys with positive context/output values |
-| `live` | Caller-supplied server-side discovery/cache limits (`liveLimits`) |
-| `provider` | `PROVIDER_CAPABILITIES[provider][model]` |
-| `exact` | `MODEL_CAPABILITIES[model]` |
-| `registry` | Published per-model registry `contextLength` / `maxOutputTokens` |
-| `pattern` | First `PATTERN_CAPABILITIES` glob with a positive window |
-| `default` | No authoritative limit; unknown fields stay absent and `known` is false |
+| `custom` | Explicit positive operator context or output override. |
+| `live` | Limits from discovery or the persisted provider cache. |
+| `provider` | Provider-specific model declaration. |
+| `exact` | Exact model declaration in the shared catalog. |
+| `registry` | Published per-model registry limits. |
+| `pattern` | First model-family pattern with a positive context window. |
+| `default` | No authoritative limit; unknown fields are absent. |
 
-Catalog lookup order is provider, exact id, registry, then pattern. Explicit operator context/output keys win over live values and catalog limits. `customKeys` records operator provenance; an inherited live/shared/curated value is not an operator override. Resolve provider aliases and registered model aliases within the selected provider; a matching bare model name does not establish access through another provider.
+The source label identifies the selected context row. It does not identify the origin of every output limit or capability.
 
-AI Horde (`aihorde` / `horde`) and `ollama-local` use custom or observed live limits instead of static token ceilings.
+AI Horde and Ollama Local use operator or observed live limits rather than static ceilings. Known Codex models use their underlying API capacity; a client's smaller compaction budget does not replace it.
 
-### Overriding a synced (registry) model's window
+## Operator overrides
 
-`source: "custom"` above previously required a full custom model row (**Dashboard → Providers → (provider) → Add Model**). A registry-listed model (the built-in catalog row, no separate custom entry) now shows the same pencil, opening the same capability editor. Saving there writes (or updates) a `customModels` row keyed to that provider/model id, so it does not appear twice: the dashboard excludes a custom row whose id matches a built-in model from the "custom models" list, and the server's `buildModelsList` dedup keeps that row's overridden capabilities (including `contextWindow`) over the plain static entry. Clearing the field back to blank keeps the row but drops the override to `null`, which falls back to the catalog value.
+The pencil beside a built-in or custom model opens the capability editor under **Dashboard → Providers**. An override of a built-in model changes that row without adding a duplicate catalog entry. Clearing a limit field removes that override and restores the discovered or catalog value.
 
-## Known versus unknown
+A known context window does not establish an output ceiling. An output-only declaration likewise does not establish a context window. Defaults and compaction thresholds are separate values.
 
-`DEFAULT_CAPABILITIES` supplies feature defaults, not numeric token capacities. An unmatched resolver result has `known: false` with absent context/output limits.
+## Input checks and output reservation
 
-- Public discovery and dashboard consumers omit unknown limits rather than advertise fabricated guarantees.
-- Ingress preflight skips the context check without a known positive window.
-- Live or custom metadata may establish just an output limit; that does not establish a context window.
+For a known total window, chat rejects a request when counted input plus the effective output reservation exceeds that window. A separate known input ceiling can also reject the input. The response is HTTP `400` with `input is too long`. This error ends the request; a combo does not try another member.
 
-Transport context defaults configure requests; they are not documented model capacities. Resolution and materialization use published model-level `contextLength` / `maxOutputTokens` or scoped declarations instead. Rows such as `nr/auto` and `9router/auto` keep unknown limits unknown.
+Claude-compatible providers use native token counting when available. Other providers use an estimate of roughly four characters per token. Failed native counts fall back to that estimate. Unknown positive context limits skip the total-window check; an upstream can still reject the request.
 
-Knowing the context window does not establish an output ceiling. A curated `maxOutput: null` or an unpublished-output policy leaves that ceiling unknown. Do not interpret a missing field, a client's local default, or a sample request's `max_tokens` as a vendor ceiling.
+An explicit `max_tokens`, `max_completion_tokens`, `max_output_tokens`, or Gemini `generationConfig.maxOutputTokens` reserves the value after output clamping. Operator caps take precedence. Without a client limit, reservation uses an explicit operator output cap, then a sent or documented generation default, otherwise zero. A published output maximum only clamps; it is not an automatic reservation.
 
-## Pattern order
+For example, the bundled Kimi K3 declaration distinguishes its `131072`-token generation default from its `1048576`-token output ceiling. Input plus generated output must still fit the total window.
 
-Globs are first-match. Specific rows sit above family rows.
+## Discovery metadata
 
-`qwen3.8-2.4t-*` is text-only at 262,144 tokens. It is listed before `qwen3.8-*`, which is multimodal at 1,000,000 / 65,536. Muse Spark (`*muse-spark*`, 1,048,576) and Muse Glimmer (`*muse-glimmer*`, 128,000) sit above generic `*muse*` (128,000).
+Provider sync determines available models. Shared models.dev metadata enriches those models; it does not grant account access or add a provider transport. Explicit provider values, including `false`, win over shared and curated metadata. Explicit operator fields win at the consuming endpoint.
 
-CommandCode `meta/muse-spark-1.2-contributor` keeps `thinkingFormat: "commandcode"` on the provider capabilities row. That row has no `contextWindow`, so limit numbers still come from `*muse-spark*`.
+The existing model auto-sync runner refreshes the shared snapshot with a 24-hour TTL. Catalog requests read the persisted cache without downloading it. Scheduled refresh requires an enabled, due provider. Manual sync and forced runs refresh the shared snapshot. A failed download retains cached data; a partial successful download can retain older model entries.
 
-Known Codex models use API-equivalent capacity in DurinDoor. A Codex catalog's 272,000-token default or compaction budget does not replace the underlying model's API capacity.
+`providerFetchedAt` records the last successful provider roster sync. `sharedEntries` records matched shared sources and timestamps; `sharedFetchedAt` summarizes the oldest known matched timestamp. A recent snapshot download does not prove that every retained model entry is current. Without discovery, the curated catalog remains available.
 
-## Discovery and cached enrichment
+## Public catalog fields
 
-DurinDoor uses its existing model auto-sync runner to refresh shared [models.dev](https://models.dev/api.json) specifications. There is no additional discovery daemon. Model-list requests read the persisted snapshot without downloading the shared catalog. The shared snapshot has a 24-hour refresh TTL; scheduled runs skip shared downloads without an enabled, due provider. Manual provider sync and forced runs refresh it. Failed downloads retain usable cached metadata. Successful partial downloads can retain older per-model metadata, so the snapshot's download time is not proof that each retained model is current.
+| Endpoint or client format | Known limit fields |
+| --- | --- |
+| OpenAI `GET /v1/models` | `context_length`, `max_model_len`, output aliases, and nested input/output limits. Also modality, tools, reasoning, structured-output, caching, and thinking-budget metadata where declared. |
+| Codex catalog | `context_window`, `max_output_tokens`. Selected by `originator: codex_cli_rs` or a Codex user-agent. |
+| Anthropic catalog | `max_input_tokens`, `max_tokens`, nested capabilities, and `max_context_window_tokens`. Selected by the presence of `anthropic-version`, before Codex detection. Unknown native ceilings can be `null`. |
+| `GET /v1/models/info?id=provider/model` | Scoped model capabilities and known limits. Optional `kind` disambiguates duplicate IDs. Missing `id` returns `400`; an unknown ID returns `404`. |
+| Chat combo rows | `context_length` and `max_completion_tokens` use the smallest known limit across resolved members, including nested combos and aliases. Unknown members are skipped; all-unknown limits are omitted. |
 
-The provider's successful synced roster controls availability, with registered derived variants and separately configured custom models. Shared specifications enrich those rows; they do not add providers, grant account access, or supply transport code, endpoint URLs, credentials, or request headers.
+Web search and web fetch combos keep their kind and omit chat token overlays. `/v1beta/models` currently advertises fixed `128000` input and `8192` output placeholders; those values do not establish actual capacity.
 
-`materializeSyncedModel(providerId, model, sharedMetadata)` combines the provider/model/service-kind-scoped shared specification, current curated declarations, and explicit provider declarations. A custom media row sharing a chat model's ID does not inherit its tools, reasoning, or token ceilings; matching-kind discoveries, legitimate embedding input context, and explicit operator fields remain usable. Explicit live values win over curated/shared fields, including `false`. Missing metadata does not prove lack of support. For known Codex rows, the approved API-capacity policy overrides default/compaction window metadata. Persisted operator overrides still win at consuming boundaries. Cached provider declarations remain separate from enrichment so later materialization can apply updated specifications.
+Client tools can ignore these extension fields or substitute their own defaults. Compare the client's selected model settings with the gateway catalog before relying on a reported capacity.
 
-`extractLiveModelLimits` reads positive safe-integer limits from nested limits/meta/native capability limits and recognized root or models.dev fields. It preserves independent input, output, and documented generation-default values. Generic independent input/output budgets do not establish a total window; a complete explicitly additive nested pair can establish their sum. Native Anthropic and Gemini decoding retains the protocol's declared window without adding the output allowance. Adapters carry known protocol context when rows omit native discriminators. Generation defaults and compaction thresholds are never ceilings. `extractApiCapabilities` also normalizes modality arrays, native support objects, explicit booleans, supported tools, and reasoning efforts without importing transport settings.
+## Bundled capacity examples
 
-Materialized `metadataSources` describes matched sources, not the winning source of each field. `providerFetchedAt` records the stored roster's successful sync; `sharedEntries` retains each matched canonical/alias entry's known source and fetch time. `sharedFetchedAt` summarizes the oldest known matched timestamp, and `sharedSource` appears only when matched sources agree. Legacy provenance can remain unknown. Inspect those entries before calling a cached value current; a fresh shared download can retain older model specifications. Without usable discovery, consumers retain the curated baseline.
+These are bundled declarations, before live metadata and operator overrides. Query your running instance for its effective values.
 
-### Pi and OMP source flows
+| Model route | Context tokens | Output ceiling tokens |
+| --- | ---: | ---: |
+| OpenAI GPT-6 Astra/Sol/Luna and GPT-6.1 Sol; known Codex equivalents | 1050000 | 128000 |
+| Kimi Platform `kimi/kimi-k3` | 1048576 | 1048576 |
+| Kimi Coding `kimi-coding/kimi-for-coding` | 1048576 | Unknown |
+| Kimi Coding `kimi-coding/k3-256k` | 262144 | Unknown |
+| MiniMax `minimax/MiniMax-M3.1-Flash-Preview` | 1000000 | Unknown |
 
-The [Pi generator](https://github.com/badlogic/pi-mono/blob/main/packages/ai/scripts/generate-models.ts) fetches models.dev, OpenRouter, and other vendor/gateway catalogs **at generation time**, applies provider-specific patches, and writes bundled catalog data. Its source contains local defaults and policy caps, including an explicit Codex default-context list. Those client policies do not establish DurinDoor's served capacity.
+The listed OpenAI models also declare a `922000`-token input ceiling. Codex capacity does not grant API-model access or every reasoning effort. MiniMax M3.1 Flash Preview requires M Plan or MiniMax Code access. Subscription keys and pay-as-you-go keys are separate.
 
-[OMP's model registry documentation](https://github.com/can1357/oh-my-pi/blob/main/docs/models.md) describes a broader runtime flow: bundled models, cached provider rows, a background shared models.dev refresh through `catalog.stencil.so`, provider-endpoint discovery, then custom definitions and model overrides. Shared rows enrich registered provider slices; authoritative provider endpoints can replace the available chat roster. OMP records concrete `provider + id` identities and reapplies user configuration after background discovery. Its cache fallback can be stale.
+## Capabilities and model access
 
-Generic OpenAI-compatible clients often parse only `id`, `object`, `created`, and `owned_by`; an HTTP 200 alone says nothing about consumed limits or modalities. OMP's `openai-models-list` parser specifically reads `max_model_len`, then `context_length`, and can combine nested input/output limits. It also reads modality declarations to distinguish chat, image, and embedding runners. Silent unknown models can acquire **OMP-local** generic defaults (128,000 context / 32,768 output), not vendor-verified limits. A custom gateway provider does not automatically inherit every sibling provider's metadata, transport policy, reasoning effort, cache policy, or tool support. Inspect the actual client result and configure explicit overrides where its parser cannot carry a required field.
+Input modalities, native output modalities, and server-tool capabilities are separate facts. A text model using an image-generation tool remains a text-output model. Structured-output support does not guarantee prompt-cache behavior. A custom media model sharing a chat model's ID does not inherit chat capabilities or token limits.
 
-The isolated OMP 18.6.1 check on 2026-10-05 consumed GPT-6/6.1 Sol's 1,050,000 context, 128,000 output, and image input, plus Kimi K3's 1,048,576 context/output. A temporary local override to 100,000 context / 20,000 output remained effective after refresh.
+Canonical aliases use the target model's provider-scoped capabilities and limits. Retired models leave selectable catalogs. Inventory-only IDs with `routingAvailable: false` are not callable routes. Restricted, media, and unpublished ceilings remain unknown.
 
-Client inference remains distinct from served facts: MiniMax M3.1's output ceiling was absent from DurinDoor, while OMP selected `maxTokens: 512000`; an opaque model with no declared limits received OMP's 128,000 / 32,768 defaults. Its generic parser inherits reasoning/thinking policy from reference models instead of consuming arbitrary gateway capability flags: a new fixture's served `reasoning: true` materialized as client `reasoning: false`. Video input also remained outside its text/image input representation. These client values are not vendor guarantees; use explicit local overrides when the generic parser cannot express the serving contract.
+Context values are exact integers. `1050000`, `1048576`, and `1000000` describe different windows. Account entitlement can impose a smaller usable window, such as a plan-specific Kimi Coding limit. Catalog availability alone does not prove inference access.
 
-## Audited vendor limits and capabilities
-
-These are source-backed catalog facts checked against the linked vendor documentation on 2026-10-05. They are not paid inference results or a statement that a release or production rollout occurred. Account access, quotas, and available efforts remain provider-scoped.
-
-| Model and surface | Context tokens | Output ceiling tokens | Notes |
-| --- | ---: | ---: | --- |
-| GPT-6 Astra, Sol, Luna; GPT-6.1 Sol, direct API and known Codex rows | 1,050,000 | 128,000 | Maximum input 922,000; text/image input and text output. Codex shares capacity, not automatic API model access or effort availability. |
-| Kimi K3, native Platform API | 1,048,576 | 1,048,576 | Published output default 131,072 is distinct from the ceiling. |
-| Kimi Code `kimi-for-coding` | 1,048,576 | Unknown | Now K2.8 Preview, not a K3 alias or the older K2.7 Code model. |
-| MiniMax `MiniMax-M3.1-Flash-Preview` | 1,000,000 | Unknown | Currently M Plan / MiniMax Code access; image/video input and tunable mandatory thinking. |
-
-Use exact integers: 1,050,000, 1,048,576, and 1,000,000 are different windows; “1.1M” hides that difference. See the [OpenAI model catalog](https://developers.openai.com/api/docs/models), [GPT-6.1 Sol specifications](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [Kimi Platform pricing](https://platform.kimi.ai/docs/pricing/chat), [Kimi K3 limits](https://platform.kimi.ai/docs/guide/kimi-k3-quickstart#important-limits), [Kimi Chat Completions schema](https://platform.kimi.ai/docs/api/chat), [Kimi Code model configuration](https://www.kimi.com/code/docs/en/kimi-code/models.html), and [MiniMax Anthropic-compatible specification](https://platform.minimax.io/docs/api-reference/text-anthropic-api.md). MiniMax's [M Plan documentation](https://platform.minimax.io/docs/m-plan/intro) describes the eligible subscription surface; M3.1 Flash Preview's presence in a catalog does not grant pay-as-you-go access.
-
-An output ceiling equal to the total context window is valid metadata: Kimi documents it. It does not permit input plus output to exceed the window and does not mean every request reserves the full ceiling. Do not reject such catalog rows using a blanket `maxOutput < contextWindow` rule. Do not transfer Platform K3's output ceiling or default to a Coding alias without a source for that surface. Kimi Code `k3-256k` has a fixed 262,144-token window; `k3` access to 1,048,576 tokens depends on plan entitlement.
-
-Anthropic's [Models API](https://platform.claude.com/docs/en/api/models/list) supplies structured-output/JSON, image/PDF, and thinking support metadata. DurinDoor keeps `structuredOutput` and `promptCaching` separate; JSON schema support does not imply a cache hit or retention guarantee. Grok metadata follows xAI's [structured-output schema](https://docs.x.ai/developers/model-capabilities/text/structured-outputs) and [automatic prompt-caching documentation](https://docs.x.ai/developers/advanced-api-usage/prompt-caching). A shared registry's omitted flag must not erase a curated capability or an explicit provider value.
-
-### Native modalities and tool-mediated features
-
-`vision`, `audioInput`, and `videoInput` describe accepted model input; `imageOutput`, `audioOutput`, and `videoOutput` describe native output. `supportedTools` describes tool-mediated features. GPT-6.1 Sol can call a Responses `image_generation` tool while its native output remains text; this does not make it a native image or video model. Client-side video frame extraction likewise does not establish native video support. Preserve the endpoint-specific distinction instead of setting every multimodal flag from a product description.
-
-MiniMax Hailuo 2.3 Fast supports image-to-video only. Hailuo 02 supports 512P for image-to-video, not text-to-video. H3-Max's detailed V2 schema accepts reference image, video, and audio inputs. See [MiniMax models](https://platform.minimax.io/docs/guides/models-intro.md) and [V2 video inputs](https://platform.minimax.io/docs/api-reference/video-generation-v2-create.md). Video/audio/music products can require separate entitlements; Music API availability also differs for new customers and existing paying accounts.
-
-Canonical aliases use their target's scoped capability, format, limit, and pricing row. Deprecated models can remain callable until vendor retirement; retired models leave selectable catalogs. A published id without a documented routing endpoint, such as `gpt-rosalind-research`, remains inventory-only with `routingAvailable: false`. Restricted and media models keep unknown token limits unknown.
-
-
-## Ingress preflight
-
-`handleChatCore` runs the check after request shaping and immediately before executor dispatch.
-
-1. Resolve limits. Skip the context check without a known positive `contextWindow`.
-2. Reserve output with `BaseExecutor.resolveEffectiveOutputReservation`.
-3. Count input with `countInputTokens`. Claude-compatible transports call `/messages/count_tokens` (or `baseUrl/count_tokens` when the base already ends in `/messages`). Anything else uses `estimateTokens` (characters / 4). A failed native call falls back to the estimate.
-4. Reject with status 400 when `input + reservation > contextWindow`.
-
-The error text contains `input is too long`. `isDeterministicPayloadError` treats that as terminal, so model fallback does not retry a payload no other model would accept.
-
-### Output reservation
-
-For an explicit client limit (`max_tokens`, `max_completion_tokens`, `max_output_tokens`, or either Gemini `generationConfig.maxOutputTokens` shape), reserve the value that the output clamp permits, respecting operator caps. Charging the raw client number while forwarding a smaller value can reject a valid request.
-
-An absent client value reserves an explicit operator output cap, then a sent or documented `defaultOutput`, otherwise zero. Published maxima only clamp; they are not implicit reservations. Kimi K3's documented 131,072-token default remains distinct from its 1,048,576-token ceiling. Request shaping must carry the resolved default consistently into native transports so preflight and dispatch agree. Discovery metadata alone cannot demonstrate request reservation.
-
-## Surfacing limits
-
-- Standard OpenAI-shaped `GET /v1/models` keeps the list envelope and includes data-only extensions: `input` / `output`, `input_modalities` / `output_modalities`, declared reasoning/tools/structured-output/cache flags, validated thinking-budget bounds, safe provider attribution, known `context_length` / `max_model_len`, output-limit aliases, and nested input/output limits where known. `projectDiscoveryMetadata` never fills unknown token ceilings. Partial operator overrides retain inherited discovered/shared metadata; an explicit unsupported flag wins over native hints.
-- Codex-shaped discovery adds `context_window` and `max_output_tokens` where known. A Codex client uses `originator: codex_cli_rs` or a user-agent matching `/codex/i`. An `anthropic-version` header takes precedence, selecting the Anthropic list envelope with `max_input_tokens`, `max_tokens`, and nested supported-capability metadata. The data-only `max_context_window_tokens` extension preserves a known total separately from the input ceiling; explicit `null` preserves an unknown total without inferring it from independent input/output limits. Unknown native ceilings remain `null`, not fabricated numbers.
-- `GET /v1/models/info?id={alias}/{modelId}` resolves the scoped model and returns its known capabilities/limits. Missing `id` is 400; unknown limits stay absent.
-- Default and LLM combo rows expose `context_length` and `max_completion_tokens`. Both are the smallest known limit across resolved members, including nested combos and members reached through static aliases or custom connection prefixes. Unknown members are skipped. If every member is unknown, the fields are omitted.
-- Combos with `kind` `webSearch` or `webFetch` set that kind on the public entry and skip the limit overlay.
-
-`next.config.mjs` rewrites `/v1/:path*` to `/api/v1/:path*`.
-
-## Non-paid client verification
-
-Run this against an **isolated candidate server** with a separate database, never a production port. Supply that instance's port and discovery-only test credential through `DD_AUDIT_PORT` and `DD_AUDIT_API_KEY`; do not copy production auth, profiles, or extensions. Use an installed OMP version that implements the linked discovery parser. The following recipe creates only temporary client configuration and performs catalog operations, not model inference:
-
-```bash
-: "${DD_AUDIT_PORT:?Set the isolated candidate port}"
-: "${DD_AUDIT_API_KEY:?Set the isolated instance test credential}"
-sandbox="$(mktemp -d)"
-mkdir -p "$sandbox/agent"
-cat > "$sandbox/agent/models.yml" <<EOF
-providers:
-  dd-audit:
-    baseUrl: http://127.0.0.1:${DD_AUDIT_PORT}/v1
-    apiKey: DD_AUDIT_API_KEY
-    api: openai-completions
-    discovery:
-      type: openai-models-list
-EOF
-(
-  cd "$sandbox"
-  env -i PATH="$PATH" HOME="$sandbox" \
-    PI_CODING_AGENT_DIR="$sandbox/agent" DD_AUDIT_API_KEY="$DD_AUDIT_API_KEY" \
-    omp models refresh --no-extensions --json
-  env -i PATH="$PATH" HOME="$sandbox" \
-    PI_CODING_AGENT_DIR="$sandbox/agent" DD_AUDIT_API_KEY="$DD_AUDIT_API_KEY" \
-    omp models dd-audit --kind all --no-extensions --json
-)
-```
-
-Inspect the `dd-audit` rows' exact `id`/`selector`, `contextWindow`, `maxTokens`, declared `input`, and `kind`. Compare these **client-materialized values** with the candidate's discovery JSON, scoped curated facts, and cached timestamps. Check `--kind all` so image/embedding runners do not disappear from a chat-only listing. OMP JSON does not expose every transport or DurinDoor extension; absence of a field there does not prove absence upstream.
-
-Repeat listing after adding a temporary `modelOverrides` entry under `dd-audit` for an exact discovered id, using a smaller positive `contextWindow` and `maxTokens`, to confirm user configuration remains effective after refresh. Keep the original and overridden JSON as separate evidence. Also inspect cold-cache and retained-cache behavior in the isolated server; label retained values stale when their source fetch is old. A discovery check cannot establish paid inference, maximum-sized request acceptance, native media generation, or production deployment. This recipe is a verification procedure, not a claim that it has already run.
+See [API](./api.mdx) for request fields and [Troubleshooting](../troubleshooting.mdx#input-exceeds-context-window) for recovery.

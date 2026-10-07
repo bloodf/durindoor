@@ -3,15 +3,30 @@ title: API
 description: Method, path, body, streaming, and provider support for every /v1 route.
 ---
 
-Point clients at `http://localhost:20128/v1`. Production listens on port `20128`. Next rewrites `/v1/:path*` to `/api/v1/:path*`, the public path is `/v1`. A second rewrite maps `/v1/v1/:path*` onto the same handlers for clients that already put `/v1` in both the base URL and the path. `/codex/:path*` and `/responses` land on `POST /v1/responses`. `/v1beta` is a separate tree.
+> Pre-rewrite snapshot: baseline `0e7307831`, captured 2026-10-07. The snapshot below preserves historical wording, including known inaccuracies. Current implementation notes and the matching public page take precedence.
+
+## Current implementation notes
+
+Source ownership: `src/app/api/v1/` owns route methods and content types; `next.config.mjs` owns public rewrites; `src/sse/handlers/chat.js` and `open-sse/handlers/chatCore.js` own chat selection and dispatch. `src/sse/services/resourceOwnership.js` owns local resource admission; `open-sse/services/localFilesBatches.js` owns local files and batch scheduling. Native-provider dispatch lives in `src/sse/handlers/nativeProvider.js`.
+
+Request flow: public rewrite, handler format selection, client-key admission, scoped model/connection selection, translation, output shaping, preflight, provider dispatch, client response conversion and accounting. The native facade retains its allowlist and fixed origins rather than accepting an arbitrary upstream host. Do not confuse native resource creator-key ownership with common async video's connection scope.
+
+Corrections: audio transcription/translation `maxDuration = 300` is a route execution declaration, not a maximum uploaded recording duration. All current catalog kinds are declared in `src/app/api/v1/models/[...model]/route.js`; the public page now lists realtime, moderation, audio, live, document parsing, and System One kinds too. Added direct OpenAI session creation routes and the unauthenticated ChatGPT Web cached-image route from actual route inventory. `/v1/realtime/native` is control-proof-gated handoff, not a client session minting API. `open-sse/services/chatgptImageCache.js` declares 30-minute TTL, 25 entries, and default 10 MiB cache cap. `/v1/models` remains public discovery, not an API-key test. Use `/v1/realtime/auth` for a key-admission probe, preserving its no-key mode when enforcement is off.
+
+Verification targets: `tests/unit/public-route-correlation.test.js`, `request-correlation.test.js`, `native-provider.test.js`, `native-usage.test.js`, `native-streaming-quota.test.js`, `systemoneCore.test.js`, and `systemone-connection-pin.test.js`. These are source references and offline regression targets, not evidence of a paid provider request.
+
+## Preserved pre-rewrite content
+
+
+Point clients at `http://localhost:20128/v1`. Production listens on port `20128`. Next rewrites `/v1/:path*` to `/api/v1/:path*`, so the files live under `src/app/api/v1` while the public path stays `/v1`. A second rewrite maps `/v1/v1/:path*` onto the same handlers for clients that already put `/v1` in both the base URL and the path. `/codex/:path*` and `/responses` land on `POST /v1/responses`. `/v1beta` is a separate tree.
 
 The tables cover the public inference routes and the allowlisted native-provider facade. A listed route does not mean every connected provider can serve it. Pick a model id from `GET /v1/models` or `GET /v1/models/{kind}` for that capability.
 
-Key policy, minting, and lifetime caps are on [API keys](../guides/api-keys.mdx). SDK snippets are on [SDK examples](../guides/sdk-examples.mdx).
+Key policy, minting, and lifetime caps are on [API keys](../../../../docs/guides/api-keys.mdx). SDK snippets are on [SDK examples](../../../../docs/guides/sdk-examples.mdx).
 
 ## Authentication
 
-When **Require API Key** is on, inference requires a valid DurinDoor key. Missing keys return HTTP 401 `Missing API key`; invalid or expired keys return `Invalid API key`. With the setting off, inference accepts requests without a key. Catalog routes have a separate policy below.
+When **Require API Key** is on, handlers call `resolveClientApiKey` with `required: true`. Missing key: HTTP 401 `Missing API key`. Invalid or expired key: `Invalid API key`. Off, a missing key is local mode.
 
 Candidates, in order: `Authorization: Bearer`, `x-api-key`, `x-goog-api-key`, then the `key` query param. Anthropic-shaped clients often send `x-api-key`; that header is enough. Do not send upstream provider keys to these routes. Use a DurinDoor key from the dashboard.
 
@@ -19,7 +34,7 @@ Candidates, in order: `Authorization: Bearer`, `x-api-key`, `x-goog-api-key`, th
 
 ## Request ids
 
-Correlated responses include an `x-request-id` header containing a server-generated UUID. A client `x-request-id` does not set that value.
+`withRequestCorrelation` stamps every wrapped response with `x-request-id`. The value is a UUID created for that request. A client `x-request-id` header is not read.
 
 JSON errors also put that id on the body: `error.request_id` for OpenAI-shaped `{ error: {...} }`, top-level `request_id` for Anthropic `{ type: "error", error: {...} }` and flat bodies. A validated upstream id, when present and different, is `error.upstream_request_id` or top-level `upstream_request_id`. It never replaces the server id. Successful JSON, binary, and SSE bodies pass through without a second parse for correlation.
 
@@ -29,7 +44,7 @@ JSON errors also put that id on the body: `error.request_id` for OpenAI-shaped `
 
 **Expose combos only** (Profile, Model catalog) makes `GET /v1/models` return configured combo names with `owned_by: "combo"`. Default is off. Web combos keep `kind` so search and fetch stay distinct. `HEAD /v1/models` returns 200 with an empty body so SDK probes do not wait for the full list.
 
-Capability filters live at `GET /v1/models/{kind}` for `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, `rerank`, `video`, `music`, `realtime`, `moderation`, `audio`, `realtime-translation`, `realtime-transcription`, `live`, `systemone`, and `document-parsing`. `web` includes search and fetch. A single unknown segment still returns `Unknown model kind`. A provider-prefixed id (`GET /v1/models/cc/claude-sonnet-5`) returns that model object or HTTP 404 `error.code: "model_not_found"`. `HEAD` on those paths is a route probe: known kinds and provider-prefixed paths return 200 without proving the model exists.
+Capability filters live at `GET /v1/models/{kind}` for `image`, `tts`, `stt`, `embedding`, `image-to-text`, `web`, `rerank`, `video`, and `music`. `web` includes search and fetch. A single unknown segment still returns `Unknown model kind`. A provider-prefixed id (`GET /v1/models/cc/claude-sonnet-5`) returns that model object or HTTP 404 `error.code: "model_not_found"`. `HEAD` on those paths is a route probe: known kinds and provider-prefixed paths return 200 without proving the model exists.
 
 Rows keep callable `id` and `owned_by`. Presentation may add `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Send `id` in requests. `GET /v1/models/info?id={alias}/{modelId}` keeps the registry `name` and only attaches those extra fields. Optional `kind` disambiguates duplicate ids. Missing `id`: 400. Unknown id: 404.
 
@@ -41,11 +56,11 @@ The catalog handlers do not consult `requireApiKey`. Reachability of `/v1/models
 | GET, HEAD, OPTIONS | `/v1/models` | none | no | connected chat models; combos when expose-combos-only is on |
 | GET, HEAD, OPTIONS | `/v1/models/{kind}` | path kind or `provider/model` | no | kind filter or one LLM id |
 | GET, HEAD, OPTIONS | `/v1/models/info` | query `id`, optional `kind` | no | registry plus search/fetch virtual ids |
-| GET, OPTIONS | `/v1/provider-plugin-manifest` | none; `Cache-Control: public, max-age=60` | no | provider metadata; [manifest contract](./provider-plugin-manifest.mdx) |
+| GET, OPTIONS | `/v1/provider-plugin-manifest` | none; `Cache-Control: public, max-age=60` | no | generated from `open-sse/providers/registry` |
 
 ## Chat and completions
 
-Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. The gateway translates that format to the selected upstream provider.
+Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. `handleChat` then translates to the upstream provider.
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
@@ -58,13 +73,13 @@ Claude-format requests normally end on a user turn. A trailing assistant text pr
 
 `POST /v1/completions` is a router shim: `prompt` (string, or a one-element array) becomes one user message, then the chat core runs. Multiple prompts return 400. Streaming SSE `chat.completion.chunk` frames are rewritten to `text_completion`. Provider-native `/v1/completions` is not a goal.
 
-`POST /v1/api/chat` runs the same chat core, then returns an Ollama-shaped response. Default model name if the body omits `model`: `llama3.2`.
+`POST /v1/api/chat` runs the same chat core, then `transformToOllama` so Ollama-shaped clients can read the response. Default model name if the body omits `model`: `llama3.2`.
 
 `POST /v1/responses` with `"stream": true`, or `Accept: text/event-stream`, opens an early SSE response so slow provider setup does not drop Codex CLI. `POST /v1/messages` with `"stream": true` sends Anthropic ping frames on the same timer. Compact is detected from the `/v1/responses/compact` path; do not send `_compact` in client JSON.
 
 `POST /v1/messages/count_tokens` calls a native count on Claude-compatible providers. Anything else, including a missing model, returns `{ input_tokens, approximate: true }` from the heuristic.
 
-A model whose provider has no chat transport and no `llm` service kind (TTS, STT, search, image-only, or System One providers such as Laya) gets HTTP 400 `Model 'provider/model' is not a chat model and cannot be used on the chat endpoints.` from every chat endpoint above. The `/api/translator/send` and `/api/translator/translate` debug routes run the same check and refuse with `Provider {provider} does not serve chat requests` instead.
+A model whose provider has no chat transport and no `llm` service kind (TTS, STT, search, image-only, or System One providers such as Laya) gets HTTP 400 `Model 'provider/model' is not a chat model and cannot be used on the chat endpoints.` from every chat endpoint above. The `/api/translator/send` and `/api/translator/translate` debug routes run the same `isChatProvider` check and refuse with `Provider {provider} does not serve chat requests` instead.
 
 <Callout type="warn">
 Combos only help when every member can run the client workflow (tools, images, JSON). Mix kinds and the fallback chain fails on the first incompatible hop.
@@ -82,13 +97,13 @@ Combos only help when every member can run the client workflow (tools, images, J
 
 ## Media
 
-Every media endpoint on this page, plus web search, web fetch, and embeddings below, accepts a request without `model` (or `"model": "auto"`) except image edit and voices. It then runs the endpoint's [media route](../features/media-routes.mdx): the dashboard-ordered models from connected providers of that kind, with fallback. The 400 `no_provider_for_kind` fires when no connected provider serves the kind, when a saved route has no available model, or when a saved route's models are available but none can run on this endpoint; see [media routes](../features/media-routes.mdx) for the exact message per case.
+Every media endpoint on this page, plus web search, web fetch, and embeddings below, accepts a request without `model` (or `"model": "auto"`) except image edit and voices. It then runs the endpoint's [media route](../../../../docs/features/media-routes.mdx): the dashboard-ordered models from connected providers of that kind, with fallback. The 400 `no_provider_for_kind` fires when no connected provider serves the kind, when a saved route has no available model, or when a saved route's models are available but none can run on this endpoint; see [media routes](../../../../docs/features/media-routes.mdx) for the exact message per case.
 
 Image generation accepts JSON `{ model, prompt }`, optional `Accept: text/event-stream`, and `?response_format=binary`. Image edits accept multipart or provider-native JSON on supported models. xAI accepts `image: { url }` or `image: { file_id }`, or up to five sources in `images`; the adapter preserves `storage_options` and converts multipart `n` to a number. `sdwebui` and `comfyui` need no stored key.
 
 TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
 
-STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path. Only OpenAI-format STT providers (OpenAI, Groq, Local Whisper) have one; the others return 400. The transcription and translation handlers declare a maximum route duration of 300 seconds. This is a server execution setting, not a 300-second audio-file limit.
+STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path. Only OpenAI-format STT providers (OpenAI, Groq, Local Whisper) have one; the others return 400. `maxDuration` is 300 seconds on those routes.
 
 `POST /v1/audio/music` re-exports `POST /v1/music/generations`. JSON `{ model, prompt }`. `POST /v1/video/generations` is the same shape for video-capable models.
 
@@ -108,10 +123,6 @@ Together uses this same async job surface with its native `/v2/videos` upstream.
 | POST, OPTIONS | `/v1/audio/music` | same (re-export) | no | same as music generations |
 | POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
 | POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, MiniMax CN, Together, OrcaRouter) |
-
-## Cached ChatGPT Web images
-
-`GET /v1/chatgpt-web/image/{id}` returns generated image bytes without authentication so browsers can render the link. Treat the opaque URL as temporary access to that image. The in-memory cache expires entries after 30 minutes, keeps at most 25 entries, and defaults to a total 10 MiB byte cap. Eviction or restart can expire a link sooner. Missing or expired IDs return `404 Image not found or expired`. Successful responses use `Cache-Control: private, max-age=1800`; `OPTIONS` is supported.
 
 ## Native provider APIs
 
@@ -133,7 +144,7 @@ For account-bound operations, send `x-connection-id` with the account returned i
 
 Native Anthropic file/batch lists and MiniMax voice-category lists expose the selected account's resources. Share those accounts only with trusted clients. MiniMax `POST /v1/get_voice` takes `voice_type`, not an individual `voice_id`; see the [vendor schema](https://platform.minimax.io/docs/api-reference/voice-management-get.md).
 
-Native background and batch inference require keys without usage/rate caps: the gateway cannot meter work after a client leaves. Direct ephemeral sessions have the same restriction. Gateway-relayed native WebSockets remain available to scoped keys; see [Realtime](../features/realtime.mdx).
+Native background and batch inference require keys without usage/rate caps: the gateway cannot meter work after a client leaves. Direct ephemeral sessions have the same restriction. Gateway-relayed native WebSockets remain available to scoped keys; see [Realtime](../../../../docs/features/realtime.mdx).
 
 Native JSON/SSE/WS accounting commits reported token usage before the terminal result becomes usable. OpenAI and MiniMax streaming chat requests force `stream_options.include_usage: true`. Spending the last allowance preserves that result and rejects the next request. Media responses without token usage use a text-input estimate; token/USD caps do not bound vendor charges per character, image, second, or generation. Use vendor account budgets for those charges.
 
@@ -169,7 +180,7 @@ JSON bodies. Embeddings need `model` and `input`. Rerank needs `model`, `query`,
 
 Native pass-through for Jev-shaped decision models, with no chat translation layer. Body needs `model`, `state` (the situation to evaluate), and `questions` (an object, not an array). The provider's JSON response (typed `answers`, `usage`) is forwarded unchanged.
 
-Direct TypeSafe uses `jev/jev-latest`, `jev/jev-preview`, or `jev/jev-1.13.0` with a TypeSafe connection. Existing reseller routes remain separate: `opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, and `openrouter/typesafe/jev-1.13`. Self-hosted [Laya](../features/combos.mdx#local-laya-instead-of-jev) exposes `laya/auto`, `laya/english`, `laya/multilingual`, and `laya/typed-decisions`.
+Direct TypeSafe uses `jev/jev-latest`, `jev/jev-preview`, or `jev/jev-1.13.0` with a TypeSafe connection. Existing reseller routes remain separate: `opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, and `openrouter/typesafe/jev-1.13`. Self-hosted [Laya](../../../../docs/features/combos.mdx#local-laya-instead-of-jev) exposes `laya/auto`, `laya/english`, `laya/multilingual`, and `laya/typed-decisions`.
 
 Create a **Custom System One** node under **Media Providers → System One** for another compatible server. Enter an API base URL or complete `/systemone` endpoint, save a connection with an optional key, and register the server's native model ID. Use `your-prefix/native-model` in requests. Servers without `/models`, including Laya, support manual registration. Model discovery does not prove inference or authentication on a public listing endpoint.
 
@@ -222,28 +233,13 @@ OpenAI batches: `{ input_file_id, endpoint, completion_window?, metadata? }`. An
 
 ## Realtime auth
 
-`GET /v1/realtime` upgrades to a WebSocket. `/v1/realtime/auth` checks gateway credentials; `/v1/models` does not validate keys.
+The WebSocket itself is not this `route.js`. `custom-server.js` upgrades `GET /v1/realtime`. This route is the loopback probe that wrapper uses because `/v1/models` does not validate keys.
 
-`GET /v1/realtime/auth`: 200 `{ ok: true }` when the key is admitted (or not required). 401 `{ error: { message, type: "invalid_request_error", code: "invalid_api_key" } }` when missing (and required), invalid, or expired. Authenticate the socket with `Authorization: Bearer` or the `openai-insecure-api-key.<key>` subprotocol. The chat-emulation WebSocket is text-only; native realtime models use their declared audio protocol. Event list: [Realtime](../features/realtime.mdx).
+`GET /v1/realtime/auth`: 200 `{ ok: true }` when the key is admitted (or not required). 401 `{ error: { message, type: "invalid_request_error", code: "invalid_api_key" } }` when missing (and required), invalid, or expired. Authenticate the socket with `Authorization: Bearer` or the `openai-insecure-api-key.<key>` subprotocol. Text only; audio is refused. Event list: [Realtime](../../../../docs/features/realtime.mdx).
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
 | GET, OPTIONS | `/v1/realtime/auth` | same key headers as chat | no | none (auth probe) |
-
-## Native session creation
-
-These JSON endpoints delegate directly to OpenAI's native session API. Supply a registered gateway model through `?model=openai/model-id` or the operation's model field, including nested session or transcription fields where the vendor schema requires them. Other body fields follow the vendor schema.
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST, OPTIONS | `/v1/realtime/client_secrets` | Create a direct native realtime ephemeral credential. |
-| POST, OPTIONS | `/v1/realtime/translations/client_secrets` | Create a direct translation ephemeral credential. |
-| POST, OPTIONS | `/v1/realtime/transcription_sessions` | Create a direct transcription session. |
-| POST, OPTIONS | `/v1/live/sessions` | Create a direct Live session. |
-
-Direct sessions require an uncapped key and retain model/account policy checks. A usage-capped key returns `403 Usage-capped API keys cannot mint direct native sessions`. Gateway-relayed native WebSockets support scoped keys through [Realtime](../features/realtime.mdx).
-
-`POST /v1/realtime/native` is a same-process handoff endpoint. It requires a wrapper control proof and returns `404` to ordinary client calls. It is not a public credential-minting API.
 
 ## Gemini v1beta
 
@@ -270,7 +266,7 @@ curl "http://localhost:20128/v1beta/models/gemini/gemini-2.5-flash:generateConte
 
 ## Unknown paths
 
-Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_route", path } }` with HTTP 404, not the dashboard HTML shell. Registered routes take precedence over that fallback.
+Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_route", path } }` with HTTP 404, not the dashboard HTML shell. Static and dynamic segments under `/api/v1/` still win in App Router matching.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
@@ -278,6 +274,10 @@ Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_rou
 
 ## Management API
 
-Dashboard REST under `/api/*` is on [Management API](./management-api.mdx). The same DurinDoor API key that calls `/v1` can call most of those routes; exclusions, redaction, and curl examples live there. MCP tools for the same work: [MCP control](../features/mcp-control.mdx).
+Dashboard REST under `/api/*` is on [Management API](management-api.mdx). The same DurinDoor API key that calls `/v1` can call most of those routes; exclusions, redaction, and curl examples live there. MCP tools for the same work: [MCP control](../../../../docs/features/mcp-control.mdx).
 
-See [MCP gateway](../features/mcp-gateway.mdx) and [compression](../features/compression.mdx) for gateway features that are not `/v1` routes.
+See [MCP gateway](../../../../docs/features/mcp-gateway.mdx) and [compression](../../../../docs/features/compression.mdx) for gateway features that are not `/v1` routes.
+
+## Maintainer use
+
+This page preserves the full product reference before the public rewrite. Validate implementation details against the source ownership and verification notes in [the review ledger](../../reference-review.md). Public guidance is [the matching user page](../../../../docs/reference/api.mdx).

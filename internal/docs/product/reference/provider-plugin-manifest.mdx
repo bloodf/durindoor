@@ -3,11 +3,24 @@ title: Provider plugin manifest
 description: JSON provider metadata at GET /v1/provider-plugin-manifest, sidecar eligibility, and the CLIProxyAPI header.
 ---
 
-`GET /v1/provider-plugin-manifest` returns provider metadata for sidecars such as CLIProxyAPI. `/api/v1/provider-plugin-manifest` is the same endpoint. No authentication is required.
+> Pre-rewrite snapshot: baseline `0e7307831`, captured 2026-10-07. The snapshot below preserves historical wording, including known inaccuracies. Current implementation notes and the matching public page take precedence.
+
+## Current implementation notes
+
+`src/app/api/v1/provider-plugin-manifest/route.js` exports GET/OPTIONS with wildcard CORS and 60-second public caching. `open-sse/config/providerPluginManifestRegistry.js` supplies registry-backed generation; `providerPluginManifest.js` owns serializable projection and sidecar eligibility; `providerPluginManifestClient.js` validates fetched schema; `providerPluginManifestUrl.js` owns server-only URL resolution; `open-sse/executors/cliproxyapi.js` sends the advertised manifest header.
+
+Invariants: schemaVersion stays 1 unless consumers migrate; omitted fields must remain omitted rather than fabricated. OAuth secrets, functions, and pool internals stay absent, but static transport.headers are public. Eligibility describes a candidate for a sidecar, not parity with the custom JS executor. Inbound Origin must not control the advertised URL. The fallback port order is PORT, DASHBOARD_PORT, API_PORT, then 20128; HOST defaults to loopback.
+
+Verification targets: `provider-plugin-manifest.test.js`, `provider-plugin-manifest-client.test.js`, and `cliproxyapi-executor.test.js`.
+
+## Preserved pre-rewrite content
+
+
+`GET /api/v1/provider-plugin-manifest` returns a JSON document built from `open-sse/providers/registry`. Next.js rewrites `/v1/:path*` to `/api/v1/:path*`, so `GET /v1/provider-plugin-manifest` is the same handler. Sidecars such as CLIProxyAPI read this instead of importing DurinDoor executor code.
 
 `OPTIONS` is allowed. The JSON response is `Cache-Control: public, max-age=60` with `Access-Control-Allow-Origin: *`.
 
-The JSON excludes registry functions, OAuth client secrets, and session-pool objects. Static upstream headers are included.
+The body is produced by `generateProviderPluginManifest()`. It is JSON-serializable. Registry functions, OAuth client secrets, and session-pool objects are not copied onto the wire.
 
 ```text
 GET http://localhost:20128/v1/provider-plugin-manifest
@@ -47,6 +60,8 @@ Each provider entry:
 
 Each model row may include `id`, `name`, `contextLength`, `maxOutputTokens`, `toolCalling`, `supportsReasoning`, `supportsVision`, `unsupportedParams`, `targetFormat`, and `kind`. Undefined fields are omitted.
 
+Lookup helpers: `getProviderPluginManifestEntry(provider)` matches `id` then `alias`. `getProviderPluginManifestEntryForModel(model)` prefers an exact model id owner, then the slash prefix (`openai/gpt-4` tries provider `openai`).
+
 ## Auth object
 
 `auth.type` is not the registry `category`. It is derived in this order:
@@ -62,7 +77,7 @@ Each model row may include `id`, `name`, `contextLength`, `maxOutputTokens`, `to
 
 ## Sidecar eligibility
 
-`sidecar.eligible` is true only when `reasons` is empty. Treat it as a candidate signal. An ineligible provider remains available through DurinDoor's own executor.
+`sidecar.eligible` is true only when `reasons` is empty. Treat it as a candidate signal. DurinDoor still executes providers the sidecar refuses.
 
 A reason is recorded when any of these hold:
 
@@ -89,10 +104,14 @@ The loader does not emit OAuth client secrets, `urlBuilder` functions, or `poolC
 
 When DurinDoor dispatches through the `cliproxyapi` executor, the outbound request includes `X-OmniRoute-Provider-Manifest-Url`. That value is resolved from trusted server configuration only. Inbound `Origin` is ignored.
 
-The advertised URL uses this precedence:
+Resolution order in `resolveProviderPluginManifestUrl()`:
 
 1. `OMNIROUTE_PROVIDER_MANIFEST_URL` if non-empty
 2. `BASE_URL` or `NEXT_PUBLIC_BASE_URL` when the value looks like `http://` or `https://`, with `/api/v1/provider-plugin-manifest` appended
 3. Otherwise `{OMNIROUTE_PUBLIC_PROTOCOL || http}://{HOST || 127.0.0.1}:{PORT || DASHBOARD_PORT || API_PORT || 20128}/api/v1/provider-plugin-manifest`
 
 Set `OMNIROUTE_PROVIDER_MANIFEST_URL` when the sidecar cannot reach the local DurinDoor origin. CLIProxyAPI itself is optional. Host and port defaults for the sidecar process are `CLIPROXYAPI_HOST` (`127.0.0.1`) and `CLIPROXYAPI_PORT` (`8317`).
+
+## Maintainer use
+
+This page preserves the full product reference before the public rewrite. Validate implementation details against the source ownership and verification notes in [the review ledger](../../reference-review.md). Public guidance is [the matching user page](../../../../docs/reference/provider-plugin-manifest.mdx).

@@ -192,15 +192,12 @@ html:has(.dd-home) body {
   height: 100%;
 }
 .gateway-stage {
-  mask-image: linear-gradient(
-    90deg,
-    transparent,
-    black 9%,
-    black 94%,
-    transparent
-  );
+  mask-image: linear-gradient(90deg, transparent, black 9%, black 94%, transparent),
+    linear-gradient(0deg, transparent, black 8%, black 92%, transparent);
+  mask-composite: intersect;
   overflow: hidden;
 }
+
 .gateway-poster {
   object-fit: cover;
   object-position: 64% center;

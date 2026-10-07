@@ -26,8 +26,7 @@
   <a href="https://durindoor.vercel.app">Website</a> ·
   <a href="https://durindoor.vercel.app/demo-preview">Live demo</a> ·
   <a href="https://durindoor.vercel.app/docs">Documentation</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="assets/brand/durindoor-vector-kit.zip">Vector assets</a>
+  <a href="#quick-start">Quick start</a>
 </p>
 
 ## One gateway for the tools you already use
@@ -223,16 +222,6 @@ Provider definitions live in [`open-sse/providers/registry/`](open-sse/providers
 ## Visual identity
 
 The identity pairs an emerald gate with silver lettering and forest stone. Cormorant Garamond carries the display lettering; Space Grotesk carries controls and documentation.
-
-[Download the vector kit](assets/brand/durindoor-vector-kit.zip), [view the identity board](assets/brand/durindoor-identity-board.png), or use the individual assets:
-
-- [Gate emblem](assets/brand/durindoor-mark.svg)
-- [Wordmark for dark backgrounds](assets/brand/durindoor-logo-dark.svg)
-- [Wordmark for light backgrounds](assets/brand/durindoor-logo-light.svg)
-- [Monochrome wordmark](assets/brand/durindoor-logo-mono.svg)
-- [App icon](assets/brand/durindoor-app-icon.svg)
-
-SVG lettering is outlined and needs no installed fonts. The [brand guide](assets/brand/README.md) covers colors, usage, and asset sources.
 
 ## License and acknowledgments
 

@@ -144,7 +144,7 @@ The marketing surface is dark and spacious. Soft emerald gradients explain real 
 
 - Moonlit stone with silver type and emerald emphasis.
 - Locally served serif displays and sans-serif controls.
-- A textured hinged gate with a static fallback.
+- A perspective stone gate with extruded arched leaves, moonlit inscriptions and a static fallback.
 - Mechanism illustrations beside a real interactive dashboard.
 
 ## Colors
@@ -246,7 +246,7 @@ Each card is a full link to matching docs. Its diagram explains MCP transports/t
 
 ### Gateway door
 
-Two textured hinged meshes open with scroll progress or the explicit Open/Close control. The frame remains fixed. The static gateway artwork sits below the canvas and stays visible when reduced motion is requested, WebGL is unavailable or the canvas fails/loses context. The control disappears when animation is unavailable. Treat the artwork as decorative; the hero heading and actual action labels carry its meaning.
+Two thick extruded arched slabs pivot about their outer hinges toward the viewer in perspective. Procedural stone and moonlit inscriptions define their faces; opening reveals four recessed passage arches, a stone floor and emerald light beyond. Scroll progress opens the leaves until the explicit Open/Close control overrides it; both inputs use the same smoothed opening state. The frame remains fixed, with bounded pointer parallax, threshold mist and particles around it. Rendering pauses outside the hero and in hidden tabs. The static gateway artwork sits below the canvas and stays visible when reduced motion is requested, WebGL is unavailable or the canvas fails/loses context. The control disappears when animation is unavailable. Treat the artwork as decorative; the hero heading and actual action labels carry its meaning.
 
 ### Real dashboard preview
 

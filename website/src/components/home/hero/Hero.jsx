@@ -76,7 +76,7 @@ export default function Hero() {
               onClick={() => setOpened(opened !== true)}
             >
               {t(opened === true ? "Close the door" : "Open the door")}{" "}
-              <span aria-hidden="true">↗</span>
+              <Icon name="arrow" size={16} />
             </button>
           ) : null}
         </div>

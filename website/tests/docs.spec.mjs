@@ -262,6 +262,7 @@ test("homepage opens its gate and embeds the production dashboard", async ({
   await expect(hero).toContainText("OpenAI and Anthropic");
   const gate = page.getByRole("button", { name: "Open the door", exact: true });
   await gate.click();
+  await expect.poll(async () => Number(await page.locator(".gateway-webgl").getAttribute("data-open"))).toBeGreaterThan(0.9);
   await expect(
     page.getByRole("button", { name: "Close the door", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -269,6 +270,7 @@ test("homepage opens its gate and embeds the production dashboard", async ({
     .getByRole("button", { name: "Close the door", exact: true })
     .click();
   await expect(gate).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(async () => Number(await page.locator(".gateway-webgl").getAttribute("data-open"))).toBeLessThan(0.1);
   await page.locator("#demo").scrollIntoViewIfNeeded();
   const preview = page.frameLocator('iframe[title="Live demo"]');
   await expect(

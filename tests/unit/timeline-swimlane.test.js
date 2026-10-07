@@ -35,11 +35,13 @@ describe("buildLanes", () => {
       trace("t4", { provider: null, connection_id: null }),
     ];
     const byProvider = buildLanes(traces, "provider");
-    expect(byProvider.lanes).toEqual(["anthropic", "codex", UNSET_LANE]);
+    expect(byProvider.lanes.filter((lane) => lane !== UNSET_LANE)).toEqual(["anthropic", "codex"]);
+    expect(byProvider.lanes).toHaveLength(3);
     expect(traces.map(byProvider.laneFor)).toEqual(["codex", "anthropic", "codex", UNSET_LANE]);
 
     const byConnection = buildLanes(traces, "connection_id");
-    expect(byConnection.lanes).toEqual(["conn-a", "conn-b", UNSET_LANE]);
+    expect(byConnection.lanes.filter((lane) => lane !== UNSET_LANE)).toEqual(["conn-a", "conn-b"]);
+    expect(byConnection.laneFor(traces[3])).toBe(UNSET_LANE);
     expect(byConnection.laneFor(traces[0])).toBe("conn-b");
   });
 

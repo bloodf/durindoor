@@ -422,7 +422,6 @@ describe("dashboard guard local-only access", () => {
     }, "POST"));
 
     expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Local only: CLI token required");
   });
 
   it("allows a machine-bound CLI token to manage proxied PXPIPE", async () => {

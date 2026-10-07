@@ -2,14 +2,23 @@
 import "next/dist/server/node-environment.js";
 import http from "node:http";
 import { createRequire } from "node:module";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rmSync } from "node:fs";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import actualNextConfig from "../../next.config.mjs";
+
+// Real product imports resolve DATA_DIR at module initialization, before hooks run.
+const isolatedData = await vi.hoisted(async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const previous = process.env.DATA_DIR;
+  const directory = mkdtempSync(join(tmpdir(), "web-login-next-transport-"));
+  process.env.DATA_DIR = directory;
+  return { directory, previous };
+});
 
 const loginConfig = vi.hoisted(() => ({ origin: "", startUrl: "", cookieNames: ["session"] }));
 vi.mock("open-sse/providers/registry/index.js", () => ({ default: [{ id: "cookie-web", webLogin: loginConfig }] }));
-vi.mock("../../src/dashboardGuard", () => ({
-  proxy: async () => new Response("dashboard"),
-  canAccessManagementApi: async () => true,
-}));
 import proxy from "../../src/proxy.js";
 import { beginSession, destroySession, issueBootstrap, proxySessionCookie } from "../../src/lib/webLoginSession.js";
 
@@ -18,6 +27,13 @@ const { adapter } = require("next/dist/server/web/adapter.js");
 const { getResolveRoutes } = require("next/dist/server/lib/router-utils/resolve-routes.js");
 const { proxyRequest } = require("next/dist/server/lib/router-utils/proxy-request.js");
 const { defaultConfig } = require("next/dist/server/config-shared.js");
+const loadCustomRoutes = require("next/dist/lib/load-custom-routes.js").default;
+const { buildCustomRoute } = require("next/dist/server/lib/router-utils/filesystem.js");
+const nextConfig = {
+  ...defaultConfig,
+  ...actualNextConfig,
+  experimental: { ...defaultConfig.experimental, ...actualNextConfig.experimental, trustHostHeader: true },
+};
 const boundary = require("../../web-login-host-boundary.cjs");
 const LOGIN_HOST = "login.gateway.example";
 const LOGIN = `https://${LOGIN_HOST}`;
@@ -43,13 +59,17 @@ function get(url, headers) {
   });
 }
 
-/** Installed adapter validates/reconstructs redirects before Next's resolver consumes them. */
-async function transport(vendorHeaders, status = 200, { bootstrap = false } = {}) {
+/** Real Next custom-route compilation and resolver run before the installed adapter. */
+async function transport(vendorHeaders, status = 200, {
+  bootstrap = false, startPath = "/login", providerResponse,
+} = {}) {
   const appDispatches = [];
   const escapedRequests = [];
   const providerRequests = [];
   const providerPaths = [];
+  const providerMethods = [];
   const failures = [];
+  const middlewareRequests = [];
   const attacker = await listen((req, res) => {
     escapedRequests.push({ url: req.url, headers: { ...req.headers } });
     res.end("arbitrary-host dispatch");
@@ -57,37 +77,48 @@ async function transport(vendorHeaders, status = 200, { bootstrap = false } = {}
   const provider = await listen((req, res) => {
     providerRequests.push({ ...req.headers });
     providerPaths.push(req.url);
+    providerMethods.push(req.method);
+    if (providerResponse) {
+      providerResponse(req, res);
+      return;
+    }
     const headers = vendorHeaders(attacker.url, provider.url);
     res.writeHead(status, { "content-type": "text/plain", "x-provider-response": "preserved", ...headers });
     res.end("provider response");
   });
   loginConfig.origin = provider.url;
-  loginConfig.startUrl = `${provider.url}/login`;
+  loginConfig.startUrl = `${provider.url}${startPath}`;
   const sess = beginSession("cookie-web", { loginOrigin: LOGIN, dashboardOrigin: "https://gateway.example" });
   sessions.add(sess);
   const cookie = `${proxySessionCookie(sess).split(";")[0]}; auth_token=dashboard-cookie`;
   const incoming = { host: LOGIN_HOST, authorization: "Bearer dashboard-key", "x-9r-cli-token": "dashboard-cli" };
   if (!bootstrap) incoming.cookie = cookie;
   const routedRequests = [];
+  const customRoutes = await loadCustomRoutes(nextConfig);
+  const compileRoutes = (type, items) => items.map((item) =>
+    buildCustomRoute(type, item, nextConfig.basePath, nextConfig.experimental.caseSensitiveRoutes));
   const fsChecker = {
     buildId: "isolated-transport-fixture",
-    headers: [], redirects: [], rewrites: { beforeFiles: [], afterFiles: [], fallback: [] },
+    headers: compileRoutes("header", customRoutes.headers),
+    redirects: compileRoutes("redirect", customRoutes.redirects),
+    rewrites: Object.fromEntries(Object.entries(customRoutes.rewrites).map(([phase, items]) =>
+      [phase, compileRoutes(phase === "beforeFiles" ? "before_files_rewrite" : "rewrite", items)])),
     onMatchHeaders: [],
     getMiddlewareMatchers: () => () => true,
     getDynamicRoutes: () => [],
     handleLocale: (pathname) => ({ pathname }),
     getItem: async (pathname) => pathname.startsWith("/api/") ? { type: "appFile", itemPath: pathname } : null,
   };
-  const resolve = getResolveRoutes(fsChecker, {
-    ...defaultConfig, experimental: { ...defaultConfig.experimental, trustHostHeader: true },
-  }, { dir: process.cwd(), dev: false, minimalMode: false, hostname: LOGIN_HOST, port: 443 }, {
+  const resolve = getResolveRoutes(fsChecker, nextConfig,
+    { dir: process.cwd(), dev: false, minimalMode: false, hostname: LOGIN_HOST, port: 443 }, {
     initialize: async () => ({ requestHandler: async (req) => {
+      middlewareRequests.push(req.url);
       const result = await adapter({
         page: "/src/proxy",
         handler: proxy,
         request: {
           url: `${LOGIN}${req.url}`, method: req.method, headers: req.headers,
-          nextConfig: defaultConfig,
+          nextConfig,
         },
       });
       await result.waitUntil;
@@ -120,9 +151,14 @@ async function transport(vendorHeaders, status = 200, { bootstrap = false } = {}
       res.end("transport failed");
     }
   });
+  const request = async (path, headers = incoming) => {
+    const result = await get(`${router.url}${path}`, headers);
+    expect(failures).toEqual([]);
+    return result;
+  };
   const bootstrapUrl = bootstrap ? new URL(issueBootstrap(sess)) : null;
   const initialPath = bootstrapUrl ? bootstrapUrl.pathname + bootstrapUrl.search : "/__web_login/cookie-web/login";
-  const response = await get(`${router.url}${initialPath}`, incoming);
+  const response = await request(initialPath);
   let landing, replay, navigation, browserDestination, browserCookie;
   if (bootstrap) {
     expect(response.status).toBe(303);
@@ -131,14 +167,14 @@ async function transport(vendorHeaders, status = 200, { bootstrap = false } = {}
     expect(browserDestination.origin).toBe(LOGIN);
     browserCookie = response.headers["set-cookie"][0].split(";")[0];
     const browserHeaders = { host: LOGIN_HOST, cookie: browserCookie };
-    landing = await get(`${router.url}${browserDestination.pathname}${browserDestination.search}`, browserHeaders);
-    replay = await get(`${router.url}${initialPath}`, browserHeaders);
-    navigation = await get(`${router.url}/__web_login/cookie-web/account`, browserHeaders);
+    landing = await request(`${browserDestination.pathname}${browserDestination.search}`, browserHeaders);
+    replay = await request(initialPath, browserHeaders);
+    navigation = await request("/__web_login/cookie-web/account", browserHeaders);
   }
   expect(failures).toEqual([]);
   return {
-    response, incoming, routedRequests, providerRequests, providerPaths, appDispatches, escapedRequests,
-    landing, replay, navigation, browserDestination, browserCookie, sess,
+    response, incoming, routedRequests, middlewareRequests, providerRequests, providerPaths, providerMethods,
+    appDispatches, escapedRequests, landing, replay, navigation, browserDestination, browserCookie, sess, request,
   };
 }
 
@@ -157,13 +193,18 @@ afterEach(async () => {
   servers.clear();
   vi.unstubAllEnvs();
 });
+afterAll(() => {
+  if (isolatedData.previous === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = isolatedData.previous;
+  rmSync(isolatedData.directory, { recursive: true, force: true });
+});
 
 describe("provider response containment at the Next routing transport", () => {
 
-  it("bootstraps through redirect reconstruction, browser cookie navigation, and one-time replay rejection", async () => {
-    const result = await transport(() => ({}), 200, { bootstrap: true });
+  it("bootstraps to the provider root without slash removal and rejects one-time grant replay", async () => {
+    const result = await transport(() => ({}), 200, { bootstrap: true, startPath: "/" });
     expect(result.response.status).toBe(303);
-    expect(result.browserDestination.href).toBe(`${LOGIN}/__web_login/cookie-web/login`);
+    expect(result.browserDestination.href).toBe(`${LOGIN}/__web_login/cookie-web/`);
     expect(result.response.headers["cache-control"]).toBe("no-store");
     expect(result.response.headers["referrer-policy"]).toBe("no-referrer");
     const cookie = result.response.headers["set-cookie"][0];
@@ -175,17 +216,84 @@ describe("provider response containment at the Next routing transport", () => {
     expect(result.browserCookie).toBe(`dd_web_login_proxy=${result.sess.proxyId}`);
     expect(result.landing.status).toBe(200);
     expect(result.landing.body).toBe("provider response");
+    expect(result.landing.headers.location).toBeUndefined();
     expect(result.replay.status).toBe(403);
     expect(result.replay.headers["set-cookie"]).toBeUndefined();
     expect(result.navigation.status).toBe(200);
     expect(result.navigation.body).toBe("provider response");
     expect(result.providerRequests).toHaveLength(2);
-    expect(result.providerPaths).toEqual(["/login", "/account"]);
+    expect(result.providerPaths).toEqual(["/", "/account"]);
+    expect(result.providerMethods).toEqual(["GET", "GET"]);
     for (const headers of result.providerRequests) {
       expect(headers.cookie).toBeUndefined();
       expect(headers.authorization).toBeUndefined();
       expect(headers["x-9r-cli-token"]).toBeUndefined();
     }
+    expect(result.appDispatches).toEqual([]);
+    expect(result.escapedRequests).toEqual([]);
+  });
+
+  it.each(["/chat/", "/account/?return=%2Fchat%2F&mode=login"])(
+    "follows the provider HTTP redirect to exact %s once without a canonicalization loop",
+    async (upstreamPath) => {
+      const result = await transport(() => ({}), 200, {
+        providerResponse(req, res) {
+          if (req.url === "/login") {
+            res.writeHead(302, { location: upstreamPath });
+            res.end();
+          } else {
+            res.writeHead(200, { "content-type": "text/plain" });
+            res.end(`provider ${req.url}`);
+          }
+        },
+      });
+      expect(result.response.status).toBe(302);
+      const destination = new URL(result.response.headers.location, LOGIN);
+      expect(destination.href).toBe(`${LOGIN}/__web_login/cookie-web${upstreamPath}`);
+      // Native HTTP never follows redirects itself: this is the browser's one follow.
+      const landing = await result.request(destination.pathname + destination.search);
+      expect(landing.status).toBe(200);
+      expect(landing.headers.location).toBeUndefined();
+      expect(landing.body).toBe(`provider ${upstreamPath}`);
+      expect(result.providerPaths).toEqual(["/login", upstreamPath]);
+      expect(result.providerMethods).toEqual(["GET", "GET"]);
+      expect(result.appDispatches).toEqual([]);
+      expect(result.escapedRequests).toEqual([]);
+    },
+  );
+
+  it("keeps dashboard, MiMo-origin, and framework trailing slash redirects before downstream dispatch", async () => {
+    const result = await transport(() => ({}));
+    const paths = [
+      "/dashboard/?tab=providers",
+      "/pass/serviceLogin/?sid=xiaomiio",
+      "/_next/static/chunk.js/?build=fixture",
+    ];
+    for (const path of paths) {
+      const response = await result.request(path, {
+        host: "gateway.example", cookie: "dd_mimo_login=untrusted-session",
+      });
+      expect(response.status).toBe(308);
+      expect(response.headers["set-cookie"]).toBeUndefined();
+      expect(new URL(response.headers.location, "https://gateway.example").href)
+        .toBe(`https://gateway.example${path.replace("/?", "?")}`);
+    }
+    expect(result.providerPaths).toEqual(["/login"]);
+    expect(result.appDispatches).toEqual([]);
+  });
+
+  it("denies isolated app and administration paths before canonicalization, middleware, or dispatch", async () => {
+    const result = await transport(() => ({}));
+    const middlewareBefore = result.middlewareRequests.length;
+    const routedBefore = result.routedRequests.length;
+    for (const path of ["/dashboard/", "/api/providers/secret/reveal/", "/api/settings/"]) {
+      const response = await result.request(path);
+      expect(response.status).toBe(403);
+      expect(response.headers.location).toBeUndefined();
+    }
+    expect(result.middlewareRequests).toHaveLength(middlewareBefore);
+    expect(result.routedRequests).toHaveLength(routedBefore);
+    expect(result.providerPaths).toEqual(["/login"]);
     expect(result.appDispatches).toEqual([]);
     expect(result.escapedRequests).toEqual([]);
   });

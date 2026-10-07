@@ -81,6 +81,12 @@ export default async function proxy(request) {
     return webLoginProxy(request, loginOrigin);
   }
   if (request.nextUrl.pathname.startsWith("/__web_login/")) return new Response("Not found", { status: 404 });
+  const pathname = request.nextUrl.pathname;
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    const canonical = new URL(request.url);
+    canonical.pathname = pathname.slice(0, -1);
+    return new Response(null, { status: 308, headers: { Location: canonical.href } });
+  }
   if (request.cookies?.get?.(SESSION_COOKIE)) return mimoLoginProxy(request);
   return dashboardProxy(request);
 }

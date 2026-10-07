@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import { ensureDirs, hardenPermissions, currentDataFile } from "./paths.js";
 import { wrapCutoverGuard } from "./cutoverLock.js";
+import { applyDatabaseEnvFile } from "./databaseEnvFile.js";
+
+applyDatabaseEnvFile();
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
 import { isFunction } from "../../shared/utils/typeChecks.js";if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null, cacheKey: null };
@@ -119,7 +122,7 @@ export async function getAdapter() {
   if (state.instance) return state.instance;
   if (!state.initPromise) {
     state.initPromise = (async () => {
-      const engine = forcedPostgres ? "postgres" : await readEngineViaTransientSqlite();
+      const engine = forcedPostgres ? "postgres" : process.env.DURINDOOR_DATABASE_ENGINE === "sqlite" ? "sqlite" : await readEngineViaTransientSqlite();
       return initAdapter(engine);
     })().
     then((adapter) => {

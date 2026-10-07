@@ -8,15 +8,14 @@ import StatCard from "@/shared/ui/components/StatCard.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import { CapabilityMatrix } from "./components/CapabilityMatrix.jsx";
+import StartupConfiguration from "./components/StartupConfiguration.jsx";
+import PostgresConnectionTarget from "./components/PostgresConnectionTarget.jsx";
 
 const REFRESH_MS = 5000;
 
 export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [testUrl, setTestUrl] = useState("");
-  const [testResult, setTestResult] = useState(null);
-  const [testBusy, setTestBusy] = useState(false);
   const [cutoverBusy, setCutoverBusy] = useState(false);
   const [showCutoverConfirm, setShowCutoverConfirm] = useState(false);
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
@@ -59,23 +58,6 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
     return () => clearInterval(t);
   }, [refresh]);
 
-  async function handleTest() {
-    setTestBusy(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/settings/database/test", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-9r-password": password,
-        },
-        body: JSON.stringify({ url: testUrl, persist: true }),
-      });
-      setTestResult(await res.json());
-    } finally {
-      setTestBusy(false);
-    }
-  }
 
   async function handleCutover() {
     setCutoverBusy(true);
@@ -201,37 +183,30 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
         </Card>
       ) : null}
 
-      <Card padding={false}>
-        <CardHeader
-          icon="cable"
-          title="PostgreSQL connection"
-          subtitle="Test the cluster before flipping the runtime"
-        />
-        <CardContent>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <label className="flex-1">
-              <span className="text-[13px] text-dd-muted">Connection URL (password included)</span>
-              <input
-                type="text"
-                value={testUrl}
-                onChange={(e) => setTestUrl(e.target.value)}
-                placeholder="postgres://user:password@host:5432/db"
-                className="mt-1 w-full rounded-md border border-dd-border bg-dd-surface px-3 py-2 font-mono text-[13px] text-dd-text"
-              />
-            </label>
-            <Button variant="primary" icon="wifi_tethering" onClick={handleTest} disabled={testBusy || !testUrl}>
-              {testBusy ? "Testing..." : "Test connection"}
-            </Button>
-          </div>
-          {testResult ? (
-            <p className={`mt-2 text-[13px] ${testResult.ok ? "text-dd-success" : "text-dd-danger"}`}>
-              {testResult.ok
-                ? `Connected in ${testResult.latencyMs}ms (${testResult.serverVersion || "unknown"})`
-                : `Failed: ${testResult.error}`}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
+      <StartupConfiguration
+        startupEnv={status?.startupEnv}
+        password={password}
+        onUnauthorized={() => {
+          setPassword("");
+          setPasswordError("Password rejected — try again.");
+        }}
+        onSaved={(startupEnv) => setStatus((previous) => ({ ...previous, startupEnv }))}
+      />
+      <PostgresConnectionTarget
+        effective={{
+          host: status?.postgresHost || status?.startupEnv?.effective?.host || "",
+          port: status?.postgresPort || status?.startupEnv?.effective?.port || "5432",
+          database: status?.postgresDatabase || status?.startupEnv?.effective?.database || "",
+          user: status?.postgresUser || status?.startupEnv?.effective?.user || "",
+          sslmode: status?.postgresSslmode || status?.startupEnv?.effective?.sslmode || "require",
+        }}
+        password={password}
+        onUnauthorized={() => {
+          setPassword("");
+          setPasswordError("Password rejected — try again.");
+        }}
+        onPersisted={refresh}
+      />
 
       <CapabilityMatrix features={status?.databasePgFeatures || {}} effective={status?.effectiveCapabilities || {}} />
 

@@ -1,5 +1,14 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "You choose the fallback order": "由你选择回退顺序",
+  "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "组合向客户端提供一个模型名称。DurinDoor 按配置顺序尝试各个成员，在转到下一个模型之前重试符合条件的账户。",
+  "Example configuration": "配置示例",
+  "This order is an example, not a built-in subscription, API, or local-model priority.": "此顺序仅为示例。订阅、API 或本地模型没有内置的固定优先级。",
+
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "你的 AI 提供商，一个网关。连接 OpenAI 和 Anthropic API、订阅以及本地模型，由你掌控。",
+  "Close the door": "关闭大门",
+  "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "连接提供商，选择模型，并为 OpenAI 或 Anthropic API 配置客户端。",
+
   "Skip to content": "跳转到正文",
   "Primary": "主导航",
   "DurinDoor home": "DurinDoor 首页",

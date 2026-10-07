@@ -1,75 +1,85 @@
 "use client";
-
+import { useRef, useState } from "react";
+import {
+  motion,
+  useScroll,
+  useTransform,
+  useReducedMotion,
+} from "motion/react";
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
-
-import { motion, useScroll, useTransform } from "motion/react";
 import HeroCanvas from "./HeroCanvas.jsx";
 import { CopyButton, Magnetic } from "../ui/primitives.jsx";
 import Icon from "../ui/Icon.jsx";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
-
-const HERO_ID = "top";
-const INSTALL = "npm install -g durindoor";
-
-const rise = (i) => ({
-  initial: { opacity: 0, y: 28, filter: "blur(8px)" },
-  animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-  transition: { duration: 0.9, delay: 0.15 + i * 0.12, ease: [0.22, 1, 0.36, 1] },
-});
 
 export default function Hero() {
   const { t } = useHomeLocale();
-  // Function transforms keep these on the JS path; the accelerated scroll
-  // timeline path mis-tracked the sticky hero.
-  const { scrollY } = useScroll();
-  const vh = () => (isBrowser() ? window.innerHeight : 900);
-  const clamp = (v) => Math.min(1, Math.max(0, v));
-  const contentOpacity = useTransform(scrollY, (y) => 1 - clamp(y / (vh() * 0.4)));
-  const contentY = useTransform(scrollY, (y) => -80 * clamp(y / (vh() * 0.4)));
-  const cueOpacity = useTransform(scrollY, (y) => 1 - clamp(y / (vh() * 0.1)));
-  const flash = useTransform(scrollY, (y) => {
-    const t = y / vh();
-    return t < 0.55 ? 0 : t < 0.85 ? ((t - 0.55) / 0.3) * 0.6 : Math.max(0, 0.6 - ((t - 0.85) / 0.25) * 0.6);
+  const ref = useRef(null);
+  const [opened, setOpened] = useState(null);
+  const [canAnimate, setCanAnimate] = useState(false);
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end start"],
   });
-
+  const y = useTransform(scrollYProgress, [0, 1], [0, -100]);
   return (
-    <section id={HERO_ID} className="hero" aria-labelledby="hero-title">
-      <div className="hero-sticky">
-        <HeroCanvas heroId={HERO_ID} />
-        <div className="hero-shade" aria-hidden="true" />
-
-        <motion.div className="hero-content container" style={{ opacity: contentOpacity, y: contentY }}>
-          <motion.p className="hero-kicker" {...rise(0)}>
-            <span className="kicker-dot" aria-hidden="true" />{t("Open source · MIT · Self-hosted AI gateway")}</motion.p>
-
-          <h1 id="hero-title" className="hero-title">
-            {t("Speak, friend, and").split(" ").map((word, i) => (
-              <motion.span key={word} className="hero-word" {...rise(i + 1)}>
-                {word}{" "}
-              </motion.span>
-            ))}
-            <motion.span className="hero-word ithildin" {...rise(4)}>{t("enter.")}</motion.span>
+    <section
+      ref={ref}
+      id="top"
+      className="gateway-hero"
+      aria-labelledby="hero-title"
+    >
+      <div className="gateway-hero-grid container">
+        <motion.div className="gateway-copy" style={{ y: reduce ? 0 : y }}>
+          <h1 id="hero-title">
+            {t("Speak, friend, and")} <em>{t("enter.")}</em>
           </h1>
-
-          <motion.p className="hero-sub" {...rise(5)}>{t("Add credentials once. Point every OpenAI-compatible tool at http://localhost:20128/v1.")}</motion.p>
-
-          <motion.div className="hero-ctas" {...rise(6)}>
-            <Magnetic internal href="#quick-start" className="btn btn-primary btn-large">{t("Quick start")}<Icon name="arrow" size={18} />
+          <p className="gateway-pitch">
+            {t(
+              "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.",
+            )}
+          </p>
+          <div className="gateway-actions">
+            <Magnetic
+              internal
+              href="#demo"
+              className="btn btn-primary btn-large"
+            >
+              {t("Open the live demo")}
+              <Icon name="arrow" size={18} />
             </Magnetic>
-            <Magnetic internal href="/docs" className="btn btn-ghost btn-large">{t("Read the docs")}</Magnetic>
-            <div className="install-pill" role="group" aria-label={t("Install command")}>
-              <span className="install-prompt" aria-hidden="true">$</span>
-              <code>{INSTALL}</code>
-              <CopyButton text={INSTALL} label={t("Install")} />
-            </div>
-          </motion.div>
+            <Magnetic internal href="/docs" className="gateway-docs">
+              {t("Read the docs")} <span aria-hidden="true">↗</span>
+            </Magnetic>
+          </div>
+          <div
+            className="gateway-install"
+            role="group"
+            aria-label={t("Install command")}
+          >
+            <span aria-hidden="true">$</span>
+            <code>npm install -g durindoor</code>
+            <CopyButton text="npm install -g durindoor" label={t("Install")} />
+          </div>
         </motion.div>
-
-        <motion.div className="hero-flash" style={{ opacity: flash }} aria-hidden="true" />
-        <motion.div className="scroll-cue" style={{ opacity: cueOpacity }} aria-hidden="true">
-          <span>{t("Scroll to open the door")}</span>
-          <span className="scroll-cue-line" />
-        </motion.div>
+        <div className="gateway-art">
+          <HeroCanvas
+            progress={scrollYProgress}
+            opened={opened}
+            onAvailability={setCanAnimate}
+          />
+          {canAnimate ? (
+            <button
+              type="button"
+              className="gate-toggle"
+              aria-pressed={opened === true}
+              onClick={() => setOpened(opened !== true)}
+            >
+              {t(opened === true ? "Close the door" : "Open the door")}{" "}
+              <span aria-hidden="true">↗</span>
+            </button>
+          ) : null}
+        </div>
       </div>
     </section>
   );

@@ -1,5 +1,14 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "You choose the fallback order": "Tú eliges el orden de respaldo",
+  "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "Un combo da a tu cliente un solo nombre de modelo. DurinDoor prueba los miembros configurados en orden y reintenta con cuentas elegibles antes de pasar al siguiente modelo.",
+  "Example configuration": "Configuración de ejemplo",
+  "This order is an example, not a built-in subscription, API, or local-model priority.": "Este orden es un ejemplo. No existe una prioridad fija entre suscripciones, APIs o modelos locales.",
+
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "Tus proveedores de IA. Una puerta de enlace. APIs de OpenAI y Anthropic, suscripciones y modelos locales, conectados a tu manera.",
+  "Close the door": "Cerrar la puerta",
+  "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "Conecta un proveedor, elige un modelo y configura tu cliente para APIs de OpenAI o Anthropic.",
+
   "Skip to content": "Saltar al contenido",
   "Primary": "Principal",
   "DurinDoor home": "Inicio de DurinDoor",

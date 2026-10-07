@@ -1,0 +1,2 @@
+/** Mithril gate emblem: vaulted arch, open leaf, and guiding star. */
+export default function BrandMark({ size = 32 }) { return <svg width={size} height={size*56/48} viewBox="0 0 48 56" fill="none" aria-hidden="true"><path d="M6 50V25C6 13 13 6 24 3c11 3 18 10 18 22v25h-7V25c0-8-4-13-11-16-7 3-11 8-11 16v25H6Z" fill="currentColor"/><path d="M22 28l11-6v28l-11 5V28Z" fill="currentColor" opacity=".72"/><path d="m24 13 2 4 4 2-4 2-2 4-2-4-4-2 4-2 2-4Z" fill="currentColor"/></svg>; }

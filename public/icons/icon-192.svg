@@ -1,4 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="24" fill="#0a0a0a"/>
-  <text x="96" y="120" font-family="Arial, sans-serif" font-size="80" font-weight="bold" fill="#ffffff" text-anchor="middle">D</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#101b16"/><g transform="translate(8 4)" color="#10b981"><path d="M6 50V25C6 13 13 6 24 3c11 3 18 10 18 22v25h-7V25c0-8-4-13-11-16-7 3-11 8-11 16v25H6Z" fill="currentColor"/><path d="M22 28l11-6v28l-11 5V28Z" fill="currentColor" opacity=".72"/><path d="m24 13 2 4 4 2-4 2-2 4-2-4-4-2 4-2 2-4Z" fill="currentColor"/></g></svg>

@@ -92,3 +92,6 @@ model-catalog-report.md
 # Storybook static build output (`npm run storybook:build`)
 storybook-static/
 storybook-production-proof/
+
+# Local design review captures; the design contract and tokens remain versioned.
+.impeccable/review/

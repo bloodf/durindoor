@@ -83,8 +83,9 @@ export default function QuickStart() {
         <SectionHeader
           eyebrow={t("Quick start")}
           title={<span id="quick-title">{t("Three steps to the other side")}</span>}
-          lead={t("Install, start, and point any OpenAI-compatible client at one base URL.")}
+          lead={t("Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.")}
         />
+        <DeployTabs />
         <ol className="quick-steps">
           {STEPS.map((step, i) => (
             <Reveal as="li" key={step.n} delay={i * 0.1} className="quick-step">
@@ -112,9 +113,7 @@ export default function QuickStart() {
             {t("Read the docs")}
           </Magnetic>
         </Reveal>
-        <Reveal>
-          <DeployTabs />
-        </Reveal>
+
       </div>
     </section>
   );

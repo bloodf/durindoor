@@ -14,7 +14,8 @@ function Track({ items, reverse, renderItem, label }) {
       <ul className="marquee-track" aria-label={label}>
         {items.map(renderItem)}
       </ul>
-      <ul className="marquee-track is-clone" aria-hidden="true">
+      {/* Decorative duplicates cannot receive keyboard focus. */}
+      <ul className="marquee-track is-clone" aria-hidden="true" inert>
         {items.map(renderItem)}
       </ul>
     </div>
@@ -28,7 +29,7 @@ export default function ToolsMarquee() {
       <div className="container">
         <SectionHeader
           eyebrow={t("Compatible tools")}
-          title={<span id="tools-title">{t("If it speaks OpenAI, it walks through")}</span>}
+          title={<span id="tools-title">{t("Connect your tools")}</span>}
           lead={t("Claude Code, Codex, Cursor, Cline, Roo, and Continue have setup pages. Anything that speaks OpenAI uses the same base URL.")}
         />
       </div>

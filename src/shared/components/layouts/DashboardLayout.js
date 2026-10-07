@@ -118,7 +118,10 @@ export default function DashboardLayout({ children }) {
         width={320}
         className="lg:hidden"
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+        {/* Bound the rail to the drawer body so its nav scrolls independently. */}
+        <div className="h-full min-h-0 [&>aside]:h-full [&>aside]:min-h-0 [&>aside]:w-full">
+          <Sidebar onClose={() => setSidebarOpen(false)} />
+        </div>
       </Drawer>
       <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate">
         <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />

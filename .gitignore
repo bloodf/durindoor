@@ -95,3 +95,7 @@ storybook-production-proof/
 
 # Local design review captures; the design contract and tokens remain versioned.
 .impeccable/review/
+
+# Detailed AI documentation is source material, not the product build directory.
+!internal/docs/product/
+!internal/docs/product/**

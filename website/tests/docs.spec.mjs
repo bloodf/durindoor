@@ -434,7 +434,7 @@ test("docs onboarding links, API tabs, and reading themes work", async ({
 test("public docs exclude AI references and brand maintenance files", async ({ page, request }) => {
   await page.goto("/docs");
   await expect(page.locator('a[href^="/docs/contributing"]')).toHaveCount(0);
-  for (const path of ["/docs/contributing", "/docs/contributing/brand-guide", "/docs/contributing/upstream-sync", "/brand/README.md", "/brand/prompts.md"]) {
+  for (const path of ["/docs/contributing", "/docs/contributing/brand-guide", "/docs/contributing/upstream-sync", "/brand/README.md", "/brand/prompts.md", "/brand/durindoor-vector-kit.zip"]) {
     expect((await request.get(path)).status(), path).toBe(404);
   }
   for (const query of ["brand guide", "upstream sync", "Durin DS"]) {

@@ -7,6 +7,10 @@ The main SQLite schema is the baseline for the parallel PostgreSQL migration set
 
 The PG engine is DurinDoor-owned. Do not send a PR to `decolua/9router` for it.
 
+## Startup mode invariant
+
+`src/lib/db/driver.js` treats the presence of `DURINDOOR_PG_URL`, including an empty value, or `DURINDOOR_DATABASE_ENGINE=postgres` as explicit PostgreSQL mode. That mode must not read SQLite settings or silently fall back to SQLite on initialization failure. Tests and Compose fixtures for legacy cutover must omit `DURINDOOR_PG_URL` entirely. Preserve this distinction when changing adapters, environment normalization, readiness, or connection error handling.
+
 ## Layout
 
 ```text

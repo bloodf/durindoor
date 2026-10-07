@@ -1,7 +1,5 @@
 # Contributing to DurinDoor
 
-Thanks for helping improve DurinDoor.
-
 - Read the full contribution guidelines in [CONTRIBUTING.md](../CONTRIBUTING.md).
 - For the development workflow, build instructions, review expectations, and provider contribution notes, see [internal/docs/index.mdx](../internal/docs/index.mdx).
 

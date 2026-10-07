@@ -16,20 +16,23 @@ You need Node.js 20.20.2 and npm 10.8.2. The published CLI binary is `durindoor`
 
 <Steps>
 <Step>
-Install and start the CLI.
+Set your dashboard credentials, then start the CLI. Replace the initial password with your own and keep both signing secrets in your deployment environment for subsequent starts.
 
 ```bash
-npx durindoor
+export JWT_SECRET="$(openssl rand -hex 32)"
+export API_KEY_SECRET="$(openssl rand -hex 32)"
+export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"
+npx durindoor --host 127.0.0.1
 ```
 
 `npx` downloads the package for that run. For a machine you use every day:
 
 ```bash
 npm install -g durindoor
-durindoor
+durindoor --host 127.0.0.1
 ```
 
-The CLI binds port 20128 and opens `http://localhost:20128/dashboard`. It also prints a LAN URL when it binds `0.0.0.0` (the CLI default). Pass `--host 127.0.0.1` if you want loopback only.
+This example binds port 20128 on loopback and opens `http://localhost:20128/dashboard`. Without the host flag, the CLI defaults to `0.0.0.0` and also prints a LAN URL.
 
 | Surface | URL |
 | --- | --- |
@@ -41,7 +44,7 @@ The CLI binds port 20128 and opens `http://localhost:20128/dashboard`. It also p
 <Step>
 Sign in.
 
-On a fresh data directory the dashboard password is `INITIAL_PASSWORD`, or `123456` if that variable is unset. Loopback login with the built-in password does not issue a session cookie. The UI asks you to set a new password first. Remote clients using `123456` are refused.
+Sign in with the `INITIAL_PASSWORD` you set before starting. On a fresh data directory without that variable, the dashboard defaults to `123456`. Loopback login with the built-in password does not issue a session cookie. The UI asks you to set a new password first. Remote clients using `123456` are refused.
 
 Set `JWT_SECRET` before the first start (copy `.env.example`). Dashboard cookies are not signed without it, unless an older `DATA_DIR/jwt-secret` file already exists.
 
@@ -55,22 +58,22 @@ Open **Providers**. Add one connection: OAuth (browser or device code), a provid
 <Step>
 Create a DurinDoor API key.
 
-Open **API Keys** and create a key. Copy the secret immediately. Later lists show a mask only.
+Open **API Keys** and create a key. Copy the secret immediately. Later lists show a mask. A signed-in dashboard session can reveal a saved key.
 
-Minted keys look like `sk-<machineId>-<keyId>-<crc8>`. Older `sk-<8 hex>` keys still authenticate. `sk_durindoor` is a localhost placeholder in CLI-tool cards, not the minted prefix.
+Use the copied DurinDoor key in your client. A placeholder shown on a tool card is not a substitute when API-key enforcement is enabled.
 
 </Step>
 <Step>
 Send one request.
 
-Pick a model id from the dashboard (or `GET /v1/models`). Then:
+Pick a model ID from the dashboard or `GET /v1/models`. Replace `PROVIDER/MODEL` below with that exact ID before sending the request.
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "openai/gpt-4.1",
+    "model": "PROVIDER/MODEL",
     "messages": [
       {"role": "user", "content": "Reply with one short sentence."}
     ],
@@ -78,7 +81,9 @@ curl http://localhost:20128/v1/chat/completions \
   }'
 ```
 
-Point OpenAI-compatible tools at `http://localhost:20128/v1` with the same key. Claude-compatible clients often set `ANTHROPIC_BASE_URL` to that same origin. See the integrations section for those tools.
+A successful response contains the assistant's text in `choices[0].message.content`. Confirm the request on **Usage**. For a 401, check the client key; for a model or provider error, check the exact model ID and active connection.
+
+Point OpenAI-compatible tools at `http://localhost:20128/v1` with the same key. For Anthropic Messages, use `POST /v1/messages`. Client-specific base URLs and authentication settings are in the [integration guides](../integrations/index.mdx).
 
 </Step>
 </Steps>

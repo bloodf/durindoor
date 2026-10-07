@@ -1,47 +1,61 @@
 "use client";
-
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
-
+import { Component, useEffect, useState } from "react";
 const Scene = dynamic(() => import("../three/Scene.jsx"), { ssr: false });
-
-function hasWebGL() {
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
-  } catch {
-    return false;
+class CanvasBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onFailure?.();
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
   }
 }
-
-// Mounts the WebGL door after hydration. The CSS fallback underneath is always
-// painted, so the hero never shifts and stays meaningful without WebGL.
-export default function HeroCanvas({ heroId }) {
-  const [mode, setMode] = useState("pending");
+/** Static artwork remains visible with reduced motion, missing WebGL, or a failed canvas. */
+export default function HeroCanvas({ progress, opened, onAvailability }) {
+  const [live, setLive] = useState(false);
   const [ready, setReady] = useState(false);
-
   useEffect(() => {
-    if (!hasWebGL()) {
-      setMode("none");
-      return undefined;
-    }
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setMode(query.matches ? "still" : "live");
+    const update = () => {
+      setReady(false);
+      try {
+        setLive(
+          !query.matches &&
+            Boolean(document.createElement("canvas").getContext("webgl2")),
+        );
+      } catch {
+        setLive(false);
+      }
+    };
     update();
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
-
+  useEffect(() => {
+    onAvailability?.(live && ready);
+  }, [live, ready, onAvailability]);
   return (
-    <div className="hero-stage" aria-hidden="true">
-      <div className="hero-fallback">
-        <div className="hero-fallback-arch" />
-        <div className="hero-fallback-seam" />
-      </div>
-      {mode === "live" || mode === "still" ? (
-        <div className={`hero-canvas ${ready ? "is-ready" : ""}`}>
-          <Scene key={mode} heroId={heroId} still={mode === "still"} onReady={() => setReady(true)} />
-        </div>
+    <div className="gateway-stage" data-ready={live && ready} aria-hidden="true">
+      <img
+        className="gateway-poster"
+        src="/brand/durindoor-gateway.webp"
+        alt=""
+        width="1920"
+        height="1080"
+      />
+      {live ? (
+        <CanvasBoundary onFailure={() => { setReady(false); setLive(false); }}>
+          <Scene
+            progress={progress}
+            opened={opened}
+            onReady={() => setReady(true)}
+            onFailure={() => { setReady(false); setLive(false); }}
+          />
+        </CanvasBoundary>
       ) : null}
     </div>
   );

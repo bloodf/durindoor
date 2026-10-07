@@ -1,0 +1,178 @@
+---
+title: First request
+description: Choose a model and send OpenAI Chat Completions, Responses, or Anthropic Messages with a DurinDoor key.
+---
+
+> Pre-rewrite snapshot, baseline `0e7307831`, 2026-10-07. Historical claims below may be inaccurate. Use the [current public guide](../../../../docs/getting-started/first-request.mdx) and the verified corrections at the end of this page for current behavior.
+
+
+Start with a running gateway, a connected provider, and a DurinDoor API key. In the dashboard, open **API Keys**, create a key, and copy its secret. This is the gateway key, not the provider's API key.
+
+Choose the request format your client uses. DurinDoor translates it to the selected provider's supported format.
+
+| Format | Endpoint |
+| --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` |
+| OpenAI Responses | `POST /v1/responses` |
+| Anthropic Messages | `POST /v1/messages` |
+
+All examples below need a model ID available on your instance. Run this first, then replace `PROVIDER/MODEL` in the examples:
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+## Model names
+
+The `model` field is a string. A slash splits it into provider (or alias) and upstream id:
+
+```text
+provider/model
+```
+
+`openai/gpt-4.1` is provider `openai` plus model `gpt-4.1`. Registry aliases in the first segment resolve to a provider id. A string with no slash is treated as a model alias or combo name, not a provider.
+
+Other accepted values: a compatible-node id (`openai-compatible-lab/model-name`), a custom alias you defined, or a combo name from the Combos page. `GET /v1/models` lists what this instance currently exposes.
+
+## Choose a request format
+
+<Tabs items={['OpenAI Chat', 'Anthropic Messages', 'OpenAI Responses']}>
+<Tab value="OpenAI Chat">
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "messages": [{"role": "user", "content": "Reply with one short sentence."}],
+    "max_tokens": 64
+  }'
+```
+
+</Tab>
+<Tab value="Anthropic Messages">
+
+```bash
+curl http://localhost:20128/v1/messages \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "max_tokens": 64,
+    "messages": [{"role": "user", "content": "Reply with one short sentence."}]
+  }'
+```
+
+Anthropic Messages requires `max_tokens`. The response uses Anthropic's message format.
+
+</Tab>
+<Tab value="OpenAI Responses">
+
+```bash
+curl http://localhost:20128/v1/responses \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "input": "Reply with one short sentence."
+  }'
+```
+
+</Tab>
+</Tabs>
+
+The body must be JSON with `Content-Type: application/json`. A missing or rejected key returns 401. A body that is not parseable returns 400. For OpenAI Chat, omit `stream` or set it to `false` for a single JSON response.
+
+## Node
+
+```javascript
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: "YOUR_DURINDOOR_API_KEY",
+  baseURL: "http://localhost:20128/v1",
+});
+
+const response = await client.chat.completions.create({
+  model: "PROVIDER/MODEL",
+  messages: [{ role: "user", content: "Say hello." }],
+});
+
+console.log(response.choices[0].message.content);
+```
+
+## Python
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="YOUR_DURINDOOR_API_KEY",
+    base_url="http://localhost:20128/v1",
+)
+
+response = client.chat.completions.create(
+    model="PROVIDER/MODEL",
+    messages=[{"role": "user", "content": "Say hello."}],
+)
+
+print(response.choices[0].message.content)
+```
+
+## Streaming
+
+Set `"stream": true` in the body. OpenAI clients stream only when that flag is exactly `true`. Some providers always stream upstream; the gateway then accumulates the provider stream and can still return a JSON body to a client that asked for it.
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -N \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "stream": true,
+    "messages": [
+      {"role": "user", "content": "Count to three."}
+    ]
+  }'
+```
+
+SSE error events use the same error envelope as non-streaming failures.
+
+## Errors
+
+Non-streaming failures look like:
+
+```json
+{
+  "error": {
+    "message": "Invalid API key provided",
+    "type": "authentication_error",
+    "code": "invalid_api_key"
+  }
+}
+```
+
+`message`, `type`, and `code` are always present. Status 400 is `invalid_request_error` / `bad_request`. 401 is `authentication_error` / `invalid_api_key`. 404 is `invalid_request_error` / `model_not_found`. 429 is `rate_limit_error` / `rate_limit_exceeded`. 5xx uses `server_error` with codes such as `bad_gateway`. A 415 from a wrong `Content-Type` uses `invalid_request_error` / `unsupported_media_type`. Upstream text is sanitized (secrets and local paths stripped) before it reaches the client.
+
+
+## Implementation reference for maintainers
+
+The content above is a pre-rewrite snapshot from baseline `0e7307831`, captured on 2026-10-07. It preserves the complete public page before the audience rewrite. Its setup examples and historical claims are retained as context; use the current public page and the source notes below when they disagree.
+
+Public guide: [first-request](../../../../docs/getting-started/first-request.mdx).
+
+Source ownership and checks:
+
+- [`package.json`](../../../../package.json)
+- [`cli/cli.js`](../../../../cli/cli.js)
+- [`src/app/api/auth/login/route.js`](../../../../src/app/api/auth/login/route.js)
+- [`src/app/api/v1/models/route.js`](../../../../src/app/api/v1/models/route.js)
+
+These references describe repository behavior. They do not establish that a vendor account is authorized, that a current upstream service accepts a request, or that a third-party client version reads the shown configuration. Validate actual chat, streaming, and tool use separately. No credentials, user configuration, or live provider endpoints were read for this rewrite.
+
+### Verified corrections and boundaries
+
+`open-sse/services/model.js` resolves bare names using aliases and prefix inference. The former description restricted them to aliases or combos. The error-shape assertion was narrowed because `unsupported-websession.js` returns a provider-specific 501 envelope without the ordinary `code` field.

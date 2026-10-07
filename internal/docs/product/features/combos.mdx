@@ -1,0 +1,192 @@
+---
+title: Combos
+description: Named fallback chains with strategies, capability ceilings, and connection allow-lists.
+---
+
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/combos.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+Combo dispatch owns strategy and nested members; account fallback runs inside each member before moving on. Capability ceilings only narrow derived capabilities and nested account allow-lists intersect. Preserve outer combo usage attribution. The create/edit modal uses the shared footer, boxed capability controls, and aligned model rows. **Connection usage** belongs at bottom of Combos, reports the last seven days of combo/account attribution including unattributed requests, and does not follow Usage's period selector. Classifier privacy covers the classifier request only; inference still goes to the selected provider.
+
+### Execution ownership and evidence
+
+- [open-sse/services/combo.js](../../../../open-sse/services/combo.js)
+- [src/lib/combos/comboManagement.js](../../../../src/lib/combos/comboManagement.js)
+- [src/sse/handlers/chat.js](../../../../src/sse/handlers/chat.js)
+
+### Verification entrypoints
+
+- [tests/unit/combo-routing.test.js](../../../../tests/unit/combo-routing.test.js)
+- [tests/unit/combo-capability-ceiling.test.js](../../../../tests/unit/combo-capability-ceiling.test.js)
+- [tests/unit/combo-connection-allow-list.test.js](../../../../tests/unit/combo-connection-allow-list.test.js)
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
+A combo is an ordered list of models exposed as one name. The client puts that name in `model`. DurinDoor tries each member until one returns a usable response or the list is exhausted.
+
+Open **Dashboard → Combos** (`/dashboard/combos`) to create, edit, copy the name, pick a strategy, set a per-member timeout, and edit the connection allow-list. Connection groups on the same page are labels only: adding a group copies current member ids into the allow-list at write time.
+
+Chat traffic that uses a combo still goes `src/sse/handlers/chat.js` → combo dispatch → `handleChatCore` per member. Usage rows keep the outer combo id and name even when a nested combo supplied the member.
+
+
+## Create
+
+Name rules: letters, digits, `-`, `_`, and `.`. Duplicate names return HTTP 400. `POST /api/combos` needs `name`; `models` is the ordered member list. Optional `capabilities` is a ceiling (below). Optional `allowedConnectionIds` is at most 500 ids.
+
+```json
+{
+  "name": "coding-default",
+  "models": [
+    "anthropic/claude-sonnet-4-5",
+    "openai/gpt-4.1",
+    "ollama/qwen2.5-coder"
+  ]
+}
+```
+
+Client request:
+
+```json
+{
+  "model": "coding-default",
+  "messages": [{"role": "user", "content": "Review this function."}]
+}
+```
+
+### Member sort
+
+The dashboard combo editor's Models panel has a sort selector: manual (drag-and-drop, the default), by provider, or by name. Picking a method reorders the visible member list immediately and, for by-provider/by-name, re-applies after adding a new member; it is a one-shot reorder written back into the combo's `models` array on save, not a persisted live mode. Manual order (whatever the panel shows) is always what `strategy: "fallback"` tries first-to-last.
+
+## Strategies
+
+Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The page default is `fallback`. Global fallback when a combo has no override is `comboStrategy`, also `fallback`.
+
+| Value | Behaviour |
+| --- | --- |
+| `fallback` | Try members in the saved order. The next member runs only when the current one fails. |
+| `round-robin` | Rotate the start member across requests to spread load. Sticky limit is `comboStickyRoundRobinLimit` (default 1). |
+| `weighted` | Pick by member weight. |
+| `smart-scoring` | Reorder by provider health (quota, ban status) and prefer the best score, then fall through on errors. |
+| `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
+| `fusion` | Query every member in parallel as a panel, then a judge model writes one answer. Fusion has its own panel timeout, not the per-member timeout. Best quality, highest cost: each request bills every panel member plus the judge (N+1 calls). |
+
+Capacity auto-switch: with capability-aware routing on, a request that carries images, PDF, or audio goes first to a member that supports that input, whatever the strategy. See [Capability ceiling](#capability-ceiling).
+
+Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means use the fetch connect timeout (60s). Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default (0 = off).
+
+Hide-paid-models, when on, drops paid members from dispatch without rewriting the stored `models` array.
+
+## Bulk select
+
+Dashboard → Combos lists a checkbox on every combo and a "Select all" row above the list. With combos selected you can set a strategy for all of them at once (writes `comboStrategies[name].fallbackStrategy` for each, same rules as the per-combo selector) or bulk-delete. Deleting a combo, single or bulk, also prunes its `comboStrategies` entry so settings do not accumulate dead rows.
+
+## Presets (Cursor / Claude Default)
+
+`GET/POST /api/combos/presets?source=cursor|claude` builds combos named like the client's own model IDs (`composer-2.5`, `opus`) seeded with the matching prefixed route (`cu/composer-2.5`, `cc/claude-opus-5`), so Cursor or Claude Code can talk to DurinDoor without sending a provider prefix. `GET` previews (`toCreate`/`toSkip` counts); `POST` creates the missing ones and skips names that already exist. `src/lib/comboPresets.js` builds the item list; a `liveModels` option lets a caller substitute a live catalog for the static `cu`/`cc` registry (unused for now, since no live Cursor catalog fetcher is wired). The generator buttons are implemented but hidden in the current UI.
+
+## Complexity-aware routing
+
+The `smart` strategy scores every member against how hard the current user turn
+looks, then re-sorts the whole combo by that score (ties keep their saved order).
+No member is dropped, so every member stays in the fallback ladder. Capability-aware
+routing still wins: a request carrying images prefers a member that advertises
+vision even when the complexity score would have picked another member. The quota
+ranking pass runs after this sort, so a member with much healthier account quota
+can still be tried before the best complexity match.
+
+By default the difficulty judgement is a local heuristic over prompt size,
+message count, tool count, requested output tokens, reasoning effort, and a few
+keyword classes. It produces one of four levels: `light`, `standard`, `heavy`,
+`critical`.
+
+Setting `TYPESAFE_API_KEY` swaps that heuristic for the TypeSafe Jev classifier,
+a decision model that returns a calibrated tier (`SIMPLE`, `MEDIUM`, `COMPLEX`,
+`REASONING`) for the current ask. The tier maps onto the same four levels, so
+nothing downstream changes. `TYPESAFE_API_BASE` overrides the endpoint.
+
+Only the text of `user` messages in the current turn is sent, capped at 4000
+characters. System and developer prompts, tool and function messages, tool
+results, and earlier turns never leave DurinDoor. Only chat requests (chat completions,
+messages, responses, Gemini) are classified; TTS, image, search and fetch combos
+always use the local heuristic. The call has one 3s deadline
+covering the response headers and body, and it is cancelled when the client
+disconnects. A timeout, network error, HTTP error, or unreadable body opens a 30s
+circuit breaker; after the cooldown one request probes the service again. It fails open: no key, a timeout, an HTTP error, an unparseable body, an
+unknown tier, or a confidence below 0.5 all leave the local heuristic level in
+place, and the combo dispatches exactly as it would without the classifier.
+
+### Local Laya instead of Jev
+
+[Laya](https://github.com/NandhaKishorM/laya) is an open decision engine you can
+run yourself. Its `laya-serve` command speaks the same `/v1/systemone` protocol
+as Jev. Add a connection under **Dashboard → Media Providers → System One → Laya (local)**. Enter
+the server URL: `http://host:port` or `https://host:port` (default
+`http://127.0.0.1:8000`), or a bare `host:port` / `[ipv6]:port` with no scheme,
+which is treated as `http://`. Add an API key only if the server was started
+with `LAYA_API_KEY`. Only the origin is honored: any path, query, or fragment
+on the saved URL is dropped. Any other value, or an http(s) URL carrying a
+username or password, is refused rather than reinterpreted or replaced by the
+default host; a host the outbound guard blocks (for example cloud metadata) is
+refused the same way and is never called. In every refused case Jev keeps
+classifying. While a Laya connection is active,
+`smart` combos ask Laya instead of Jev, and `TYPESAFE_API_KEY` is not needed.
+The first active Laya connection by priority is used.
+
+If you already run `laya-serve` on the default `http://127.0.0.1:8000` without
+`LAYA_API_KEY`, DurinDoor finds it and uses it without a connection. It sends
+an empty request and checks for a 400 answer (cached for 30s). A server that
+asks for a key is not used automatically, so it can't block Jev; add a
+connection with the key instead. Order: your Laya connection, then a local
+keyless Laya, then Jev (when `TYPESAFE_API_KEY` is set), then the heuristic.
+
+Laya picks its own checkpoint (English or multilingual) per request unless the
+connection pins one in `providerSpecificData.model` (`english`, `multilingual`,
+`typed-decisions`). The same rules apply as for Jev: only current-turn user
+text is sent, and failures leave the heuristic level in place. Laya's
+calibrated `answer_confidence` is the value checked, with a 0.4 threshold (Jev
+uses 0.5). Across four tiers, chance is 0.25, and Laya's zero-shot answers on
+coding asks usually score between 0.4 and 0.55. The deadline is 8s instead of 3s because CPU
+inference is slower, and there is no spend. Each classifier host has its own
+circuit breaker, so a slow Laya doesn't pause Jev. Redirects are not followed. Routing logs and task reasons
+show `laya:<TIER>` instead of `jev:<TIER>`.
+
+## Fallback triggers
+
+A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, and HTTP 200 with no usable output. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
+
+A malformed client body is rejected before combo dispatch. Do not expect a combo to paper over a bad request.
+
+Account fallback inside one member still runs first. If OpenAI account A 429s and account B succeeds, the combo does not move to member 2.
+
+## Capability ceiling
+
+Optional `capabilities` on create/update is an operator cap over member-derived capabilities. Empty or omitted changes nothing. Boolean keys may only turn a derived `true` off. Positive `contextWindow` and `maxOutput` only lower a known member limit; they never invent one. Nested combos keep their own ceiling, so an outer combo cannot re-expand an inner cap.
+
+Unknown keys and non-positive integers return HTTP 400. Send `null` to clear a saved ceiling.
+
+With capability-aware routing on, a request that carries images, audio, video, or PDF on the current user turn prefers a member that advertises that modality. Unsupported media fields are stripped before translation.
+
+## Allow-list
+
+Empty `allowedConnectionIds` is unrestricted: any otherwise eligible active connection may serve a member. A non-empty list is restrictive. Nested combos intersect with the parent list; the inner combo can only narrow eligibility.
+
+Groups never become dispatch units. Deleting a group does not disable its connections.
+
+## Disabled members
+
+**Dashboard → Providers → (provider) → Models** can disable a catalog id via `POST /api/models/disabled`. Matching uses the member's saved provider form and its registry/node counterpart. The stored `models` array is not mutated. Store outages fail open (members stay). The same list is enforced on direct requests: calling a disabled model directly returns HTTP 403.
+
+## Worked example
+
+1. Create `coding-default` with two members, preferred first.
+2. Send `model: "coding-default"` to `/v1/chat/completions`.
+3. Pause the first member's connection, or pick a model that 401s.
+4. The next member should serve. Usage shows the combo name plus the member that answered.
+
+API-key `allowedCombos`, when non-empty, rejects any other combo with HTTP 403. Details: [API keys](../../../../docs/guides/api-keys.mdx).

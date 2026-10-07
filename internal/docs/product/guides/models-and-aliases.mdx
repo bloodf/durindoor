@@ -1,0 +1,99 @@
+---
+title: Models and aliases
+description: How DurinDoor parses provider/model strings, aliases, combos, and /v1/models.
+---
+
+> Pre-rewrite snapshot, baseline `0e7307831`, 2026-10-07. Historical claims below may be inaccurate. Use the [current public guide](../../../../docs/guides/models-and-aliases.mdx) and the verified corrections at the end of this page for current behavior.
+
+
+Clients put one string in `model`. DurinDoor splits it, then routes.
+
+## provider/model
+
+A slash means `prefix/rest`. The prefix is a provider id or a provider alias from the registry (and a short local map for media-only names: `el` → elevenlabs, `jina` / `jina-ai` → jina-ai, `polly` / `aws-polly` → aws-polly). The rest is the upstream model id, including any extra slashes.
+
+| Client `model` | Meaning |
+| --- | --- |
+| `openai/gpt-4.1` | Provider alias plus model id |
+| `anthropic/claude-sonnet-4-5` | Same split; alias maps to the registry id |
+| `my-node/local-model` | Compatible-node prefix plus the node's model id |
+| `coding-default` | Combo name (no slash) |
+| `short-name` | Custom alias mapped to `provider/model` |
+
+Custom aliases are a `{ "short-name": "provider/model" }` map stored by the dashboard. Combos are a named fallback list; the client sends the combo name and DurinDoor tries each member. See [Combos](../../../../docs/features/combos.mdx).
+
+If `getModelInfo` returns no provider, the chat handler calls `getComboModels` and, when that returns a list, runs the combo path. If the bare string is neither an alias nor a combo, DurinDoor infers a provider from the model id prefix (`claude-` → anthropic, `gemini-` → gemini, `gpt-` / `o1` / `o3` / `o4` → openai, `deepseek-` → openrouter) and otherwise uses `openai`.
+
+Compatible nodes and custom prefixes work the same way: the public id is `prefix/modelId`, where `prefix` is the provider alias or the node's output prefix. A doubled `<connId>/<prefix>/<model>` from a combo step is stripped down to the inner model id.
+
+## List models
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
+
+`GET /v1/models` returns chat/LLM ids by default (`LLM_KIND` is `"llm"`). Other kinds live under `/v1/models/{kind}`:
+
+| Kind slug | Service |
+| --- | --- |
+| `image` | image |
+| `tts` | tts |
+| `stt` | stt |
+| `embedding` | embedding |
+| `image-to-text` | imageToText |
+| `web` | webSearch and webFetch |
+| `rerank` | rerank |
+
+A single unknown segment returns HTTP 404 `Unknown model kind` and lists those slugs. Two or more segments are an exact lookup of `alias/modelId` against the LLM catalog (`candidate.id === identifier`). A miss is OpenAI's `model_not_found` 404.
+
+The list route does not call the chat API-key checker; `/v1` is a public prefix. Send a key anyway if your client always does. Live discovery uses the same local-first SSRF guard as provider test-connection, so LAN tools such as LM Studio can list models while cloud-metadata endpoints stay blocked.
+
+Each provider row looks like OpenAI's list object: `id` is `alias/modelId`, `object` is `model`, `owned_by` is the alias. Combo rows use the combo name as `id` and `owned_by: "combo"`.
+
+Custom aliases contribute their target model ids into that provider's list; they do not add a second top-level id for the short name. Custom models registered on a provider (id plus `providerAlias`) show up as `prefix/id` as well.
+
+`HEAD /v1/models` returns 200 with an empty body so health probes do not wait on the full catalog. `HEAD /v1/models/{kind}` and `HEAD /v1/models/{alias}/{model}` are 200 when the path is a known kind or a provider-prefixed lookup; a one-segment unknown kind is 404.
+
+`GET /v1/models/info?id={alias}/{modelId}` returns metadata for one id. Missing `id` is 400.
+
+If the request carries an `anthropic-version` header, the same catalog is wrapped in Anthropic's list envelope (`data`, `has_more`, `first_id`, `last_id`). Codex CLI user-agents get a `{ models: [...] }` object instead.
+
+Context windows and max output for a listed id are documented in [Model limits](../../../../docs/reference/model-limits.mdx).
+
+Disabled model ids are omitted, and a direct request for one (chat or any media endpoint, by id or through a model alias) is refused with HTTP 403 and `Model '<provider>/<model>' is disabled.` before any account is picked. Media default routes never pick a disabled model. When hide-paid is on, paid provider models drop out of the list, and a combo with no remaining visible members is omitted too. Compatible nodes are allowlist-only on this public catalog. Dashboard import discovery stays on `/api/providers/[id]/models`.
+
+### Model exposure allow/deny list
+
+The Profile page's "Model catalog" card has an optional model exposure list: two newline-separated fields, allow and deny. An entry is an exact id (`provider/model` or a bare `model`) or a glob using `*` / `?`. Both lists are empty by default, which exposes everything (opt-in, no behavior change until set). The deny list is checked first, so a denied entry always drops even when an allow entry also matches. When the allow list is non-empty, only entries it matches stay visible.
+
+This list filters `GET /v1/models` and is mirrored into `auto/*` combo candidate pools (`getComboModels` in `src/sse/services/model.js`), so a denied model cannot stay reachable through an auto combo after being hidden from the catalog. Named combos are exempt: the list matches provider/model pairs, not saved combo names. Sending a denied model id directly (not through `auto/*`) is still dispatched; only catalog advertisement and auto-combo candidate membership are filtered.
+
+
+## Implementation reference for maintainers
+
+The content above is a pre-rewrite snapshot from baseline `0e7307831`, captured on 2026-10-07. It preserves the complete public page before the audience rewrite. Its setup examples and historical claims are retained as context; use the current public page and the source notes below when they disagree.
+
+Public guide: [models-and-aliases](../../../../docs/guides/models-and-aliases.mdx).
+
+Source ownership and checks:
+
+- [`src/app/api/keys/route.js`](../../../../src/app/api/keys/route.js)
+- [`src/sse/services/apiKeyPolicy.js`](../../../../src/sse/services/apiKeyPolicy.js)
+- [`src/lib/apiKeyLimits.js`](../../../../src/lib/apiKeyLimits.js)
+- [`src/sse/services/model.js`](../../../../src/sse/services/model.js)
+- [`src/app/api/v1/models/buildModelsList.js`](../../../../src/app/api/v1/models/buildModelsList.js)
+- [`src/lib/usageDb.js`](../../../../src/lib/usageDb.js)
+- [`open-sse/services/model.js`](../../../../open-sse/services/model.js)
+- [`src/app/api/v1/models/_shared.js`](../../../../src/app/api/v1/models/_shared.js)
+- [`src/app/api/v1/models/[...model]/route.js`](../../../../src/app/api/v1/models/[...model]/route.js)
+
+These references describe repository behavior. They do not establish that a vendor account is authorized, that a current upstream service accepts a request, or that a third-party client version reads the shown configuration. Validate actual chat, streaming, and tool use separately. No credentials, user configuration, or live provider endpoints were read for this rewrite.
+
+### Verified corrections and boundaries
+
+The public kind table now includes `systemone`, which is present in the kind catalog and required for Laya. Keep catalog exposure distinct from key authorization: exposure filters `auto/*` candidates but does not prohibit direct model dispatch.
+
+### Current behavior and implementation boundaries
+
+The complete kind list was verified against KIND_SLUG_MAP in `[...model]/route.js`, including realtime variants, live, document-parsing, and systemone. Anthropic header presence takes precedence over Codex envelope detection in `_shared.js`. Disabled models and exposure filters serve different roles.

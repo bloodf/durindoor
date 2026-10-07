@@ -1,0 +1,91 @@
+---
+title: Monitoring usage
+description: Read request history, console output, and the health endpoint after traffic flows.
+---
+
+> Pre-rewrite snapshot, baseline `0e7307831`, 2026-10-07. Historical claims below may be inaccurate. Use the [current public guide](../../../../docs/guides/monitoring-usage.mdx) and the verified corrections at the end of this page for current behavior.
+
+
+Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`). The overview tab shows request counts, input and output tokens, cached tokens, an estimated cost, and output speed in tokens per second. It also charts that window, groups rows by provider, model, account, key, or endpoint, and draws the provider topology. Combo traffic has its own report on the same tab.
+
+The period control accepts `today`, `24h`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`, and `all`. Editing the calendar to a window that is not one of those presets queries stats by `startDate`/`endDate` and skips the chart (the chart endpoint is preset-only).
+
+The details tab lists individual calls: timestamp, model, provider, input/cached/output tokens, a cache-hit percentage, TTFT, total latency, and per-request tokens/sec. Cache hit % and tok/s are both derived client-side from the same token and latency columns already on the row, so no new storage is needed; tok/s excludes TTFT the same way the overview's output-speed card does, and is left off a row when TTFT was not measured (non-streaming calls, or older rows recorded before timing existed). Filter by provider and a local date-time range. Open a row for payload metadata and a "Copy all" button that copies the whole (already-redacted) row as JSON, never a raw payload, since bodies are not stored. A "Raw detail (JSON tree)" section below it lets you drill into that same row with native, no-dependency `<details>` disclosure widgets. Bodies are not stored; each stage keeps presence, type, and byte length:
+
+| Field | Label |
+| --- | --- |
+| `request` | Client request |
+| `providerRequest` | Provider request |
+| `providerResponse` | Provider response |
+| `response` | Client response |
+
+A `?tab=logs` URL still renders request-log lines from `/api/usage/request-logs` (datetime, model, provider, account, in, out, status). The segmented control on the page shows Overview and Details only.
+
+Streaming chat responses also carry a gateway-measured `tokens_per_second` field on the final `usage` object sent to the client (OpenAI, Claude, and Gemini-family formats), computed the same way: output tokens divided by the time since the first token, excluding TTFT. It is omitted whenever TTFT is not known, which is always the case for non-streaming responses. Do not compute your own tok/s from `output_tokens / total_latency`, since that includes queueing and first-token wait.
+
+Reset on the overview tab posts `/api/usage/reset` with a period (`5m`, `1h`, `3h`, `6h`, `12h`, `1d`, `7d`, `30d`, or `all`). That delete cannot be undone.
+
+<Callout type="warn">
+Reset removes usage rows for the selected window. Back up `DATA_DIR` first if you still need the history.
+</Callout>
+
+## Where the numbers live
+
+`src/lib/usageDb.js` re-exports the SQLite usage layer. Live history is the `usageHistory` table in `DATA_DIR/db/data.sqlite`.
+
+| Path | Role |
+| --- | --- |
+| `DATA_DIR/db/data.sqlite` | `usageHistory`, `usageDaily`, `_meta.totalRequestsLifetime` |
+| `DATA_DIR/usage.json` | JSON-store import file (`LEGACY_FILES.usage`) |
+| `DATA_DIR/log.txt` | Not created. There is no request log file by that name |
+
+Default `DATA_DIR` is `~/.9router` on macOS and Linux, `%APPDATA%\9router` on Windows. Each `usageHistory` insert stores provider, model, connection id, API key, endpoint, token counts, estimated cost and its per-rate split, status, the call duration (`latencyMs`) and time to first token (`ttftMs`), optional `usageEventId`, and optional combo id/name. Overview cards read total requests, prompt tokens, cached tokens, completion tokens, estimated cost, and output speed. The requests panel on overview shows recent requests and active sessions (ended sessions stay visible for 15 seconds).
+
+Request-log lines shown by `/api/usage/request-logs` are derived from `usageHistory` on read (`getRecentLogs`, default 200 rows). `appendRequestLog` is a no-op. Parallel inserts with the same fields are not collapsed; only an explicit `usageEventId` dedupes a retry of the same event. History insert, daily upsert, and the lifetime counter run in one transaction.
+
+A streamed request that fails after the gateway already answered HTTP 200 (the upstream sends an in-stream `error` frame or a Responses `response.failed` event, then ends the stream) is recorded with status `error`, in both the request details row and the usage row. The details row keeps any partial text, or reads `[Streaming failed: <message>]` when there was none, and carries the upstream error under `response.error`. What the client receives does not change.
+
+`DATA_DIR/usage.json` is the JSON-store import file (`LEGACY_FILES.usage`). SQLite boot can read it once. Runtime writes go to `usageHistory`, not that JSON file. There is no `log.txt` under the data dir.
+
+## Cost split and speed
+
+Every cost column is priced at its own rate. When a request is saved, the server prices fresh input, cached reads, cache writes, visible output, and reasoning separately and stores those five amounts on the usage row (`inputCost`, `cachedCost`, `cacheCreationCost`, `outputCost`, `reasoningCost`). Long-context tiers apply per request, so they land in the right columns. A dashboard row sums the stored amounts of its requests. Older rows and provider-reported costs have no stored split. For a model without a long-context tier, or with one that raises input and output by the same factor, their tokens are priced at the model's rates and scaled to their recorded cost, which gives the exact split. Otherwise, or when the model has no pricing entry, that cost goes in the **Not split** column instead of being guessed at, and the stored amounts of newer requests still show in their own columns. The category columns plus **Not split** always add up to the total. Provider rows sum their models' columns. Account rows keep one entry per model per day. A day saved before that may hold several models under one account, so it shows as its own "Earlier usage (models not recorded)" row with its cost under **Not split**.
+
+Output speed divides output tokens by decode time, the call duration minus time to first token, so a slow first token does not read as slow generation. Non-streaming calls have no first token to time, so their whole duration counts as decode. Rows recorded before timing existed carry `latencyMs = 0`; they still count toward tokens and cost but are left out of every rate, and the overview card says how many requests in the period were timed.
+
+## Console log
+
+**Dashboard → Console log** (`/dashboard/console-log`) tails process `console.log`, `info`, `warn`, `error`, and `debug` from an in-memory ring.
+
+The ring keeps 200 lines. Filter by level (`ALL` or one of those five), pause the stream, or clear it. The page reads `GET /api/translator/console-logs` and `GET /api/translator/console-logs/stream`. Stream events are `init`, `line`, `lines`, and `clear`. Clear calls `DELETE /api/translator/console-logs`. The buffer is not a file on disk; a restart empties it. `statsEmitter` on the usage layer notifies connected dashboard clients after a usage write.
+
+
+## Health
+
+```bash
+curl http://localhost:20128/api/health
+```
+
+`GET /api/health` returns `{ "ok": true }` with CORS headers. `OPTIONS` returns 204. The path is public: it does not require a DurinDoor API key or a dashboard session. A 200 means the HTTP server answered; it does not prove a provider account works. Use `/v1/models` or a chat request for that. Production binds port `20128` unless `PORT` is set.
+
+
+## Implementation reference for maintainers
+
+The content above is a pre-rewrite snapshot from baseline `0e7307831`, captured on 2026-10-07. It preserves the complete public page before the audience rewrite. Its setup examples and historical claims are retained as context; use the current public page and the source notes below when they disagree.
+
+Public guide: [monitoring-usage](../../../../docs/guides/monitoring-usage.mdx).
+
+Source ownership and checks:
+
+- [`src/app/api/keys/route.js`](../../../../src/app/api/keys/route.js)
+- [`src/sse/services/apiKeyPolicy.js`](../../../../src/sse/services/apiKeyPolicy.js)
+- [`src/lib/apiKeyLimits.js`](../../../../src/lib/apiKeyLimits.js)
+- [`src/sse/services/model.js`](../../../../src/sse/services/model.js)
+- [`src/app/api/v1/models/buildModelsList.js`](../../../../src/app/api/v1/models/buildModelsList.js)
+- [`src/lib/usageDb.js`](../../../../src/lib/usageDb.js)
+
+These references describe repository behavior. They do not establish that a vendor account is authorized, that a current upstream service accepts a request, or that a third-party client version reads the shown configuration. Validate actual chat, streaming, and tool use separately. No credentials, user configuration, or live provider endpoints were read for this rewrite.
+
+### Current behavior and implementation boundaries
+
+Usage metadata, rates, history, and console logs have different persistence boundaries. SQLite usage records are persistent; console ring is memory-only. HTTP 200 can precede an in-stream failure. Speed excludes TTFT when it is known, while cost splits preserve unknown historical rates rather than inventing them. The current console viewer retains 2000 lines, parses timestamp, level, and tag, filters by level/tag/search, pauses while buffering, highlights matches, wraps, copies visible rows, and downloads `.log`.

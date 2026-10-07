@@ -20,7 +20,7 @@ Open **Quota Tracker** and find the connection. A row that is exhausted or cooli
 If the numbers look stale, use the account's **Refresh (bypass cache)** action. The dashboard calls `GET /api/usage/{connectionId}?refresh=1`, which skips the fresh quota cache but still honors provider 429 cooldowns. The existing `?force=1` API flag remains supported.
 </Step>
 <Step>
-Nothing to do if you have a second account on the same provider: preflight already skips the exhausted one. Otherwise add a connection or put the model in a [combo](../features/combos.mdx) with a fallback member.
+If the provider supports quota preflight and you have another eligible account, routing can skip the exhausted connection. Otherwise add a connection or put the model in a [combo](../features/combos.mdx) with a fallback member.
 </Step>
 </Steps>
 
@@ -53,7 +53,7 @@ You can hide individual reported rows per connection in the limits view if a pro
 
 ## Cooldowns
 
-When an upstream fails, DurinDoor locks that account (or that account and model) for a while and tries the next one.
+For retryable upstream failures, DurinDoor temporarily locks the account or model and tries another eligible connection. Terminal errors stop the request. Some provider capacity or setup errors have special handling.
 
 | Trigger | Lock |
 | --- | --- |
@@ -72,4 +72,4 @@ There is no CSV export for usage. **Download Backup** under **Profile → Data &
 
 ## Prices
 
-Estimated cost uses the built-in price table in `open-sse/providers/pricing.js`. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep the cost they were saved with.
+Estimated cost uses the built-in model prices. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep their original estimate. Compare estimates with provider billing before using them for financial decisions.

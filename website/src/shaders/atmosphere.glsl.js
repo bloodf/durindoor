@@ -1,8 +1,9 @@
-import { noiseChunk, moonChunk } from "./common.glsl.js";
+import { noiseChunk, moonChunk, archChunk } from "./common.glsl.js";
 
 // Cliff wall, god-ray beams, mist and fireflies.
 
 export const wallFragment = /* glsl */ `
+  ${archChunk}
   ${noiseChunk}
   ${moonChunk}
   uniform vec2 uDoor;
@@ -11,6 +12,8 @@ export const wallFragment = /* glsl */ `
 
   void main() {
     vec2 p = vWorld.xy;
+    vec2 gate = p - vec2(uDoor.x, uDoor.y + 1.0);
+    if (gate.y >= DOOR_BOTTOM && archInside(gate) >= 0.0) discard;
     float cliff = fbm(vec2(p.x * 1.1, p.y * 0.22) + 2.0);
     float rock = fbm(p * 0.9 + cliff * 1.5);
     float crack = smoothstep(0.03, 0.0, abs(fbm(p * 0.7 + 9.0) - 0.5));

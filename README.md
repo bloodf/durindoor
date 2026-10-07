@@ -1,162 +1,128 @@
 <p align="center">
-  <a href="https://github.com/bloodf/durindoor/blob/main/assets/durindoor-banner.png">
-    <img src="https://raw.githubusercontent.com/bloodf/durindoor/main/assets/durindoor-banner.png" alt="Ancient stone portal glowing green in dark ruins" width="100%">
-  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/durindoor-logo-dark.svg">
+    <img src="assets/brand/durindoor-logo-light.svg" alt="DurinDoor" width="440">
+  </picture>
+</p>
+
+<p align="center"><em>Speak, friend, and enter.</em></p>
+
+<p align="center">
+  <img src="assets/brand/durindoor-gateway.webp" alt="An engraved stone gateway opening into emerald light" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://github.com/bloodf/durindoor/blob/main/assets/durindoor-wordmark-theme-aware.svg">
-    <img src="https://raw.githubusercontent.com/bloodf/durindoor/main/assets/durindoor-wordmark-theme-aware.svg" alt="DurinDoor. Speak, friend, and enter. One guarded gateway for every AI provider" width="760">
-  </a>
+  <b>Your AI providers. One self-hosted gateway.</b><br>
+  OpenAI and Anthropic APIs, subscriptions, API keys, and local models.
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/durindoor"><img alt="npm" src="https://img.shields.io/npm/v/durindoor.svg"></a>
-  <a href="https://github.com/bloodf/durindoor/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/bloodf/durindoor.svg"></a>
-  <a href="https://github.com/bloodf/durindoor/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/bloodf/durindoor.svg"></a>
-  <a href="https://github.com/bloodf/durindoor/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/bloodf/durindoor/ci.yml?branch=main"></a>
-  <a href="https://ghcr.io/bloodf/durindoor"><img alt="Docker" src="https://img.shields.io/badge/docker-ghcr.io%2Fbloodf%2Fdurindoor-blue?logo=docker"></a>
+  <a href="https://www.npmjs.com/package/durindoor"><img alt="npm version" src="https://img.shields.io/npm/v/durindoor.svg?color=066247"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/bloodf/durindoor.svg?color=066247"></a>
+  <a href="https://github.com/bloodf/durindoor/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/bloodf/durindoor/ci.yml?branch=main&color=066247"></a>
 </p>
 
 <p align="center">
-  <b>One self-hosted gateway. Every AI provider. Your keys never leave your machine.</b>
+  <a href="https://durindoor.vercel.app">Website</a> ·
+  <a href="https://durindoor.vercel.app/demo-preview">Live demo</a> ·
+  <a href="https://durindoor.vercel.app/docs">Documentation</a> ·
+  <a href="#quick-start">Quick start</a>
 </p>
 
-<p align="center">
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#why-durindoor">Why</a> ·
-  <a href="#providers">Providers</a> ·
-  <a href="#usage">Usage</a> ·
-  <a href="#dashboard">Dashboard</a> ·
-  <a href="https://durindoor.vercel.app/docs">Docs</a>
-</p>
+## One gateway for the tools you already use
 
----
+DurinDoor connects your AI clients to provider subscriptions, API keys, and local models. Send OpenAI chat completions or Responses, or Anthropic Messages. The gateway resolves the model, chooses a connection, translates supported formats, and records the result.
 
-## 🚪 What is DurinDoor?
+Use a provider/model ID for a direct route, an alias for a reusable name, or a combo for a configured fallback order. Manage connections and keys in the bundled dashboard.
 
-DurinDoor is a self-hosted AI gateway that unifies **236 providers** behind one OpenAI-compatible API. Add credentials once in the dashboard, point every tool, script, and IDE integration at `http://localhost:20128/v1`, and stop hand-wiring provider SDKs into every app you build. It runs entirely on your own machine or server: credentials, logs, and usage data stay in your `DATA_DIR`, never on someone else's cloud.
+DurinDoor is a fork of [9router](https://github.com/decolua/9router). Its name comes from Durin's Door, the entrance to Moria in *The Lord of the Rings*. The new identity uses an emerald gate, silver lettering, and dark forest stone.
 
-It is a fork of [9router](https://github.com/decolua/9router), rebuilt with a Postgres option, an MCP gateway, a management REST API, quota-aware account fallback, a proxy timeline, and a full documentation site, while staying a drop-in upgrade for existing 9router installs.
+| What you need | What DurinDoor provides |
+| --- | --- |
+| Connect different providers | OAuth accounts, API keys, browser cookies, and compatible endpoints |
+| Keep a stable model name | Model aliases and ordered fallback combos |
+| Recover from account limits | Account selection, cooldowns, and quota-aware fallback |
+| Inspect requests | Usage, monitoring, and an optional redacted proxy timeline |
+| Connect MCP servers | A gateway with scoped keys for upstream MCP instances |
+| Run on your infrastructure | SQLite by default, optional Postgres, and Docker deployment |
 
-## 🤔 Why DurinDoor?
+Credentials, configuration, and usage records are stored on your machine or server. Requests still go to the upstream providers you select. Support for each endpoint and model depends on that provider.
 
-Every provider speaks its own dialect. OpenAI wants `messages`, Anthropic wants `messages` shaped differently and a separate `max_tokens`, Gemini wants `contents`, Ollama wants its own JSON, and half the AI coding tools on your machine only know how to talk to one of them. The usual fix is either vendor lock-in or a pile of brittle adapter code duplicated across every project.
+## Try the dashboard
 
-DurinDoor puts one door in front of all of it:
+[Open the live demo](https://durindoor.vercel.app/demo-preview) to explore the real DurinDoor dashboard with sample data. The demo intercepts requests in your browser and does not connect real provider accounts.
 
-- **Speak once, route anywhere.** Send OpenAI chat completions, Anthropic Messages, Gemini, or Ollama-shaped requests; DurinDoor translates to whatever the upstream provider actually expects and translates the response back.
-- **Never lose a request to one dead account.** Model combos and quota-aware account fallback retry across accounts and providers automatically when one is rate-limited, out of credit, or down.
-- **Keep everything local.** SQLite by default, an optional Postgres cutover for scale, and a data directory that never phones home.
-- **Stop re-plumbing every client.** Claude Code, Codex, Cursor, Cline, Roo, Continue, and anything else that speaks OpenAI or Anthropic already works against `/v1` with zero code changes, only a base URL swap.
+For an installed instance, the dashboard is at `http://localhost:20128/dashboard`. Connect a provider, create a key, configure model aliases or combos, and inspect usage from the same interface.
 
-## ⚡ Quick start
+## Quick start
 
-<table>
-<tr><th>npm</th><th>npx</th><th>Docker</th></tr>
-<tr>
-<td>
+Use Node.js `20.20.2` and npm `10.8.2`. The Docker image includes the required runtime.
+
+### 1. Start the gateway
+
+Set a session-signing secret and your initial dashboard password before the first boot. Replace the password below with your own.
+
+```bash
+export JWT_SECRET="$(openssl rand -hex 32)"
+export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"
+npx durindoor --host 127.0.0.1
+```
+
+Keep `JWT_SECRET` in your deployment environment for subsequent starts. For daily use, install the CLI globally:
 
 ```bash
 npm install -g durindoor
-durindoor
+durindoor --host 127.0.0.1
 ```
 
-</td>
-<td>
+The dashboard opens at `http://localhost:20128/dashboard`. Sign in with your initial password. The explicit host flag keeps this example bound to your machine.
+
+### 2. Connect a provider and create a key
+
+In **Providers**, add an OAuth account, a provider API key, or a compatible local or remote endpoint. In **API Keys**, create a DurinDoor key and copy its secret.
+
+Choose an available model in the dashboard or list the models exposed by your instance. This catalog request does not verify your gateway key:
 
 ```bash
-npx durindoor
+export DURINDOOR_API_KEY="YOUR_DURINDOOR_API_KEY"
+
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer $DURINDOOR_API_KEY"
 ```
 
-</td>
-<td>
+### 3. Send a request
 
-```bash
-docker run -d --name durindoor \
-  -p 127.0.0.1:20128:20128 \
-  -v "$HOME/.durindoor:/app/data" \
-  -e DATA_DIR=/app/data \
-  -e JWT_SECRET="$(openssl rand -hex 32)" \
-  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
-  ghcr.io/bloodf/durindoor:latest
-```
-
-</td>
-</tr>
-</table>
-
-Requires Node.js `20.20.2` and npm `10.8.2` (already baked into the Docker image). The CLI opens the dashboard at `http://localhost:20128/dashboard` on first run. Sign in, change the default password, connect a provider, and mint your first DurinDoor API key.
+Replace `PROVIDER/MODEL` with a model ID from your instance. A name such as `coding-default` works after you create that alias or combo.
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Authorization: Bearer $DURINDOOR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"coding-default","messages":[{"role":"user","content":"Say hello."}],"stream":true}'
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "messages": [{"role": "user", "content": "Say hello."}],
+    "stream": true
+  }' \
+  -N
 ```
 
-Building from source or running Compose with a Postgres profile? See [Installation](https://durindoor.vercel.app/docs/getting-started/installation) and [Docker](https://durindoor.vercel.app/docs/deployment/docker).
+[Installation](https://durindoor.vercel.app/docs/getting-started/installation) covers npm, source builds, Docker, environment variables, and the data directory. [First request](https://durindoor.vercel.app/docs/getting-started/first-request) covers both API formats, SDKs, streaming, and errors.
 
-## 🌍 Providers
+## Use OpenAI or Anthropic APIs
 
-**236 providers** in the registry today, spanning:
+Your client's request format determines the route. DurinDoor translates it to the selected provider's supported format.
 
-| Category | Examples |
+| Client format | Route |
 | --- | --- |
-| 🧠 Frontier labs | OpenAI, Anthropic (Claude), Google (Gemini, Vertex), xAI (Grok), Mistral, Cohere |
-| 🔀 Aggregators / routers | OpenRouter, Requesty, TokenRouter, ZenMux, AgentRouter, OmniRoute |
-| 🖥️ CLI-tool bridges | Codex, Claude Code, Gemini CLI, Cursor, Cline, Kilo Code, Windsurf, Trae, Qoder, Kiro |
-| ☁️ Cloud platforms | AWS Bedrock, Azure, Databricks, Snowflake, Vertex, DigitalOcean, Cloudflare AI |
-| 🏠 Local / self-hosted | Ollama, LM Studio, vLLM, llama.cpp, Llamafile, text-generation-webui, Xinference |
-| 🖼️ Image / video | Stability AI, Black Forest Labs (FLUX), Ideogram, Recraft, Leonardo, RunwayML, Kie |
-| 🔊 Voice | ElevenLabs, Deepgram, Cartesia, PlayHT, Fish Audio, Edge TTS, AssemblyAI |
-| 🔎 Search / fetch | Tavily, Exa, Brave Search, Serper, SearXNG, Firecrawl, Jina Reader, Linkup |
-| 🧩 Free / no-key | Pollinations, DuckDuckGo Web, HackClub, LLM7, FreeAIAPIKey |
+| OpenAI Chat Completions | `POST /v1/chat/completions` |
+| OpenAI Responses | `POST /v1/responses` |
+| Anthropic Messages | `POST /v1/messages` |
 
-The full, generated list lives at [Provider catalog](https://durindoor.vercel.app/docs/providers/catalog); the source of truth is one file per provider under [`open-sse/providers/registry/`](open-sse/providers/registry). Adding a provider is a config change, not a rewrite: copy [`REGISTRY_TEMPLATE.js`](open-sse/providers/REGISTRY_TEMPLATE.js), list its models, and only write an executor when the upstream is not already OpenAI-compatible.
+### OpenAI SDK
 
-## 🛠️ Usage
+Point the SDK at the gateway and use a DurinDoor key. Replace the example model with one exposed by your instance.
 
-All routes live under `/v1`. Format follows the path, not the provider: send whichever shape your client already speaks, DurinDoor translates it to the upstream.
-
-**OpenAI-compatible chat, with streaming:**
-
-```bash
-curl http://localhost:20128/v1/chat/completions \
-  -H "Authorization: Bearer $DURINDOOR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "model": "openai/gpt-5.6",
-        "messages": [{"role": "user", "content": "Explain quantum entanglement in one sentence."}],
-        "stream": true
-      }'
-```
-
-**Anthropic Messages format:**
-
-```bash
-curl http://localhost:20128/v1/messages \
-  -H "Authorization: Bearer $DURINDOOR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "model": "anthropic/claude-sonnet-5",
-        "max_tokens": 1024,
-        "messages": [{"role": "user", "content": "Say hello."}]
-      }'
-```
-
-**OpenAI Responses format:**
-
-```bash
-curl http://localhost:20128/v1/responses \
-  -H "Authorization: Bearer $DURINDOOR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "codex/gpt-5.4-mini", "input": "Write a haiku about routers."}'
-```
-
-**Any official SDK, unmodified, just repoint the base URL:**
-
-```js
+```javascript
 import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -165,72 +131,96 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "coding-default",
-  messages: [{ role: "user", content: "Refactor this function for clarity." }],
+  model: "PROVIDER/MODEL",
+  messages: [{ role: "user", content: "Say hello." }],
 });
+
+console.log(response.choices[0].message.content);
 ```
 
-Beyond chat, the same `/v1` surface covers:
+### Anthropic Messages
 
-- 🖼️ **Images** — `POST /v1/images/generations`, `/v1/images/edits`
-- 🔊 **Speech** — `POST /v1/audio/speech` (text-to-speech), `POST /v1/audio/transcriptions` and `/translations` (speech-to-text)
-- 🎵 **Music and video** — `POST /v1/music/generations`, `/v1/video/generations`, async job polling under `/v1/videos`
-- 📐 **Embeddings, rerank, moderation** — `POST /v1/embeddings`, `/v1/rerank`, `/v1/moderations`
-- 🔎 **Web search and fetch** — `POST /v1/search`, `POST /v1/web/fetch`, backed by Tavily, Exa, Brave, Firecrawl, Jina Reader, and more
-- 📡 **Realtime** — a text WebSocket at `GET /v1/realtime` in the OpenAI Realtime event shape
-- 📦 **Files and batches** — OpenAI-style and Anthropic-style batch APIs over local storage
-- 🔌 **MCP gateway** — one JSON-RPC endpoint merging tools from any number of upstream MCP servers behind a single scoped key
-- 🚪 **Default media routes** — call any media endpoint with no `model` (or `"model": "auto"`) and DurinDoor runs the dashboard-ordered fallback chain for that kind; order lives in **Dashboard → Media Routes**. See [Media routes](https://durindoor.vercel.app/docs/features/media-routes)
-
-Full route-by-route reference, request bodies, and streaming behavior: [API reference](https://durindoor.vercel.app/docs/reference/api).
-
-## 📊 Dashboard
-
-The bundled dashboard (`/dashboard`) is where you connect providers, mint API keys, and see what's actually happening:
-
-- **Provider accounts** — OAuth or API-key connections, with automatic token refresh
-- **Combos** — named fallback chains across models and accounts, with strategies and ceilings
-- **Quota tracking** — per-provider snapshots that skip a spent account before it fails a live request
-- **Usage** — per-key, per-model spend and token counts
-- **Proxy timeline** — an optional redacted hop log for debugging a request end to end
-- **MCP Gateway** — register upstream MCP servers and grant scoped keys to specific tools
-- **Laya** — a local, self-hosted System One provider that replaces Jev for the smart/task combo complexity classifier, no API key required. See [Combos](https://durindoor.vercel.app/docs/features/combos#local-laya-instead-of-jev)
-- **Docs** — the sidebar links to the [documentation site](https://durindoor.vercel.app/docs), including the full [API reference](https://durindoor.vercel.app/docs/reference/api)
-
-Try it without installing anything: [hosted demo dashboard](https://durindoor.vercel.app/dashboard).
-
-## ⚙️ Configuration
-
-Two environment variables matter on a fresh install; everything else has a sane default:
+The Messages route accepts Anthropic-shaped requests, including the required `max_tokens` field. Use a model your connected provider can serve.
 
 ```bash
-JWT_SECRET=$(openssl rand -hex 32)   # required on a fresh data dir, signs dashboard sessions
-DATA_DIR=/path/to/data               # defaults to ~/.9router (macOS/Linux) or %APPDATA%\9router (Windows)
+curl http://localhost:20128/v1/messages \
+  -H "Authorization: Bearer $DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "max_tokens": 256,
+    "messages": [{"role": "user", "content": "Say hello."}]
+  }'
 ```
 
-DurinDoor ships with SQLite out of the box and no external database to run. When you outgrow it, cut over to Postgres from **Settings → Database** in the dashboard, or opt in at the Compose level with `docker compose --profile postgres18 up`. Every other operator variable, its default, and where it's read is documented at [Environment variables](https://durindoor.vercel.app/docs/reference/environment).
+Tool-specific settings matter. Follow the guides for [Claude Code](https://durindoor.vercel.app/docs/integrations/claude-code), [Codex](https://durindoor.vercel.app/docs/integrations/codex), [Cursor](https://durindoor.vercel.app/docs/integrations/cursor), and [other clients](https://durindoor.vercel.app/docs/integrations).
 
-## 🔗 Documentation
+## Choose your providers and fallback order
 
-| | |
+The [provider catalog](https://durindoor.vercel.app/docs/providers/catalog) lists registry IDs, authentication methods, and model counts for the build. `GET /v1/models` lists what your running instance exposes.
+
+| Connection type | Examples |
 | --- | --- |
-| 🏁 [Getting started](https://durindoor.vercel.app/docs/getting-started) | Installation, first request, dashboard tour |
-| 🌍 [Providers](https://durindoor.vercel.app/docs/providers) | Full catalog, connecting accounts, free/local options |
-| ✨ [Features](https://durindoor.vercel.app/docs/features) | Smart routing, combos, quota tracking, MCP, realtime, compression |
-| 🔌 [Integrations](https://durindoor.vercel.app/docs/integrations) | Claude Code, Codex, Cursor, Cline, Roo, Continue |
-| 🚢 [Deployment](https://durindoor.vercel.app/docs/deployment) | Localhost, Docker, VPS/cloud, reverse proxy |
-| 🔧 [Operations](https://durindoor.vercel.app/docs/operations) | Security, Postgres, upgrading, API key scoping |
-| 📚 [Reference](https://durindoor.vercel.app/docs/reference) | Full API, CLI, environment variables, migrating from 9router |
-| 🤝 [Contributing](https://durindoor.vercel.app/docs/contributing) | Local dev setup, architecture, translators, release process |
+| Provider API keys | OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek |
+| Subscription and tool accounts | Claude Code, Codex, Gemini CLI, Kiro, GitHub Copilot |
+| Cloud platforms | AWS Bedrock, Azure, Vertex, Cloudflare AI |
+| Compatible endpoints and local models | OpenAI or Anthropic nodes, Ollama, LM Studio, vLLM |
+| Media and search providers | Image, speech, video, embeddings, search, and fetch providers |
 
-## 🤝 Contributing
+A combo exposes one name to your client and tries its configured model members in order. For example, you can put a subscription model first, a paid API second, and a local model last. That order is your configuration. It is not a built-in pricing hierarchy. Account fallback tries eligible connections for the current member before advancing to the next model.
 
-Issues and pull requests are welcome. Open an issue before a large change, keep one focused branch per change, and pair a behavior change with a doc update and a test. See [Contributing](https://durindoor.vercel.app/docs/contributing), the [Code of Conduct](CODE_OF_CONDUCT.md), and the [security policy](.github/SECURITY.md) before you start.
+Read [Connecting accounts](https://durindoor.vercel.app/docs/providers/connecting-accounts), [Combos](https://durindoor.vercel.app/docs/features/combos), and [Smart routing](https://durindoor.vercel.app/docs/features/smart-routing) for setup and strategy details.
 
-## 📜 License
+## Beyond chat
+
+The gateway also has endpoints for images, speech, embeddings, reranking, moderation, video, music, web search, and web fetch. Model support varies by provider. Use the [API reference](https://durindoor.vercel.app/docs/reference/api) for exact request bodies and response formats.
+
+- The [MCP gateway](https://durindoor.vercel.app/docs/features/mcp-gateway) connects several MCP servers behind scoped gateway keys.
+- [Realtime](https://durindoor.vercel.app/docs/features/realtime) relays supported native provider protocols, including audio where available. Chat models use a text-only facade.
+- [Media routes](https://durindoor.vercel.app/docs/features/media-routes) configure fallback order for calls that omit a model or use `auto`.
+- The [proxy timeline](https://durindoor.vercel.app/docs/features/proxy-timeline) records redacted request hops when enabled. It is off by default.
+
+## Run it with Docker
+
+Set `JWT_SECRET` and `INITIAL_PASSWORD` as shown in the quick start, then:
+
+```bash
+docker run -d --name durindoor \
+  -p 127.0.0.1:20128:20128 \
+  -v "$HOME/.durindoor:/app/data" \
+  -e DATA_DIR=/app/data \
+  -e JWT_SECRET \
+  -e INITIAL_PASSWORD \
+  ghcr.io/bloodf/durindoor:latest
+```
+
+This example persists data in `$HOME/.durindoor` and publishes the port on loopback. Pin a release tag for production. Native installs retain the `~/.9router` default data directory for compatibility unless you set `DATA_DIR`.
+
+SQLite is the default database. The dashboard supports an optional Postgres cutover. See [Docker deployment](https://durindoor.vercel.app/docs/deployment/docker), [Environment variables](https://durindoor.vercel.app/docs/reference/environment), and [Security](https://durindoor.vercel.app/docs/operations/security) before exposing a shared gateway.
+
+## Documentation
+
+| Task | Guide |
+| --- | --- |
+| Install and make your first call | [Getting started](https://durindoor.vercel.app/docs/getting-started) |
+| Add provider accounts or local models | [Providers](https://durindoor.vercel.app/docs/providers) |
+| Configure an AI client | [Integrations](https://durindoor.vercel.app/docs/integrations) |
+| Set up routing and capabilities | [Features](https://durindoor.vercel.app/docs/features) |
+| Host a gateway | [Deployment](https://durindoor.vercel.app/docs/deployment) |
+| Back up, upgrade, or manage access | [Operations](https://durindoor.vercel.app/docs/operations) |
+| Look up routes, flags, or settings | [Reference](https://durindoor.vercel.app/docs/reference) |
+| Diagnose a failed request | [Troubleshooting](https://durindoor.vercel.app/docs/troubleshooting) |
+
+The docs site covers installation, everyday use, deployment, and API reference.
+
+## Contribute
+
+[Internal references](internal/docs/README.md) contain AI implementation context, feature porting procedures, and brand rules. These files are not published on the docs site.
+
+Issues and pull requests are welcome. Pair behavior changes with a doc update and a test. Read [Contributing](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and the [security policy](.github/SECURITY.md).
+
+## License and acknowledgments
 
 MIT. See [LICENSE](LICENSE).
 
-## 🙏 Acknowledgments
-
-DurinDoor is a fork of [9router](https://github.com/decolua/9router), created by [decolua](https://github.com/decolua). Upstream documentation and branding remain the property of their respective authors and are not presented as DurinDoor's source of truth.
+DurinDoor is a fork of [9router](https://github.com/decolua/9router), created by [decolua](https://github.com/decolua). Upstream documentation and branding remain the property of their respective authors.

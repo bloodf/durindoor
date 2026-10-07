@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { DoubleSide, ExtrudeGeometry } from "three";
 import * as THREE from "three";
+import { createGateLeaf } from "./gateGeometry.js";
 import { basicVertex } from "@site/shaders/common.glsl.js";
 import { frameVertex, frameFragment } from "@site/shaders/frame.glsl.js";
 import { leafVertex, leafFragment, lightFragment } from "@site/shaders/leaf.glsl.js";
@@ -46,19 +47,19 @@ function useFrameGeometry() {
 
 function Leaf({ side, uniforms }) {
   const pivot = useRef(null);
+  const geometry = useMemo(() => createGateLeaf(side), [side]);
   const leafUniforms = useMemo(() => ({ ...uniforms, uSide: { value: side } }), [uniforms, side]);
 
   useFrame(() => {
     if (!pivot.current) return;
     // Leaves swing toward the viewer as the page scrolls past the hero.
-    const eased = 1 - Math.pow(1 - uniforms.uOpen.value, 2.2);
-    pivot.current.rotation.y = side * eased * 1.28;
+    const eased = uniforms.uOpen.value;
+    pivot.current.rotation.y = side * eased * 1.42;
   });
 
   return (
     <group ref={pivot} position={[side * R_IN, 0, 0]}>
-      <mesh position={[-side * R_IN * 0.5, BOTTOM + DOOR_HEIGHT / 2, 0]}>
-        <planeGeometry args={[R_IN, DOOR_HEIGHT, 1, 1]} />
+      <mesh geometry={geometry}>
         <shaderMaterial
           vertexShader={leafVertex}
           fragmentShader={leafFragment}
@@ -75,13 +76,23 @@ export default function Portal({ uniforms }) {
 
   return (
     <group>
-      <mesh position={[0, BOTTOM + DOOR_HEIGHT / 2, -0.28]}>
+      {[1, 2, 3, 4].map((depth) => (
+        <mesh key={depth} geometry={frameGeometry} position={[0, 0, -depth * 1.55]}>
+          <meshStandardMaterial color="#23372b" roughness={0.95} />
+        </mesh>
+      ))}
+      <mesh position={[0, BOTTOM - 0.12, -3]}>
+        <boxGeometry args={[3.5, 0.2, 7]} />
+        <meshStandardMaterial color="#253b2d" roughness={0.9} />
+      </mesh>
+      <mesh position={[0, BOTTOM + DOOR_HEIGHT / 2, -7]}>
         <planeGeometry args={[R_IN * 2, DOOR_HEIGHT]} />
         <shaderMaterial vertexShader={basicVertex} fragmentShader={lightFragment} uniforms={uniforms} />
       </mesh>
       <mesh geometry={frameGeometry} position={[0, 0, -0.26]}>
         <shaderMaterial vertexShader={frameVertex} fragmentShader={frameFragment} uniforms={uniforms} />
       </mesh>
+      <pointLight position={[0, -0.8, -3]} color="#6ee7b7" intensity={8} distance={9} decay={2} />
       <Leaf side={-1} uniforms={uniforms} />
       <Leaf side={1} uniforms={uniforms} />
     </group>

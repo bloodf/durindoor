@@ -18,7 +18,7 @@ Routes exist for these endpoints:
 | Video generation | `POST /v1/video/generations`, `POST /v1/videos/{action}` | `/v1/video/generations` tries the models it can run, in order. `/v1/videos` creates a billable job, so it uses only the first route model whose provider runs async jobs and never retries. A `/v1/videos` poll without `x-connection-id` works only when one async video provider is connected; otherwise it returns 400 asking for the header. |
 | Music generation | `POST /v1/music/generations`, `POST /v1/audio/music` | |
 
-## Where the models come from
+## Connect a provider for the endpoint
 
 DurinDoor does not ship a default model. A route can only hold models that `GET /v1/models/{kind}` lists right now. Each one has to meet all of these:
 
@@ -51,7 +51,7 @@ If nothing qualifies, a request without a model gets HTTP 400 with `error.code: 
 - A saved route exists, but none of its models are available right now (connection removed or disabled, model hidden): `"None of the models in the text to speech route are available. Update it in Dashboard > Media Routes, or pass a model."`
 - A saved route exists and some models are available, but this endpoint can't run any of them (a sync-only video model on `/v1/videos`, a Deepgram-only speech-to-text route on `/v1/audio/translations`): `"None of the models in the text to speech route can run on this endpoint. Add one it supports in Dashboard > Media Routes, or pass a model."`
 
-## Set the order
+## Save a default and fallback order
 
 Open **Dashboard → Media Routes** (`/dashboard/media-routes`). Each endpoint has a card:
 
@@ -67,7 +67,7 @@ Routes are stored in settings as `mediaRoutes`, for example `{ "tts": ["elevenla
 
 Both reject unknown kinds, and ids without a `provider/` prefix.
 
-## Example
+## Verify a request without a model
 
 ```bash
 curl http://localhost:20128/v1/audio/speech \
@@ -76,4 +76,10 @@ curl http://localhost:20128/v1/audio/speech \
   -d '{"input":"Speak, friend, and enter."}' --output door.mp3
 ```
 
+Expect a nonempty `door.mp3` when a connected text-to-speech provider succeeds. Inspect the HTTP status before using the file because a provider error can be written to the same output path.
+
 API key model policies still apply to each route model, the same way they do when the model is named explicitly. For an API key scoped to provider accounts, the route leaves out providers the key has no connection for, so embeddings and `/v1/videos` pick the first model that key can call.
+
+## Recover an unavailable route
+
+Check active connections and hidden or disabled models. Update the saved route, or choose **Use automatic order**. A saved but unavailable list is not replaced automatically. For embeddings, changing the model changes the vector space; rebuild downstream indexes deliberately. For async video, poll the original job instead of creating another billable job.

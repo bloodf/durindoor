@@ -1,9 +1,9 @@
 ---
 title: Kiro
-description: The seven ways to connect a Kiro account, where imported tokens come from, refresh, quota, and the errors Kiro returns.
+description: Choose a Kiro sign-in method, import credentials, and verify models and quota.
 ---
 
-Kiro (`kiro`, alias `kr`) is Amazon's coding assistant backend. DurinDoor talks to its `generateAssistantResponse` endpoint over AWS event streams. Claude-format requests use a direct `claude:kiro` translator, so thinking blocks and tool ids survive the trip.
+Kiro (`kiro`, alias `kr`) is Amazon's coding assistant backend. Claude-format requests use a direct translation route to preserve thinking blocks and tool IDs.
 
 The provider page shows a risk notice: this is a subscription session that was not licensed for router use. Use an account you can afford to lose.
 
@@ -31,7 +31,7 @@ Kiro's login only redirects to a `kiro://` address, which a browser cannot open.
 
 ### API key
 
-DurinDoor checks the key against Kiro's profile list before saving and stores it with `authType: "api_key"`. It has no refresh token. Requests send the key as Bearer with `tokentype: API_KEY`.
+DurinDoor checks the key against Kiro's profile list before saving. It has no refresh token. Requests send the key as Bearer with `tokentype: API_KEY`.
 
 ### Import from the Kiro IDE
 
@@ -51,7 +51,7 @@ Before a request the executor re-reads the SSO cache, then refreshes if needed. 
 
 ## Models and quota
 
-Send `kr/<model>`, for example `kr/claude-opus-4.8`. The registry has about 47 ids, including `-thinking` and `-agentic` variants. `GET /v1/models` is the live list.
+Send `kr/<model>`, for example `kr/claude-opus-4.8`. The catalog includes thinking and agentic variants. Use the exact available IDs rather than assuming a fixed model count. `GET /v1/models` is the live list.
 
 The [Quota Tracker](../features/quota-tracking.mdx) reads Kiro's usage limits, for OAuth and API key connections alike. Kiro uses the `any-sufficient` preflight gate: an account stays eligible while any of its pools has room.
 
@@ -67,3 +67,5 @@ Kiro does not retry 429 on its own; the request moves on to the next account.
 ## MITM mode
 
 **MITM Proxy** (`/dashboard/mitm`) can also intercept the Kiro IDE's calls to its us-east-1 runtime hosts and send them through DurinDoor. That is separate from the connection on this page. See [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors) for recovery steps.
+
+After connecting, send a short request with an ID from `GET /v1/models` and confirm **Usage**. If an imported token lacks the profile ARN, use Builder ID or Identity Center to acquire it. Token acquisition and a quota row do not prove that the selected model can answer.

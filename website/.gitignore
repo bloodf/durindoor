@@ -22,3 +22,6 @@ public/durindoor-wordmark.png
 src/styles/shared/
 
 .source/
+
+# Canonical identity assets are copied from ../assets/brand
+public/brand/

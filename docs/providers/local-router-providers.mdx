@@ -1,11 +1,11 @@
 ---
 title: Local router providers
-description: Self-hosted OpenAI-compatible provider ids, optional keys, and metadata-only auto, Codex Cloud, and Zed entries.
+description: Configure local OpenAI-compatible servers, default URLs, and provider-specific limits.
 ---
 
 DurinDoor ships dedicated registry entries for local and router endpoints that speak OpenAI-compatible `/v1` routes: `9router`, `lm-studio`, `vllm`, `lemonade`, `llamafile`, `llama-cpp`, `triton`, `docker-model-runner`, `xinference`, `oobabooga`, and `opencode-zen`.
 
-Most of those use the default OpenAI-compatible executor. The API key is optional when the upstream does not enforce one. DurinDoor omits the `Authorization` header when no API key or access token is saved. Saving a connection with a placeholder key still works if you want the normal connection form. If a connection does not set `providerSpecificData.baseUrl`, DurinDoor uses the provider's local default:
+These servers expose OpenAI-compatible endpoints. The API key is optional when the upstream does not enforce one. DurinDoor omits the `Authorization` header when no API key or access token is saved. Saving a connection with a placeholder key still works if you want the normal connection form. If a connection does not set `providerSpecificData.baseUrl`, DurinDoor uses the provider's local default:
 
 | Provider | Default base URL |
 | --- | --- |
@@ -20,15 +20,7 @@ Most of those use the default OpenAI-compatible executor. The API key is optiona
 | `xinference` | `http://localhost:9997/v1` |
 | `oobabooga` | `http://localhost:5000/v1` |
 
-`ollama-local` is separate: default host `http://localhost:11434`, resolved by `resolveOllamaLocalHost`. See [Free and local](./free-and-local.mdx).
-
-## Metadata-only ids
-
-`auto`, `codex-cloud`, and `zed` keep OmniRoute provider ids and display metadata. They do not add a fake chat transport (`transport: null`).
-
-- `auto` (category `system`) is auto-routing metadata. Runtime requests still go through configured combos and connected providers.
-- `codex-cloud` is hidden. It stores cloud-agent credential metadata; task execution belongs to the cloud-agent subsystem.
-- `zed` is hidden. Zed keychain import writes credentials under their real upstream providers, not under `zed`.
+`ollama-local` is separate: default host `http://localhost:11434`. See [Free and local](./free-and-local.mdx).
 
 ## OpenCode Zen
 
@@ -40,7 +32,7 @@ Gemini-family Zen ids (`gemini-` prefix) throw at request time: the Google-compa
 
 Open Dashboard, then Providers, then the card (`lm-studio`, `vllm`, and so on). Add a connection. Leave the key empty when the upstream does not check one, or paste a placeholder if the form requires a value. Override `providerSpecificData.baseUrl` when the process is not on the default port.
 
-`lm-studio` and `9router` set `noAuth: true` in the registry. `9router` defaults to `http://127.0.0.1:20130/v1` (a second 9router on this machine, not the DurinDoor process on 20128).
+LM Studio and the second-router endpoint can be configured without an upstream key. `9router` defaults to `http://127.0.0.1:20130/v1` (a second 9router on this machine, not the DurinDoor process on 20128).
 
 If DurinDoor runs in Docker, those localhost URLs are inside the container. Use a compose service name or the host gateway.
 
@@ -50,14 +42,12 @@ Local Whisper is not in the table above. Default origin is `http://127.0.0.1:115
 
 Self-hosted Firecrawl (`firecrawl_custom`) follows the same selection: with an active connection, every request uses it, so its saved API key and custom headers (for example Cloudflare Access) are sent even for API keys with no provider-account scope. The host comes from **Profile → Network → Firecrawl URL** when that is a valid self-hosted URL (localhost or a private address), then from the connection, then `FIRECRAWL_BASE_URL`, then `http://127.0.0.1:3002`. A hosted URL in that setting (such as `https://api.firecrawl.dev`, used by the hosted Firecrawl provider) is skipped for self-hosted requests.
 
-`llamafile` and `llama-cpp` share `http://127.0.0.1:8080/v1`. `vllm` and `triton` share `http://localhost:8000/v1`. Override `baseUrl` if you run two of those on one host.
+## Avoid unsupported entries
 
-OpenCode Zen's static catalog omits Gemini-family rows on purpose. A passthrough `gemini-` id still hits the unimplemented branch and fails closed.
+`auto`, `codex-cloud`, and `zed` are metadata entries rather than inference servers. `auto/*` models route through connected providers and configured auto combos. `codex-cloud` and `zed` are hidden from new connection creation. Use a real upstream provider for inference.
 
-These ids are not hidden. They appear on the Providers page like any other API-key card. `codex-cloud` and `zed` are the hidden ones; do not expect them in the add selector. `POST /api/providers` rejects hidden ids with `Invalid provider`.
+## Verify and troubleshoot
 
-`docker-model-runner` defaults to `http://localhost:12434/v1`. `lemonade` defaults to `http://localhost:13305/api/v1` (note the `/api/v1` path). `xinference` is `http://localhost:9997/v1`. `oobabooga` is `http://localhost:5000/v1`.
+After saving a connection, list the gateway's models and send a short prompt. Confirm the account on **Usage**. Passthrough can accept an upstream ID that is absent from the saved list; it does not prove that the upstream serves the ID.
 
-The default URL table is `LOCAL_PROVIDER_DEFAULT_BASE_URLS` in `open-sse/executors/default.js`. A saved `providerSpecificData.baseUrl` always wins. Empty `baseUrl` stays on that local default instead of falling through to `PROVIDERS.openai`.
-
-That is the difference from a generic OpenAI-compatible node, which has no local default until you type a URL.
+If two servers use the same default port, override one connection's base URL. If a local request fails from Docker, use a host gateway or compose service name. If a Zen Gemini model fails, choose another family: the Gemini-compatible Zen transport is not implemented.

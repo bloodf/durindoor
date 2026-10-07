@@ -1,11 +1,11 @@
 ---
 title: Web cookie providers
-description: Copy a browser session cookie into DurinDoor, what each cookie provider expects, and what breaks when the session ends.
+description: Copy the correct browser session value, check provider support, and recover expired sessions.
 ---
 
 A web cookie provider reuses the session your browser already has with a chat website. There is no API key. You copy the cookie the site sets after you sign in, paste it into DurinDoor, and DurinDoor sends it the way the web app would.
 
-These providers use `category: "webCookie"` and `authType: "cookie"` in `open-sse/providers/registry/`. On the Providers page they sit in their own group.
+On **Providers**, web-session connections have their own group. Some cards can store credentials before their request executor is available; check the supported status below before configuring a client.
 
 <Callout type="warn">
 A session cookie is a full login for that account. Anyone who can send requests through your gateway can spend that session. Keep cookie providers on a personal install, or put them behind scoped DurinDoor keys. See [API key scoping](../operations/api-key-scoping.mdx).
@@ -23,13 +23,8 @@ Saving rechecks the exact provider/operator-bound session after readiness and im
 
 The operator must configure `DURINDOOR_WEB_LOGIN_ORIGIN`, for example `https://login.gateway.example`, and route that hostname to the same DurinDoor server. Use a dedicated hostname different from the dashboard's hostname: a different port alone does not isolate cookies. The flow fails closed if the origin is missing, invalid, or shares the dashboard cookie hostname; there is no same-origin fallback.
 
-The dedicated hostname serves only the one-time login bootstrap and provider-scoped reverse proxy, not dashboard pages or management APIs. Bootstrap grants are short-lived, single-use, and sent with no-referrer handling. The login page uses its own host-only HttpOnly session cookie, separate from dashboard authentication. Do not configure domain-wide dashboard cookies covering the login hostname.
+The dedicated origin keeps login cookies separate from dashboard authentication and serves only sign-in traffic. Use HTTPS. If browser cookie rules or a provider login block the embedded page, use the popup or manual paste. MiMo keeps its existing login flow.
 
-Bootstrap redirects and allowlisted provider redirect destinations use absolute URLs on the isolated login origin so Next.js can validate them. Root-relative HTML URL attributes and CSS URL tokens are provider-scoped; ordinary JavaScript literals and JSON data are not blanket-rewritten. Provider cookies without a valid `Path` use the RFC default directory (`/account/login` defaults to `/account`, including requests to `/account`).
-
-The isolated proxy preserves provider root paths and trailing slashes, including `/chat/` and `/account/`. Next.js's unconditional trailing-slash redirect is disabled; the proxy retains the ordinary 308 slash-removal redirect on application hosts before dashboard or MiMo handling. The isolated host's strict path allowlist is unchanged.
-
-Use HTTPS for the dedicated origin. Cross-site iframe cookies can be blocked by browser third-party-cookie policy or by Secure/SameSite requirements, particularly on HTTP development hosts. If the iframe cannot retain its login cookie, try **Open in popup**, where the isolated site is top-level, or use manual paste.
 
 Cloudflare Turnstile, Google SSO, third-party cookies, cross-origin redirects, or other site protections may reject reverse-proxied login, including in a popup. Use manual cookie paste in that case. The flow captures upstream HTTP cookies, not localStorage tokens; only the five providers listed above support this dashboard login. Cookie capture and readiness are not a guarantee that the provider will accept every later chat request.
 
@@ -51,11 +46,11 @@ Under Request Headers, copy the `Cookie` value. Some providers only want one nam
 In DurinDoor open **Providers**, pick the cookie provider, and click Add. The field is labelled **Cookie Value**. The hint under it is the provider's `authHint`.
 </Step>
 <Step>
-Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web` and `zenmux-free`: their chat endpoints create a real conversation per probe, risking account restrictions (OmniRoute #14780, #14818). Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
+Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web` and `zenmux-free`: their chat endpoints create a real conversation per probe, risking account restrictions . Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
 </Step>
 </Steps>
 
-You can paste the whole header or just the value. `src/lib/providers/webCookieAuth.js` strips a leading `Cookie:` or `Bearer `, and pulls a single named cookie out of a full header when the provider only needs one.
+You can paste the whole header or just the value. DurinDoor strips a leading `Cookie:` or `Bearer `, and pulls a single named cookie out of a full header when the provider only needs one.
 
 The field is plain text, not a password field, so the cookie is visible on screen while you type. Once saved, the value is stored in the connection's encrypted `apiKey` column like any other secret.
 
@@ -78,7 +73,6 @@ The field is plain text, not a password field, so the cookie is visible on scree
 | Suno | `suno` | The Suno session cookie |
 | Udio | `udio` | The Udio session cookie |
 
-{/* chatgpt-web: a browser executor is being ported. Once chat works, drop chatgpt-web from the not-yet-runnable list below and describe how requests are sent. */}
 
 ### Chunked session cookies
 
@@ -86,7 +80,7 @@ chatgpt.com and perplexity.ai keep their session in a NextAuth cookie, `__Secure
 
 These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web the add dialog also offers a console snippet that prompts for each chunk value you copy from Application, Cookies, and puts the joined `name=value` string on your clipboard.
 
-Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `chatgpt-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. The list lives in `open-sse/executors/unsupported-websession.js`. You can save a connection for them, but no request will run until the executor ships.
+Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. ChatGPT Web has a working browser transport with an HTTP fallback; see its [setup guide](./chatgpt-web.mdx). See [Hidden and retired providers](./retired.mdx) for unsupported entries. You can save a connection for them, but no request will run until the executor ships.
 
 ## Validation
 
@@ -102,8 +96,10 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 ## When the session ends
 
-Once a connection is saved, its cookie expiry is not tracked and cookie sessions are not refreshed. The temporary login jar does discard expired cookies before saving. You find out when the site rejects a stored connection. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
+Most cookie sessions have no proactive refresh or expiry tracking. ChatGPT Web can save cookies rotated by the site, but rotation does not prevent expiry or revocation. The temporary dashboard-login jar discards expired cookies before saving. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
 
-The fix is always the same: sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
+If automatic recovery fails, sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
 
 Keep one browser profile for the account you hand to DurinDoor, and avoid signing out of it.
+
+After saving a supported session, send one short request and check **Usage**. A skipped validation is not a successful probe. HTTP 501 `provider_port_pending` means no credential change can enable that provider in this build.

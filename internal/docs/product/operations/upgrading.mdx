@@ -1,0 +1,121 @@
+---
+title: Upgrading
+description: Back up DATA_DIR, move to a new image or npm version, then verify health.
+---
+
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/operations/upgrading.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+Forward migrations cannot be undone by an older binary. Full pre-upgrade data plus matching secrets is the rollback unit. Both engines reach migration 025; PostgreSQL 025 owns timeline tables while SQLite retains a sidecar. Preserve sidecar history through its separate PostgreSQL migration before deleting it. Built-in migration copies are bounded safety copies, not full backups. `verify:static` verifies artifact availability only.
+
+### Execution ownership and evidence
+
+- [src/lib/db/migrate.js](../../../../src/lib/db/migrate.js)
+- [src/lib/db/backup.js](../../../../src/lib/db/backup.js)
+- [src/lib/db/migrations/postgres/index.js](../../../../src/lib/db/migrations/postgres/index.js)
+- [scripts/build-app.mjs](../../../../scripts/build-app.mjs)
+
+### Verification entrypoints
+
+- [tests/unit/db-quota-backup-roundtrip.test.js](../../../../tests/unit/db-quota-backup-roundtrip.test.js)
+- [tests/unit/build-isolation.test.js](../../../../tests/unit/build-isolation.test.js)
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
+Read [CHANGELOG.md](../../../../CHANGELOG.md) before you bump. Breaking schema work and behaviour shifts land there first.
+
+## Backup
+
+Stop DurinDoor so SQLite is not mid-write. Host bind: [backing up a host directory](data-management.mdx#backing-up-a-host-directory). Named volume: [backing up a Docker named volume](data-management.mdx#backing-up-a-docker-named-volume).
+
+Startup also copies `DATA_DIR/db/data.sqlite` into `DATA_DIR/db/backups` before a schema or app-version change. Those copies keep the newest three directories and omit the `requestDetails` table on the lite path. Take your own full copy anyway.
+
+## Image or package
+
+<Tabs items={['Docker', 'npm', 'source']}>
+<Tab value="Docker">
+
+Pin a version tag in production. `latest` is for evaluation.
+
+```bash
+docker pull ghcr.io/bloodf/durindoor:latest
+docker stop durindoor && docker rm durindoor
+docker run -d \
+  --name durindoor \
+  -p 20128:20128 \
+  -v durindoor-data:/app/data \
+  -e DATA_DIR=/app/data \
+  -e JWT_SECRET="$JWT_SECRET" \
+  -e API_KEY_SECRET="your-secret" \
+  -e INITIAL_PASSWORD="your-password" \
+  ghcr.io/bloodf/durindoor:latest
+```
+
+Or change the `image:` line in `docker-compose.yml` and run `docker compose up -d`. Keep the same volume and the same `JWT_SECRET` / `API_KEY_SECRET`.
+
+</Tab>
+<Tab value="npm">
+
+```bash
+npm update -g durindoor
+```
+
+</Tab>
+<Tab value="source">
+
+```bash
+git pull
+npm install --no-audit --no-fund
+npm run build
+npm start
+```
+
+</Tab>
+</Tabs>
+
+## Schema migrations
+
+SQLite runs forward-only migrations on startup. The chain is append-only. Both SQLite and PostgreSQL currently reach version 25 (`025-proxy-timeline`). PostgreSQL boot uses the parallel migration set, including the PostgreSQL-only cutover-log version 019. A fresh database starts clean. A skip-version upgrade applies every pending `up()`. PostgreSQL 025 creates the timeline tables; SQLite retains its sidecar. Preserve existing sidecar history using the [timeline migration procedure](postgres.mdx#postgresql-only-installations).
+
+Do not edit, truncate, or delete `DATA_DIR/db/data.sqlite` by hand. If `PRAGMA quick_check` fails, startup stops. Restore a backup whose integrity you have already checked.
+
+## After the bump
+
+```bash
+curl http://localhost:20128/api/health
+```
+
+This endpoint checks liveness, not database readiness. Also request `/v1/models`, then exercise authenticated inference and confirm a new usage row in the selected database. For PostgreSQL-only deployments, verify that initialization errors do not create a live SQLite database.
+
+Then open the dashboard and confirm providers, API keys, combos, and usage.
+
+## Rollback
+
+Rollback is the previous image or git tag plus the pre-upgrade backup. A completed migration is not undone by starting an old binary on the new file. Restore the backup first.
+
+Named volume: [restoring a Docker named volume](data-management.mdx#restoring-a-docker-named-volume).
+
+Host bind: `DATA_DIR` must be an absolute path, then [restoring a host directory](data-management.mdx#restoring-a-host-directory), then start the old image:
+
+```bash
+case "$DATA_DIR" in
+  /*) ;;
+  *) echo "ERROR: DATA_DIR must be an absolute path, got '$DATA_DIR'" >&2; exit 1 ;;
+esac
+docker stop durindoor && docker rm durindoor
+docker run -d \
+  --name durindoor \
+  --env-file .env \
+  -p 20128:20128 \
+  -v "$DATA_DIR:/app/data" \
+  -e DATA_DIR=/app/data \
+  ghcr.io/bloodf/durindoor:<old-version>
+```
+
+Source: `git checkout <prior-tag>` and rebuild.

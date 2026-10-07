@@ -9,20 +9,20 @@ Pick one runtime. Production listens on port `20128` unless `PORT` is set. Sourc
 | --- | --- | --- | --- |
 | Global CLI | `durindoor` | `20128` | `0.0.0.0` |
 | npx | `npx durindoor` | `20128` | `0.0.0.0` |
-| Source dev | `npm run dev` | `20127` | owner wrapper |
+| Source dev | `npm run dev` | `20127` | `127.0.0.1` if `HOSTNAME` unset |
 | Source prod | `npm run build && npm start` | `20128` | `127.0.0.1` if `HOSTNAME` unset |
 | Docker | `docker run` or compose | `20128` | `0.0.0.0` in the image |
 
 `custom-server.js` pins `HOSTNAME` to `127.0.0.1` when the variable is empty, so a source production start stays on loopback. The CLI default bind is all interfaces. Docker compose sets `HOSTNAME: "0.0.0.0"`. Do not publish `0.0.0.0` on a public network without the checks in [Security](./security.mdx).
 
-## First start
+## Prepare the first start
 
 <Steps>
 <Step>
 Install or clone. Set `DATA_DIR` to a directory that survives restarts.
 </Step>
 <Step>
-Set `JWT_SECRET`. Fresh installs fail closed without the env var or a leftover `DATA_DIR/jwt-secret` file. Set `INITIAL_PASSWORD` before any remote login.
+Set a unique `JWT_SECRET`, a stable `API_KEY_SECRET`, and a password of your own in a private environment file. Keep the values for later restarts. Fresh installs fail closed without `JWT_SECRET` or a legacy secret file. Set `INITIAL_PASSWORD` before remote login.
 </Step>
 <Step>
 Start the process. Open `http://localhost:20128/dashboard` and sign in.
@@ -71,26 +71,25 @@ npm start
 ```bash
 docker run -d \
   --name durindoor \
-  -p 20128:20128 \
+  --env-file durindoor.env \
+  -p 127.0.0.1:20128:20128 \
   -v "$HOME/.durindoor:/app/data" \
   -e DATA_DIR=/app/data \
-  -e JWT_SECRET="$(openssl rand -hex 32)" \
-  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
   ghcr.io/bloodf/durindoor:latest
 ```
 
-The host path `$HOME/.durindoor` is a Docker bind example. Native default `DATA_DIR` is still `~/.9router`. Pin a version tag in production. Compose, volumes, and TLS live in [Deployment](../deployment).
+Create `durindoor.env` using [Docker setup](../deployment/docker.mdx#prepare-secrets-and-storage) first. The host path `$HOME/.durindoor` is a Docker bind example. Native default `DATA_DIR` is still `~/.9router`. Pin a version tag in production. Compose, volumes, and TLS live in [Deployment](../deployment).
 
 </Tab>
 </Tabs>
 
-## Health and smoke
+## Verify inference
 
 ```bash
 curl http://localhost:20128/api/health
 ```
 
-`GET /api/health` returns `{ "ok": true }`. No API key. A 200 means the HTTP server answered, not that a provider works.
+First check the listener. `GET /api/health` returns `{ "ok": true }`. No API key. A 200 means the HTTP server answered, not that a provider works.
 
 ```bash
 curl http://localhost:20128/v1/models \
@@ -107,6 +106,8 @@ curl http://localhost:20128/v1/chat/completions \
     "max_tokens": 16
   }'
 ```
+
+A successful inference response and a new **Usage** row confirm the model request completed. Replace `MODEL_ID_OR_COMBO` with an ID returned by `/v1/models`, or a combo you created. A 401 indicates rejected gateway credentials; a provider error needs a check of that connection, model entitlement, and quota.
 
 ## Stop and restart
 

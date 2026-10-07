@@ -1,5 +1,15 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Speak, friend, and enter.": "Habla, amigo, y entra.",
+  "You choose the fallback order": "Tú eliges el orden de respaldo",
+  "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "Un combo da a tu cliente un solo nombre de modelo. DurinDoor prueba los miembros configurados en orden y reintenta con cuentas elegibles antes de pasar al siguiente modelo.",
+  "Example configuration": "Configuración de ejemplo",
+  "This order is an example, not a built-in subscription, API, or local-model priority.": "Este orden es un ejemplo. No existe una prioridad fija entre suscripciones, APIs o modelos locales.",
+
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "Tus proveedores de IA. Una puerta de enlace. APIs de OpenAI y Anthropic, suscripciones y modelos locales, conectados a tu manera.",
+  "Close the door": "Cerrar la puerta",
+  "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "Conecta un proveedor, elige un modelo y configura tu cliente para APIs de OpenAI o Anthropic.",
+
   "Skip to content": "Saltar al contenido",
   "Primary": "Principal",
   "DurinDoor home": "Inicio de DurinDoor",
@@ -8,7 +18,6 @@ const messages = {
   "Compatible tools": "Herramientas compatibles",
   "If it speaks OpenAI, it walks through": "Si habla OpenAI, puede entrar",
   "Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.": "Agentes de programación, editores y CLI se conectan con una URL base y una clave DurinDoor.",
-  "Speak, friend, and enter. A fork of 9router, self-hosted and MIT licensed.": "Habla, amigo, y entra. Un fork de 9router, autoalojado y con licencia MIT.",
   "Footer": "Pie de página",
   "DurinDoor contributors.": "Colaboradores de DurinDoor.",
   "Quick start": "Inicio rápido",
@@ -267,13 +276,12 @@ const messages = {
   "MCP, realtime, proxy traces, tunnels": "MCP, realtime, rastros de proxy, túneles",
   "Each card opens the matching docs page.": "Cada tarjeta abre la página de docs que le corresponde.",
   "One DurinDoor endpoint in front of several MCP servers, with gateway keys that map to specific instances.": "Un endpoint DurinDoor delante de varios servidores MCP, con claves de gateway ligadas a instancias concretas.",
-  "GET /v1/realtime upgrades to a text WebSocket in the OpenAI Realtime shape. Audio is not supported.": "GET /v1/realtime sube a un WebSocket de texto en forma OpenAI Realtime. El audio no está soportado.",
+  "Native realtime and audio where supported. Chat models use text events.": "Realtime nativo y audio donde estén disponibles. Los modelos de chat usan eventos de texto.",
   "Optional redacted hop log for proxy calls. Off by default. Stored next to the main database.": "Registro opcional de hops de proxy, con secretos tachados. Apagado por defecto. Vive junto a la base principal.",
   "Reach the gateway from another network over HTTPS. Cloudflare and Tailscale are the built-in tunnel providers.": "Llega al gateway desde otra red por HTTPS. Cloudflare y Tailscale son los túneles incluidos.",
   "Realtime": "Realtime",
   "Proxy timeline": "Proxy timeline",
   "npx durindoor starts a local process. Docker and a global install are under Quick start.": "npx durindoor arranca un proceso local. Docker y la instalación global están en Inicio rápido.",
-  "Speak, friend, and enter. A fork of 9router.": "Habla, amigo, y entra. Un fork de 9router.",
   "Nine kinds of model call, one key.": "Nueve tipos de llamada, una clave."
 };
 

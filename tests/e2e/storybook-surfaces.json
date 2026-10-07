@@ -5973,7 +5973,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -5985,7 +5985,8 @@
           "proposedVisibleTexts": [
             "Gateway key created",
             "Copy this value now."
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6019,9 +6020,10 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:80-104",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "Server preset"
+          "expectedVisibleText": "Server preset",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6054,7 +6056,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -6067,7 +6069,8 @@
             "Manage instance grants",
             "jira-acme",
             "Save grants"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6102,14 +6105,15 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:80-99",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "expectedVisibleText": "New instance",
           "proposedVisibleTexts": [
             "New instance",
             "Slug",
             "URL"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
@@ -6121,13 +6125,14 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:80-104",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "expectedVisibleText": "Server preset",
           "proposedVisibleTexts": [
             "Server preset",
             "https://mcp.notion.com/mcp"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6162,9 +6167,10 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:63-67",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "jira-story"
+          "expectedVisibleText": "jira-story",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--toggle-instance",
@@ -6176,9 +6182,10 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:63-67",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "Enable instance"
+          "expectedVisibleText": "Enable instance",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6214,14 +6221,15 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:58-61",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "expectedVisibleText": "Instances",
           "proposedVisibleTexts": [
             "Instances",
             "granola",
             "6 tools discovered"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--empty-instances",
@@ -6233,9 +6241,10 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:58-61",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "No instances yet"
+          "expectedVisibleText": "No instances yet",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6266,7 +6275,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -6278,7 +6287,8 @@
           "proposedVisibleTexts": [
             "Cursor laptop",
             "Reveal and copy"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6310,7 +6320,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -6322,7 +6332,8 @@
           "proposedVisibleTexts": [
             "Gateway keys",
             "Cursor laptop"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "storyId": "durin-ds-production-pages-mcp-gateway-keys--empty-keys",
@@ -6331,7 +6342,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -6342,7 +6353,8 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:71-73",
           "proposedVisibleTexts": [
             "No gateway keys yet"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6374,7 +6386,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -6392,7 +6404,8 @@
               "role": "dialog",
               "name": "Name gateway key"
             }
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway-keys--new-key-keyboard",
@@ -6405,13 +6418,14 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e"
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f"
           },
           "expectedAbsentRole": {
             "role": "dialog",
             "name": "Name gateway key"
           },
-          "proposedSourceEvidence": "NewKeyKeyboard submits actual native key-name form, asserts created-key dialog visible and original Name gateway key dialog absent. NewKeyFreshMount separately leaves the reset prompt open."
+          "proposedSourceEvidence": "NewKeyKeyboard submits actual native key-name form, asserts created-key dialog visible and original Name gateway key dialog absent. NewKeyFreshMount separately leaves the reset prompt open.",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6445,9 +6459,10 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:100-103",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "Official setup documentation"
+          "expectedVisibleText": "Official setup documentation",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6484,14 +6499,15 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:41-46",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "expectedVisibleText": "connected",
           "proposedVisibleTexts": [
             "connected",
             "enabled",
             "needs login"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--toggle-instance",
@@ -6503,9 +6519,10 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:41-46",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "disabled"
+          "expectedVisibleText": "disabled",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6541,13 +6558,14 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:68-70",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "expectedVisibleText": "6 tools discovered",
           "proposedVisibleTexts": [
             "6 tools discovered",
             "Sample: fetch, search"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
@@ -6560,13 +6578,14 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:68-70",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "expectedVisibleText": "Test failed: 401 requires re-login",
           "proposedVisibleTexts": [
             "Test failed: 401 requires re-login",
             "Login"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -6598,15 +6617,12 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "expectedVisibleText": "MCP Gateway failed to load",
-          "expectedConsoleErrors": [
-            "MCP Gateway page error:"
-          ],
           "id": "durin-ds-production-pages-mcp-gateway--error-boundary",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--error-boundary",
-          "proposedSourceEvidence": "McpGatewayErrorView.jsx:3-5",
+          "proposedSourceEvidence": "Actual ErrorBoundary hook intercepts only the exact fixture MCP Gateway page error call, forwards unrelated errors and restores console.error on disposal. Play asserts real failed-load view and Reset requested after Try again. The intercepted call is not a browser-console event.",
           "proposedVisibleTexts": [
             "MCP Gateway failed to load",
             "Reset requested"
@@ -6619,7 +6635,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -6863,7 +6879,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:71-89",
           "expectedVisibleText": "MCP Gateway",
@@ -6871,7 +6887,8 @@
             "MCP Gateway",
             "6 tools discovered",
             "Sample: fetch, search"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--create-instance",
@@ -6883,14 +6900,15 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:31-40,84-88",
           "expectedVisibleText": "New instance",
           "proposedVisibleTexts": [
             "New instance",
             "story-search"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
@@ -6901,14 +6919,15 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:84-88",
           "expectedVisibleText": "https://mcp.notion.com/mcp",
           "proposedVisibleTexts": [
             "https://mcp.notion.com/mcp",
             "Requires OAuth"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
@@ -6920,14 +6939,15 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:71-82",
           "expectedVisibleText": "Test failed: 401 requires re-login",
           "proposedVisibleTexts": [
             "Test failed: 401 requires re-login",
             "Login"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--empty-instances",
@@ -6938,10 +6958,11 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:84-88",
-          "expectedVisibleText": "No instances yet"
+          "expectedVisibleText": "No instances yet",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--delete-instance",
@@ -6955,9 +6976,10 @@
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "MCP Gateway"
+          "expectedVisibleText": "MCP Gateway",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "id": "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
@@ -6971,9 +6993,10 @@
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "expectedVisibleText": "MCP Gateway"
+          "expectedVisibleText": "MCP Gateway",
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -7078,13 +7101,10 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "6ee50674c7c05bde7e67596ba532105d910da4487906be5a18f9959d7a838cc7"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
           },
-          "proposedSourceEvidence": "error.js:6-9",
+          "proposedSourceEvidence": "Actual ErrorBoundary hook intercepts only the exact fixture MCP Gateway page error call, forwards unrelated errors and restores console.error on disposal. Play asserts real failed-load view and Reset requested after Try again. The intercepted call is not a browser-console event.",
           "expectedVisibleText": "MCP Gateway failed to load",
-          "expectedConsoleErrors": [
-            "MCP Gateway page error:"
-          ],
           "proposedConsoleErrorEvidence": "ErrorBoundary renders McpGatewayError with MCP_GATEWAY_ERROR; its effect emits this boundary diagnostic.",
           "proposedVisibleTexts": [
             "MCP Gateway failed to load",
@@ -7126,7 +7146,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx": "b7113c93ef954ac05c0fd2ed23315d73bdefa63a13d0643f81302621417d34b2",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -7138,7 +7158,8 @@
           "proposedVisibleTexts": [
             "Gateway Keys",
             "Cursor laptop"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "storyId": "durin-ds-production-pages-mcp-gateway-keys--save-grants",
@@ -7148,7 +7169,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx": "b7113c93ef954ac05c0fd2ed23315d73bdefa63a13d0643f81302621417d34b2",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -7160,7 +7181,8 @@
           "proposedVisibleTexts": [
             "Manage instance grants",
             "jira-acme"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "storyId": "durin-ds-production-pages-mcp-gateway-keys--new-key-keyboard",
@@ -7171,7 +7193,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx": "b7113c93ef954ac05c0fd2ed23315d73bdefa63a13d0643f81302621417d34b2",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -7182,7 +7204,8 @@
           "proposedSourceEvidence": "McpGatewayKeysPage.jsx:40-45,73-76",
           "proposedVisibleTexts": [
             "Gateway key created"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "storyId": "durin-ds-production-pages-mcp-gateway-keys--reveal-existing-key",
@@ -7191,7 +7214,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx": "b7113c93ef954ac05c0fd2ed23315d73bdefa63a13d0643f81302621417d34b2",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -7203,7 +7226,8 @@
           "proposedVisibleTexts": [
             "Cursor laptop",
             "Reveal and copy"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "storyId": "durin-ds-production-pages-mcp-gateway-keys--empty-keys",
@@ -7212,7 +7236,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx": "b7113c93ef954ac05c0fd2ed23315d73bdefa63a13d0643f81302621417d34b2",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -7223,7 +7247,8 @@
           "proposedSourceEvidence": "McpGatewayKeysPage.jsx:70-76",
           "proposedVisibleTexts": [
             "No gateway keys yet"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "storyId": "durin-ds-production-pages-mcp-gateway-keys--delete-key",
@@ -7234,7 +7259,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx": "b7113c93ef954ac05c0fd2ed23315d73bdefa63a13d0643f81302621417d34b2",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -7245,7 +7270,8 @@
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "proposedVisibleTexts": [
             "Gateway Keys"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         },
         {
           "storyId": "durin-ds-production-pages-mcp-gateway-keys--mobile-new-key-keyboard",
@@ -7257,7 +7283,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx": "b7113c93ef954ac05c0fd2ed23315d73bdefa63a13d0643f81302621417d34b2",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -7268,7 +7294,8 @@
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "proposedVisibleTexts": [
             "Gateway key created"
-          ]
+          ],
+          "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
       ],
       "approvedException": null,
@@ -7299,7 +7326,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/keys/error.js": "a2666248b0c5b529e0349a005f67743da80fb1cc43627dd6a53a2bfd4330aa94",
-            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "576ec42073f1ea38826c92fbd24544400f321cc846a827e21109d0a4368e345e",
+            "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx": "365d86d4b19a062c3ac66e2b9ffd2a07dd800898439b494a1ebde9d6314b697f",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "79c5f29337f070e97b9460bd4469113108671b703917d6fd844dfbbba02c4dac",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -32521,7 +32548,7 @@
     },
     {
       "storyId": "production-shared-provider-setupdiagnosticcard--without-diagnostics-renders-nothing",
-      "sourcePath": "src/shared/components/SetupDiagnosticCard.stories.jsx",
+      "sourcePath": "./src/shared/components/SetupDiagnosticCard.stories.jsx",
       "sourceSha256": "9c83d2246a9a2af19444e7d36d390dfc3815b6eb6b45d1a39b46f39f24d231fb",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32529,7 +32556,7 @@
     },
     {
       "storyId": "production-shared-surfaces-capacitybadges--empty-or-missing-caps",
-      "sourcePath": "src/shared/components/CapacityBadges.stories.jsx",
+      "sourcePath": "./src/shared/components/CapacityBadges.stories.jsx",
       "sourceSha256": "d76eee988d3b05e67dacf6ae3a87fb6b3ed5ab3c0ac17745ebe11249b3a0cd65",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32537,7 +32564,7 @@
     },
     {
       "storyId": "production-shared-kiro-cursorauthmodal--manual-import-success",
-      "sourcePath": "src/shared/components/CursorAuthModal.stories.jsx",
+      "sourcePath": "./src/shared/components/CursorAuthModal.stories.jsx",
       "sourceSha256": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32545,7 +32572,7 @@
     },
     {
       "storyId": "production-shared-oauth-gitlabauthmodal--pat-submit",
-      "sourcePath": "src/shared/components/GitLabAuthModal.stories.jsx",
+      "sourcePath": "./src/shared/components/GitLabAuthModal.stories.jsx",
       "sourceSha256": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32553,7 +32580,7 @@
     },
     {
       "storyId": "production-shell-header--mobile-menu",
-      "sourcePath": "src/shared/components/Header.stories.jsx",
+      "sourcePath": "./src/shared/components/Header.stories.jsx",
       "sourceSha256": "200607b73ee3478632345102fe18e603cb5e217954eec1c74b3bafef0bb9e617",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32561,7 +32588,7 @@
     },
     {
       "storyId": "production-shared-kiro-kiroauthmodal--idc-continue-success",
-      "sourcePath": "src/shared/components/KiroAuthModal.stories.jsx",
+      "sourcePath": "./src/shared/components/KiroAuthModal.stories.jsx",
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32569,7 +32596,7 @@
     },
     {
       "storyId": "production-shared-kiro-kiroauthmodal--api-key-submit-success",
-      "sourcePath": "src/shared/components/KiroAuthModal.stories.jsx",
+      "sourcePath": "./src/shared/components/KiroAuthModal.stories.jsx",
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32577,7 +32604,7 @@
     },
     {
       "storyId": "production-shared-kiro-kiroauthmodal--import-token-submit-success",
-      "sourcePath": "src/shared/components/KiroAuthModal.stories.jsx",
+      "sourcePath": "./src/shared/components/KiroAuthModal.stories.jsx",
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32585,7 +32612,7 @@
     },
     {
       "storyId": "production-shared-kiro-kiroauthmodal--cli-proxy-import-success",
-      "sourcePath": "src/shared/components/KiroAuthModal.stories.jsx",
+      "sourcePath": "./src/shared/components/KiroAuthModal.stories.jsx",
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32593,7 +32620,7 @@
     },
     {
       "storyId": "production-shared-kiro-kirooauthwrapper--import-success-short-circuits",
-      "sourcePath": "src/shared/components/KiroOAuthWrapper.stories.jsx",
+      "sourcePath": "./src/shared/components/KiroOAuthWrapper.stories.jsx",
       "sourceSha256": "ece080d900dfa30dfdb55bd278a03e1111fcc8df0fd04ed0c643ad3f2843257c",
       "reviewStatus": "pending",
       "reviewedBy": null,
@@ -32608,7 +32635,7 @@
     "parserVersion": "7.29.8",
     "runtimeApproval": null,
     "independentApproval": null,
-    "storySourceCommit": "bce24a58d2fda5b5d21f679d3b07706cfc0b4418",
+    "storySourceCommit": "f51be6c223428744077ae298c4a61e0bc18ec92e",
     "csfStoryCount": 867,
     "sourceReviewRequired": [
       {
@@ -32637,12 +32664,12 @@
         "reason": "Actual parent play now opens raw JSON detail, expands detail/tokens and asserts prompt_tokens: 200. No runtime or independent approval is claimed."
       }
     ],
-    "previousStorySourceCommit": "dbdac9f544ad9430fa51c6418e582cc795a76d3d",
+    "previousStorySourceCommit": "bce24a58d2fda5b5d21f679d3b07706cfc0b4418",
     "storySourceStatus": "corrected-source-published-runtime-and-independent-approval-pending",
-    "sourceCorrectionCommit": "bce24a58d2fda5b5d21f679d3b07706cfc0b4418",
+    "sourceCorrectionCommit": "f51be6c223428744077ae298c4a61e0bc18ec92e",
     "sourceCorrectionStatus": "JSON_SOURCE_CORRECTIONS_PENDING_INDEPENDENT_AND_RUNTIME_APPROVAL",
-    "sourceStoryFilesChanged": 7,
-    "newStoryIdCount": 2,
+    "sourceStoryFilesChanged": 2,
+    "newStoryIdCount": 0,
     "round2SourceCorrections": {
       "baseCommit": "f9e2440b9f6c84c1c620c86612cc614c18eaa488",
       "storyCommit": "dbdac9f544ad9430fa51c6418e582cc795a76d3d",
@@ -32672,6 +32699,19 @@
         "reset key-name prompt and created-key transition",
         "RequestLogger one real initial failure, later pending polls and disposal cleanup without suppression or waiver"
       ]
-    }
+    },
+    "fixtureLifecycleCorrection": {
+      "baseCommit": "bce24a58d2fda5b5d21f679d3b07706cfc0b4418",
+      "storyCommit": "f51be6c223428744077ae298c4a61e0bc18ec92e",
+      "storyFiles": [
+        "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+        "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx"
+      ],
+      "sourceOnly": true,
+      "sourceEvidence": "Each defaultFixture snapshots its complete initial graph and exposes reset(). Meta beforeEach invokes the current story fixture reset before render and returns it as disposal cleanup. Instances, keys, grants Map and nested arrays are freshly cloned on both boundaries; route closures retain no mutations between visits. Production components and play transitions/assertions unchanged.",
+      "runtimeApproval": null,
+      "independentApproval": null
+    },
+    "referenceImportPaths": "Exact sourcePath values taken from the parent built index importPath; hashes computed from its actual imported source files. Existing story IDs and pending approvals retained. Build/index observation is not runtime or independent approval."
   }
 }

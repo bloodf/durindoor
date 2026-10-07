@@ -5,7 +5,7 @@ import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 import FlowDiagram from "./FlowDiagram.jsx";
 import ModelResolver from "./ModelResolver.jsx";
 import FallbackTiers from "./FallbackTiers.jsx";
-import ThreeStage from "../threeui/ThreeStage.jsx";
+
 import { DocsCta, Reveal, SectionHeader } from "../ui/primitives.jsx";
 
 const STEPS = [
@@ -19,8 +19,7 @@ export default function FlowSection() {
   const { t } = useHomeLocale();
   return (
     <section id="how" className="section section-flow" aria-labelledby="how-title">
-      {/* ThreeUI StreamConvergenceBackground: many streams converging on one gateway. Hue-rotated from violet to emerald. */}
-      <ThreeStage effect="stream" className="flow-streams" hue={-150} saturation={0.9} brightness={0.75} speed={0.6} />
+
       <div className="container">
         <SectionHeader
           eyebrow={t("How it works")}

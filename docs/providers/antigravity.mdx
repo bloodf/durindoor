@@ -1,6 +1,6 @@
 ---
 title: Antigravity
-description: Connect a Google account to Antigravity, what the OAuth client variables do, the agy id, project onboarding, quota, and common errors.
+description: Configure Google OAuth, connect Antigravity, verify onboarding, and handle quota or capacity errors.
 ---
 
 Antigravity (`antigravity`, alias `ag`) sends requests to Google's Cloud Code backend the way the Antigravity IDE does. It signs in with a Google account through OAuth and serves Gemini, Claude, and GPT models that Google exposes to that account, plus one image model.
@@ -9,14 +9,14 @@ The provider page shows a risk notice: this is a subscription session that was n
 
 ## Before you connect
 
-The Google OAuth client is not bundled. `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` default to empty strings in `open-sse/providers/shared.js`. Set both in the environment DurinDoor starts with, then restart. With empty values Google rejects the authorize request.
+The Google OAuth client is not bundled. `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` are unset by default. Set both in the environment DurinDoor starts with, then restart. With empty values Google rejects the authorize request.
 
 ```bash
 export ANTIGRAVITY_OAUTH_CLIENT_ID="CHANGE_ME"
 export ANTIGRAVITY_OAUTH_CLIENT_SECRET="CHANGE_ME"
 ```
 
-The same variables also feed token refresh and the quota fetcher. Changing them later invalidates refresh for connections made with the old client. See [Environment variables](../reference/environment.mdx).
+Keep those values available for token refresh and quota checks. Changing them later invalidates refresh for connections made with the old client. See [Environment variables](../reference/environment.mdx).
 
 ## Connect
 
@@ -32,7 +32,7 @@ Google redirects to `http://localhost:<dashboard port>/callback`. If you opened 
 </Step>
 </Steps>
 
-After the token exchange DurinDoor reads your profile, then asks Cloud Code which project and tier belong to the account (`loadCodeAssist`). If the account has no project yet, DurinDoor starts `onboardUser` in the background and retries up to 10 times, five seconds apart. The connection is saved before onboarding finishes. If a request arrives while the project id is still missing, the chat handler looks it up again.
+The connection can be saved before Google project onboarding finishes. If the project is missing, DurinDoor retries onboarding in the background and looks it up again before routing. Wait for onboarding and verify a request before treating the connection as ready.
 
 ## The agy id
 
@@ -40,7 +40,7 @@ After the token exchange DurinDoor reads your profile, then asks Cloud Code whic
 
 ## Models
 
-Send `ag/<model>`, for example `ag/gemini-3.8-flash`. The registry lists 21 ids, including thinking-level variants and `gemini-3.1-flash-image`. Image models never stream. `GET /v1/models` shows what your connections actually expose.
+Send `ag/<model>`, for example `ag/gemini-3.8-flash`. Available models include thinking variants and image models; use discovery rather than a fixed count. Image models never stream. `GET /v1/models` shows what your connections actually expose.
 
 ## Quota
 
@@ -60,3 +60,5 @@ The project-403 check currently matches `antigravity` and `gemini-cli` only, so 
 ## MITM mode
 
 A separate feature lets the Antigravity IDE itself route through DurinDoor. **CLI Tools** links to **MITM Proxy** (`/dashboard/mitm`), which installs a local root certificate, redirects `cloudcode-pa.googleapis.com` and `daily-cloudcode-pa.googleapis.com` to DurinDoor, and maps the IDE's model names to any DurinDoor model. It needs sudo for the certificate and DNS steps. It does not need an Antigravity connection. Recovery steps for a stuck redirect are on [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors).
+
+Confirm a short request on **Usage** after connecting. For an empty-client OAuth error, set both client variables and restart. For project setup errors, finish onboarding or enable the required API. Account suspension cannot be repaired by repeating OAuth.

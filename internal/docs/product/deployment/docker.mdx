@@ -1,0 +1,155 @@
+---
+title: Docker
+description: Publish and run ghcr.io/bloodf/durindoor with Compose, volumes, env, and upgrades.
+---
+
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/deployment/docker.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+Container mounts must survive removal. custom-server.js normalizes exact empty environment values before importing the app. A nonempty DURINDOOR_PG_URL or explicit postgres engine selects PostgreSQL; the shipped empty Compose default permits SQLite/cutover. getAdapter itself uses a presence check, relevant to tests that bypass the entrypoint. Image release tags omit v and can be republished; a verified digest pins content. Entrypoint owns data chown and optional Xvfb.
+
+### Execution ownership and evidence
+
+- [Dockerfile](../../../../Dockerfile)
+- [docker-compose.yml](../../../../docker-compose.yml)
+- [src/lib/db/driver.js](../../../../src/lib/db/driver.js)
+- [.github/workflows/docker-publish.yml](../../../../.github/workflows/docker-publish.yml)
+
+### Verification entrypoints
+
+- [tests/unit/db-driver-chain.test.js](../../../../tests/unit/db-driver-chain.test.js)
+- [tests/unit/auth-jwt-secret-placeholder.test.js](../../../../tests/unit/auth-jwt-secret-placeholder.test.js)
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
+Image: `ghcr.io/bloodf/durindoor`. Builds are linux/amd64 and linux/arm64. Node 20.20.2 is already in the image. Persist `DATA_DIR`.
+
+Tags come from `.github/workflows/docker-publish.yml`. A Docker-safe semver git tag `vX.Y.Z` (or `vX.Y.Z-rc.1`) builds `linux/amd64` and `linux/arm64` on native runners, health-checks each platform image, verifies the resulting manifest and `/api/health`, then publishes `ghcr.io/bloodf/durindoor:X.Y.Z`. The `v` prefix is only for the git tag; image tags omit it. A tag push on the default branch promotes `latest`; a prerelease tag publishes only its numbered image unless `promote_latest` is set on a manual run. The git tag must match both `package.json` and `cli/package.json` versions exactly, or the workflow fails before any build starts. Pin a version tag in production; `latest` moves, and numbered tags can be replaced by a manual republish.
+
+To republish an existing tag, run the workflow manually (`workflow_dispatch`) with `release_tag` set to the exact tag, e.g. `v4.7.0`. `promote_latest` defaults to `false` so a manual run only touches the numbered tag unless you opt in. For an immutable reference, pin the image digest instead of a tag:
+
+```bash
+docker pull ghcr.io/bloodf/durindoor@sha256:<verified-digest>
+```
+
+<Callout type="warn">
+Without a bind mount or named volume, SQLite lives in the container writable layer and disappears when the container is removed. Mount something at `/app/data` and set `DATA_DIR=/app/data`.
+</Callout>
+
+## docker run
+
+Localhost-only publish, host bind at `$HOME/.durindoor`:
+
+```bash
+docker run -d \
+  --name durindoor \
+  -p 127.0.0.1:20128:20128 \
+  -v "$HOME/.durindoor:/app/data" \
+  -e DATA_DIR=/app/data \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
+  ghcr.io/bloodf/durindoor:latest
+```
+
+`$HOME/.durindoor` on the host is not the native default (`~/.9router`). Inside the container, `DATA_DIR` is `/app/data`. Open `http://localhost:20128/dashboard`. Sign in, change the password, add a provider, mint a DurinDoor API key.
+
+`JWT_SECRET` is required on a fresh data dir. An older `DATA_DIR/jwt-secret` file is reused with a warning. DurinDoor does not write a new one.
+
+To listen on all host interfaces, change the publish to `-p 20128:20128` and put a reverse proxy in front. See [VPS and cloud](cloud.mdx) and [Security](../operations/security.mdx).
+
+## Compose
+
+Copy `docker-compose.yml` from the repo, or:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bloodf/durindoor/main/docker-compose.yml -o docker-compose.yml
+```
+
+The `durindoor` service in that file:
+
+| Key | Value |
+| --- | --- |
+| `image` | `ghcr.io/bloodf/durindoor:latest` |
+| `container_name` | `durindoor` |
+| `restart` | `always` |
+| `ports` | `20128:20128` |
+| volume | named volume `durindoor-data` at `/app/data` |
+| `env_file` | `.env` |
+| `DATA_DIR` | `/app/data` |
+| `PORT` | `20128` |
+| `HOSTNAME` | `0.0.0.0` |
+| `NODE_ENV` | `production` |
+
+`HOSTNAME=0.0.0.0` is required inside the container so the process accepts traffic from Docker's port publish. The image Dockerfile sets the same `PORT`, `HOSTNAME`, and `DATA_DIR`.
+
+Put secrets in `.env`. Compose also forwards optional `DURINDOOR_PG_URL`, `DURINDOOR_PG_SSLMODE` (default `prefer`), and `DURINDOOR_PG_PREFERRED_VERSION` (default `18`). Postgres is opt-in: `docker compose --profile postgres18 up` (or `postgres17` / `postgres16`). Cutover is Settings, then Database. Operator runbook: [Postgres](../operations/postgres.mdx).
+
+```bash
+docker compose up -d
+```
+
+`.dockerignore` keeps `.env`, `node_modules`, `.next`, and the `website/` docs site out of the build context. Inject env at run time with `--env-file` or `env_file`.
+
+## Volumes and `DATA_DIR`
+
+| Place | Path |
+| --- | --- |
+| Host bind (run example) | `$HOME/.durindoor` |
+| Named volume | `durindoor-data` (volume name `durindoor-data`) |
+| Container data root | `/app/data` |
+| SQLite | `/app/data/db/data.sqlite` |
+
+Bind:
+
+```bash
+-v "$HOME/.durindoor:/app/data"
+```
+
+Named volume:
+
+```bash
+-v durindoor-data:/app/data
+```
+
+The image entrypoint `chown`s `/app/data` to `node`, starts Xvfb on `:99` when Chromium's Xvfb is installed and `DISPLAY` is unset (`DURINDOOR_XVFB=0` skips it), then `exec`s `node custom-server.js`. `EXPOSE 20128`. Backup and restore for both mount styles: [Data management](../operations/data-management.mdx).
+
+## Image layout
+
+The runtime stage copies `public/`, `.next/static/`, the Next standalone tree, `custom-server.js`, `open-sse/`, and the MITM sources the tracer drops. It also copies `playwright`, `playwright-core` and `tls-client-node` for [ChatGPT Web](../../../../docs/providers/chatgpt-web.mdx), and installs Alpine's `chromium`, `xvfb` and `gcompat`. Build with `--build-arg CHATGPT_WEB_BROWSER=false` to leave Chromium and Xvfb out. If you fork the Dockerfile, keep those `COPY` lines or the dashboard 404s hashed chunks. Confirm a source build with `npm run verify:static` before you change the image; see [Reverse proxy and static assets](reverse-proxy-and-static-assets.mdx).
+
+The Dockerfile uses the official Alpine mirror (`dl-cdn.alpinelinux.org`) by default in both the builder and runner stages. Override it with `--build-arg ALPINE_MIRROR=<host>` for a local build on a network that cannot reach it; the CI workflow reads the same override from the optional `ALPINE_MIRROR` repository variable. `--build-arg APP_VERSION=<version>` sets the `org.opencontainers.image.version` label; the release workflow passes the validated tag version automatically.
+
+## Health and logs
+
+```bash
+curl http://localhost:20128/api/health
+docker logs -f durindoor
+```
+
+`{"ok":true}` means the HTTP listener is up. Compose does not ship a `healthcheck` on the `durindoor` service.
+
+## Upgrade
+
+1. Stop and back up `DATA_DIR` ([Data management](../operations/data-management.mdx)).
+2. Record the current tag: `docker inspect durindoor --format '{{.Config.Image}}'`.
+3. Change the image tag in Compose, or pull a pinned tag.
+4. `docker compose pull` then `docker compose up -d`.
+5. `curl http://localhost:20128/api/health`.
+
+One-container replace:
+
+```bash
+docker pull ghcr.io/bloodf/durindoor:latest
+docker stop durindoor && docker rm durindoor
+# re-run the docker run command with the same volume and env
+```
+
+If a schema migration already ran, restore the pre-upgrade backup before starting an older image. Release notes: [Upgrading](../operations/upgrading.mdx).
+
+Keep `JWT_SECRET` and `API_KEY_SECRET` stable across recreate. A new `API_KEY_SECRET` invalidates minted key checksums. [Environment variables](../../../../docs/reference/environment.mdx) is the full list.

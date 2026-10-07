@@ -8,7 +8,8 @@ This file is the contract for people changing DurinDoor, a fork of `decolua/9rou
 - `open-sse/`: provider routing, translation, and executors.
 - `cli/`: npm launcher published as `durindoor`.
 - `website/`: public site plus a mocked dashboard demo.
-- `docs/`: user and operator Markdown.
+- `docs/`: published user and operator Markdown.
+- `internal/docs/`: repository-only AI and maintainer references. Start with `internal/docs/README.md`; brand and porting guides are not published.
 - `tests/`: Vitest suite. It is its own package, not wired to root `npm test`.
 - `scripts/`: generators and CI checks, including `gen:registry-index` and `gen:agent-index`.
 

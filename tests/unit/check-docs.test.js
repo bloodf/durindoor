@@ -8,7 +8,7 @@ const roots = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
 const assets =
-  '<img src="durindoor-banner.png"> <img src="durindoor-wordmark-theme-aware.svg">';
+  '<img src="assets/brand/durindoor-gateway.webp"> <img src="assets/brand/durindoor-logo-light.svg">';
 
 const COMMUNITY_FIXTURES = {
   "CODE_OF_CONDUCT.md": "# Code of Conduct\n",
@@ -32,8 +32,9 @@ async function fixture(files) {
     await writeFile(target, text);
   }));
   // The two approved assets must exist as file targets so image tags resolve.
-  await writeFile(path.join(root, "durindoor-banner.png"), "");
-  await writeFile(path.join(root, "durindoor-wordmark-theme-aware.svg"), "");
+  await mkdir(path.join(root, "assets/brand"), { recursive: true });
+  await writeFile(path.join(root, "assets/brand/durindoor-gateway.webp"), "");
+  await writeFile(path.join(root, "assets/brand/durindoor-logo-light.svg"), "");
   return root;
 }
 
@@ -68,10 +69,10 @@ describe("documentation integrity", () => {
 
   it("requires both approved assets in README.md", async () => {
     const issues = await check({ "README.md": "# DurinDoor" });
-    expect(issues).toContain("README.md: missing durindoor-banner.png");
-    expect(issues).toContain("README.md: missing durindoor-wordmark-theme-aware.svg");
-    expect(issues).not.toContain("docs/README.md: missing durindoor-banner.png");
-    expect(issues).not.toContain("docs/index.mdx: missing durindoor-banner.png");
+    expect(issues).toContain("README.md: missing assets/brand/durindoor-gateway.webp");
+    expect(issues).toContain("README.md: missing assets/brand/durindoor-logo-light.svg");
+    expect(issues).not.toContain("docs/README.md: missing assets/brand/durindoor-gateway.webp");
+    expect(issues).not.toContain("docs/index.mdx: missing assets/brand/durindoor-gateway.webp");
   });
 
   it("reports forbidden URLs even inside code blocks", async () => {
@@ -142,16 +143,45 @@ describe("documentation integrity", () => {
       "cli/README.md": "# CLI",
       "AGENTS.md": "internal",
       "CLAUDE.md": "internal",
+      "PRODUCT.md": "internal product scope",
+      "DESIGN.md": "internal visual rules",
     });
     expect(issues.filter((i) => i.includes("not reachable"))).toEqual([]);
+  });
+
+  it("rejects placing maintenance guides back in the published tree", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n`,
+      "docs/contributing/brand-guide.mdx": "---\ntitle: Brand guide\ndescription: Internal identity rules\n---\n",
+    });
+    expect(issues).toContain("docs/contributing/brand-guide.mdx: contributor and AI references belong in internal/docs/");
+  });
+
+  it("checks internal links without requiring publication", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n`,
+      "internal/docs/brand-guide.mdx": "---\ntitle: Brand guide\n---\n[Missing](./missing.mdx)\n",
+    });
+    expect(issues).toContain("internal/docs/brand-guide.mdx: missing target internal/docs/missing.mdx");
+    expect(issues.filter((issue) => issue.includes("not reachable"))).toEqual([]);
+  });
+
+  it("rejects public links to repository-only references", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n`,
+      "docs/meta.json": JSON.stringify({ pages: ["index"] }),
+      "docs/index.mdx": "---\ntitle: Docs\ndescription: User docs\n---\n[Internal](../internal/docs/guide.md)\n",
+      "internal/docs/guide.md": "# Internal guide\n",
+    });
+    expect(issues).toContain("docs/index.mdx: public documentation links to internal reference internal/docs/guide.md");
   });
 
   it("flags duplicate required asset only once per file", async () => {
     const issues = await check({
       "README.md": assets,
     });
-    const bannerIssues = issues.filter((i) => i.includes("missing durindoor-banner.png"));
-    const wordmarkIssues = issues.filter((i) => i.includes("missing durindoor-wordmark-theme-aware.svg"));
+    const bannerIssues = issues.filter((i) => i.includes("missing assets/brand/durindoor-gateway.webp"));
+    const wordmarkIssues = issues.filter((i) => i.includes("missing assets/brand/durindoor-logo-light.svg"));
     expect(bannerIssues).toHaveLength(0);
     expect(wordmarkIssues).toHaveLength(0);
   });

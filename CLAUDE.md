@@ -1,8 +1,8 @@
 # DurinDoor
 
-DurinDoor is a self-hosted AI gateway that puts many LLM providers behind one OpenAI-compatible API. It is a fork of 9router. The look is LOTR-inspired.
+DurinDoor is a self-hosted AI gateway for OpenAI Chat Completions, Responses, and Anthropic Messages, plus provider-dependent media and search routes. It is a fork of 9router. The public identity uses a fantasy gate, forest stone, silver, and emerald.
 
-This file is a project overview. The contributor contract is `AGENTS.md` in this directory. Read that first.
+This is an AI project overview. Read [AGENTS.md](AGENTS.md) for the contributor contract, then [internal/docs/README.md](internal/docs/README.md) for detailed implementation references and [the AI workflow](internal/docs/agent-workflow.md) for feature ports. Public user and operator instructions live under `docs/`. Internal references are not published by the website.
 
 ## Quick reference
 
@@ -97,6 +97,6 @@ Replace `<pr-title>` with the actual PR title; rewrite the title if it fails.
 
 ## Branch model
 
-`main` is the default branch (post v2.2.0) and the source for both production releases and nightly pre-releases. Release flow: feature PR to `main`, then tag (`vX.Y.Z`). `release.yml` publishes to npm. `docker-publish.yml` builds multi-arch images. `nightly.yml` runs daily at 02:00 UTC and publishes a `nightly-YYYY-MM-DD` GitHub pre-release.
+`main` is the default branch (post v2.2.0) and the source for both production releases and nightly pre-releases. Release flow: feature PR to `main`, then tag (`vX.Y.Z`). `release.yml` publishes to npm. `docker-publish.yml` builds multi-arch images. `nightly.yml` declares a daily 02:00 UTC schedule and a `nightly-YYYY-MM-DD` GitHub pre-release. Its header notes that repository settings disable the schedule during development recovery. Verify the enabled state before assuming nightly runs are active.
 
 Default PR target is `main`. PR checklist, commit rules, and test workflow are in `AGENTS.md`.

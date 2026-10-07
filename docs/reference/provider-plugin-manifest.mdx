@@ -3,11 +3,11 @@ title: Provider plugin manifest
 description: JSON provider metadata at GET /v1/provider-plugin-manifest, sidecar eligibility, and the CLIProxyAPI header.
 ---
 
-`GET /api/v1/provider-plugin-manifest` returns a JSON document built from `open-sse/providers/registry`. Next.js rewrites `/v1/:path*` to `/api/v1/:path*`, so `GET /v1/provider-plugin-manifest` is the same handler. Sidecars such as CLIProxyAPI read this instead of importing DurinDoor executor code.
+`GET /v1/provider-plugin-manifest` returns provider metadata for sidecars such as CLIProxyAPI. `/api/v1/provider-plugin-manifest` is the same endpoint. No authentication is required.
 
 `OPTIONS` is allowed. The JSON response is `Cache-Control: public, max-age=60` with `Access-Control-Allow-Origin: *`.
 
-The body is produced by `generateProviderPluginManifest()`. It is JSON-serializable. Registry functions, OAuth client secrets, and session-pool objects are not copied onto the wire.
+The JSON excludes registry functions, OAuth client secrets, and session-pool objects. Static upstream headers are included.
 
 ```text
 GET http://localhost:20128/v1/provider-plugin-manifest
@@ -47,8 +47,6 @@ Each provider entry:
 
 Each model row may include `id`, `name`, `contextLength`, `maxOutputTokens`, `toolCalling`, `supportsReasoning`, `supportsVision`, `unsupportedParams`, `targetFormat`, and `kind`. Undefined fields are omitted.
 
-Lookup helpers: `getProviderPluginManifestEntry(provider)` matches `id` then `alias`. `getProviderPluginManifestEntryForModel(model)` prefers an exact model id owner, then the slash prefix (`openai/gpt-4` tries provider `openai`).
-
 ## Auth object
 
 `auth.type` is not the registry `category`. It is derived in this order:
@@ -64,7 +62,7 @@ Lookup helpers: `getProviderPluginManifestEntry(provider)` matches `id` then `al
 
 ## Sidecar eligibility
 
-`sidecar.eligible` is true only when `reasons` is empty. Treat it as a candidate signal. DurinDoor still executes providers the sidecar refuses.
+`sidecar.eligible` is true only when `reasons` is empty. Treat it as a candidate signal. An ineligible provider remains available through DurinDoor's own executor.
 
 A reason is recorded when any of these hold:
 
@@ -91,7 +89,7 @@ The loader does not emit OAuth client secrets, `urlBuilder` functions, or `poolC
 
 When DurinDoor dispatches through the `cliproxyapi` executor, the outbound request includes `X-OmniRoute-Provider-Manifest-Url`. That value is resolved from trusted server configuration only. Inbound `Origin` is ignored.
 
-Resolution order in `resolveProviderPluginManifestUrl()`:
+The advertised URL uses this precedence:
 
 1. `OMNIROUTE_PROVIDER_MANIFEST_URL` if non-empty
 2. `BASE_URL` or `NEXT_PUBLIC_BASE_URL` when the value looks like `http://` or `https://`, with `/api/v1/provider-plugin-manifest` appended

@@ -1,0 +1,59 @@
+---
+title: Features
+description: Routing, combos, media routes, quota tracking, MCP gateway and control, realtime, compression, and Headroom.
+icon: Sparkles
+---
+
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/index.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+Public index and meta pages must retain every published route. Internal snapshots are repository-only and are not linked from public pages. Navigation descriptions must reflect current native protocol and operation boundaries.
+
+### Unreleased campaign workflows
+
+The [public feature index](../../../../docs/features/index.mdx) keeps the routing, media, quota, MCP, realtime, compression, and Headroom routes while adding entrypoints for the campaign workflows:
+
+- Usage is the monitoring home; the former Monitoring route redirects there. API key limits belong on API Keys and connection usage belongs on Combos.
+- Proxy Timeline retains PostgreSQL or SQLite-sidecar capture and adds provider/connection swimlanes, live time windows, the Table alternative, and per-trace waterfalls with grouped SSE chunks.
+- Console Log provides level/tag filters, search highlights, pause/buffered-line handling, wrapping, copy/download, and windowed rows over a 2000-line ring.
+- Empty lifetime key-limit drafts are unlimited; explicit zero limits still apply. Omitted Claude model-scoped weekly windows remain unknown and non-hideable; manual fresh refresh still respects rate-limit cooldowns.
+- Combo create/edit spacing uses the shared modal footer and aligned capability/model controls. Connection usage remains an attribution view, not evidence that an account can serve another request.
+- Database managed-file startup selection requires restart and is separate from live migration/cutover. Web-cookie login uses a dedicated distinct-hostname origin, with popup/manual fallback and unchanged MiMo behavior.
+- Skills offer deduplicated reachable Endpoint sources. Upstream port/defer details are maintained in [upstream sync](../../upstream-sync.mdx).
+
+These are Unreleased campaign documentation commitments, not a version bump, live deployment proof, or runtime/catalog approval. Release Prepare owns version advancement from 4.10.1.
+
+
+### Execution ownership and evidence
+
+- [docs/features/meta.json](../../../../docs/features/meta.json)
+- [package.json](../../../../package.json)
+
+### Verification entrypoints
+
+This index has no runtime test of its own. Validate navigation and the docs checker.
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
+These pages cover the gateway behaviours that sit on top of a working provider connection: how a model string is resolved, how fallback chains run, how quota observations skip a spent account, and the optional sidecars (timeline, MCP, realtime, token savers, Headroom). Dashboard locations below match the sidebar in [Dashboard tour](../../../../docs/getting-started/dashboard-tour.mdx).
+
+<Cards>
+  <Card title="Smart routing" href="/docs/features/smart-routing" description="Model strings, credentials, translation, and account fallback." />
+  <Card title="Combos" href="/docs/features/combos" description="Named fallback chains, strategies, ceilings, and allow-lists." />
+  <Card title="Media routes" href="/docs/features/media-routes" description="Default model and fallbacks for each media endpoint, so requests can leave out the model." />
+  <Card title="Model auto-update" href="/docs/features/model-auto-sync" description="Fetch provider model lists from their APIs and publish them automatically." />
+  <Card title="Quota tracking" href="/docs/features/quota-tracking" description="Provider snapshots, preflight skip, ranking, and auto-ping." />
+  <Card title="Proxy timeline" href="/docs/features/proxy-timeline" description="Optional redacted hop log in PostgreSQL or a SQLite sidecar." />
+  <Card title="MCP gateway" href="/docs/features/mcp-gateway" description="One JSON-RPC endpoint in front of registered MCP servers." />
+  <Card title="MCP control" href="/docs/features/mcp-control" description="JSON-RPC management tools for combos, connections, quota, and settings." />
+  <Card title="MITM proxy" href="/docs/features/mitm" description="Route Antigravity, Kiro, and Copilot IDE traffic through DurinDoor with a local certificate." />
+  <Card title="Realtime" href="/docs/features/realtime" description="Text WebSocket in the OpenAI Realtime shape. Audio is refused." />
+  <Card title="Compression" href="/docs/features/compression" description="RTK, the compression seam, Test Savers, and the bypass header." />
+  <Card title="Headroom" href="/docs/features/headroom" description="Optional Python compression proxy and the managed venv." />
+</Cards>

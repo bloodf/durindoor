@@ -1,72 +1,63 @@
 ---
 title: Smart routing
-description: How a client model string becomes an upstream call, including credentials and fallback.
+description: Choose a model, set account selection, and verify fallback without losing conversation affinity.
 ---
 
-Every chat request goes through the same path: `POST /v1/chat/completions` (or `/v1/messages`) calls `src/sse/handlers/chat.js`, which resolves the model and credentials, then `open-sse/handlers/chatCore.js` translates, compresses if enabled, and dispatches an executor. Other `/v1` families reuse provider connections but have their own handlers.
+Choose a model and account strategy for chat traffic, then check the selected account in **Dashboard → Usage**. Add and test an active provider connection before changing routing.
 
-There is no dedicated Routing page. Watch the outcome on **Dashboard → Usage** (`/dashboard/usage`). Round-robin and sticky limits live on **Dashboard → Settings** (`/dashboard/profile`) and, per provider, on **Dashboard → Providers → (provider)**. Combos have their own page at [Combos](./combos.mdx).
+## Choose a model ID
 
-## Model strings
+Read `GET /v1/models` or use the dashboard model picker. Prefer the exact listed ID:
 
-The `model` field is parsed in `open-sse/services/model.js`. A slash splits `prefix/rest`. The prefix is a registry id or alias; the rest is the upstream model id (extra slashes stay in the model id).
-
-| Client `model` | What happens |
+| Model form | Selection |
 | --- | --- |
-| `openai/gpt-4.1` | Provider plus upstream model. |
-| `cc/claude-sonnet` | Provider alias from the registry, then the model. |
-| `my-node/local-model` | Compatible-node prefix plus that node's model. |
-| `daily-coder` | Custom alias mapped to `provider/model`. |
-| `coding-default` | Combo name. No slash. See [Combos](./combos.mdx). |
+| `openai/gpt-4.1` | A provider and upstream model. |
+| `cc/claude-sonnet` | A provider alias and model. |
+| `my-node/local-model` | A configured compatible node and model. |
+| `daily-coder` | A custom model alias. |
+| `coding-default` | A named [combo](./combos.mdx). |
 
-Confirm live ids with `GET /v1/models` or the dashboard model picker. If `getModelInfo` returns no provider, the chat handler tries `getComboModels`. A bare string that is neither an alias nor a combo is inferred from the model id prefix (`claude-` → anthropic, `gemini-` → gemini, `gpt-` / `o1` / `o3` / `o4` → openai, `deepseek-` → openrouter) and otherwise `openai`.
+A provider prefix before the first slash selects the provider; further slashes remain part of the model ID. Bare unknown model names can be inferred to a provider, so use a prefix when you need an unambiguous route.
 
-A doubled `<connId>/<prefix>/<model>` from a combo step is stripped to the inner model id.
+## Choose an account strategy
 
-## Credentials
+Open **Dashboard → Settings** or **Providers → your provider**. A provider override takes precedence over the global setting.
 
-After the model resolves, DurinDoor picks an active connection for that provider. Locked, expired, and allow-list-excluded accounts are skipped. Quota preflight can skip a spent account before the HTTP call; missing or stale quota fails open. See [Quota tracking](./quota-tracking.mdx).
+| Strategy | Use |
+| --- | --- |
+| Fill-first | Prefer the first eligible account. |
+| Round Robin | Rotate accounts after the sticky limit, which defaults to three calls and accepts 1–10. |
+| Cache Affinity | Keep a conversation on the same eligible account using its session ID; the assignment is stable across restarts. Without a session ID, use fill-first. |
+| Quota-weighted | Spread calls randomly across accounts with comparable fresh quota, weighted by remaining capacity. Without comparable quota, use fill-first order. |
 
-**Dashboard → Settings** has a Round Robin toggle. Off is fill-first. On, `stickyRoundRobinLimit` (default 3, range 1-10) keeps the same account for that many calls, then rotates.
+The quota-weighted floor defaults to 1% remaining. Thin accounts are excluded from the draw unless all comparable accounts are thin. Exhausted, cooled-down, or routing-floor-blocked accounts stay ineligible.
 
-When the client sends a session id, round-robin pins that session to the first eligible account and stays there until the account is gone or the in-memory entry is evicted. Header keys, in order: `x-session-id`, `session-id`, `session_id`, `x-amp-thread-id`, `x-client-request-id`. Body fields `prompt_cache_key`, `session_id`, and `conversation_id` are also read. For Kiro, `x-client-request-id` is ignored so per-request ids do not break stickiness. The affinity map caps at 5,000 entries.
+Inactive, locked, expired, or scope-excluded connections are skipped. Fresh quota may also skip an exhausted account. Missing or stale quota keeps the account eligible; see [Quota tracking](./quota-tracking.mdx).
 
-A third strategy, Cache Affinity, pins the same session id to an account via rendezvous (HRW) hashing instead of the round-robin sticky map: stateless, so it survives a restart, and removing an account only remaps the conversations it owned rather than reshuffling the whole pool. It reuses the identical session id derivation round-robin uses, so anything that makes round-robin sticky (headers, `prompt_cache_key`, `session_id`, `conversation_id`) also anchors Cache Affinity. A request with no derivable session id falls back to fill-first. Set it globally on **Dashboard → Settings** or per provider on **Dashboard → Providers → (provider)**; both use the same `fallbackStrategy` field as Round Robin, so no separate setting to migrate.
+## Keep a conversation on one account
 
-A preferred connection id, when present and still eligible, wins over rotation or cache affinity.
-
-When live quota is trackable, the deterministic quota ranking normally picks the single best-scoring account every time. Setting `fallbackStrategy: "quota-weighted"` (globally or per provider, same field as Round Robin) instead draws randomly among quota-comparable eligible accounts, weighted by leftover quota, so concurrent requests spread out instead of converging on one account. `quotaWeightedFloorPercent` (default 1) keeps accounts at or below that leftover-quota percent out of the draw unless every comparable account is already that thin; then they get pulled in so nothing starves. An exhausted, cooled-down, or below-routing-floor account is never a candidate, same as fill-first. Falls back to fill-first order when nothing is quota-comparable.
-
-## Translation
-
-Client format is detected from the path and body. OpenAI-shaped requests are the common entry. Direct translator pairs exist where the OpenAI hop would drop fields (thinking blocks, tool ids, non-base64 images, `tool_result.is_error`). Matching source and target skip translation.
-
-If the client asked for SSE and the provider cannot stream, chatCore converts the final JSON into chat-completion chunks so the client still sees a stream.
-
-## Failure handling
-
-Malformed JSON or an invalid `messages` / `model` body is rejected with HTTP 400 before auth. Missing credentials return an auth error. A 429 or quota skip locks that account for a bounded window and tries the next connection or combo member. Client-shaped errors are not retried on unrelated providers.
-
-A direct (non-combo) stream is held until its first content frame, for up to `STREAM_EARLY_EOF_PEEK_MS` (default 10000). If it closes or errors before any content, the request moves once to another connection of the same provider. Nothing has reached the client at that point, so the retry cannot duplicate output. Once content has started, a later failure is never retried. With no sibling left, the client gets the original stream unchanged. The hop does not cool the first account down by itself. A pinned connection (`x-connection-id`) never hops.
-
-An in-stream `invalid_request_error`, `context_length_exceeded`, or `context_window_exceeded` belongs to the request, not the account. Every connection would refuse it the same way, so it skips the sibling hop, never triggers the empty-stream account cooldown, and does not lower a model's smart-scoring health. A combo can still fall through to a different model.
-
-When a stream is cut after it started, the request log records why: `stall_timeout` (no upstream bytes inside the stall window), `ttft_timeout` (no first byte), `stream_terminated` (the upstream socket was dropped), or `stream_error` for anything else.
-
-`BACKOFF_BASE_MS` (default 2000) and `BACKOFF_MAX_MS` (default 300000) bound lock delays. See [Environment](../reference/environment.mdx).
-
-## Worked example
-
-Send a direct provider model. The Usage row should show that provider, not a combo name.
+Send the same `x-session-id` on each turn:
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Authorization: Bearer $DURINDOOR_KEY" \
+  -H "x-session-id: review-1" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "openai/gpt-4.1",
-    "messages": [{"role": "user", "content": "ping"}]
-  }'
+  -d '{"model":"openai/gpt-4.1","messages":[{"role":"user","content":"Reply OK."}]}'
 ```
 
-To pin round-robin across turns, add `-H "x-session-id: my-thread-1"`. The second call with the same header should reuse the same connection while it stays eligible.
+Replace the model with a connected model from your catalog. Confirm the selected account in **Usage**, then send a second turn with the same session ID. Round Robin keeps an in-memory affinity map; Cache Affinity derives the assignment without that map. An account becoming ineligible can change the selection.
+
+Other accepted session headers, in priority order after `x-session-id`, are `session-id`, `session_id`, `x-amp-thread-id`, and `x-client-request-id`. Body fields `prompt_cache_key`, `session_id`, and `conversation_id` are also accepted. Kiro ignores `x-client-request-id` for affinity.
+
+Use `x-connection-id` only when you intend to pin an account. An eligible preferred account takes precedence over rotation. A pinned direct stream does not hop to another account.
+
+## Check compatibility and failures
+
+DurinDoor translates client formats to provider formats. Matching formats skip translation. Some direct pairs preserve fields that a conversion through OpenAI would lose; compatibility still depends on the provider and model. A non-streaming provider can be returned as a chat-completion stream when the client asks for SSE.
+
+Malformed requests return HTTP 400 before routing. Fix the body rather than adding fallback models. Account failures and rate limits can select another eligible account, then another combo member.
+
+For a direct stream that ends before meaningful content, DurinDoor can try one sibling account during the initial peek window, which defaults to 10 seconds. After content reaches the client, there is no retry. Request errors such as an excessive context length do not trigger an account hop; a combo may still try a different model.
+
+If a started stream stops, inspect request logs for `stall_timeout`, `ttft_timeout`, `stream_terminated`, or `stream_error`. Check upstream connectivity, provider status, and [backoff settings](../reference/environment.mdx) before retrying. A retry after partial output can create a second provider charge.

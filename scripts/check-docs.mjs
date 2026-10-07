@@ -9,13 +9,15 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Path prefixes treated as internal (not required to be reachable from README.md).
- * Empty after `docs/superpowers/` agent plan/spec trees were removed from the repo.
+ * Repository-only AI and maintainer references are checked for links, not public reachability.
  */
-export const INTERNAL_PREFIXES = [];
+export const INTERNAL_PREFIXES = ["internal/"];
 
 export const INTERNAL_FILES = new Set([
   "AGENTS.md",
   "CLAUDE.md",
+  "PRODUCT.md",
+  "DESIGN.md",
   "open-sse/AGENT-INDEX.md",
   "tests/README.md",
 ]);
@@ -48,8 +50,8 @@ export const PACKAGE_FILES = new Set([
 ]);
 
 export const REQUIRED_ASSETS = [
-  "durindoor-banner.png",
-  "durindoor-wordmark-theme-aware.svg",
+  "assets/brand/durindoor-gateway.webp",
+  "assets/brand/durindoor-logo-light.svg",
 ];
 
 export const FORBIDDEN_PUBLIC_TEXT = [
@@ -370,6 +372,9 @@ export async function validateDocumentation({ root, files, readText }) {
     }
 
     if (isDocsMdx(file)) {
+      if (file.startsWith("docs/contributing/")) {
+        issues.push(`${file}: contributor and AI references belong in internal/docs/`);
+      }
       const fm = parseFrontmatter(text);
       const stub = isSectionStub(text);
       if (!fm || !fm.title) {
@@ -401,6 +406,9 @@ export async function validateDocumentation({ root, files, readText }) {
   }
 
   for (const { from, target, anchor } of links) {
+    if (isDocsMdx(from) && target.startsWith("internal/")) {
+      issues.push(`${from}: public documentation links to internal reference ${target}`);
+    }
     const existsAsDoc = fileSet.has(target);
     let existsAsFile = false;
     if (!existsAsDoc) {

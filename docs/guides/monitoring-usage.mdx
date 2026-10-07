@@ -5,63 +5,48 @@ description: Read request history, console output, and the health endpoint after
 
 Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`), the dashboard home. The overview starts with gateway, 24-hour activity, latency, and storage monitoring cards, plus in-flight requests and provider health. These refresh every 15 seconds independently of the usage period, with pause and manual refresh controls. The former `/dashboard/monitoring` URL redirects here. Usage statistics follow: request counts, input and output tokens, cached tokens, estimated cost, and output speed, with charts, grouped rows, and provider topology.
 
-Combo/account attribution is now under **Dashboard → Combos → Connection usage**, covering the last seven days. API key limits and consumption are below the key list on **Dashboard → API Keys**; see [API key limits](./api-keys.mdx#windowed-limits). Neither block remains on Usage.
+Combo/account attribution is under **Dashboard → Combos → Connection usage**, covering the last seven days. API key limits and consumption are below the key list on **Dashboard → API Keys**; see [API key limits](./api-keys.mdx#windowed-limits). Neither block remains on Usage.
 
-The period control accepts `today`, `24h`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`, and `all`. Editing the calendar to a window that is not one of those presets queries stats by `startDate`/`endDate` and skips the chart (the chart endpoint is preset-only).
+Use **Overview** for totals and trends, and **Details** to investigate one request.
 
-The details tab lists individual calls: timestamp, model, provider, input/cached/output tokens, a cache-hit percentage, TTFT, total latency, and per-request tokens/sec. Cache hit % and tok/s are both derived client-side from the same token and latency columns already on the row, so no new storage is needed; tok/s excludes TTFT the same way the overview's output-speed card does, and is left off a row when TTFT was not measured (non-streaming calls, or older rows recorded before timing existed). Filter by provider and a local date-time range. Open a row for payload metadata and a "Copy all" button that copies the whole (already-redacted) row as JSON, never a raw payload, since bodies are not stored. A "Raw detail (JSON tree)" section below it lets you drill into that same row with native, no-dependency `<details>` disclosure widgets. Bodies are not stored; each stage keeps presence, type, and byte length:
+## Inspect a request
 
-| Field | Label |
-| --- | --- |
-| `request` | Client request |
-| `providerRequest` | Provider request |
-| `providerResponse` | Provider response |
-| `response` | Client response |
+1. Select the time period. Presets include today, 24 hours, 7 to 365 days, and all history.
+2. Open **Details** and filter by provider or local date-time range.
+3. Open the request row. Check the provider, model, account, key, status, tokens, latency, and time to first token.
+4. Use **Copy all** to copy the redacted detail JSON when reporting a problem.
 
-A `?tab=logs` URL still renders request-log lines from `/api/usage/request-logs` (datetime, model, provider, account, in, out, status). The segmented control on the page shows Overview and Details only.
+Custom calendar ranges show totals but omit the preset-only chart. Request details contain payload metadata such as presence, type, and byte length, rather than stored request and response bodies. The JSON tree displays the same detail row.
 
-Streaming chat responses also carry a gateway-measured `tokens_per_second` field on the final `usage` object sent to the client (OpenAI, Claude, and Gemini-family formats), computed the same way: output tokens divided by the time since the first token, excluding TTFT. It is omitted whenever TTFT is not known, which is always the case for non-streaming responses. Do not compute your own tok/s from `output_tokens / total_latency`, since that includes queueing and first-token wait.
+A streaming request can begin with HTTP 200 and later fail. Such failures are recorded as errors. Check completion and error events in the client instead of interpreting HTTP 200 alone as success.
 
-Reset on the overview tab posts `/api/usage/reset` with a period (`5m`, `1h`, `3h`, `6h`, `12h`, `1d`, `7d`, `30d`, or `all`). That delete cannot be undone.
+## Read costs and speed
 
-<Callout type="warn">
-Reset removes usage rows for the selected window. Back up `DATA_DIR` first if you still need the history.
-</Callout>
+Overview groups usage by provider, model, account, key, or endpoint. Costs are estimates based on configured pricing. The provider's bill remains authoritative.
 
-## Where the numbers live
+Costs can be split into fresh input, cached reads, cache writes, visible output, and reasoning. Older rows or provider-reported totals can appear under **Not split** when the individual amounts cannot be reconstructed. The categories plus **Not split** equal the total.
 
-`src/lib/usageDb.js` re-exports the SQLite usage layer. Live history is the `usageHistory` table in `DATA_DIR/db/data.sqlite`.
+Output speed excludes the time to first token when timing is available. Non-streaming calls use their full duration in aggregate speed calculations. Rows without timing still count toward tokens and cost but are excluded from speed. Per-request speed and the final stream's `tokens_per_second` field are omitted when first-token timing is unknown.
 
-| Path | Role |
-| --- | --- |
-| `DATA_DIR/db/data.sqlite` | `usageHistory`, `usageDaily`, `_meta.totalRequestsLifetime` |
-| `DATA_DIR/usage.json` | JSON-store import file (`LEGACY_FILES.usage`) |
-| `DATA_DIR/log.txt` | Not created. There is no request log file by that name |
-
-Default `DATA_DIR` is `~/.9router` on macOS and Linux, `%APPDATA%\9router` on Windows. Each `usageHistory` insert stores provider, model, connection id, API key, endpoint, token counts, estimated cost and its per-rate split, status, the call duration (`latencyMs`) and time to first token (`ttftMs`), optional `usageEventId`, and optional combo id/name. Overview cards read total requests, prompt tokens, cached tokens, completion tokens, estimated cost, and output speed. The requests panel on overview shows recent requests and active sessions (ended sessions stay visible for 15 seconds).
-
-Request-log lines shown by `/api/usage/request-logs` are derived from `usageHistory` on read (`getRecentLogs`, default 200 rows). `appendRequestLog` is a no-op. Parallel inserts with the same fields are not collapsed; only an explicit `usageEventId` dedupes a retry of the same event. History insert, daily upsert, and the lifetime counter run in one transaction.
-
-A streamed request that fails after the gateway already answered HTTP 200 (the upstream sends an in-stream `error` frame or a Responses `response.failed` event, then ends the stream) is recorded with status `error`, in both the request details row and the usage row. The details row keeps any partial text, or reads `[Streaming failed: <message>]` when there was none, and carries the upstream error under `response.error`. What the client receives does not change.
-
-`DATA_DIR/usage.json` is the JSON-store import file (`LEGACY_FILES.usage`). SQLite boot can read it once. Runtime writes go to `usageHistory`, not that JSON file. There is no `log.txt` under the data dir.
-
-## Cost split and speed
-
-Every cost column is priced at its own rate. When a request is saved, the server prices fresh input, cached reads, cache writes, visible output, and reasoning separately and stores those five amounts on the usage row (`inputCost`, `cachedCost`, `cacheCreationCost`, `outputCost`, `reasoningCost`). Long-context tiers apply per request, so they land in the right columns. A dashboard row sums the stored amounts of its requests. Older rows and provider-reported costs have no stored split. For a model without a long-context tier, or with one that raises input and output by the same factor, their tokens are priced at the model's rates and scaled to their recorded cost, which gives the exact split. Otherwise, or when the model has no pricing entry, that cost goes in the **Not split** column instead of being guessed at, and the stored amounts of newer requests still show in their own columns. The category columns plus **Not split** always add up to the total. Provider rows sum their models' columns. Account rows keep one entry per model per day. A day saved before that may hold several models under one account, so it shows as its own "Earlier usage (models not recorded)" row with its cost under **Not split**.
-
-Output speed divides output tokens by decode time, the call duration minus time to first token, so a slow first token does not read as slow generation. Non-streaming calls have no first token to time, so their whole duration counts as decode. Rows recorded before timing existed carry `latencyMs = 0`; they still count toward tokens and cost but are left out of every rate, and the overview card says how many requests in the period were timed.
+Cache-hit percentage and output speed on detail rows are calculated from recorded tokens and timing. They are not separate provider measurements.
 
 ## Console log
 
-**Dashboard → Console log** (`/dashboard/console-log`) tails process `console.log`, `info`, `warn`, `error`, and `debug` from an in-memory ring.
+Open **Console Log** to inspect recent server messages. Filter by level, tag, or text; pause updates, copy or download visible lines, or clear the buffer. The in-memory 2000-line buffer disappears on restart and is separate from persistent usage history.
 
-The ring keeps the latest 2000 lines. Each line is parsed into a timestamp, a level (`❌`, `[ERROR]` or `Error:` mean error; `⚠️` or `[WARN]` mean warn; `[DEBUG]` means debug; anything else is info), and a tag (the first `[WORD]` token such as `HEADROOM` or `TIER`, or a leading `POST`, `GET`, `DONE` or `CANCELLED`). The toolbar filters by level chip (with live counts), by an observed tag, and by search text, which is highlighted in matching timestamps and messages, including displayed tags. **Pause** freezes the view while the stream keeps filling the ring; a pill counts all arriving lines, including ones since evicted from the ring, and **Jump to latest** resumes. **Clear** resets that arrival baseline even while paused. **Wrap lines** toggles wrapping, **Copy visible** copies the filtered lines, and **Download .log** saves them as a text file. Both wrapped and unwrapped rows render only the visible window with 20 rows of overscan; wrapped heights are estimated until measured and recalculated when the viewport width changes. The page reads `GET /api/translator/console-logs` and `GET /api/translator/console-logs/stream`. Stream events are `init`, `line`, `lines`, and `clear`. **Clear** calls `DELETE /api/translator/console-logs`. The buffer is not a file on disk; a restart empties it. `statsEmitter` on the usage layer notifies connected dashboard clients after a usage write.
 
-## Health
+## Check HTTP health
 
 ```bash
 curl http://localhost:20128/api/health
 ```
 
-`GET /api/health` returns `{ "ok": true }` with CORS headers. `OPTIONS` returns 204. The path is public: it does not require a DurinDoor API key or a dashboard session. A 200 means the HTTP server answered; it does not prove a provider account works. Use `/v1/models` or a chat request for that. Production binds port `20128` unless `PORT` is set.
+`{ "ok": true }` means the HTTP server answered. This public endpoint does not require a client key and does not check provider credentials. List models and send a [first request](../getting-started/first-request.mdx) to verify provider access.
+
+## Keep or remove history
+
+Usage lives in the gateway database. For the default SQLite engine, the file is `DATA_DIR/db/data.sqlite`. Default `DATA_DIR` is `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. The legacy `usage.json` is an import source, not the live history store.
+
+Retention is off by default. See [Usage and quota](./usage-and-quota.mdx#retention) to configure cleanup or download a backup. There is no usage CSV export.
+
+**Reset** on Overview deletes rows in the selected period. That deletion cannot be undone. Back up the database before removing history you need for analysis or budgets. If recent requests are missing, verify the time filter, retention settings, and that the client reached this instance.

@@ -1,11 +1,11 @@
 ---
 title: OpenAI-compatible nodes
-description: Custom OpenAI-compatible, Anthropic-compatible, and embedding endpoints, plus aliases.
+description: Add custom chat, Responses, Anthropic, or embedding endpoints and verify their model IDs.
 ---
 
 A provider node is an endpoint DurinDoor does not ship as a registry provider. Use it for an internal gateway, a self-hosted vLLM, a vendor that only speaks OpenAI or Anthropic routes, or an embeddings-only server.
 
-Open Dashboard, then Providers. The Custom Providers section has Add OpenAI Compatible and Add Anthropic Compatible. That POSTs `/api/provider-nodes`. Ids are `openai-compatible-<apiType>-<id>`, `anthropic-compatible-<id>`, or `custom-embedding-<id>`.
+Open Dashboard, then Providers. The Custom Providers section has Add OpenAI Compatible and Add Anthropic Compatible. Give the node a stable prefix so clients can request `prefix/model`.
 
 ## OpenAI-compatible
 
@@ -17,7 +17,7 @@ Click Add OpenAI Compatible. Name and prefix are required. Prefix is the client-
 Pick Chat Completions or Responses API. Default base URL is `https://api.openai.com/v1`. Point it at your gateway, including the `/v1` suffix the upstream expects.
 </Step>
 <Step>
-Save, then open the node and add an API key connection. The create route requires a key even if the upstream ignores it. For a local server that does not check auth, paste a placeholder such as `local-dev-key`.
+Save, then open the node and add an API key connection. The connection form requires a key even if the upstream ignores it. For a local server that does not check auth, paste a placeholder such as `local-dev-key`.
 </Step>
 <Step>
 Add model names, or enable passthrough if the node should forward unknown ids. An empty saved model list exposes no models for that node. Use Import on the node page to discover `/v1/models` from the upstream, then save the rows you want.
@@ -36,14 +36,15 @@ Third-party Anthropic gateways that are not `api.anthropic.com` get both `x-api-
 
 ## Custom embeddings
 
-Embedding-only nodes live under Dashboard, Media providers, embedding. The modal posts `type: "custom-embedding"`. A trailing `/embeddings` on the base URL is stripped. Default base URL is `https://api.openai.com/v1`. Clients call `/v1/embeddings`.
+Embedding-only nodes live under Dashboard, Media providers, embedding. Create an embedding-only node there. A trailing `/embeddings` on the base URL is stripped. Default base URL is `https://api.openai.com/v1`. Clients call `/v1/embeddings`.
 
 ## Quota display for compatible connections
 
-OpenAI-compatible and Anthropic-compatible connections have no fixed billing endpoint, so DurinDoor cannot show Provider Limits for them out of the box. Set `providerSpecificData.quotaEndpoint` on the connection (via `PATCH /api/provider-connections/:id`) to describe where the quota lives and how to read it:
+OpenAI-compatible and Anthropic-compatible connections have no fixed billing endpoint, so DurinDoor cannot show Provider Limits for them out of the box. Set `providerSpecificData.quotaEndpoint` on the connection (via `PUT /api/providers/{id}`) to describe where the quota lives and how to read it:
 
 ```json
 {
+  "providerSpecificData": {
   "quotaEndpoint": {
     "url": "https://api.example.com/v1/credits",
     "method": "GET",
@@ -57,6 +58,7 @@ OpenAI-compatible and Anthropic-compatible connections have no fixed billing end
         "currency": "usd"
       }
     }
+  }
   }
 }
 ```
@@ -74,15 +76,15 @@ emb-search/text-embedding-model
 coding-default
 ```
 
-`coding-default` is a combo or a model alias, not a node prefix. Model aliases are `PUT /api/models/alias` with `{ model, alias }` and show up as extra names for an existing model string. Combos are a fallback chain; see [Combos](../features/combos.mdx).
+`coding-default` is a combo or a model alias, not a node prefix. Model aliases map a short client name to an existing model ID. They do not create an additional top-level catalog row for that short name. Combos are a fallback chain; see [Combos](../features/combos.mdx).
 
 Dedicated local registry ids (`ollama-local`, `lm-studio`, `vllm`) are usually a better fit than a generic node when one exists. Those ids omit `Authorization` when no key is saved. Compatible nodes still require the key field. See [Local router providers](./local-router-providers.mdx) and [Free and local](./free-and-local.mdx).
 
 If DurinDoor runs in Docker, `localhost` inside the container is the container. Use a compose service name or the host gateway for a server that runs on the machine.
 
-Node URL probes go through `/api/provider-nodes/validate`. Only `http` and `https` are accepted. The probe is SSRF-guarded and stops after 10 seconds. Connection refused, DNS failure, and certificate errors come back as that 400/403 payload rather than hanging the dashboard.
+Validate the URL before saving the node. Only `http` and `https` are accepted. The probe is SSRF-guarded and stops after 10 seconds. Connection refused, DNS failure, and certificate errors come back as that 400/403 payload rather than hanging the dashboard.
 
-Icon URLs are optional and must pass `isValidProviderIconUrl`. A missing name or prefix is 400.
+Icon URLs are optional and validated before saving. A missing name or prefix is rejected with 400.
 
 Custom nodes may reject content-part arrays, tool calls, or unknown OpenAI fields. Prefer one node per upstream behavior rather than mixing incompatible models behind the same prefix.
 

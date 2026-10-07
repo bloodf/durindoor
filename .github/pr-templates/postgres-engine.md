@@ -29,10 +29,9 @@ $ npx vitest run unit/api/settings-database-route.test.js
 
 ## Doc coverage
 
-- `docs/operations/postgres.md` — operator runbook (PG 16/17/18/19, version policy, cutover, fallback, rollback, secrets, upgrade notes).
-- `docs/development/postgres.md` — developer guide (module layout, dialect helper, generator, capability gate, adapter contract, cutover lock, secrets, cross-fork policy).
-- `docs/development/postgres-research.md` — Phase 1 research deliverable (24-row per-version feature matrix + 8 `pg` driver gotchas).
-- `docs/ARCHITECTURE.md` — Persistence section updated to mention the PG engine and the cutover pipeline.
+- `docs/operations/postgres.mdx` — operator runbook (PG 16/17/18/19, version policy, cutover, fallback, rollback, secrets, upgrade notes).
+- `internal/docs/postgres-migrations.mdx` — developer guide (module layout, dialect helper, generator, capability gate, adapter contract, cutover lock, secrets, cross-fork policy).
+- `internal/docs/architecture.mdx` — Persistence section updated to mention the PG engine and the cutover pipeline.
 - `CHANGELOG.md` — entry under 4.0.0.
 
 ## Baseline impact

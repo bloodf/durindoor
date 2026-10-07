@@ -4,9 +4,9 @@ description: Startup, upgrades, data, Postgres, security, and API-key scoping.
 icon: Settings
 ---
 
-Day-two work after the gateway is installed. Start and stop the process, back up `DATA_DIR`, move versions, optionally cut over to Postgres, and lock the dashboard before it leaves loopback.
+Operate an installed gateway with the procedures below. Verify inference after each restart or upgrade; health checks confirm only the HTTP listener.
 
-Secrets, login lockout, and API-key account scoping live here too. Install steps stay in [Installation](../getting-started/installation.mdx). Bind addresses and reverse proxies stay in [Deployment](../deployment).
+Before a restore or database switch, identify the active engine, preserve its data and encryption keys, and stop traffic during the maintenance window. Use [Deployment](../deployment) for the first install.
 
 <Cards>
   <Card title="Startup" href="startup" description="CLI, source, and Docker start. Health, smoke test, restart, logs." />
@@ -14,5 +14,5 @@ Secrets, login lockout, and API-key account scoping live here too. Install steps
   <Card title="Data management" href="data-management" description="SQLite file, backups, restore, and files that skip DATA_DIR." />
   <Card title="Postgres" href="postgres" description="Opt-in engine, compose profiles, cutover, fallback, rollback." />
   <Card title="Security" href="security" description="JWT_SECRET, passwords, API_KEY_SECRET, MACHINE_ID_SALT, rate limits." />
-  <Card title="API key scoping" href="api-key-scoping" description="Restrict a key to named provider accounts. Zero rows stays open." />
+  <Card title="API key scoping" href="api-key-scoping" description="Restrict a key to named provider accounts. An empty account selection allows all eligible accounts." />
 </Cards>

@@ -3,48 +3,20 @@ title: Ollama and Claude
 description: Claude Messages transport for ollama and ollama-local connections.
 ---
 
-This is not a CLI Tools card. `ollama` and `ollama-local` are providers. When the client speaks Claude Messages, DurinDoor picks the Claude transport (`/v1/messages`) instead of `/api/chat`. Other client formats still use the Ollama `/api/chat` transport.
+Use an Ollama model from Claude Code or an Anthropic SDK through DurinDoor. You need a local Ollama connection, a DurinDoor key, and an Ollama model that supports the tasks you plan to run.
 
-Point Claude Code, or any Anthropic client, at DurinDoor as in [Claude Code](./claude-code.mdx). Put `ANTHROPIC_BASE_URL` on this gateway, not on Ollama. Use a model id `ollama-local/<name>` or `ollama/<name>` from `GET /v1/models`.
+## Connect Ollama
 
-You need an `ollama-local` or `ollama` connection, a DurinDoor API key, and a model that connection actually serves. Add the local host on **Providers** if it is not `http://localhost:11434`. See [Free and local](../providers/free-and-local.mdx).
+1. Start Ollama and confirm `http://localhost:11434/api/tags` lists your installed model.
+2. On **Providers**, add an **Ollama Local** connection. Set its host URL if Ollama runs on another host or port.
+3. Find the `ollama-local/<model>` ID in `GET /v1/models`.
+4. Configure [Claude Code](./claude-code.mdx) to call DurinDoor, or use an Anthropic SDK with base URL `http://localhost:20128`.
 
-## Native Claude transport
+Claude Code uses `ANTHROPIC_BASE_URL=http://localhost:20128/v1`. Keep the Ollama host on the provider connection, rather than putting port 11434 in the client settings.
 
-Both registry entries declare a `claude` transport and these quirks: `preserveNativeClaudeThinking`, `normalizeNativeClaudeTransport`, `dropClaudeCacheControl`, `claudeImagesRequireBase64`.
+## Send a test
 
-| Provider | Claude transport URL | Auth |
-| --- | --- | --- |
-| `ollama` (cloud) | `https://ollama.com/v1/messages` | `Authorization: Bearer` |
-| `ollama-local` | `http://localhost:11434/v1/messages` | `Authorization: Bearer` |
-
-Ollama authenticates with Bearer, not Anthropic's `x-api-key`. Local Ollama does not validate keys; DurinDoor still sends Bearer when a key is present.
-
-`resolveRequestTransport` prefers a transport whose format matches the client `sourceFormat`. A Claude client therefore hits `/v1/messages` and skips the OpenAI hop. Matching source and target return the chunk unchanged, so text, `tool_use`, `thinking`, `redacted_thinking`, `image`, and `document` blocks keep their order.
-
-`cache_control` is stripped because Ollama does not accept it.
-
-Remote image URLs are fetched through the guarded image loader and rewritten as inline base64. Ollama's Messages endpoint does not fetch image URLs. Private, loopback, and link-local destinations are rejected.
-
-## Streaming
-
-The client-facing stream stays Claude SSE: `event:` plus `data:` frames. Claude passthrough does not append an OpenAI `data: [DONE]` sentinel. A stream that ends before `message_stop` throws `Claude passthrough stream ended before message_stop` instead of being stored as a successful truncated answer.
-
-## Local host URL
-
-`resolveOllamaLocalHost` reads `providerSpecificData.baseUrl`, or `http://localhost:11434`. It strips a trailing `/api/chat` and a trailing slash. The executor then uses that origin plus the runtime transport path, so a stored value of `/api/chat` or `/v1/messages` does not duplicate the suffix.
-
-`scripts/auto-configure.mjs` and `/api/settings/auto-configure` do not create Ollama connections. They probe Headroom, PxPipe, and Firecrawl only. There is no `/api/cli-tools/ollama-settings` route.
-
-<Callout type="warn">
-Do not point Claude Code at `http://localhost:11434`. Point it at DurinDoor (`http://localhost:20128/v1`) and select an `ollama-local/...` or `ollama/...` model. DurinDoor is the one that calls Ollama's `/v1/messages`.
-</Callout>
-
-## Legacy `9router` labels
-
-This transport has no CLI provider section named `9router`. Incoming CLI configs for other tools still use that label. The server accepts it, plus `X-Msh-Platform: 9router`. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
-
-## Check it works
+Replace `llama3.2` with an installed model ID:
 
 ```bash
 curl http://localhost:20128/v1/messages \
@@ -57,11 +29,16 @@ curl http://localhost:20128/v1/messages \
   }'
 ```
 
-Replace `llama3.2` with a name that connection lists. If curl succeeds and Claude Code fails, the process is still using an upstream Anthropic key or is not reading `~/.claude/settings.json`. Confirm `ANTHROPIC_AUTH_TOKEN` is the DurinDoor key.
+A successful response contains Anthropic message content. Confirm the request on **Usage**. Then test tools and streaming if your client needs them.
 
-| Symptom | Check |
-| --- | --- |
-| 401 from Ollama cloud | Cloud wants Bearer, not `x-api-key` |
-| Duplicate path in upstream URL | Stored host should be an origin; the runtime transport adds `/v1/messages` |
-| Stream recorded as success with no stop | Truncation before `message_stop` is a failure on this path |
+## Transport limits
 
+Anthropic-format requests use Ollama's `/v1/messages` transport. Other client formats use `/api/chat`. DurinDoor preserves native Claude block order, removes unsupported `cache_control`, and converts remote images to base64. Guarded image fetches reject private, loopback, and link-local destinations.
+
+Streaming stays Anthropic SSE. A stream that ends before `message_stop` is treated as truncated rather than successful.
+
+Existing `ollama` cloud connections use `https://ollama.com/v1/messages` and Bearer authentication. The cloud provider is hidden from new connection creation. Local Ollama does not require a key; a saved key is sent as Bearer.
+
+## Troubleshoot
+
+If Docker cannot reach Ollama, use a host gateway or compose service name instead of container `localhost`. Store a host origin on the connection to avoid duplicate upstream paths. If curl works but Claude Code fails, inspect its settings and shell for a stale Anthropic token. A successful short reply does not prove tools or a larger context work on that model.

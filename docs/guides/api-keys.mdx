@@ -1,9 +1,9 @@
 ---
 title: API keys
-description: Mint DurinDoor keys, read the stored shapes, and scope or rotate them.
+description: Create, restrict, expire, pause, and replace DurinDoor client keys.
 ---
 
-Open **Dashboard → API Keys → Create**. Give the key a name. The create response is the one JSON body that always includes the full secret. List and detail views mask it as `sk-••••••••`. The dashboard can still copy the stored secret later through a dedicated reveal route, after a signed-in session.
+Open **Dashboard → API Keys → Create**. Give the key a name. Creation shows the full secret. List and detail views mask it as `sk-••••••••`. The dashboard can still copy the stored secret later through a dedicated reveal route, after a signed-in session.
 
 Use one key per tool or person so you can pause or delete a single client without touching the rest.
 
@@ -11,24 +11,13 @@ Use one key per tool or person so you can pause or delete a single client withou
 Store the secret when it is shown. Paste that same value into client configs and media-test forms. The management list does not print it.
 </Callout>
 
-## Key shapes
+## Authenticate a client
 
-New keys are minted as `sk-<machineId>-<keyId>-<crc8>`. The machine id is this install, the key id is six lowercase letters or digits, and the crc is an eight-character HMAC of those two values under `API_KEY_SECRET` (or `DATA_DIR/api-key-secret` when the env var is unset). A bad crc does not parse.
+Use the DurinDoor key, not the vendor credential. OpenAI clients send `Authorization: Bearer YOUR_DURINDOOR_API_KEY`; Anthropic clients can send `x-api-key`. The gateway also accepts `x-goog-api-key` and a `key` query parameter.
 
-Two other strings show up around keys. They are not the minting format.
+With **Require API Key** enabled on **Endpoint**, missing, unknown, paused, and expired keys cannot authenticate. With enforcement off, an unknown local placeholder may pass, but a paused or expired saved key is still rejected. Use a real key whenever you need client scoping or usage attribution.
 
-| Shape | What it is |
-| --- | --- |
-| `sk-<machine>-<key>-<crc>` | Current mint. Four hyphen-separated parts after `sk`. |
-| `sk-<8 hex>` | Older stored secret. Two parts after `sk`. Accepted as-is; no HMAC. |
-| `sk_durindoor` | Local CLI-tool placeholder when no saved key is selected. Underscore after `sk`, not minted. |
-| `sk_9router` | Same class of placeholder, used as a MITM fallback string. 9router-era rows in the database still authenticate by exact lookup. |
-
-Authentication looks the presented string up in `apiKeys.key`. `parseApiKey` only understands the hyphenated `sk-` forms above. An underscore placeholder is not a crc-backed key.
-
-When **Require API Key** is on (Endpoint page), a missing credential returns `Missing API key` and a bad or paused or expired stored key returns `Invalid API key`. When that setting is off, an unknown placeholder is allowed for local use, but a stored key that is paused or expired is still rejected.
-
-Clients may send the secret as `Authorization: Bearer ...`, `x-api-key`, `x-goog-api-key`, or a `key` query parameter. Anthropic SDKs often send a stale Bearer token next to a valid `x-api-key`; DurinDoor checks every candidate.
+New keys use the `sk-` prefix. Older stored keys remain supported. Keep the full secret unchanged when copying it.
 
 ## Expiry
 
@@ -47,7 +36,7 @@ Custom input is shown back in the operator's local timezone. Edit the key and ch
 
 Expiry is compared to server time. The key is expired as soon as that clock is greater than or equal to the stored value. Expired keys stay on the list and in backups; they cannot authenticate. Clients see the same invalid-key response used for other bad credentials.
 
-HMAC secret resolution for new-format keys, in order: `process.env.API_KEY_SECRET`, then `DATA_DIR/api-key-secret`, then throw. `requireLogin` is not consulted. A different secret makes four-part keys fail `parseApiKey`. Two-part `sk-<8 hex>` rows are not HMAC-bound.
+Keep `API_KEY_SECRET` and the persistent data directory stable across redeploys. Changing the signing secret can invalidate existing keys.
 
 ## Scopes
 
@@ -75,7 +64,7 @@ Key groups are labels only. Membership never changes what a key can call.
 
 Patterns are case-insensitive globs, up to 200 per key. `*` matches any run of characters, `/` included. Write them against the ids `/v1/models` shows, for example `openai/*` or `cx/gpt-5.6-sol`.
 
-The rule is checked after model resolution, in the same place as `policy.allowedModels`, on every `/v1` endpoint. A model matches under the name it was requested by, its canonical `providerId/model`, and its `alias/model` or provider-node `prefix/model` form, so an alias cannot get around a rule. A blocked model returns HTTP 403 before any credential lookup. Combos are checked member by member; combo names stay under `allowedCombos`. `/v1/models` and `/v1/models/{kind}` only list what the calling key may use. Requests without a key are not restricted while *Require API key* is off.
+The rule is checked after model resolution, in the same place as `policy.allowedModels`, on every `/v1` endpoint. A model matches under the name it was requested by, its canonical `providerId/model`, and its `alias/model` or provider-node `prefix/model` form, so an alias cannot get around a rule. A blocked model returns HTTP 403 before any credential lookup. Combos are checked member by member; combo names stay under `allowedCombos`. `/v1/models` and `/v1/models/{kind}` only list what the calling key may use. Trusted loopback requests without a key are not restricted while *Require API key* is off. Remote HTTP callers still need a valid gateway key or CLI credential at the network boundary.
 
 ## Windowed limits
 
@@ -94,14 +83,16 @@ The daily total stays in `dailyLimitTokens`. An over-limit request gets HTTP 429
 
 RPM and TPM are counted in memory per process: RPM when a request is admitted, TPM when its usage is recorded. Token, request and budget windows sum `usageHistory`, which is written after a response finishes, so requests already in flight can go slightly over. Only endpoints that record usage move the token and budget windows.
 
-`usageHistory` is also the per-request cost record: every row carries the key, provider, model, token counts, the estimated `cost` and its split by rate (`inputCost`, `cachedCost`, `cacheCreationCost`, `outputCost`, `reasoningCost`). The monthly budget sums that column, so spend is tracked in one place.
+Monthly budgets use the estimated costs saved with request usage. They are not provider billing limits. Deleting usage history can affect usage-derived limits.
 
 `PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key. The API key limits card below the key list on **Dashboard → API Keys** polls it; that card is no longer on Usage.
 
 ## Rotation
 
-There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `isActive: false`. Delete removes the row (join-table scope rows cascade).
+There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `isActive: false`. Delete removes the key and its account-scope assignments.
 
 `POST /api/keys` requires a non-empty `name` and the install's `machineId`. The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` and `GET /api/keys/[id]` return `maskedKey` instead of `key`. `GET /api/keys/[id]/reveal` returns `{ key }` for a dashboard session. `PUT /api/keys/[id]` patches name, `isActive`, expiry, combos, policy, daily limit, provider connections, and groups in one transaction.
 
 If `API_KEY_SECRET` is unset, DurinDoor mints `DATA_DIR/api-key-secret` (mode 0600) when `DATA_DIR` is set. Without either, key minting throws.
+
+After creating or changing a key, send a request from its intended client. Confirm the key in **Usage**. If authentication fails, check active state, expiry, the copied secret, and server time. For 403 or 429, inspect model scopes and usage limits before rotating the key.

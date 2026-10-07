@@ -1,0 +1,399 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-07T19:01:32.910810+00:00",
+  "title": "Design System: DurinDoor",
+  "extensions": {
+    "colorMeta": {
+      "emerald": {
+        "role": "primary",
+        "displayName": "Emerald",
+        "tonalRamp": [
+          "oklch(15% 0.1491 162.48)",
+          "oklch(26% 0.1491 162.48)",
+          "oklch(38% 0.1491 162.48)",
+          "oklch(49% 0.1491 162.48)",
+          "oklch(61% 0.1491 162.48)",
+          "oklch(72% 0.1491 162.48)",
+          "oklch(84% 0.1491 162.48)",
+          "oklch(95% 0.1491 162.48)"
+        ]
+      },
+      "emerald-light": {
+        "role": "primary",
+        "displayName": "Emerald Light",
+        "tonalRamp": [
+          "oklch(15% 0.1299 164.98)",
+          "oklch(26% 0.1299 164.98)",
+          "oklch(38% 0.1299 164.98)",
+          "oklch(49% 0.1299 164.98)",
+          "oklch(61% 0.1299 164.98)",
+          "oklch(72% 0.1299 164.98)",
+          "oklch(84% 0.1299 164.98)",
+          "oklch(95% 0.1299 164.98)"
+        ]
+      },
+      "action-ink": {
+        "role": "neutral",
+        "displayName": "Action Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0528 161.26)",
+          "oklch(26% 0.0528 161.26)",
+          "oklch(38% 0.0528 161.26)",
+          "oklch(49% 0.0528 161.26)",
+          "oklch(61% 0.0528 161.26)",
+          "oklch(72% 0.0528 161.26)",
+          "oklch(84% 0.0528 161.26)",
+          "oklch(95% 0.0528 161.26)"
+        ]
+      },
+      "stone": {
+        "role": "neutral",
+        "displayName": "Stone",
+        "tonalRamp": [
+          "oklch(15% 0.0146 162.81)",
+          "oklch(26% 0.0146 162.81)",
+          "oklch(38% 0.0146 162.81)",
+          "oklch(49% 0.0146 162.81)",
+          "oklch(61% 0.0146 162.81)",
+          "oklch(72% 0.0146 162.81)",
+          "oklch(84% 0.0146 162.81)",
+          "oklch(95% 0.0146 162.81)"
+        ]
+      },
+      "stone-raised": {
+        "role": "neutral",
+        "displayName": "Stone Raised",
+        "tonalRamp": [
+          "oklch(15% 0.0220 158.34)",
+          "oklch(26% 0.0220 158.34)",
+          "oklch(38% 0.0220 158.34)",
+          "oklch(49% 0.0220 158.34)",
+          "oklch(61% 0.0220 158.34)",
+          "oklch(72% 0.0220 158.34)",
+          "oklch(84% 0.0220 158.34)",
+          "oklch(95% 0.0220 158.34)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "tonalRamp": [
+          "oklch(15% 0.0227 155.17)",
+          "oklch(26% 0.0227 155.17)",
+          "oklch(38% 0.0227 155.17)",
+          "oklch(49% 0.0227 155.17)",
+          "oklch(61% 0.0227 155.17)",
+          "oklch(72% 0.0227 155.17)",
+          "oklch(84% 0.0227 155.17)",
+          "oklch(95% 0.0227 155.17)"
+        ]
+      },
+      "silver": {
+        "role": "neutral",
+        "displayName": "Silver",
+        "tonalRamp": [
+          "oklch(15% 0.0091 78.28)",
+          "oklch(26% 0.0091 78.28)",
+          "oklch(38% 0.0091 78.28)",
+          "oklch(49% 0.0091 78.28)",
+          "oklch(61% 0.0091 78.28)",
+          "oklch(72% 0.0091 78.28)",
+          "oklch(84% 0.0091 78.28)",
+          "oklch(95% 0.0091 78.28)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(15% 0.0218 152.08)",
+          "oklch(26% 0.0218 152.08)",
+          "oklch(38% 0.0218 152.08)",
+          "oklch(49% 0.0218 152.08)",
+          "oklch(61% 0.0218 152.08)",
+          "oklch(72% 0.0218 152.08)",
+          "oklch(84% 0.0218 152.08)",
+          "oklch(95% 0.0218 152.08)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "tonalRamp": [
+          "oklch(15% 0.0000 89.88)",
+          "oklch(26% 0.0000 89.88)",
+          "oklch(38% 0.0000 89.88)",
+          "oklch(49% 0.0000 89.88)",
+          "oklch(61% 0.0000 89.88)",
+          "oklch(72% 0.0000 89.88)",
+          "oklch(84% 0.0000 89.88)",
+          "oklch(95% 0.0000 89.88)"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Line Strong",
+        "tonalRamp": [
+          "oklch(15% 0.0000 89.88)",
+          "oklch(26% 0.0000 89.88)",
+          "oklch(38% 0.0000 89.88)",
+          "oklch(49% 0.0000 89.88)",
+          "oklch(61% 0.0000 89.88)",
+          "oklch(72% 0.0000 89.88)",
+          "oklch(84% 0.0000 89.88)",
+          "oklch(95% 0.0000 89.88)"
+        ]
+      },
+      "docs-paper": {
+        "role": "neutral",
+        "displayName": "Docs Paper"
+      },
+      "docs-ink": {
+        "role": "neutral",
+        "displayName": "Docs Ink"
+      },
+      "docs-emerald": {
+        "role": "primary",
+        "displayName": "Docs Emerald"
+      },
+      "docs-surface": {
+        "role": "neutral",
+        "displayName": "Docs Surface"
+      },
+      "docs-surface-secondary": {
+        "role": "neutral",
+        "displayName": "Docs Surface Secondary"
+      },
+      "docs-muted": {
+        "role": "neutral",
+        "displayName": "Docs Muted"
+      },
+      "docs-border": {
+        "role": "neutral",
+        "displayName": "Docs Border"
+      },
+      "docs-emerald-hover": {
+        "role": "primary",
+        "displayName": "Docs Emerald Hover"
+      },
+      "docs-on-emerald": {
+        "role": "neutral",
+        "displayName": "Docs On Emerald"
+      },
+      "docs-accent-soft": {
+        "role": "primary",
+        "displayName": "Docs Accent Soft"
+      },
+      "docs-dark-secondary": {
+        "role": "neutral",
+        "displayName": "Docs Dark Secondary"
+      },
+      "docs-dark-border": {
+        "role": "neutral",
+        "displayName": "Docs Dark Border"
+      },
+      "docs-dark-accent-hover": {
+        "role": "primary",
+        "displayName": "Docs Dark Accent Hover"
+      },
+      "docs-dark-accent-soft": {
+        "role": "primary",
+        "displayName": "Docs Dark Accent Soft"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Gateway inscription",
+        "purpose": "Marketing hero headline."
+      },
+      "body": {
+        "displayName": "Technical voice",
+        "purpose": "Readable marketing copy and controls."
+      },
+      "docs-title": {
+        "displayName": "Article inscription",
+        "purpose": "Documentation article h1; 40px at 760px and below."
+      },
+      "docs-index-title": {
+        "displayName": "Documentation opening",
+        "purpose": "Index h1; 48px at 1100px and 44px at 760px."
+      },
+      "docs-body": {
+        "displayName": "Reading voice",
+        "purpose": "Documentation prose at 72ch; 15px at 760px and below."
+      }
+    },
+    "shadows": [
+      {
+        "name": "action-hover",
+        "value": "0 8px 30px #10b98120",
+        "purpose": "Soft emerald action feedback."
+      },
+      {
+        "name": "demo-frame",
+        "value": "0 28px 80px #0005",
+        "purpose": "Separate the real app preview from marketing."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-state",
+        "value": "background-color 0.25s, border-color 0.25s, box-shadow 0.35s, color 0.25s",
+        "purpose": "Inherited action transitions, disabled for reduced motion."
+      },
+      {
+        "name": "text-caret",
+        "value": "1.4s steps(2, end) infinite",
+        "purpose": "Text realtime mechanism cue; disabled for reduced motion."
+      },
+      {
+        "name": "tunnel-packet",
+        "value": "3s linear infinite",
+        "purpose": "Connection cue; disabled for reduced motion."
+      },
+      {
+        "name": "docs-state",
+        "value": "color 160ms ease, background-color 160ms ease, border-color 160ms ease",
+        "purpose": "Documentation links and buttons; disabled for reduced motion."
+      },
+      {
+        "name": "gateway-readiness",
+        "value": "requestAnimationFrame after first submitted frame",
+        "purpose": "Reveal the hero-wide canvas, hide its poster and enable Open/Close independently of scroll. Rendering pauses offscreen and in hidden tabs; reduced motion and canvas failure retain static artwork."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "art-compact",
+        "value": "1100px"
+      },
+      {
+        "name": "stack",
+        "value": "800px"
+      },
+      {
+        "name": "feature-single",
+        "value": "560px"
+      },
+      {
+        "name": "narrow",
+        "value": "480px"
+      },
+      {
+        "name": "docs-compact",
+        "value": "1100px"
+      },
+      {
+        "name": "docs-single",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Emerald action for the demo or setup docs.",
+      "html": "<button class=\"ds-button ds-primary\">Open the live demo <span aria-hidden=\"true\">\u2192</span></button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:12px 20px;border:1px solid transparent;border-radius:7px;font:500 14px var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);cursor:pointer;transition:background-color .25s,box-shadow .35s}.ds-button:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px} .ds-button:active{transform:translateY(1px)} @media(prefers-reduced-motion:reduce){.ds-button{transition:none}.ds-button:active{transform:none}} .ds-primary{background:var(--home-emerald,#10b981);color:#032a1a}.ds-primary:hover{background:var(--home-gold,#6ee7b7);box-shadow:0 8px 30px #10b98120}"
+    },
+    {
+      "name": "Ghost action",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary docs or standalone-demo link.",
+      "html": "<button class=\"ds-button ds-ghost\">Read the docs \u2197</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:12px 20px;border:1px solid transparent;border-radius:7px;font:500 14px var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);cursor:pointer;transition:background-color .25s,box-shadow .35s}.ds-button:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px} .ds-button:active{transform:translateY(1px)} @media(prefers-reduced-motion:reduce){.ds-button{transition:none}.ds-button:active{transform:none}} .ds-ghost{background:transparent;color:var(--home-text,#eeeae4);border-color:var(--home-line-strong,#ffffff28)}.ds-ghost:hover{border-color:#6ee7b766;background:#10b98114;color:var(--home-text,#eeeae4)}"
+    },
+    {
+      "name": "Gate control",
+      "kind": "custom",
+      "description": "Explicit Open/Close override for the hero-wide perspective stone gate; available after its first rendered frame and omitted with static fallback.",
+      "html": "<button class=\"ds-gate\" aria-pressed=\"false\">Open the door <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg></button>",
+      "css": ".ds-gate{display:flex;gap:28px;align-items:center;background:#0b1712df;color:#baf1d7;border:1px solid #6ee7b74d;border-radius:30px;padding:13px 22px;font:14px var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);cursor:pointer;backdrop-filter:blur(12px)}.ds-gate:hover{background:#183b2a}.ds-gate:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px}"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "description": "Wordmark and useful destinations on translucent stone.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Example\"><a class=\"ds-brand\" href=\"#\">DurinDoor</a><a href=\"#\">Providers</a><a href=\"#\">Docs</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;gap:24px;padding:20px 24px;background:#0c1410ed;border-bottom:1px solid var(--home-line,#ffffff14);backdrop-filter:blur(16px)}.ds-nav a{color:var(--home-muted,#adbbb0);font:12px var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);text-decoration:none}.ds-nav .ds-brand{font:600 27px var(--home-display,\"Cormorant Garamond\",Georgia,serif);color:var(--home-text,#eeeae4);letter-spacing:-.025em}.ds-nav a:hover{color:var(--home-gold,#6ee7b7)}.ds-nav a:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px}"
+    },
+    {
+      "name": "Mechanism card",
+      "kind": "card",
+      "refersTo": "feature-card",
+      "description": "MCP branches exemplify a truthful feature illustration.",
+      "html": "<a class=\"ds-feature\" href=\"#\"><div class=\"ds-branches\"><span>HTTP</span><span>SSE</span><span>stdio</span></div><h3>MCP gateway</h3><p>One gateway in front of several MCP servers.</p></a>",
+      "css": ".ds-feature{display:block;padding:28px;border:1px solid var(--home-line,#ffffff14);border-radius:12px;background:radial-gradient(ellipse at 85% 0%,#10b98124,transparent 65%),var(--home-bg-2,#111d16);color:var(--home-text,#eeeae4);text-decoration:none}.ds-branches{display:flex;flex-direction:column;gap:10px;border-left:1px solid #6ee7b73d;padding-left:22px;color:#a7e5c9;font:12px ui-monospace,monospace}.ds-branches span{border:1px solid #6ee7b730;border-radius:6px;padding:6px 12px;background:#0c141055}.ds-feature h3{font:32px var(--home-display,\"Cormorant Garamond\",Georgia,serif);margin:24px 0 12px}.ds-feature p{font:16px/1.65 var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);color:var(--home-muted,#adbbb0);margin:0}.ds-feature:hover .ds-branches{filter:brightness(1.15)}.ds-feature:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px}"
+    },
+    {
+      "name": "Copyable terminal row",
+      "kind": "custom",
+      "description": "Compact install or launch command with copy action.",
+      "html": "<div class=\"ds-command\"><span aria-hidden=\"true\">$</span><code>npx durindoor</code><button type=\"button\">Copy</button></div>",
+      "css": ".ds-command{display:flex;align-items:center;gap:20px;padding-bottom:22px;border-bottom:1px solid var(--home-line,#ffffff14);color:var(--home-muted,#adbbb0)}.ds-command code{flex:1;color:var(--home-gold,#6ee7b7);font:23px ui-monospace,monospace}.ds-command button{padding:6px 10px;border:1px solid var(--home-line-strong,#ffffff28);border-radius:8px;background:rgba(237,230,216,.05);color:var(--home-muted,#adbbb0);font:500 12px var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);cursor:pointer}.ds-command button:hover{color:var(--home-emerald,#10b981);border-color:rgba(16,232,130,.5);background:rgba(16,232,130,.08)}.ds-command button:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px}"
+    },
+    {
+      "name": "Documentation setup strip",
+      "kind": "custom",
+      "refersTo": "docs-setup-step",
+      "description": "Three linked steps in order; joins vertically at 760px. Theme variables inherit from the docs shell.",
+      "html": "<div class=\"ds-docs-setup\"><a href=\"#\"><span>Step 1</span><strong>Install and sign in \u2192</strong><span>Start the gateway and configure credentials.</span></a><a href=\"#\"><span>Step 2</span><strong>Connect a provider \u2192</strong><span>Add an account, key or endpoint.</span></a><a href=\"#\"><span>Step 3</span><strong>Send a request \u2192</strong><span>Choose a connected model and call an API.</span></a></div>",
+      "css": ".ds-docs-setup{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--dd-border,#d5dcd2);border-radius:12px;overflow:hidden;font-family:var(--font-docs-sans,\"Space Grotesk\"),system-ui,sans-serif}.ds-docs-setup a{display:flex;flex-direction:column;gap:12px;padding:24px;background:var(--dd-surface,#efede6);color:var(--dd-text,#242e28);text-decoration:none;transition:background-color 160ms ease}.ds-docs-setup a+a{border-inline-start:1px solid var(--dd-border,#d5dcd2)}.ds-docs-setup span{font-size:14px;line-height:1.65;color:var(--dd-text-muted,#56635b)}.ds-docs-setup span:first-child{font-size:12px}.ds-docs-setup strong{font-size:16px;line-height:1.4;font-weight:600}.ds-docs-setup a:hover{background:var(--dd-accent-soft,#0662470d)}.ds-docs-setup a:focus-visible{outline:2px solid var(--dd-focus-ring,#066247);outline-offset:-3px}@media(max-width:760px){.ds-docs-setup{grid-template-columns:1fr}.ds-docs-setup a+a{border-inline-start:0;border-top:1px solid var(--dd-border,#d5dcd2)}}@media(prefers-reduced-motion:reduce){.ds-docs-setup a{transition:none}}"
+    },
+    {
+      "name": "Documentation directory row",
+      "kind": "nav",
+      "description": "Flat guide links in two columns, then one at 760px; no chapter counts.",
+      "html": "<nav class=\"ds-docs-directory\" aria-label=\"Guides\"><a href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M4 4h6a2 2 0 0 1 2 2v14a3 3 0 0 0-3-2H4V4Zm16 0h-6a2 2 0 0 0-2 2v14a3 3 0 0 1 3-2h5V4Z\"/></svg><span><strong>Getting started</strong><small>Installation, your first request, and a dashboard tour.</small></span><span aria-hidden=\"true\">\u2197</span></a><a href=\"#\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M4 4h6a2 2 0 0 1 2 2v14a3 3 0 0 0-3-2H4V4Zm16 0h-6a2 2 0 0 0-2 2v14a3 3 0 0 1 3-2h5V4Z\"/></svg><span><strong>Providers</strong><small>Subscriptions, API keys, compatible nodes, and local models.</small></span><span aria-hidden=\"true\">\u2197</span></a></nav>",
+      "css": ".ds-docs-directory{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:36px;font-family:var(--font-docs-sans,\"Space Grotesk\"),system-ui,sans-serif}.ds-docs-directory a{display:flex;align-items:flex-start;gap:16px;padding:22px 0;border-bottom:1px solid var(--dd-border,#d5dcd2);color:var(--dd-text,#242e28);text-decoration:none}.ds-docs-directory a>svg:first-child{color:var(--dd-accent,#066247)}.ds-docs-directory a>span:nth-child(2){flex:1;display:flex;flex-direction:column;gap:7px}.ds-docs-directory strong{font-size:16px;line-height:1.4;font-weight:600;transition:color 160ms ease}.ds-docs-directory small{font-size:14px;line-height:1.65;color:var(--dd-text-muted,#56635b)}.ds-docs-directory a>span:last-child{color:var(--dd-text-muted,#56635b)}.ds-docs-directory a:hover strong{color:var(--dd-accent,#066247)}.ds-docs-directory a:focus-visible{outline:2px solid var(--dd-focus-ring,#066247);outline-offset:3px}@media(max-width:760px){.ds-docs-directory{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.ds-docs-directory strong{transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Moonlit Gateway",
+    "overview": "Carved stone, silver engraving and emerald light make the gateway an invitation. Cormorant Garamond gives the public identity its inscription-like voice; Space Grotesk keeps controls and technical explanations direct. The door is the expressive signature, while supporting sections use legible text and restrained diagrams.\n\nThe marketing surface is dark and spacious. Soft emerald gradients explain real mechanisms through asymmetric compositions. Documentation shares the wordmark, local fonts and emerald accent, with parchment reading surfaces in light mode and forest stone in dark mode. Its opening uses the established static engraved gate, an ordered setup strip and a compact guide directory. The production dashboard retains its own functional design system, including inside the browser-mocked demo.",
+    "keyCharacteristics": [
+      "Moonlit stone with silver type and emerald emphasis.",
+      "Locally served serif displays and sans-serif controls.",
+      "A perspective stone gate with extruded arched leaves, moonlit inscriptions and a static fallback.",
+      "Mechanism illustrations beside a real interactive dashboard.",
+      "Parchment and forest documentation with a 72ch reading measure and mobile guide links."
+    ],
+    "rules": [
+      {
+        "name": "The Readable Mechanism Rule",
+        "body": "Use light and diagrams to explain implemented behavior; preserve readable copy and truthful support boundaries.",
+        "section": "colors"
+      },
+      {
+        "name": "The Quiet Proof Rule",
+        "body": "Keep the real dashboard visually faithful to its production components; use marketing depth around its frame.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Documentation Reading Rule",
+        "body": "Keep article prose at 72ch with sans-serif body text and serif titles. The index has one title, a 1.25fr / 1fr opening with a static engraved gate, a joined three-step setup strip, and two-column flat guide and popular-link rows. The opening gap is 40px, reducing to 24px at 1100px. At 760px the gate is hidden and the setup strip and directories become one column. Preserve setup/reference actions, search, sidebar, breadcrumb, article TOC and previous/next links. Use quiet tonal layers and borders, without code-block shadows.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do use the emerald accent for actions, active routes and restrained mechanism light.",
+      "Do use local Cormorant Garamond for marketing displays and Space Grotesk for body text.",
+      "Do keep the demo visually faithful to the production dashboard and identify its browser-mocked data.",
+      "Do keep content visible before animation and preserve the static door fallback.",
+      "Do qualify provider modality support and show OpenAI and Anthropic protocol coverage.",
+      "Do preserve grouped footer links, copyable install commands and responsive grids.",
+      "Do keep docs prose readable at 72ch, retain Fumadocs controls, and preserve the setup sequence and guide links on mobile."
+    ],
+    "donts": [
+      "Don't add localhost or endpoint addresses to the marketing hero.",
+      "Don't replace the live dashboard preview with a fabricated marketing dashboard.",
+      "Don't imply every provider supports every modality, or describe text realtime as audio support.",
+      "Don't expose an inactive door control when reduced motion, missing WebGL or context loss prevents animation.",
+      "Don't gate supporting content behind scroll reveals or apply the fantasy styling to production dashboard components.",
+      "Don't duplicate the docs index title, add chapter counts, or turn its static gate into an additional reading-page animation."
+    ]
+  }
+}

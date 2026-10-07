@@ -3,15 +3,17 @@ title: Cursor
 description: Point Cursor at a public DurinDoor URL with an OpenAI-compatible custom model.
 ---
 
-Cursor is a guide tool on **CLI Tools**, not an apply target. There is no `/api/cli-tools/cursor-settings` route. `GET /api/cli-tools/all-statuses` does not include `cursor`. The card at `/dashboard/cli-tools/cursor` copies a base URL, key, and model for Cursor's OpenAI-compatible settings. Cursor's own servers make the request, so a loopback URL is not enough.
+Cursor's servers call the custom model endpoint. Use a gateway URL those servers can reach, a DurinDoor key, and a model ID or combo. A loopback URL or private Tailscale-only address is insufficient.
 
-You need Cursor installed, a Cursor Pro account (the warning on that card), a DurinDoor API key, a model ID or combo, and a URL Cursor's cloud can reach. Turn on Tunnel or Cloud Endpoint under **Endpoint** (`/dashboard/endpoint`) before you open the Cursor card's step list.
+The dashboard guide requires Cursor Pro for this feature. Availability and settings can depend on your Cursor version and plan.
+
+## Prepare the endpoint
+
+Enable **Tunnel** or **Cloud Endpoint** under **Endpoint**. Require API keys and set a strong dashboard password before exposing the gateway. Then open **CLI Tools → Cursor** and copy the URL, key, and model. Cursor is a guide card; it does not edit Cursor settings.
 
 ## Dashboard guide
 
-The Cursor entry in `CLI_TOOLS` has `configType: "guide"` and `requiresExternalUrl: true`. The local `127.0.0.1` preset is omitted from the endpoint picker. The step list stays hidden until **Tunnel** or **Cloud Endpoint** is on. Tailscale can appear in other tools' pickers; this card still waits on tunnel or cloud before showing the steps.
-
-The card then walks:
+The card hides its step list until Tunnel or Cloud Endpoint is enabled. Follow these steps in Cursor:
 
 <Steps>
 <Step>
@@ -38,7 +40,6 @@ Select the DurinDoor model id (or type a combo name).
 Do not paste `http://localhost:20128/v1` into Cursor. Enable Tunnel or Cloud Endpoint on **Endpoint**, then copy that public URL. Do not expose the dashboard with the default password.
 </Callout>
 
-`scripts/auto-configure.mjs` and `/api/settings/auto-configure` do not write Cursor settings. They probe Headroom, PxPipe, and Firecrawl only.
 
 ## Manual config
 
@@ -52,11 +53,8 @@ Model:    provider/model-id
 
 Replace the host with the tunnel or cloud URL from `/dashboard/endpoint`. Use a combo name if you want fallback to stay inside DurinDoor when you change providers later.
 
-The card's `cloudCheck` note is: Cursor routes requests through its own server, so a local endpoint is not supported. The `warning` note is: Cursor Pro is required for this feature. Both come from `CLI_TOOLS.cursor.notes`. The local `127.0.0.1` preset is omitted because `requiresExternalUrl` is true.
 
-## Legacy `9router` labels
-
-Cursor's UI has no `9router` provider section. The server still accepts that section label in other tools' config files, and still accepts `X-Msh-Platform: 9router`. Create a dedicated DurinDoor key for Cursor so you can revoke it without touching Claude Code or Codex.
+Create a dedicated key for Cursor so you can revoke it without affecting other clients.
 
 ## Check it works
 

@@ -6,8 +6,12 @@ import { noiseChunk, runeChunk, moonChunk, archChunk } from "./common.glsl.js";
 export const leafVertex = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vWorld;
+  varying float vFace;
+  uniform float uSide;
   void main() {
-    vUv = uv;
+    vec2 door = position.xy + vec2(uSide * 1.15, 0.0);
+    vUv = vec2(uSide < 0.0 ? (door.x + 1.15) / 1.15 : door.x / 1.15, (door.y + 2.6) / 3.75);
+    vFace = smoothstep(0.35, 0.9, normal.z);
     vec4 wp = modelMatrix * vec4(position, 1.0);
     vWorld = wp.xyz;
     gl_Position = projectionMatrix * viewMatrix * wp;
@@ -22,6 +26,7 @@ export const leafFragment = /* glsl */ `
   uniform float uSide;
   varying vec2 vUv;
   varying vec3 vWorld;
+  varying float vFace;
 
   void main() {
     vec2 d = vec2(
@@ -29,7 +34,7 @@ export const leafFragment = /* glsl */ `
       mix(DOOR_BOTTOM, DOOR_R, vUv.y)
     );
     float e = archInside(d);
-    if (e < 0.0) discard;
+
 
     // Carved panels: vertical planks with a darker border groove.
     float planks = fbm(d * vec2(1.4, 7.0) + uSide * 3.0);
@@ -75,6 +80,7 @@ export const leafFragment = /* glsl */ `
     col += EMERALD * groove * 0.35 * reveal;
     col += mix(EMERALD, vec3(0.8, 1.0, 0.9), exp(-s * 140.0)) * seam * 2.2;
 
+    col = mix(base * 0.7 + EMERALD * 0.025 * uOpen, col, vFace);
     gl_FragColor = vec4(col, 1.0);
     #include <colorspace_fragment>
   }

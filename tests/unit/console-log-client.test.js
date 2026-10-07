@@ -85,6 +85,37 @@ function typeSearch(value) {
   });
 }
 
+/**
+ * happy-dom has no layout engine. Model browser viewport metrics and scroll
+ * clamping from the rendered spacer's CSS height, not from fixture row counts
+ * or component state. Without this boundary, top and bottom both read as zero.
+ */
+function installViewerLayout() {
+  const viewer = container.querySelector('[role="log"]');
+  let top = 0;
+  Object.defineProperties(viewer, {
+    clientHeight: { configurable: true, get: () => 640 },
+    clientWidth: { configurable: true, get: () => 640 },
+    scrollHeight: {
+      configurable: true,
+      get: () => Math.max(640, Number.parseFloat(viewer.firstElementChild?.style.height) || 0),
+    },
+    scrollTop: {
+      configurable: true,
+      get: () => Math.min(top, viewer.scrollHeight - viewer.clientHeight),
+      set: (value) => { top = Math.max(0, Math.min(value, viewer.scrollHeight - viewer.clientHeight)); },
+    },
+  });
+  return viewer;
+}
+
+function scrollTo(viewer, top) {
+  act(() => {
+    viewer.scrollTop = top;
+    viewer.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+}
+
 beforeEach(() => {
   transport.handlers = null;
   transport.stop = vi.fn();
@@ -215,6 +246,7 @@ describe("ConsoleLogClient", () => {
   });
 
   it("renders only a window of rows for a full 2000-line buffer and keeps the ring size", () => {
+    const viewer = installViewerLayout();
     const many = Array.from({ length: 2001 }, (_, index) => `[18:00:00] 🟢 → POST line-${index}`);
     emit({ type: "init", logs: many });
     expect(counter()).toBe("2000 of 2000 log lines");
@@ -223,42 +255,66 @@ describe("ConsoleLogClient", () => {
     expect(rendered.length).toBeLessThan(100);
     expect(rendered.at(-1)).toContain("line-2000");
     expect(rendered.some((text) => text.endsWith("line-1"))).toBe(false);
-    const viewer = container.querySelector('[role="log"]');
+    scrollTo(viewer, 0);
+    expect(rowTexts()[0]).toMatch(/line-1$/);
+    expect(rowTexts().some((text) => text.endsWith("line-2000"))).toBe(false);
+    expect(rowTexts().length).toBeLessThan(100);
+    click(button("Jump to latest"));
+    expect(rowTexts().at(-1)).toContain("line-2000");
+    expect(viewer.scrollTop).toBe(viewer.scrollHeight - viewer.clientHeight);
 
     click(button("Wrap lines"));
     expect(rowTexts().length).toBeLessThan(100);
     expect(rowTexts().at(-1)).toContain("line-2000");
-    act(() => {
-      viewer.scrollTop = 0;
-      viewer.dispatchEvent(new Event("scroll", { bubbles: true }));
-    });
-    expect(rowTexts()[0]).toContain("line-1");
+    scrollTo(viewer, 0);
+    expect(rowTexts()[0]).toMatch(/line-1$/);
     expect(rowTexts().some((text) => text.endsWith("line-2000"))).toBe(false);
+    expect(viewer.scrollTop).toBe(0);
+    emit({ type: "line", line: "[18:00:01] POST new arrival" });
+    expect(viewer.scrollTop).toBe(0);
+    expect(rowTexts()[0]).toMatch(/line-2$/);
+    expect(rowTexts().some((text) => text.includes("new arrival"))).toBe(false);
+    expect(rowTexts().length).toBeLessThan(100);
     click(button("Jump to latest"));
-    expect(rowTexts().at(-1)).toContain("line-2000");
+    expect(rowTexts().at(-1)).toContain("new arrival");
+    expect(viewer.scrollTop).toBe(viewer.scrollHeight - viewer.clientHeight);
   });
 
   it("keeps multiline wrapped rows windowed as measured heights change", () => {
+    const viewer = installViewerLayout();
+    let rowHeight = 96;
+    const resizeObservers = new Set();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback) { this.callback = callback; }
+      observe() { resizeObservers.add(this); }
+      disconnect() { resizeObservers.delete(this); }
+    });
     const original = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function measure() {
       return this.hasAttribute("data-console-row")
-        ? { top: 0, left: 0, width: 320, height: 96, right: 320, bottom: 96 }
+        ? { top: 0, left: 0, width: 640, height: rowHeight, right: 640, bottom: rowHeight }
         : original.call(this);
     });
     emit({ type: "init", logs: Array.from({ length: 2000 }, (_, index) => `wrapped-${index}\nsecond line\nthird line`) });
     click(button("Wrap lines"));
     expect(rowTexts().length).toBeLessThan(100);
     expect(rowTexts().at(-1)).toContain("wrapped-1999");
-    const viewer = container.querySelector('[role="log"]');
-    act(() => {
-      viewer.scrollTop = 0;
-      viewer.dispatchEvent(new Event("scroll", { bubbles: true }));
-    });
+    scrollTo(viewer, 0);
     expect(rowTexts()[0]).toContain("wrapped-0");
     expect(rowTexts()[0]).toContain("third line");
     expect(rowTexts().some((text) => text.includes("wrapped-1999"))).toBe(false);
+    expect(viewer.scrollTop).toBe(0);
+    act(() => {
+      rowHeight = 144;
+      [...resizeObservers].forEach((observer) => observer.callback());
+    });
+    expect(viewer.scrollTop).toBe(0);
+    expect(rowTexts()[0]).toContain("wrapped-0");
+    expect(rowTexts().some((text) => text.includes("wrapped-1999"))).toBe(false);
+    expect(rowTexts().length).toBeLessThan(100);
     click(button("Jump to latest"));
     expect(rowTexts().at(-1)).toContain("wrapped-1999");
+    expect(viewer.scrollTop).toBe(viewer.scrollHeight - viewer.clientHeight);
   });
 
   it("copies the visible lines", () => {

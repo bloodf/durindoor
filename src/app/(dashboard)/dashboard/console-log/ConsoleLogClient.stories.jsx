@@ -29,10 +29,11 @@ const emptyRoutes = {
   "GET /api/translator/console-logs/stream": { events: [{ type: "init", logs: [] }] },
 };
 
-// No stream route: the transport takes its polling fallback, and every poll
-// returns one more line, so lines keep arriving after the story pauses.
+// Explicit null clears the inherited SSE descriptor during parameter merging.
+// The production transport then polls, including while display is paused.
 let polls = 0;
 const pollingRoutes = {
+  "GET /api/translator/console-logs/stream": null,
   "GET /api/translator/console-logs": () => {
     const extra = Array.from({ length: polls }, (_, index) => `[17:49:${String(index % 60).padStart(2, "0")}] 🟣 → POST gpt-5.5 poll ${index + 1}`);
     polls += 1;
@@ -46,6 +47,10 @@ export default {
   title: "Production/operations/ConsoleLogClient",
   component: ConsoleLogClient,
   parameters: fixture(routes),
+  beforeEach: () => {
+    polls = 0;
+    return () => { polls = 0; };
+  },
 };
 
 export const Streaming = {
@@ -83,9 +88,18 @@ export const Paused = {
     await expect(canvas.getByText("Paused")).toBeInTheDocument();
     const pill = await canvas.findByText(/^\d+ new$/, {}, { timeout: 5000 });
     await expect(pill).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Resume" })).toBeEnabled();
+  },
+};
+
+export const ResumeFromPause = {
+  parameters: fixture(pollingRoutes),
+  play: async ({ canvasElement }) => {
+    await Paused.play({ canvasElement });
+    const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Jump to latest" }));
     await waitFor(() => expect(canvas.queryByText(/^\d+ new$/)).not.toBeInTheDocument());
-    await expect(canvas.getByText("Streaming")).toBeInTheDocument();
+    await expect(canvas.getByText("Streaming")).toBeVisible();
   },
 };
 

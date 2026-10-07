@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 import Tabs from "./Tabs";
 
 /**
@@ -83,5 +84,37 @@ export const WithDisabledTab = {
     ],
     value: "overview",
     "aria-label": "Gateway sections",
+  },
+};
+
+export const KeyboardNavigation = {
+  render: (args) => <StatefulTabs {...args} />,
+  args: {
+    tabs: [...ICON_TABS, { value: "archive", label: "Archive", disabled: true }],
+    value: "overview",
+    "aria-label": "Gateway sections",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const overview = canvas.getByRole("tab", { name: "Overview" });
+    overview.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect(canvas.getByRole("tab", { name: "Providers" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.keyboard("{End}");
+    await expect(canvas.getByRole("tab", { name: "Logs" })).toHaveAttribute("aria-selected", "true");
+  },
+};
+
+export const RightToLeft = {
+  render: (args) => <div dir="rtl"><StatefulTabs {...args} /></div>,
+  args: {
+    tabs: ICON_TABS,
+    value: "providers",
+    "aria-label": "Gateway sections",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "Activity" }));
+    await expect(canvas.getByRole("tab", { name: "Activity" })).toHaveAttribute("aria-selected", "true");
   },
 };

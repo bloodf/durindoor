@@ -47,3 +47,12 @@ export const Disabled = {
 };
 
 export const Error = { args: { connections: [{ id: "openai-1", provider: "openai", testStatus: "error", isActive: true }] } };
+
+export const NoConnection = { args: { connections: [] } };
+
+export const CooldownUnavailable = {
+  args: { connections: [{ id: "openai-1", provider: "openai", testStatus: "unavailable", isActive: true, modelLock_gpt: "2099-01-01T00:00:00.000Z" }] },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText("1 Error")).toBeVisible();
+  },
+};

@@ -27,11 +27,19 @@ const OK = { status: 200, body: { ok: true } };
  * route is served here even though no instance section is rendered.
  */
 function defaultFixture({ instances = INSTANCES, keys = KEYS } = {}) {
-  const state = { instances: instances.map((instance) => ({ ...instance })), keys: keys.map((key) => ({ ...key })), grants: new Map([["k1", ["granola", "jira"]], ["k2", []]]) };
+  const initialState = structuredClone({
+    instances,
+    keys,
+    grants: new Map([["k1", ["granola", "jira"]], ["k2", []]]),
+  });
+  let state;
+  const reset = () => { state = structuredClone(initialState); };
+  reset();
   return {
     scenario: "default",
     pathname: "/dashboard/mcp-gateway/keys",
     params: {},
+    reset,
     routes: {
       "GET /api/mcp-gateway/instances": () => ({ status: 200, body: { instances: state.instances } }),
       "GET /api/mcp-gateway/keys": () => ({ status: 200, body: { keys: state.keys } }),
@@ -62,6 +70,14 @@ const meta = {
   title: "Durin DS/Production Pages/MCP Gateway Keys",
   component: McpGatewayKeysPage,
   parameters: { layout: "fullscreen" },
+  // Restore the whole fixture graph, including grant arrays and newly added
+  // keys, on setup and cleanup so revisits exercise the same initial state.
+  beforeEach: ({ parameters }) => {
+    const reset = parameters.storyFixture?.reset;
+    if (!reset) return;
+    reset();
+    return reset;
+  },
 };
 export default meta;
 
@@ -122,6 +138,7 @@ export const NewKeyKeyboard = {
     input.focus();
     await userEvent.keyboard("{Enter}");
     await expect(await dialog.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
+    await expect(dialog.queryByRole("dialog", { name: "Name gateway key" })).not.toBeInTheDocument();
   },
 };
 
@@ -136,6 +153,9 @@ export const NewKeyFreshMount = {
     await userEvent.click(dialog.getByRole("button", { name: "Close" }));
     await userEvent.click(canvas.getByRole("button", { name: "New key" }));
     await expect(await dialog.findByLabelText("Key name")).toHaveValue("");
+    const prompt = await dialog.findByRole("dialog", { name: "Name gateway key" });
+    await expect(prompt).toBeVisible();
+    await expect(within(prompt).getByText("Key name", { exact: true })).toBeVisible();
   },
 };
 
@@ -150,6 +170,25 @@ export const MobileNewKeyKeyboard = {
     input.focus();
     await userEvent.keyboard("{Enter}");
     await expect(await dialog.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
+  },
+};
+
+export const RevealExistingKey = {
+  parameters: { storyFixture: defaultFixture() },
+  render: () => <McpGatewayKeysPage />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const cursorRow = (await canvas.findByText("Cursor laptop")).closest("article");
+    await userEvent.click(within(cursorRow).getByRole("button", { name: "Reveal and copy" }));
+    await expect(within(cursorRow).getByRole("button", { name: "Reveal and copy" }).querySelector(".material-symbols-outlined")).toHaveTextContent("check");
+  },
+};
+
+export const EmptyKeys = {
+  parameters: { storyFixture: defaultFixture({ keys: [] }) },
+  render: () => <McpGatewayKeysPage />,
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText("No gateway keys yet")).toBeVisible();
   },
 };
 

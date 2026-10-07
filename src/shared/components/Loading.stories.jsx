@@ -60,7 +60,12 @@ export const SkeletonVariants = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByTestId("skeleton-1")).toHaveClass("animate-pulse");
+    for (const id of ["skeleton-1", "skeleton-2", "skeleton-3"]) {
+      const skeleton = canvas.getByTestId(id);
+      await expect(skeleton).toBeVisible();
+      await expect(skeleton.getBoundingClientRect().width).toBeGreaterThan(0);
+      await expect(skeleton.getBoundingClientRect().height).toBeGreaterThan(0);
+    }
   },
 };
 

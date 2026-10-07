@@ -102,3 +102,19 @@ export const CollapsibleRail = {
     await waitFor(() => expect(canvas.getByRole("link", { name: "Usage" })).toBeVisible());
   },
 };
+
+function InitiallyCollapsedSidebar() {
+  const [collapsed, setCollapsed] = useState(true);
+  return <Sidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed((value) => !value)} />;
+}
+
+/** Leaves collapsed private tooltip visible after real pointer interaction. */
+export const CollapsedTooltip = {
+  render: () => <InitiallyCollapsedSidebar />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const control = canvas.getByRole("button", { name: "Expand sidebar" });
+    await userEvent.hover(control);
+    await waitFor(() => expect(within(document.body).getByRole("tooltip")).toHaveTextContent("Expand sidebar"));
+  },
+};

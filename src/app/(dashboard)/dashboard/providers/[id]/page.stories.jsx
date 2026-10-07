@@ -114,5 +114,22 @@ export const CompatibleBranch = {
     await expect(dialogScope.getByText("One-to-one (rotate)")).toBeVisible();
     await expect(dialogScope.getByText("EU Pool")).toBeVisible();
     await userEvent.click(dialogScope.getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Apply Proxy" })).toBeVisible();
+  },
+};
+
+/** Retained-open parent scene, separate from CompatibleBranch's cancellation. */
+export const CompatibleProxyOpen = {
+  parameters: CompatibleBranch.parameters,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Apply Proxy" }));
+    const dialog = await within(document.body).findByRole("dialog", { name: /apply proxy \(1 connections\)/i });
+    const form = within(dialog);
+    await waitFor(() => expect(dialog).toBeVisible());
+    await expect(form.getByText("One-to-one (rotate)")).toBeVisible();
+    await expect(form.getByText("EU Pool")).toBeVisible();
+    await expect(form.getByRole("button", { name: /^cancel$/i })).toBeEnabled();
   },
 };

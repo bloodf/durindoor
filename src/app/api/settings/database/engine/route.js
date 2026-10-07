@@ -34,6 +34,13 @@ export async function GET(request) {
     return NextResponse.json({ error: err.message || "Failed to read settings" }, { status: 500 });
   }
   const activeEngine = getActiveEngine();
+  // process.env contains the applied boot configuration, not pending managed-file edits.
+  // Explicit selectors cannot take the legacy PostgreSQL-to-SQLite fallback path.
+  const explicitRuntimeEngine = process.env.DURINDOOR_DATABASE_ENGINE === "postgres" ||
+    Object.hasOwn(process.env, "DURINDOOR_PG_URL") ? "postgres"
+    : process.env.DURINDOOR_DATABASE_ENGINE === "sqlite" ? "sqlite" : null;
+  const servingFallback = activeEngine === "sqlite" &&
+    explicitRuntimeEngine === null && settings.databaseEngine === "postgres";
   const cap = evaluateCapabilities(
     {
       serverVersionNum: settings.databasePgVersion
@@ -49,7 +56,7 @@ export async function GET(request) {
   return NextResponse.json({
     activeEngine,
     startupEnv: describeDatabaseStartup(await resolvePostgresSecret(), settings.databaseEngine || activeEngine),
-    servingFallback: activeEngine !== (settings.databaseEngine || "sqlite"),
+    servingFallback,
     databaseEngine: settings.databaseEngine,
     databaseEngineError: settings.databaseEngineError,
     databaseCutoverAt: settings.databaseCutoverAt,

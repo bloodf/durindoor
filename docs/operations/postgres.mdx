@@ -168,6 +168,13 @@ Any failed step before the settings write keeps SQLite live.
 
 Only legacy dashboard-managed installations use this fallback. If `databaseEngine` is `postgres` and `openActiveAdapter` cannot use the cluster (no URL, connect error, migration failure), it records `databaseEngineError` and returns a SQLite adapter. Explicit `DURINDOOR_DATABASE_ENGINE=postgres` or `DURINDOOR_PG_URL` startup instead rejects the failure without opening SQLite.
 
+`servingFallback` is true only when the running adapter is SQLite after a legacy
+stored PostgreSQL selection. Healthy PostgreSQL startup is not a fallback merely
+because its settings row still defaults to SQLite. An explicit managed SQLite
+selection is also not a fallback, even if the legacy settings select PostgreSQL.
+Pending managed-file edits affect `startupEnv`, not the active Engine card or
+fallback banner; restarting is required before those selectors change the runtime.
+
 Known `databaseEngineError` strings:
 
 - `PG engine is on but no connection URL is configured`
@@ -208,7 +215,7 @@ Then restart, or use the dashboard rollback so the settings row flips with the f
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Runtime still on SQLite | Connect, URL, or migration failed | Read `databaseEngineError` on the Database page |
-| Engine card says postgres, banner says Serving SQLite | `servingFallback`: this process could not open PG | Fix the URL or cluster, then restart |
+| Engine card says sqlite, banner says Serving SQLite | Legacy PostgreSQL boot fell back to SQLite | Fix the URL or cluster, then restart |
 | `pg_isready` fails | Cluster down or wrong port | `docker compose ps postgres18` and `docker compose logs postgres18` |
 | Mirror of `requestDetails` is huge | Observability log can be gigabytes | Leave `includeRequestDetails` false (the default) |
 | Cutover returns 503 | Another cutover or rollback holds the lock | Wait and retry. `Retry-After: 5` |

@@ -1,5 +1,5 @@
 import localFont from "next/font/local";
-import { Cinzel } from "next/font/google";
+
 import { cookies } from "next/headers";
 import { homeMetadata, LOCALE_COOKIE, resolveHomeLocale } from "@site/i18n/home.js";
 import "lenis/dist/lenis.css";
@@ -9,25 +9,14 @@ import "./sections.css";
 import "./demo.css";
 import "./story.css";
 import "./ledger.css";
-import "./light.css";
+import "./brand.css";
 
-const inter = localFont({
-  src: [
-    { path: "../../../public/home/fonts/Inter-Regular.woff2", weight: "400", style: "normal" },
-    { path: "../../../public/home/fonts/Inter-Medium.woff2", weight: "500", style: "normal" },
-    { path: "../../../public/home/fonts/Inter-SemiBold.woff2", weight: "600", style: "normal" },
-    { path: "../../../public/home/fonts/Inter-Bold.woff2", weight: "700", style: "normal" },
-  ],
-  variable: "--font-home-sans",
-  display: "swap",
+const space = localFont({
+  src: "../../../public/home/fonts/SpaceGrotesk.ttf",
+  variable: "--font-home-sans", display: "swap", weight: "300 700",
 });
 
-const cinzel = Cinzel({
-  subsets: ["latin"],
-  weight: ["600", "700"],
-  variable: "--font-home-display",
-  display: "swap",
-});
+const display = localFont({ src: "../../../public/home/fonts/CormorantGaramond.ttf", variable: "--font-home-display", display: "swap", weight: "300 700" });
 
 export async function generateMetadata() {
   const locale = resolveHomeLocale((await cookies()).get(LOCALE_COOKIE)?.value);
@@ -38,8 +27,8 @@ export async function generateMetadata() {
   };
 }
 
-export const viewport = { themeColor: "#040705", colorScheme: "dark light" };
+export const viewport = { themeColor: "#171719", colorScheme: "dark light" };
 
 export default function HomeLayout({ children }) {
-  return <div className={`dark dd-home ${inter.variable} ${cinzel.variable}`}>{children}</div>;
+  return <div className={`dark dd-home ${space.variable} ${display.variable}`}>{children}</div>;
 }

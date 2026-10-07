@@ -34,6 +34,7 @@ export default async function Page(props) {
 
   return (
     <DocsPage
+      className={isLanding ? "dd-docs-index" : "dd-docs-article"}
       toc={toc}
       full={page.data.full}
       breadcrumb={{ enabled: !isLanding }}
@@ -74,8 +75,8 @@ export async function generateMetadata(props) {
     title: page.data.title,
     description: page.data.description,
     icons: {
-      icon: "/icons/icon-512.png",
-      apple: "/icons/icon-192.png",
+      icon: "/home/favicon.svg",
+      apple: "/brand/durindoor-apple-touch-icon.png",
     },
     openGraph: {
       title: page.data.title,

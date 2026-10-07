@@ -30,7 +30,6 @@ export default function DeployTabs() {
   return (
     <div className="deploy">
       <div className="deploy-head">
-        <p className="connect-title">{t("Other ways through")}</p>
         <div className="deploy-tabs" role="tablist" aria-label={t("Deployment method")} onKeyDown={onKeyDown}>
           {DEPLOYMENTS.map((method, i) => (
             <button

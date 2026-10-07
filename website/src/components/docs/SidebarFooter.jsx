@@ -13,7 +13,7 @@ function GithubIcon({ size = 16 }) {
 
 const FOOTER_LINKS = [
   { href: "/", label: "Home", Icon: House },
-  { href: "/dashboard", label: "Demo", Icon: LayoutDashboard },
+  { href: "/demo-preview", label: "Demo", Icon: LayoutDashboard },
   {
     href: "https://github.com/bloodf/durindoor",
     label: "GitHub",

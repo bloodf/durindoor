@@ -41,7 +41,7 @@ export function homeMetadata(locale) {
   const selected = resolveHomeLocale(locale);
   const t = createHomeTranslator(selected);
   const title = t("DurinDoor. Speak, friend, and enter");
-  const description = t("Add credentials once. Point every OpenAI-compatible tool at http://localhost:20128/v1.");
+  const description = t("Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.");
   const openGraphLocale = { en: "en_US", "pt-BR": "pt_BR", es: "es_ES", de: "de_DE", ja: "ja_JP", "zh-CN": "zh_CN" }[selected];
   return {
     title,
@@ -51,7 +51,7 @@ export function homeMetadata(locale) {
       description,
       locale: openGraphLocale,
       type: "website",
-      images: [{ url: "/home/door-poster.webp", width: 1600, height: 679, alt: t("Ancient stone door glowing emerald in dark ruins") }],
+      images: [{ url: "/brand/durindoor-social.png", width: 1200, height: 630, alt: t("Ancient stone door glowing emerald in dark ruins") }],
     },
     twitter: { card: "summary_large_image", title, description },
   };

@@ -4,8 +4,8 @@
 // password the mocked backend actually checks, and that Copy puts that exact
 // value on the clipboard.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import React, { act } from "../../website/node_modules/react/index.js";
+import { createRoot } from "../../website/node_modules/react-dom/client.js";
 import DemoPasswordNotice from "../../website/src/components/demo/DemoPasswordNotice.jsx";
 import { DEMO_PASSWORD } from "../../website/src/mock/demoPassword.js";
 import { createRouter } from "../../website/src/mock/router.js";
@@ -13,6 +13,8 @@ import { registerAll } from "../../website/src/mock/handlers/index.js";
 import { store } from "../../website/src/mock/store.js";
 import { toResponse } from "../../website/src/mock/http.js";
 
+// Use the website React runtime, matching the component under test.
+// The root dashboard and website install different React versions.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const roots = [];

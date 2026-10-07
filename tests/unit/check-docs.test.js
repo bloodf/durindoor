@@ -8,7 +8,7 @@ const roots = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
 const assets =
-  '<img src="durindoor-banner.png"> <img src="durindoor-wordmark-theme-aware.svg">';
+  '<img src="assets/brand/durindoor-gateway.webp"> <img src="assets/brand/durindoor-logo-light.svg">';
 
 const COMMUNITY_FIXTURES = {
   "CODE_OF_CONDUCT.md": "# Code of Conduct\n",
@@ -32,8 +32,9 @@ async function fixture(files) {
     await writeFile(target, text);
   }));
   // The two approved assets must exist as file targets so image tags resolve.
-  await writeFile(path.join(root, "durindoor-banner.png"), "");
-  await writeFile(path.join(root, "durindoor-wordmark-theme-aware.svg"), "");
+  await mkdir(path.join(root, "assets/brand"), { recursive: true });
+  await writeFile(path.join(root, "assets/brand/durindoor-gateway.webp"), "");
+  await writeFile(path.join(root, "assets/brand/durindoor-logo-light.svg"), "");
   return root;
 }
 
@@ -68,10 +69,10 @@ describe("documentation integrity", () => {
 
   it("requires both approved assets in README.md", async () => {
     const issues = await check({ "README.md": "# DurinDoor" });
-    expect(issues).toContain("README.md: missing durindoor-banner.png");
-    expect(issues).toContain("README.md: missing durindoor-wordmark-theme-aware.svg");
-    expect(issues).not.toContain("docs/README.md: missing durindoor-banner.png");
-    expect(issues).not.toContain("docs/index.mdx: missing durindoor-banner.png");
+    expect(issues).toContain("README.md: missing assets/brand/durindoor-gateway.webp");
+    expect(issues).toContain("README.md: missing assets/brand/durindoor-logo-light.svg");
+    expect(issues).not.toContain("docs/README.md: missing assets/brand/durindoor-gateway.webp");
+    expect(issues).not.toContain("docs/index.mdx: missing assets/brand/durindoor-gateway.webp");
   });
 
   it("reports forbidden URLs even inside code blocks", async () => {
@@ -150,8 +151,8 @@ describe("documentation integrity", () => {
     const issues = await check({
       "README.md": assets,
     });
-    const bannerIssues = issues.filter((i) => i.includes("missing durindoor-banner.png"));
-    const wordmarkIssues = issues.filter((i) => i.includes("missing durindoor-wordmark-theme-aware.svg"));
+    const bannerIssues = issues.filter((i) => i.includes("missing assets/brand/durindoor-gateway.webp"));
+    const wordmarkIssues = issues.filter((i) => i.includes("missing assets/brand/durindoor-logo-light.svg"));
     expect(bannerIssues).toHaveLength(0);
     expect(wordmarkIssues).toHaveLength(0);
   });

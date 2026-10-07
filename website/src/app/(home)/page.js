@@ -11,7 +11,7 @@ import DemoTeaser from "@site/components/home/sections/DemoTeaser.jsx";
 import FinalCta from "@site/components/home/sections/FinalCta.jsx";
 import Footer from "@site/components/home/sections/Footer.jsx";
 import { CursorGlow, Nav, ScrollProgress, SmoothScroll } from "@site/components/home/ui/chrome.jsx";
-import { RuneDivider } from "@site/components/home/ui/primitives.jsx";
+
 
 // Story order: the door opens (hero), what walks through it (kinds), how it
 // routes (flow + fallback), who is behind it (providers, tools), what it saves
@@ -24,16 +24,15 @@ export default function HomePage() {
       <Nav />
       <main id="main">
         <Hero />
+        <DemoTeaser />
         <ServiceKinds />
         <FlowSection />
         <Constellation />
         <ToolsMarquee />
-        <RuneDivider />
         <TokenSavers />
         <QuotaUsage />
         <Features />
         <QuickStart />
-        <DemoTeaser />
         <FinalCta />
       </main>
       <Footer />

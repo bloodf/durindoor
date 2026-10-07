@@ -1,5 +1,15 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Speak, friend, and enter.": "Diga, amigo, e entre.",
+  "You choose the fallback order": "Você escolhe a ordem de fallback",
+  "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "Um combo oferece um único nome de modelo ao cliente. O DurinDoor tenta os membros configurados em ordem e outras contas elegíveis antes de passar ao próximo modelo.",
+  "Example configuration": "Exemplo de configuração",
+  "This order is an example, not a built-in subscription, API, or local-model priority.": "Esta ordem é um exemplo. Não há prioridade fixa entre assinaturas, APIs ou modelos locais.",
+
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "Seus provedores de IA. Um gateway. APIs OpenAI e Anthropic, assinaturas e modelos locais — conectados do seu jeito.",
+  "Close the door": "Fechar a porta",
+  "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "Conecte um provedor, escolha um modelo e configure seu cliente para APIs OpenAI ou Anthropic.",
+
   "Skip to content": "Pular para o conteúdo",
   "Primary": "Principal",
   "DurinDoor home": "Página inicial do DurinDoor",
@@ -8,7 +18,6 @@ const messages = {
   "Compatible tools": "Ferramentas compatíveis",
   "If it speaks OpenAI, it walks through": "Se fala OpenAI, pode entrar",
   "Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.": "Agentes de programação, editores e CLIs se conectam com uma URL base e uma chave DurinDoor.",
-  "Speak, friend, and enter. A fork of 9router, self-hosted and MIT licensed.": "Diga, amigo, e entre. Um fork do 9router, auto-hospedado e licenciado sob MIT.",
   "Footer": "Rodapé",
   "DurinDoor contributors.": "Colaboradores do DurinDoor.",
   "Quick start": "Início rápido",
@@ -273,7 +282,6 @@ const messages = {
   "Realtime": "Realtime",
   "Proxy timeline": "Proxy timeline",
   "npx durindoor starts a local process. Docker and a global install are under Quick start.": "npx durindoor sobe um processo local. Docker e a instalação global estão em Início rápido.",
-  "Speak, friend, and enter. A fork of 9router.": "Diga, amigo, e entre. Um fork do 9router.",
   "Nine kinds of model call, one key.": "Nove tipos de chamada, uma chave."
 };
 

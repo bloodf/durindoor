@@ -1,5 +1,15 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Speak, friend, and enter.": "Speak, friend, and enter.",
+  "You choose the fallback order": "You choose the fallback order",
+  "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.",
+  "Example configuration": "Example configuration",
+  "This order is an example, not a built-in subscription, API, or local-model priority.": "This order is an example, not a built-in subscription, API, or local-model priority.",
+
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.",
+  "Close the door": "Close the door",
+  "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.",
+
   "Skip to content": "Skip to content",
   "Primary": "Primary",
   "DurinDoor home": "DurinDoor home",
@@ -8,7 +18,6 @@ const messages = {
   "Compatible tools": "Compatible tools",
   "If it speaks OpenAI, it walks through": "If it speaks OpenAI, it walks through",
   "Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.": "Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.",
-  "Speak, friend, and enter. A fork of 9router, self-hosted and MIT licensed.": "Speak, friend, and enter. A fork of 9router, self-hosted and MIT licensed.",
   "Footer": "Footer",
   "DurinDoor contributors.": "DurinDoor contributors.",
   "Quick start": "Quick start",
@@ -273,7 +282,6 @@ const messages = {
   "Realtime": "Realtime",
   "Proxy timeline": "Proxy timeline",
   "npx durindoor starts a local process. Docker and a global install are under Quick start.": "npx durindoor starts a local process. Docker and a global install are under Quick start.",
-  "Speak, friend, and enter. A fork of 9router.": "Speak, friend, and enter. A fork of 9router.",
   "Nine kinds of model call, one key.": "Nine kinds of model call, one key."
 };
 

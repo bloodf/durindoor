@@ -1,5 +1,15 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Speak, friend, and enter.": "说吧，朋友，然后进来。",
+  "You choose the fallback order": "由你选择回退顺序",
+  "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "组合向客户端提供一个模型名称。DurinDoor 按配置顺序尝试各个成员，在转到下一个模型之前重试符合条件的账户。",
+  "Example configuration": "配置示例",
+  "This order is an example, not a built-in subscription, API, or local-model priority.": "此顺序仅为示例。订阅、API 或本地模型没有内置的固定优先级。",
+
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "你的 AI 提供商，一个网关。连接 OpenAI 和 Anthropic API、订阅以及本地模型，由你掌控。",
+  "Close the door": "关闭大门",
+  "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "连接提供商，选择模型，并为 OpenAI 或 Anthropic API 配置客户端。",
+
   "Skip to content": "跳转到正文",
   "Primary": "主导航",
   "DurinDoor home": "DurinDoor 首页",
@@ -8,7 +18,6 @@ const messages = {
   "Compatible tools": "兼容工具",
   "If it speaks OpenAI, it walks through": "兼容 OpenAI，即可通行",
   "Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.": "编程代理、编辑器和 CLI 只需一个基础 URL 和一把 DurinDoor 密钥即可连接。",
-  "Speak, friend, and enter. A fork of 9router, self-hosted and MIT licensed.": "说吧，朋友，然后进来。源自 9router，支持自托管，采用 MIT 许可证。",
   "Footer": "页脚",
   "DurinDoor contributors.": "DurinDoor 贡献者。",
   "Quick start": "快速开始",
@@ -273,7 +282,6 @@ const messages = {
   "Realtime": "Realtime",
   "Proxy timeline": "Proxy timeline",
   "npx durindoor starts a local process. Docker and a global install are under Quick start.": "npx durindoor 拉起本地进程。Docker 和全局安装在 Quick start 里。",
-  "Speak, friend, and enter. A fork of 9router.": "说吧，朋友，然后进来。9router 的 fork。",
   "Nine kinds of model call, one key.": "九种模型调用，一把密钥。"
 };
 

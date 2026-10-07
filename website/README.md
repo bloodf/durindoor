@@ -53,20 +53,23 @@ Sections live in `src/components/home/{hero,flow,sections}`; copy and figures ar
 it was derived from. The token savers panel runs the real `open-sse/rtk` `find`
 filter when the server module loads, so its byte counts are genuine output.
 
-Decorative backgrounds use native-canvas components from
-[ThreeUI Community](https://threeui.com) (`@designcodeio/threeui`, MIT):
-`StreamConvergenceBackground` (flow), `LaserCollection` (providers, token savers),
-`EmeraldHorizonBackground` (quota), `BellFieldBackground` and `LumenCta` (final CTA).
-`src/components/home/threeui/ThreeStage.jsx` code-splits each one, mounts it only
-near the viewport, skips it for reduced motion or missing WebGL (a CSS fallback is
-always painted), and the components pause themselves off-screen. The iframe-based
-"Neuform" effects are avoided because they load third-party CDNs.
-`next.config.mjs` aliases ThreeUI's pinned `three128` to the app's `three` so the
-page ships one Three.js instance.
+The public identity is fantasy themed, inspired by Durin's Door at Moria. The
+canonical SVG emblem, outlined wordmarks, app icon, illustration, presentation
+board, and usage guide live in `../assets/brand/`. `sync-public.mjs` copies those
+assets to `/brand` during development and builds. Cormorant Garamond carries
+headings, and Space Grotesk carries UI copy. Both fonts are locally served.
 
-The site is dark by default; with a light theme preference the daylight sections
-switch to parchment (`src/app/(home)/light.css`) while the hero, code blocks and
-WebGL bands stay dark.
+The hero code-splits its React Three Fiber scene after hydration and keeps a
+static illustration underneath, visible while the texture loads. The scene uses a custom emerald mist shader,
+pointer parallax, and scroll-linked light and depth. It caps DPR at 1.5 and pauses when
+the hero is offscreen or the tab is hidden. Missing WebGL, context loss, and
+reduced motion keep the static illustration. Motion and native CSS scroll
+timelines reveal the sections. Supporting routing-line effects use CSS. Decorative marquee copies are inert
+so keyboard users reach each integration link only once.
+
+The marketing site uses a consistent moonlit forest palette. Docs support light
+and dark reading themes with the same green emblem and typography. The mocked
+dashboard retains the production application's design and behavior.
 
 ### Languages
 
@@ -107,3 +110,25 @@ absolute base for Open Graph URLs.
 - The demo login only checks a single fixed password (`melon`); it does not model rate limiting, lockouts, or the real password-change flow.
 
 See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for the website tree.
+
+## Homepage and embedded preview
+
+The homepage gate uses two hinged WebGL meshes carrying the engraved door artwork. Scroll opens the leaves, and the Open the door button explicitly opens or closes them when WebGL animation is available. The toggle is hidden with static fallback artwork. Reduced-motion preferences, unavailable WebGL, and context loss preserve the static artwork.
+
+The homepage iframe loads `/demo-preview`, a website-only entry that authenticates the browser-local sample session before mounting the production `DashboardLayout` and `EndpointPageClient`. Sidebar navigation continues through the shared dashboard routes. No separate marketing dashboard is drawn. The preview uses the same mock handlers and sample store as `/dashboard`; monitoring is derived from its usage fixtures.
+
+Marketing copy names OpenAI and Anthropic APIs. Endpoint URLs belong in setup examples and the actual dashboard. Supporting content is visible by default. Feature illustrations use an asymmetric bento layout with emerald gradients; reduced motion disables their packet and caret effects. The vector brand assets remain under `assets/brand/` and are synchronized into the website by `scripts/sync-public.mjs`.
+
+### Navigation and routing presentation
+
+The navigation drawer constrains the shared sidebar to its available height. Its route list scrolls independently so the brand and Settings remain available. The request diagram reads clients → DurinDoor → providers and stacks in that order on phones. Fallback shows a labeled example of user-configured combo member order; it does not simulate live statuses or prescribe three pricing tiers. Docs links have a consistent gap after their section content.
+
+### Documentation reading experience
+
+The docs index introduces both OpenAI and Anthropic APIs and guides readers through installation, provider connection, and their first request. Its directory links replace duplicated navigation and hardcoded page counts. Guide pages use a bounded reading measure, larger titles, clear section spacing, and code blocks with the existing copy controls. Light mode uses parchment and green ink; dark mode uses the website's forest palette. The sidebar Demo link opens the authenticated sample preview.
+
+The quick start sets dashboard credentials before the first boot. The first-request guide has separate OpenAI Chat, Anthropic Messages, and OpenAI Responses tabs. Placeholder model IDs must be replaced with IDs exposed by the running instance.
+
+The root Vitest suite also exercises website components. Install dependencies in the root, `website/`, and `tests/` before running that suite; its website tests use the website’s React runtime. The test workflow installs all three packages.
+
+The docs navigation uses the canonical `durindoor-mark.svg` from the shared brand kit. Root asset filenames retained for existing consumers are generated from the same emblem, outlined wordmarks, and social image. Fork acknowledgment appears in the root README.

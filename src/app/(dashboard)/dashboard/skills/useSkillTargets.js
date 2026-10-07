@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCompositeEndpointEnabled, getLocalEndpointUrl } from "../endpoint/endpointConstants";
+import { useEndpointTargets } from "../endpoint/useEndpointTargets";
 import { isString } from "@/shared/utils/typeChecks";
 
 /**
@@ -14,39 +14,15 @@ import { isString } from "@/shared/utils/typeChecks";
  * React devtools inspection of its state) never carries one.
  */
 export function useSkillTargets(localPort = 20128) {
-  const [endpoints, setEndpoints] = useState([]);
+  const { endpoints, loading: endpointsLoading } = useEndpointTargets(localPort);
   const [keys, setKeys] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [keysLoading, setKeysLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const local = getLocalEndpointUrl(localPort);
-      const collected = [{ value: local, label: `Local — ${local}` }];
       try {
-        const [tunnelRes, keysRes] = await Promise.all([
-          fetch("/api/tunnel/status", { cache: "no-store" }).catch(() => null),
-          fetch("/api/keys").catch(() => null),
-        ]);
-
-        if (tunnelRes?.ok) {
-          const status = await tunnelRes.json();
-          // Both transports report their URL as `tunnelUrl` under their own
-          // namespace (see EndpointPageClient.loadSettings). Only offer a
-          // transport that is actually enabled — the same predicate the
-          // Endpoint page uses — so a copied snippet cannot point at a
-          // disabled tunnel whose URL is merely left over in the status.
-          for (const [entry, label] of [
-            [status?.tunnel, "Tunnel"],
-            [status?.tailscale, "Tailscale"],
-          ]) {
-            const url = entry?.tunnelUrl;
-            if (!getCompositeEndpointEnabled(entry) || !isString(url) || !url) continue;
-            const base = `${url.replace(/\/+$/, "")}/v1`;
-            collected.push({ value: base, label: `${label} — ${base}` });
-          }
-        }
-
+        const keysRes = await fetch("/api/keys").catch(() => null);
         if (keysRes?.ok) {
           const body = await keysRes.json();
           const rows = Array.isArray(body?.keys) ? body.keys : [];
@@ -59,18 +35,15 @@ export function useSkillTargets(localPort = 20128) {
           }
         }
       } finally {
-        if (!cancelled) {
-          setEndpoints(collected);
-          setLoading(false);
-        }
+        if (!cancelled) setKeysLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [localPort]);
+  }, []);
 
-  return { endpoints, keys, loading };
+  return { endpoints, keys, loading: endpointsLoading || keysLoading };
 }
 
 /**

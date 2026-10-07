@@ -56,7 +56,7 @@ npm start
 
 ## Schema migrations
 
-SQLite runs forward-only migrations on startup. The chain is append-only. Current SQLite latest is version 18 (`018-api-key-groups`). When `databaseEngine` is `postgres`, boot runs the parallel PG set instead; latest there is 19 (`019-pg-cutover-log`). A fresh file starts clean. A skip-version upgrade applies every pending `up()`.
+SQLite runs forward-only migrations on startup. The chain is append-only. Both SQLite and PostgreSQL currently reach version 25 (`025-proxy-timeline`). PostgreSQL boot uses the parallel migration set, including the PostgreSQL-only cutover-log version 019. A fresh database starts clean. A skip-version upgrade applies every pending `up()`. PostgreSQL 025 creates the timeline tables; SQLite retains its sidecar. Preserve existing sidecar history using the [timeline migration procedure](./postgres.mdx#postgresql-only-installations).
 
 Do not edit, truncate, or delete `DATA_DIR/db/data.sqlite` by hand. If `PRAGMA quick_check` fails, startup stops. Restore a backup whose integrity you have already checked.
 
@@ -65,6 +65,8 @@ Do not edit, truncate, or delete `DATA_DIR/db/data.sqlite` by hand. If `PRAGMA q
 ```bash
 curl http://localhost:20128/api/health
 ```
+
+This endpoint checks liveness, not database readiness. Also request `/v1/models`, then exercise authenticated inference and confirm a new usage row in the selected database. For PostgreSQL-only deployments, verify that initialization errors do not create a live SQLite database.
 
 Then open the dashboard and confirm providers, API keys, combos, and usage.
 

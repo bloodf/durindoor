@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getTrace } from "@/lib/db/repos/proxyTimelineRepo.js";
 
-/** GET /api/timeline/:id — one sidecar trace plus events in seq order. */
+/** GET /api/timeline/:id — one trace plus events in seq order. */
 export async function GET(_request, { params }) {
   try {
     const { id } = await params;

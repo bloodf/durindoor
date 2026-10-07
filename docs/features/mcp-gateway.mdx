@@ -7,6 +7,33 @@ The MCP gateway merges tools from one or more upstream MCP instances into a sing
 
 Open **Dashboard → MCP Gateway → Instances** (`/dashboard/mcp-gateway`) to register servers. Open **Dashboard → MCP Gateway → Keys** (`/dashboard/mcp-gateway/keys`) to mint keys. Client configuration is under [Client setup](#client-setup) below.
 
+## Server presets
+
+**New instance** includes a preset selector for commonly used MCP *servers*. A preset only fills editor fields. It never saves, installs a package, starts a process, enables an instance, grants a gateway key, or opens OAuth. Review fields, add required local configuration, save, then use **Test**. Enable it and grant a gateway key only after a successful test.
+
+| Preset | Transport and exact configuration | Prerequisite / official source |
+| --- | --- | --- |
+| Z.AI Web Search | HTTP `https://api.z.ai/api/mcp/web_search_prime/mcp` | Saved Z.AI provider connection ID, whose stored key supplies authentication. [Z.AI docs](https://docs.z.ai) |
+| GitHub | stdio: `docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN ghcr.io/github/github-mcp-server` | Docker plus least-privilege `GITHUB_PERSONAL_ACCESS_TOKEN` in Env JSON. [GitHub MCP Server](https://github.com/github/github-mcp-server) |
+| Context7 | HTTP `https://mcp.context7.com/mcp` | Public access. Context7 API-key mode uses `Authorization`, which gateway intentionally blocks in instance headers. [Context7 installation](https://context7.com/docs/installation) |
+| Playwright | stdio: `npx -y @playwright/mcp@latest` | Node.js 18+ and Playwright browser dependencies on gateway host. [Playwright MCP](https://github.com/microsoft/playwright-mcp) |
+| Filesystem | stdio: `npx -y @modelcontextprotocol/server-filesystem` followed by approved absolute directories | Every path must be an explicit non-root Unix path. Saving without valid paths is blocked, including root aliases such as `/tmp/..`. [Filesystem server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) |
+| Memory | stdio: `npx -y @modelcontextprotocol/server-memory` | Review host-local persistence policy. [Memory server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) |
+| Sequential Thinking | stdio: `npx -y @modelcontextprotocol/server-sequential-thinking` | No credentials. [Sequential Thinking](https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking) |
+| Fetch | stdio: `uvx mcp-server-fetch` | Install `uv` on gateway host. [Fetch server](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch) |
+| Brave Search | stdio: `npx -y @brave/brave-search-mcp-server` | Set `BRAVE_API_KEY` in Env JSON; saving without it is blocked. [Brave Search MCP Server](https://github.com/brave/brave-search-mcp-server) |
+| Firecrawl | HTTP `https://mcp.firecrawl.dev/v2/mcp` | Rate-limited keyless access only; the preset does not connect your account. [Firecrawl keyless MCP](https://docs.firecrawl.dev/mcp-server/keyless) |
+| Notion | HTTP `https://mcp.notion.com/mcp`, Requires OAuth | Save, then click **Login**. A public HTTPS callback is required. [Notion MCP](https://developers.notion.com/guides/mcp/get-started-with-mcp) |
+| Linear | HTTP `https://mcp.linear.app/mcp`, Requires OAuth | Save, then click **Login**. A public HTTPS callback is required. [Linear MCP](https://linear.app/docs/mcp) |
+
+For Firecrawl account access, use **Custom**, set the URL to `https://mcp.firecrawl.dev/v2/mcp-oauth`, and turn on **Requires OAuth** before saving and logging in. See [Firecrawl sign-in setup](https://docs.firecrawl.dev/mcp-server/oauth). This hosted MCP connection is separate from the local Firecrawl REST service used by web-fetch routing.
+
+Selecting another preset fully replaces URL, command, args, env, headers, OAuth, and provider connection reference. It preserves only enabled state. Select **Custom** to enter or retain manual configuration; editing an existing instance stays custom and never rewrites it.
+
+Secrets belong only in Env JSON for local stdio servers. Use no secret-like placeholder values: leave each required key absent until you can supply it. Instance headers cannot carry `Authorization`, cookies, proxy authorization, or `mcp-*` headers. This is deliberate: use supported OAuth, an upstream public/keyless mode, or an allowed local environment variable instead.
+
+After testing, create or select a gateway key, grant only intended instances in **Gateway keys**, and point client at DurinDoor gateway URL. Presets do not grant clients access. Limit filesystem paths, use least-privilege provider credentials, and treat each enabled tool as available to every client holding a granted gateway key.
+
 ## Transports
 
 Both share the same JSON-RPC handler and the same key check.
@@ -19,7 +46,7 @@ Both share the same JSON-RPC handler and the same key check.
 
 `GET /api/mcp-gateway` returns 405 with `Allow: POST`. Clients that send `Accept: text/event-stream` still get JSON on the POST path.
 
-Stdio bridge: allowlisted local plugins run as a child process on the DurinDoor host and are bridged to SSE. The bridge only spawns plugins on that allowlist, never a command taken from a request. Stdio instances (`npx`, `python`, `docker`, `command` kinds) run the command saved on the instance.
+Stdio gateway bridge for cowork plugins only spawns registered bridge commands, never a command supplied by a client request. Separately, registered stdio instances (`npx`, `python`, `docker`, `command` kinds) run their operator-saved command and arguments on the DurinDoor host. Both are server-side configuration, not client-controlled execution.
 
 Tool names are `<instanceSlug>__<toolName>`. `tools/call` splits on the first `__`. Disabled instances are omitted from `tools/list` and dispatch.
 

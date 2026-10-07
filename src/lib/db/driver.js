@@ -15,8 +15,6 @@ async function initAdapter(engine = "sqlite") {
   ensureDirs();
   let adapter;
   if (engine === "postgres") {
-    // Delegate to the PG fallback wrapper, which handles connection,
-    // capability gate, migrations, and the SQLite fallback on failure.
     const { openActiveAdapter } = await import("./postgresFallback.js");
     adapter = await openActiveAdapter();
   } else {
@@ -105,15 +103,10 @@ export async function openSqliteAdapter(filePath) {
 
 
 export async function getAdapter() {
-  // Tests mutate process.env.DATA_DIR between cases without resetting module
-  // state; when the path changes, close the cached instance and re-init.
-  // Engine flips do NOT re-read the settings row here: the cutover and
-  // rollback pipelines transfer the adapter explicitly via
-  // setActiveAdapter(). The engine is resolved once per (re)initialization
-  // by readEngineViaTransientSqlite() — routing this through
-  // settingsRepo.getSettings() would recurse forever
-  // (getAdapter → getSettings → getAdapter) and hang the process until
-  // the heap is exhausted.
+  // DURINDOOR_PG_URL is an explicit fail-closed deployment mode. It must
+  // resolve before touching SQLite because this host has no SQLite fallback.
+  const forcedPostgres = process.env.DURINDOOR_DATABASE_ENGINE === "postgres" ||
+    Object.hasOwn(process.env, "DURINDOOR_PG_URL");
   const currentFile = liveDataFile();
   if (state.instance && state.file && state.file !== currentFile) {
     try {
@@ -126,13 +119,13 @@ export async function getAdapter() {
   if (state.instance) return state.instance;
   if (!state.initPromise) {
     state.initPromise = (async () => {
-      const engine = await readEngineViaTransientSqlite();
+      const engine = forcedPostgres ? "postgres" : await readEngineViaTransientSqlite();
       return initAdapter(engine);
     })().
     then((adapter) => {
       const guarded = wrapCutoverGuard(adapter);
       state.instance = guarded;
-      state.file = liveDataFile();
+      state.file = currentFile;
       state.cacheKey = `${getActiveEngine()}:${state.file}`;
       return guarded;
     }).

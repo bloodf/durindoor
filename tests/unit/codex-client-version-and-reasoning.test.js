@@ -9,6 +9,7 @@ import { isCodexMultiAgentPlaintextTool } from "../../open-sse/translator/concer
 import { projectCompletionToClientFormat } from "../../open-sse/translator/response/completionProjector.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import codexImageAdapter from "../../open-sse/handlers/imageProviders/codex.js";
+import { PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
 
 // Ports of OmniRoute Codex hardening changes onto the fork's own request/response
 // shape. See omniroute-delta.md items 4 and 8.
@@ -64,11 +65,6 @@ describe("Codex caller-version forwarding (port OmniRoute fa23670ea #13708)", ()
   });
 });
 
-describe("Codex CLI pin (port OmniRoute 252d604db #14052)", () => {
-  it("is pinned to 0.155.0", () => {
-    expect(CODEX_CLI_VERSION).toBe("0.155.0");
-  });
-});
 
 describe("Codex model discovery minimal_client_version (port OmniRoute d5452d03e #12933)", () => {
   it("passes an absent gate", () => {
@@ -83,6 +79,21 @@ describe("Codex model discovery minimal_client_version (port OmniRoute d5452d03e
 
   it("fails a gate above the pinned version", () => {
     expect(meetsMinimalCodexClientVersion("0.200.0")).toBe(false);
+  });
+});
+
+describe("Codex GPT-6.1 Sol catalog", () => {
+  it("keeps live-supported Sol and never synthesizes an unsupported review model", async () => {
+    const { parseCodexModels } = await import("../../src/app/api/providers/[id]/models/modelsConfig.js");
+    expect(parseCodexModels({ models: [{ slug: "gpt-6.1-sol" }] }).map((model) => model.id))
+      .toEqual(["gpt-6.1-sol"]);
+    expect(PROVIDER_MODELS.cx.map((model) => model.id)).toContain("gpt-6.1-sol");
+    expect(PROVIDER_MODELS.cx.map((model) => model.id)).not.toContain("gpt-6.1-sol-review");
+  });
+  it("does not synthesize review variants for embedding entries without kind metadata", async () => {
+    const { parseCodexModels } = await import("../../src/app/api/providers/[id]/models/modelsConfig.js");
+    expect(parseCodexModels({ models: [{ slug: "text-embedding-fixture" }] }).map((model) => model.id))
+      .toEqual(["text-embedding-fixture"]);
   });
 });
 

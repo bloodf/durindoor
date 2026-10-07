@@ -86,7 +86,7 @@ describe("barGeometry", () => {
   });
 
   it("extends running traces to nowMs and clips bars to the window", () => {
-    const running = barGeometry(trace("t", { started_at: at(10), total_ms: null }), WINDOW_START, WINDOW_END, PLOT_WIDTH, WINDOW_START + 12 * 60_000);
+    const running = barGeometry(trace("t", { started_at: at(10), status: "running", total_ms: null }), WINDOW_START, WINDOW_END, PLOT_WIDTH, WINDOW_START + 12 * 60_000);
     expect(running.width).toBeCloseTo((2 / 15) * PLOT_WIDTH, 6);
 
     const overhang = barGeometry(trace("t", { started_at: at(14), total_ms: 10 * 60_000 }), WINDOW_START, WINDOW_END, PLOT_WIDTH, WINDOW_END);
@@ -94,6 +94,35 @@ describe("barGeometry", () => {
 
     expect(barGeometry(trace("t", { started_at: at(-10), total_ms: 1000 }), WINDOW_START, WINDOW_END, PLOT_WIDTH, WINDOW_END)).toBeNull();
     expect(barGeometry(trace("t", { started_at: "not a date" }), WINDOW_START, WINDOW_END, PLOT_WIDTH, WINDOW_END)).toBeNull();
+  });
+
+  it.each([
+    { start: 1000, duration: 0 },
+    { start: 999.5, duration: 0.1 },
+    { start: 999.5, duration: 50 },
+    { start: 990, duration: 50 },
+  ])("keeps the whole visible marker inside the right edge for $start/$duration", ({ start, duration }) => {
+    const geometry = barGeometry({ started_at: start, total_ms: duration }, 0, 1000, 100, 1000);
+    const visibleWidth = Math.min(100, geometry.x + geometry.width) - Math.max(0, geometry.x);
+    expect(geometry.width).toBe(2);
+    expect(visibleWidth).toBe(2);
+    expect(geometry.x).toBe(98);
+  });
+
+  it("clips a long crossing trace without changing its scaled in-window duration", () => {
+    const geometry = barGeometry({ started_at: 900, total_ms: 200 }, 0, 1000, 100, 1000);
+    expect(geometry).toEqual({ x: 90, width: 10 });
+  });
+
+  it.each([0.5, 1, 1.5])("uses the available %ipx when the plot is narrower than a minimum marker", (plotWidth) => {
+    const geometry = barGeometry({ started_at: 1000, total_ms: 0 }, 0, 1000, plotWidth, 1000);
+    expect(geometry).toEqual({ x: 0, width: plotWidth });
+    expect(barGeometry({ started_at: 1000, total_ms: 0 }, 0, 1000, 0, 1000)).toBeNull();
+  });
+
+  it.each(["running", "ok", "error", "aborted"])("does not invent completed elapsed duration for missing timing (%s)", (status) => {
+    const row = { started_at: 500, status, total_ms: null };
+    expect(barGeometry(row, 0, 1000, 100, 1000)).toEqual({ x: 50, width: status === "running" ? 50 : 2 });
   });
 });
 

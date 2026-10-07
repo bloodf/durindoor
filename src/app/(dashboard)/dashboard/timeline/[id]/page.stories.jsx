@@ -106,3 +106,25 @@ export const Skeleton = {
     await expect(canvasElement.querySelectorAll(".animate-pulse")).toHaveLength(2);
   },
 };
+
+export const CompletedWithoutDuration = {
+  parameters: { storyFixture: { routes: {
+    "GET /api/timeline/trace-001": { body: { trace: { ...trace.trace, status: "ok", total_ms: null }, events: [trace.events[0]] } },
+  } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("list", { name: "Trace waterfall" });
+    await expect(canvas.queryByRole("status")).not.toBeInTheDocument();
+  },
+};
+
+export const RunningWithoutDuration = {
+  parameters: { storyFixture: { routes: {
+    "GET /api/timeline/trace-001": { body: { trace: { ...trace.trace, status: "running", total_ms: null }, events: [trace.events[0]] } },
+  } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("list", { name: "Trace waterfall" });
+    await expect(canvas.getByRole("status")).toBeVisible();
+  },
+};

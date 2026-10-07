@@ -118,6 +118,9 @@ export default function TimelineDetailPage() {
     }
   };
   const trace = row.trace || {};
+  let durationSummary = "Duration unavailable";
+  if (trace.total_ms != null) durationSummary = `${trace.total_ms} ms total`;
+  else if (trace.status === "running") durationSummary = <span role="status">Trace still running</span>;
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
@@ -141,7 +144,7 @@ export default function TimelineDetailPage() {
       </Card>
       {row.events?.length ? (
         <Card padding={false}>
-          <CardHeader icon="waterfall_chart" title="Waterfall" subtitle={trace.total_ms == null ? "Trace still running" : `${trace.total_ms} ms total`} />
+          <CardHeader icon="waterfall_chart" title="Waterfall" subtitle={durationSummary} />
           <CardContent>
             <TraceWaterfall trace={trace} events={row.events} />
           </CardContent>

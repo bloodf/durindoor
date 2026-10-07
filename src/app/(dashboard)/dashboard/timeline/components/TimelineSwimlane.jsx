@@ -83,9 +83,10 @@ export function buildLanes(traces, laneBy, maxLanes = MAX_LANES) {
 }
 
 /**
- * Horizontal placement of one trace inside the plot area (pixels from the
- * plot's left edge). Traces without `total_ms` are still running and extend
- * to `nowMs`. Returns null when the trace lies entirely outside the window.
+ * Horizontal placement inside the plot (pixels from its left edge).
+ * Completed traces with missing `total_ms` have unknown timing and use a
+ * minimum marker. Only running traces extend to `nowMs`.
+ * Returns null when the trace lies entirely outside the window.
  */
 export function barGeometry(trace, windowStart, windowEnd, plotWidth, nowMs) {
   const start = toEpochMs(trace?.started_at);
@@ -95,13 +96,18 @@ export function barGeometry(trace, windowStart, windowEnd, plotWidth, nowMs) {
   const totalMs = trace.total_ms == null ? null : Number(trace.total_ms);
   const duration = Number.isFinite(totalMs)
     ? Math.max(0, totalMs)
-    : Math.max(0, (toEpochMs(nowMs) ?? to) - start);
+    : (trace.status || "running") === "running"
+      ? Math.max(0, (toEpochMs(nowMs) ?? to) - start)
+      : 0;
   const end = start + duration;
   if (end < from || start > to) return null;
   const pxPerMs = plotWidth / (to - from);
   const x = Math.max(0, (start - from) * pxPerMs);
   const xEnd = Math.min(plotWidth, (end - from) * pxPerMs);
-  return { x, width: Math.max(MIN_BAR_WIDTH, xEnd - x) };
+  // Minimum-width markers stay wholly inside the plot: near the right edge
+  // only the visual marker moves left, not the trace's timestamps/duration.
+  const width = Math.min(plotWidth, Math.max(MIN_BAR_WIDTH, xEnd - x));
+  return { x: Math.min(x, plotWidth - width), width };
 }
 
 export function buildTicks(windowStart, windowEnd, maxTicks = 6) {

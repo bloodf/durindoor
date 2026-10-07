@@ -6,7 +6,7 @@ import EventRow from "./EventRow.jsx";
 /**
  * Per-trace waterfall. Each row spans from its first event's `t_ms` to the
  * next row's `t_ms`; the final row ends at `trace.total_ms` (or its own last
- * `t_ms` while the trace is still running). Consecutive `sse_chunk` events
+ * `t_ms` when duration is unknown, regardless of status). Consecutive `sse_chunk` events
  * collapse into one "N chunks" row. Clicking a row reveals the EventRow
  * detail for every event it covers.
  */

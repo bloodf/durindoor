@@ -261,3 +261,80 @@ export const LoadFailureError = {
     await expect(within(dialog).getByText("No models added yet")).toBeVisible();
   },
 };
+
+const spacingParameters = {
+  storyFixture: {
+    scenario: "default",
+    pathname: "/dashboard/combos",
+    routes: {
+      ...fixtureRoutes("default"),
+      "GET /api/models/alias": { body: { aliases: {} } },
+    },
+  },
+};
+
+const mobile390 = { name: "Mobile 390", styles: { width: "390px", height: "844px" } };
+const desktop1280 = { name: "Desktop 1280", styles: { width: "1280px", height: "900px" } };
+
+const assertSpacingModal = async () => {
+  const canvas = within(document.body);
+  await userEvent.click(await canvas.findByRole("button", { name: "Create Combo" }));
+  const dialog = await canvas.findByRole("dialog", { name: "Create Combo" });
+  const footer = dialog.querySelector("footer");
+  await expect(footer).toBeInTheDocument();
+  await expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(within(footer).getByRole("button", { name: "Create" })).toBeVisible();
+
+  // Select an existing combo through the real picker: nested combos are valid members.
+  await userEvent.click(within(dialog).getByRole("button", { name: "Add Model" }));
+  const picker = await canvas.findByRole("dialog", { name: "Add Model to Combo" });
+  await userEvent.click(await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ }));
+  await userEvent.click(within(picker).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(picker).not.toBeInTheDocument());
+  const drag = within(dialog).getByRole("button", { name: "Drag to reorder production-fallback" });
+  const row = drag.parentElement;
+  const nameInput = within(dialog).getByLabelText("Combo Name");
+  const weight = within(row).getByRole("spinbutton", { name: "Weight" });
+  await expect(drag).toBeVisible();
+  await expect(weight).toBeVisible();
+
+  // Pixel geometry catches the extra row inset without pinning Tailwind implementation.
+  await waitFor(() => {
+    const inputBox = nameInput.getBoundingClientRect();
+    const rowBox = row.getBoundingClientRect();
+    const dragBox = drag.getBoundingClientRect();
+    const weightBox = weight.getBoundingClientRect();
+    expect(rowBox.width).toBeGreaterThan(0);
+    expect(Math.abs(rowBox.left - inputBox.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rowBox.right - inputBox.right)).toBeLessThanOrEqual(1);
+    expect(Math.abs(dragBox.left - inputBox.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(weightBox.width - 64)).toBeLessThanOrEqual(1);
+    expect(rowBox.right).toBeLessThanOrEqual(window.innerWidth);
+  });
+};
+
+export const CreateComboSpacing = {
+  parameters: {
+    ...spacingParameters,
+    viewport: {
+      defaultViewport: "desktop1280",
+      viewports: { desktop1280 },
+      options: { desktop1280 },
+    },
+  },
+  globals: { viewport: { value: "desktop1280", isRotated: false } },
+  play: assertSpacingModal,
+};
+
+export const CreateComboSpacingMobile = {
+  parameters: {
+    ...spacingParameters,
+    viewport: {
+      defaultViewport: "mobile390",
+      viewports: { mobile390 },
+      options: { mobile390 },
+    },
+  },
+  globals: { viewport: { value: "mobile390", isRotated: false } },
+  play: assertSpacingModal,
+};

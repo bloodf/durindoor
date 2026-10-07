@@ -7,10 +7,12 @@ Unmerged upstream 9router pull requests and deliberately deferred OmniRoute/9rou
 
 Last reviewed sync window: 2026-09-30 through 2026-10-06 (9router snapshot head `a99cf57`, v0.5.95).
 
+OmniRoute reviewed sync window: 2026-09-30 through 2026-10-06 (`release/v3.8.52`).
+
 | Source | Reviewed head |
 | --- | --- |
 | `decolua/9router` | `a99cf57239ff778b61e434c2786009d5ed1c412c` |
-| `diegosouzapw/OmniRoute` | `abd4df63dc25479853d0b7410f59d4c1b5816ccc` |
+| `diegosouzapw/OmniRoute` | `77bca6f878180006f3a679b53400d55a344fcd83` |
 
 Use those heads as the lower-bound anchors for the next sync review.
 
@@ -71,6 +73,27 @@ The older rows were reviewed in the 2026-08-09 window. Rows marked 2026-10-06 ar
 | `a99cf57` (2026-10-06) | Deferred: v1m System One provider | A scoped new-vendor port with the original implementation diff, verified endpoint/auth contract, and systemone request/response regressions. Existing TypeSafe Jev routing is not evidence of v1m.ir compatibility. |
 | `a99cf57` (2026-10-06) | Deferred: GLM Z.ai OAuth dual-auth | The source implementation and verified OAuth protocol, followed by a dedicated credential-safe login/refresh/logout port preserving the current API-key path in `registry/zai.js`. The release snapshot contains no OAuth code. |
 | `a99cf57` (2026-10-06) | Deferred: per-provider custom header overrides | The original implementation diff and a scoped header precedence/security review against the fork's transport/executor pipeline, including tests that credentials cannot be overridden or disclosed. The release snapshot only announces the feature. |
+
+### OmniRoute: 2026-09-30 through 2026-10-06
+
+The five behavior diffs were compared with this fork, not applied as a release
+snapshot. [#15589](https://github.com/diegosouzapw/OmniRoute/pull/15589)
+(`25ff0ea`) is ported: Token Saver settings previews the full Caveman instruction
+from the same catalog consumed by `injectCaveman`. DurinDoor has no output-style
+marker, composition catalog, or auto-language selection at this seam, so the
+preview adds none. The port is recorded in `.github/upstream-ported.json`.
+
+| Commit / PR | Deferred change and fork evidence | Port trigger |
+| --- | --- | --- |
+| [`77bca6f` / #15686](https://github.com/diegosouzapw/OmniRoute/commit/77bca6f) | Skip publishing a 2xx/no-body Trae status into the applied-proxy sink. `open-sse/executors/trae.js` rejects missing event bodies but has no `currentAppliedProxySink` or upstream-status capture; the erroneous sink assignment does not exist. | Adoption of applied-proxy status capture for Trae; retain local-failure classification for 2xx/no-body streams then. |
+| [`f715c86` / #15435](https://github.com/diegosouzapw/OmniRoute/commit/f715c86) | Cover the ranked provider-health query's `call_logs` reads. DurinDoor uses `requestDetails`, not `call_logs` (also documented in `src/app/api/logs/export/route.js`), and has no corresponding ranked health query. An index on a nonexistent table is not a portable migration. | Adoption of the call-log health matrix or an equivalent measured query bottleneck; design indexes against the actual fork schema for both database engines. |
+| [`5a82a1c` / #15605](https://github.com/diegosouzapw/OmniRoute/commit/5a82a1c) | Remove the dead Lite/Aggressive/Ultra per-engine preservation checkbox. Those engines are unavailable catalog entries in this fork; `cavemanAdapter.js` exposes only intensity, minimum length, and enabled, with no preservation checkbox. | Enabling those engines and their configuration surfaces; do not expose a per-engine preservation switch unless runtime honors it. |
+| [`d6b7f72` / #15617](https://github.com/diegosouzapw/OmniRoute/commit/d6b7f72) | Correct four dashboard feature-flag card descriptions. DurinDoor has no `featureFlagDefinitions` or those cards, and no remote-rerank flag. Its guard flags are process-environment controls in `open-sse/config/runtimeConfig.js`, not dashboard-persisted toggles; copying the upstream dashboard-precedence claim would be false here. | Introduction of these flag cards; describe this fork's runtime precedence and host-policy semantics rather than upstream's saved-toggle semantics. |
+
+Dependency, CI, and i18n-only bumps #15649, #15577, #15648, #15373, #15372,
+#15371, #15370, #15684, #15345, #15618, #15610, and #15596 were skipped.
+Neither those skips nor the four deferrals are marked ported.
+
 
 ## Scan workflow
 

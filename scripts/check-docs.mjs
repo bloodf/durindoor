@@ -48,8 +48,8 @@ export const PACKAGE_FILES = new Set([
 ]);
 
 export const REQUIRED_ASSETS = [
-  "durindoor-banner.png",
-  "durindoor-wordmark-theme-aware.svg",
+  "assets/brand/durindoor-gateway.webp",
+  "assets/brand/durindoor-logo-light.svg",
 ];
 
 export const FORBIDDEN_PUBLIC_TEXT = [

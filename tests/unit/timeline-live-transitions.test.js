@@ -16,9 +16,9 @@ const trace = (id, status = "running", ago = 60_000) => ({ id, provider: "exampl
 
 describe("live timeline authoritative transitions", () => {
   let container, root, state, initial, store, delayed;
-  function Harness({ filterQuery = "" }) {
-    state = useWindowedTraces({ enabled: true, live: true, filterQuery, windowMs: 900_000 });
-    return React.createElement("pre", null, JSON.stringify(state.traces));
+  function Harness({ filterQuery = "", live = true }) {
+    state = useWindowedTraces({ enabled: true, live, filterQuery, windowMs: 900_000 });
+    return React.createElement("pre", { "data-count": state.traces.length }, JSON.stringify(state.traces));
   }
   beforeEach(() => {
     vi.useFakeTimers();
@@ -29,9 +29,11 @@ describe("live timeline authoritative transitions", () => {
     vi.stubGlobal("fetch", vi.fn(async (url) => {
       if (url === "/api/settings") return response({ enableProxyTimeline: true });
       if (url.startsWith("/api/timeline?")) return initial.promise;
-      const id = decodeURIComponent(url.slice("/api/timeline/".length));
+      // The detail transport is unavailable; metadata is independently readable.
+      if (!url.endsWith("/meta")) return response({}, 404);
+      const id = decodeURIComponent(url.slice("/api/timeline/".length, -"/meta".length));
       if (delayed.has(id)) return delayed.get(id).promise;
-      return store.has(id) ? response({ trace: store.get(id), events: [] }) : response({}, 404);
+      return store.has(id) ? response({ trace: store.get(id) }) : response({}, 404);
     }));
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -43,8 +45,8 @@ describe("live timeline authoritative transitions", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
-  const mount = async (filterQuery = "") => {
-    await act(async () => root.render(React.createElement(Harness, { filterQuery })));
+  const mount = async (filterQuery = "", live = true) => {
+    await act(async () => root.render(React.createElement(Harness, { filterQuery, live })));
   };
   const load = async (rows) => {
     await act(async () => initial.resolve(response({ traces: rows })));
@@ -140,5 +142,61 @@ describe("live timeline authoritative transitions", () => {
     notify("aged");
     await flush();
     expect(state.traces).toEqual([]);
+  });
+
+  it("keeps a large trace's completed metadata when its event detail cannot be transported", async () => {
+    await mount();
+    const running = { ...trace("large"), event_count: 40, payload_bytes: 40 * 1024 * 1024 };
+    await load([running]);
+    const completed = { ...running, status: "ok", total_ms: 2400 };
+    store.set("large", completed);
+    notify("large", "event");
+    await flush();
+    expect(state.traces).toEqual([completed]);
+    expect(JSON.parse(container.textContent)[0]).toMatchObject({ id: "large", status: "ok", event_count: 40, total_ms: 2400 });
+  });
+
+  it.each(["", "status=running"])("resynchronizes paused completions and new calls with filter '%s' without another SSE event", async (filterQuery) => {
+    await mount(filterQuery);
+    const retained = trace("retained", "running", 300_000);
+    await load([retained]);
+    await mount(filterQuery, false);
+    vi.setSystemTime(NOW + 10_000);
+    const completed = { ...retained, status: "ok", total_ms: 4200 };
+    store.set("retained", completed);
+    const newCall = trace("new-call");
+    initial = deferred();
+    initial.resolve(response({ traces: [newCall] }));
+    await mount(filterQuery, true);
+    await flush();
+    expect(state.traces).toEqual(filterQuery ? [newCall] : [newCall, completed]);
+    expect(container.querySelector("pre").getAttribute("data-count")).toBe(filterQuery ? "1" : "2");
+  });
+
+  it("expires idle completed and running traces at the advancing window boundary, including counts", async () => {
+    await mount();
+    await load([
+      trace("completed", "ok", 899_999),
+      trace("running", "running", 899_000),
+      trace("boundary", "running", 895_000),
+    ]);
+    expect(container.querySelector("pre").getAttribute("data-count")).toBe("3");
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(state.windowStart).toBe(NOW - 900_000 + 5000);
+    expect(state.traces.map((row) => row.id)).toEqual(["boundary"]);
+    expect(container.querySelector("pre").getAttribute("data-count")).toBe("1");
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(state.traces).toEqual([]);
+    expect(container.querySelector("pre").getAttribute("data-count")).toBe("0");
+  });
+
+  it("does not reintroduce expired running traces when initial loading outlasts an idle tick", async () => {
+    await mount();
+    const expired = trace("slow-expired", "running", 899_000);
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    await load([expired]);
+    expect(state.nowMs).toBe(NOW + 5000);
+    expect(state.traces).toEqual([]);
+    expect(container.querySelector("pre").getAttribute("data-count")).toBe("0");
   });
 });

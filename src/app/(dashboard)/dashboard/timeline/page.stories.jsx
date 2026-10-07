@@ -37,8 +37,8 @@ const defaultRoutes = {
     }
     return { body: { traces: [trace], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } } };
   },
-  "GET /api/timeline/trace-001": (request) => ({
-    body: { trace: { ...windowTraces(request)[0], event_count: 13 }, events: [] },
+  "GET /api/timeline/trace-001/meta": (request) => ({
+    body: { trace: { ...windowTraces(request)[0], event_count: 13 } },
   }),
   "GET /api/settings": { body: { enableProxyTimeline: true } },
   "GET /api/timeline/stream": { body: {}, events: [{ traceId: trace.id }] },

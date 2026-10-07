@@ -151,6 +151,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET, DELETE | `/api/timeline` | Paginated sidecar traces (GET); wipe traces (DELETE) | session, CLI, key, loop |
 | GET | `/api/timeline/stream` | SSE of live sidecar writes | session, CLI, key, loop |
 | GET | `/api/timeline/{id}` | One sidecar trace plus events | session, CLI, key, loop |
+| GET | `/api/timeline/{id}/meta` | One trace's metadata without event payloads | session, CLI, key, loop |
 
 ### Settings
 

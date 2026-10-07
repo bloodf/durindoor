@@ -35,6 +35,9 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
   const [captureOn, setCaptureOn] = useState(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const notifyRef = useRef(null);
+  const tracesRef = useRef(traces);
+  tracesRef.current = traces;
+  const previousLive = useRef(live);
   const liveRefresh = useMemo(() => ({
     schedule(event) {
       const item = JSON.parse(event.data);
@@ -52,8 +55,19 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
     const filters = new URLSearchParams(filterQuery);
     let busy = true;
     let timer;
+    let resyncWindow = false;
+    async function readWindow(now) {
+      const params = new URLSearchParams(filters);
+      params.set("startDate", new Date(now - windowMs).toISOString());
+      params.set("endDate", new Date(now).toISOString());
+      params.set("page", "1");
+      params.set("pageSize", "100");
+      const response = await fetch(`/api/timeline?${params}`, options);
+      if (!response.ok) throw new Error("Failed to load timeline");
+      return (await response.json()).traces || [];
+    }
     const schedule = () => {
-      if (!busy && pending.size && !controller.signal.aborted && !timer) {
+      if (!busy && (pending.size || resyncWindow) && !controller.signal.aborted && !timer) {
         timer = setTimeout(drain, 500);
       }
     };
@@ -63,19 +77,28 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
       busy = true;
       const ids = [...pending];
       pending.clear();
+      const reloadWindow = resyncWindow;
+      resyncWindow = false;
       try {
-        const updates = await Promise.all(ids.map(async (id) => {
-          const response = await fetch(`/api/timeline/${encodeURIComponent(id)}`, options);
-          if (response.status === 404) return { id, trace: null };
-          if (!response.ok) throw new Error("Failed to load trace update");
-          return { id, trace: (await response.json()).trace };
-        }));
+        const [windowRows, updates] = await Promise.all([
+          reloadWindow ? readWindow(Date.now()) : [],
+          Promise.all(ids.map(async (id) => {
+            const response = await fetch(`/api/timeline/${encodeURIComponent(id)}/meta`, options);
+            if (response.status === 404) return { id, trace: null };
+            if (!response.ok) throw new Error("Failed to load trace update");
+            return { id, trace: (await response.json()).trace };
+          })),
+        ]);
         if (controller.signal.aborted) return;
         const now = Date.now();
         setNowMs(now);
         setTraces((previous) => {
           const replaced = new Set(ids);
-          return upsertTraces(previous.filter((trace) => !replaced.has(trace.id)), updates.map((update) => update.trace).filter((trace) => trace && matchesTraceFilters(trace, filters)), now - windowMs);
+          const incoming = [
+            ...windowRows.filter((trace) => !replaced.has(trace.id)),
+            ...updates.map((update) => update.trace).filter(Boolean),
+          ].filter((trace) => matchesTraceFilters(trace, filters));
+          return upsertTraces(previous.filter((trace) => !replaced.has(trace.id)), incoming, now - windowMs);
         });
         setError("");
       } catch (err) {
@@ -87,7 +110,15 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
     }
     notifyRef.current = {
       schedule(id) { pending.add(id); schedule(); },
-      cancel() { clearTimeout(timer); timer = null; pending.clear(); },
+      resume() {
+        resyncWindow = true;
+        const cutoff = Date.now() - windowMs;
+        for (const trace of tracesRef.current) {
+          if (Date.parse(trace.started_at) >= cutoff) pending.add(trace.id);
+        }
+        schedule();
+      },
+      cancel() { clearTimeout(timer); timer = null; pending.clear(); resyncWindow = false; },
     };
     setLoading(true);
     setError("");
@@ -95,17 +126,11 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
     (async () => {
       try {
         const now = Date.now();
-        const params = new URLSearchParams(filters);
-        params.set("startDate", new Date(now - windowMs).toISOString());
-        params.set("endDate", new Date(now).toISOString());
-        params.set("page", "1");
-        params.set("pageSize", "100");
-        const response = await fetch(`/api/timeline?${params}`, options);
-        if (!response.ok) throw new Error("Failed to load timeline");
-        const body = await response.json();
+        const rows = await readWindow(now);
         if (controller.signal.aborted) return;
-        setNowMs(now);
-        setTraces(upsertTraces([], body.traces, now - windowMs).filter((trace) => matchesTraceFilters(trace, filters)));
+        const resolvedNow = Date.now();
+        setNowMs(resolvedNow);
+        setTraces(upsertTraces([], rows, resolvedNow - windowMs).filter((trace) => matchesTraceFilters(trace, filters)));
       } catch (err) {
         if (!controller.signal.aborted) setError(err.message || "Failed to load timeline");
       } finally {
@@ -127,10 +152,19 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
   }, [enabled, filterQuery, windowMs]);
 
   useEffect(() => {
+    const resuming = !previousLive.current && live;
+    previousLive.current = live;
     if (!enabled || !live) return undefined;
-    const timer = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
+    const tick = () => {
+      const now = Date.now();
+      setNowMs(now);
+      setTraces((previous) => upsertTraces(previous, [], now - windowMs));
+    };
+    tick();
+    if (resuming) notifyRef.current?.resume();
+    const timer = setInterval(tick, NOW_TICK_MS);
     return () => clearInterval(timer);
-  }, [enabled, live]);
+  }, [enabled, live, windowMs]);
 
   return { traces, loading, error, captureOn, nowMs, windowStart: nowMs - windowMs, liveRefresh };
 }

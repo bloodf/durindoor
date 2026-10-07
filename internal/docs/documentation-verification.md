@@ -19,9 +19,10 @@ Independent source reviewer: `gpt-5.6-sol`. Corrected findings cover empty-value
 | Production website build | `NEXT_DIST_DIR=.next-docs-final npm run build` from `website/`, final source revision | Exit 0 | `/tmp/durindoor-docs-build-verified.log` |
 | Production browser suite | `DOCS_BASE_URL=http://localhost:3004 npm run test:docs` from `website/`, final source revision | 7 passed, 31.1 seconds | `/tmp/durindoor-docs-browser-verified.log` |
 | Separate-package full CI | `cd tests && npm run test:ci`, Node 20.20.2 / npm 10.8.2, final source revision | Exit 0; 11985 passed, 0 failed, 65 pending/skipped; raw regressions 0 | `/tmp/durindoor-docs-ci-verified.log` |
+| Baseline additions | `BASELINE_BASE_REF=origin/main node tests/__baseline__/verify-baseline-diff.mjs`, source unchanged from final source revision; executed at `64a87ad47` | Exit 0; no additions | `/tmp/durindoor-docs-baseline-verified.log` |
 | Commit subjects | `npx commitlint --from=origin/main --to=HEAD`, final source revision | Exit 0 | `/tmp/durindoor-docs-commitlint-verified.log` |
 
-Build/browser tools used Node 26.10.0 / npm 11.19.1. The full CI gate uses the pinned Node version. Full local logs are temporary host artifacts; this report retains commands, revisions, and outcomes. Protected PR checks provide remote execution evidence for the final branch revision.
+Build/browser tools used Node 26.10.0 / npm 11.19.1. The full CI gate uses the pinned Node version. Full local logs are temporary host artifacts; this report retains commands, revisions, and outcomes. Protected PR checks can provide remote execution evidence for the final branch revision.
 
 Browser checks visit every public documentation route and assert HTTP 200 without console errors, search after demo navigation, zero serious/critical axe findings on sampled pages, phone overflow, hero/demo navigation, docs onboarding links and themes, and internal-route/search/asset exclusions. The old `/docs/contributing` pages, brand Markdown/prompts, and vector archive return 404. Runtime SVG assets and the public API guide return 200. Screenshots are retained locally under `.omc/plans/docs-fumadocs/notes/26-screenshots/`.
 

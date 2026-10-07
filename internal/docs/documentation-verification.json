@@ -34,6 +34,10 @@
     "/tmp/durindoor-docs-commitlint-verified.log": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "bytes": 0
+    },
+    "/tmp/durindoor-docs-baseline-verified.log": {
+      "sha256": "49577e5f179cc27ec1019e93411031eae7da1483243a60241a40781f558573ab",
+      "bytes": 39
     }
   }
 }

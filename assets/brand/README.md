@@ -13,4 +13,4 @@ node scripts/sync-brand-assets.mjs
 node website/scripts/sync-public.mjs
 ```
 
-The first command renders the existing project asset filenames and requires website dependencies for SVG rasterization. The second refreshes generated website assets, including the `/brand` copy. The website also runs the copy during `predev` and `prebuild`. Edit originals here, not the generated website copies.
+The first command renders the existing project asset filenames and requires website dependencies for SVG rasterization. The second refreshes generated website assets, including the `/brand` copy. The website also runs the copy during `predev` and `prebuild`. Only runtime image files are published. Maintenance Markdown, prompts, and archives remain repository-only. Edit originals here, not the generated website copies.

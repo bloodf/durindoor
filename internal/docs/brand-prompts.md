@@ -1,5 +1,7 @@
 # Image generation prompts
 
+These prompts record how the existing raster assets were generated. They are historical production inputs, not normative color or layout rules. Follow the current [brand guide](./brand-guide.mdx) for future work. The outlined SVG logos are canonical; generated lettering is not a replacement.
+
 Built-in image_gen tool. The vector emblem is a supplied reference for the board.
 
 ## Identity board

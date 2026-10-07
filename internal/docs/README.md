@@ -2,8 +2,9 @@
 
 These references support AI coding agents and maintainers. The website does not publish this directory. Public user and operator guides live in [`docs/`](../../docs/index.mdx).
 
-Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. Use the reference that matches your task:
+Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUCT.md`](../../PRODUCT.md) records product scope and [`DESIGN.md`](../../DESIGN.md) records the implemented visual system. Use the reference that matches your task:
 
+- [AI implementation and porting workflow](./agent-workflow.md)
 - [Development and verification](./index.mdx)
 - [Architecture and request lifecycle](./architecture.mdx)
 - [Port upstream features](./upstream-sync.mdx)

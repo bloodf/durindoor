@@ -143,8 +143,18 @@ describe("documentation integrity", () => {
       "cli/README.md": "# CLI",
       "AGENTS.md": "internal",
       "CLAUDE.md": "internal",
+      "PRODUCT.md": "internal product scope",
+      "DESIGN.md": "internal visual rules",
     });
     expect(issues.filter((i) => i.includes("not reachable"))).toEqual([]);
+  });
+
+  it("rejects placing maintenance guides back in the published tree", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n`,
+      "docs/contributing/brand-guide.mdx": "---\ntitle: Brand guide\ndescription: Internal identity rules\n---\n",
+    });
+    expect(issues).toContain("docs/contributing/brand-guide.mdx: contributor and AI references belong in internal/docs/");
   });
 
   it("checks internal links without requiring publication", async () => {

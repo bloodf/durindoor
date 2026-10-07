@@ -16,6 +16,8 @@ export const INTERNAL_PREFIXES = ["internal/"];
 export const INTERNAL_FILES = new Set([
   "AGENTS.md",
   "CLAUDE.md",
+  "PRODUCT.md",
+  "DESIGN.md",
   "open-sse/AGENT-INDEX.md",
   "tests/README.md",
 ]);
@@ -370,6 +372,9 @@ export async function validateDocumentation({ root, files, readText }) {
     }
 
     if (isDocsMdx(file)) {
+      if (file.startsWith("docs/contributing/")) {
+        issues.push(`${file}: contributor and AI references belong in internal/docs/`);
+      }
       const fm = parseFrontmatter(text);
       const stub = isSectionStub(text);
       if (!fm || !fm.title) {

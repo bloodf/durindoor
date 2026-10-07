@@ -330,7 +330,7 @@ A behavior change needs a doc update and a test under the contributor contract. 
 | Local public fonts and licenses | `website/public/home/fonts/` |
 | Current dashboard Inter files | `public/fonts/` |
 
-Generated website copies are not the asset source. After a canonical brand asset change, run `node scripts/sync-brand-assets.mjs`, then `node website/scripts/sync-public.mjs`. SVG rasterization requires website dependencies. Keep asset prompts in `assets/brand/prompts.md`.
+Generated website copies are not the asset source. After a canonical brand asset change, run `node scripts/sync-brand-assets.mjs`, then `node website/scripts/sync-public.mjs`. SVG rasterization requires website dependencies. Keep asset prompts in `internal/docs/brand-prompts.md`. The public asset copy publishes runtime image files only; maintenance Markdown and archives stay in the repository.
 
 When implementation and this guide disagree, inspect the relevant source and classify the difference as current behavior, an approved migration target, or a regression. Update the guide and its design references with the reviewed decision instead of silently changing a page.
 

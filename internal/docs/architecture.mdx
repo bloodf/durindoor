@@ -31,7 +31,7 @@ Chat is the path below. Other `/v1` families reuse connections and have their ow
 4. For `authType === "oauth"`, `refreshAndUpdateCredentials` runs before dispatch. A refresh failure logs and the request continues with the stored credential.
 5. Account fallback can retry another connection for the same provider and model, up to `MAX_ACCOUNT_ATTEMPTS_PER_REQUEST` (1024).
 6. Combo names go to `handleComboChat` (or `handleFusionChat`). Each member still runs `handleChatCore`.
-7. `handleChatCore` detects source and target formats, translates, optionally compresses `tool_result` bodies, and calls the executor.
+7. `handleChatCore` detects source and target formats. Headroom processes the source body before translation. RTK also runs before translation for Cursor, whose translator removes the tool-result structure. Other RTK processing runs on the translated body before dispatch. The executor then calls the upstream.
 8. The executor talks to the upstream. Response chunks translate back to the client format.
 9. Usage, request details, and connection state write through `src/lib/db`.
 

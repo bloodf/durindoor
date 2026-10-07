@@ -1,11 +1,29 @@
 # Unreleased
 
+## Features
+
+- feat(settings): Edit database startup credentials in Settings → Database and save a protected managed-file override applied after restart; startup selection does not migrate data or replace live cutover.
+- feat(dashboard): Make Usage the home with monitoring widgets; redirect the former Monitoring page and move API key limits to API Keys and connection usage to Combos.
+- feat(timeline): Add provider/connection swimlanes, live time windows, and per-trace waterfalls with grouped SSE chunks while retaining the Table view.
+- feat(console-log): Add level/tag filters, highlighted search, pause/resume, wrapping, copy/download, and windowed rendering over a 2000-line ring.
+- feat(providers): Add web-cookie login through a dedicated, distinct-hostname login origin for Grok Web, Perplexity Web, ChatGPT Web, HuggingChat, and Muse Spark Web, with popup and manual-paste fallbacks; leave MiMo unchanged.
+
 ## Fixes
 
 - Support explicit PostgreSQL-only startup without SQLite configuration reads or outage fallback, including PostgreSQL proxy timeline storage and an atomic sidecar migration helper.
 - Preserve large PostgreSQL query results and original error status with bounded shared-memory transfer instead of truncating timeline reads at 8 MiB.
 - Refresh Codex discovery with the supported client version so GPT-6.1 Sol appears in live catalogs; preserve its provider-specific reasoning efforts without inventing a review variant.
 - Add MCP server presets for vetted hosted and local servers, with credential/path guards and operator-only activation.
+- fix(keys): Treat empty lifetime token/cost drafts as unlimited in committed usage instead of showing a false zero limit; retain explicit zero limits.
+- fix(quota): Show omitted Claude model-scoped weekly windows as unknown, non-hideable “not reported” rows when sibling accounts report them; bypass fresh cache on account refresh without bypassing 429 cooldowns.
+- fix(combos): Align Create/Edit Combo fields and model rows, box capability controls, and place actions in the shared modal footer on desktop and mobile.
+- fix(skills): Offer deduplicated local, tunnel, external tunnel, Tailscale, external Tailscale, and remote browser-origin endpoints as skill copy targets.
+
+## Upstream ports
+
+- port(upstream): Adopt 9router non-messages prefill preservation, real-usage Responses completion, and the three-second post-finish watchdog; skip already-covered trailing-user cleanup and release-only changes, and defer unverified catalog/provider/header residuals as recorded in the upstream sync review.
+- port(omniroute): Preview the actual injected Caveman instruction in Token Saver settings (#15589); defer four changes whose runtime/schema/UI seams are absent in this fork, and skip dependency/CI/i18n-only bumps without marking them ported.
+
 
 # 4.10.1
 

@@ -3,7 +3,9 @@ title: Monitoring usage
 description: Read request history, console output, and the health endpoint after traffic flows.
 ---
 
-Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`). The overview tab shows request counts, input and output tokens, cached tokens, an estimated cost, and output speed in tokens per second. It also charts that window, groups rows by provider, model, account, key, or endpoint, and draws the provider topology. Combo traffic has its own report on the same tab.
+Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`), the dashboard home. The overview starts with gateway, 24-hour activity, latency, and storage monitoring cards, plus in-flight requests and provider health. These refresh every 15 seconds independently of the usage period, with pause and manual refresh controls. The former `/dashboard/monitoring` URL redirects here. Usage statistics follow: request counts, input and output tokens, cached tokens, estimated cost, and output speed, with charts, grouped rows, and provider topology.
+
+Combo/account attribution is now under **Dashboard → Combos → Connection usage**, covering the last seven days. API key limits and consumption are below the key list on **Dashboard → API Keys**; see [API key limits](./api-keys.mdx#windowed-limits). Neither block remains on Usage.
 
 The period control accepts `today`, `24h`, `7d`, `30d`, `60d`, `90d`, `180d`, `365d`, and `all`. Editing the calendar to a window that is not one of those presets queries stats by `startDate`/`endDate` and skips the chart (the chart endpoint is preset-only).
 

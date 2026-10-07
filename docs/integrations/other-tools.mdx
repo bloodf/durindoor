@@ -94,6 +94,8 @@ Oh My Pi keeps its guide card and the shipped `omp-extension`; it has no setting
 
 The skills under `skills/` teach agents how to call a running gateway as an OpenAI-compatible client. They are not the `durindoor` npm launcher.
 
+**Dashboard → Skills** offers copy targets from the same endpoint sources as Endpoint: local, enabled tunnel URLs (including additional URLs), external tunnel, enabled Tailscale, external Tailscale, and the remote browser origin when it is not already listed. Targets are deduplicated and end in `/v1`; choose the address reachable by the agent that will use the snippet.
+
 ```bash
 export DURINDOOR_URL="http://localhost:20128"
 export DURINDOOR_KEY="YOUR_DURINDOOR_API_KEY"

@@ -211,11 +211,11 @@ SQLite is the default database. The dashboard supports an optional Postgres cuto
 | Look up routes, flags, or settings | [Reference](https://durindoor.vercel.app/docs/reference) |
 | Diagnose a failed request | [Troubleshooting](https://durindoor.vercel.app/docs/troubleshooting) |
 
-The [product guide](PRODUCT.md) describes the gateway’s scope. The [design system](DESIGN.md) records the website and documentation identity. The [brand guide](https://durindoor.vercel.app/docs/contributing/brand-guide) covers the identity and future dashboard redesign.
+The [product guide](PRODUCT.md) describes the gateway’s scope. The [design system](DESIGN.md) records the website and documentation identity. The [brand guide](internal/docs/brand-guide.mdx) covers the identity and future dashboard redesign.
 
 ## Contribute
 
-Issues and pull requests are welcome. Pair behavior changes with a doc update and a test. Read [Contributing](https://durindoor.vercel.app/docs/contributing), the [Code of Conduct](CODE_OF_CONDUCT.md), and the [security policy](.github/SECURITY.md).
+Issues and pull requests are welcome. Pair behavior changes with a doc update and a test. Read [Contributing](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and the [security policy](.github/SECURITY.md).
 
 Provider definitions live in [`open-sse/providers/registry/`](open-sse/providers/registry). Start with [`REGISTRY_TEMPLATE.js`](open-sse/providers/REGISTRY_TEMPLATE.js). Keep generated registry indexes generated.
 

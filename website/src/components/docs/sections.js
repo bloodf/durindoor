@@ -7,7 +7,6 @@ export const DOCS_SECTIONS = [
   { href: "/docs/deployment", title: "Deployment", pages: 5 },
   { href: "/docs/operations", title: "Operations", pages: 7 },
   { href: "/docs/reference", title: "Reference", pages: 8 },
-  { href: "/docs/contributing", title: "Contributing", pages: 11 },
   { href: "/docs/faq", title: "FAQ", pages: 1 },
   { href: "/docs/troubleshooting", title: "Troubleshooting", pages: 1 },
 ];

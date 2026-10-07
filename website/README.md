@@ -18,6 +18,8 @@ page that renders the same client component with fixture props.
 
 `source.config.mjs` sets `dir: "../docs"` and collects `**/*.mdx`.
 `src/lib/source.js` loads that collection with `baseUrl: "/docs"`.
+AI and maintainer references live in `../internal/docs/` and are excluded from routes and search. Brand prompts and maintenance notes are excluded from public asset copies.
+
 The MDX plugin reads the repo-root docs folder in place; nothing under
 `../docs` is copied into `website/`.
 

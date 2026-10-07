@@ -147,6 +147,25 @@ describe("documentation integrity", () => {
     expect(issues.filter((i) => i.includes("not reachable"))).toEqual([]);
   });
 
+  it("checks internal links without requiring publication", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n`,
+      "internal/docs/brand-guide.mdx": "---\ntitle: Brand guide\n---\n[Missing](./missing.mdx)\n",
+    });
+    expect(issues).toContain("internal/docs/brand-guide.mdx: missing target internal/docs/missing.mdx");
+    expect(issues.filter((issue) => issue.includes("not reachable"))).toEqual([]);
+  });
+
+  it("rejects public links to repository-only references", async () => {
+    const issues = await check({
+      "README.md": `${assets}\n`,
+      "docs/meta.json": JSON.stringify({ pages: ["index"] }),
+      "docs/index.mdx": "---\ntitle: Docs\ndescription: User docs\n---\n[Internal](../internal/docs/guide.md)\n",
+      "internal/docs/guide.md": "# Internal guide\n",
+    });
+    expect(issues).toContain("docs/index.mdx: public documentation links to internal reference internal/docs/guide.md");
+  });
+
   it("flags duplicate required asset only once per file", async () => {
     const issues = await check({
       "README.md": assets,

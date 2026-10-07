@@ -50,5 +50,5 @@ The Theme toolbar (sun/moon, top of the canvas) flips between
 
 ## Full documentation
 
-- [docs/contributing/design-system.mdx](../../../docs/contributing/design-system.mdx)
+- [internal/docs/design-system.mdx](../../../internal/docs/design-system.mdx)
   tokens, primitives, Storybook, and authoring rules.

@@ -3,7 +3,7 @@ title: Postgres migrations
 description: SQLite-to-PG generation, reserved and shared migrations through 025, DML rewrite, and the synchronous worker.
 ---
 
-The main SQLite schema is the baseline for the parallel PostgreSQL migration set under `src/lib/db/migrations/postgres/`. PostgreSQL-specific tables, including the cutover log and proxy timeline, have explicit generator cases. Operator cutover, rollback, and compose profiles are on [Postgres](../operations/postgres.mdx). Add a shared SQLite migration, then regenerate the PG files.
+The main SQLite schema is the baseline for the parallel PostgreSQL migration set under `src/lib/db/migrations/postgres/`. PostgreSQL-specific tables, including the cutover log and proxy timeline, have explicit generator cases. Operator cutover, rollback, and compose profiles are on [Postgres](../../docs/operations/postgres.mdx). Add a shared SQLite migration, then regenerate the PG files.
 
 The PG engine is DurinDoor-owned. Do not send a PR to `decolua/9router` for it.
 

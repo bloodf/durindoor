@@ -8,18 +8,17 @@ Open an issue before large changes. Pull requests target `bloodf/durindoor:main`
 
 One focused branch per change. A behaviour change needs a doc update and a test. Pure docs and CI edits can skip tests. Read the [Code of Conduct](https://github.com/bloodf/durindoor/blob/main/CODE_OF_CONDUCT.md) and [security policy](https://github.com/bloodf/durindoor/blob/main/.github/SECURITY.md) first.
 
-<Cards>
-  <Card title="Local development" href="local-development" description="Dev server on 20127, lint, anti-slop, Storybook, and Playwright." />
-  <Card title="Architecture" href="architecture" description="Request lifecycle, combo fallback, OAuth refresh, and persistence." />
-  <Card title="Provider registry" href="provider-registry" description="Registry files, generated index, and npm run gen:registry-index." />
-  <Card title="Translators" href="translators" description="OpenAI pivot, direct routes, schema constants, and RTK fail-open." />
-  <Card title="Testing" href="testing" description="Vitest in tests/, baseline scripts, and credential-backed real runs." />
-  <Card title="Release process" href="release-process" description="Release Prepare, Release Tag, npm publish, and rollback." />
-  <Card title="Upstream sync" href="upstream-sync" description="Watch list, port(upstream) subjects, and upstream-watch.yml." />
-  <Card title="Design system" href="design-system" description="Durin DS tokens and primitives a contributor actually touches." />
-  <Card title="Provider brand assets" href="provider-brand-assets" description="Logo policy and provenance for provider marks." />
-  <Card title="Postgres migrations" href="postgres-migrations" description="SQLite-to-PG generator and check:postgres-migrations." />
-</Cards>
+- [Local development](./local-development.mdx)
+- [Architecture](./architecture.mdx)
+- [Provider registry](./provider-registry.mdx)
+- [Translators](./translators.mdx)
+- [Testing](./testing.mdx)
+- [Release process](./release-process.mdx)
+- [Upstream sync](./upstream-sync.mdx)
+- [Brand guide](./brand-guide.mdx)
+- [Design system](./design-system.mdx)
+- [Provider brand assets](./provider-brand-assets.mdx)
+- [Postgres migrations](./postgres-migrations.mdx)
 
 ## Requirements
 
@@ -124,7 +123,7 @@ The PR body lists scope, tests, docs, and baseline impact. Reviewers check corre
 
 ## Documentation
 
-Docs in this site are MDX under `docs/`. The public build lives in `website/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `npm run check:docs`. Vercel builds a pull request preview only when the change touches `docs/` or `website/` (`website/scripts/vercel-ignore-build.sh`); `main` always deploys. The `Website build` CI job follows the same rule on pull requests and always runs on `main`.
+Public user and operator docs are MDX under `docs/`. Repository-only implementation and AI references live under `internal/docs/`. The public build in `website/` reads only `docs/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `npm run check:docs`. Vercel builds a pull request preview only when the change touches `docs/` or `website/` (`website/scripts/vercel-ignore-build.sh`); `main` always deploys. The `Website build` CI job follows the same rule on pull requests and always runs on `main`.
 
 Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX.md`. Run `npm run gen:registry-index` and `npm run gen:agent-index`. Those flows are on [Provider registry](./provider-registry.mdx). Translator work is on [Translators](./translators.mdx). The Vitest layout is on [Testing](./testing.mdx).
 

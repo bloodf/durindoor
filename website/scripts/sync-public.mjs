@@ -3,6 +3,7 @@
 import { cp, mkdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyPublicBrand } from "./sync-brand-public.mjs";
 
 const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appPublic = join(siteRoot, "..", "public");
@@ -40,7 +41,8 @@ async function copy(from, to, label) {
 for (const [source, target] of ENTRIES) {
   await copy(join(appPublic, source), join(sitePublic, target), target);
 }
-await copy(join(siteRoot, "..", "assets", "brand"), join(sitePublic, "brand"), "brand");
+await copyPublicBrand(join(siteRoot, "..", "assets", "brand"), join(sitePublic, "brand"));
+console.log("[sync-public] brand images");
 await copy(join(siteRoot, "node_modules", "monaco-editor", "min", "vs"), join(sitePublic, "monaco", "vs"), "monaco/vs");
 
 // Tailwind resolves `@import "tailwindcss"` relative to the CSS file, so the

@@ -67,4 +67,4 @@ RTK compresses `tool_result` bodies in place. `handleChatCore` calls `compressMe
 
 It skips Claude blocks with `is_error === true` and Kiro tool results with `status: "error"`. Blobs under 500 bytes are left alone (`MIN_COMPRESS_SIZE`). Filter panics go through `safeApply`, which returns the original text.
 
-Token-saver and Headroom behaviour for operators is on [Compression](../features/compression.mdx).
+Token-saver and Headroom behaviour for operators is on [Compression](../../docs/features/compression.mdx).

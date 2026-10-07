@@ -23,7 +23,7 @@ const AXE_PAGES = [
   "/docs/getting-started",
   "/docs/reference/api",
   "/docs/providers/catalog",
-  "/docs/contributing",
+  "/docs/operations",
 ];
 
 function collectDocUrls() {
@@ -429,4 +429,19 @@ test("docs onboarding links, API tabs, and reading themes work", async ({
   await expect(
     page.getByRole("link", { name: /Step 1 Install and sign in/ }),
   ).toBeVisible();
+});
+
+test("public docs exclude AI references and brand maintenance files", async ({ page, request }) => {
+  await page.goto("/docs");
+  await expect(page.locator('a[href^="/docs/contributing"]')).toHaveCount(0);
+  for (const path of ["/docs/contributing", "/docs/contributing/brand-guide", "/docs/contributing/upstream-sync", "/brand/README.md", "/brand/prompts.md"]) {
+    expect((await request.get(path)).status(), path).toBe(404);
+  }
+  for (const query of ["brand guide", "upstream sync", "Durin DS"]) {
+    const response = await request.get(`/docs-search?query=${encodeURIComponent(query)}`);
+    expect(response.status()).toBe(200);
+    expect(JSON.stringify(await response.json())).not.toContain("/docs/contributing");
+  }
+  expect((await request.get("/brand/durindoor-logo-dark.svg")).status()).toBe(200);
+  expect((await request.get("/docs/reference/api")).status()).toBe(200);
 });

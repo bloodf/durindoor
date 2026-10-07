@@ -23,7 +23,7 @@ Provider files live under `open-sse/providers/registry`. Translators live under 
 
 ## Request lifecycle
 
-Chat is the path below. Other `/v1` families reuse connections and have their own handlers. Watch outcomes on **Dashboard → Usage** (`/dashboard/usage`). Model-string rules and credential rotation live on [Smart routing](../features/smart-routing.mdx).
+Chat is the path below. Other `/v1` families reuse connections and have their own handlers. Watch outcomes on **Dashboard → Usage** (`/dashboard/usage`). Model-string rules and credential rotation live on [Smart routing](../../docs/features/smart-routing.mdx).
 
 1. The client sends a request with `model` and a DurinDoor API key.
 2. The `/v1` rewrite lands on the App Router route. `POST` for chat rejects a non-JSON `Content-Type` with 415, then calls `handleChat`.
@@ -47,7 +47,7 @@ Client
   -> SQLite or Postgres
 ```
 
-A model's context window and max output come from `resolveModelLimits` in `open-sse/providers/capabilities.js`. `handleChatCore` rejects an oversize request when those numbers are known catalog values. It stays silent when the real limit is unknown, so a guessed floor does not 400 a larger undeclared window. See [Model limits](../reference/model-limits.mdx).
+A model's context window and max output come from `resolveModelLimits` in `open-sse/providers/capabilities.js`. `handleChatCore` rejects an oversize request when those numbers are known catalog values. It stays silent when the real limit is unknown, so a guessed floor does not 400 a larger undeclared window. See [Model limits](../../docs/reference/model-limits.mdx).
 
 ## Routing and fallback
 
@@ -60,7 +60,7 @@ A direct model request uses account fallback only. A combo request can use both.
 
 `checkFallbackError` decides whether an upstream error rotates. HTTP 499 from the client or an external hop is terminal for account fallback. Anthropic `invalid_request_error` 400s do not rotate. Any other unmatched 400-499 (context overflow, a malformed body, an unsupported parameter) is treated the same way: it is a request-scoped failure that switching accounts cannot fix, so it never cools the account down. Account-scoped statuses (401/402/403/404/429) keep their cooldown, and rate-limit/quota wording still rotates on any status. Combo-owned per-attempt timeouts are handled in `combo.js`, not by that 499 branch.
 
-Empty HTTP 200 bodies and SSE streams that never carry a usable frame also fail through. Details and strategies are on [Combos](../features/combos.mdx).
+Empty HTTP 200 bodies and SSE streams that never carry a usable frame also fail through. Details and strategies are on [Combos](../../docs/features/combos.mdx).
 
 Transport for the outbound call follows the final body format. A model-level `targetFormat` can move the request to a different endpoint, header set, and auth scheme (`resolveRequestTransport` in `chatCore.js`). Unpinned models can still use a client-format endpoint when registry metadata lists that format.
 
@@ -102,11 +102,11 @@ In legacy settings-based mode, if boot sees `databaseEngine === "postgres"` and 
 
 Rollback (`runRollback`) copies an allowlisted cutover snapshot onto `currentDataFile()`, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. Writes made while PostgreSQL was live are not copied back. Rollback does not touch the PG cluster. After a successful cutover the call requires `force: true`; without it the function returns `rollback_requires_force`. `runRollback` rejects snapshot paths outside `currentBackupsDir()`.
 
-Operator steps: [Postgres](../operations/postgres.mdx). Contributor schema work: [Postgres migrations](./postgres-migrations.mdx).
+Operator steps: [Postgres](../../docs/operations/postgres.mdx). Contributor schema work: [Postgres migrations](./postgres-migrations.mdx).
 
 ## Security surfaces
 
-Dashboard cookies, DurinDoor API keys, upstream tokens, optional request-body logs, optional MITM, optional tunnels, and MCP gateway keys. Production needs explicit secrets, TLS at the reverse proxy, restricted dashboard access, and backups of `DATA_DIR`. See [Security](../operations/security.mdx).
+Dashboard cookies, DurinDoor API keys, upstream tokens, optional request-body logs, optional MITM, optional tunnels, and MCP gateway keys. Production needs explicit secrets, TLS at the reverse proxy, restricted dashboard access, and backups of `DATA_DIR`. See [Security](../../docs/operations/security.mdx).
 
 ## Extension points
 
@@ -117,8 +117,8 @@ Dashboard cookies, DurinDoor API keys, upstream tokens, optional request-body lo
 | Executor | `open-sse/executors` when the default OpenAI-compatible executor is not enough |
 | Translator | `open-sse/translator/request` and `response`, imported from `open-sse/translator/index.js` |
 | Dashboard provider UI | Registry `display` fields and dashboard components |
-| Compression | `open-sse/rtk` and [Compression](../features/compression.mdx) |
-| Realtime | [Realtime](../features/realtime.mdx) |
-| MCP Gateway | `src/lib/mcp` and [MCP Gateway](../features/mcp-gateway.mdx) |
+| Compression | `open-sse/rtk` and [Compression](../../docs/features/compression.mdx) |
+| Realtime | [Realtime](../../docs/features/realtime.mdx) |
+| MCP Gateway | `src/lib/mcp` and [MCP Gateway](../../docs/features/mcp-gateway.mdx) |
 | API route | `src/app/api` |
 | Database entity | `src/lib/db/schema.js`, a SQLite migration, then the PG generator |

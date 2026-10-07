@@ -1,6 +1,6 @@
 # Contributing to DurinDoor
 
-The contributor guide is at [https://durindoor.vercel.app/docs/contributing](https://durindoor.vercel.app/docs/contributing).
+The contributor guide is at [internal/docs/index.mdx](internal/docs/index.mdx).
 
 Open an issue before large changes. Pull requests target `bloodf/durindoor:main`. Submit changes to this repository.
 

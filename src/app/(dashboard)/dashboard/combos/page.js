@@ -763,7 +763,7 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex min-w-0 flex-wrap items-center gap-1.5 rounded-dd bg-dd-surface-2 px-2 py-1 transition-colors sm:flex-nowrap ${isDragging ? "shadow-dd-elevated ring-1 ring-dd-accent/30" : ""}`}
+      className={`group flex min-w-0 flex-wrap items-center gap-1.5 rounded-dd bg-dd-surface-2 py-1 transition-colors sm:flex-nowrap ${isDragging ? "shadow-dd-elevated ring-1 ring-dd-accent/30" : ""}`}
     >
       {/* Drag handle */}
       <button

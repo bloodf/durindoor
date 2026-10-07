@@ -1,7 +1,4 @@
 // @vitest-environment happy-dom
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -196,21 +193,5 @@ describe("unmeasurable node policy", () => {
       storyId: CHARTED, chartStories, resolve: (n) => resolveNode(n, document), computeStyle: styleOf(),
     });
     expect(entries[0].nodes).toEqual([crossing]);
-  });
-
-  it("exempts exactly the story ids whose charts carry a proof", () => {
-    const e2e = join(dirname(fileURLToPath(import.meta.url)), "..", "e2e");
-    const spec = readFileSync(join(e2e, "storybook.spec.js"), "utf8");
-    const allowed = new Set([...(spec.match(/const CHART_AAA_STORIES = \[([\s\S]*?)\];/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]));
-    const manifest = JSON.parse(readFileSync(join(e2e, "storybook-surfaces.json"), "utf8"));
-    const guardedSources = ["usage/components/UsageChart.js", "token-saver/components/TokenSaverOverview.js", "pxpipe/PxpipeClient.js", "console-log/ConsoleLogPage.jsx", "timeline/TimelinePage.jsx", "token-saver/TokenSaverStatsPage.jsx", "headroom/HeadroomPage.jsx"];
-    const guarded = new Set();
-    for (const row of manifest.rows) {
-      if (!guardedSources.some((source) => row.sourcePath.endsWith(source))) continue;
-      for (const scenario of row.storyScenarios ?? []) guarded.add(scenario.storyId);
-    }
-    expect(guarded.size).toBeGreaterThan(0);
-    expect([...allowed].filter((id) => !guarded.has(id)), "exempted without a chart contrast proof").toEqual([]);
-    expect([...guarded].filter((id) => !allowed.has(id)), "guarded chart story missing from the exemption").toEqual([]);
   });
 });

@@ -26,11 +26,15 @@ const OK = { status: 200, body: { ok: true } };
  * `{ status, body }` descriptors. Keys are exact `METHOD path` strings.
  */
 function defaultFixture({ instances = INSTANCES } = {}) {
-  const state = { instances: instances.map((instance) => ({ ...instance })) };
+  const initialState = structuredClone({ instances });
+  let state;
+  const reset = () => { state = structuredClone(initialState); };
+  reset();
   return {
     scenario: "default",
     pathname: "/dashboard/mcp-gateway",
     params: {},
+    reset,
     routes: {
       "GET /api/mcp-gateway/instances": () => ({ status: 200, body: { instances: state.instances } }),
       "POST /api/mcp-gateway/instances": async (request) => {
@@ -74,6 +78,14 @@ const meta = {
   title: "Durin DS/Production Pages/MCP Gateway",
   component: McpGatewayPage,
   parameters: { layout: "fullscreen" },
+  // Parameters retain route closures across A/B/A navigation; reset their data
+  // before render and again on disposal, not just the fetch/EventSource boundary.
+  beforeEach: ({ parameters }) => {
+    const reset = parameters.storyFixture?.reset;
+    if (!reset) return;
+    reset();
+    return reset;
+  },
 };
 export default meta;
 

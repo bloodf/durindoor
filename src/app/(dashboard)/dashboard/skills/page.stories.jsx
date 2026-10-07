@@ -6,6 +6,28 @@ export default { title: "Production/operations/SkillsPage", component: SkillsPag
 export const Default = {};
 export const CopyEntryLink = { play: async ({ canvasElement }) => { const canvas = within(canvasElement); await canvas.findByText("Skills"); await expect(canvas.getAllByRole("button", { name: /Copy link|Copy instruction/i }).length).toBeGreaterThan(0); await userEvent.click(canvas.getAllByRole("button", { name: /Copy link/i })[0]); await expect(canvas.getAllByRole("button", { name: /Copied/i }).length).toBeGreaterThan(0); } };
 
+
+export const CopyInstructionFailure = {
+  parameters: {
+    storyFixture: {
+      scenario: "error",
+      pathname: "/dashboard/skills",
+      routes: {
+        "GET /api/keys": { body: { keys: [{ id: "key-1", name: "Fixture key", maskedKey: "sk-••••" }] } },
+        "GET /api/keys/key-1/reveal": { status: 403, body: { error: "Forbidden" } },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const keyPicker = await canvas.findByRole("combobox", { name: "API key" });
+    await waitFor(() => expect(keyPicker).toBeEnabled());
+    await userEvent.click(keyPicker);
+    await userEvent.click(await within(document.body).findByRole("option", { name: /Fixture key/ }));
+    await userEvent.click(canvas.getAllByRole("button", { name: "Copy for agent" })[0]);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Could not read that key. Pick another.");
+  },
+};
 export const ManyEndpoints = {
   parameters: {
     storyFixture: {

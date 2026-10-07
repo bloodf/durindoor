@@ -97,6 +97,27 @@ export const KeyboardActivation = {
   },
 };
 
+function RightToLeftButtonDemo() {
+  const [saved, setSaved] = useState(false);
+  return (
+    <div dir="rtl" className="flex flex-col items-start gap-2">
+      <Button variant="primary" icon="arrow_forward" iconTrailing="arrow_back" onClick={() => setSaved(true)}>
+        حفظ التغييرات
+      </Button>
+      <output aria-live="polite">{saved ? "تم الحفظ" : "غير محفوظ"}</output>
+    </div>
+  );
+}
+
+export const RightToLeft = {
+  render: () => <RightToLeftButtonDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "حفظ التغييرات" }));
+    await expect(canvas.getByText("تم الحفظ")).toBeInTheDocument();
+  },
+};
+
 export const Disabled = {
   render: () => (
     <div className="flex items-center gap-2">

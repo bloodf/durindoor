@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { expect, userEvent, within } from "storybook/test";
 import Button from "@/shared/ui/components/Button";
 
 import DashboardShell from "./DashboardShell";
@@ -13,6 +15,21 @@ export default meta;
 
 function SidebarFrame({ children }) {
   return <div className="h-screen bg-dd-bg text-dd-text">{children}</div>;
+}
+
+function InteractiveSidebar({ collapsed: initialCollapsed = false, activePath = "/dashboard/token-saver" }) {
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const [path, setPath] = useState(activePath);
+  return (
+    <SidebarFrame>
+      <Sidebar
+        activePath={path}
+        collapsed={collapsed}
+        onNavigate={setPath}
+        onToggleCollapse={() => setCollapsed((value) => !value)}
+      />
+    </SidebarFrame>
+  );
 }
 
 export const SidebarDefault = {
@@ -65,6 +82,20 @@ export const SidebarTokenSaverExpanded = {
   ),
 };
 
+export const SidebarInteractions = {
+  render: () => <InteractiveSidebar />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const tokenSaver = canvas.getByRole("button", { name: "Token Saver" });
+    await userEvent.click(tokenSaver);
+    await expect(tokenSaver).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(tokenSaver);
+    await expect(canvas.getByRole("link", { name: "Statistics" })).toBeVisible();
+    await userEvent.click(canvas.getByRole("button", { name: "Collapse sidebar" }));
+    await expect(canvas.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  },
+};
+
 export const HeaderBare = {
   render: () => <Header />,
 };
@@ -92,6 +123,17 @@ export const HeaderWithActions = {
       }
     />
   ),
+};
+
+export const HeaderThemeToggle = {
+  render: () => <Header title="Providers" subtitle="Manage upstream model connections" icon="dns" />,
+  play: async ({ canvasElement }) => {
+    const toggle = within(canvasElement).getByRole("button", { name: "Toggle theme" });
+    await userEvent.click(toggle);
+    await expect(document.documentElement).toHaveClass("dark");
+    await userEvent.click(toggle);
+    await expect(document.documentElement).not.toHaveClass("dark");
+  },
 };
 
 export const FullDashboardShell = {

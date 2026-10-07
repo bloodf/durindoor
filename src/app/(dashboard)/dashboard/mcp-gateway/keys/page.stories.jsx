@@ -153,6 +153,25 @@ export const MobileNewKeyKeyboard = {
   },
 };
 
+export const RevealExistingKey = {
+  parameters: { storyFixture: defaultFixture() },
+  render: () => <McpGatewayKeysPage />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const cursorRow = (await canvas.findByText("Cursor laptop")).closest("article");
+    await userEvent.click(within(cursorRow).getByRole("button", { name: "Reveal and copy" }));
+    await expect(within(cursorRow).getByRole("button", { name: "Reveal and copy" }).querySelector(".material-symbols-outlined")).toHaveTextContent("check");
+  },
+};
+
+export const EmptyKeys = {
+  parameters: { storyFixture: defaultFixture({ keys: [] }) },
+  render: () => <McpGatewayKeysPage />,
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText("No gateway keys yet")).toBeVisible();
+  },
+};
+
 export const ErrorBoundary = {
   render: () => <McpGatewayKeysErrorHarness />,
   beforeEach: () => {

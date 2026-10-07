@@ -31,3 +31,15 @@ export const CurlCopies = {
     await userEvent.click(copy);
   },
 };
+
+export const UploadAndTranscribe = {
+  args: { providerId: "openai" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const file = new File(["audio bytes"], "sample.wav", { type: "audio/wav" });
+    await userEvent.upload(await canvas.findByLabelText("Audio file"), file);
+    await expect(canvas.getByText(/sample.wav/)).toBeVisible();
+    await userEvent.click(canvas.getByRole("button", { name: "Run" }));
+    await expect(await canvas.findByRole("region", { name: "Response output" })).toHaveTextContent("Hello world");
+  },
+};

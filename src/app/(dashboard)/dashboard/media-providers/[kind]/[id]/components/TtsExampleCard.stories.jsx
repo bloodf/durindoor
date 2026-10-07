@@ -40,3 +40,16 @@ export const OpenLanguageModal = {
     await expect(await canvas.findByText("Alloy")).toBeInTheDocument();
   },
 };
+
+export const GenerateAudio = {
+  args: { providerId: "edge-tts" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /Select language/ }));
+    const dialog = within(document.body);
+    await userEvent.click(await dialog.findByText("English (US)"));
+    await userEvent.click(await canvas.findByText("Alloy"));
+    await userEvent.click(canvas.getByRole("button", { name: "Run" }));
+    await expect(canvasElement.querySelector("audio")).not.toBeNull();
+  },
+};

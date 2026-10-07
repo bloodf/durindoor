@@ -76,3 +76,24 @@ export const CodexStreamingRun = {
     await expect(await canvas.findByAltText("Generated", {}, { timeout: 3000 })).toBeInTheDocument();
   },
 };
+
+export const RunError = {
+  args: { providerId: "duckduckgo-web", kind: "webSearch" },
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-providers/webSearch/duckduckgo-web",
+      params: { kind: "webSearch", id: "duckduckgo-web" },
+      routes: {
+        "GET /api/tunnel/status": { body: {}, status: 200 },
+        "GET /api/providers/client": { body: { connections: [] }, status: 200 },
+        "POST /api/v1/search": { body: { error: "Search service unavailable" }, status: 503 },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Run" }));
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Search service unavailable");
+  },
+};

@@ -1,5 +1,5 @@
 import React from "react";
-import { within, expect } from "storybook/test";
+import { within, expect, userEvent } from "storybook/test";
 import CLIToolsPageClient from "./CLIToolsPageClient";
 
 const defaultRoutes = {
@@ -13,6 +13,10 @@ const defaultRoutes = {
 
 const errorRoutes = {
   "GET /api/cli-tools/all-statuses": async () => ({ status: 500, body: { error: "upstream" } }),
+};
+
+const pendingRoutes = {
+  "GET /api/cli-tools/all-statuses": () => new Promise(() => {}),
 };
 
 export default {
@@ -50,5 +54,24 @@ export const FetchError = {
     const body = within(canvasElement.ownerDocument.body);
     expect(await body.findByRole("alert")).toHaveTextContent(/could not load tool statuses/i);
     expect(body.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  },
+};
+
+export const Loading = {
+  args: { machineId: "story-machine" },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools", params: {}, routes: pendingRoutes } },
+  play: async ({ canvasElement }) => {
+    expect((await within(canvasElement).findAllByRole("status", { name: "Loading card" })).length).toBeGreaterThan(0);
+  },
+};
+
+export const FetchErrorRetry = {
+  args: { machineId: "story-machine" },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools", params: {}, routes: errorRoutes } },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const retry = await body.findByRole("button", { name: /retry/i });
+    await userEvent.click(retry);
+    expect(await body.findByRole("alert")).toHaveTextContent(/could not load tool statuses/i);
   },
 };

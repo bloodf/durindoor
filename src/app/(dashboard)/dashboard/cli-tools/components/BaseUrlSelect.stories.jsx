@@ -21,6 +21,16 @@ export const Local = {
 };
 export const Tunnel = { render: (args) => <Controlled {...args} />, args: { requiresExternalUrl: true, tunnelEnabled: true, tunnelPublicUrl: "https://tunnel.example.com" } };
 export const Cloud = { render: (args) => <Controlled {...args} />, args: { requiresExternalUrl: true, cloudEnabled: true, cloudUrl: "https://cloud.example.com" } };
+
+export const Tailscale = {
+  render: (args) => <Controlled {...args} />,
+  args: { requiresExternalUrl: true, tailscaleEnabled: true, tailscaleUrl: "https://durindoor.tailnet.example.test" },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("combobox", { name: /endpoint/i });
+    await userEvent.click(trigger);
+    expect(await within(canvasElement.ownerDocument.body).findByRole("option", { name: "Tailscale" })).toBeInTheDocument();
+  },
+};
 export const SwitchToCustom = {
   render: (args) => <Controlled {...args} />,
   play: async ({ canvasElement }) => {

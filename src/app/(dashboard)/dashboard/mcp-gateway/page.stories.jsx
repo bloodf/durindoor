@@ -179,6 +179,26 @@ export const ToggleInstance = {
 };
 
 
+export const FailedTestRequiresLogin = {
+  parameters: { storyFixture: defaultFixture() },
+  render: () => <McpGatewayPage />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const staleRow = (await canvas.findByText("legacy")).closest("article");
+    await userEvent.click(within(staleRow).getByRole("button", { name: "Test" }));
+    await expect(await within(staleRow).findByRole("status")).toHaveTextContent("Test failed: 401 requires re-login");
+    await expect(within(staleRow).getByRole("button", { name: "Login" })).toBeVisible();
+  },
+};
+
+export const EmptyInstances = {
+  parameters: { storyFixture: defaultFixture({ instances: [] }) },
+  render: () => <McpGatewayPage />,
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText("No instances yet")).toBeVisible();
+  },
+};
+
 export const ErrorBoundary = {
   render: () => <McpGatewayErrorHarness />,
   beforeEach: () => {

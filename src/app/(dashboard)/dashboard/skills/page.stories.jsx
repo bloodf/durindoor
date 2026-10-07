@@ -1,5 +1,5 @@
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import SkillsPage from "./page";
 
 export default { title: "Production/operations/SkillsPage", component: SkillsPage, parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/skills" } } };
@@ -32,7 +32,9 @@ export const ManyEndpoints = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("combobox", { name: /Endpoint/i }));
+    const trigger = await canvas.findByRole("combobox", { name: /Endpoint/i });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await userEvent.click(trigger);
     const listbox = await within(document.body).findByRole("listbox", { name: /Endpoint/i });
     await expect(within(listbox).getAllByRole("option").length).toBeGreaterThanOrEqual(6);
     await expect(within(listbox).getByText(/External Tailscale — https:\/\/system\.tailnet\.fixture\.test\/v1/)).toBeVisible();

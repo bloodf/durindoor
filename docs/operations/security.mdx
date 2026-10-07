@@ -87,9 +87,19 @@ Before anything other than loopback can reach `/dashboard`:
 
 If the proxy rewrites `Host` to an internal name, set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public origin so Origin checks match.
 
+## Isolated web-provider login
+
+Set `DURINDOOR_WEB_LOGIN_ORIGIN=https://login.gateway.example` for dashboard-assisted web-cookie sign-in, with the dashboard on a different hostname such as `https://gateway.example`. Route both hosts to the same `custom-server.js` deployment and terminate TLS. A different port on the dashboard hostname is **not** isolation: cookies are shared across ports. Missing, malformed, or same-hostname configuration disables assisted login; manual cookie entry remains available.
+
+The isolated hostname accepts only `/__web_login/bootstrap` and `/__web_login/<provider>/…`. Before Next handles a request, the custom server denies dashboard pages, authentication and management APIs, static assets, local administration bridges, and all WebSocket upgrades on that hostname, regardless of credentials. Keep the original Host header at the reverse proxy; forwarded host headers are not trusted.
+
+Bootstrap grants are short-lived and single-use. The login cookie is host-only and HttpOnly; do not configure Domain-wide dashboard cookies. Login pages run cross-origin to the dashboard, and iframe/popup access never falls back to the dashboard origin. Management mutations and protected reads with a foreign Origin cannot use dashboard cookies or an open-dashboard bypass; valid explicit CLI/API credentials retain their existing permissions, including the stricter raw-secret policy.
+
 ## Management routes
 
 `GET /api/headroom/status` and `GET /api/headroom/stats` use the management API policy because they expose the configured proxy URL, managed process and circuit state, and usage statistics. Remote callers need a dashboard JWT, a machine-bound CLI token, or a DurinDoor application API key, including when `requireLogin` is false. Direct loopback requests keep open-dashboard access when login is disabled.
+
+Only the exact OIDC `/api/auth/oidc/start` and `/api/auth/oidc/callback` login endpoints are public. `POST /api/auth/oidc/test` is operator-only because its probe can use the stored client secret; both middleware and the handler reject foreign-Origin cookie requests before discovery or probing. Explicit machine-bound CLI credentials remain supported.
 
 The management control endpoint `POST /api/mcp/control` is exempt from the loopback-only MCP plugin branch. It requires a CLI token, API key, or dashboard JWT, including from a remote host. A credential-free loopback caller is accepted only while `requireApiKey` is off and only when the request carries no foreign `Origin`, so a browser page cannot drive it cross-origin. The MCP gateway (`/api/mcp-gateway`) uses gateway keys, not that local-only policy.
 

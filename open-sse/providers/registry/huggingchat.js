@@ -40,6 +40,12 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the full Cookie header from huggingface.co/chat.",
+  webLogin: {
+    startUrl: "https://huggingface.co/chat/",
+    origin: "https://huggingface.co",
+    cookieNames: "*",
+    readyProbe: { url: "https://huggingface.co/api/whoami-v2", method: "GET", okStatus: [200] },
+  },
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://huggingface.co/chat/conversation",

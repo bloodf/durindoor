@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createControlProof } from "../../src/mitm/controlProof.js";
 
 process.env.DURINDOOR_CONTROL_PROOF_SECRET = "a".repeat(64);
@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
   hasTrustedPeerHeaders: vi.fn(),
+  fetchOidcDiscovery: vi.fn(),
+  probeOidcClientSecret: vi.fn(),
 }));
 
 vi.mock("next/server", () => {
@@ -49,8 +51,14 @@ vi.mock("@/lib/auth/trustedPeer", () => ({
   hasTrustedPeerHeaders: mocks.hasTrustedPeerHeaders,
 }));
 vi.mock("@/mitm/controlProof", async () => await import("../../src/mitm/controlProof.js"));
+vi.mock("@/lib/auth/oidc", () => ({
+  fetchOidcDiscovery: mocks.fetchOidcDiscovery,
+  probeOidcClientSecret: mocks.probeOidcClientSecret,
+  getPublicOrigin: () => "https://gateway.example",
+}));
 
 const { proxy, __test__, isOperatorRequest } = await import("../../src/dashboardGuard.js");
+const { POST: testOidcConfiguration } = await import("../../src/app/api/auth/oidc/test/route.js");
 
 function request(pathname, headers = {}, method = "GET") {
   const normalizedHeaders = new Headers(headers);
@@ -1086,5 +1094,143 @@ describe("dashboard guard helpers", () => {
       "google-key",
       "query-key",
     ]);
+  });
+});
+
+describe("dashboard cookie cross-origin management isolation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("trusts the configured dashboard TLS origin over an internal HTTP hop", async () => {
+    vi.stubEnv("BASE_URL", "https://gateway.example");
+    vi.stubEnv("NEXT_PUBLIC_BASE_URL", "https://gateway.example");
+    vi.stubEnv("DURINDOOR_WEB_LOGIN_ORIGIN", "https://login.gateway.example");
+    const headers = { host: "localhost:20128", origin: "https://gateway.example" };
+    expect(__test__.hasExactRequestOrigin(request("/api/providers", headers, "POST"))).toBe(true);
+    expect(await proxy(request("/api/providers", headers, "POST"))).toBe(mocks.nextResponse);
+    expect((await proxy(request("/api/providers", { ...headers, origin: "https://login.gateway.example" }, "POST"))).status).toBe(403);
+    expect(__test__.hasExactRequestOrigin(request("/api/providers", { host: "localhost:20128" }))).toBe(false);
+  });
+
+  it("never trusts the isolated sibling as an operator-configured dashboard Origin", () => {
+    vi.stubEnv("BASE_URL", "https://gateway.example");
+    vi.stubEnv("NEXT_PUBLIC_BASE_URL", "https://login.gateway.example");
+    vi.stubEnv("DURINDOOR_WEB_LOGIN_ORIGIN", "https://login.gateway.example");
+    expect(__test__.hasExactRequestOrigin(request("/api/providers", foreignHeaders))).toBe(false);
+  });
+
+  const foreignHeaders = { host: "localhost", origin: "https://login.gateway.example" };
+
+  it.each([
+    ["/api/providers", "POST"], ["/api/providers/p1", "DELETE"],
+    ["/api/settings", "PATCH"], ["/api/keys/k1/reveal", "GET"],
+    ["/api/mcp-gateway/keys/k1?reveal=1", "GET"], ["/api/providers", "GET"],
+    ["/api/mcp/control", "POST"], ["/api/settings/database/engine", "GET"],
+  ])("rejects cookie-authenticated foreign-Origin %s %s", async (path, method) => {
+    const response = await proxy(request(path, foreignHeaders, method));
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects the same hostname on another port and malformed Origin", async () => {
+    for (const origin of ["http://localhost:20129", "null", "not-an-origin"]) {
+      expect((await proxy(request("/api/providers", { host: "localhost", origin }, "POST"))).status).toBe(403);
+    }
+  });
+
+  it("does not let direct management or operator checks trust foreign-Origin cookies", async () => {
+    const req = request("/api/providers", foreignHeaders, "POST");
+    expect(await __test__.canAccessManagementApi(req)).toBe(false);
+    expect(await isOperatorRequest(req)).toBe(false);
+  });
+
+  it("retains same-origin dashboard cookie access", async () => {
+    expect(await proxy(request("/api/providers", { host: "localhost", origin: "http://localhost" }, "POST")))
+      .toBe(mocks.nextResponse);
+  });
+
+  it("retains explicit CLI credentials for protected reads and mutations", async () => {
+    const headers = { ...foreignHeaders, "x-9r-cli-token": "cli-token" };
+    expect(await proxy(request("/api/keys/k1/reveal", headers))).toBe(mocks.nextResponse);
+    expect(await proxy(request("/api/providers", headers, "POST"))).toBe(mocks.nextResponse);
+    expect(await isOperatorRequest(request("/api/providers", headers))).toBe(true);
+  });
+
+  it("retains valid API keys without granting foreign-Origin secret reveal", async () => {
+    mocks.validateApiKey.mockResolvedValue(true);
+    const headers = { ...foreignHeaders, authorization: "Bearer valid-key" };
+    expect(await proxy(request("/api/providers", headers, "POST"))).toBe(mocks.nextResponse);
+    expect((await proxy(request("/api/keys/k1/reveal", headers))).status).toBe(401);
+    expect(await isOperatorRequest(request("/api/providers", headers))).toBe(false);
+  });
+});
+
+describe("OIDC secret probe management boundary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({
+      requireLogin: true, oidcIssuerUrl: "https://issuer.example",
+      oidcClientId: "example-client", oidcClientSecret: "stored-secret-fixture",
+    });
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+    mocks.fetchOidcDiscovery.mockResolvedValue({ token_endpoint: "https://issuer.example/token" });
+    mocks.probeOidcClientSecret.mockResolvedValue({ tested: true, valid: true, message: "Valid" });
+  });
+
+  function oidcRequest(origin, extraHeaders = {}) {
+    const req = request("/api/auth/oidc/test", {
+      host: "localhost", origin, "content-type": "text/plain", ...extraHeaders,
+    }, "POST");
+    req.json = vi.fn().mockResolvedValue({ issuerUrl: "https://attacker.example" });
+    return req;
+  }
+
+  it.each([true, false])("rejects sibling-origin POST before discovery or stored-secret probe with requireLogin=%s", async (requireLogin) => {
+    mocks.getSettings.mockResolvedValue({
+      requireLogin, oidcClientId: "example-client", oidcClientSecret: "stored-secret-fixture",
+    });
+    const req = oidcRequest("https://login.gateway.example");
+    expect((await proxy(req)).status).toBe(403);
+    expect((await testOidcConfiguration(req)).status).toBe(403);
+    expect(req.json).not.toHaveBeenCalled();
+    expect(mocks.fetchOidcDiscovery).not.toHaveBeenCalled();
+    expect(mocks.probeOidcClientSecret).not.toHaveBeenCalled();
+    expect(mocks.getSettings).not.toHaveBeenCalled();
+  });
+
+  it("allows a same-origin authenticated operator to test the stored secret", async () => {
+    const req = oidcRequest("http://localhost");
+    expect(await proxy(req)).toBe(mocks.nextResponse);
+    expect((await testOidcConfiguration(req)).body.ok).toBe(true);
+    expect(mocks.fetchOidcDiscovery).toHaveBeenCalledWith("https://attacker.example");
+    expect(mocks.probeOidcClientSecret).toHaveBeenCalledWith(expect.objectContaining({
+      clientSecret: "stored-secret-fixture", clientId: "example-client",
+    }));
+  });
+
+  it("preserves explicit operator CLI access even with a foreign Origin", async () => {
+    const req = oidcRequest("https://login.gateway.example", { "x-9r-cli-token": "cli-token" });
+    expect(await proxy(req)).toBe(mocks.nextResponse);
+    expect((await testOidcConfiguration(req)).body.ok).toBe(true);
+    expect(mocks.probeOidcClientSecret).toHaveBeenCalledOnce();
+  });
+
+  it.each(["/api/auth/oidc/start", "/api/auth/oidc/callback"])("keeps exact login endpoint %s public", async (path) => {
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    expect(await proxy(request(path, { host: "gateway.example" }))).toBe(mocks.nextResponse);
+    expect((await proxy(request(`${path}/test`, {
+      host: "localhost", origin: "https://login.gateway.example",
+    }, "POST"))).status).toBe(403);
   });
 });

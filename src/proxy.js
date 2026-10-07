@@ -11,6 +11,28 @@ import {
   clearedSessionCookie,
   originOf,
 } from "./lib/mimoLoginSession";
+import {
+  isolatedOrigin, requestOrigin, isIsolatedLoginRequest, consumeBootstrap, proxySessionFromRequest,
+  proxySessionCookie, proxyPathFor, upstreamUrlFor, proxyWebLoginRequest,
+} from "./lib/webLoginSession";
+
+async function webLoginProxy(request, loginOrigin) {
+  const url = request.nextUrl || new URL(request.url);
+  if (url.pathname === "/__web_login/bootstrap") {
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+    const sess = consumeBootstrap(url.searchParams.get("grant"), url.searchParams.get("provider"), loginOrigin);
+    if (!sess || sess.loginOrigin !== loginOrigin) return new Response("Invalid login grant", { status: 403 });
+    return new Response(null, { status: 303, headers: {
+      Location: proxyPathFor(sess, sess.config.startUrl),
+      "Set-Cookie": proxySessionCookie(sess), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+    } });
+  }
+  const sess = proxySessionFromRequest(request);
+  const upstream = sess && sess.loginOrigin === loginOrigin && upstreamUrlFor(sess, url.pathname, url.search);
+  if (!upstream) return new Response("Not found", { status: 404 });
+  try { return await proxyWebLoginRequest(sess, request, upstream, loginOrigin); }
+  catch { return new Response("Web login upstream unavailable", { status: 502 }); }
+}
 
 async function withClearedMimoSession(request) {
   const res = await dashboardProxy(request);
@@ -52,10 +74,16 @@ async function mimoLoginProxy(request) {
 }
 
 export default async function proxy(request) {
+  const loginOrigin = isolatedOrigin();
+  if (isIsolatedLoginRequest(request)) {
+    if (!loginOrigin || requestOrigin(request) !== loginOrigin) return new Response("Not found", { status: 404 });
+    return webLoginProxy(request, loginOrigin);
+  }
+  if (request.nextUrl.pathname.startsWith("/__web_login/")) return new Response("Not found", { status: 404 });
   if (request.cookies?.get?.(SESSION_COOKIE)) return mimoLoginProxy(request);
   return dashboardProxy(request);
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico).*)"],
+  matcher: ["/:path*"],
 };

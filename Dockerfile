@@ -54,6 +54,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/custom-server.js ./custom-server.js
+COPY --from=builder /app/web-login-host-boundary.cjs ./web-login-host-boundary.cjs
 # custom-server.js requires this at its first line (OmniRoute #6828 empty-env guard).
 COPY --from=builder /app/src/shared/utils/normalizeEnv.js ./src/shared/utils/normalizeEnv.js
 # open-sse/config/runtimeConfig.js imports this ESM helper at runtime.

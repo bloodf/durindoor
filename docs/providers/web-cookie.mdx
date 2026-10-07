@@ -11,6 +11,22 @@ These providers use `category: "webCookie"` and `authType: "cookie"` in `open-ss
 A session cookie is a full login for that account. Anyone who can send requests through your gateway can spend that session. Keep cookie providers on a personal install, or put them behind scoped DurinDoor keys. See [API key scoping](../operations/api-key-scoping.mdx).
 </Callout>
 
+## Sign in from the dashboard
+
+For **Grok Web** (`grok-web`), **Perplexity Web** (`perplexity-web`), **ChatGPT Web** (`chatgpt-web`), **HuggingChat** (`huggingchat`), and **Muse Spark Web** (`muse-spark-web`), the Add dialog offers **Sign in in-page** alongside manual cookie paste.
+
+Sign in inside the embedded page, or choose **Open in popup** if embedding fails. Each popup receives a fresh, one-time bootstrap grant for the same login session; it does not reuse the iframe's grant. The dashboard polls every two seconds and displays captured cookie **names**, never their values. Once the session is ready, enter a connection name and choose **Save connection**. Cancel, closing the modal, or leaving the page discards the login session. Sessions expire after 15 minutes. Signing in does not add an executor for a provider that is not yet runnable.
+
+### Isolated login origin
+
+The operator must configure `DURINDOOR_WEB_LOGIN_ORIGIN`, for example `https://login.gateway.example`, and route that hostname to the same DurinDoor server. Use a dedicated hostname different from the dashboard's hostname: a different port alone does not isolate cookies. The flow fails closed if the origin is missing, invalid, or shares the dashboard cookie hostname; there is no same-origin fallback.
+
+The dedicated hostname serves only the one-time login bootstrap and provider-scoped reverse proxy, not dashboard pages or management APIs. Bootstrap grants are short-lived, single-use, and sent with no-referrer handling. The login page uses its own host-only HttpOnly session cookie, separate from dashboard authentication. Do not configure domain-wide dashboard cookies covering the login hostname.
+
+Use HTTPS for the dedicated origin. Cross-site iframe cookies can be blocked by browser third-party-cookie policy or by Secure/SameSite requirements, particularly on HTTP development hosts. If the iframe cannot retain its login cookie, try **Open in popup**, where the isolated site is top-level, or use manual paste.
+
+Cloudflare Turnstile, Google SSO, third-party cookies, cross-origin redirects, or other site protections may reject reverse-proxied login, including in a popup. Use manual cookie paste in that case. The flow captures upstream HTTP cookies, not localStorage tokens; only the five providers listed above support this dashboard login. Cookie capture and readiness are not a guarantee that the provider will accept every later chat request.
+
 ## Copy the cookie
 
 Copy from a live request, not from the cookie storage view. The storage view can show stale values, and it can miss cookies the site only sends on signed-in requests.
@@ -80,7 +96,7 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 ## When the session ends
 
-Nothing in DurinDoor reads a cookie's expiry, and cookie sessions are not refreshed. You find out when the site rejects it. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
+Once a connection is saved, its cookie expiry is not tracked and cookie sessions are not refreshed. The temporary login jar does discard expired cookies before saving. You find out when the site rejects a stored connection. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
 
 The fix is always the same: sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
 

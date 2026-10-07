@@ -14,7 +14,7 @@ name: Release Tag
 # in both package manifests at the pushed commit. If a maintainer merges a
 # release PR manually with a different title, tagging will NOT fire — run
 # **Actions → Release Tag → Run workflow** with `version: X.Y.Z` as the
-# documented fallback (see docs/development/release-process.md).
+# documented fallback (see internal/docs/release-process.mdx).
 #
 # CRITICAL — token choice: events created with GITHUB_TOKEN do NOT trigger
 # other workflows, so `release: published` (release.yml, the npm publisher)
@@ -22,7 +22,7 @@ name: Release Tag
 # secret (fine-grained PAT, contents:write on this repo) for the fully
 # automated chain. Without it the Release is still created with
 # GITHUB_TOKEN, but release.yml will NOT fire and the CLI must be published
-# manually (see docs/development/release-process.md).
+# manually (see internal/docs/release-process.mdx).
 on:
   push:
     branches:
@@ -152,7 +152,7 @@ jobs:
           echo "::warning::  gh release delete v\$VERSION --repo bloodf/durindoor --yes"
           echo "::warning::  gh release create v\$VERSION --repo bloodf/durindoor --title v\$VERSION --notes-file release-notes.md --target \$TARGET_SHA"
           echo "::warning::or publish the CLI manually: npm run cli:publish with NPM_TOKEN."
-          echo "::warning::See docs/development/release-process.md (Manual fallback)."
+          echo "::warning::See internal/docs/release-process.mdx (Manual fallback)."
           echo "::warning::============================================================"
 
       - name: Create tag and GitHub Release

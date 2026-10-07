@@ -3,36 +3,13 @@ title: Continue
 description: Add an OpenAI model entry in Continue that points at DurinDoor.
 ---
 
-Continue is a guide tool on **CLI Tools**, not an apply target. There is no `/api/cli-tools/continue-settings` route. `GET /api/cli-tools/all-statuses` does not include `continue`. The card at `/dashboard/cli-tools/continue` copies a JSON object for Continue's `models` array.
+Use Continue's OpenAI-compatible model configuration with a running gateway, a DurinDoor key, and a model ID or combo.
 
-You need VS Code or another Continue host, the gateway running, a DurinDoor API key, and a model ID or combo.
+## Copy the dashboard guide
 
-## Dashboard guide
+Open **CLI Tools → Continue**, choose the endpoint, key, and model, then copy the JSON snippet. Continue is a guide card. It does not write configuration files or report an automatic connection status.
 
-The Continue entry in `CLI_TOOLS` has `configType: "guide"` and a `codeBlock` in JSON. The detail page renders `DefaultToolCard`. Placeholders in the snippet:
-
-- `{{baseUrl}}` becomes the selected origin plus `/v1` if that suffix is missing
-- `{{apiKey}}` becomes the selected DurinDoor key, or `sk_durindoor` on localhost when none is selected
-- `{{model}}` becomes the selected id, or `provider/model-id` if you left the picker empty
-
-The card then walks:
-
-<Steps>
-<Step>
-Open the Continue configuration file.
-</Step>
-<Step>
-Paste the API key.
-</Step>
-<Step>
-Select the DurinDoor model id, or type a combo name.
-</Step>
-<Step>
-Add the JSON object to your `models` array.
-</Step>
-</Steps>
-
-`scripts/auto-configure.mjs` and `/api/settings/auto-configure` do not write Continue files. They probe Headroom, PxPipe, and Firecrawl only.
+The examples below use Continue's JSON `models` configuration. If your version uses a different format, translate the same endpoint, provider, key, and model fields using that version's configuration editor.
 
 ## Manual config
 
@@ -69,10 +46,6 @@ Add more objects in that array to switch combos from Continue's model picker. A 
 <Callout type="warn">
 `provider` must be `"openai"`. `apiBase` must include `/v1`. A missing suffix is the usual "Continue cannot reach DurinDoor" miss.
 </Callout>
-
-## Legacy `9router` labels
-
-Continue's config uses `provider: "openai"`, not a `9router` table. Other CLI tools still write that section label; the server accepts it, plus `X-Msh-Platform: 9router`. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
 
 ## Check it works
 

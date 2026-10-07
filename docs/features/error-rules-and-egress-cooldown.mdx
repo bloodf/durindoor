@@ -3,11 +3,11 @@ title: Error rules and egress cooldown
 description: Operator per-provider error rules and shared-egress-IP 429 cooldown.
 ---
 
-Two operator-configurable resilience settings live on **Dashboard → Providers → (provider)**, in the same toolbar as Round Robin, Cache Affinity, and Max Concurrent: per-provider error rules and egress-bucketed 429 cooldown. Both are ported from OmniRoute and adapted to this fork's settings model and proxy pools.
+Two operator-configurable resilience settings live on **Dashboard → Providers → (provider)**, in the same toolbar as Round Robin, Cache Affinity, and Max Concurrent: per-provider error rules and egress-bucketed 429 cooldown. Add active connections and review their proxy-pool assignments before changing either setting.
 
 ## Provider error rules
 
-`settings.providerErrorRules` lets an operator declare error markers for a provider without editing the built-in catalog in `open-sse/config/providerErrorRules.js`. A declared rule is consulted before the built-in `providerRuleRegistry`, so it can add a marker for a provider that has none, or override the scope and cooldown of a status code that already matches a generic rule.
+`settings.providerErrorRules` lets an operator declare error markers for a provider alongside the built-in provider rules. A declared rule is consulted before built-in rules, so it can add a marker for a provider that has none, or override the scope and cooldown of a status code that already matches a generic rule.
 
 Open the **Error Rules** button on a provider's connections page to add, review, and remove rules. Each rule has:
 
@@ -41,7 +41,7 @@ Declaring a rule for a provider is the opt-in. There is no separate allowlist to
 
 `settings.egressBucketedProviders` opts a provider into cooling down every sibling connection that shares the same egress IP when one connection hits a 429. This matters for providers whose upstream quota is bucketed by IP address rather than by account: without it, DurinDoor keeps retrying every sibling connection one at a time until each burns its own guaranteed-to-fail call.
 
-OmniRoute derives the egress IP from a historical request log. This fork has no equivalent log, so the bucket key is the connection's configured proxy pool (`src/lib/db/repos/proxyPoolsRepo.js`, **Dashboard → Proxy Pools**). Connections routed through the same pool are assumed to share the same egress IP. Connections with no pool configured are never grouped together, since assuming every direct connection shares one host IP does not hold for most deployments.
+The bucket key is the connection's configured proxy pool in **Dashboard → Proxy Pools**. Connections routed through the same pool are assumed to share the same egress IP. Connections with no pool configured are never grouped together, since assuming every direct connection shares one host IP does not hold for most deployments.
 
 Toggle **Egress-Bucketed 429** on a provider's page to opt it in, or set it directly:
 
@@ -53,9 +53,10 @@ Toggle **Egress-Bucketed 429** on a provider's page to opt it in, or set it dire
 
 With that setting, if connection A (assigned to proxy pool `us-east-1`) gets a 429 for `opencode`, every other `opencode` connection also assigned to `us-east-1` is cooled down for the same window, skipping the reauth-quarantined and already-cooling ones. A sibling on a different pool, or with no pool at all, is left alone.
 
-## Where this lives in code
+## Verify and recover
 
-- `open-sse/config/providerErrorRules.js`: operator rule cache, `setOperatorProviderErrorRules`, matcher.
-- `src/sse/services/auth.js`: `applyEgressBucketCooldown`, called from `markAccountUnavailable` on a 429.
-- `src/lib/db/repos/settingsRepo.js`: `providerErrorRules` and `egressBucketedProviders` defaults.
-- `src/app/api/settings/route.js`: validation and apply-on-write for both settings.
+Save a narrow rule matching an observed upstream error. Confirm the matching status and cooldown in the provider connection view when that error occurs. Do not use a broad substring that catches unrelated failures.
+
+For egress grouping, inspect proxy-pool assignments before enabling the option. Reusing a pool label is an assumption about shared egress, not a measured public IP. A direct connection is not grouped.
+
+If a rule blocks healthy traffic, remove it in **Error Rules**. Turn off **Egress-Bucketed 429** if your pools do not represent shared quota buckets. Check current connection cooldowns before repeating the request.

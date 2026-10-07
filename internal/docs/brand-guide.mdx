@@ -1,0 +1,351 @@
+---
+title: Brand guide
+description: DurinDoor identity, color, typography, assets, accessible components, and the plan for a future dashboard redesign.
+---
+
+This is the canonical DurinDoor brand guide for the public website, documentation, and future dashboard work. Use it when you design a page, write interface copy, or prepare a visual change.
+
+The public website and documentation already use the forest, silver, and emerald identity described here. The production dashboard currently uses Durin DS, with warm stone, parchment, and Inter. The dashboard rules marked **migration target** define future work. This guide does not change dashboard components or behavior.
+
+[Design system](./design-system.mdx) describes the existing dashboard primitives and utilities. Keep those component contracts during the redesign.
+
+## Apply the identity
+
+DurinDoor takes its name from Durin's Door at Moria. Its emblem combines an arch, an open door leaf, and a guiding star. Large illustrations add silver tree engravings, stone, and emerald light.
+
+Use the door to introduce the gateway. Use straightforward text and diagrams to explain what the gateway does. Fantasy imagery belongs in the public introduction and occasional decorative artwork. Operational controls need clear labels, readable values, and predictable behavior.
+
+Follow these principles:
+
+- Use emerald to identify actions, focus, and active destinations. Reserve semantic colors for actual status.
+- Let the gate carry the expressive artwork. Keep forms, tables, and technical explanations quiet.
+- Preserve recognizable product controls in the public dashboard demo. Identify browser mock data explicitly.
+- Keep content readable before animation loads and when animation cannot run.
+- State provider and protocol support precisely. Do not imply that every provider supports every modality.
+- Preserve useful navigation, setup instructions, and selectable commands as the layout changes.
+
+## Choose the correct logo
+
+Canonical SVGs live in `assets/brand/`. Their wordmark lettering is outlined from Cormorant Garamond at weight 600. The SVGs do not require a font download.
+
+| File | Use | Current artwork |
+| --- | --- | --- |
+| `durindoor-mark.svg` | Compact navigation, app identity, and constrained spaces | Emerald emblem, viewBox `0 0 48 56` |
+| `durindoor-logo-dark.svg` | Forest or dark stone backgrounds | Emerald mark and silver wordmark, viewBox `0 0 455 110` |
+| `durindoor-logo-light.svg` | Parchment and other light backgrounds | Emerald mark and `#14291e` wordmark, same proportions |
+| `durindoor-logo-mono.svg` | One-color reproduction on a light background | Entire artwork in `#14291e` |
+| `durindoor-app-icon.svg` | Application icon tile | Emerald emblem on a `#101b16` tile, viewBox `0 0 64 64` |
+
+The suffix in `logo-dark` names its intended background. It does not mean dark lettering. The logo ink and icon tile are asset-specific colors, separate from page tokens.
+
+The following are guide rules for new placements, not measurements of every existing placement:
+
+- Keep the SVG aspect ratio. Never stretch, rotate, crop, or rebuild the lettering with live text.
+- Leave at least one pillar width around the emblem. The pillar is 7 units in the mark's 48-unit-wide viewBox. Apply the same scale to the surrounding space.
+- For the full wordmark, leave at least the displayed pillar width around all sides, excluding clear space already inside the SVG.
+- Use the standalone mark at a minimum 24px displayed height. Use the full wordmark at a minimum 150px width. Inspect both at the actual rendered size.
+- Use the app icon for small square contexts rather than shrinking the full wordmark. At favicon sizes, check the arch and star in the final raster.
+- Keep logos flat. Do not add gradients, shadows, glow, texture, extra symbols, or provider marks to the logo.
+- Place the wordmark on a quiet, contrasting background. If a scene is busy, give the logo a solid background area.
+
+The emerald portion of the light logo is a brand mark, not a text or control color. Emerald `#10b981` on docs paper has only 2.33:1 contrast. Use the light documentation accent for links and controls.
+
+Give a standalone logo an accessible name of "DurinDoor". If visible text already names the brand in the same link, make the image decorative to avoid a repeated name.
+
+## Use the public palette
+
+The marketing theme is dark. Documentation provides both light and dark reading themes. The tables below record current public values. Use the corresponding custom properties in code instead of copying hex values into components.
+
+### Marketing colors
+
+| Role | CSS property | Value |
+| --- | --- | --- |
+| Page canvas | `--home-bg` | `#0c1410` |
+| Raised section | `--home-bg-2` | `#111d16` |
+| Panel, card | `--home-panel`, `--home-panel-solid`, `--home-card` | `#17231b` |
+| Primary text | `--home-text` | `#eeeae4` |
+| Supporting text | `--home-muted` | `#adbbb0` |
+| Primary action, progress | `--home-emerald` | `#10b981` |
+| Light emerald emphasis | `--home-gold` | `#6ee7b7` |
+| Quiet separator | `--home-line` | `#ffffff14` |
+| Strong separator | `--home-line-strong` | `#ffffff28` |
+| Text on filled emerald action | Current primary-button cascade | `#032a1a` |
+
+`--home-gold` is a legacy property name. Its current value is light emerald, not gold. Do not introduce gold into the public palette based on that name. The primary action hover uses `#6ee7b7`.
+
+### Documentation colors
+
+These properties are scoped to `.dd-docs`. Do not apply this override to the production dashboard.
+
+| Role and property | Light | Dark |
+| --- | --- | --- |
+| Canvas, `--dd-bg` | `#f7f5f0` | `#0c1410` |
+| Sidebar and panel, `--dd-surface` | `#efede6` | `#111d16` |
+| Inset, `--dd-surface-2` | `#e7e4dc` | `#1c2a21` |
+| Primary text, `--dd-text` | `#242e28` | `#eeeae4` |
+| Supporting text, `--dd-text-muted` | `#56635b` | `#adbbb0` |
+| Separator, `--dd-border` | `#d5dcd2` | `#ffffff21` |
+| Action and link, `--dd-accent` | `#066247` | `#6ee7b7` |
+| Action hover, `--dd-accent-hover` | `#034b36` | `#a7f3d0` |
+| Text on action, `--dd-on-accent` | `#f1fff9` | `#032a1a` |
+| Active tint, `--dd-accent-soft` | `#0662470d` | `#6ee7b712` |
+| Focus, `--dd-focus-ring` | `#066247` | `#6ee7b7` |
+| Secondary accent, `--dd-accent-2` | `#066247` | `#6ee7b7` |
+
+Documentation maps Fumadocs colors onto these roles. Its secondary accent currently repeats emerald. Public docs do not have a separate gold accent.
+
+### Dashboard migration target
+
+For future dashboard work, adopt the public parchment and forest neutrals, emerald actions, and Space Grotesk UI typography. Keep the existing `--dd-*` semantic names and `*-dd-*` utilities as the implementation boundary. Complete missing dashboard roles, including deeper insets, subtle text, focus shadows, and semantic tints, through a reviewed token change. Do not guess those values in individual pages.
+
+The dashboard's current values remain in `src/shared/ui/tokens.css`. For example, its canvas is `#FAF6EC` in light mode and `#0E0D0B` in dark mode. Its primary accent is `#03543B` and `#10E882`. Those are current dashboard facts, not the public palette or a completed migration.
+
+Gold remains the dashboard's current secondary accent. A future migration must decide whether each gold use is a chart series, emphasis, or status before replacing it. Do not map warning status to brand emerald.
+
+### Status and destructive actions
+
+The following values are the **existing dashboard status tokens**. They are the starting point for migration, not a newly approved public status palette. Public docs inherit these status roles from the shared token layer.
+
+| Meaning | Property | Current light | Current dark |
+| --- | --- | --- | --- |
+| Success text | `--dd-success` | `#0B4E21` | `#86E9A5` |
+| Warning text | `--dd-warning` | `#7B3406` | `#FFE07A` |
+| Error text | `--dd-danger` | `#8B1414` | `#FF9B9B` |
+| Error text hover | `--dd-danger-hover` | `#7F1010` | `#FFB1B1` |
+| Destructive action fill | `--dd-danger-action` | `#AE1A1A` | `#A32E2E` |
+| Destructive action hover | `--dd-danger-action-hover` | `#951515` | `#8F2525` |
+| Information text | `--dd-info` | `#1B3A96` | `#8CC4FF` |
+| Text on destructive action | `--dd-on-danger` | `#FFFFFF` | `#FFFFFF` |
+
+Use success only for a confirmed successful result. Use warning for a condition that needs attention without claiming failure. Use danger for errors and destructive actions, with separate text and fill roles. Use info for neutral explanatory notices. Pair every state with text or an accessible icon label.
+
+Retest these colors against the new dashboard surfaces during migration. Preserve the split between `--dd-danger` and `--dd-danger-action`; bright error text is not a safe filled button background with white lettering.
+
+### Check contrast in context
+
+These ratios were calculated from opaque sRGB colors with the WCAG relative-luminance formula. They are color-pair checks, not a full accessibility audit.
+
+| Foreground on background | Contrast | Intended example |
+| --- | --- | --- |
+| `#eeeae4` on `#0c1410` | 15.60:1 | Public primary text |
+| `#adbbb0` on `#17231b` | 8.13:1 | Marketing panel supporting text |
+| `#032a1a` on `#10b981` | 6.13:1 | Marketing primary button label |
+| `#56635b` on `#e7e4dc` | 4.96:1 | Light docs supporting text on inset |
+| `#f1fff9` on `#066247` | 7.17:1 | Light docs primary button label |
+| `#6ee7b7` on `#1c2a21` | 9.82:1 | Dark docs accent on inset |
+| `#FFFFFF` on `#AE1A1A` | 7.09:1 | Existing light dashboard destructive action |
+| `#FF9B9B` on `#2C2924` | 7.18:1 | Existing dark dashboard error text on deepest inset |
+
+For new work, require at least 4.5:1 for ordinary text, 3:1 for qualifying large text, and 3:1 for essential control boundaries and focus indicators. Retest text over artwork, gradients, alpha colors, hover states, and disabled treatments. Decorative separators are not sufficient control boundaries by themselves.
+
+## Set type by purpose
+
+The public site serves `CormorantGaramond.ttf` and `SpaceGrotesk.ttf` locally from `website/public/home/fonts/`. Both layouts declare weights 300 through 700 and `display: "swap"`. Keep their SIL Open Font License files beside the fonts.
+
+Use Cormorant Garamond for public display headings and Space Grotesk for prose, navigation, labels, and controls. Use the system monospace stack for commands, model IDs, and code. `JetBrains Mono` is a fallback name in that stack, not a bundled font.
+
+| Context | Family and weight | Size and line height |
+| --- | --- | --- |
+| Marketing hero | Cormorant Garamond 500 | `clamp(64px, 7.1vw, 96px)`, 1 |
+| Hero italic emphasis | Cormorant Garamond, declared italic 400 | Same size as hero |
+| Marketing section heading | Cormorant Garamond 500 | `clamp(40px, 4.8vw, 64px)`, 1.08 |
+| Marketing feature title | Cormorant Garamond | 32px, smaller kind headings 28px |
+| Marketing body | Space Grotesk | 16px, 1.6 |
+| Hero lead | Space Grotesk | 18px, 1.65 |
+| Public action label | Space Grotesk 500 | 14px |
+| Docs article title | Cormorant Garamond 500 | 48px, 1.06; 40px on mobile |
+| Docs index title | Cormorant Garamond 500 | 60px, 1.06; 48px then 44px at narrower breakpoints |
+| Docs prose | Space Grotesk | 16px, 1.8; 15px on mobile |
+| Docs h2 and h3 | Space Grotesk | 25px, 1.3; 20px, 1.4 |
+| Docs code block | System monospace | 13px, 1.75 |
+| Marketing code | System monospace | Usually 12px; closing command 23px |
+
+The layouts currently declare one local file per public family, with no separately declared italic source. Verify the hero's italic rendering before changing font assets. Do not claim a separate italic font file exists.
+
+### Future dashboard hierarchy
+
+The following is a **migration target**, not current dashboard typography:
+
+| Role | Rule |
+| --- | --- |
+| Page title | Space Grotesk 600, 28px with 1.2 line height |
+| Section heading | Space Grotesk 600, 18px with 1.35 line height |
+| Body and table value | Space Grotesk 400, 14px with 1.5 line height |
+| Control and table heading | Space Grotesk 500, 14px with 1.4 line height |
+| Supporting note | Space Grotesk 400, 12px with 1.5 line height; never lower contrast to create hierarchy |
+| Numeric metric | Space Grotesk 500 or 600; tabular figures; size follows its importance |
+| Technical value | System monospace, 13px with 1.5 line height; allow selection and wrapping or deliberate scrolling |
+
+Current dashboard primitives use Inter, commonly at 13px. Local Inter files provide Regular, Medium, SemiBold, and Bold. Migrate font loading and component sizing together after checking forms, tables, truncation, and language variants.
+
+Use `.dd-tnum` for aligned numerical values. Right-align comparable quantities in tables. Keep units next to values, show consistent precision, and distinguish zero from missing data. Do not use serif display type for dashboard data or form labels.
+
+## Build layouts with readable density
+
+Public marketing containers cap at 1280px with `clamp(24px, 4vw, 64px)` inline padding. Desktop sections use 100px vertical padding, reducing to 68px at 800px. Use spacing to group content before adding another panel.
+
+Documentation prose has a 72ch reading measure. Preserve the sidebar, search, breadcrumb, article TOC, and previous and next links. The index uses a static gate image, ordered setup links, and flat guide rows. At 760px, the decorative gate hides and the links form one column.
+
+For future admin work, keep the existing outer gutter pattern `p-4 sm:p-6 xl:p-8` and `max-w-7xl` content column as the migration starting point. Do not add a second outer gutter inside each page.
+
+The following spacing rules guide new admin layouts:
+
+- Use 4px, 8px, 12px, 16px, 24px, and 32px steps for alignment and grouping.
+- Use 8px between a field label and its control, 8px for help text, and 16px between fields.
+- Use 24px panel insets on wide layouts and 16px on narrow layouts.
+- Keep controls at least 44px high. Preserve a usable target area for icon actions even in dense tables.
+- Use one frame for a section. Separate its contents with type, space, and dividers rather than nested cards.
+- Keep existing pagination exceptions explicit. Do not create a compact mode by silently shrinking all controls.
+- Give narrow tables deliberate horizontal scrolling or a task-specific mobile layout. Preserve essential names, status, and row actions.
+
+Public controls use 7px corners, documentation panels 12px, docs code containers 10px, and inline code 4px. Existing dashboard radii are 8px and 12px. Migrate these centrally if the admin adopts the public 7px control radius.
+
+## Illustrate mechanisms and keep motion optional
+
+The large gate illustration uses a tall arch, carved stone, silver inscriptions, and emerald light. Reserve its full detail for the marketing hero and campaign imagery. The identity board is a visual reference, not a production logo source.
+
+Use small diagrams to explain implemented connections, routing order, or request hops. Labels must describe the real mechanism. Keep simulated examples identifiable and do not fabricate throughput, savings, quotas, or provider counts.
+
+For the marketing hero, the approved direction is a 3D scene across the full hero background. Keep copy and controls readable above it. Show the poster until the renderer reports its first usable frame. That transition must not depend on the visitor scrolling. Preserve the static poster for reduced motion, unavailable WebGL, render failure, or context loss. Hide the door control when the animated scene cannot operate.
+
+The door may respond to scroll, its explicit Open or Close control, and bounded pointer movement. Those inputs must never block the install or documentation actions. Pause rendering when the scene is outside the viewport or the tab is hidden. Avoid motion that obscures copy or hides supporting content until a reveal completes.
+
+Documentation uses the static gate only. Future admin work uses restrained state feedback instead of parallax, mist, animated backgrounds, or magnetic controls. Use brief color and opacity transitions for ordinary feedback, with the public docs' 160ms timing as a reference. Disable nonessential animation and smooth scrolling for `prefers-reduced-motion: reduce`.
+
+## Keep component behavior familiar
+
+Use existing dashboard primitives and semantic utilities during migration. Read their props and stories before replacing a page's styling.
+
+### Buttons and actions
+
+Use one primary emerald action for a task. Use neutral secondary and ghost actions for alternatives. Keep verbs specific, such as "Add provider", "Save changes", and "Copy command".
+
+Keep loading, disabled, hover, focus, and error states distinct. A loading action retains its label and prevents duplicate submission when appropriate. Confirm copy success with visible text and an accessible status message. Preserve dark text on light emerald fills and light text on deep emerald fills.
+
+### Forms
+
+Give every input a persistent label. Connect help and error text with `aria-describedby`, mark invalid fields with `aria-invalid`, and preserve entered values after a failed save. Do not replace labels with placeholders. Keep required indicators and validation messages explicit.
+
+Use `--dd-surface-2` for the field's inset background and semantic border and focus roles. Check autofill, select menus, long endpoint values, password reveal controls, and browser zoom. Keep secret masking and existing credential handling unchanged during visual work.
+
+### Sidebar and navigation
+
+Use one active destination, marked by more than color. Preserve navigation groups, accessible link names, and `aria-current="page"` where appropriate. Keep the brand and Settings discoverable while a long route list scrolls. In a mobile drawer, preserve keyboard dismissal and focus return.
+
+Do not remove routes or rename navigation destinations merely to make a cleaner composition. Confirm changed labels against the task the destination actually performs.
+
+### Tables and metrics
+
+Use table headers for data tables. Expose sort state and distinguish a sort action from the current order. Keep row actions accessible by keyboard, with names that include the affected item when needed.
+
+Retain pagination, filters, loading, selection, expansion, and error behavior. Use `framed={false}` when a table already sits inside a panel. Align numbers with tabular figures and preserve readable contrast in every row state. Do not communicate provider health with a colored dot alone.
+
+### Dialogs and drawers
+
+A dialog needs a title, an accessible description when needed, contained keyboard focus, Escape handling, an inert background, and focus return. A destructive confirmation names the affected item and the consequence, with an explicit verb on the action.
+
+The existing [design system](./design-system.mdx) documents focus-management limitations in `Modal` and `Drawer`. Verify their implementation before reuse. Do not treat a visual redesign as evidence that those behavioral requirements are complete.
+
+Reserve elevated shadows for overlays. Resting dashboard panels use the existing raised treatment until their token migration is reviewed. Docs code and panels stay quiet, with tonal backgrounds and borders.
+
+### Code and technical values
+
+Keep commands selectable and preserve syntax, indentation, and literal model IDs. Label the language or purpose when it helps the reader. Provide copy controls with a named action and visible acknowledgement.
+
+Allow code blocks to scroll without making the entire page overflow. Do not truncate the only visible copy of an endpoint or model identifier. Preserve token-based opaque Monaco backgrounds and gutters; do not paint its transparent keyboard input proxy.
+
+### Empty, loading, and error states
+
+An empty state explains what is missing and offers the relevant next action. A loading state preserves the layout and announces progress without an endless decorative effect. An error names the failed task, keeps usable data visible, and offers a recovery action only when that action can work.
+
+Use "No providers connected" with "Add provider" for an empty connection list. Use "Could not save changes. Your entries are still here." only when the form actually retains them. Avoid celebratory language for routine success.
+
+## Preserve accessibility across themes
+
+Check these requirements in light and dark modes:
+
+- Every action works with a keyboard, in a logical order, with a visible focus indicator.
+- Icon-only actions have accessible names. Decorative marks and scene art do not add repeated announcements.
+- Labels, state text, and recovery instructions remain available to screen readers.
+- Status changes use suitable live announcements without repeating the entire page.
+- Dialogs and mobile navigation manage focus and dismissal correctly.
+- Layouts remain usable at 200% zoom and narrow widths. Technical content has intentional overflow behavior.
+- Charts provide labels and a readable way to obtain the values. Series remain distinguishable without color alone.
+- Reduced motion leaves content and controls usable. No inactive decorative control remains visible.
+- The light and dark theme toggle preserves the user's choice and renders the intended tokens before first paint.
+
+A token audit cannot verify keyboard operation, screen-reader output, zoom behavior, or text over an animated scene. Inspect those interactions in the rendered product.
+
+## Keep provider identities separate
+
+Use `ProviderLogo` for dashboard provider marks, aliases, and letter-tile fallback. Preserve vendor colors and proportions. Do not recolor provider marks to match emerald, animate them as gate decorations, or combine them with the DurinDoor logo.
+
+Follow [Provider brand assets](./provider-brand-assets.mdx) for identification-only use, provenance, and third-party rights. Provider marks identify configured providers. They do not imply endorsement or establish support for a modality.
+
+## Write direct product copy
+
+Write "DurinDoor" as one word with both capital Ds. Use "gateway" for the product's request-routing role and "dashboard" for the management interface. Keep provider names, model IDs, route names, and commands exact.
+
+Use sentence case and short action verbs. State scope beside capability claims. Do not invent performance figures, savings, security guarantees, or tool support. Keep protocol names such as OpenAI and Anthropic precise.
+
+| Situation | Preferred copy | Avoid |
+| --- | --- | --- |
+| Primary setup | "Connect a provider" | "Unlock your AI potential" |
+| Provider-specific support | "Model support varies by provider." | "Every model, every modality." |
+| Current realtime scope | "Text realtime events" | "Realtime voice" |
+| Copy acknowledgement | "Command copied" | "Success! You're ready to transform your workflow." |
+| Failed save with retained input | "Could not save changes. Your entries are still here." | "Something went wrong." |
+| Destructive action | "Delete connection" | "Continue" |
+| Mocked demo | "Browser demo with mock data" | "Live production traffic" |
+
+Use the gate metaphor in public identity copy sparingly. Error messages and admin labels describe the actual task.
+
+## Migrate the dashboard in reviewable steps
+
+This sequence is for future work. The guide itself does not implement a dashboard redesign.
+
+1. Inventory pages, primitives, themes, and interaction states. Record current routes, data flows, validation, loading, errors, and keyboard behavior.
+2. Review the full token mapping in `src/shared/ui/tokens.css`. Adopt the public neutral and action families through existing semantic names. Define missing inset and status combinations and check contrast before page edits.
+3. Add local Space Grotesk loading at the dashboard's font owner. Check font weights, numeric alignment, form widths, and language variants in the component preview.
+4. Update shared primitives first. Compare light, dark, hover, focus, disabled, loading, empty, error, and destructive states. Keep existing props and behavior.
+5. Migrate one representative page with forms and a table. Preserve requests, handlers, state, sorting, pagination, and secret handling. Verify the page as a user before widening the rollout.
+6. Move remaining pages in small groups. Keep upstream logic separate from class and token changes. Do not change routing behavior during a visual migration.
+7. Refresh the public browser demo after production components are verified. Keep the mock-data notice and production interaction contracts.
+8. Update this guide, the existing design-system page, and design references when reviewed decisions change. Run the repository's required checks before merging.
+
+A behavior change needs a doc update and a test under the contributor contract. Pure documentation changes do not need a behavioral test. Follow [Testing](./testing.mdx) for the test package and regression gate.
+
+## Maintain one source for each responsibility
+
+| Responsibility | Source |
+| --- | --- |
+| Canonical written brand rules | `internal/docs/brand-guide.mdx`, available only in the repository |
+| Public design tokens and visual reference | `DESIGN.md` and `.impeccable/design.json` |
+| Marketing CSS and typography loading | `website/src/app/(home)/brand.css`, `home.css`, and `layout.js` |
+| Documentation theme and font loading | `website/src/app/docs/docs.css` and `layout.js` |
+| Current and future dashboard semantic utilities | `src/shared/ui/tokens.css` |
+| Dashboard components and component previews | `src/shared/ui/components/` and adjacent stories |
+| Canonical logo and illustration files | `assets/brand/` |
+| Asset generation and public copies | `scripts/sync-brand-assets.mjs` and `website/scripts/sync-public.mjs` |
+| Local public fonts and licenses | `website/public/home/fonts/` |
+| Current dashboard Inter files | `public/fonts/` |
+
+Generated website copies are not the asset source. After a canonical brand asset change, run `node scripts/sync-brand-assets.mjs`, then `node website/scripts/sync-public.mjs`. SVG rasterization requires website dependencies. Keep asset prompts in `internal/docs/brand-prompts.md`. The public asset copy publishes runtime image files only; maintenance Markdown and archives stay in the repository.
+
+When implementation and this guide disagree, inspect the relevant source and classify the difference as current behavior, an approved migration target, or a regression. Update the guide and its design references with the reviewed decision instead of silently changing a page.
+
+## Check a brand change before merging
+
+Use this checklist for a website change or a future admin migration:
+
+- The correct logo variant, aspect ratio, clear space, and rendered size are verified.
+- Page colors use their owning tokens. Public values and current admin values are not confused.
+- Text, focus, actions, status, and destructive states meet contrast requirements in both themes.
+- Fonts load locally with fallbacks and licenses. Numeric columns use tabular figures.
+- The layout preserves navigation and tasks at desktop, mobile, narrow widths, and 200% zoom.
+- Keyboard and screen-reader checks cover menus, forms, row actions, dialogs, and announcements.
+- Reduced motion and unavailable WebGL leave a usable page with a static scene fallback.
+- A marketing canvas replaces its poster only after a usable first frame, independently of scroll position.
+- Product copy reflects implemented capabilities. Provider marks and mock data remain correctly identified.
+- A future admin change preserves routes, API calls, validation, credentials, and interaction state unless a separate behavior change is documented and tested.
+- Docs and design references match the reviewed result. Required lint and test gates pass for code changes.

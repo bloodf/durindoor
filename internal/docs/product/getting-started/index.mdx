@@ -1,0 +1,109 @@
+---
+title: Quick start
+description: Install DurinDoor, sign in, mint an API key, and send one chat request.
+icon: Rocket
+---
+
+> Pre-rewrite snapshot, baseline `0e7307831`, 2026-10-07. Historical claims below may be inaccurate. Use the [current public guide](../../../../docs/getting-started/index.mdx) and the verified corrections at the end of this page for current behavior.
+
+
+Install a local gateway, sign in, mint a key, and send one `/v1/chat/completions` call. The other pages in this folder cover extra install methods, SDK samples, and the dashboard screens.
+
+<Cards>
+  <Card title="Installation" href="/docs/getting-started/installation" description="npm, source, Docker, Node version, and DATA_DIR." />
+  <Card title="First request" href="/docs/getting-started/first-request" description="Model IDs, curl, SDKs, streaming, and errors." />
+  <Card title="Dashboard tour" href="/docs/getting-started/dashboard-tour" description="What each dashboard page is for." />
+</Cards>
+
+You need Node.js 20.20.2 and npm 10.8.2. The published CLI binary is `durindoor`.
+
+<Steps>
+<Step>
+Set your dashboard credentials, then start the CLI. Replace the initial password with your own and keep the signing secret in your deployment environment for subsequent starts.
+
+```bash
+export JWT_SECRET="$(openssl rand -hex 32)"
+export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"
+npx durindoor --host 127.0.0.1
+```
+
+`npx` downloads the package for that run. For a machine you use every day:
+
+```bash
+npm install -g durindoor
+durindoor --host 127.0.0.1
+```
+
+This example binds port 20128 on loopback and opens `http://localhost:20128/dashboard`. Without the host flag, the CLI defaults to `0.0.0.0` and also prints a LAN URL.
+
+| Surface | URL |
+| --- | --- |
+| Dashboard | http://localhost:20128/dashboard |
+| API base | http://localhost:20128/v1 |
+| Health | http://localhost:20128/api/health |
+
+</Step>
+<Step>
+Sign in.
+
+Sign in with the `INITIAL_PASSWORD` you set before starting. On a fresh data directory without that variable, the dashboard defaults to `123456`. Loopback login with the built-in password does not issue a session cookie. The UI asks you to set a new password first. Remote clients using `123456` are refused.
+
+Set `JWT_SECRET` before the first start (copy `.env.example`). Dashboard cookies are not signed without it, unless an older `DATA_DIR/jwt-secret` file already exists.
+
+</Step>
+<Step>
+Add a provider.
+
+Open **Providers**. Add one connection: OAuth (browser or device code), a provider API key, an OpenAI- or Anthropic-compatible URL, or a local URL with no remote account.
+
+</Step>
+<Step>
+Create a DurinDoor API key.
+
+Open **API Keys** and create a key. Copy the secret immediately. Later lists show a mask only.
+
+Minted keys look like `sk-<machineId>-<keyId>-<crc8>`. Older `sk-<8 hex>` keys still authenticate. `sk_durindoor` is a localhost placeholder in CLI-tool cards, not the minted prefix.
+
+</Step>
+<Step>
+Send one request.
+
+Pick a model ID from the dashboard or `GET /v1/models`. Replace `PROVIDER/MODEL` below with that exact ID before sending the request.
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "messages": [
+      {"role": "user", "content": "Reply with one short sentence."}
+    ],
+    "max_tokens": 32
+  }'
+```
+
+Point OpenAI-compatible tools at `http://localhost:20128/v1` with the same key. For Anthropic Messages, use `POST /v1/messages`. Client-specific base URLs and authentication settings are in the [integration guides](../../../../docs/integrations/index.mdx).
+
+</Step>
+</Steps>
+
+
+## Implementation reference for maintainers
+
+The content above is a pre-rewrite snapshot from baseline `0e7307831`, captured on 2026-10-07. It preserves the complete public page before the audience rewrite. Its setup examples and historical claims are retained as context; use the current public page and the source notes below when they disagree.
+
+Public guide: [index](../../../../docs/getting-started/index.mdx).
+
+Source ownership and checks:
+
+- [`package.json`](../../../../package.json)
+- [`cli/cli.js`](../../../../cli/cli.js)
+- [`src/app/api/auth/login/route.js`](../../../../src/app/api/auth/login/route.js)
+- [`src/app/api/v1/models/route.js`](../../../../src/app/api/v1/models/route.js)
+
+These references describe repository behavior. They do not establish that a vendor account is authorized, that a current upstream service accepts a request, or that a third-party client version reads the shown configuration. Validate actual chat, streaming, and tool use separately. No credentials, user configuration, or live provider endpoints were read for this rewrite.
+
+### Current behavior and implementation boundaries
+
+CLI setup honors explicit process DATA_DIR through `cli/src/cli/appDataDir.js`. New key minting needs API_KEY_SECRET or an explicitly set DATA_DIR. CLI initializes DATA_DIR itself; source-start examples now set API_KEY_SECRET so first-key creation also succeeds.

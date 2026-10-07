@@ -3,7 +3,7 @@ title: Automating DurinDoor
 description: Mint a key, script providers and combos with curl or MCP, then rotate and scope that key.
 ---
 
-Use a DurinDoor API key as the automation credential. The same secret calls `/v1` and the dashboard REST under `/api/*`. An MCP client can do the same work through `POST /api/mcp/control`. Route tables and exclusions: [Management API](../reference/management-api.mdx). Tools and auth: [MCP control](../features/mcp-control.mdx).
+Use a dedicated DurinDoor key for permitted management routes and `/v1` requests. Management access includes provider and combo changes; inference scopes do not turn the key into a read-only management credential. An MCP client can do the same work through `POST /api/mcp/control`. Route tables and exclusions: [Management API](../reference/management-api.mdx). Tools and auth: [MCP control](../features/mcp-control.mdx).
 
 Production listens on port `20128`. Replace the host if you use a tunnel.
 
@@ -28,7 +28,9 @@ Give this key a name you can revoke later. Optional `allowedCombos`, `policy.all
 
 ## Script provider and combo setup with curl
 
-Create an API-key connection, then a fallback combo, then read quota:
+Create an API-key connection. Before creating the example combo, also connect Anthropic and verify both model IDs on your instance. Replace the example secrets and `CONNECTION_ID` with your own values.
+
+The example creates one connection, saves a combo, and refreshes quota:
 
 ```bash
 curl http://localhost:20128/api/providers \
@@ -47,7 +49,7 @@ curl "http://localhost:20128/api/usage/CONNECTION_ID?force=1" \
 
 POST `/api/providers` needs `provider` and `name`. `apiKey` is required unless the provider is `noAuth` or `ollama-local`. Duplicate `(provider, apikey, name)` is 409. OAuth accounts use `/api/oauth/...`, not this POST.
 
-Combo names: letters, digits, `-`, `_`, `.`. The client then sends `"model": "coding-default"` on `/v1/chat/completions`.
+Combo names: letters, digits, `-`, `_`, `.`. The client then sends `"model": "coding-default"` on `/v1/chat/completions`. A successful chat response and a row on **Usage** verify routing; saving the combo alone does not test its members.
 
 Confirm with `GET /api/combos` and `GET /api/providers`. Secrets are stripped on those reads. Proxy userinfo in `connectionProxyUrl` is `***` for this key.
 
@@ -72,9 +74,9 @@ On loopback with `requireApiKey` off, the MCP client may omit the header. Remote
 
 ## Rotate and scope the key
 
-There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `PUT /api/keys/{id}` with `"isActive": false`. Delete removes the row; join-table scope rows cascade.
+There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `PUT /api/keys/{id}` with `"isActive": false`. Delete removes the key and its account-scope assignments.
 
-Scope before you hand the secret to CI:
+Restrict the key's inference access before giving the secret to CI. These limits do not restrict the entire management API:
 
 - `providerConnectionIds`: only those account rows
 - `allowedCombos`: only those combo names

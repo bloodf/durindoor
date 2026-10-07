@@ -9,7 +9,7 @@ You need VS Code with Cline (or the Cline CLI), the gateway running, a DurinDoor
 
 ## Dashboard apply
 
-Open **CLI Tools**, then **Cline** (`/dashboard/cli-tools/cline`). Apply `POST`s `/api/cli-tools/cline-settings` with `baseUrl`, `apiKey`, and `model`.
+Open **CLI Tools**, then **Cline** (`/dashboard/cli-tools/cline`). Choose an endpoint, gateway key, and model, then click **Apply**. The files are on the host running DurinDoor. If Cline runs elsewhere, use the manual settings below on that host.
 
 Cline wants the origin, not `/v1`. The route strips a trailing `/v1` before the write. The dashboard picker still shows `http://localhost:20128/v1`; the file ends up as `http://localhost:20128`.
 
@@ -22,7 +22,8 @@ It then sets:
 
 Reset restores act/plan providers to `"cline"` and deletes those OpenAI fields plus `openAiApiKey`. Other keys in the two files stay.
 
-`GET` reports `has9Router` when either mode is `"openai"` and `openAiBaseUrl` contains `localhost`, `127.0.0.1`, or `9router`.
+
+Apply uses the Cline CLI data directory. A VS Code extension version that stores its settings elsewhere needs manual configuration in its own settings UI. Back up existing JSON before applying; this path can replace malformed files with empty objects.
 
 ## Manual config
 
@@ -50,11 +51,7 @@ Reset restores act/plan providers to `"cline"` and deletes those OpenAI fields p
 `openAiBaseUrl` must not end with `/v1`. Connection refused with a `/v1` suffix in that field is the usual mismatch. The HTTP API you curl by hand is still `http://localhost:20128/v1`.
 </Callout>
 
-If a Cline build only offers an Ollama-style custom base URL, put the same DurinDoor origin there and verify with a small prompt.
-
-## Legacy `9router` labels
-
-Cline's JSON uses the provider id `"openai"`, not a `9router` table. The dashboard's `has9Router` flag is true when that OpenAI provider points at a local or `9router` URL. Other tools still write a `9router` section; the server accepts that label and `X-Msh-Platform: 9router`.
+These file fields describe the supported CLI configuration. For an extension build with different storage, choose its OpenAI-compatible provider and verify the actual request path after setting the URL.
 
 ## Check it works
 

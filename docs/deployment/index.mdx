@@ -4,9 +4,9 @@ description: Run locally, in Docker, in the cloud, or behind a reverse proxy.
 icon: Server
 ---
 
-Laptop, Docker, or a VPS. Same gateway. The bind address, data path, and who can hit the dashboard change with the host.
+Choose a deployment for your host. Each guide covers prerequisites, persistent storage, startup, verification, and recovery. Before allowing remote access, set private secrets, require inference API keys, and configure TLS.
 
-If something else terminates TLS, read the reverse-proxy page after the process is listening. Header trust and hashed `/_next/static` files live there, not in the install steps.
+After the app responds locally, use the reverse-proxy guide to verify forwarding headers, streaming, and dashboard assets.
 
 <Cards>
   <Card title="Laptop" href="/docs/deployment/localhost" description="npx, global CLI, source, ports, and the system tray." />

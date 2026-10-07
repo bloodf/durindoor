@@ -5,7 +5,7 @@ description: Keep provider model lists current by fetching them from each provid
 
 Providers ship new models faster than the built-in registry is updated. Model auto-update asks each provider's own list-models API what the account can use and publishes that list, so a new model shows up in `/v1/models`, the dashboard and the combo pickers without a release or a manual step.
 
-## Which providers
+## Check provider support
 
 Auto-update is **on by default** for OpenAI, Anthropic (API key), Claude (OAuth), xAI (Grok), Gemini, Codex and GitHub Copilot. Every other provider with a list-models API can be turned on from its provider page. OpenRouter keeps its own live free-model catalog, OrcaRouter's catalog is capability-scoped and Ollama Local is already read live, so those three are not synced.
 
@@ -26,7 +26,7 @@ After a successful sync, the provider's model list is exactly what the API retur
 
 - Chat models are listed as chat models.
 - Embedding, text-to-speech, speech-to-text (Whisper, transcribe), image (DALL-E, gpt-image, Imagen) and video models go to their own service kind, so they appear under `/v1/models/embedding`, `/v1/models/tts` and so on, not in the chat list.
-- Moderation and realtime-only models have no route in the gateway and are dropped.
+- Moderation and realtime-only models are filtered out of this synced catalog. Native realtime support is separate; see [Realtime](./realtime.mdx).
 
 Registry models the API no longer returns are **removed** from the list. Models you added yourself with **Add Model** are never removed. Codex review variants stay while their base model is listed.
 
@@ -36,7 +36,7 @@ The visible-model allowlist and the disabled-models list still apply on top of t
 
 Pruning only changes listings. A request that names a removed model is still sent to the provider, which answers for itself.
 
-## Safety rules
+## Recover from a failed sync
 
 - The list is only replaced after a successful, non-empty fetch. An error, timeout (30 seconds), auth failure or empty list keeps the previous list, and the provider page shows the failure.
 - Until the first successful sync, the built-in registry list is used.
@@ -44,17 +44,17 @@ Pruning only changes listings. A request that names a removed model is still sen
 - A failure in one provider never stops the others and never affects requests.
 - When a combo member or a model alias points at a removed model, the sync logs it and the combos page shows a **models no longer listed** badge on that combo. Nothing is rewritten; edit the combo to pick a current model.
 
-## Schedule
+## Set a schedule
 
-The sync runs about 30 seconds after the server starts and then every `modelAutoSyncIntervalHours` hours (default 24). Set the interval in **Settings → Routing → Model Auto-update**; **Off** (0) stops scheduled runs, and **Sync now** still works.
+The scheduler starts about 30 seconds after boot and checks hourly for providers due for a sync. A provider's interval is `modelAutoSyncIntervalHours`, default 24 hours. Set the interval in **Settings → Routing → Model Auto-update**; **Off** (0) stops scheduled runs, and **Sync now** still works.
 
-## Provider page
+## Sync and verify a provider
 
-Each eligible provider page has an **Auto-update models** switch, the last sync time with the number of new and removed models, the ids that were added or removed in the last sync, the last error if the latest attempt failed, and a **Sync now** button.
+Open **Dashboard → Providers → your provider** and turn on **Auto-update models**. Click **Sync now**, then check `/v1/models` and a model picker. Each eligible provider page has an **Auto-update models** switch, the last sync time with the number of new and removed models, the ids that were added or removed in the last sync, the last error if the latest attempt failed, and a **Sync now** button.
 
-## Storage and API
+## Automate a sync
 
-Synced catalogs live in the existing `kv` table under scope `syncedModels`, one row per provider, so no database migration is needed on SQLite or Postgres. Settings keys:
+Use authenticated management requests. The settings payload is:
 
 ```json
 {

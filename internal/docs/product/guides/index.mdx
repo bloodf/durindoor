@@ -1,0 +1,37 @@
+---
+title: Guides
+description: API keys, model aliases, SDK examples, usage monitoring, and automation.
+icon: BookOpen
+---
+
+> Pre-rewrite snapshot, baseline `0e7307831`, 2026-10-07. Historical claims below may be inaccurate. Use the [current public guide](../../../../docs/guides/index.mdx) and the verified corrections at the end of this page for current behavior.
+
+
+After DurinDoor is running, these pages cover the client side: mint a gateway key, pick a model string, send traffic through an SDK, watch what happened, and script the dashboard REST or MCP control server. Combos, provider login, and the dashboard map live in other sections. Start with a key if you have none; the SDK page assumes you already have a secret and a model id.
+
+<Cards>
+  <Card title="API keys" href="api-keys" description="Key shapes, expiry, scopes, pause, and rotation." />
+  <Card title="Models and aliases" href="models-and-aliases" description="provider/model strings, aliases, combos, and /v1/models." />
+  <Card title="SDK examples" href="sdk-examples" description="OpenAI and Anthropic SDKs plus curl against the gateway." />
+  <Card title="Monitoring usage" href="monitoring-usage" description="Usage page, stored history, console log, and health." />
+  <Card title="Usage and quota" href="usage-and-quota" description="Per-provider quota windows, cooldowns, retention, and prices." />
+  <Card title="Automating DurinDoor" href="automating-durindoor" description="Mint a key, script providers and combos, rotate and scope." />
+</Cards>
+
+
+## Implementation reference for maintainers
+
+The content above is a pre-rewrite snapshot from baseline `0e7307831`, captured on 2026-10-07. It preserves the complete public page before the audience rewrite. Its setup examples and historical claims are retained as context; use the current public page and the source notes below when they disagree.
+
+Public guide: [index](../../../../docs/guides/index.mdx).
+
+Source ownership and checks:
+
+- [`src/app/api/keys/route.js`](../../../../src/app/api/keys/route.js)
+- [`src/sse/services/apiKeyPolicy.js`](../../../../src/sse/services/apiKeyPolicy.js)
+- [`src/lib/apiKeyLimits.js`](../../../../src/lib/apiKeyLimits.js)
+- [`src/sse/services/model.js`](../../../../src/sse/services/model.js)
+- [`src/app/api/v1/models/buildModelsList.js`](../../../../src/app/api/v1/models/buildModelsList.js)
+- [`src/lib/usageDb.js`](../../../../src/lib/usageDb.js)
+
+These references describe repository behavior. They do not establish that a vendor account is authorized, that a current upstream service accepts a request, or that a third-party client version reads the shown configuration. Validate actual chat, streaming, and tool use separately. No credentials, user configuration, or live provider endpoints were read for this rewrite.

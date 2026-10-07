@@ -1,96 +1,79 @@
 ---
 title: Upgrading
-description: Back up DATA_DIR, move to a new image or npm version, then verify health.
+description: Back up the active database, install a chosen release, verify inference, and recover if needed.
 ---
 
-Read [CHANGELOG.md](../../CHANGELOG.md) before you bump. Breaking schema work and behaviour shifts land there first.
+Upgrade after reading the [release notes](../../CHANGELOG.md) for compatibility and migration changes. Record the current package version or image digest and choose the version you intend to install.
 
-## Backup
+## Save a recovery copy
 
-Stop DurinDoor so SQLite is not mid-write. Host bind: [backing up a host directory](./data-management.mdx#backing-up-a-host-directory). Named volume: [backing up a Docker named volume](./data-management.mdx#backing-up-a-docker-named-volume).
+Stop DurinDoor and any watchdog that restarts it. Make a full [data backup](./data-management.mdx), including encryption keys, machine ID, and protected environment secrets. For PostgreSQL, also take and verify a database dump.
 
-Startup also copies `DATA_DIR/db/data.sqlite` into `DATA_DIR/db/backups` before a schema or app-version change. Those copies keep the newest three directories and omit the `requestDetails` table on the lite path. Take your own full copy anyway.
+Startup migration copies are safety copies, not full backups. They retain only the newest three backup directories and can omit request details. SQLite timeline history has its own sidecar.
 
-## Image or package
+## Install the selected version
 
-<Tabs items={['Docker', 'npm', 'source']}>
+<Tabs items={['Docker', 'npm', 'Source']}>
 <Tab value="Docker">
 
-Pin a version tag in production. `latest` is for evaluation.
+Update the Compose image to your verified version or digest:
 
 ```bash
-docker pull ghcr.io/bloodf/durindoor:latest
-docker stop durindoor && docker rm durindoor
-docker run -d \
-  --name durindoor \
-  -p 20128:20128 \
-  -v durindoor-data:/app/data \
-  -e DATA_DIR=/app/data \
-  -e JWT_SECRET="$JWT_SECRET" \
-  -e API_KEY_SECRET="your-secret" \
-  -e INITIAL_PASSWORD="your-password" \
-  ghcr.io/bloodf/durindoor:latest
+docker compose pull durindoor
+docker compose up -d durindoor
 ```
 
-Or change the `image:` line in `docker-compose.yml` and run `docker compose up -d`. Keep the same volume and the same `JWT_SECRET` / `API_KEY_SECRET`.
+For a standalone container, pull the chosen image, remove the stopped container, and recreate it with the same mount and private environment file. See [Docker](../deployment/docker.mdx).
 
 </Tab>
 <Tab value="npm">
 
 ```bash
-npm update -g durindoor
+npm install --global durindoor@<version>
+durindoor --host 127.0.0.1
 ```
+
+Replace `<version>` with the published version you selected. Reuse your existing launcher environment and `DATA_DIR`.
 
 </Tab>
-<Tab value="source">
+<Tab value="Source">
+
+With a clean source checkout, select the verified release tag, then:
 
 ```bash
-git pull
 npm install --no-audit --no-fund
 npm run build
+npm run verify:static
 npm start
 ```
+
+Start through your service manager when the installation uses one. Do not overwrite local changes while selecting a release.
 
 </Tab>
 </Tabs>
 
-## Schema migrations
+Keep `JWT_SECRET`, `API_KEY_SECRET`, and the data mount stable. Environment selectors still determine the database engine; an empty `DURINDOOR_PG_URL` also selects PostgreSQL.
 
-SQLite runs forward-only migrations on startup. The chain is append-only. Both SQLite and PostgreSQL currently reach version 25 (`025-proxy-timeline`). PostgreSQL boot uses the parallel migration set, including the PostgreSQL-only cutover-log version 019. A fresh database starts clean. A skip-version upgrade applies every pending `up()`. PostgreSQL 025 creates the timeline tables; SQLite retains its sidecar. Preserve existing sidecar history using the [timeline migration procedure](./postgres.mdx#postgresql-only-installations).
-
-Do not edit, truncate, or delete `DATA_DIR/db/data.sqlite` by hand. If `PRAGMA quick_check` fails, startup stops. Restore a backup whose integrity you have already checked.
-
-## After the bump
+## Verify the upgrade
 
 ```bash
-curl http://localhost:20128/api/health
+curl -fsS http://localhost:20128/api/health
 ```
 
-This endpoint checks liveness, not database readiness. Also request `/v1/models`, then exercise authenticated inference and confirm a new usage row in the selected database. For PostgreSQL-only deployments, verify that initialization errors do not create a live SQLite database.
+Expect `{"ok":true}`, then run the authenticated [inference smoke test](./startup.mdx#verify-inference). Confirm providers, API keys, combos, and a new usage row in the dashboard.
 
-Then open the dashboard and confirm providers, API keys, combos, and usage.
+On PostgreSQL, check **Settings → Database** for the active engine, no initialization error, and no **Serving SQLite** fallback banner. Liveness alone does not prove database readiness.
 
-## Rollback
+Migrations run forward on startup. A skipped-version upgrade applies all pending migrations. Both database engines have migration 025 for proxy timeline; SQLite keeps a sidecar while PostgreSQL uses main-database tables. Preserve existing timeline history with the [Postgres migration procedure](./postgres.mdx#postgresql-only-installations).
 
-Rollback is the previous image or git tag plus the pre-upgrade backup. A completed migration is not undone by starting an old binary on the new file. Restore the backup first.
+If SQLite startup reports `SQLite integrity check failed`, stop every writer and restore a verified backup. There is no automatic repair.
 
-Named volume: [restoring a Docker named volume](./data-management.mdx#restoring-a-docker-named-volume).
+## Roll back a failed upgrade
 
-Host bind: `DATA_DIR` must be an absolute path, then [restoring a host directory](./data-management.mdx#restoring-a-host-directory), then start the old image:
+1. Stop the upgraded app and its watchdog.
+2. Preserve the failed installation's data and logs for diagnosis.
+3. Restore the full pre-upgrade backup, including its matching secrets.
+4. Select the previous image, package version, or source tag.
+5. Start the app and repeat health, inference, and dashboard checks.
 
-```bash
-case "$DATA_DIR" in
-  /*) ;;
-  *) echo "ERROR: DATA_DIR must be an absolute path, got '$DATA_DIR'" >&2; exit 1 ;;
-esac
-docker stop durindoor && docker rm durindoor
-docker run -d \
-  --name durindoor \
-  --env-file .env \
-  -p 20128:20128 \
-  -v "$DATA_DIR:/app/data" \
-  -e DATA_DIR=/app/data \
-  ghcr.io/bloodf/durindoor:<old-version>
-```
-
-Source: `git checkout <prior-tag>` and rebuild.
+Starting an old binary against a migrated database does not undo migrations. For a PostgreSQL-to-SQLite rollback, [Postgres](./postgres.mdx#rollback) also explains the loss of PostgreSQL-era writes and required environment changes.

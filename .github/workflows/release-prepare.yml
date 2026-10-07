@@ -19,7 +19,7 @@ name: Release Prepare
 # contents:write + pull-requests:write on this repo) for the fully automated
 # chain. Without it the workflow still works but prints a loud warning and
 # the release PR must be checked/merged manually (see
-# docs/development/release-process.md).
+# internal/docs/release-process.mdx).
 #
 # Retry policy: the release branch content is fully derived from origin/main
 # + the version, so if a previous run left a stale release/vX.Y.Z branch
@@ -28,7 +28,7 @@ name: Release Prepare
 #
 # If main advances while the release PR waits for review, close the PR and
 # re-dispatch this workflow — it recomputes version, changelog, and branch
-# from the latest main. See docs/development/release-process.md.
+# from the latest main. See internal/docs/release-process.mdx.
 on:
   workflow_dispatch:
     inputs:
@@ -146,7 +146,7 @@ jobs:
             echo "::warning::Manual fallback: run the §6.4 checks locally (npm run lint,"
             echo "::warning::cd tests && npm run test:ci, npx commitlint --from=origin/main"
             echo "::warning::--to=HEAD), record them in the PR, and merge with a maintainer"
-            echo "::warning::account. See docs/development/release-process.md."
+            echo "::warning::account. See internal/docs/release-process.mdx."
             echo "::warning::============================================================"
           fi
 
@@ -181,7 +181,7 @@ jobs:
 
           - **Scope:** version bump of the root and cli manifests + lockfiles, and the generated \`CHANGELOG.md\` section. No runtime code changes.
           - **Test coverage:** no behavior change to cover; the release tooling itself is unit-tested in \`tests/unit/release-notes.test.js\`. The full \`test.yml\` gate runs on this PR (requires RELEASE_PAT so the PR event fires workflows).
-          - **Doc coverage:** process and rollback documented in \`docs/development/release-process.md\`.
+          - **Doc coverage:** process and rollback documented in \`internal/docs/release-process.mdx\`.
           - **Baseline impact:** none — no test changes; \`tests/__baseline__/known-fails.txt\` untouched.
           - **Wire-format / migration concerns:** none — manifests, lockfiles, and changelog only; stored API keys, \`[providers.9router]\` labels, \`X-Msh-Platform\` headers, and the \`~/.9router\` data dir are unaffected.
 
@@ -191,7 +191,7 @@ jobs:
 
           **If main advances while this PR is open:** close this PR and re-dispatch Release Prepare; it recomputes the version and changelog from the latest main and replaces the branch.
 
-          Rollback: close this PR unmerged (nothing else happens), or after merge delete the GitHub Release + tag and revert the bump commit — see \`docs/development/release-process.md\`.
+          Rollback: close this PR unmerged (nothing else happens), or after merge delete the GitHub Release + tag and revert the bump commit — see \`internal/docs/release-process.mdx\`.
           EOF
 
       - name: Open release PR

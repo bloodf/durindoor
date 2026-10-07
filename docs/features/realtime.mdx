@@ -3,7 +3,7 @@ title: Realtime
 description: Native provider WebSockets, ephemeral sessions, and the legacy text Realtime facade.
 ---
 
-## Native transports
+## Connect a native realtime client
 
 Select a registry model with a native Realtime, transcription, translation, Live, TTS, or STT protocol. The custom server relays its WebSocket to the fixed vendor endpoint. OpenAI supports its native Realtime families; MiniMax supports its speech transports; xAI supports native voice and binary STT. Protocol availability depends on the selected model and provider connection.
 
@@ -14,7 +14,7 @@ ws://localhost:20128/v1/native/xai/v1/stt?model=xai/stt&sample_rate=16000&encodi
 
 Send the gateway API key with the auth mechanisms below. Scoped keys keep their account and model restrictions, including nested session/transcription/advisor models and escaped JSON keys. An unavailable `x-connection-id` pin fails closed.
 
-The owner and HTTP control handler exchange a single-use opaque handoff in the same process. Provider credentials, proxy credentials, and accounting callbacks do not enter the HTTP response. Run the packaged `custom-server.js`; a separate Next process cannot consume that handoff. Configured proxy construction failures cannot fall back to a direct connection.
+Run the packaged server (`npm start` or the CLI), which owns WebSocket upgrades. A separately launched Next process does not provide the same native relay. If a configured proxy cannot be constructed, the request does not silently connect directly.
 
 Frames retain their order across auth and accounting. A single frame defaults to 1 MiB; the pre-auth queue defaults to 32 frames and 2 MiB aggregate. JSON model rewrites preserve unrelated numbers, and binary STT frames retain their bytes. Disconnects cancel pending setup and close the owned upstream.
 
@@ -24,24 +24,24 @@ HTTP native ephemeral-session endpoints let an uncapped client connect to the ve
 
 Verify an upgrade with a permitted model, then send a valid native session event. Check the selected account, vendor response, and gateway usage counters. Test a denied nested model and an unavailable account pin; neither should reach another vendor account.
 
-## Text facade
+## Use the text facade for chat models
 
 The remaining sections describe chat models without a declared native protocol.
 
 
-`GET /v1/realtime` (trailing slash allowed) upgrades to a WebSocket. Other paths, including `/_next/webpack-hmr`, stay with Next.js. `custom-server.js` owns the upgrade so it does not race Next's listener. In the text facade, each `response.create` becomes an ordinary `POST /api/v1/chat/completions` on loopback `127.0.0.1`, and the server reframes its SSE as Realtime events. Pass `?model=provider/model` on the upgrade URL to set the session model.
+`GET /v1/realtime` (trailing slash allowed) upgrades to a WebSocket. Other paths, including `/_next/webpack-hmr`, stay with Next.js. The packaged server owns this upgrade. In the text facade, each `response.create` becomes an ordinary `POST /api/v1/chat/completions` on loopback `127.0.0.1`, and the server reframes its SSE as Realtime events. Pass `?model=provider/model` on the upgrade URL to set the session model.
 
 There is no Realtime dashboard page. See [API](../reference/api.mdx) for the route list, and **Dashboard → Usage** to see the loopback chat calls.
 
 The text facade does not support audio. Declaring `audio` in `session.modalities` and then sending `response.create` yields an `error` event with code `modality_not_supported`. The socket stays open.
 
-## Auth
+## Authenticate the WebSocket
 
 Send a DurinDoor API key as `Authorization: Bearer <key>`, `x-api-key`, `x-goog-api-key`, `?key=`, or the OpenAI subprotocol `openai-insecure-api-key.<key>`. The selected subprotocol echoed back is only `realtime` or `openai-beta.realtime-v1`. The key-bearing token is never selected.
 
-The wrapper probes `GET /api/v1/realtime/auth` on `127.0.0.1` at `PORT` (default 20128), using the same `resolveClientApiKey` as HTTP chat. A rejected key closes with code 4001. A failed probe (not a bad credential) closes with 1011. `x-9r-cli-token` can be forwarded for local dashboard access. Frames that arrive before auth finishes are queued and drained in order after `session.created`.
+The server authenticates against the local gateway using the same API-key rules as HTTP chat. A rejected key closes with code 4001. A failed probe (not a bad credential) closes with 1011. `x-9r-cli-token` can be forwarded for local dashboard access. Frames that arrive before auth finishes are queued and drained in order after `session.created`.
 
-## Client events
+## Send supported text events
 
 | Event | Purpose |
 | --- | --- |
@@ -52,7 +52,7 @@ The wrapper probes `GET /api/v1/realtime/auth` on `127.0.0.1` at `PORT` (default
 
 Server events: `session.created`, `session.updated`, `conversation.item.created`, `response.created`, `response.output_text.delta`, `response.output_text.done`, `response.done`, `error`.
 
-## Limits
+## Check text-facade limits
 
 | Field or cap | Rule |
 | --- | --- |
@@ -63,9 +63,9 @@ Server events: `session.created`, `session.updated`, `conversation.item.created`
 | Session items | Default 100. Env `REALTIME_MAX_SESSION_ITEMS`. Oldest non-system items drop first. All-system history at the cap rejects with `session_item_limit`. |
 | Frame size | Default 1 MiB. Env `REALTIME_MAX_FRAME_BYTES`. Oversize closes with 1009. |
 
-On `close` and `error`, `dispose()` aborts any in-flight upstream chat. Frames queued during the auth window are dropped if the socket dies first. Binary WebSocket frames are ignored. The `ws` `maxPayload` option enforces the frame cap before JSON parsing.
+Closing the socket aborts in-flight chat. Frames queued during the auth window are dropped if the socket dies first. Binary WebSocket frames are ignored. The frame cap applies before JSON parsing.
 
-## Worked example
+## Verify text generation
 
 Upgrade, then send JSON text frames (not binary). After `session.created`:
 
@@ -80,3 +80,7 @@ Upgrade, then send JSON text frames (not binary). After `session.created`:
 You should see `response.created`, one or more `response.output_text.delta`, `response.output_text.done`, and `response.done`. Usage shows a streaming chat-completions call for the session model.
 
 To refuse audio, send `session.update` with `"modalities":["audio"]` and then `response.create`. Expect `error.code = "modality_not_supported"` and a still-open socket.
+
+## Recover a connection failure
+
+For close code 4001, check the gateway key and its scope. Code 1011 indicates a server-side setup failure. For a native transport, also check model entitlement, the selected account, and proxy configuration. Code 1009 means the frame exceeded the limit. Code 1008 after a delivered native result can mean the key spent its last allowance; use a key with available allowance before sending more work.

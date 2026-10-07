@@ -3,11 +3,11 @@ title: Management API
 description: Every dashboard REST route under /api, which credentials it accepts, and what an API key cannot do.
 ---
 
-Dashboard REST lives under `/api/*` on the same process as inference. Production listens on port `20128`. A DurinDoor API key that can call `/v1` can also call most of these routes. Tables below cover every `route.js` under `src/app/api` except `/v1`, `/v1beta`, and `[...catchAll]` (164 files). Tools for the same work sit on [MCP control](../features/mcp-control.mdx). A walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
+Dashboard automation uses `/api` on the same origin as inference. Most management routes accept a DurinDoor API key. Secret reveal, database administration, process control, and local host operations have stricter credentials. See [Automating DurinDoor](../guides/automating-durindoor.mdx) for a workflow and [MCP control](../features/mcp-control.mdx) for JSON-RPC tools.
 
 ## Credentials
 
-The gate is `src/dashboardGuard.js` (`proxy`). It classifies a decoded pathname, then the handler may add a second check.
+Authentication applies to the decoded route path. Individual handlers can require additional credentials or local access.
 
 | Code | Who |
 | --- | --- |
@@ -19,7 +19,7 @@ The gate is `src/dashboardGuard.js` (`proxy`). It classifies a decoded pathname,
 | gw | MCP gateway key, not a DurinDoor API key |
 | local | Local-only gate first. Remote callers without CLI get HTTP 403 `Local only: CLI token required` |
 
-Loopback identity comes from wrapper-stamped peer headers, not from `Host` alone. A request through `x-9r-via-proxy` is never loopback. Management prefixes (`MANAGEMENT_API_PATHS`) accept session, CLI, key, or loop. Reveal paths reject a key. Always-protected paths (`/api/shutdown`, `/api/settings/database`, `/api/version/shutdown`, `/api/version/update`, OAuth auto-import) accept session or CLI only. Routes off that list fall through to session, CLI, or loop. `POST /api/mcp/control` is a separate branch: session, CLI, or key, plus loopback with no credential when `requireApiKey` is off and `Origin` is absent or same-origin. Gateway protocol surfaces (`/api/mcp-gateway`, `/sse`, `/message`) take a gateway key, CLI, or loopback, not a DurinDoor API key. Details: [MCP control](../features/mcp-control.mdx).
+Loopback identity comes from wrapper-stamped peer headers, not from `Host` alone. A request through `x-9r-via-proxy` is never loopback. Management routes accept session, CLI, key, or loop. Reveal paths reject a key. Always-protected paths (`/api/shutdown`, `/api/settings/database`, `/api/version/shutdown`, `/api/version/update`, OAuth auto-import) accept session or CLI only. Other protected routes fall through to session, CLI, or loop. `POST /api/mcp/control` is a separate branch: session, CLI, or key, plus loopback with no credential when `requireApiKey` is off and `Origin` is absent or same-origin. Gateway protocol surfaces (`/api/mcp-gateway`, `/sse`, `/message`) take a gateway key, CLI, or loopback, not a DurinDoor API key. Details: [MCP control](../features/mcp-control.mdx).
 
 <Callout type="warn">
 A DurinDoor API key is an inference credential. It cannot reveal stored secrets, shut the process down, or change login and proxy settings. Mint a dedicated key for automation and keep reveal, shutdown, and database work on a dashboard session.
@@ -84,6 +84,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| GET, POST | `/api/combos/presets` | GET query `source=cursor` or `claude` previews missing presets; POST JSON `{ source }` creates only missing names and returns created/skipped counts | session, CLI, key, loop |
 | GET, POST | `/api/combos` | List combos (GET) or create one (POST, 201) | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/combos/{id}` | Read, update, or delete a combo | session, CLI, key, loop |
 
@@ -99,6 +100,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| GET, POST | `/api/models/auto-sync` | GET optional `provider` query returns roster/status and pruned references; POST optional JSON `{ provider }` forces eligible provider sync or all enabled providers | session, CLI, key, loop |
 | GET, PUT | `/api/models` | Dashboard model list with aliases (GET); set one alias (PUT) | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/models/alias` | List, set, or delete model aliases | session, CLI, key, loop |
 | GET, POST | `/api/models/availability` | List model cooldowns (GET); POST clearCooldown | session, CLI, key, loop |
@@ -124,6 +126,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| GET | `/api/monitoring` | Runtime status, 24-hour activity, and 7-day provider health from recorded usage | session, CLI, key, loop |
+| POST | `/api/usage/{connectionId}/claude-reset` | JSON `{ grantId }` consumes one Claude OAuth reset grant; irreversible, not a read-only quota probe | session, CLI, key, loop |
 | GET | `/api/usage/chart` | Usage chart buckets for a period | session, CLI, key, loop |
 | GET | `/api/usage/combos` | Combo-attributed usage for a period | session, CLI, key, loop |
 | GET | `/api/usage/history` | Paginated usage rows (`limit` up to 200, `offset`, filters) | session, CLI, key, loop |
@@ -158,16 +162,18 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | --- | --- | --- | --- |
 | GET, PATCH | `/api/settings` | Read settings (GET) or patch them (PATCH), including the `mediaRoutes` key (400 `Invalid mediaRoutes` on a malformed value) | session, CLI, key, loop |
 | GET, POST | `/api/settings/auto-configure` | Headroom/PxPipe/Firecrawl probe status or run | session, CLI, key, loop; handler wants session |
-| GET, POST | `/api/settings/database` | Export/import the data file; JWT or CLI plus password | session, CLI; password on export/import |
-| POST | `/api/settings/database/cutover` | Run SQLite to PostgreSQL cutover; 503 + `Retry-After: 5` if the lock is held | session, CLI; password on export/import |
+| GET, POST | `/api/settings/database` | Export/import the data file; JWT or CLI plus password | session, CLI; dashboard password required |
+| POST | `/api/settings/database/cutover` | Run SQLite to PostgreSQL cutover; 503 + `Retry-After: 5` if the lock is held | session, CLI; dashboard password required |
 | GET, POST | `/api/settings/database/engine` | Read engine status (`servingFallback`; never `postgresUrl`) or patch version/features | session, CLI; password |
-| GET | `/api/settings/database/log` | Recent pgCutoverLog rows | session, CLI; password on export/import |
+| GET | `/api/settings/database/log` | Recent pgCutoverLog rows | session, CLI; dashboard password required |
 | POST | `/api/settings/database/rollback` | Restore an allowlisted cutover snapshot; 409 `rollback_requires_force` unless `force: true` | session, CLI; password |
-| POST | `/api/settings/database/selective` | Selective provider/combo transfer; preview is secret-free | session, CLI; password on export/import |
-| POST | `/api/settings/database/test` | Probe a candidate Postgres URL without opening the adapter | session, CLI; password on export/import |
+| POST | `/api/settings/database/selective` | Selective provider/combo transfer; preview is secret-free | session, CLI; dashboard password required |
+| POST | `/api/settings/database/test` | Probe a candidate Postgres URL without opening the adapter | session, CLI; dashboard password required |
 | POST | `/api/settings/firecrawl/detect` | Probe Firecrawl endpoints; session or open dashboard in handler | session, CLI, key, loop; handler wants session |
 | POST | `/api/settings/proxy-test` | Test the configured outbound proxy against a fixed URL | session, CLI, key, loop |
 | GET | `/api/settings/require-login` | Public requireLogin and tunnel access flags | none |
+
+Database routes require a dashboard session or CLI token plus the dashboard password. Most engine, cutover, rollback, log, and test calls read the password from `x-9r-password`. Selective transfer reads JSON `password`; database export uses `x-9r-password`, and import reads JSON `password`. Database JSON imports are limited to 16 MiB.
 
 ### Data retention
 
@@ -224,6 +230,11 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| GET, POST, DELETE | `/api/cli-tools/codewhale-settings` | Read, apply, or reset codewhale client settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/crush-settings` | Read, apply, or reset crush client settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/forge-settings` | Read, apply, or reset forge client settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/pi-settings` | Read, apply, or reset pi client settings | session, CLI, key, loop |
+| GET, POST, DELETE | `/api/cli-tools/smelt-settings` | Read, apply, or reset smelt client settings | session, CLI, key, loop |
 | GET | `/api/cli-tools/all-statuses` | Batch CLI-tool install/config status | session, CLI, key, loop |
 | GET, POST, DELETE, PATCH | `/api/cli-tools/antigravity-mitm` | MITM status and mutations for Antigravity | session, CLI, key, loop; local |
 | GET, PUT | `/api/cli-tools/antigravity-mitm/alias` | Read or save MITM aliases for a tool | session, CLI, key, loop; local |
@@ -258,6 +269,10 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| POST | `/api/oauth/xiaomi-mimo/api-key` | Save `apiKey` or `mimoPassToken`; optional `uid`, `baseUrl`, `mimoUserId`, `mimoCUserId`, `region`. Key must start `sk-`; base URL must use HTTPS on a Xiaomi MiMo host | session, CLI, key, loop |
+| GET | `/api/oauth/xiaomi-mimo/auto-import` | Import local MiMo Desktop credentials | session, CLI; local |
+| POST | `/api/oauth/xiaomi-mimo/login/start` | Begin browser login; optional JSON `region`, default `cn` | session, CLI, key, loop |
+| GET | `/api/oauth/xiaomi-mimo/login/status` | Poll login-session cookie; optional matching `state`; returns pending/done or 404 expired | session, CLI, key, loop |
 | POST | `/api/oauth/codex/bulk-import` | Bulk-import Codex OAuth account JSON | session, CLI, key, loop |
 | POST | `/api/oauth/codex/import-token` | Import a ChatGPT access token as a connection | session, CLI, key, loop |
 | GET | `/api/oauth/cursor/auto-import` | Read Cursor tokens from local SQLite | session, CLI; local |
@@ -312,6 +327,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| GET, HEAD, OPTIONS | `/api/livez` | Process-alive response; protected by the generic dashboard gate | session, CLI, loop |
+| GET, OPTIONS | `/api/readyz` | Alias of health response; protected by the generic dashboard gate | session, CLI, loop |
 | GET, OPTIONS | `/api/health` | Liveness `{ ok: true }` with CORS | none |
 | GET, DELETE, OPTIONS | `/api/health/providers` | Cached provider health; DELETE invalidates; ?force=1 | none |
 
@@ -339,6 +356,10 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
+| POST | `/api/auth/mfa/setup` | JSON `{ password }`; returns candidate `secret`, `otpauthUri`, and `qrCodeDataUri`; persists nothing | session, CLI, loop; same-origin and password |
+| POST | `/api/auth/mfa/enable` | JSON `{ password, secret, code }`; verifies candidate TOTP, enables MFA, returns backup codes once | session, CLI, loop; same-origin and password |
+| POST | `/api/auth/mfa/disable` | JSON `{ password, code }`; requires password and TOTP or backup code | session, CLI, loop; same-origin and second factor |
+| POST | `/api/auth/mfa/verify` | JSON `{ code }`; completes password login using the short-lived `mfa_pending` cookie | none at route gate; pending cookie and same-origin required |
 | POST | `/api/auth/change-password` | One-shot default-password change with a loopback proof | none |
 | POST | `/api/auth/login` | Password login; issues auth_token | none |
 | POST | `/api/auth/logout` | Clear the session cookie | none |
@@ -356,7 +377,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 ## What an API key cannot do
 
-The gate refuses a key on `GET /api/keys/{id}/reveal`, `GET /api/mcp-gateway/keys/{id}/reveal` (also 403 unless loopback), any `?reveal=1` (including `/api/keys/{id}/%72eveal`), `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`, `/api/settings/database` and children, `/api/oauth/cursor/auto-import`, `/api/oauth/kiro/auto-import`, and remote calls to local-only spawn paths (tunnel enable/disable, Tailscale, Cowork settings, Antigravity MITM, Headroom start/stop/proxy/extras, MCP plugin `/sse` and `/message`, `POST /api/auth/reset-password`). Families never on `MANAGEMENT_API_PATHS`: `/api/key-groups`, `/api/data-retention`, `/api/compression`, `/api/token-saver`, `/api/pxpipe`.
+The gate refuses a key on `GET /api/keys/{id}/reveal`, `GET /api/mcp-gateway/keys/{id}/reveal` (also 403 unless loopback), any `?reveal=1` (including an encoded `/reveal` path), `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`, `/api/settings/database` and children, `/api/oauth/cursor/auto-import`, `/api/oauth/kiro/auto-import`, `/api/oauth/xiaomi-mimo/auto-import`, and remote calls to local-only spawn paths (tunnel enable/disable, Tailscale, Cowork settings, Antigravity MITM, Headroom start/stop/proxy/extras, MCP plugin `/sse` and `/message`, `POST /api/auth/reset-password`). Families that do not accept an inference key: `/api/key-groups`, `/api/data-retention`, `/api/compression`, `/api/token-saver`, `/api/pxpipe`.
 
 After the gate, `GET`/`POST /api/settings/auto-configure` and `POST /api/settings/firecrawl/detect` still want a session (or `requireLogin` off). `POST /api/data-retention` needs JWT or CLI. `POST /api/mcp-gateway/keys` is local-only in the handler. `POST /api/shutdown` also needs `SHUTDOWN_SECRET` and returns 403 in production.
 
@@ -364,7 +385,7 @@ Gateway OAuth leaves: `client-metadata` is public. `callback` takes session, CLI
 
 ## Settings keys stripped from an API-key patch
 
-`PATCH /api/settings` always drops `password`, `passwordSessionEpoch`, `mitmSudoEncrypted`, and `postgresUrl` (`SECRET_SETTING_KEYS`). `GET /api/settings` withholds `postgresUrl` from every caller, including an operator session: the libpq URL carries `user:password@`. Without a session or CLI it also drops `AUTH_CRITICAL_SETTING_KEYS`: `exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, `oidcIssuerUrl`, `oidcClientId`, `oidcClientSecret`, `oidcScopes`, `oidcLoginLabel`, `tunnelDashboardAccess`, `enableObservability`, `outboundProxyEnabled`, `outboundProxyUrl`, `outboundNoProxy`. `claudeAutoPing` and `codexAutoPing` return 400 (`Auto-ping must be updated through the connection-scoped endpoint`). MCP `update_settings` strips the same secret set and auth-critical set plus those auto-ping keys, and returns 400 `No updatable settings provided` when nothing remains. `POST /api/settings/database/engine` also strips `postgresUrl`, `password`, `passwordSessionEpoch`, `oidcClientSecret`, and `mitmSudoEncrypted` from the returned `settings` object. `POST /api/settings/database/rollback` accepts `{ snapshotPath?, force }` and returns `{ error: "rollback_requires_force", warning, discardedSince }` without `force: true`. `POST /api/settings/database/cutover` returns `{ error: "A cutover is already in flight; retry in a moment." }` when the lock is held.
+`PATCH /api/settings` always drops `password`, `passwordSessionEpoch`, `mitmSudoEncrypted`, `postgresUrl`, `mfaEnabled`, `mfaSecret`, and `mfaBackupCodes`. `GET /api/settings` withholds `postgresUrl`, `mfaSecret`, and `mfaBackupCodes` from every caller, including an operator session: the libpq URL carries `user:password@`. Without a session or CLI it also drops these login and proxy settings: `exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, `oidcIssuerUrl`, `oidcClientId`, `oidcClientSecret`, `oidcScopes`, `oidcLoginLabel`, `tunnelDashboardAccess`, `enableObservability`, `outboundProxyEnabled`, `outboundProxyUrl`, `outboundNoProxy`, `claudeClassifierCompat`. `claudeAutoPing` and `codexAutoPing` return 400 (`Auto-ping must be updated through the connection-scoped endpoint`). MCP `update_settings` strips the same secret set and auth-critical set plus those auto-ping keys, and returns 400 `No updatable settings provided` when nothing remains. `POST /api/settings/database/engine` also strips `postgresUrl`, `password`, `passwordSessionEpoch`, `oidcClientSecret`, and `mitmSudoEncrypted` from the returned `settings` object. `POST /api/settings/database/rollback` accepts `{ snapshotPath?, force }` and returns `{ error: "rollback_requires_force", warning, discardedSince }` without `force: true`. `POST /api/settings/database/cutover` returns `{ error: "A cutover is already in flight; retry in a moment." }` when the lock is held.
 
 ## Proxy URL redaction
 
@@ -386,7 +407,7 @@ An API key sees host and port. `user:password@` becomes `***`. Unparsable string
 
 Malformed percent-encoding on an `/api` path is 401, fail-closed. Combo create and key create are 201. Key create includes `key`; later list/detail return `maskedKey`.
 
-## Worked examples
+## Request examples
 
 Create a fallback combo (letters, digits, `-`, `_`, `.`; duplicates are 400; optional `members`, `kind`, `capabilities`, `allowedConnectionIds` up to 500):
 
@@ -403,7 +424,7 @@ Add an API-key connection and read quota. POST needs `provider` and `name`. `api
 curl http://localhost:20128/api/providers \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"provider":"openai","name":"openai-main","apiKey":"sk-upstream-secret"}'
+  -d '{"provider":"openai","name":"openai-main","apiKey":"YOUR_UPSTREAM_API_KEY"}'
 
 curl "http://localhost:20128/api/usage/CONNECTION_ID?force=1" \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"

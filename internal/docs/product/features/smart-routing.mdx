@@ -1,0 +1,96 @@
+---
+title: Smart routing
+description: How a client model string becomes an upstream call, including credentials and fallback.
+---
+
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/smart-routing.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+chat resolves the model and provider before account selection and chatCore translation. Cache affinity derives stable assignments from session identity; round-robin affinity is bounded in-memory state. Quota eligibility precedes selection. Early-empty direct stream hop happens before client content and never for a pin; after partial output, no automatic retry.
+
+### Execution ownership and evidence
+
+- [src/sse/handlers/chat.js](../../../../src/sse/handlers/chat.js)
+- [src/sse/services/auth.js](../../../../src/sse/services/auth.js)
+- [open-sse/services/model.js](../../../../open-sse/services/model.js)
+
+### Verification entrypoints
+
+- [tests/unit/stream-early-eof-failover.test.js](../../../../tests/unit/stream-early-eof-failover.test.js)
+- [tests/unit/quota-weighted-selection.test.js](../../../../tests/unit/quota-weighted-selection.test.js)
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
+Every chat request goes through the same path: `POST /v1/chat/completions` (or `/v1/messages`) calls `src/sse/handlers/chat.js`, which resolves the model and credentials, then `open-sse/handlers/chatCore.js` translates, compresses if enabled, and dispatches an executor. Other `/v1` families reuse provider connections but have their own handlers.
+
+There is no dedicated Routing page. Watch the outcome on **Dashboard → Usage** (`/dashboard/usage`). Round-robin and sticky limits live on **Dashboard → Settings** (`/dashboard/profile`) and, per provider, on **Dashboard → Providers → (provider)**. Combos have their own page at [Combos](combos.mdx).
+
+## Model strings
+
+The `model` field is parsed in `open-sse/services/model.js`. A slash splits `prefix/rest`. The prefix is a registry id or alias; the rest is the upstream model id (extra slashes stay in the model id).
+
+| Client `model` | What happens |
+| --- | --- |
+| `openai/gpt-4.1` | Provider plus upstream model. |
+| `cc/claude-sonnet` | Provider alias from the registry, then the model. |
+| `my-node/local-model` | Compatible-node prefix plus that node's model. |
+| `daily-coder` | Custom alias mapped to `provider/model`. |
+| `coding-default` | Combo name. No slash. See [Combos](combos.mdx). |
+
+Confirm live ids with `GET /v1/models` or the dashboard model picker. If `getModelInfo` returns no provider, the chat handler tries `getComboModels`. A bare string that is neither an alias nor a combo is inferred from the model id prefix (`claude-` → anthropic, `gemini-` → gemini, `gpt-` / `o1` / `o3` / `o4` → openai, `deepseek-` → openrouter) and otherwise `openai`.
+
+A doubled `<connId>/<prefix>/<model>` from a combo step is stripped to the inner model id.
+
+## Credentials
+
+After the model resolves, DurinDoor picks an active connection for that provider. Locked, expired, and allow-list-excluded accounts are skipped. Quota preflight can skip a spent account before the HTTP call; missing or stale quota fails open. See [Quota tracking](quota-tracking.mdx).
+
+**Dashboard → Settings** has a Round Robin toggle. Off is fill-first. On, `stickyRoundRobinLimit` (default 3, range 1-10) keeps the same account for that many calls, then rotates.
+
+When the client sends a session id, round-robin pins that session to the first eligible account and stays there until the account is gone or the in-memory entry is evicted. Header keys, in order: `x-session-id`, `session-id`, `session_id`, `x-amp-thread-id`, `x-client-request-id`. Body fields `prompt_cache_key`, `session_id`, and `conversation_id` are also read. For Kiro, `x-client-request-id` is ignored so per-request ids do not break stickiness. The affinity map caps at 5,000 entries.
+
+A third strategy, Cache Affinity, pins the same session id to an account via rendezvous (HRW) hashing instead of the round-robin sticky map: stateless, so it survives a restart, and removing an account only remaps the conversations it owned rather than reshuffling the whole pool. It reuses the identical session id derivation round-robin uses, so anything that makes round-robin sticky (headers, `prompt_cache_key`, `session_id`, `conversation_id`) also anchors Cache Affinity. A request with no derivable session id falls back to fill-first. Set it globally on **Dashboard → Settings** or per provider on **Dashboard → Providers → (provider)**; both use the same `fallbackStrategy` field as Round Robin, so no separate setting to migrate.
+
+A preferred connection id, when present and still eligible, wins over rotation or cache affinity.
+
+When live quota is trackable, the deterministic quota ranking normally picks the single best-scoring account every time. Setting `fallbackStrategy: "quota-weighted"` (globally or per provider, same field as Round Robin) instead draws randomly among quota-comparable eligible accounts, weighted by leftover quota, so concurrent requests spread out instead of converging on one account. `quotaWeightedFloorPercent` (default 1) keeps accounts at or below that leftover-quota percent out of the draw unless every comparable account is already that thin; then they get pulled in so nothing starves. An exhausted, cooled-down, or below-routing-floor account is never a candidate, same as fill-first. Falls back to fill-first order when nothing is quota-comparable.
+
+## Translation
+
+Client format is detected from the path and body. OpenAI-shaped requests are the common entry. Direct translator pairs exist where the OpenAI hop would drop fields (thinking blocks, tool ids, non-base64 images, `tool_result.is_error`). Matching source and target skip translation.
+
+If the client asked for SSE and the provider cannot stream, chatCore converts the final JSON into chat-completion chunks so the client still sees a stream.
+
+## Failure handling
+
+Malformed JSON or an invalid `messages` / `model` body is rejected with HTTP 400 before auth. Missing credentials return an auth error. A 429 or quota skip locks that account for a bounded window and tries the next connection or combo member. Client-shaped errors are not retried on unrelated providers.
+
+A direct (non-combo) stream is held until its first content frame, for up to `STREAM_EARLY_EOF_PEEK_MS` (default 10000). If it closes or errors before any content, the request moves once to another connection of the same provider. Nothing has reached the client at that point, so the retry cannot duplicate output. Once content has started, a later failure is never retried. With no sibling left, the client gets the original stream unchanged. The hop does not cool the first account down by itself. A pinned connection (`x-connection-id`) never hops.
+
+An in-stream `invalid_request_error`, `context_length_exceeded`, or `context_window_exceeded` belongs to the request, not the account. Every connection would refuse it the same way, so it skips the sibling hop, never triggers the empty-stream account cooldown, and does not lower a model's smart-scoring health. A combo can still fall through to a different model.
+
+When a stream is cut after it started, the request log records why: `stall_timeout` (no upstream bytes inside the stall window), `ttft_timeout` (no first byte), `stream_terminated` (the upstream socket was dropped), or `stream_error` for anything else.
+
+`BACKOFF_BASE_MS` (default 2000) and `BACKOFF_MAX_MS` (default 300000) bound lock delays. See [Environment](../../../../docs/reference/environment.mdx).
+
+## Worked example
+
+Send a direct provider model. The Usage row should show that provider, not a combo name.
+
+```bash
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-4.1",
+    "messages": [{"role": "user", "content": "ping"}]
+  }'
+```
+
+To pin round-robin across turns, add `-H "x-session-id: my-thread-1"`. The second call with the same header should reuse the same connection while it stays eligible.

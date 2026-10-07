@@ -3,15 +3,13 @@ title: Roo
 description: Point Roo at DurinDoor with the Ollama provider and a /v1 base URL.
 ---
 
-Roo is a guide tool on **CLI Tools**, not an apply target. There is no `/api/cli-tools/roo-settings` route. `GET /api/cli-tools/all-statuses` does not include `roo`. The card at `/dashboard/cli-tools/roo` copies a base URL, key, and model for Roo's Ollama provider.
+Use the Roo guide card with a running gateway, a DurinDoor key, and a chat-capable model or combo. Roo is a guide card and does not write settings on your behalf.
 
-You need Roo installed, the gateway running, a DurinDoor API key, and a chat-capable model or combo.
+## Configure Roo
 
-## Dashboard guide
+Open **CLI Tools → Roo**, select the endpoint, key, and model, then follow the copied steps in Roo:
 
-The Roo entry in `CLI_TOOLS` has `configType: "guide"`. The detail page renders `DefaultToolCard`. The copied base URL always ends with `/v1`. Localhost with no pasted key uses the placeholder `sk_durindoor`.
 
-The card then walks:
 
 <Steps>
 <Step>
@@ -31,7 +29,6 @@ Select the DurinDoor model id, or type a combo name.
 </Step>
 </Steps>
 
-`scripts/auto-configure.mjs` and `/api/settings/auto-configure` do not write Roo settings. They probe Headroom, PxPipe, and Firecrawl only.
 
 ## Manual config
 
@@ -46,12 +43,8 @@ Model:    provider/model-id
 If a Roo build also offers an OpenAI-compatible custom provider, those three values work there too. Combo names such as `coding-default` are valid in the model field if you created that combo.
 
 <Callout type="warn">
-The copied base URL must include `/v1`. Roo's Ollama provider typically posts to `{base}/api/chat`, which becomes `POST /v1/api/chat` on DurinDoor. That route runs `transformToOllama` and returns NDJSON. Curl by hand still uses `/v1/chat/completions` or `/v1/messages`.
+The copied base URL must include `/v1`. Roo's Ollama provider typically posts to `{base}/api/chat`, which becomes `POST /v1/api/chat` on DurinDoor. DurinDoor returns Ollama-compatible NDJSON on that endpoint. Curl by hand still uses `/v1/chat/completions` or `/v1/messages`.
 </Callout>
-
-## Legacy `9router` labels
-
-Roo's UI has no provider section named `9router`. Other CLI tools still write that section label; the server accepts it, plus `X-Msh-Platform: 9router`. Data still lives under `~/.9router/` unless you set `DATA_DIR`.
 
 ## Check it works
 

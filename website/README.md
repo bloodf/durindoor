@@ -6,7 +6,7 @@ Public site for DurinDoor, deployed on Vercel. One Next.js app, three surfaces:
 | --- | --- |
 | `/` | Single-page animated homepage: WebGL Durin's Door hero, service kinds, request flow with fallback tiers, providers constellation, token savers, quota ledger, features, comparison, quick start, live demo, final CTA. |
 | `/dashboard/*`, `/login` | The real dashboard UI running against a fully mocked, browser-local backend. Every page of the production dashboard is reachable; adds, edits and deletes persist in `localStorage`. |
-| `/docs` | Operator and contributor documentation. Fumadocs compiles MDX from `../docs`. |
+| `/docs` | User and operator documentation. Fumadocs compiles MDX from `../docs`. |
 
 ## How the demo reuses the real dashboard
 
@@ -18,6 +18,8 @@ page that renders the same client component with fixture props.
 
 `source.config.mjs` sets `dir: "../docs"` and collects `**/*.mdx`.
 `src/lib/source.js` loads that collection with `baseUrl: "/docs"`.
+AI and maintainer references live in `../internal/docs/` and are excluded from routes and search. Brand prompts and maintenance notes are excluded from public asset copies.
+
 The MDX plugin reads the repo-root docs folder in place; nothing under
 `../docs` is copied into `website/`.
 

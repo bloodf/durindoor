@@ -276,7 +276,7 @@ const messages = {
   "MCP, realtime, proxy traces, tunnels": "MCP、realtime、プロキシ追跡、トンネル",
   "Each card opens the matching docs page.": "各カードは対応するドキュメントを開く。",
   "One DurinDoor endpoint in front of several MCP servers, with gateway keys that map to specific instances.": "複数の MCP サーバの前に DurinDoor のエンドポイントを一つ置き、ゲートウェイキーでインスタンスを割り当てる。",
-  "GET /v1/realtime upgrades to a text WebSocket in the OpenAI Realtime shape. Audio is not supported.": "GET /v1/realtime は OpenAI Realtime 形のテキスト WebSocket にアップグレードする。音声は非対応。",
+  "Native realtime and audio where supported. Chat models use text events.": "対応プロバイダーではネイティブのリアルタイムと音声を利用できます。チャットモデルではテキストイベントを使用します。",
   "Optional redacted hop log for proxy calls. Off by default. Stored next to the main database.": "プロキシ呼び出しのホップログ。秘密は伏せる。既定はオフ。本体データベースの隣に置く。",
   "Reach the gateway from another network over HTTPS. Cloudflare and Tailscale are the built-in tunnel providers.": "別ネットワークから HTTPS でゲートウェイに届く。組み込みトンネルは Cloudflare と Tailscale。",
   "Realtime": "Realtime",

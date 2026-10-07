@@ -1,59 +1,56 @@
 ---
 title: VPS and cloud
-description: Run DurinDoor on a VPS with systemd, HOSTNAME, and a reverse proxy in front.
+description: Run a Linux service with a persistent data directory and HTTPS proxy.
 ---
 
-A VPS or home server that should stay up across logouts. Docker on that host is [Docker](./docker.mdx). This page is a source install under systemd, loopback bind, and a proxy on the same machine.
+This procedure runs a source build on Linux with systemd and a reverse proxy on the same host. You need administrator access, Node.js 20.20.2, npm 10.8.2, a TLS-capable proxy, and a persistent disk. For containers, use [Docker](./docker.mdx).
 
-Do this before the process is reachable from the internet:
+## Build the app
 
-1. Set `JWT_SECRET` (`openssl rand -hex 32`). Fresh data dirs fail closed without it. An existing `DATA_DIR/jwt-secret` file is reused with a warning.
-2. Set `API_KEY_SECRET` the same way if minted keys must survive recreate.
-3. Set `INITIAL_PASSWORD` to something other than `123456`. Remote login with the built-in password is refused.
-4. Set `DATA_DIR` to a disk you back up.
-5. Plan TLS at a reverse proxy. DurinDoor itself speaks HTTP.
-6. Restrict the dashboard: VPN, firewall, proxy auth, or a trusted network.
-7. Back up `DATA_DIR` before every upgrade.
-
-Full lists: [Environment variables](../reference/environment.mdx), [Security](../operations/security.mdx).
-
-<Callout type="warn">
-`HOSTNAME=0.0.0.0` binds every interface. The dashboard can start tunnels and other host commands. Leave `HOSTNAME` unset so `custom-server.js` pins `127.0.0.1`, then proxy to that loopback port. Set `0.0.0.0` only when the proxy is not on this host, and put authentication in front of it.
-</Callout>
-
-<Steps>
-<Step>
-Install Node.js 20.20.2 and npm 10.8.2. Clone the repo, then:
+Clone the repository into `/opt/durindoor`, then build:
 
 ```bash
+cd /opt/durindoor
 npm install --no-audit --no-fund
 npm run build
+npm run verify:static
 ```
 
-`npm run start` is `node .next/standalone/custom-server.js`. Port default is 20128.
+The build creates `.next/standalone/custom-server.js`. The static check must exit zero before you use this build.
 
-</Step>
-<Step>
-Write an env file the unit will load, for example `/etc/durindoor.env` mode `0600`:
+## Create the service account and data directory
+
+If the account does not exist, create a system user with no interactive login:
 
 ```bash
+sudo useradd --system --home-dir /var/lib/durindoor --shell /usr/sbin/nologin durindoor
+sudo install -d -o durindoor -g durindoor -m 0700 /var/lib/durindoor
+```
+
+Give that account read and execute access to `/opt/durindoor` and your Node executable. Keep `/var/lib/durindoor` writable by the service account. A permission failure can make the app fall back to its native data-directory default; check logs and the actual data path.
+
+## Save the environment
+
+Create `/etc/durindoor.env`, owned by root with mode `0600`. Generate separate `JWT_SECRET` and `API_KEY_SECRET` values with `openssl rand -hex 32`. Insert those values and a password of your own before starting:
+
+```text
 NODE_ENV=production
 PORT=20128
 HOSTNAME=127.0.0.1
 DATA_DIR=/var/lib/durindoor
-JWT_SECRET=<output of openssl rand -hex 32>
-API_KEY_SECRET=replace-me
-INITIAL_PASSWORD=replace-me
+JWT_SECRET=<unique-generated-value>
+API_KEY_SECRET=<different-unique-generated-value>
+INITIAL_PASSWORD=<your-private-password>
 BASE_URL=https://durindoor.example.com
 NEXT_PUBLIC_BASE_URL=https://durindoor.example.com
 AUTH_COOKIE_SECURE=true
 ```
 
-`BASE_URL` / `NEXT_PUBLIC_BASE_URL` are the public HTTPS origin. `custom-server.js` strips `X-Forwarded-Host` and `X-Forwarded-Proto` on every request, so OIDC and cookies cannot take those from the client. Point them at the proxy's origin.
+Replace the example origin with your real HTTPS origin. Keep both base URLs consistent. The app removes forwarded host and scheme headers, so those headers do not replace this configuration.
 
-</Step>
-<Step>
-Install a systemd unit. Paths below are examples; point `WorkingDirectory` at the clone and `DATA_DIR` at the volume you created.
+## Install and start the unit
+
+Save `/etc/systemd/system/durindoor.service`:
 
 ```ini
 [Unit]
@@ -74,39 +71,31 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+Use the absolute path from `command -v node` if it differs from `/usr/bin/node`.
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now durindoor
 curl -fsS http://127.0.0.1:20128/api/health
 ```
 
-Expect `{"ok":true}`. Logs: `journalctl -u durindoor -f`.
+Expect `{"ok":true}`. Read failures with `journalctl -u durindoor -n 100`.
 
-</Step>
-<Step>
-Put nginx or Caddy on 443, proxy to `http://127.0.0.1:20128`. Overwrite `X-Forwarded-For` with the client address; do not append. Snippets: [Reverse proxy and static assets](./reverse-proxy-and-static-assets.mdx). After `npm run build`, `npm run verify:static` checks that `/dashboard` hashed assets return 200.
+## Add TLS and verify access
 
-</Step>
-</Steps>
+Configure nginx or Caddy to proxy HTTPS to `http://127.0.0.1:20128`. Use the [reverse-proxy examples](./reverse-proxy-and-static-assets.mdx), which cover streaming and WebSocket upgrades. Restrict dashboard access with a VPN, firewall, or proxy access control.
 
-## `HOSTNAME=0.0.0.0`
+Open the public dashboard URL, sign in, enable **Require API Key**, and create a separate key for each client. Run the [inference smoke test](../operations/startup.mdx#verify-inference) through the public URL. Health alone does not verify the database or provider.
 
-| How you start | Default bind |
-| --- | --- |
-| `npm run start` / systemd `custom-server.js` | `127.0.0.1` if `HOSTNAME` is unset |
-| `npm run dev` | `127.0.0.1` if `HOSTNAME` is unset |
-| CLI `durindoor` | `0.0.0.0` (`--host` overrides) |
-| Docker image / Compose | `0.0.0.0` |
+Keep `HOSTNAME=127.0.0.1` for a same-host proxy. Binding `0.0.0.0` exposes the app directly unless a firewall prevents it. A proxy in another container or on another host does not meet the app's loopback forwarding-header trust rule.
 
-Same-host proxy: keep `127.0.0.1` so `custom-server.js` treats the proxy as a loopback hop and can trust `X-Forwarded-For`. Other-host proxy or a raw public bind: `HOSTNAME=0.0.0.0`, firewall the port, and do not skip the [security](../operations/security.mdx) list.
-
-## Health and restart
+## Restart, upgrade, or recover
 
 ```bash
-curl http://127.0.0.1:20128/api/health
 sudo systemctl restart durindoor
+journalctl -u durindoor -f
 ```
 
-Restart after changing `PORT`, `HOSTNAME`, `DATA_DIR`, `JWT_SECRET`, `API_KEY_SECRET`, proxy env, or OAuth URL overrides. Dashboard settings stored in SQLite do not need a process restart.
+Restart after environment changes. For an upgrade, stop the service, back up the full data directory and secrets, build the selected version, and start the service. Follow [Upgrading](../operations/upgrading.mdx) for database verification and rollback.
 
-Upgrade: back up `DATA_DIR`, `git pull`, `npm install --no-audit --no-fund`, `npm run build`, restart the unit. [Upgrading](../operations/upgrading.mdx). Docker tag moves: [Docker](./docker.mdx).
+If startup repeatedly fails, stop the unit before restoring data. Preserve the logs, current data directory, and pre-upgrade backup. Verify the Node path, environment file, port availability, and service-account permissions before retrying.

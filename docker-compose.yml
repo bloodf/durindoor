@@ -14,12 +14,12 @@ services:
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
-      # The PG engine is opt-in. To enable it, set DURINDOOR_PG_URL in
-      # .env (or pass the connection string in the dashboard) and run
-      # a cutover from the Settings > Database page. The env var is
-      # read at boot; the dashboard secret is read from
-      # /app/data/durindoor-secrets.json (mode 0600) when the env var
-      # is absent.
+      # Existing SQLite installs: leave PG_URL unset or empty, run cutover
+      # in Settings > Database, then optionally set an explicit boot URL.
+      # Fresh direct-Postgres installs: set DURINDOOR_PG_URL before boot.
+      # A nonempty URL selects Postgres before SQLite settings load.
+      # Empty values are normalized to unset; dashboard credentials live
+      # in /app/data/durindoor-secrets.json (mode 0600).
       DURINDOOR_PG_URL: ${DURINDOOR_PG_URL:-}
       DURINDOOR_PG_SSLMODE: ${DURINDOOR_PG_SSLMODE:-prefer}
       DURINDOOR_PG_PREFERRED_VERSION: ${DURINDOOR_PG_PREFERRED_VERSION:-18}

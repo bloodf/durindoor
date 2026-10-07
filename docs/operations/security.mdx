@@ -6,7 +6,7 @@ description: JWT_SECRET, passwords, API_KEY_SECRET, MACHINE_ID_SALT, rate limits
 DurinDoor stores provider credentials and proxies model traffic. Treat `DATA_DIR` as a secret store.
 
 <Callout type="warn">
-Do not publish the dashboard on a public address with the built-in password `123456`. Remote login on that password returns 403 before a session cookie is issued.
+Do not publish the dashboard on a public address with the built-in password `123456`. Remote login on that password returns 403 before a session cookie is issued. Dashboard protection does not replace inference API-key protection.
 </Callout>
 
 ## Secrets
@@ -45,19 +45,19 @@ HMAC secret for four-part keys `sk-<machineId>-<keyId>-<crc8>`. Order:
 2. `DATA_DIR/api-key-secret` minted on first boot when `DATA_DIR` is set (mode `0600`)
 3. Throw
 
-Keep it stable across deploys. A new secret makes existing four-part keys fail `parseApiKey`. Two-part `sk-<8 hex>` rows are not HMAC-bound. Full key shapes: [API keys](../guides/api-keys.mdx).
+Save the secret in your protected service environment and keep it stable across deploys. A new secret makes existing four-part keys fail `parseApiKey`. Two-part `sk-<8 hex>` rows are not HMAC-bound. Full key shapes: [API keys](../guides/api-keys.mdx).
 
 ### MACHINE_ID_SALT
 
 Salt for `getConsistentMachineId`. Default `endpoint-proxy-salt`. The 16-character id is embedded in new API keys and stored in `DATA_DIR/machine-id`. Changing the salt changes the derived id for new keys. Leave it alone on a running install.
 
-## Two-factor authentication (TOTP)
+## Enable two-factor authentication
 
-Optional second factor for password logins (decolua/9router#4144). Turn it on from the dashboard: Settings, Security tab, Two-factor authentication card. Enrollment requires the current password, then a valid 6-digit code from the new secret before it is stored.
+For password logins, turn on the optional second factor from the dashboard: Settings, Security tab, Two-factor authentication card. Enrollment requires the current password, then a valid 6-digit code from the new secret before it is stored.
 
 Login becomes two steps once enabled: `POST /api/auth/login` returns `{ mfaRequired: true }` and sets a short-lived, httpOnly `mfa_pending` cookie (5 minutes) instead of a session. `POST /api/auth/mfa/verify` trades a valid TOTP code, or a backup code, for the real `auth_token` session cookie. Both steps share the same login rate limiter (5 fails, then 30s/2m/10m/30m lockout) and require an exact request Origin, matching password login.
 
-Ten single-use backup codes are generated at enrollment and shown once, bcrypt-hashed at rest. Each recovers the account if the authenticator device is lost; using one does not disable MFA, it only substitutes for a TOTP code on that one login. Losing the authenticator and every backup code means `POST /api/auth/mfa/disable` (which itself requires a live second factor) cannot run; recovery then requires a database edit clearing `mfaEnabled`/`mfaSecret`/`mfaBackupCodes` from the `settings` row, or the DurinDoor CLI's password-reset flow followed by a fresh enrollment.
+Ten single-use backup codes are generated at enrollment and shown once, bcrypt-hashed at rest. Each recovers the account if the authenticator device is lost; using one does not disable MFA, it only substitutes for a TOTP code on that one login. Losing the authenticator and every backup code means `POST /api/auth/mfa/disable` (which itself requires a live second factor) cannot run; recovery requires an administrator repair of the MFA settings on a verified database copy. Back up the database first. The CLI password reset clears only the password hash; it does not disable MFA or restore access without a second factor.
 
 `mfaSecret` and `mfaBackupCodes` are stored in the same settings row as the password hash. They never round-trip through `GET/PATCH /api/settings` (only a boolean `mfaEnabled` and a `mfaBackupCodesRemaining` count are exposed there) and are writable only through `/api/auth/mfa/{setup,enable,disable}`, each of which re-verifies the current password.
 
@@ -80,8 +80,9 @@ Before anything other than loopback can reach `/dashboard`:
 3. Terminate TLS in front. Set `AUTH_COOKIE_SECURE=true` or a `https:` `BASE_URL`.
 4. Restrict who can hit the dashboard: VPN, firewall, reverse-proxy auth, or a trusted network.
 5. Mint one DurinDoor API key per tool. Do not hand provider keys to clients.
-6. Leave `ENABLE_REQUEST_LOGS=false` except for a short debug window.
-7. Back up `DATA_DIR`.
+6. Enable **Require API Key** before exposing inference. A non-loopback bind without it logs a warning but does not block startup.
+7. Leave `ENABLE_REQUEST_LOGS=false` except for a short debug window.
+8. Back up `DATA_DIR` and the protected environment. For PostgreSQL, also back up the database.
 
 `AUTH_COOKIE_SECURE=true` forces the `Secure` flag. `TRUST_PROXY=true` only when the reverse proxy overwrites forwarding headers and traffic goes through `custom-server.js`. Cross-origin login is rejected (`hasExactRequestOrigin`). Tunnel dashboard access also needs `settings.tunnelDashboardAccess === true`.
 

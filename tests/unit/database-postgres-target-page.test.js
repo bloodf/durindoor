@@ -29,7 +29,15 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 const button = (text) => [...host.querySelectorAll("button")].find((node) => node.textContent === text);
-const input = (label) => [...host.querySelectorAll("label")].find((node) => node.textContent.startsWith(label)).querySelector("input");
+const input = (label) => {
+  const labels = [...host.querySelectorAll("label")].filter((node) => node.textContent.trim() === label);
+  expect(labels).toHaveLength(1);
+  const element = document.getElementById(labels[0].htmlFor);
+  expect(element).not.toBeNull();
+  expect(host.contains(element)).toBe(true);
+  expect(element.tagName).toBe("INPUT");
+  return element;
+};
 async function type(label, value) {
   await act(async () => {
     const element = input(label);

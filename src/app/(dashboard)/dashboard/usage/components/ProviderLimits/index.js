@@ -65,6 +65,7 @@ import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import { EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { getClaudeWeeklyWindowNames, withClaudeWeeklyPlaceholders } from "./claudeQuotaRows";
 
 // Maps the stored providerSpecificData.authMethod to a human label for Kiro.
 // Values come from the Kiro connect flows: builder-id/idc (device code),
@@ -797,7 +798,7 @@ export default function ProviderLimits() {
     [accountFilter, page, pageSize, providerFilter]
   );
 
-  const fetchQuota = useCallback(async (connectionId, provider, { force = false } = {}) => {
+  const fetchQuota = useCallback(async (connectionId, provider, { force = false, refresh = false } = {}) => {
     setLoading((prev) => ({ ...prev, [connectionId]: true }));
     setErrors((prev) => ({ ...prev, [connectionId]: null }));
 
@@ -805,7 +806,7 @@ export default function ProviderLimits() {
       console.log(
         `[ProviderLimits] Fetching quota for ${provider} (${connectionId})${force ? " (force)" : ""}`
       );
-      const url = `/api/usage/${connectionId}${force ? "?force=1" : ""}`;
+      const url = `/api/usage/${connectionId}${refresh ? "?refresh=1" : force ? "?force=1" : ""}`;
       const response = await fetch(url);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -882,7 +883,7 @@ export default function ProviderLimits() {
   // Manual refresh bypasses the provider's valid in-process quota cache.
   const refreshProvider = useCallback(
     async (connectionId, provider) => {
-      await fetchQuota(connectionId, provider, { force: true });
+      await fetchQuota(connectionId, provider, { force: true, refresh: true });
       setLastUpdated(new Date());
     },
     [fetchQuota]
@@ -1289,9 +1290,10 @@ export default function ProviderLimits() {
 
   const connectionQuotaRows = useMemo(() => {
     const rows = {};
+    const claudeWeeklyWindows = getClaudeWeeklyWindowNames(sortedConnections, quotaData);
     for (const conn of sortedConnections) {
       const rawQuotas = quotaData[conn.id]?.quotas || [];
-      const visibleQuotas = filterQuotasByVisibility(
+      let visibleQuotas = filterQuotasByVisibility(
         conn.id,
         rawQuotas,
         quotaVisibility,
@@ -1300,6 +1302,9 @@ export default function ProviderLimits() {
         ...quota,
         visibilityIndex: rawQuotas.indexOf(quota)
       }));
+      if (conn.provider === "claude") {
+        visibleQuotas = withClaudeWeeklyPlaceholders(visibleQuotas, rawQuotas, claudeWeeklyWindows);
+      }
       const hiddenQuotaRows = getHiddenQuotaRows(
         conn.id,
         rawQuotas,
@@ -1477,7 +1482,7 @@ export default function ProviderLimits() {
                     <Tooltip content={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"}><IconButton label={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"} icon="schedule" onClick={() => isCodex ? handleViewCodexResetCredits(conn) : handleViewClaudeResets(conn, claudeReset)} disabled={isLoading || rowBusy} /></Tooltip>
                   </> : null}
                   {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && !isInactive ? <Tooltip content={AUTO_PING_TOOLTIPS[conn.provider]}><IconButton label="Toggle auto-ping" icon="bolt" onClick={() => toggleAutoPing(conn.id, conn.provider, autoPingMaps[conn.provider]?.[conn.id] !== true)} className={autoPingMaps[conn.provider]?.[conn.id] === true ? "text-dd-accent" : ""} /></Tooltip> : null}
-                  <Tooltip content="Refresh quota"><IconButton label="Refresh quota" icon={isLoading ? "progress_activity" : "refresh"} onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || rowBusy} className={isLoading ? "[&_span]:animate-spin" : ""} /></Tooltip>
+                  <Tooltip content="Refresh (bypass cache)"><IconButton label="Refresh quota" title="Refresh (bypass cache)" icon={isLoading ? "progress_activity" : "refresh"} onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || rowBusy} className={isLoading ? "[&_span]:animate-spin" : ""} /></Tooltip>
                   <Tooltip content="Edit connection"><IconButton label="Edit connection" icon="edit" onClick={() => { setSelectedConnection(conn); setShowEditModal(true); }} disabled={rowBusy} /></Tooltip>
                   <Tooltip content="Delete connection"><IconButton label="Delete connection" icon="delete" onClick={() => setDeleteConfirmState(conn)} disabled={rowBusy} className="text-dd-danger hover:text-dd-danger" /></Tooltip>
                   <Toggle checked={conn.isActive ?? true} disabled={rowBusy} aria-label={conn.isActive ?? true ? "Disable connection" : "Enable connection"} onChange={(nextActive) => handleToggleConnectionActive(conn.id, nextActive)} />
@@ -1497,7 +1502,7 @@ export default function ProviderLimits() {
           const mergedQuotas = isMerged ?
           mergeAccountQuotas(group.connections.map((conn) => ({
             connectionId: conn.id,
-            quotas: connectionQuotaRows[conn.id]?.visibleQuotas || []
+            quotas: (connectionQuotaRows[conn.id]?.visibleQuotas || []).filter((quota) => !quota.notReported)
           }))) :
           [];
           const anyAccountLoading = group.connections.some((conn) => loading[conn.id]);

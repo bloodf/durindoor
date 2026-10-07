@@ -114,9 +114,10 @@ export async function GET(request, { params }) {
       return Response.json(await aggregateLocalUsage(connection, 'OpenCode'));
     }
 
-    // `?force=1` propagates through getUsageForProvider so the per-provider
-    // handler can bypass any in-process cache (e.g. Claude OAuth quota cache).
-    const force = new URL(request.url).searchParams.get("force") === "1";
+    // Explicit refresh bypasses the quota cache, but never the provider's 429
+    // cooldown. Keep force=1 for existing API consumers and Refresh All.
+    const searchParams = new URL(request.url).searchParams;
+    const force = searchParams.get("refresh") === "1" || searchParams.get("force") === "1";
 
     // Fetch usage from provider API
     let usage = await getUsageForProvider(connection, proxyOptions, { force });

@@ -29,6 +29,11 @@ export default function Hero() {
       className="gateway-hero"
       aria-labelledby="hero-title"
     >
+      <HeroCanvas
+        progress={scrollYProgress}
+        opened={opened}
+        onAvailability={setCanAnimate}
+      />
       <div className="gateway-hero-grid container">
         <motion.div className="gateway-copy" style={{ y: reduce ? 0 : y }}>
           <h1 id="hero-title">
@@ -63,11 +68,6 @@ export default function Hero() {
           </div>
         </motion.div>
         <div className="gateway-art">
-          <HeroCanvas
-            progress={scrollYProgress}
-            opened={opened}
-            onAvailability={setCanAnimate}
-          />
           {canAnimate ? (
             <button
               type="button"

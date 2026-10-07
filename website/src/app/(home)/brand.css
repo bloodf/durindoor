@@ -120,11 +120,22 @@ html:has(.dd-home) body {
   position: relative;
   padding-top: 76px;
   overflow: hidden;
+  isolation: isolate;
+}
+.gateway-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, #0c1410f5 0%, #0c1410cc 33%, #0c141033 57%, transparent 74%);
 }
 .gateway-hero-grid {
   display: grid;
   grid-template-columns: 1fr 1.05fr;
-  min-height: 760px;
+  position: relative;
+  z-index: 2;
+  min-height: max(760px, calc(100svh - 76px));
   align-items: center;
   gap: 20px;
 }
@@ -180,7 +191,7 @@ html:has(.dd-home) body {
 .gateway-art {
   position: relative;
   height: 700px;
-  margin-right: -90px;
+  pointer-events: none;
   min-width: 0;
 }
 .gateway-stage,
@@ -192,9 +203,7 @@ html:has(.dd-home) body {
   height: 100%;
 }
 .gateway-stage {
-  mask-image: linear-gradient(90deg, transparent, black 9%, black 94%, transparent),
-    linear-gradient(0deg, transparent, black 8%, black 92%, transparent);
-  mask-composite: intersect;
+  z-index: 0;
   overflow: hidden;
 }
 
@@ -204,6 +213,13 @@ html:has(.dd-home) body {
 }
 .gateway-webgl {
   z-index: 1;
+  opacity: 0;
+}
+.gateway-stage[data-ready="true"] .gateway-webgl {
+  opacity: 1;
+}
+.gateway-stage[data-ready="true"] .gateway-poster {
+  visibility: hidden;
 }
 .gate-toggle {
   position: absolute;
@@ -222,6 +238,7 @@ html:has(.dd-home) body {
   padding: 13px 22px;
   font-size: 14px;
   cursor: pointer;
+  pointer-events: auto;
   backdrop-filter: blur(12px);
 }
 .gate-toggle:hover {
@@ -547,11 +564,10 @@ html:has(.dd-home) body {
 }
 @media (max-width: 1100px) {
   .gateway-art {
-    margin-right: -40px;
     height: 620px;
   }
   .gateway-hero-grid {
-    min-height: 690px;
+    min-height: max(690px, calc(100svh - 76px));
   }
   .dd-home .nav-inner {
     padding-inline: 24px;
@@ -571,12 +587,14 @@ html:has(.dd-home) body {
     grid-template-columns: 1fr;
     gap: 0;
   }
+  .gateway-hero::after {
+    background: linear-gradient(180deg, #0c1410f5, #0c1410d9 43%, #0c141022 66%, transparent);
+  }
   .gateway-copy {
     padding-block: 60px 24px;
   }
   .gateway-art {
     height: 540px;
-    margin-inline: -24px;
   }
   .dd-home .gateway-copy h1 {
     font-size: clamp(62px, 11vw, 88px);

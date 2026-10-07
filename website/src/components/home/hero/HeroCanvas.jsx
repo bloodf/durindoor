@@ -17,9 +17,11 @@ class CanvasBoundary extends Component {
 /** Static artwork remains visible with reduced motion, missing WebGL, or a failed canvas. */
 export default function HeroCanvas({ progress, opened, onAvailability }) {
   const [live, setLive] = useState(false);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => {
+      setReady(false);
       try {
         setLive(
           !query.matches &&
@@ -34,10 +36,10 @@ export default function HeroCanvas({ progress, opened, onAvailability }) {
     return () => query.removeEventListener("change", update);
   }, []);
   useEffect(() => {
-    onAvailability?.(live);
-  }, [live, onAvailability]);
+    onAvailability?.(live && ready);
+  }, [live, ready, onAvailability]);
   return (
-    <div className="gateway-stage" aria-hidden="true">
+    <div className="gateway-stage" data-ready={live && ready} aria-hidden="true">
       <img
         className="gateway-poster"
         src="/brand/durindoor-gateway.webp"
@@ -46,11 +48,12 @@ export default function HeroCanvas({ progress, opened, onAvailability }) {
         height="1080"
       />
       {live ? (
-        <CanvasBoundary onFailure={() => setLive(false)}>
+        <CanvasBoundary onFailure={() => { setReady(false); setLive(false); }}>
           <Scene
             progress={progress}
             opened={opened}
-            onFailure={() => setLive(false)}
+            onReady={() => setReady(true)}
+            onFailure={() => { setReady(false); setLive(false); }}
           />
         </CanvasBoundary>
       ) : null}

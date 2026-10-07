@@ -9,7 +9,7 @@ import Mist from "./Mist.jsx";
 import Particles from "./Particles.jsx";
 import { gateOpening } from "./gateOpening.js";
 
-function Gateway({ progress, opened, stage }) {
+function Gateway({ progress, opened, stage, onReady }) {
   const { camera, size } = useThree();
   const uniforms = useMemo(() => ({
     uTime: { value: 14 },
@@ -18,6 +18,10 @@ function Gateway({ progress, opened, stage }) {
     uDoor: { value: new Vector2(0, -1) },
   }), []);
   const moon = useMemo(() => new Vector2(), []);
+  const announced = useRef(false);
+  const wide = size.width > 800;
+  const doorX = wide ? Math.min(3, Math.max(1.65, (size.width / size.height - 1) * 2.8)) : 0;
+  const doorY = wide ? 0 : -1.6;
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     const smoothing = 1 - Math.exp(-dt * 3);
@@ -26,17 +30,23 @@ function Gateway({ progress, opened, stage }) {
     uniforms.uOpen.value += (target - uniforms.uOpen.value) * smoothing;
     const open = uniforms.uOpen.value;
     const aspect = size.width / size.height;
-    const distance = Math.max(7.9, 4.7 / aspect);
+    const distance = wide ? Math.max(7.9, 10 / aspect) : Math.max(10.8, 5.4 / aspect);
+    uniforms.uDoor.value.set(doorX, doorY - 1);
     camera.position.x += (state.pointer.x * 0.32 - camera.position.x) * smoothing * 0.5;
     camera.position.y += (-0.65 + state.pointer.y * 0.16 - camera.position.y) * smoothing * 0.5;
     camera.position.z += (distance - open * 0.85 - camera.position.z) * smoothing;
     camera.lookAt(0, -0.65, -0.5);
-    moon.set(state.pointer.x * 1.3 + 0.6, state.pointer.y + 0.5);
+    moon.set(doorX + state.pointer.x * 1.3 + 0.6, doorY + state.pointer.y + 0.5);
     uniforms.uMoon.value.lerp(moon, smoothing * 0.5);
     // The actual rendered opening is inspectable by browser behavior checks.
     if (stage.current) stage.current.dataset.open = open.toFixed(3);
+    if (!announced.current) {
+      announced.current = true;
+      // Reveal after this frame has been submitted, independently of scroll.
+      requestAnimationFrame(() => onReady?.());
+    }
   });
-  return <>
+  return <group position={[doorX, doorY, 0]}>
     <ambientLight intensity={0.65} />
     <directionalLight position={[-3, 5, 4]} color="#cadfd4" intensity={2} />
     <Wall uniforms={uniforms} />
@@ -44,11 +54,11 @@ function Gateway({ progress, opened, stage }) {
     <Beams uniforms={uniforms} />
     <Mist uniforms={uniforms} />
     <Particles uniforms={uniforms} count={size.width < 500 ? 100 : 220} />
-  </>;
+  </group>;
 }
 
 /** Perspective stone gateway; rendering pauses outside the hero and in hidden tabs. */
-export default function Scene({ progress, opened, onFailure }) {
+export default function Scene({ progress, opened, onFailure, onReady }) {
   const ref = useRef(null);
   const [active, setActive] = useState(true);
   useEffect(() => {
@@ -74,7 +84,7 @@ export default function Scene({ progress, opened, onFailure }) {
       onCreated={({ gl }) => gl.domElement.addEventListener("webglcontextlost", onFailure, { once: true })}
     >
       <color attach="background" args={["#0c1410"]} />
-      <Gateway progress={progress} opened={opened} stage={ref} />
+      <Gateway progress={progress} opened={opened} stage={ref} onReady={onReady} />
       <EffectComposer multisampling={0}>
         <Bloom mipmapBlur luminanceThreshold={0.65} intensity={0.7} radius={0.6} />
         <Vignette offset={0.35} darkness={0.6} />

@@ -194,7 +194,7 @@ Documentation uses the same local families with its own reading hierarchy. Artic
 
 Marketing containers cap at 1280px and use fluid inline padding (`clamp(24px, 4vw, 64px)`). Desktop sections use the section spacing token; at 800px and below they use section-mobile. The fixed navigation is 76px high, and the hero accounts for it.
 
-The desktop hero pairs copy and artwork in a two-column grid (1fr / 1.05fr). At 800px and below it stacks copy above the gate. Artwork height steps from 700px to 620px at 1100px, 540px at 800px and 460px at 480px. Narrow hero typography uses `clamp(62px, 11vw, 88px)`.
+The gateway canvas and its static poster cover the entire hero behind the content. The desktop content grid uses two columns (1fr / 1.05fr), placing copy to the left and the gate control to the right; the perspective doorway shifts right with the canvas aspect ratio. A stone gradient scrim protects copy and actions while leaving the gateway visible. The content area has a minimum height of the larger of 760px or the viewport minus the navigation, stepping to 690px at 1100px. At 800px and below, copy and the gate-control area stack, the scrim becomes vertical, and the scene places the doorway below the copy. The control area height steps from 700px to 620px at 1100px, 540px at 800px and 460px at 480px; these heights do not constrain the hero-wide canvas. Narrow hero typography uses `clamp(62px, 11vw, 88px)`.
 
 The feature bento has six columns with 18px gaps: MCP and tunnels span four; realtime and proxy traces span two. At 800px it becomes two columns, with the broad cards spanning both. At 560px all cards occupy one column. Mechanism labels may simplify on narrow screens; substantive descriptions remain visible.
 
@@ -246,7 +246,7 @@ Each card is a full link to matching docs. Its diagram explains MCP transports/t
 
 ### Gateway door
 
-Two thick extruded arched slabs pivot about their outer hinges toward the viewer in perspective. Procedural stone and moonlit inscriptions define their faces; opening reveals four recessed passage arches, a stone floor and emerald light beyond. Scroll progress opens the leaves until the explicit Open/Close control overrides it; both inputs use the same smoothed opening state. The frame remains fixed, with bounded pointer parallax, threshold mist and particles around it. Rendering pauses outside the hero and in hidden tabs. The static gateway artwork sits below the canvas and stays visible when reduced motion is requested, WebGL is unavailable or the canvas fails/loses context. The control disappears when animation is unavailable. Treat the artwork as decorative; the hero heading and actual action labels carry its meaning.
+Two thick extruded arched slabs pivot about their outer hinges toward the viewer in perspective. Procedural stone and moonlit inscriptions define their faces; opening reveals four recessed passage arches, a stone floor and emerald light beyond. Scroll progress opens the leaves until the explicit Open/Close control overrides it; both inputs use the same smoothed opening state. The frame remains fixed within the scene, with bounded pointer parallax, threshold mist and particles around it. The hero-wide canvas replaces the static poster after the first submitted frame, independently of scroll; only then does the Open/Close control become available. Rendering pauses outside the hero and in hidden tabs. The static gateway artwork sits below the canvas until readiness and stays visible when reduced motion is requested, WebGL is unavailable or the canvas fails/loses context. The control disappears when animation is unavailable. Treat the artwork as decorative; the hero heading and actual action labels carry its meaning.
 
 ### Real dashboard preview
 
@@ -260,7 +260,7 @@ Documentation actions use theme-scoped emerald fills and contrasting text; hover
 
 ### Motion and visibility
 
-The door owns the entrance motion. Supporting content is visible by default. Caret blinking (1.4s) and tunnel packets (3s) provide small mechanism cues. Reduced-motion CSS disables marketing animation, transitions and smooth scrolling; the gate switches to static artwork.
+The door owns the entrance motion. Its first rendered frame reveals the canvas without requiring scroll; scroll changes the opening state. Supporting content is visible by default. Caret blinking (1.4s) and tunnel packets (3s) provide small mechanism cues. Reduced-motion CSS disables marketing animation, transitions and smooth scrolling; the gate switches to static artwork.
 
 ## Do's and Don'ts
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-07T16:41:10.399903+00:00",
+  "generatedAt": "2026-10-07T19:01:32.910810+00:00",
   "title": "Design System: DurinDoor",
   "extensions": {
     "colorMeta": {
@@ -255,6 +255,11 @@
         "name": "docs-state",
         "value": "color 160ms ease, background-color 160ms ease, border-color 160ms ease",
         "purpose": "Documentation links and buttons; disabled for reduced motion."
+      },
+      {
+        "name": "gateway-readiness",
+        "value": "requestAnimationFrame after first submitted frame",
+        "purpose": "Reveal the hero-wide canvas, hide its poster and enable Open/Close independently of scroll. Rendering pauses offscreen and in hidden tabs; reduced motion and canvas failure retain static artwork."
       }
     ],
     "breakpoints": [
@@ -304,7 +309,7 @@
     {
       "name": "Gate control",
       "kind": "custom",
-      "description": "Explicit Open/Close override for the scroll-driven perspective stone gate; omit with static fallback.",
+      "description": "Explicit Open/Close override for the hero-wide perspective stone gate; available after its first rendered frame and omitted with static fallback.",
       "html": "<button class=\"ds-gate\" aria-pressed=\"false\">Open the door <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg></button>",
       "css": ".ds-gate{display:flex;gap:28px;align-items:center;background:#0b1712df;color:#baf1d7;border:1px solid #6ee7b74d;border-radius:30px;padding:13px 22px;font:14px var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);cursor:pointer;backdrop-filter:blur(12px)}.ds-gate:hover{background:#183b2a}.ds-gate:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px}"
     },

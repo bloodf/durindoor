@@ -211,7 +211,7 @@ SQLite is the default database. The dashboard supports an optional Postgres cuto
 | Look up routes, flags, or settings | [Reference](https://durindoor.vercel.app/docs/reference) |
 | Diagnose a failed request | [Troubleshooting](https://durindoor.vercel.app/docs/troubleshooting) |
 
-The [product guide](PRODUCT.md) describes the gateway’s scope. The [design system](DESIGN.md) records the website and documentation identity.
+The [product guide](PRODUCT.md) describes the gateway’s scope. The [design system](DESIGN.md) records the website and documentation identity. The [brand guide](https://durindoor.vercel.app/docs/contributing/brand-guide) covers the identity and future dashboard redesign.
 
 ## Contribute
 

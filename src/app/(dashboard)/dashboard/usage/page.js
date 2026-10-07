@@ -10,8 +10,7 @@ import Modal from "@/shared/ui/components/Modal.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import { USAGE_PERIOD_OPTIONS, getUsageCalendarCutoff, toLocalDateKey, addLocalCalendarDays } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "./components/RequestDetailsTab";
-import ComboUsageReport from "./components/ComboUsageReport";
-import ApiKeyLimitsCard from "./components/ApiKeyLimitsCard";
+import MonitoringWidgets from "./components/MonitoringWidgets";
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
@@ -154,9 +153,8 @@ function UsageContent() {
       {activeTab === "overview" ? (
         <Suspense fallback={<CardSkeleton />}>
           <div className="flex flex-col gap-6">
+            <MonitoringWidgets />
             <UsageStats period={period} setPeriod={setPeriod} customRange={customRange} isCustomRange={selectValue === "custom"} hidePeriodSelector resetNonce={resetNonce} />
-            <ComboUsageReport period={period} customRange={customRange} resetNonce={resetNonce} />
-            <ApiKeyLimitsCard />
           </div>
         </Suspense>
       ) : null}

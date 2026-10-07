@@ -2406,30 +2406,28 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboCard",
-      "sourceSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+      "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-combos-combospage--load-failure-error; reaches this child via wrapper JSX tree. Pending runtime review.",
-      "reviewStatus": "approved",
-      "reviewedBy": "FinalPendingA",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-combos-combospage--default"
       ],
-      "approvedScenarioIds": [
-        "production-combos-combospage--default"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-combos-combospage--default",
           "storyId": "production-combos-combospage--default",
           "runtimeArtifactId": "production-combos-combospage--default",
           "expectedVisibleText": null,
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           }
         }
       ],
@@ -2444,25 +2442,23 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboFormModal",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboFormModal",
-      "sourceSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+      "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-combos-combospage--load-failure-error; reaches this child via wrapper JSX tree. Pending runtime review.",
-      "reviewStatus": "approved",
-      "reviewedBy": "FinalPendingA",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-combos-combospage--load-failure-error"
       ],
-      "approvedScenarioIds": [
-        "production-combos-combospage--load-failure-error"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-combos-combospage--load-failure-error",
           "storyId": "production-combos-combospage--load-failure-error",
           "runtimeArtifactId": "production-combos-combospage--load-failure-error",
           "expectedVisibleText": null,
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "text",
             "controls",
@@ -2470,7 +2466,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           }
         }
       ],
@@ -2485,12 +2481,12 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "CombosPage",
-      "sourceSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+      "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Direct Storybook source binding: production-combos-combospage--default, production-combos-combospage--empty, production-combos-combospage--load-failure, production-combos-combospage--delete-flow, production-combos-combospage--create-flow, production-combos-combospage--edit-flow, production-combos-combospage--save-failure, production-combos-combospage--load-failure-error. Pending runtime review.",
-      "reviewStatus": "approved",
-      "reviewedBy": "integration-review",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-combos-combospage--default",
         "production-combos-combospage--empty",
@@ -2498,29 +2494,22 @@
         "production-combos-combospage--delete-flow",
         "production-combos-combospage--create-flow",
         "production-combos-combospage--edit-flow",
-        "production-combos-combospage--save-failure"
+        "production-combos-combospage--save-failure",
+        "production-combos-combospage--connection-usage"
       ],
-      "approvedScenarioIds": [
-        "production-combos-combospage--default",
-        "production-combos-combospage--empty",
-        "production-combos-combospage--load-failure",
-        "production-combos-combospage--delete-flow",
-        "production-combos-combospage--create-flow",
-        "production-combos-combospage--edit-flow",
-        "production-combos-combospage--save-failure"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-combos-combospage--default",
           "storyId": "production-combos-combospage--default",
           "runtimeArtifactId": "production-combos-combospage--default",
           "expectedVisibleText": "Combos",
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           },
           "proposedSourceEvidence": "Direct story."
         },
@@ -2529,12 +2518,12 @@
           "storyId": "production-combos-combospage--empty",
           "runtimeArtifactId": "production-combos-combospage--empty",
           "expectedVisibleText": "No combos yet",
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           },
           "proposedSourceEvidence": "Empty API fixture."
         },
@@ -2543,12 +2532,12 @@
           "storyId": "production-combos-combospage--load-failure",
           "runtimeArtifactId": "production-combos-combospage--load-failure",
           "expectedVisibleText": "Combos restored",
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           },
           "proposedSourceEvidence": "Failure fixture."
         },
@@ -2557,12 +2546,12 @@
           "storyId": "production-combos-combospage--delete-flow",
           "runtimeArtifactId": "production-combos-combospage--delete-flow",
           "expectedVisibleText": "Combos",
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           },
           "proposedSourceEvidence": "Play opens deletion path."
         },
@@ -2571,12 +2560,12 @@
           "storyId": "production-combos-combospage--create-flow",
           "runtimeArtifactId": "production-combos-combospage--create-flow",
           "expectedVisibleText": "Create combo",
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           },
           "proposedSourceEvidence": "Play opens creation path."
         },
@@ -2585,12 +2574,12 @@
           "storyId": "production-combos-combospage--edit-flow",
           "runtimeArtifactId": "production-combos-combospage--edit-flow",
           "expectedVisibleText": "Edit combo",
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           },
           "proposedSourceEvidence": "Play opens edit path."
         },
@@ -2599,14 +2588,27 @@
           "storyId": "production-combos-combospage--save-failure",
           "runtimeArtifactId": "production-combos-combospage--save-failure",
           "expectedVisibleText": "Failed to save combo",
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           },
           "proposedSourceEvidence": "Save failure fixture."
+        },
+        {
+          "id": "production-combos-combospage--connection-usage",
+          "storyId": "production-combos-combospage--connection-usage",
+          "runtimeArtifactId": "production-combos-combospage--connection-usage",
+          "expectedVisibleText": "Connection usage",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
+          }
         }
       ],
       "approvedException": null,
@@ -2618,30 +2620,28 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ModelItem",
-      "sourceSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+      "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-combos-combospage--load-failure-error; reaches this child via wrapper JSX tree. Pending runtime review.",
-      "reviewStatus": "approved",
-      "reviewedBy": "FinalPendingA",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-combos-combospage--edit-flow"
       ],
-      "approvedScenarioIds": [
-        "production-combos-combospage--edit-flow"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-combos-combospage--edit-flow",
           "storyId": "production-combos-combospage--edit-flow",
           "runtimeArtifactId": "production-combos-combospage--edit-flow",
           "expectedVisibleText": null,
-          "expectedSha256": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad",
+          "expectedSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
           "axes": [
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "03bf6d5ed6059b4a3d551eff2f04708093658363f709a6e8521da78f2ab4f8ad"
+            "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4"
           }
         }
       ],
@@ -9390,28 +9390,25 @@
       "sourceReviewStatus": "pending-runtime-and-independent-check"
     },
     {
-      "id": "src/app/(dashboard)/dashboard/usage/components/ComboUsageReport.jsx#ComboUsageReport",
-      "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ComboUsageReport.jsx",
+      "id": "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx#ComboUsageReport",
+      "sourcePath": "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx",
       "symbol": "ComboUsageReport",
       "sourceSha256": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "UsageSurface direct fixture renders ComboUsageReport in listed scenario states.",
-      "reviewStatus": "approved",
-      "reviewedBy": "integration-review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Direct combo connection-usage fixtures; runtime proof is orchestrator-owned.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
-        "production-usage-usage-surfaces--combo-report-loaded",
-        "production-usage-usage-surfaces--combo-report-error"
+        "production-combos-connection-usage--combo-report-loaded",
+        "production-combos-connection-usage--combo-report-error"
       ],
-      "approvedScenarioIds": [
-        "production-usage-usage-surfaces--combo-report-loaded",
-        "production-usage-usage-surfaces--combo-report-error"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
-          "id": "production-usage-usage-surfaces--combo-report-loaded",
-          "storyId": "production-usage-usage-surfaces--combo-report-loaded",
-          "runtimeArtifactId": "production-usage-usage-surfaces--combo-report-loaded",
+          "id": "production-combos-connection-usage--combo-report-loaded",
+          "storyId": "production-combos-connection-usage--combo-report-loaded",
+          "runtimeArtifactId": "production-combos-connection-usage--combo-report-loaded",
           "expectedVisibleText": "default-combo",
           "expectedSha256": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
           "axes": [
@@ -9419,13 +9416,13 @@
           ],
           "proposedSourceEvidence": "Direct fixture returns combo row.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515"
+            "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515"
           }
         },
         {
-          "id": "production-usage-usage-surfaces--combo-report-error",
-          "storyId": "production-usage-usage-surfaces--combo-report-error",
-          "runtimeArtifactId": "production-usage-usage-surfaces--combo-report-error",
+          "id": "production-combos-connection-usage--combo-report-error",
+          "storyId": "production-combos-connection-usage--combo-report-error",
+          "runtimeArtifactId": "production-combos-connection-usage--combo-report-error",
           "expectedVisibleText": "Combo usage request failed",
           "expectedSha256": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515",
           "axes": [
@@ -9436,7 +9433,7 @@
             "Failed to fetch combo usage report"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515"
+            "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx": "0ee1b11e480db824e06bca99918947d0628ac6c67f9f1cd3b8f4579e3a277515"
           }
         }
       ],
@@ -9519,7 +9516,10 @@
           "runtimeArtifactId": "production-usage-provider-limits--grouped-accounts",
           "expectedVisibleText": "2 accounts",
           "expectedSha256": "4ecece654f7feb1da621652303329a8d337423b961b0a19f5e8a9373de7e0c2f",
-          "axes": ["controls", "text"],
+          "axes": [
+            "controls",
+            "text"
+          ],
           "proposedSourceEvidence": "GroupedAccounts renders ProviderLimits with two Codex connections and activates the real merged-account switch. Static binding approved by UiStandardsReview; runtime proof pending.",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "4ecece654f7feb1da621652303329a8d337423b961b0a19f5e8a9373de7e0c2f"
@@ -10323,31 +10323,29 @@
       "id": "src/app/(dashboard)/dashboard/usage/page.js#UsageContent",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/page.js",
       "symbol": "UsageContent",
-      "sourceSha256": "81ea3549623df681fb1f800c0e76a4a60409428fb0a897fa0c881097d7d285ce",
+      "sourceSha256": "f068bac780b7505a513868ab606d61ecf50f7c8a30cd9348ec20cb914e79f3a8",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Usage page story directly renders UsagePage and reaches UsageContent default overview.",
-      "reviewStatus": "approved",
-      "reviewedBy": "integration-review",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-usage-page--overview"
       ],
-      "approvedScenarioIds": [
-        "production-usage-page--overview"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-usage-page--overview",
           "storyId": "production-usage-page--overview",
           "runtimeArtifactId": "production-usage-page--overview",
           "expectedVisibleText": "Overview",
-          "expectedSha256": "81ea3549623df681fb1f800c0e76a4a60409428fb0a897fa0c881097d7d285ce",
+          "expectedSha256": "f068bac780b7505a513868ab606d61ecf50f7c8a30cd9348ec20cb914e79f3a8",
           "axes": [
             "text"
           ],
           "proposedSourceEvidence": "UsagePage direct story resolves default overview.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/page.js": "81ea3549623df681fb1f800c0e76a4a60409428fb0a897fa0c881097d7d285ce"
+            "src/app/(dashboard)/dashboard/usage/page.js": "f068bac780b7505a513868ab606d61ecf50f7c8a30cd9348ec20cb914e79f3a8"
           }
         }
       ],
@@ -10360,31 +10358,29 @@
       "id": "src/app/(dashboard)/dashboard/usage/page.js#UsagePage",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/page.js",
       "symbol": "UsagePage",
-      "sourceSha256": "81ea3549623df681fb1f800c0e76a4a60409428fb0a897fa0c881097d7d285ce",
+      "sourceSha256": "f068bac780b7505a513868ab606d61ecf50f7c8a30cd9348ec20cb914e79f3a8",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Usage page story directly renders UsagePage and reaches UsageContent default overview.",
-      "reviewStatus": "approved",
-      "reviewedBy": "integration-review",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-usage-page--overview"
       ],
-      "approvedScenarioIds": [
-        "production-usage-page--overview"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-usage-page--overview",
           "storyId": "production-usage-page--overview",
           "runtimeArtifactId": "production-usage-page--overview",
           "expectedVisibleText": "Total requests",
-          "expectedSha256": "81ea3549623df681fb1f800c0e76a4a60409428fb0a897fa0c881097d7d285ce",
+          "expectedSha256": "f068bac780b7505a513868ab606d61ecf50f7c8a30cd9348ec20cb914e79f3a8",
           "axes": [
             "text"
           ],
           "proposedSourceEvidence": "Direct story renders default export inside Suspense.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/page.js": "81ea3549623df681fb1f800c0e76a4a60409428fb0a897fa0c881097d7d285ce"
+            "src/app/(dashboard)/dashboard/usage/page.js": "f068bac780b7505a513868ab606d61ecf50f7c8a30cd9348ec20cb914e79f3a8"
           }
         }
       ],
@@ -25792,6 +25788,254 @@
       "reviewEvidence": "2026-09-13 independent static source-binding/classification review: all proposed mappings are source-reachable. No browser, runtime, geometry, or accessibility approval.",
       "sourceReviewFindings": [],
       "sourceReviewStatus": "static-approved-runtime-pending"
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx#MonitoringWidgets",
+      "sourcePath": "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx",
+      "symbol": "MonitoringWidgets",
+      "sourceSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Direct production component stories; awaiting independent runtime review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-usage-monitoring-widgets--default",
+        "production-usage-monitoring-widgets--empty",
+        "production-usage-monitoring-widgets--recovery"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-usage-monitoring-widgets--default",
+          "storyId": "production-usage-monitoring-widgets--default",
+          "runtimeArtifactId": "production-usage-monitoring-widgets--default",
+          "expectedVisibleText": null,
+          "expectedSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c"
+          }
+        },
+        {
+          "id": "production-usage-monitoring-widgets--empty",
+          "storyId": "production-usage-monitoring-widgets--empty",
+          "runtimeArtifactId": "production-usage-monitoring-widgets--empty",
+          "expectedVisibleText": null,
+          "expectedSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c"
+          }
+        },
+        {
+          "id": "production-usage-monitoring-widgets--recovery",
+          "storyId": "production-usage-monitoring-widgets--recovery",
+          "runtimeArtifactId": "production-usage-monitoring-widgets--recovery",
+          "expectedVisibleText": null,
+          "expectedSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c"
+          }
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx#StatCard",
+      "sourcePath": "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx",
+      "symbol": "StatCard",
+      "sourceSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Direct production component stories; awaiting independent runtime review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-usage-monitoring-widgets--default",
+        "production-usage-monitoring-widgets--empty",
+        "production-usage-monitoring-widgets--recovery"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-usage-monitoring-widgets--default",
+          "storyId": "production-usage-monitoring-widgets--default",
+          "runtimeArtifactId": "production-usage-monitoring-widgets--default",
+          "expectedVisibleText": null,
+          "expectedSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c"
+          }
+        },
+        {
+          "id": "production-usage-monitoring-widgets--empty",
+          "storyId": "production-usage-monitoring-widgets--empty",
+          "runtimeArtifactId": "production-usage-monitoring-widgets--empty",
+          "expectedVisibleText": null,
+          "expectedSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c"
+          }
+        },
+        {
+          "id": "production-usage-monitoring-widgets--recovery",
+          "storyId": "production-usage-monitoring-widgets--recovery",
+          "runtimeArtifactId": "production-usage-monitoring-widgets--recovery",
+          "expectedVisibleText": null,
+          "expectedSha256": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx": "a7a6658a81e082a69bb7d684d41a61cca88b07b08275f02dffb8fad8e6167f7c"
+          }
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.js#ApiKeyLimitsCard",
+      "sourcePath": "src/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.js",
+      "symbol": "ApiKeyLimitsCard",
+      "sourceSha256": "43deecffc9a7adeba993ae8166fa6dc3dcf9f27015bc0550f54a82b0d9242f49",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Direct production component stories; awaiting independent runtime review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-api-keys--key-limits"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-api-keys--key-limits",
+          "storyId": "durin-ds-production-pages-api-keys--key-limits",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--key-limits",
+          "expectedVisibleText": null,
+          "expectedSha256": "43deecffc9a7adeba993ae8166fa6dc3dcf9f27015bc0550f54a82b0d9242f49",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.js": "43deecffc9a7adeba993ae8166fa6dc3dcf9f27015bc0550f54a82b0d9242f49"
+          }
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.js#LimitRow",
+      "sourcePath": "src/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.js",
+      "symbol": "LimitRow",
+      "sourceSha256": "43deecffc9a7adeba993ae8166fa6dc3dcf9f27015bc0550f54a82b0d9242f49",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Direct production component stories; awaiting independent runtime review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-api-keys--key-limits"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-api-keys--key-limits",
+          "storyId": "durin-ds-production-pages-api-keys--key-limits",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--key-limits",
+          "expectedVisibleText": null,
+          "expectedSha256": "43deecffc9a7adeba993ae8166fa6dc3dcf9f27015bc0550f54a82b0d9242f49",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.js": "43deecffc9a7adeba993ae8166fa6dc3dcf9f27015bc0550f54a82b0d9242f49"
+          }
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#KeysPageClient",
+      "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
+      "symbol": "KeysPageClient",
+      "sourceSha256": "4cacdd02ec7720f0af212d16a75e96a21781d6531ed20c1ecd7055c0cdd1a093",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Direct production component stories; awaiting independent runtime review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-api-keys--key-limits"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-api-keys--key-limits",
+          "storyId": "durin-ds-production-pages-api-keys--key-limits",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--key-limits",
+          "expectedVisibleText": null,
+          "expectedSha256": "4cacdd02ec7720f0af212d16a75e96a21781d6531ed20c1ecd7055c0cdd1a093",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "4cacdd02ec7720f0af212d16a75e96a21781d6531ed20c1ecd7055c0cdd1a093"
+          }
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow",
+      "sourcePath": "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx",
+      "symbol": "ApiKeyRow",
+      "sourceSha256": "4cacdd02ec7720f0af212d16a75e96a21781d6531ed20c1ecd7055c0cdd1a093",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Direct production component stories; awaiting independent runtime review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "durin-ds-production-pages-api-keys--key-limits"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "durin-ds-production-pages-api-keys--key-limits",
+          "storyId": "durin-ds-production-pages-api-keys--key-limits",
+          "runtimeArtifactId": "durin-ds-production-pages-api-keys--key-limits",
+          "expectedVisibleText": null,
+          "expectedSha256": "4cacdd02ec7720f0af212d16a75e96a21781d6531ed20c1ecd7055c0cdd1a093",
+          "axes": [
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx": "4cacdd02ec7720f0af212d16a75e96a21781d6531ed20c1ecd7055c0cdd1a093"
+          }
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
     }
   ],
   "referenceStories": [

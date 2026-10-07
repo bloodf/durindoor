@@ -44,6 +44,7 @@ let loggedCombosErrorCount = 0;
 const fixtureRoutes = (scenario) => {
   if (scenario === "empty") {
     return {
+      "GET /api/usage/combos": { body: { rows: [], boundary: "Last seven days" } },
       "GET /api/combos": { body: { combos: [] } },
       "GET /api/providers": { body: { connections: [] } },
       "GET /api/settings": { body: {} },
@@ -51,6 +52,7 @@ const fixtureRoutes = (scenario) => {
     };
   }
   return {
+    "GET /api/usage/combos": { body: { rows: [], boundary: "Last seven days" } },
     "GET /api/combos": { body: { combos: baseCombos } },
     "GET /api/providers": {
       body: {
@@ -337,4 +339,21 @@ export const CreateComboSpacingMobile = {
   },
   globals: { viewport: { value: "mobile390", isRotated: false } },
   play: assertSpacingModal,
+};
+
+export const ConnectionUsage = {
+  parameters: {
+    storyFixture: {
+      scenario: "default", pathname: "/dashboard/combos",
+      routes: { ...fixtureRoutes("default"), "GET /api/usage/combos": { body: {
+        boundary: "Last seven days",
+        rows: [{ comboId: "combo-prod-1", comboName: "production-fallback", connectionId: "conn-openai-1", requests: 12, promptTokens: 1400, completionTokens: 2200, cost: 0.84 }],
+      } } },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: "Connection usage" })).toBeVisible();
+    await expect(await canvas.findByText("OpenAI prod")).toBeVisible();
+  },
 };

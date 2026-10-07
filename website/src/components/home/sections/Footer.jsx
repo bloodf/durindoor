@@ -47,7 +47,6 @@ export default function Footer() {
               <span>DurinDoor</span>
             </Link>
             <p>{t("Speak, friend, and enter.")}</p>
-            <a href="/brand/durindoor-vector-kit.zip">SVG ↗</a>
           </div>
           <nav className="footer-nav" aria-label={t("Footer")}>
             {groups.map((group) => (

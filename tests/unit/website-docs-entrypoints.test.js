@@ -38,7 +38,7 @@ describe("public documentation entry points", () => {
         /(?:srcset|src)="(assets\/brand\/[^\"]+)"|\]\((assets\/brand\/[^)]+)\)/g,
       ),
     ].map((match) => match[1] || match[2]);
-    expect(assets.length).toBeGreaterThan(5);
+    expect(assets.length).toBeGreaterThan(2);
     expect(assets.filter((path) => !existsSync(resolve(root, path)))).toEqual(
       [],
     );

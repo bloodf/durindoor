@@ -304,8 +304,8 @@
     {
       "name": "Gate control",
       "kind": "custom",
-      "description": "Explicit toggle for the available animated gate; omit with static fallback.",
-      "html": "<button class=\"ds-gate\" aria-pressed=\"false\">Open the door <span aria-hidden=\"true\">\u2197</span></button>",
+      "description": "Explicit Open/Close override for the scroll-driven perspective stone gate; omit with static fallback.",
+      "html": "<button class=\"ds-gate\" aria-pressed=\"false\">Open the door <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"/></svg></button>",
       "css": ".ds-gate{display:flex;gap:28px;align-items:center;background:#0b1712df;color:#baf1d7;border:1px solid #6ee7b74d;border-radius:30px;padding:13px 22px;font:14px var(--home-sans,\"Space Grotesk\",system-ui,sans-serif);cursor:pointer;backdrop-filter:blur(12px)}.ds-gate:hover{background:#183b2a}.ds-gate:focus-visible{outline:2px solid var(--home-emerald,#10b981);outline-offset:3px}"
     },
     {
@@ -352,7 +352,7 @@
     "keyCharacteristics": [
       "Moonlit stone with silver type and emerald emphasis.",
       "Locally served serif displays and sans-serif controls.",
-      "A textured hinged gate with a static fallback.",
+      "A perspective stone gate with extruded arched leaves, moonlit inscriptions and a static fallback.",
       "Mechanism illustrations beside a real interactive dashboard.",
       "Parchment and forest documentation with a 72ch reading measure and mobile guide links."
     ],

@@ -113,7 +113,7 @@ See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for the website tree.
 
 ## Homepage and embedded preview
 
-The homepage gate uses two hinged WebGL meshes carrying the engraved door artwork. Scroll opens the leaves, and the Open the door button explicitly opens or closes them when WebGL animation is available. The toggle is hidden with static fallback artwork. Reduced-motion preferences, unavailable WebGL, and context loss preserve the static artwork.
+The homepage gate restores the perspective 3D stone arch, procedural moonlit inscriptions, mist, and bloom. Two beveled arched slabs rotate about their outer hinges, revealing a recessed passage with four arches and a lit stone floor. Pointer movement subtly changes the camera angle; scroll and the explicit toggle share one smoothed opening state. Rendering pauses offscreen and in hidden tabs. Scroll opens the leaves, and the Open the door button explicitly opens or closes them when WebGL animation is available. The toggle is hidden with static fallback artwork. Reduced-motion preferences, unavailable WebGL, and context loss preserve the static artwork.
 
 The homepage iframe loads `/demo-preview`, a website-only entry that authenticates the browser-local sample session before mounting the production `DashboardLayout` and `EndpointPageClient`. Sidebar navigation continues through the shared dashboard routes. No separate marketing dashboard is drawn. The preview uses the same mock handlers and sample store as `/dashboard`; monitoring is derived from its usage fixtures.
 

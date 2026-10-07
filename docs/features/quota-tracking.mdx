@@ -7,15 +7,9 @@ DurinDoor stores two different kinds of numbers. Local usage (`usageHistory`) is
 
 Open **Dashboard → Quota Tracker** (`/dashboard/quota`) for remaining capacity, cooldowns, and reset hints. The same `ProviderLimits` widget also sits on **Dashboard → Usage**. Auto-ping toggles live on **Dashboard → Providers → (Claude or Codex connection)** and on that limits view.
 
-## What a snapshot is
+## Read a quota snapshot
 
-Schema version 7 keeps `providerQuotaSnapshots` (one current row per connection, account/resource, and dimension) and `quotaFetchStates` (last refresh outcome). A row is `bounded`, `unlimited`, or `unknown`. Missing data is not treated as unlimited or exhausted. Zero is a valid remaining amount.
-
-A snapshot is fresh while `observedAt <= now < staleAt`. Default freshness is 60 seconds, and never past an earlier reset or cooldown. Write clocks accept at most five minutes of skew.
-
-Identity is the non-secret connection id plus namespaced account, resource, dimension, and source keys. API keys, OAuth tokens, emails, and raw bodies are not used as identity.
-
-Deleting a connection cascades its quota rows. Changing an existing connection id to a different provider is rejected.
+Connect an account, open **Quota Tracker**, and refresh its limits. A snapshot is bounded, unlimited, or unknown. Missing data is neither unlimited nor exhausted; zero remaining capacity is valid. Default freshness is 60 seconds, shortened by an earlier reset or cooldown. Stale information cannot block an account by itself.
 
 ## Who has a provider API
 
@@ -27,29 +21,17 @@ These do not create snapshot rows: gemini API-key, qwen, iFlow, xAI, Xiaomi MiMo
 
 Successful observations cache for at most 60 seconds. Equal callers share one in-flight refresh. The cache key is provider, connection id, and connection revision.
 
-## Preflight
+## Verify account selection
 
-Before a chat dispatch, each account candidate is scored against persisted snapshots. The evaluator does not call the provider. Fresh `available` and `low` stay eligible. Fresh `exhausted` or `cooldown` on the exact resource is skipped. Missing, stale, unknown, malformed, and foreign-source rows fail open.
+Before dispatch, fresh exhausted or cooling-down quota can skip an account for the relevant model or account window. Missing, stale, unknown, or malformed data keeps the account eligible. This check reads existing snapshots rather than fetching the provider on every request.
 
-Gates:
+When multiple accounts have comparable fresh quota, remaining capacity, in-flight requests, health, and priority influence their order. Local reservations estimate capacity for concurrent dispatches; they are not provider quota reports. Unknown quota keeps the established account order.
 
-- `all-required`: skip if any selected constraint blocks.
-- `any-sufficient`: eligible if any selected pool is free (Kiro, CodeBuddy, Qoder CN, DeepSeek).
-- `first-present`: use the first configured bucket that exists (Codex prefers an exact model or family bucket, then account).
+The optional routing floor is off by default and normally uses 2% remaining when enabled. Window and connection overrides take precedence over provider and global settings. Fresh bounded request windows must still have capacity for one request.
 
-`scope:account` applies to every model. `model:<id>` matches an exact catalog, upstream, or configured quota-family resource. No substring matching.
+File-backed SQLite coordinates reservations on one host. The `sql.js` fallback cannot coordinate multiple processes, and separate hosts need an external coordinator.
 
-A later coherent success writes an empty watermark so an older in-flight 429 cannot resurrect a lock.
-
-## Ranking and reservations
-
-Schema version 8 adds `quotaReservations`. Those rows are local tickets for one physical dispatch, not provider facts. A retry or proxy-to-direct fallback releases the old ticket before taking a new one.
-
-When several accounts have comparable fresh quota, the score is 1000 points: remaining headroom 600, in-flight reservation pressure 200, health 125, configured priority 75. Ties use priority, reservation load, original order, then a hashed identity. Accounts unused for five minutes enter a starvation tier so they are not starved forever. Unknown or stale quota keeps the established order.
-
-Atomic capacity always needs one remaining request on a fresh bounded `requests:*` window. The optional routing floor (off by default, 2% remaining) only applies to fresh normalized ratios. Precedence is connection/window, then provider/window, then global.
-
-`sql.js` cannot coordinate this across processes; file-backed SQLite adapters can on one host. Separate hosts need an external coordinator.
+Send a request after refreshing an exhausted account alongside another eligible account. Check **Usage** for the account that answered. If every account and combo member is blocked, the client receives the all-rate-limited response. `Retry-After` is present only when every blocking account has a known deadline.
 
 ## Auto-ping
 
@@ -57,20 +39,24 @@ Opt-in per active Claude or Codex OAuth connection. DurinDoor sends a minimal re
 
 The scheduler uses the same snapshots and tracker. A ping counts as success only after a native Claude `message_stop` or a valid Codex Responses terminal. Empty or truncated 200 streams do not update ping metadata. A request already accepted upstream cannot be recalled.
 
-## Free limit resets (Claude Code)
+## Redeem a Claude reset only when intended
 
 Claude Code OAuth connections eligible for Anthropic's free "limit reset" program (`cedar_ember`) show their available resets on the same limits view, read-only, as part of the normal usage poll. No extra request is made to see them.
 
 Spending a reset is never automatic. The dashboard only calls the redeem endpoint after you press the reset button and confirm the Durin DS dialog, which states the action is irreversible and names which limits it refills (session, weekly, or a model-scoped weekly window). Redeeming clears the connection's cached quota so the next read shows the refilled limits.
 
-## Cost
+## Compare quota with cost
 
 Cost estimates need catalog prices and token counts. Reasoning tokens are a subset of output, not an extra charge. Treat the number as an operational hint. The provider remains the billing authority.
 
 Resetting local usage does not reset upstream quota. Back up `DATA_DIR` first if you still need the history.
 
-## Worked example
+## Check fallback with two accounts
 
 Two Codex OAuth connections. The first is on a five-hour window that the Quota Tracker shows as exhausted until 18:00 UTC. Send `model: "codex/gpt-5"` (or your combo that lists that member). Preflight skips the exhausted row and dispatches the second connection. Usage shows the second account. No provider 429 is fabricated for the skip.
 
 If both are exhausted and no other combo member remains, the client sees the existing all-rate-limited response, with `Retry-After` only when every blocking account has a known deadline.
+
+## Recover missing or stale limits
+
+Refresh the account and read the reported error. Reauthorize expired OAuth credentials, or check provider availability and proxy connectivity. A provider without a quota API cannot produce a live snapshot through this tracker. Resetting local usage does not replenish the upstream account.

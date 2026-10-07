@@ -3,11 +3,35 @@ title: MCP control
 description: JSON-RPC management server at POST /api/mcp/control, its tools, auth, and client setup.
 ---
 
-The control server is a JSON-RPC 2.0 MCP endpoint for the running DurinDoor instance. An MCP client lists combos, toggles connections, reads quota, and patches non-secret settings without opening the dashboard. The MCP gateway is a different endpoint: it sits in front of upstream MCP servers and authenticates with a gateway key on `/api/mcp-gateway`. Control authenticates with a dashboard session, the CLI token, or a DurinDoor API key, the same principals as the [Management API](../reference/management-api.mdx).
+## Current implementation and precedence
 
-Client snippets are under [Connect a client](#connect-a-client) below. A curl-and-key walkthrough is on [Automating DurinDoor](../guides/automating-durindoor.mdx).
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/mcp-control.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
 
-## Check transport support
+POST handles one stateless JSON-RPC object. dashboardGuard authenticates remote callers and rejects foreign Origin on the credential-free local branch. Tools sanitize secrets and strip security-critical settings regardless of requested tool input. Gateway keys are a separate credential domain.
+
+### Execution ownership and evidence
+
+- [src/app/api/mcp/control/route.js](../../../../src/app/api/mcp/control/route.js)
+- [src/lib/mcp/control/tools.js](../../../../src/lib/mcp/control/tools.js)
+- [src/dashboardGuard.js](../../../../src/dashboardGuard.js)
+
+### Verification entrypoints
+
+- [tests/unit/mcp-control-route.test.js](../../../../tests/unit/mcp-control-route.test.js)
+- [tests/unit/mcp-control-tools.test.js](../../../../tests/unit/mcp-control-tools.test.js)
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
+The control server is a JSON-RPC 2.0 MCP endpoint for the running DurinDoor instance. An MCP client lists combos, toggles connections, reads quota, and patches non-secret settings without opening the dashboard. The MCP gateway is a different endpoint: it sits in front of upstream MCP servers and authenticates with a gateway key on `/api/mcp-gateway`. Control authenticates with a dashboard session, the CLI token, or a DurinDoor API key, the same principals as the [Management API](../../../../docs/reference/management-api.mdx).
+
+Client snippets are under [Client setup](#client-setup) below. A curl-and-key walkthrough is on [Automating DurinDoor](../../../../docs/guides/automating-durindoor.mdx).
+
+## Endpoint and transport
 
 `POST /api/mcp/control` is stateless HTTP. One JSON-RPC object per POST. The handler implements POST only.
 
@@ -20,9 +44,9 @@ Client snippets are under [Connect a client](#connect-a-client) below. A curl-an
 
 A `tools/call` result is MCP content: `{ content: [{ type: "text", text: "<pretty JSON>" }] }`. Unknown JSON-RPC methods return `{ error: { code: -32601 } }` with HTTP 200. Parse failures are `-32700`. Invalid request is `-32600`. `tools/call` without `name` is `-32602`. Tool throws use `error.status` as the JSON-RPC code (400, 404) while HTTP stays 200. Transport and auth failures from the gate are HTTP 401 or 403.
 
-## Authenticate the client
+## Auth
 
-Remote clients can use this endpoint with any of these credentials:
+The route is classified before `LOCAL_ONLY_PATHS`, so a remote host can call it. Any of:
 
 - dashboard JWT cookie `auth_token`
 - header `x-9r-cli-token`
@@ -36,7 +60,7 @@ A gateway key does not unlock this endpoint.
 Do not point a browser page at this URL from another origin. Curl, Claude Code, and Cursor send no `Origin` and are the intended clients.
 </Callout>
 
-## Choose a control tool
+## Tools
 
 Read-only tools do not write DurinDoor state. Mutating tools do.
 
@@ -62,17 +86,17 @@ Read-only tools do not write DurinDoor state. Mutating tools do.
 
 Empty `kinds` or an unknown kind is 400. Invalid `period` is 400. Combo name rules match `POST /api/combos`.
 
-## Protect credentials and security settings
+## What is withheld
 
-Connection tools return sanitized records. `apiKey`, `accessToken`, `refreshToken`, `idToken`, OAuth cookies, and `clientSecret` never leave the tool. `connectionProxyUrl` is dropped, not redacted, because it can embed credentials in shapes `new URL` does not parse.
+`list_connections` and `toggle_connection_active` reuse the client sanitizer. `apiKey`, `accessToken`, `refreshToken`, `idToken`, OAuth cookies, and `clientSecret` never leave the tool. `connectionProxyUrl` is dropped, not redacted, because it can embed credentials in shapes `new URL` does not parse.
 
-API-key lists contain masked secrets and usage totals, never raw keys.
+`list_api_keys` uses `toApiKeyManagementView`: masked secret, no raw `key`.
 
 `get_settings` drops `password`, `passwordSessionEpoch`, `oidcClientSecret`, and `mitmSudoEncrypted`, and redacts `user:password@` on `outboundProxyUrl`.
 
-`update_settings` strips secret keys and security-critical settings (`exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, OIDC fields, `tunnelDashboardAccess`, `enableObservability`, outbound-proxy fields), and connection-scoped `claudeAutoPing` / `codexAutoPing`. An API-key caller cannot change security-critical settings. A patch whose keys are all stripped returns 400 `No updatable settings provided` rather than a silent no-op.
+`update_settings` strips secret keys, `AUTH_CRITICAL_SETTING_KEYS` (`exposeComboOnly`, `requireLogin`, `requireApiKey`, `authMode`, OIDC fields, `tunnelDashboardAccess`, `enableObservability`, outbound-proxy fields), and connection-scoped `claudeAutoPing` / `codexAutoPing`. An API-key caller can never satisfy `canModifySecurityCriticalSettings`. A patch whose keys are all stripped returns 400 `No updatable settings provided` rather than a silent no-op.
 
-## Connect a client
+## Client setup
 
 Each snippet sends the DurinDoor API key, not a gateway key.
 
@@ -117,9 +141,9 @@ Then `tools/list` with the same key. Call a tool with `"method":"tools/call","pa
 </Tab>
 </Tabs>
 
-## Verify read and write access
+## Example prompts
 
-First call `list_combos` or `get_settings` and verify the returned state. Then, when you intend a change, ask the connected MCP client:
+Ask the connected MCP client:
 
 - List my combos and their members.
 - Create a fallback combo named `coding-default` with `anthropic/claude-sonnet-4-5` then `openai/gpt-4.1`.

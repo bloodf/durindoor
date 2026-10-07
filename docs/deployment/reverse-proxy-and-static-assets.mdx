@@ -3,22 +3,18 @@ title: Reverse proxy and static assets
 description: Loopback proxy trust for X-Forwarded-For, static asset checks, nginx and Caddy.
 ---
 
-Two production details that bite after the process is already up: which `X-Forwarded-For` hops DurinDoor believes, and whether the standalone server still has the JS/CSS the last `npm run build` emitted.
+Use this guide after DurinDoor responds on loopback. You need a working build, a public HTTPS origin, and nginx or Caddy on the same host.
 
-## `X-Forwarded-For`
+## Configure the public origin
 
-`custom-server.js` wraps every request. It reads the socket address, then:
+Set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public HTTPS origin. Set `AUTH_COOKIE_SECURE=true`, restart the app, and verify login through that origin.
 
-```javascript
-const isLoopbackProxy = socketIp === "127.0.0.1" || socketIp === "::1" || socketIp === "::ffff:127.0.0.1";
-const lastXff = xff ? String(xff).split(",").map((s) => s.trim()).filter(Boolean).pop() : "";
-const ip = isLoopbackProxy && lastXff ? lastXff : socketIp;
-```
+## Configure forwarding headers
 
-Those lines are `custom-server.js` 103-110. Trust is the nearest hop, and only when the TCP peer is loopback. Leftmost `x-forwarded-for` and `x-real-ip` are ignored because a client can send them. The wrapper then deletes `x-forwarded-for`, `x-real-ip`, `x-forwarded-host`, and `x-forwarded-proto` before Next sees the request. Set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public HTTPS origin; the proto/host headers are not a substitute.
+DurinDoor trusts the rightmost `X-Forwarded-For` value only when the TCP peer is loopback. Leftmost `x-forwarded-for` and `x-real-ip` are ignored because a client can send them. The wrapper then deletes `x-forwarded-for`, `x-forwarded-host`, and `x-forwarded-proto` before Next sees the request. Set `BASE_URL` and `NEXT_PUBLIC_BASE_URL` to the public HTTPS origin; the proto/host headers are not a substitute.
 
 <Callout type="warn">
-A proxy that is not on loopback relative to DurinDoor (host nginx to a Docker bridge IP, or Caddy in another Compose service) fails `isLoopbackProxy`. DurinDoor then stamps `x-9r-real-ip` from `socket.remoteAddress` and ignores `X-Forwarded-For`. Keep DurinDoor on `127.0.0.1` and proxy to that port on the same host.
+A proxy that is not on loopback relative to DurinDoor (host nginx to a Docker bridge IP, or Caddy in another Compose service) does not qualify for forwarding-header trust. DurinDoor then uses the socket peer address and ignores `X-Forwarded-For`. Keep DurinDoor on `127.0.0.1` and proxy to that port on the same host.
 </Callout>
 
 Overwrite `X-Forwarded-For`. Do not append.
@@ -64,7 +60,7 @@ durindoor.example.com {
 
 ## Static assets
 
-Next standalone tracing does not copy everything this repo needs at boot. `scripts/build-app.mjs` (the `npm run build` entry) copies `custom-server.js`, `open-sse/`, MITM sources, `public/`, and `.next/static/` into `.next/standalone/`. Previous `public/` and `.next/static/` copies are removed first so an old hashed chunk cannot be served.
+Next standalone tracing does not copy everything this repo needs at boot. `npm run build` copies `custom-server.js`, `open-sse/`, MITM sources, `public/`, and `.next/static/` into `.next/standalone/`. Previous `public/` and `.next/static/` copies are removed first so an old hashed chunk cannot be served.
 
 The Docker image does the same copy: `public/` and `.next/static/` land next to standalone. A custom image that drops those `COPY` lines 404s `/_next/static/...` and leaves the dashboard blank.
 
@@ -76,6 +72,6 @@ After `npm run build`:
 npm run verify:static
 ```
 
-`scripts/verify-static-assets.mjs` boots `.next/standalone/custom-server.js` on a free `127.0.0.1` port, with a throwaway `DATA_DIR` and dummy `JWT_SECRET` / `API_KEY_SECRET`. It `GET`s `/dashboard`, parses local `.js`, `.css`, `.woff2`, `.svg`, `.ico`, `.webmanifest`, and `.png` URLs, and requires HTTP 200 for each. Missing assets print and the process exits non-zero. No JS/CSS in the HTML is also a failure.
+The check starts `.next/standalone/custom-server.js` on a free `127.0.0.1` port, with a throwaway `DATA_DIR` and dummy `JWT_SECRET` / `API_KEY_SECRET`. It `GET`s `/dashboard`, parses local `.js`, `.css`, `.woff2`, `.svg`, `.ico`, `.webmanifest`, and `.png` URLs, and requires HTTP 200 for each. Missing assets print and the process exits non-zero. No JS/CSS in the HTML is also a failure.
 
-Run it in CI and before a VPS or image promote. Source: [Laptop](./localhost.mdx). Docker copies: [Docker](./docker.mdx). VPS unit: [VPS and cloud](./cloud.mdx).
+A zero exit code confirms those assets are reachable in the checked build. It does not run browser interactions. If the check fails, rebuild before restarting, and inspect missing files in the packaged build. Run the check before deploying. Install choices: [Laptop](./localhost.mdx). Docker copies: [Docker](./docker.mdx). VPS unit: [VPS and cloud](./cloud.mdx).

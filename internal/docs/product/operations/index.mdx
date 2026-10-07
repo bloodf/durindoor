@@ -1,0 +1,40 @@
+---
+title: Operations
+description: Startup, upgrades, data, Postgres, security, and API-key scoping.
+icon: Settings
+---
+
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/operations/index.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+Public index and meta pages must retain every published route. Internal snapshots are repository-only and are not linked from public pages. Navigation descriptions must reflect current native protocol and operation boundaries.
+
+### Execution ownership and evidence
+
+- [docs/operations/meta.json](../../../../docs/operations/meta.json)
+- [package.json](../../../../package.json)
+
+### Verification entrypoints
+
+This index has no runtime test of its own. Validate navigation and the docs checker.
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
+Day-two work after the gateway is installed. Start and stop the process, back up `DATA_DIR`, move versions, optionally cut over to Postgres, and lock the dashboard before it leaves loopback.
+
+Secrets, login lockout, and API-key account scoping live here too. Install steps stay in [Installation](../../../../docs/getting-started/installation.mdx). Bind addresses and reverse proxies stay in [Deployment](../../../../docs/deployment).
+
+<Cards>
+  <Card title="Startup" href="/docs/operations/startup" description="CLI, source, and Docker start. Health, smoke test, restart, logs." />
+  <Card title="Upgrading" href="/docs/operations/upgrading" description="Backup, image or npm bump, schema migrations, rollback." />
+  <Card title="Data management" href="/docs/operations/data-management" description="SQLite file, backups, restore, and files that skip DATA_DIR." />
+  <Card title="Postgres" href="/docs/operations/postgres" description="Opt-in engine, compose profiles, cutover, fallback, rollback." />
+  <Card title="Security" href="/docs/operations/security" description="JWT_SECRET, passwords, API_KEY_SECRET, MACHINE_ID_SALT, rate limits." />
+  <Card title="API key scoping" href="/docs/operations/api-key-scoping" description="Restrict a key to named provider accounts. Zero rows stays open." />
+</Cards>

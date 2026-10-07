@@ -3,15 +3,38 @@ title: Combos
 description: Named fallback chains with strategies, capability ceilings, and connection allow-lists.
 ---
 
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/combos.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+Combo dispatch owns strategy and nested members; account fallback runs inside each member before moving on. Capability ceilings only narrow derived capabilities and nested account allow-lists intersect. Preserve outer combo usage attribution. Classifier privacy covers the classifier request only; inference still goes to the selected provider.
+
+### Execution ownership and evidence
+
+- [open-sse/services/combo.js](../../../../open-sse/services/combo.js)
+- [src/lib/combos/comboManagement.js](../../../../src/lib/combos/comboManagement.js)
+- [src/sse/handlers/chat.js](../../../../src/sse/handlers/chat.js)
+
+### Verification entrypoints
+
+- [tests/unit/combo-routing.test.js](../../../../tests/unit/combo-routing.test.js)
+- [tests/unit/combo-capability-ceiling.test.js](../../../../tests/unit/combo-capability-ceiling.test.js)
+- [tests/unit/combo-connection-allow-list.test.js](../../../../tests/unit/combo-connection-allow-list.test.js)
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
 A combo is an ordered list of models exposed as one name. The client puts that name in `model`. DurinDoor tries each member until one returns a usable response or the list is exhausted.
 
 Open **Dashboard → Combos** (`/dashboard/combos`) to create, edit, copy the name, pick a strategy, set a per-member timeout, and edit the connection allow-list. Connection groups on the same page are labels only: adding a group copies current member ids into the allow-list at write time.
 
-## Create a fallback combo
+Chat traffic that uses a combo still goes `src/sse/handlers/chat.js` → combo dispatch → `handleChatCore` per member. Usage rows keep the outer combo id and name even when a nested combo supplied the member.
 
-Before creating a combo, add active connections for its member providers and test each model directly. Use IDs from your live model picker.
-
-
+## Create
 
 Name rules: letters, digits, `-`, `_`, and `.`. Duplicate names return HTTP 400. `POST /api/combos` needs `name`; `models` is the ordered member list. Optional `capabilities` is a ceiling (below). Optional `allowedConnectionIds` is at most 500 ids.
 
@@ -41,7 +64,7 @@ The dashboard combo editor's Models panel has a sort selector: manual (drag-and-
 
 ## Strategies
 
-Choose a strategy on the Combos page. The default is `fallback`; a combo without an override uses the global combo strategy.
+Each combo stores a strategy under `comboStrategies[name].fallbackStrategy`. The page default is `fallback`. Global fallback when a combo has no override is `comboStrategy`, also `fallback`.
 
 | Value | Behaviour |
 | --- | --- |
@@ -50,7 +73,7 @@ Choose a strategy on the Combos page. The default is `fallback`; a combo without
 | `weighted` | Pick by member weight. |
 | `smart-scoring` | Reorder by provider health (quota, ban status) and prefer the best score, then fall through on errors. |
 | `smart` | Judge how hard the current ask is, then try the best-matched member first. Aliases: `task`, `task-aware`, `auto`. |
-| `fusion` | Query every member in parallel as a panel, then a judge model writes one answer. Fusion has its own panel timeout, not the per-member timeout. Every panel and judge call can incur a charge: each request bills every panel member plus the judge (N+1 calls). |
+| `fusion` | Query every member in parallel as a panel, then a judge model writes one answer. Fusion has its own panel timeout, not the per-member timeout. Best quality, highest cost: each request bills every panel member plus the judge (N+1 calls). |
 
 Capacity auto-switch: with capability-aware routing on, a request that carries images, PDF, or audio goes first to a member that supports that input, whatever the strategy. See [Capability ceiling](#capability-ceiling).
 
@@ -64,7 +87,7 @@ Dashboard → Combos lists a checkbox on every combo and a "Select all" row abov
 
 ## Presets (Cursor / Claude Default)
 
-`GET/POST /api/combos/presets?source=cursor|claude` builds combos named like the client's own model IDs (`composer-2.5`, `opus`) seeded with the matching prefixed route (`cu/composer-2.5`, `cc/claude-opus-5`), so Cursor or Claude Code can talk to DurinDoor without sending a provider prefix. `GET` previews (`toCreate`/`toSkip` counts); `POST` creates the missing ones and skips names that already exist. The generator buttons are implemented but hidden in the current UI.
+`GET/POST /api/combos/presets?source=cursor|claude` builds combos named like the client's own model IDs (`composer-2.5`, `opus`) seeded with the matching prefixed route (`cu/composer-2.5`, `cc/claude-opus-5`), so Cursor or Claude Code can talk to DurinDoor without sending a provider prefix. `GET` previews (`toCreate`/`toSkip` counts); `POST` creates the missing ones and skips names that already exist. `src/lib/comboPresets.js` builds the item list; a `liveModels` option lets a caller substitute a live catalog for the static `cu`/`cc` registry (unused for now, since no live Cursor catalog fetcher is wired). The generator buttons are implemented but hidden in the current UI.
 
 ## Complexity-aware routing
 
@@ -88,7 +111,7 @@ nothing downstream changes. `TYPESAFE_API_BASE` overrides the endpoint.
 
 Only the text of `user` messages in the current turn is sent, capped at 4000
 characters. System and developer prompts, tool and function messages, tool
-results, and earlier turns are not sent to the classifier. The chosen model provider still receives the normal inference request. Only chat requests (chat completions,
+results, and earlier turns never leave DurinDoor. Only chat requests (chat completions,
 messages, responses, Gemini) are classified; TTS, image, search and fetch combos
 always use the local heuristic. The call has one 3s deadline
 covering the response headers and body, and it is cancelled when the client
@@ -136,7 +159,7 @@ show `laya:<TIER>` instead of `jev:<TIER>`.
 
 A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, and HTTP 200 with no usable output. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
 
-A malformed client body is rejected before combo dispatch. Fix the request before testing fallback.
+A malformed client body is rejected before combo dispatch. Do not expect a combo to paper over a bad request.
 
 Account fallback inside one member still runs first. If OpenAI account A 429s and account B succeeds, the combo does not move to member 2.
 
@@ -156,13 +179,13 @@ Groups never become dispatch units. Deleting a group does not disable its connec
 
 ## Disabled members
 
-**Dashboard → Providers → (provider) → Models** can disable a catalog ID via `POST /api/models/disabled`. The stored `models` array is not mutated. Store outages fail open (members stay). The same list is enforced on direct requests: calling a disabled model directly returns HTTP 403.
+**Dashboard → Providers → (provider) → Models** can disable a catalog id via `POST /api/models/disabled`. Matching uses the member's saved provider form and its registry/node counterpart. The stored `models` array is not mutated. Store outages fail open (members stay). The same list is enforced on direct requests: calling a disabled model directly returns HTTP 403.
 
-## Verify fallback
+## Worked example
 
 1. Create `coding-default` with two members, preferred first.
 2. Send `model: "coding-default"` to `/v1/chat/completions`.
 3. Pause the first member's connection, or pick a model that 401s.
 4. The next member should serve. Usage shows the combo name plus the member that answered.
 
-API-key `allowedCombos`, when non-empty, rejects any other combo with HTTP 403. Details: [API keys](../guides/api-keys.mdx).
+API-key `allowedCombos`, when non-empty, rejects any other combo with HTTP 403. Details: [API keys](../../../../docs/guides/api-keys.mdx).

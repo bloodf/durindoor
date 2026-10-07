@@ -1,126 +1,90 @@
 ---
 title: Laptop
-description: Run DurinDoor on a laptop with npx, a global CLI install, or a source checkout.
+description: Start a local gateway, verify a provider, and connect desktop clients.
 ---
 
-Personal tools and desktop clients talk to a gateway on this machine. The published binary is `durindoor`. Node.js 20.20.2 and npm 10.8.2 are the engine versions.
+Run DurinDoor on your computer to connect desktop clients to one local gateway. Install Node.js 20.20.2 and npm 10.8.2 before using the CLI or source package.
 
-<Callout type="warn">
-The CLI default bind is `0.0.0.0`. Other hosts on the LAN can reach the port. Pass `--host 127.0.0.1` for loopback only. `npm run start` and `npm run dev` bind `127.0.0.1` unless `HOSTNAME` is set.
-</Callout>
+## Prepare a local install
 
-<Tabs items={['npx', 'global CLI', 'source']}>
+Choose a persistent data directory. Native installs default to `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. A Unix-style `DATA_DIR` on Windows is ignored.
+
+For a fresh install, set a unique `JWT_SECRET` and a password you can retrieve. Save both in your private launcher or service environment so restarts reuse them. On macOS or Linux:
+
+```bash
+export DATA_DIR="$HOME/.durindoor"
+export JWT_SECRET="$(openssl rand -hex 32)"
+read -r -s INITIAL_PASSWORD
+export INITIAL_PASSWORD
+```
+
+The `read` command waits for your chosen password. Enter at least six characters. Published example values and `123456` are rejected as new passwords. On Windows, set the same variables through your protected PowerShell environment or launcher.
+
+## Start the gateway
+
+<Tabs items={['npx', 'Global CLI', 'Source']}>
 <Tab value="npx">
 
 ```bash
-npx durindoor
+npx durindoor --host 127.0.0.1
 ```
 
-One-off run. npm fetches the package for that invocation. Daily use is a global install or a source checkout.
+npm downloads the package for this invocation.
 
 </Tab>
-<Tab value="global CLI">
+<Tab value="Global CLI">
 
 ```bash
 npm install --global durindoor
-durindoor
+durindoor --host 127.0.0.1
 ```
 
-Same binary. Flags from `durindoor --help` apply here and to `npx`.
-
 </Tab>
-<Tab value="source">
+<Tab value="Source">
 
 ```bash
 git clone https://github.com/bloodf/durindoor.git
 cd durindoor
 npm install --no-audit --no-fund
 npm run build
-npm run start
+HOSTNAME=127.0.0.1 npm start
 ```
 
-`npm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that process binds `127.0.0.1`.
-
-Contributor loop:
-
-```bash
-npm run dev
-```
-
-Dev listens on port 20127. Production CLI and `npm run start` use 20128.
+For development, use `npm run dev`. It listens on port `20127` instead of `20128`.
 
 </Tab>
 </Tabs>
 
-## Ports and URLs
+The CLI binds every interface by default. Keep `--host 127.0.0.1` for a local install. Source production binds loopback when `HOSTNAME` is unset.
 
-| Surface | Default URL |
-| --- | --- |
-| Dashboard | `http://localhost:20128/dashboard` |
-| API base | `http://localhost:20128/v1` |
-| Health | `http://localhost:20128/api/health` |
-
-Change the CLI port with `-p` / `--port`, or `PORT` for source and Docker.
+## Verify the install
 
 ```bash
-durindoor --port 8080
+curl -fsS http://localhost:20128/api/health
 ```
 
-Then point clients at `http://localhost:8080/v1`. The CLI prints a LAN URL when it binds `0.0.0.0` and it can see a non-internal IPv4 address.
+Expect `{"ok":true}`. This checks the HTTP listener only.
 
-`curl http://localhost:20128/api/health` should return `{"ok":true}`.
+Open `http://localhost:20128/dashboard`, sign in with the password you set, and add a provider connection. Create a DurinDoor API key for each client. Use `http://localhost:20128/v1` as the client's API base. Complete the authenticated [startup smoke test](../operations/startup.mdx#verify-inference) to check provider access.
 
-## CLI flags
-
-```text
--p, --port <port>   Port (default: 20128)
--H, --host <host>   Bind address (default: 0.0.0.0)
--n, --no-browser    Listed in --help
--l, --log           Show server logs (hidden by default)
--t, --tray          System tray, no interface menu
-    --skip-update   Skip the update check
-```
-
-The process starts the standalone server as a child with `PORT` and `HOSTNAME` set from those flags. Logs stay quiet unless `--log` is on. `-n` is parsed and printed by `--help`; start does not open a browser on its own. The menu entry "Web UI" and the tray item "Open Dashboard" call `open` / `start` / `xdg-open`.
-
-Heap default is a 6 GB V8 cap. `NINEROUTER_MAX_OLD_SPACE_SIZE` (positive integer MB, or `0` to leave sizing to Node) overrides it. An existing `--max-old-space-size` in `NODE_OPTIONS` also suppresses the CLI flag. Child argv always includes `--dns-result-order=ipv4first`.
-
-## Tray and launcher
-
-Foreground `durindoor` waits until the server answers, then shows a menu: Web UI, Terminal UI, Hide to Tray, Exit. A tray icon is created next to that menu.
-
-`-t` / `--tray` skips the menu. The process stays up with the tray only. Closing the terminal on macOS sends `SIGHUP`; tray mode ignores that signal so the menu-bar icon keeps the server.
-
-Hide to Tray on macOS stays in the same process (a detached child would sit outside the login session and the menu-bar item would not appear). On Windows and Linux, Hide to Tray stops the current worker, then spawns a detached `cli.js --tray --skip-update -p <port>`.
-
-Linux tray needs `DISPLAY`. Without it, tray init returns null and the server still runs. Windows uses a PowerShell NotifyIcon; macOS and Linux use systray.
-
-Tray menu rows: status with the port, Open Dashboard (`http://localhost:<port>/dashboard`), Enable Auto-start / a checkmark when it is on, Quit. Auto-start writes a LaunchAgent labeled `com.9router.autostart` on macOS, a Startup `.vbs` on Windows, or `~/.config/autostart/9router.desktop` on Linux.
-
-After an update relaunch with no TTY, the CLI forces tray mode even without `-t`.
-
-Quit from the tray sends SIGTERM to the worker, then SIGKILL if needed. `Ctrl+C` in a foreground terminal does the same cleanup.
-
-## Data directory
-
-Unset `DATA_DIR` uses `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. SQLite is `DATA_DIR/db/data.sqlite`. The directory is created if missing. A Unix-style path on Windows is ignored.
+## Change the port or use the tray
 
 ```bash
-cp -a -- ~/.9router ~/.9router.backup-$(date +%Y%m%d%H%M%S)
+durindoor --host 127.0.0.1 --port 8080
+durindoor --host 127.0.0.1 --tray
+durindoor --help
 ```
 
-If `DATA_DIR` is custom, copy that directory instead. Stop the process first. Full restore steps: [Data management](../operations/data-management.mdx).
+After a port change, update each client's base URL. `--log` displays server logs. `--skip-update` skips the update check. `--no-browser` is accepted, but startup does not open a browser automatically.
 
-## Local network
+Foreground CLI offers **Web UI**, **Terminal UI**, **Hide to Tray**, and **Exit**. Tray mode offers **Open Dashboard**, **Enable Auto-start**, and **Quit**. Linux tray mode needs `DISPLAY`; the server can still run without a tray. Quit from the tray or press Ctrl+C in the foreground to stop the worker.
 
-`--host 127.0.0.1` keeps the dashboard on this machine. Binding `0.0.0.0` without a password you set, and without a proxy, puts privileged dashboard routes on the LAN. Change `INITIAL_PASSWORD` (built-in fallback is `123456`). Set `JWT_SECRET` before the first start on a fresh data dir. Remote login with `123456` is refused.
+Auto-start uses your OS login session. Verify that its environment retains the data path and secrets before depending on it. Use [VPS and cloud](./cloud.mdx) for a host service.
 
-For a second device, prefer a VPN, SSH tunnel, Tailscale, or the [VPS](./cloud.mdx) plus [reverse proxy](./reverse-proxy-and-static-assets.mdx) path. [Security](../operations/security.mdx) is the hardening list. [Installation](../getting-started/installation.mdx) has env vars and Node versions.
+## Connect from another device
 
-## Cloudflare Tunnel
+Use a VPN, SSH tunnel, or a [reverse proxy](./reverse-proxy-and-static-assets.mdx). Before binding to the LAN, follow [Security](../operations/security.mdx) and enable **Require API Key**.
 
-**Endpoint** (`/dashboard/endpoint`) can start a Cloudflare Tunnel. It gives your local DurinDoor a public HTTPS URL with no port forwarding and no static IP. Use that URL from any network, share it with your team, or paste it into tools that call from the cloud, such as Cursor and Cline. Traffic is encrypted with TLS through Cloudflare.
+**Dashboard → Endpoint** can start a Cloudflare Tunnel. First startup downloads `cloudflared`, and the host needs outbound TCP and UDP port 7844. Wait for a public HTTPS URL, then append `/v1` in your client. The dashboard stays blocked through the tunnel unless **Allow dashboard access via tunnel** is enabled; dashboard login still applies. Stop the tunnel to revoke that URL.
 
-DurinDoor downloads `cloudflared` from Cloudflare's GitHub releases the first time you start a tunnel. The tunnel needs outbound port 7844 (TCP and UDP), and the connection can take 10 to 30 seconds. `TUNNEL_TRANSPORT_PROTOCOL` picks `http2` (default), `quic`, or `auto`; see [Environment variables](../reference/environment.mdx).
-
-Turn on **Require API Key** before you share the URL. The dashboard stays blocked through the tunnel unless you turn on **Allow dashboard access via tunnel**, and login is still required when it is on. Disabling the tunnel disconnects it, and the tunnel URL stops working.
+If startup fails, check the port, the saved `JWT_SECRET`, and the service's data-directory permissions. Stop the process before a [backup or restore](../operations/data-management.mdx).

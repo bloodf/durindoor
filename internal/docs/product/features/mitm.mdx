@@ -3,6 +3,32 @@ title: MITM proxy
 description: Route IDE tools such as Antigravity, Kiro, and GitHub Copilot through DurinDoor with a local certificate and DNS redirect.
 ---
 
+## Current implementation and precedence
+
+Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/mitm.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+
+MITM needs system trust and owned redirect entries. The request wrapper stamps mutating control proof only for a verified same-user socket. Certificate trust, hosts redirects, mapped inference, and server readiness are separate checks. Preserve operator confirmation for system changes.
+
+### Execution ownership and evidence
+
+- [src/mitm/server.js](../../../../src/mitm/server.js)
+- [src/mitm/launchGate.js](../../../../src/mitm/launchGate.js)
+- [src/mitm/controlProof.js](../../../../src/mitm/controlProof.js)
+- [custom-server.js](../../../../custom-server.js)
+
+### Verification entrypoints
+
+- [tests/unit/mitm-root-ca.test.js](../../../../tests/unit/mitm-root-ca.test.js)
+- [tests/unit/mitm-hosts-ownership.test.js](../../../../tests/unit/mitm-hosts-ownership.test.js)
+- [tests/unit/mitm-peer-owner.test.js](../../../../tests/unit/mitm-peer-owner.test.js)
+
+These are source and test entrypoints, not evidence that an external provider, physical host, or live deployment was exercised in this documentation pass.
+
+## Preserved pre-rewrite snapshot
+
+Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
+
+
 Some IDEs only talk to their vendor's own API host. The MITM proxy lets those IDEs use any provider or model in DurinDoor anyway. Open **Dashboard → MITM Proxy** (`/dashboard/mitm`); **CLI Tools** links to it.
 
 <Callout type="warn">
@@ -18,9 +44,7 @@ An IDE request takes this path:
 3. The request goes to DurinDoor with the base URL and API key set on the MITM card. The IDE's model name is swapped for the DurinDoor model you mapped to it.
 4. DurinDoor's response goes back to the IDE.
 
-## Prepare and enable interception
-
-Before starting, close the IDE, test the target model directly through DurinDoor, and configure the MITM card's base URL and API key. You need administrator access for certificate trust, port 443, and hosts-file changes.
+## Setup
 
 1. **Generate the certificate.** Start the server once; it creates the root CA if it does not exist.
 2. **Trust the certificate.** Click **Trust Cert**. This adds the root CA to the system keychain or certificate store, so it needs your sudo password (UAC on Windows).
@@ -30,7 +54,7 @@ Before starting, close the IDE, test the target model directly through DurinDoor
 
 The card's **Cert**, **Trusted**, and **Server** indicators show which steps are done. On Windows, keep DurinDoor in standard-user mode; UAC is requested only for the system configuration steps.
 
-## Check the redirected hosts
+## Redirected hosts
 
 | Tool | Hosts |
 | --- | --- |
@@ -38,12 +62,6 @@ The card's **Cert**, **Trusted**, and **Server** indicators show which steps are
 | GitHub Copilot | `api.individual.githubcopilot.com` |
 | Kiro | `runtime.us-east-1.kiro.dev`, `q.us-east-1.amazonaws.com`, `codewhisperer.us-east-1.amazonaws.com` |
 
-For Antigravity the MITM proxy does not need an Antigravity provider connection; it only needs the models you map to. Provider-side details are on [Antigravity](../providers/antigravity.mdx#mitm-mode).
+For Antigravity the MITM proxy does not need an Antigravity provider connection; it only needs the models you map to. Provider-side details are on [Antigravity](../../../../docs/providers/antigravity.mdx#mitm-mode).
 
-Recovery steps for a stuck redirect, a lock error, or a missing root CA are on [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors).
-
-## Verify and remove interception
-
-Reopen the selected IDE and send a short request. Confirm its mapped model and request in **Dashboard → Usage**. A green server indicator alone does not prove the IDE accepted the certificate or reached the mapped model.
-
-To return the IDE to its vendor route, disable that tool's DNS redirect and stop the MITM server. Remove the DurinDoor CA from the OS trust store if you no longer use interception. Restart the IDE and verify normal vendor access. For a failed cleanup, use the linked troubleshooting procedure rather than deleting arbitrary hosts-file entries.
+Recovery steps for a stuck redirect, a lock error, or a missing root CA are on [Troubleshooting](../../../../docs/troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors).

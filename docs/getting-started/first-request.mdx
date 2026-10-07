@@ -20,7 +20,7 @@ curl http://localhost:20128/v1/models \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
 ```
 
-This catalog call chooses an exposed model. On loopback it does not validate the gateway key. The POST below verifies the key and provider connection.
+This catalog call chooses an exposed model. On loopback it does not validate the gateway key. The POST below verifies provider inference. It verifies key validity when **Require API Key** is enabled; loopback requests with enforcement off can admit unknown keys.
 
 ## Model names
 

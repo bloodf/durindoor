@@ -1,0 +1,39 @@
+{
+  "sourceRevision": "336fc08bf849d73eea415b82ae21a648d71171fe",
+  "recordedAt": "2026-10-07T20:10:20.663705+00:00",
+  "fullCi": {
+    "numTotalTests": 12050,
+    "numPassedTests": 11985,
+    "numFailedTests": 0,
+    "numPendingTests": 65,
+    "numRuntimeErrorTestSuites": null,
+    "success": true
+  },
+  "vitestReportSha256": "e3614537c8e6b4f5a701edec59deda27e7ac31f6480e3e246d5c9775eb09ad30",
+  "logs": {
+    "/tmp/durindoor-docs-focused-final.log": {
+      "sha256": "db15bbe3f8aed03d3e79294199d0b415282324781500c873c7162f224b45ada8",
+      "bytes": 214
+    },
+    "/tmp/durindoor-docs-lint-final.log": {
+      "sha256": "8e57ec8173619e2ceb3a39dd7f595863b78d64b50aad6c7a91015bad759f26da",
+      "bytes": 250550
+    },
+    "/tmp/durindoor-docs-build-verified.log": {
+      "sha256": "fb27ed2653bc3944887d41e077d78d2a21765cac5e00494e2903589be34b6302",
+      "bytes": 2270
+    },
+    "/tmp/durindoor-docs-browser-verified.log": {
+      "sha256": "38825e4c5bd3b19fbd39ace9e6419cacaccc05d674a10f87279214d15aca3aba",
+      "bytes": 1040
+    },
+    "/tmp/durindoor-docs-ci-verified.log": {
+      "sha256": "a9731d3df42e44955896bf1151891e3b34578e8e0c3cab64f0db409e845339d3",
+      "bytes": 6899
+    },
+    "/tmp/durindoor-docs-commitlint-verified.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}

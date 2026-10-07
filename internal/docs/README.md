@@ -5,6 +5,7 @@ These references support AI coding agents and maintainers. The website does not 
 Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUCT.md`](../../PRODUCT.md) records product scope and [`DESIGN.md`](../../DESIGN.md) records the implemented visual system. Use the reference that matches your task:
 
 - [Full product implementation references](./product/README.md)
+- [Revision-bound verification](./documentation-verification.md)
 - [Rewrite coverage and source review](./project-review.md), [usage](./usage-review.md), [runtime](./runtime-review.md), and [reference](./reference-review.md)
 - [AI implementation and porting workflow](./agent-workflow.md)
 - [Development and verification](./index.mdx)

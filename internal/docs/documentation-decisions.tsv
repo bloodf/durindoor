@@ -1,3 +1,6 @@
 ts	phase	decision	why	evidence	result
 2026-10-07T19:20:06.278522+00:00	boundary	Move AI and maintenance references outside published docs	Users need task guides; agents need implementation context	0e7307831	35 affected unit tests passed
 2026-10-07T19:26:00.095985+00:00	verification	Check actual routes search and image publication	A hidden sidebar item would still leave internal pages public	website/tests/docs.spec.mjs:434	Production build boundary test passed
+2026-10-07T20:09:16.921869+00:00	review	Correct source claims before publication	The independent reviewer traced current startup and access paths	336fc08bf; documentation-verification.md	Factual findings resolved; source review scoped to changed documentation
+2026-10-07T20:09:16.922112+00:00	verification	Supersede preliminary boundary-only evidence	Rows 2 and 3 do not identify the final integrated revision	documentation-verification.md; source 336fc08bf	Final build and seven browser checks passed; full CI retry pending
+2026-10-07T20:10:20.668443+00:00	verification	Validate complete final source	Supersede pending retry row with observed final result	336fc08bf; documentation-verification.md; documentation-verification.json	Full CI 11985 passed and 0 failed; build and all 7 browser checks passed

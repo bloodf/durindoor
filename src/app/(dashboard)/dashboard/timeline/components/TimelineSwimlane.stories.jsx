@@ -66,3 +66,22 @@ export const Empty = {
     await expect(await within(canvasElement).findByText("No traces in this window")).toBeVisible();
   },
 };
+
+export const NarrowSimultaneous = {
+  args: { traces: [
+    { ...traces[0], id: "short-a", total_ms: 1 },
+    { ...traces[0], id: "short-b", total_ms: 1 },
+  ] },
+  render: (args) => <div style={{ width: 240 }}><TimelineSwimlane {...args} /></div>,
+  play: async ({ canvasElement, args }) => {
+    const chart = within(canvasElement).getByRole("group", { name: "Trace swimlanes by provider" });
+    await expect(chart).toHaveAttribute("width", "240");
+    const targets = within(chart).getAllByRole("button");
+    for (const target of targets) {
+      await expect(Number(target.getAttribute("width"))).toBeGreaterThanOrEqual(44);
+      await expect(Number(target.getAttribute("height"))).toBeGreaterThanOrEqual(44);
+    }
+    await userEvent.click(targets[1]);
+    await expect(args.onSelect).toHaveBeenCalledWith("short-b");
+  },
+};

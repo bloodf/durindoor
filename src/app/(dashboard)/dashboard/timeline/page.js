@@ -19,7 +19,7 @@ import TimelineWindowControls, { DEFAULT_LANE, DEFAULT_WINDOW, resolveLane, reso
 import { statusTone } from "./timelineStatus.js";
 import { useWindowedTraces } from "./useWindowedTraces.js";
 
-const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate"];
+const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate", "q"];
 const WINDOW_FILTER_KEYS = FILTER_KEYS.filter((key) => key !== "startDate" && key !== "endDate");
 const VIEW_OPTIONS = [
   { value: "timeline", label: "Timeline", icon: "view_timeline" },
@@ -118,17 +118,16 @@ function TimelineList() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
-  // Swimlane streams without date bounds: new traces start after the loaded
-  // window's endDate and would otherwise be filtered out server-side.
-  const windowLiveRefresh = windowed.liveRefresh;
+  // Timeline observes mutable filter transitions and filters fetched metadata
+  // locally. Keep its subscription stable across lane/window URL changes.
+  const liveScheduler = view === "table" ? liveReload : windowed.liveRefresh;
+  const streamQuery = view === "table" ? query.toString() : "";
   useEffect(() => {
     if (!live) return undefined;
-    const scheduler = view === "table" ? liveReload : windowLiveRefresh;
-    const streamQuery = view === "table" ? query.toString() : windowFilterQuery;
     const source = new EventSource(`/api/timeline/stream?${streamQuery}`);
-    source.onmessage = scheduler.schedule;
-    return () => { scheduler.cancel(); source.close(); };
-  }, [live, view, query, windowFilterQuery, liveReload, windowLiveRefresh]);
+    source.onmessage = liveScheduler.schedule;
+    return () => { liveScheduler.cancel(); source.close(); };
+  }, [live, streamQuery, liveScheduler]);
 
   const setParam = (key, value, defaultValue) => {
     const next = new URLSearchParams(searchParams.toString());

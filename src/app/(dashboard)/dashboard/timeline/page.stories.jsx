@@ -18,7 +18,7 @@ const trace = {
 // The swimlane only draws traces inside the requested window, so the fixture
 // stamps traces relative to the request's own endDate.
 function windowTraces(request) {
-  const url = new URL(request.url, "http://storybook.local");
+  const url = new URL(request.url, "http://storybook.example");
   const end = Date.parse(url.searchParams.get("endDate")) || Date.now();
   const ago = (ms) => new Date(end - ms).toISOString();
   return [
@@ -30,13 +30,16 @@ function windowTraces(request) {
 
 const defaultRoutes = {
   "GET /api/timeline": (request) => {
-    const url = new URL(request.url, "http://storybook.local");
+    const url = new URL(request.url, "http://storybook.example");
     if (url.searchParams.get("endDate")) {
       const traces = windowTraces(request);
       return { body: { traces, pagination: { page: 1, pageSize: 100, totalItems: traces.length, totalPages: 1 } } };
     }
     return { body: { traces: [trace], pagination: { page: 1, pageSize: 20, totalItems: 1, totalPages: 1 } } };
   },
+  "GET /api/timeline/trace-001": (request) => ({
+    body: { trace: { ...windowTraces(request)[0], event_count: 13 }, events: [] },
+  }),
   "GET /api/settings": { body: { enableProxyTimeline: true } },
   "GET /api/timeline/stream": { body: {}, events: [{ traceId: trace.id }] },
 };
@@ -88,6 +91,7 @@ export const LiveUpdates = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("switch", { name: "Live timeline updates" }));
     await canvas.findByText("Listening for updates");
+    await expect(await canvas.findByRole("button", { name: /gpt-5 · ok · 342 ms · 13 events/ })).toBeVisible();
   },
 };
 export const CaptureDisabled = {
@@ -111,7 +115,7 @@ export const AllRows = {
       params: {},
       routes: {
         "GET /api/timeline": (request) => {
-          const url = new URL(request.url, "http://storybook.local");
+          const url = new URL(request.url, "http://storybook.example");
           const pageSize = url.searchParams.get("pageSize");
           const page = url.searchParams.get("page");
           const traces = pageSize === "100" && page === "1" ? [

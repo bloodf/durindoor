@@ -161,8 +161,9 @@ function useMeasuredWidth() {
  */
 export default function TimelineSwimlane({ traces, windowStart, windowEnd, laneBy = "provider", onSelect, nowMs, formatLane, emptyState }) {
   const [containerRef, measuredWidth] = useMeasuredWidth();
-  const width = measuredWidth > LABEL_WIDTH * 2 ? measuredWidth : DEFAULT_CHART_WIDTH;
-  const plotWidth = width - LABEL_WIDTH;
+  const width = measuredWidth > 0 ? measuredWidth : DEFAULT_CHART_WIDTH;
+  const labelWidth = Math.min(LABEL_WIDTH, Math.floor(width / 3));
+  const plotWidth = width - labelWidth;
 
   const placed = useMemo(() => {
     const result = [];
@@ -174,7 +175,16 @@ export default function TimelineSwimlane({ traces, windowStart, windowEnd, laneB
   }, [traces, windowStart, windowEnd, plotWidth, nowMs]);
 
   const { lanes, laneFor } = useMemo(() => buildLanes(placed.map((item) => item.trace), laneBy), [placed, laneBy]);
-  const { step, ticks } = useMemo(() => buildTicks(windowStart, windowEnd), [windowStart, windowEnd]);
+  const { step, ticks } = useMemo(() => buildTicks(windowStart, windowEnd, Math.max(2, Math.floor(plotWidth / 90))), [windowStart, windowEnd, plotWidth]);
+  // Give simultaneous traces independent 44px rows within their lane.
+  // Enlarging overlapping bars in place would select the wrong trace.
+  const laneRows = lanes.map((key) => placed.filter(({ trace }) => laneFor(trace) === key));
+  const laneOffsets = [];
+  let chartHeight = AXIS_HEIGHT;
+  for (const rows of laneRows) {
+    laneOffsets.push(chartHeight);
+    chartHeight += rows.length * LANE_HEIGHT;
+  }
 
   const laneLabel = (key) => {
     if (key === OTHER_LANE) return "other";
@@ -192,20 +202,20 @@ export default function TimelineSwimlane({ traces, windowStart, windowEnd, laneB
 
   const from = toEpochMs(windowStart);
   const to = toEpochMs(windowEnd);
-  const xFor = (ms) => LABEL_WIDTH + ((ms - from) / (to - from)) * plotWidth;
-  const height = AXIS_HEIGHT + lanes.length * LANE_HEIGHT;
+  const xFor = (ms) => labelWidth + ((ms - from) / (to - from)) * plotWidth;
+  const height = chartHeight;
   const now = toEpochMs(nowMs);
   const select = (traceId) => onSelect?.(traceId);
 
   return (
-    <div ref={containerRef} className="w-full overflow-hidden">
+    <div ref={containerRef} className="w-full overflow-x-auto">
       <svg
         role="group"
         aria-label={`Trace swimlanes by ${laneBy === "connection_id" ? "connection" : "provider"}`}
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        className="block max-w-full select-none"
+        className="block select-none"
         data-testid="timeline-swimlane"
       >
         <g aria-hidden="true">
@@ -213,9 +223,9 @@ export default function TimelineSwimlane({ traces, windowStart, windowEnd, laneB
             <rect
               key={`stripe-${key}`}
               x={0}
-              y={AXIS_HEIGHT + index * LANE_HEIGHT}
+              y={laneOffsets[index]}
               width={width}
-              height={LANE_HEIGHT}
+              height={laneRows[index].length * LANE_HEIGHT}
               className={index % 2 === 0 ? "fill-dd-surface-2" : "fill-transparent"}
             />
           ))}
@@ -228,9 +238,9 @@ export default function TimelineSwimlane({ traces, windowStart, windowEnd, laneB
             </g>
           ))}
           {lanes.map((key, index) => (
-            <text key={`label-${key}`} x={12} y={AXIS_HEIGHT + index * LANE_HEIGHT + LANE_HEIGHT / 2} dominantBaseline="middle" className="fill-dd-text text-xs">
+            <text key={`label-${key}`} x={8} y={laneOffsets[index] + laneRows[index].length * LANE_HEIGHT / 2} dominantBaseline="middle" className="fill-dd-text text-xs">
               <title>{laneLabel(key)}</title>
-              {truncate(laneLabel(key), 22)}
+              {truncate(laneLabel(key), Math.max(3, Math.floor((labelWidth - 16) / 7)))}
             </text>
           ))}
           {now != null && now >= from && now <= to ? (
@@ -241,27 +251,38 @@ export default function TimelineSwimlane({ traces, windowStart, windowEnd, laneB
           const laneIndex = lanes.indexOf(laneFor(trace));
           const tone = statusTone(trace.status || "running");
           return (
-            <rect
-              key={trace.id}
-              role="button"
-              tabIndex={0}
-              data-trace-id={trace.id}
-              data-lane={lanes[laneIndex]}
-              x={LABEL_WIDTH + geometry.x}
-              y={AXIS_HEIGHT + laneIndex * LANE_HEIGHT + (LANE_HEIGHT - BAR_HEIGHT) / 2}
-              width={geometry.width}
-              height={BAR_HEIGHT}
-              rx={3}
-              className={`${TONE_FILL[tone]} cursor-pointer stroke-transparent outline-none [stroke-width:2] hover:opacity-80 focus-visible:stroke-dd-text`}
-              onClick={() => select(trace.id)}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                select(trace.id);
-              }}
-            >
-              <title>{traceTooltip(trace)}</title>
-            </rect>
+            <g key={trace.id}>
+              <rect
+                data-duration-bar={trace.id}
+                x={labelWidth + geometry.x}
+                y={laneOffsets[laneIndex] + laneRows[laneIndex].findIndex((item) => item.trace.id === trace.id) * LANE_HEIGHT + (LANE_HEIGHT - BAR_HEIGHT) / 2}
+                width={geometry.width}
+                height={BAR_HEIGHT}
+                rx={3}
+                className={TONE_FILL[tone]}
+                pointerEvents="none"
+              />
+              <rect
+                role="button"
+                aria-label={traceTooltip(trace)}
+                tabIndex={0}
+                data-trace-id={trace.id}
+                data-lane={lanes[laneIndex]}
+                x={Math.max(labelWidth, Math.min(labelWidth + geometry.x, width - 44))}
+                y={laneOffsets[laneIndex] + laneRows[laneIndex].findIndex((item) => item.trace.id === trace.id) * LANE_HEIGHT}
+                width={Math.max(44, geometry.width)}
+                height={LANE_HEIGHT}
+                className="cursor-pointer fill-transparent stroke-transparent outline-none [stroke-width:2] hover:stroke-dd-muted focus-visible:stroke-dd-text"
+                onClick={() => select(trace.id)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  select(trace.id);
+                }}
+              >
+                <title>{traceTooltip(trace)}</title>
+              </rect>
+            </g>
           );
         })}
       </svg>

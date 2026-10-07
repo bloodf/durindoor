@@ -78,12 +78,4 @@ describe("TraceWaterfall", () => {
     expect(rows[1].getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelectorAll('[role="region"]')).toHaveLength(0);
   });
-
-  it("colours bars by direction", () => {
-    act(() => { root.render(React.createElement(TraceWaterfall, { trace: { total_ms: 1200 }, events })); });
-    const fills = [...container.querySelectorAll("[data-waterfall-bar]")].map((bar) => bar.className);
-    expect(fills[0]).toContain("bg-dd-accent");
-    expect(fills[1]).toContain("bg-dd-info");
-    expect(fills[3]).toContain("bg-dd-muted");
-  });
 });

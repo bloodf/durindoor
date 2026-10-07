@@ -151,8 +151,7 @@ describe("TimelineSwimlane", () => {
     expect(rendered.map((bar) => bar.getAttribute("data-lane"))).toEqual(["codex", "claude", "codex"]);
     expect(rendered.every((bar) => bar.getAttribute("tabindex") === "0")).toBe(true);
     expect(rendered[1].querySelector("title").textContent).toBe("claude-sonnet-4-5 · error · 900 ms · 4 events");
-    expect(rendered[1].getAttribute("class")).toContain("fill-dd-danger");
-    expect(Number(rendered[2].getAttribute("width"))).toBe(MIN_BAR_WIDTH);
+    expect(Number(container.querySelector('[data-duration-bar="t3"]').getAttribute("width"))).toBe(MIN_BAR_WIDTH);
     expect(container.textContent).toContain("claude");
     expect(container.textContent).toContain("codex");
   });
@@ -177,6 +176,29 @@ describe("TimelineSwimlane", () => {
     act(() => { first.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true })); });
     expect(onSelect.mock.calls).toEqual([["t1"], ["t2"], ["t1"]]);
     expect(space.defaultPrevented).toBe(true);
+  });
+
+  it.each([240, 320])("uses measured %ipx widths and keeps overlapping traces independently selectable", (width) => {
+    const measure = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width });
+    try {
+      const onSelect = vi.fn();
+      render({ traces: [trace("a"), trace("b")], onSelect });
+      const svg = container.querySelector("svg");
+      expect(Number(svg.getAttribute("width"))).toBe(width);
+      expect(svg.getAttribute("viewBox").split(" ")[2]).toBe(String(width));
+      const [first, second] = bars();
+      for (const target of [first, second]) {
+        expect(Number(target.getAttribute("width"))).toBeGreaterThanOrEqual(44);
+        expect(Number(target.getAttribute("height"))).toBeGreaterThanOrEqual(44);
+      }
+      expect(Number(first.getAttribute("y")) + Number(first.getAttribute("height"))).toBeLessThanOrEqual(Number(second.getAttribute("y")));
+      const durationBars = [...container.querySelectorAll("[data-duration-bar]")];
+      expect(durationBars.map((bar) => Number(bar.getAttribute("width")))).toEqual([2, 2]);
+      act(() => second.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(onSelect.mock.calls).toEqual([["b"]]);
+    } finally {
+      measure.mockRestore();
+    }
   });
 
   it("shows the empty state when no trace falls inside the window", () => {

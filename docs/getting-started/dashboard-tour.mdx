@@ -1,68 +1,52 @@
 ---
 title: Dashboard tour
-description: One pass over the dashboard pages the Next.js app actually serves under /dashboard.
+description: Find the dashboard page for provider setup, client keys, request checks, and settings.
 ---
 
-Open `http://localhost:20128/dashboard`. Next.js serves that tree from `src/app/(dashboard)/dashboard/`, wrapped by `src/app/(dashboard)/layout.js`. `next.config.mjs` has no `/dashboard` rewrite. `/dashboard` redirects to Usage. Sidebar order is `NAV_SECTIONS` (Monitor, Build, Optimize, Integrate, Reference), with Settings pinned at the bottom of the rail.
+Open `http://localhost:20128/dashboard` after signing in. The dashboard opens **Usage**. Use the sidebar to connect an account, send a test request, and inspect the result.
 
-## Monitor
+## Connect and test a provider
 
-**Usage** (`/dashboard/usage`) is the home after that redirect. It shows token totals, cost estimates, request history, provider topology, and per-request detail (provider, model, latency, fallback).
+1. Open **Providers** and add an OAuth, API-key, cookie, compatible, or local connection.
+2. Open **API Keys** and create a DurinDoor client key.
+3. Open **Playground**, choose a model, and send a short prompt.
+4. Open **Usage** and confirm the provider, model, status, and latency for that request.
 
-**Timeline** (`/dashboard/timeline`) is a live tail of proxy hops and SSE history. Open a row for one request's hop list.
+The client key belongs in your tools. The provider credential stays on the provider connection. See [First request](./first-request.mdx) for a test outside the dashboard.
 
-**Quota Tracker** (`/dashboard/quota`) lists provider limits, remaining capacity, cooldowns, and reset hints.
+## Find a page
 
-**Health** (`/dashboard/health`) polls provider connection state (healthy, degraded, down, blocked, unconfigured).
+| Section | Page | Use it to |
+| --- | --- | --- |
+| Monitor | Usage | Inspect request history, tokens, estimated cost, topology, and combo reports |
+| Monitor | Timeline | Follow proxy hops and SSE events for one request |
+| Monitor | Quota Tracker | Inspect provider limits, cooldowns, and reset hints |
+| Monitor | Health | Check provider connection state |
+| Monitor | Console Log | Read recent process logs |
+| Build | Playground | Send chat requests through the gateway |
+| Build | Combos | Configure a model name with fallback members |
+| Build | Providers | Manage provider accounts and models |
+| Build | Endpoint | Copy local, tunnel, or Tailscale URLs and configure client authentication |
+| Build | API Keys | Create, pause, revoke, expire, and scope client keys |
+| Build | Proxy Pools | Configure outbound HTTP or SOCKS proxies |
+| Optimize | Token Saver statistics and settings | Inspect and configure RTK, Headroom, and PXPIPE compression |
+| Optimize | Headroom | Manage the configured Headroom sidecar |
+| Optimize | Test Savers | Preview compression on sample prompts |
+| Integrate | MCP Gateway instances and keys | Register MCP servers and create gateway keys |
+| Integrate | CLI Tools | Apply or copy coding-tool settings |
+| Integrate | Skills | Copy gateway client instructions for agents |
+| Integrate | Auto-configure | Probe local Headroom, PXPIPE, and Firecrawl services |
+| Integrate | Media Providers | Configure embedding, rerank, image, image-to-text, audio, web, video, music, and System One providers |
+| Integrate | Media Routes | Set fallback models when media requests omit `model` |
+| Reference | Docs | Open documentation in a new tab |
+| Reference | Translator | Debug translation when its visibility flag is enabled |
 
-**Console Log** (`/dashboard/console-log`) streams server log lines in the browser.
+**Settings** stays at the bottom of the sidebar. Open it to change the password, theme, locale, backups, or import and export settings.
 
-## Build
+Some pages open from detail views rather than the sidebar: provider and timeline details, database settings, MITM, and PXPIPE. Pricing is at `/dashboard/settings/pricing`.
 
-**Playground** (`/dashboard/playground`) is an in-dashboard chat box against the same `/v1` path your tools use.
+## Interpret the result
 
-**Combos** (`/dashboard/combos`) builds an ordered fallback chain and exposes it as one model name.
+A healthy HTTP server does not prove a provider works. Confirm a real request in **Usage**. Estimated costs are gateway estimates; provider billing remains authoritative. Missing quota can mean that a provider has no quota API.
 
-**Providers** (`/dashboard/providers`) is the connection grid: OAuth, API keys, cookies, compatible nodes, and local providers. Open a row for that provider's accounts and models.
-
-**Endpoint** (`/dashboard/endpoint`) shows local, tunnel, and Tailscale URLs, plus API-auth settings for clients.
-
-**API Keys** (`/dashboard/keys`) creates, pauses, revokes, expires, and scopes DurinDoor keys. The full secret is shown once at create time.
-
-**Proxy Pools** (`/dashboard/proxy-pools`) defines outbound HTTP/SOCKS pools that provider traffic (including OAuth) can be pinned to.
-
-## Optimize
-
-**Token Saver → Statistics** (`/dashboard/token-saver`) is the compression overview. **Token Saver → Settings** (`/dashboard/token-saver/settings`) holds RTK, Headroom, and PXPIPE toggles.
-
-**Headroom** (`/dashboard/headroom`) is the Headroom token-saver UI when that sidecar is configured.
-
-**Test Savers** (`/dashboard/compression-studio`) previews compression on a sample prompt before you enable it on live traffic.
-
-## Integrate
-
-**MCP Gateway → Instances** (`/dashboard/mcp-gateway`) registers MCP servers. **MCP Gateway → Keys** (`/dashboard/mcp-gateway/keys`) mints gateway keys for those servers.
-
-**CLI Tools** (`/dashboard/cli-tools`) writes base URL, key, and model into supported coding tools. Each tool has a detail page under `/dashboard/cli-tools/<toolId>`.
-
-**Skills** (`/dashboard/skills`) copies agent-skill snippets that call this gateway as an OpenAI client.
-
-**Auto-configure** (`/dashboard/auto-configure`) probes local helpers (for example Firecrawl) and reports what it can wire without a manual form.
-
-**Media Providers** (`/dashboard/media-providers/<kind>`) covers embedding, rerank, image, image-to-text, TTS, STT, a combined web fetch/search page, video, music, and System One. Kind and provider id are nested routes, not extra sidebar entries.
-
-**Media Routes** (`/dashboard/media-routes`) sets the ordered fallback list of models each media endpoint uses when a request leaves out `model`. See [Media routes](../features/media-routes.mdx).
-
-## Reference
-
-**Docs** opens this documentation site in a new tab. The HTTP surfaces (chat, models, images, audio, and the rest) are on [API](../reference/api.mdx). MCP client setup is on [MCP gateway](../features/mcp-gateway.mdx) and [MCP control](../features/mcp-control.mdx).
-
-**Translator** (`/dashboard/translator`) is a debug workspace for request/response translation. The sidebar hides it unless the translator flag is on.
-
-## Settings
-
-**Settings** (`/dashboard/profile`) is pinned at the bottom of the rail. Password, theme, locale, and selective import/export live here. Change the dashboard password on this page after the first login.
-
-## Other routes
-
-These URLs exist but are not top-level sidebar items: provider detail (`/dashboard/providers/<id>`), timeline detail (`/dashboard/timeline/<id>`), database engine (`/dashboard/settings/database`), MITM (`/dashboard/mitm`), and PXPIPE (`/dashboard/pxpipe`). `src/app/dashboard/settings/pricing/` also serves `/dashboard/settings/pricing` without the dashboard shell.
+If a page or connection is missing, check the [provider guide](../providers/index.mdx), the account's active state, and the [troubleshooting guide](../troubleshooting.mdx).

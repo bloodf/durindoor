@@ -1,11 +1,11 @@
 ---
 title: Web cookie providers
-description: Copy a browser session cookie into DurinDoor, what each cookie provider expects, and what breaks when the session ends.
+description: Copy the correct browser session value, check provider support, and recover expired sessions.
 ---
 
 A web cookie provider reuses the session your browser already has with a chat website. There is no API key. You copy the cookie the site sets after you sign in, paste it into DurinDoor, and DurinDoor sends it the way the web app would.
 
-These providers use `category: "webCookie"` and `authType: "cookie"` in `open-sse/providers/registry/`. On the Providers page they sit in their own group.
+On **Providers**, web-session connections have their own group. Some cards can store credentials before their request executor is available; check the supported status below before configuring a client.
 
 <Callout type="warn">
 A session cookie is a full login for that account. Anyone who can send requests through your gateway can spend that session. Keep cookie providers on a personal install, or put them behind scoped DurinDoor keys. See [API key scoping](../operations/api-key-scoping.mdx).
@@ -29,11 +29,11 @@ Under Request Headers, copy the `Cookie` value. Some providers only want one nam
 In DurinDoor open **Providers**, pick the cookie provider, and click Add. The field is labelled **Cookie Value**. The hint under it is the provider's `authHint`.
 </Step>
 <Step>
-Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web` and `zenmux-free`: their chat endpoints create a real conversation per probe, risking account restrictions (OmniRoute #14780, #14818). Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
+Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web` and `zenmux-free`: their chat endpoints create a real conversation per probe, risking account restrictions . Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
 </Step>
 </Steps>
 
-You can paste the whole header or just the value. `src/lib/providers/webCookieAuth.js` strips a leading `Cookie:` or `Bearer `, and pulls a single named cookie out of a full header when the provider only needs one.
+You can paste the whole header or just the value. DurinDoor strips a leading `Cookie:` or `Bearer `, and pulls a single named cookie out of a full header when the provider only needs one.
 
 The field is plain text, not a password field, so the cookie is visible on screen while you type. Once saved, the value is stored in the connection's encrypted `apiKey` column like any other secret.
 
@@ -56,7 +56,6 @@ The field is plain text, not a password field, so the cookie is visible on scree
 | Suno | `suno` | The Suno session cookie |
 | Udio | `udio` | The Udio session cookie |
 
-{/* chatgpt-web: a browser executor is being ported. Once chat works, drop chatgpt-web from the not-yet-runnable list below and describe how requests are sent. */}
 
 ### Chunked session cookies
 
@@ -64,7 +63,7 @@ chatgpt.com and perplexity.ai keep their session in a NextAuth cookie, `__Secure
 
 These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web the add dialog also offers a console snippet that prompts for each chunk value you copy from Application, Cookies, and puts the joined `name=value` string on your clipboard.
 
-Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `chatgpt-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. The list lives in `open-sse/executors/unsupported-websession.js`. You can save a connection for them, but no request will run until the executor ships.
+Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. ChatGPT Web has a working browser transport with an HTTP fallback; see its [setup guide](./chatgpt-web.mdx). See [Hidden and retired providers](./retired.mdx) for unsupported entries. You can save a connection for them, but no request will run until the executor ships.
 
 ## Validation
 
@@ -80,8 +79,10 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 ## When the session ends
 
-Nothing in DurinDoor reads a cookie's expiry, and cookie sessions are not refreshed. You find out when the site rejects it. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
+Most cookie sessions have no proactive refresh. ChatGPT Web can save cookies rotated by the site; this does not prevent expiry or revocation. You find out when the site rejects it. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
 
-The fix is always the same: sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
+If automatic recovery fails, sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
 
 Keep one browser profile for the account you hand to DurinDoor, and avoid signing out of it.
+
+After saving a supported session, send one short request and check **Usage**. A skipped validation is not a successful probe. HTTP 501 `provider_port_pending` means no credential change can enable that provider in this build.

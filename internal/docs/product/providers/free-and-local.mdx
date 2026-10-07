@@ -1,0 +1,171 @@
+---
+title: Free and local
+description: No-auth providers, Ollama, LM Studio, browser-cookie sessions, and local-device media.
+---
+
+> Pre-rewrite snapshot, baseline `0e7307831`, 2026-10-07. Historical claims below may be inaccurate. Use the [current public guide](../../../../docs/providers/free-and-local.mdx) and the verified corrections at the end of this page for current behavior.
+
+
+Some providers never take a paid API key. They are local processes, anonymous public endpoints, OAuth free tiers, or browser cookies. Rate limits and terms still belong to the upstream.
+
+| Kind | What you save | Examples |
+| --- | --- | --- |
+| Local model service | Optional key, optional `baseUrl` | `ollama-local`, `lm-studio`, vLLM |
+| No-auth registry | Nothing, or a toggle | AI Horde, other `category: "free"` + `noAuth: true` entries |
+| OAuth free tier | OAuth connection | Provider-specific free allowance |
+| Browser cookie | Cookie value | ChatGPT Web, other `webCookie` ids ([Web cookie providers](../../../../docs/providers/web-cookie.mdx)) |
+| Local device media | Nothing | `local-device` TTS on the host |
+
+## Ollama and LM Studio
+
+`ollama-local` talks to `http://localhost:11434` unless the connection sets `providerSpecificData.baseUrl`. The add-key dialog shows an Ollama Host URL field. Local Ollama does not validate keys; DurinDoor still sends Bearer when a key is present.
+
+Discovery reads native `/api/tags`, `/api/show`, and `/api/ps` data per saved host/account. Completion and embedding capabilities remain distinct. An observed served `context_length` or explicit connection model limit is used when available; a trained maximum, a cloud model with the same name, and the gateway's own localhost port do not establish the local served window. Unknown limits stay unknown.
+
+LM Studio is registry id `lm-studio` (alias `lmstudio`). It is `noAuth: true` with default base URL `http://localhost:1234/v1`. API key is optional. Models are passthrough: DurinDoor forwards whatever LM Studio currently serves.
+
+<Steps>
+<Step>
+Start Ollama or LM Studio on the host and confirm it answers locally (`curl` against `/api/tags` or `/v1/models`).
+</Step>
+<Step>
+Open Dashboard, then Providers, then the card. For Ollama, set the host if it is not `localhost:11434`. For LM Studio, override `baseUrl` only if you changed the listen port.
+</Step>
+<Step>
+Save. Send `ollama-local/<model>` or `lmstudio/<model>` (or the alias the catalog shows).
+</Step>
+</Steps>
+
+If DurinDoor is in Docker, `localhost` is the container. Point `baseUrl` at `host.docker.internal` or a compose service name.
+
+Other self-hosted OpenAI-compatible ids (`vllm`, `llama-cpp`, `docker-model-runner`, and the rest) are listed on [Local router providers](../../../../docs/providers/local-router-providers.mdx). Those executors omit `Authorization` when no API key or access token is saved.
+
+## No-auth providers
+
+A no-auth provider is `noAuth: true` on the registry entry. Chat auto-combo only seeds the subset marked `autoComboNoAuth` with `category: "free"` and an `llm` service kind. You can disable a free no-auth id from the Providers page; that writes `disabledFreeProviders` in settings.
+
+<Callout type="warn">
+Only use a no-auth upstream that is already locked down by the network or that runs on the same machine. Do not publish a no-auth local server through DurinDoor to the public internet without an outer access-control layer. DurinDoor client keys still apply; they do not make the upstream private.
+</Callout>
+
+AI Horde is the public anonymous exception. Registry id `aihorde`, alias `horde`. With no saved key, DurinDoor sends AI Horde's documented sentinel `0000000000` against `https://oai.aihorde.net/v1`. A saved Horde API key replaces that sentinel and can receive better queue priority. Model ids come from the live `/v1/models` facade and can contain `/`. Treat Horde as a low-priority fallback: volunteer workers join and leave, queues move, and prompts are processed on community machines. Do not send secrets. The facade rejects `max_tokens` below 16.
+
+## Browser-cookie providers
+
+Same paste flow as [Connecting accounts](../../../../docs/providers/connecting-accounts.mdx): Dashboard, Providers, cookie card, cookie value. These sessions die when the browser session dies. Fine for a personal box; a poor fit for a shared team gateway.
+
+ChatGPT Web has its own page, [ChatGPT Web](../../../../docs/providers/chatgpt-web.mdx), covering the cookie formats, the browser and HTTP transports, and the Chromium requirement.
+
+## Local device media
+
+`local-device` is a TTS provider (`serviceKinds: ["tts"]`, `authType: "none"`). It synthesizes on the host (macOS or Windows) and returns mp3. Other local media ids include local Whisper (`local-whisper`, default `http://127.0.0.1:11500`) and optional local TTS/STT tools listed on the media-provider pages. Check those pages for voice, format, sample rate, and service URL fields.
+
+## Laya decision engine
+
+`laya` is a self-hosted [Laya](https://github.com/NandhaKishorM/laya) server:
+
+```bash
+pip install "laya[serve]"
+laya-serve        # http://127.0.0.1:8000; LAYA_PORT, LAYA_API_KEY, LAYA_DEVICE to change
+```
+
+Add the connection with the server URL: `http(s)://host:port`, or `host:port`
+for plain http. Other values, and URLs with a username or password, are refused.
+The API key is optional: the server URL stands in for it. Checking the connection calls `GET /health`, then sends an
+empty `POST /v1/systemone`. Laya answers 400 when the key is accepted and 401
+when it is wrong or missing. Any other answer means the host isn't a Laya
+server. Laya is not a chat model. Its checkpoints (`auto`, `english`,
+`multilingual`, `typed-decisions`) are System One models: call them on
+`POST /v1/systemone` with `model: "laya/english"` (send `x-connection-id` to use
+one connection only; the request then never runs on another), or try them from **Dashboard →
+Media Providers → System One → Laya (local)**. They appear in
+`GET /v1/models/systemone`, not the default chat catalog, and chat requests naming a Laya model get a 400. An active connection replaces Jev as the classifier for
+`smart` combos. A keyless `laya-serve` running on the default host is picked up
+without a connection. See [Complexity-aware routing](../../../../docs/features/combos.mdx).
+Other Jev-compatible servers use **Add Custom System One** on the same page.
+Save the node, add a keyless or keyed connection, then open **Edit** to discover
+and register native model IDs, or add an ID manually under **Models**. A missing
+`/models` endpoint does not block setup. The node's saved URL determines routing;
+a request body cannot change the upstream. Outbound proxy pools are unsupported
+for guarded System One/Laya URLs.
+
+
+## OpenCode free
+
+OpenCode Free is registry id `opencode`, alias `oc`, `noAuth: true`, and `autoComboNoAuth: true`. The static catalog currently lists Ox Alpha Free as `oc/x-preview-f-free` over Chat Completions. OpenCode Go subscribers can use the same model as `ocg/ox-alpha-free`. Catalog rows can change; `GET /v1/models` is the live list.
+
+Upstream gates the free tier on the request looking like the official OpenCode client and answers anything else with HTTP 403 `FreeTierError`. DurinDoor satisfies that gate for you, so no client-side setup is needed:
+
+- A gate-valid downstream `User-Agent` (one already recognized as the official client) is forwarded as sent; anything else is replaced with the full official-client string. A canonical `ses_...` session id and a stable `x-opencode-request` per turn are also sent on every free-tier dispatch.
+- The four file-search tools the official client always declares (`bash`, `glob`, `grep`, `read`, exact lowercase) are appended to the `tools` payload of every request, on the Chat Completions, Responses, and Messages routes. They are cloaked: their description tells the model they are unusable, and a tool you send under the exact same name always wins, so your own tool set is never altered. A tool you send under a differently-cased name (e.g. `Bash`) is kept alongside the lowercase decoy, since the gate checks for the exact lowercase strings.
+- Muse Responses requests get a `prompt_cache_key` pinned to the session, so the turns of one conversation share an upstream prompt cache. A `prompt_cache_key` you send yourself is left alone, unless it is blank or whitespace-only, which is treated as missing and replaced with the session id.
+
+Both Muse Spark contributor models (`muse-spark-1.2-contributor-free` and `muse-spark-1.3-contributor-free`) reject any `tool_choice` other than `auto` with HTTP 400, so DurinDoor demotes an explicit one for those two ids.
+
+## OpenRouter free models
+
+OpenRouter (`openrouter`, category `freeTier`) needs an API key to route requests, but DurinDoor discovers its free models from the public catalog at `GET https://openrouter.ai/api/v1/models`. That request carries no API key.
+
+A model counts as free when both hold:
+
+- its id ends in `:free` (for example `openrouter/google/gemma-4-31b-it:free`), and
+- every field in its `pricing` object is `"0"`.
+
+Zero pricing alone is not enough. OpenRouter's routers and some preview media models also publish `"0"` prices without a `:free` id, and variable-price routers publish `"-1"`.
+
+Each catalog entry is mapped onto the same capability fields the static table uses:
+
+| OpenRouter field | DurinDoor capability |
+| --- | --- |
+| `context_length` (else `top_provider.context_length`) | `contextWindow` |
+| `top_provider.max_completion_tokens` | `maxOutput` |
+| `architecture.input_modalities` `image` / `file` / `audio` / `video` | `vision` / `pdf` / `audioInput` / `videoInput` |
+| `architecture.output_modalities` `image` / `audio` | `imageOutput` / `audioOutput` |
+| `supported_parameters` has `tools` | `tools` |
+| `supported_parameters` has `reasoning` or `include_reasoning` | `reasoning` |
+
+Where it shows up:
+
+- `GET /v1/models`: with no model selection saved on the OpenRouter connection, the free models are listed next to the static embedding, TTS, image and rerank rows. With a saved selection, the list stays as selected and the catalog only fills in capabilities and limits.
+- Provider page: the suggested-models list shows the same free models with their context windows.
+- Model pickers: fetching models for an OpenRouter connection (provider page, model selector, playground) returns only the free models, so paid models such as Claude or GPT never show up there.
+- Routing: chat requests to an OpenRouter model use the discovered capabilities. Images are kept for vision models instead of being stripped, Vision Bridge and combo capability ordering see the real flags, and the context-length preflight rejects a request that cannot fit the published window.
+
+The catalog is cached in memory for 30 minutes. The fetch times out after 8 seconds, reads at most 8 MiB, and maps at most 2,000 entries. If a refresh fails, the last good catalog stays in use and the next attempt waits 5 minutes. With no good catalog yet, `/v1/models` falls back to the static list and requests use the static capability table. The first request after a restart may use static capabilities while the catalog loads in the background. A custom model row on the connection still overrides the discovered capabilities.
+
+OpenRouter's documented free-model limits ([rate limits](https://openrouter.ai/docs/api-reference/limits)):
+
+| Account | Requests per minute | Requests per day |
+| --- | --- | --- |
+| Less than $10 in credits ever purchased | 20 | 50 |
+| At least $10 in credits purchased | 20 | 1,000 |
+
+## Xiaomi token plan
+
+`xiaomi-tokenplan` (aliases `xmtp`) is an API-key provider for SenseNova Token Plan keys (`tp-` prefix). Region is required: Singapore (`sgp`, default), China (`cn`), or Amsterdam (`ams`). The catalog is discovered at runtime. Use the dashboard or `GET /v1/models` instead of copying ids from this page.
+
+## Free tiers
+
+OAuth free tiers still need an account. Quota rules change without a DurinDoor release. Keep a paid or local fallback for work that cannot wait on a free pool. Watch usage on the dashboard and reconnect if the upstream revokes the token.
+
+
+## Implementation reference for maintainers
+
+The content above is a pre-rewrite snapshot from baseline `0e7307831`, captured on 2026-10-07. It preserves the complete public page before the audience rewrite. Its setup examples and historical claims are retained as context; use the current public page and the source notes below when they disagree.
+
+Public guide: [free-and-local](../../../../docs/providers/free-and-local.mdx).
+
+Source ownership and checks:
+
+- [`src/app/api/providers/route.js`](../../../../src/app/api/providers/route.js)
+- [`src/app/api/providers/providerProbe.js`](../../../../src/app/api/providers/providerProbe.js)
+- [`open-sse/providers/registry/index.js`](../../../../open-sse/providers/registry/index.js)
+- [`open-sse/executors/unsupported-websession.js`](../../../../open-sse/executors/unsupported-websession.js)
+- [`src/lib/providers/webCookieAuth.js`](../../../../src/lib/providers/webCookieAuth.js)
+- [`open-sse/providers/registry/ollama-local.js`](../../../../open-sse/providers/registry/ollama-local.js)
+
+These references describe repository behavior. They do not establish that a vendor account is authorized, that a current upstream service accepts a request, or that a third-party client version reads the shown configuration. Validate actual chat, streaming, and tool use separately. No credentials, user configuration, or live provider endpoints were read for this rewrite.
+
+### Current behavior and implementation boundaries
+
+Ollama discovery is served-host data, not trained-window evidence. OpenRouter free rows require both a :free suffix and all-zero pricing. Catalog failure retains previous data or falls back to static capabilities; first dispatch may occur before background discovery. System One/Laya is a separate kind, not chat.

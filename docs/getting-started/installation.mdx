@@ -3,14 +3,22 @@ title: Installation
 description: Install DurinDoor with npm, from source, or Docker, and set DATA_DIR and JWT_SECRET.
 ---
 
-npm, source, and Docker all start the same gateway and dashboard. The host needs Node.js 20.20.2 and npm 10.8.2. The Docker image already has that Node. You also need a browser (dashboard and OAuth), disk for the database, and network access to remote providers.
+Choose npm, a source checkout, or Docker. Native installs use Node.js 20.20.2 and npm 10.8.2. Docker includes Node.js. You need disk for persistent data, a browser for the dashboard and OAuth, and access to your upstream providers.
+
+Before a native start, set a strong `INITIAL_PASSWORD` and a persistent `JWT_SECRET` in the process environment. For a source install, copy `.env.example` to `.env` and replace its `CHANGE_ME` values. Keep the same signing secrets on later starts. A source deployment without an explicit `DATA_DIR` also needs `API_KEY_SECRET` to create client keys.
+
+```bash
+export JWT_SECRET="$(openssl rand -hex 32)"
+export API_KEY_SECRET="$(openssl rand -hex 32)"
+export INITIAL_PASSWORD="REPLACE_WITH_YOUR_STRONG_PASSWORD"
+```
 
 <Tabs items={['npm', 'npx', 'source', 'Docker']}>
 <Tab value="npm">
 
 ```bash
 npm install -g durindoor
-durindoor
+durindoor --host 127.0.0.1
 ```
 
 The CLI binary name is `durindoor`. Default port is 20128. Default bind is `0.0.0.0`. Use `--host 127.0.0.1` for loopback only, `--port` to change the port, `--no-browser` to skip opening the dashboard.
@@ -19,7 +27,7 @@ The CLI binary name is `durindoor`. Default port is 20128. Default bind is `0.0.
 <Tab value="npx">
 
 ```bash
-npx durindoor
+npx durindoor --host 127.0.0.1
 ```
 
 Use this for a one-off run. For daily use, install globally or run from source.
@@ -55,7 +63,7 @@ docker run -d \
   -v "$HOME/.durindoor:/app/data" \
   -e DATA_DIR=/app/data \
   -e JWT_SECRET="$(openssl rand -hex 32)" \
-  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \
+  -e INITIAL_PASSWORD="REPLACE_WITH_YOUR_STRONG_PASSWORD" \
   ghcr.io/bloodf/durindoor:latest
 ```
 
@@ -116,9 +124,11 @@ DurinDoor can reuse a 9router data directory. Stop the old process, back up that
 curl http://localhost:20128/api/health
 ```
 
-A JSON body `{ "ok": true }` means the HTTP server is up. Then:
+A JSON body `{ "ok": true }` means the HTTP server is up. Open `http://localhost:20128/dashboard` and sign in with your initial password. Add a provider and create a client key, then list models:
 
 ```bash
 curl http://localhost:20128/v1/models \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
 ```
+
+The response is a model list. Send a [first request](./first-request.mdx) to verify provider access. If the process cannot start, check for an occupied port and missing `JWT_SECRET`. If Docker cannot reach a local model server, use a host gateway or compose service name instead of container `localhost`.

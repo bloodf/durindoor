@@ -3,65 +3,67 @@ title: Models and aliases
 description: How DurinDoor parses provider/model strings, aliases, combos, and /v1/models.
 ---
 
-Clients put one string in `model`. DurinDoor splits it, then routes.
+Choose a model ID from your running instance, then use that exact string in the client's `model` field. A saved alias or combo can give clients a stable name while you change the upstream.
 
-## provider/model
-
-A slash means `prefix/rest`. The prefix is a provider id or a provider alias from the registry (and a short local map for media-only names: `el` → elevenlabs, `jina` / `jina-ai` → jina-ai, `polly` / `aws-polly` → aws-polly). The rest is the upstream model id, including any extra slashes.
-
-| Client `model` | Meaning |
-| --- | --- |
-| `openai/gpt-4.1` | Provider alias plus model id |
-| `anthropic/claude-sonnet-4-5` | Same split; alias maps to the registry id |
-| `my-node/local-model` | Compatible-node prefix plus the node's model id |
-| `coding-default` | Combo name (no slash) |
-| `short-name` | Custom alias mapped to `provider/model` |
-
-Custom aliases are a `{ "short-name": "provider/model" }` map stored by the dashboard. Combos are a named fallback list; the client sends the combo name and DurinDoor tries each member. See [Combos](../features/combos.mdx).
-
-If `getModelInfo` returns no provider, the chat handler calls `getComboModels` and, when that returns a list, runs the combo path. If the bare string is neither an alias nor a combo, DurinDoor infers a provider from the model id prefix (`claude-` → anthropic, `gemini-` → gemini, `gpt-` / `o1` / `o3` / `o4` → openai, `deepseek-` → openrouter) and otherwise uses `openai`.
-
-Compatible nodes and custom prefixes work the same way: the public id is `prefix/modelId`, where `prefix` is the provider alias or the node's output prefix. A doubled `<connId>/<prefix>/<model>` from a combo step is stripped down to the inner model id.
-
-## List models
+## Discover a model
 
 ```bash
 curl http://localhost:20128/v1/models \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
 ```
 
-`GET /v1/models` returns chat/LLM ids by default (`LLM_KIND` is `"llm"`). Other kinds live under `/v1/models/{kind}`:
+The default response is an OpenAI list with model IDs in `data`. Provider models use `prefix/model-id`; combos use their saved name. Listing models confirms discovery, not successful inference. Send a [first request](../getting-started/first-request.mdx) before configuring a tool.
 
-| Kind slug | Service |
+| Model string | Routes to |
 | --- | --- |
-| `image` | image |
-| `tts` | tts |
-| `stt` | stt |
-| `embedding` | embedding |
-| `image-to-text` | imageToText |
-| `web` | webSearch and webFetch |
-| `rerank` | rerank |
+| `openai/gpt-4.1` | An OpenAI connection with upstream model `gpt-4.1` |
+| `my-node/local-model` | The compatible node whose prefix is `my-node` |
+| `coding-default` | Your saved combo or alias with that name |
 
-A single unknown segment returns HTTP 404 `Unknown model kind` and lists those slugs. Two or more segments are an exact lookup of `alias/modelId` against the LLM catalog (`candidate.id === identifier`). A miss is OpenAI's `model_not_found` 404.
+The first slash separates the provider ID, registry alias, or node prefix from the upstream model. Additional slashes belong to the upstream model. Prefer this explicit form. Unmapped bare names use provider inference, which may select a different provider from the one you connected.
 
-The list route does not call the chat API-key checker; `/v1` is a public prefix. Send a key anyway if your client always does. Live discovery uses the same local-first SSRF guard as provider test-connection, so LAN tools such as LM Studio can list models while cloud-metadata endpoints stay blocked.
+## Create an alias or combo
 
-Each provider row looks like OpenAI's list object: `id` is `alias/modelId`, `object` is `model`, `owned_by` is the alias. Combo rows use the combo name as `id` and `owned_by: "combo"`.
+A model alias maps a short name to one `provider/model` target. The management API accepts `PUT /api/models/alias` with `{ "model": "provider/model", "alias": "short-name" }`.
 
-Custom aliases contribute their target model ids into that provider's list; they do not add a second top-level id for the short name. Custom models registered on a provider (id plus `providerAlias`) show up as `prefix/id` as well.
+A combo contains fallback members. Create it on **Combos**, then send its name as the model. See [Combos](../features/combos.mdx) for selection strategies and capability requirements.
 
-`HEAD /v1/models` returns 200 with an empty body so health probes do not wait on the full catalog. `HEAD /v1/models/{kind}` and `HEAD /v1/models/{alias}/{model}` are 200 when the path is a known kind or a provider-prefixed lookup; a one-segment unknown kind is 404.
+Custom aliases add their target IDs to the catalog; the short alias does not get a separate top-level row. A custom node exposes only saved model rows. Import and save models on its provider page before relying on discovery.
 
-`GET /v1/models/info?id={alias}/{modelId}` returns metadata for one id. Missing `id` is 400.
+## Discover other model kinds
 
-If the request carries an `anthropic-version` header, the same catalog is wrapped in Anthropic's list envelope (`data`, `has_more`, `first_id`, `last_id`). Codex CLI user-agents get a `{ models: [...] }` object instead.
+Append a kind to `/v1/models`:
 
-Context windows and max output for a listed id are documented in [Model limits](../reference/model-limits.mdx).
+| Kind | Service |
+| --- | --- |
+| `image` | Image generation |
+| `tts` | Text to speech |
+| `stt` | Speech to text |
+| `embedding` | Embeddings |
+| `image-to-text` | Image understanding |
+| `web` | Search and fetch |
+| `rerank` | Reranking |
+| `systemone` | System One decisions |
+| `video` | Video generation |
+| `music` | Music generation |
+| `moderation` | Moderation |
+| `audio` | Audio models |
+| `realtime` | Realtime models |
+| `realtime-translation` | Realtime translation |
+| `realtime-transcription` | Realtime transcription |
+| `live` | Live models |
+| `document-parsing` | Document parsing |
 
-Disabled model ids are omitted, and a direct request for one (chat or any media endpoint, by id or through a model alias) is refused with HTTP 403 and `Model '<provider>/<model>' is disabled.` before any account is picked. Media default routes never pick a disabled model. When hide-paid is on, paid provider models drop out of the list, and a combo with no remaining visible members is omitted too. Compatible nodes are allowlist-only on this public catalog. Dashboard import discovery stays on `/api/providers/[id]/models`.
+An unknown one-segment kind returns 404. `/v1/models/{prefix}/{model}` looks up an exact chat model ID and returns `model_not_found` on a miss. `/v1/models/info?id=prefix/model` returns metadata; missing `id` returns 400. See [Model limits](../reference/model-limits.mdx) before assuming a context window.
 
-### Model exposure allow/deny list
+An `anthropic-version` header selects Anthropic's list envelope. A Codex user agent selects `{ "models": [...] }`. The Anthropic header takes precedence when both are present. `HEAD /v1/models` returns an empty 200 response for HTTP probes; use `GET` and a real request to check model availability.
 
-The Profile page's "Model catalog" card has an optional model exposure list: two newline-separated fields, allow and deny. An entry is an exact id (`provider/model` or a bare `model`) or a glob using `*` / `?`. Both lists are empty by default, which exposes everything (opt-in, no behavior change until set). The deny list is checked first, so a denied entry always drops even when an allow entry also matches. When the allow list is non-empty, only entries it matches stay visible.
+## Control exposure and access
 
-This list filters `GET /v1/models` and is mirrored into `auto/*` combo candidate pools (`getComboModels` in `src/sse/services/model.js`), so a denied model cannot stay reachable through an auto combo after being hidden from the catalog. Named combos are exempt: the list matches provider/model pairs, not saved combo names. Sending a denied model id directly (not through `auto/*`) is still dispatched; only catalog advertisement and auto-combo candidate membership are filtered.
+Disabled models disappear from discovery and return 403 when requested directly or through an alias. Media default routes also skip them. **Hide paid models** removes paid rows and combos with no visible members.
+
+Under **Settings → Model catalog**, optional allow and deny lists match exact IDs or `*` and `?` globs. Deny takes precedence. With a non-empty allow list, only matches remain visible. The same lists filter `auto/*` candidate models.
+
+Catalog exposure is not an access restriction. Direct requests for a hidden ID still route, and named combos are exempt from exposure filtering. To restrict clients, configure [API key model access](./api-keys.mdx#model-access-rules).
+
+If an expected model is missing, check the active provider connection, saved model selection, disabled-model settings, exposure lists, and key access rules. Compatible-node discovery imports are separate from the public catalog.

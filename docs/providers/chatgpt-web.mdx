@@ -1,6 +1,6 @@
 ---
 title: ChatGPT Web
-description: Use a chatgpt.com subscription session through DurinDoor, with a browser transport and an HTTP fallback.
+description: Connect a ChatGPT web session, choose browser or HTTP transport, and diagnose session or browser failures.
 ---
 
 ChatGPT Web (`chatgpt-web`, alias `cgpt-web`) sends chat requests through your logged-in chatgpt.com session. You paste the session cookie once; DurinDoor keeps it and writes back the rotated cookie when chatgpt.com issues a new one.
@@ -37,7 +37,7 @@ Chunks are sent back to chatgpt.com under their own names, ordered by index, nev
 The session cookies are `HttpOnly`. No script on the page can read them: `document.cookie` and `cookieStore.getAll()` both leave them out. Two ways work:
 
 1. DevTools, Network, reload chatgpt.com, select any request to chatgpt.com, and copy the whole `Cookie` request header value. Paste it as is.
-2. DevTools, Application, Cookies, `https://chatgpt.com`. Run this in the Console and paste each chunk's Value when asked. The joined `name=value` string lands on your clipboard (`copy()` is a DevTools console helper). Chrome may ask you to type `allow pasting` first.
+2. DevTools, Application, Cookies, `https://chatgpt.com`. Run this in the Console and paste each chunk's Value when asked. The joined `name=value` string lands on your clipboard (`copy()` is a DevTools console helper). Review any browser paste warning, or copy the header from Network instead.
 
 ```js
 (()=>{const p=[];for(let i=0;;i++){const v=prompt(`Value of __Secure-next-auth.session-token.${i} (Cancel when done)`);if(!v)break;p.push(`__Secure-next-auth.session-token.${i}=${v.trim()}`)}copy(p.join("; "))})()
@@ -63,7 +63,7 @@ DurinDoor has two ways to talk to chatgpt.com. The connection's `providerSpecifi
 
 ### Browser (primary)
 
-DurinDoor opens chatgpt.com in a pooled Playwright Chromium, loads your cookie into it, and sends the turn through the page's own code. chatgpt.com's scripts handle the access token, Sentinel, proof-of-work and Turnstile, so DurinDoor never solves them itself. One browser context is kept per connection and closed after 10 idle minutes; the whole browser closes after 5 idle minutes.
+DurinDoor opens chatgpt.com in a pooled Playwright Chromium, loads your cookie into it, and sends the turn through the page's own code. The page handles browser authentication and challenge flows. Browser contexts are pooled per connection and closed after idle time. Challenges can still reject a session.
 
 - Tools are not supported on this path; `auto` sends tool requests to HTTP.
 - Image and file inputs are uploaded through the page (up to 10 attachments, 20 MB per image, 50 MB per file and in total). Remote image URLs are fetched with private and metadata addresses blocked.
@@ -74,7 +74,7 @@ DurinDoor opens chatgpt.com in a pooled Playwright Chromium, loads your cookie i
 
 The HTTP transport calls chatgpt.com's backend directly over `tls-client-node`, which presents a Firefox TLS fingerprint. Per request it exchanges the cookie for an access token at `/api/auth/session` (cached for 5 minutes), warms the session, asks Sentinel for chat requirements, solves the SHA3-512 proof-of-work in Node, and posts the conversation. It supports tool calls through prompt emulation, GPT-5.6 Sol Pro handoff resumes, and generated images, which it caches for 30 minutes and serves from `/v1/chatgpt-web/image/<id>`.
 
-This path cannot solve Turnstile. When Sentinel asks for it, DurinDoor still sends the turn (chatgpt.com sometimes accepts it) and passes a connection's `turnstileToken` if one is set. When Sentinel refuses outright, the request fails with `SENTINEL_BLOCKED`. The browser transport does not have this limit.
+This path cannot solve Turnstile. When Sentinel asks for it, DurinDoor still sends the turn (chatgpt.com sometimes accepts it) and passes a connection's `turnstileToken` if one is set. When Sentinel refuses outright, the request fails with `SENTINEL_BLOCKED`. Browser mode can handle challenges through the page, but success still depends on the account and site accepting that browser session.
 
 `tls-client-node` downloads its native library into `$DATA_DIR/tls-client/bin` on first use. The library is built for glibc; on Alpine it needs `gcompat`, which the Docker image installs.
 
@@ -95,7 +95,7 @@ npx playwright install chromium
 
 Set `DURINDOOR_BROWSER_AUTO_INSTALL=1` to have DurinDoor run that install on first use instead. If no browser is found and auto-install is off, `auto` falls back to HTTP and `browser` answers 503 with the command to run.
 
-On a Linux server without a display, run DurinDoor under Xvfb (`xvfb-run -a node custom-server.js`) or switch to headless as above.
+On a Linux server without a display, run DurinDoor under Xvfb (`xvfb-run -a npm run start`) or switch to headless as above.
 
 ### Docker
 
@@ -127,3 +127,13 @@ These optional `providerSpecificData` fields apply to a ChatGPT Web connection:
 | `headless` | `true` or `false`, overriding `DURINDOOR_CHATGPT_WEB_HEADLESS`. |
 | `customUserAgent`, `locale`, `timezone` | Browser context settings. |
 | `turnstileToken` | A Turnstile token for the HTTP transport. |
+
+## Connect and verify
+
+1. Sign in to chatgpt.com and copy the complete session Cookie header using the method above.
+2. Open **Providers → ChatGPT Web**, paste the cookie, and save. Keep every `.0`, `.1`, and later chunk.
+3. Install a browser if you selected browser mode. On a server, provide a display or choose the documented headless or HTTP mode.
+4. Send a short request using a ChatGPT Web model your plan supports.
+5. Confirm the request on **Usage**. Test attachments and tools separately.
+
+If session validation returns an empty object, copy a fresh complete cookie. For 503 in browser mode, check Chromium and the display. For `SENTINEL_BLOCKED`, try a supported browser session rather than assuming HTTP can solve Turnstile. Tool calls use prompt emulation over HTTP and may differ from native API tools. Private web endpoints and account restrictions can change without a DurinDoor release.

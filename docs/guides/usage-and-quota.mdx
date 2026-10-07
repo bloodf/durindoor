@@ -17,10 +17,10 @@ Resetting usage never touches upstream quota, and the provider's own dashboard i
 Open **Quota Tracker** and find the connection. A row that is exhausted or cooling down shows when it resets.
 </Step>
 <Step>
-If the numbers look stale, refresh that connection. The dashboard calls `GET /api/usage/{connectionId}?force=1`, which skips the 60 second cache.
+If the numbers look stale, refresh that connection. Refresh bypasses the 60-second cache. Automation can request `GET /api/usage/{connectionId}?force=1`.
 </Step>
 <Step>
-Nothing to do if you have a second account on the same provider: preflight already skips the exhausted one. Otherwise add a connection or put the model in a [combo](../features/combos.mdx) with a fallback member.
+If the provider supports quota preflight and you have another eligible account, routing can skip the exhausted connection. Otherwise add a connection or put the model in a [combo](../features/combos.mdx) with a fallback member.
 </Step>
 </Steps>
 
@@ -53,7 +53,7 @@ You can hide individual rows per connection in the limits view if a provider rep
 
 ## Cooldowns
 
-When an upstream fails, DurinDoor locks that account (or that account and model) for a while and tries the next one.
+For retryable upstream failures, DurinDoor temporarily locks the account or model and tries another eligible connection. Terminal errors stop the request. Some provider capacity or setup errors have special handling.
 
 | Trigger | Lock |
 | --- | --- |
@@ -72,4 +72,4 @@ There is no CSV export for usage. **Download Backup** under **Profile → Data &
 
 ## Prices
 
-Estimated cost uses the built-in price table in `open-sse/providers/pricing.js`. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep the cost they were saved with.
+Estimated cost uses the built-in model prices. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep their original estimate. Compare estimates with provider billing before using them for financial decisions.

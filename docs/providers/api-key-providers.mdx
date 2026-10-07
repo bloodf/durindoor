@@ -1,15 +1,15 @@
 ---
 title: API key providers
-description: Add a provider API key, optional env fallbacks, and link a DurinDoor key to specific accounts.
+description: Add vendor credentials, configure Bedrock authentication, and verify provider access.
 ---
 
-Most paid APIs are API-key providers: OpenAI, Anthropic, Groq, Mistral, DeepSeek, and the rest of the `apikey` registry category. You paste the upstream secret; DurinDoor stores it on a connection and sends it as `Authorization: Bearer` or the header that provider declares (`x-api-key` for Anthropic-style transports).
+Most paid APIs are API-key providers: OpenAI, Anthropic, Groq, Mistral, DeepSeek, and other providers marked as API-key providers. You paste the upstream secret; DurinDoor stores it on a connection and sends it as `Authorization: Bearer` or the header that provider declares (`x-api-key` for Anthropic-style transports).
 
 Open Dashboard, then Providers, then the provider. Add API Key (or Add Connection) opens the form.
 
 <Steps>
 <Step>
-Pick the provider card. Dual-auth providers (OAuth plus `authModes: ["apikey"]`) expose the same add-key dialog on that page.
+Pick the provider card. Providers that support both OAuth and API keys offer both methods on their page.
 </Step>
 <Step>
 Give the connection a name. The dialog fills the first unused name in the `main`, `main-2`, `main-3` sequence. Reopening after a successful add clears secrets and provider-specific fields; a background refresh while the dialog is open does not.
@@ -21,7 +21,7 @@ Paste the key. Cloudflare Workers AI and Snowflake Cortex also require an accoun
 Set priority if you already have another key for this provider. Lower numbers run first under fill-first selection. Optional: default model, proxy pool, per-connection proxy URL.
 </Step>
 <Step>
-Save. `POST /api/providers` creates the row with `authType: "apikey"` (cookie providers use `cookie`). A duplicate `(provider, apikey, name)` returns HTTP 409 `PROVIDER_CONNECTION_ALREADY_EXISTS`. Validation probes time out at 10 seconds.
+Save, then send a request using one of the connection's models. A duplicate provider, credential, and name is rejected with HTTP 409. Validation probes stop after 10 seconds; connection tests stop after 15 seconds.
 </Step>
 </Steps>
 
@@ -47,11 +47,9 @@ Saving a profile-only connection skips the usual API-key requirement, so `POST /
 
 Check, Test and the health monitor verify profile and static-key connections with a SigV4-signed Converse call that carries no messages. AWS checks the signature before the body, so a `ValidationException` means the credentials work and no inference runs. An `AccessDeniedException` also counts as valid credentials: AWS accepted the key and IAM denied the model. The IAM secret access key is never sent as a bearer token. A Bedrock API key connection keeps the bearer probe.
 
-The session token is stored in its own encrypted connection field, like the API key, and no provider API response returns it. Editing a connection with the session token field left blank keeps the saved token, unless you change the Access Key ID or clear it. Typing a new API key in the edit form clears a saved profile, since the profile would otherwise keep taking precedence. The edit form only saves that change after the new credentials pass the check, and the check reuses the saved session token when the Access Key ID is unchanged. A session token sent inside `providerSpecificData`, as 9router clients did, is moved into the encrypted field.
+Temporary AWS keys beginning with `ASIA` require a session token. A missing token is rejected with 401. The session token is encrypted separately and is not returned in provider responses.
 
-A missing or expired SSO session is reported as HTTP 401 `auth_error`, so run `aws sso login` again when you see it.
-
-A temporary access key (`ASIA...`) saved without a session token is rejected up front with HTTP 401 rather than failing later as a signature mismatch.
+When editing, leave the session-token field blank to keep the saved token. Changing or clearing the Access Key ID also clears it. Entering a new API key clears the saved profile after validation. For an expired SSO session, run `aws sso login --profile <name>` again.
 
 ## Env fallbacks
 
@@ -71,16 +69,18 @@ OAuth client overrides (`GEMINI_OAUTH_CLIENT_ID`, `ANTIGRAVITY_OAUTH_CLIENT_ID`,
 
 ## Scoping a DurinDoor API key to accounts
 
-A DurinDoor client key (`sk-...`) can be limited to a subset of provider connections. Zero relation rows means unrestricted: the key may use every reachable account. Assigning one or more connection ids opts into the restriction. Clearing the list restores the unrestricted default.
+A DurinDoor client key (`sk-...`) can be limited to a subset of provider connections. An empty account scope means unrestricted: the key may use every reachable account. Assigning one or more connection ids opts into the restriction. Clearing the list restores the unrestricted default.
 
 Details, deletion guards, and the HTTP shape live in [API key scoping](../operations/api-key-scoping.mdx). Deleting a connection that is the last scoped account for a key is rejected with HTTP 409 `API_KEY_SCOPE_WOULD_BROADEN` so the key cannot silently become unrestricted.
 
 Test a saved key from the provider page. Connection tests stop after 15 seconds. Custom URLs still go through the outbound SSRF guard. Hidden registry providers cannot be created through this form; `POST /api/providers` returns `Invalid provider`.
 
-Priority is per provider. Drag-reorder on the provider page writes the full id list in one transaction to `PUT /api/providers/reorder`. Fill-first selection then uses that order. See [Connecting accounts](./connecting-accounts.mdx) for how that interacts with account fallback.
+Priority is per provider. Drag accounts on the provider page to change their order. Fill-first selection then uses that order. See [Connecting accounts](./connecting-accounts.mdx) for how that interacts with account fallback.
 
-Kiro's headless key flow persists `authType` as `api_key` (underscore). Quota and test routes accept both `apikey` and `api_key`. Edit Connection never shows the stored secret; paste a new value to rotate. Rotate the key at the vendor first, then update DurinDoor.
+Edit Connection does not display the stored secret. To rotate a vendor key, create its replacement at the vendor, update the connection, and verify a request before revoking the old credential.
 
 Proxy fields on the add dialog are optional: `connectionProxyEnabled`, `connectionProxyUrl`, `connectionNoProxy`, and `proxyPoolId`. `__none__` means no pool. A bad pool id is rejected before the connection is written.
 
 `google-pse` requires `cx` (Programmable Search Engine id) in provider-specific data. Without it, create returns 400.
+
+If a probe passes but chat fails, check model entitlement and deployment names. Bedrock `AccessDeniedException` can mean the credentials are valid but IAM denies that model; a passing credential probe does not grant inference permission.

@@ -3,7 +3,19 @@ title: SDK examples
 description: Call DurinDoor with the OpenAI SDK, the Anthropic SDK, or curl.
 ---
 
-Point the client at this process. Production listens on port `20128`. Create a key first, then put that secret in `api_key` / `apiKey`.
+Start DurinDoor, connect a provider, and create a [client key](./api-keys.mdx). Choose an ID from `GET /v1/models`. Replace `PROVIDER/MODEL` below with that ID. Production listens on port `20128`.
+
+Install the SDK you use:
+
+```bash
+npm install openai @anthropic-ai/sdk
+```
+
+```bash
+python -m pip install openai anthropic
+```
+
+Run JavaScript examples as ES modules, or Python examples as Python scripts.
 
 `POST /v1/chat/completions` and `POST /v1/messages` both reject a non-JSON `Content-Type` with HTTP 415 before reading the body. Send `application/json`.
 
@@ -25,7 +37,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "coding-default",
+  model: "PROVIDER/MODEL",
   messages: [{ role: "user", content: "Say hello." }],
 });
 
@@ -44,7 +56,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="coding-default",
+    model="PROVIDER/MODEL",
     messages=[{"role": "user", "content": "Say hello."}],
 )
 
@@ -58,13 +70,13 @@ print(response.choices[0].message.content)
 curl http://localhost:20128/v1/chat/completions \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"coding-default","messages":[{"role":"user","content":"Say hello."}]}'
+  -d '{"model":"PROVIDER/MODEL","messages":[{"role":"user","content":"Say hello."}]}'
 ```
 
   </Tab>
 </Tabs>
 
-Set `stream: true` on the same create call (or `"stream": true` in the JSON body) to receive SSE. The route forwards that flag into the shared chat handler.
+Set `stream: true` on the same create call (or `"stream": true` in the JSON body) to receive SSE. Iterate over the returned stream to read chunks. A successful non-streaming OpenAI call prints the assistant text.
 
 ## Anthropic SDK
 
@@ -86,7 +98,7 @@ const client = new Anthropic({
 });
 
 const message = await client.messages.create({
-  model: "coding-default",
+  model: "PROVIDER/MODEL",
   max_tokens: 32,
   messages: [{ role: "user", content: "Say hello." }],
 });
@@ -106,7 +118,7 @@ client = Anthropic(
 )
 
 message = client.messages.create(
-    model="coding-default",
+    model="PROVIDER/MODEL",
     max_tokens=32,
     messages=[{"role": "user", "content": "Say hello."}],
 )
@@ -122,10 +134,12 @@ curl http://localhost:20128/v1/messages \
   -H "x-api-key: YOUR_DURINDOOR_API_KEY" \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
-  -d '{"model":"coding-default","max_tokens":32,"messages":[{"role":"user","content":"Say hello."}]}'
+  -d '{"model":"PROVIDER/MODEL","max_tokens":32,"messages":[{"role":"user","content":"Say hello."}]}'
 ```
 
   </Tab>
 </Tabs>
 
-Claude-format bodies need `max_tokens`. Streaming (`stream: true`) keeps the connection alive with Anthropic ping frames while the provider is still silent.
+Claude-format bodies need `max_tokens`. A successful call prints the message content blocks. Streaming (`stream: true`) sends Anthropic SSE with ping frames while waiting for the provider.
+
+If the client requests `/v1/v1/messages`, remove `/v1` from the Anthropic base URL. For 401, check the DurinDoor key. For a model error, use an ID from your instance. Translation does not guarantee support for every upstream option; test streaming, tools, and images before using them in an application.

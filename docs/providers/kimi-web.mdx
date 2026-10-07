@@ -1,6 +1,6 @@
 ---
 title: Kimi Web
-description: Connect a www.kimi.com or www.kimi.ai session with the localStorage token snippet, the K3 and K2.6 models, token refresh, and how failures look.
+description: Copy Kimi web tokens, preserve the correct site origin, and verify chat and refresh.
 ---
 
 Kimi Web (`kimi-web`) talks to the chat backend behind Kimi's web app using your signed-in session. It is listed with the [web cookie providers](./web-cookie.mdx), but Kimi no longer signs requests with a cookie: the web app keeps an `access_token` and a `refresh_token` in localStorage and sends `Authorization: Bearer <access_token>`. To reach Kimi through its API instead, use Kimi (`kimi`, OAuth) or Kimi Coding API Key (`kimi-coding-apikey`).
@@ -20,7 +20,7 @@ Open developer tools, then Console, and run the snippet the connect dialog shows
 copy(JSON.stringify({access_token:localStorage.getItem('access_token'),refresh_token:localStorage.getItem('refresh_token'),origin:location.origin}))
 ```
 
-If Chrome refuses to paste into the console, type `allow pasting` first.
+If the browser blocks console pasting, review its warning or copy the values manually from Application → Local Storage.
 </Step>
 <Step>
 In DurinDoor open **Providers**, then **Kimi Web**, then Add. Paste the copied JSON into **Cookie Value** and save.
@@ -60,3 +60,5 @@ The saved pair belongs to the paste it came from. Pasting new tokens with **Edit
 A 401 that refresh cannot fix, and any 403, cools the connection down for two minutes like any other provider.
 
 Kimi Web does not report quota. The [Quota Tracker](../features/quota-tracking.mdx) covers the Kimi and Kimi Coding providers, not the web session.
+
+After saving, send a short chat using `kimi-web/k3` or the exact ID shown by your instance, then confirm **Usage**. A successful model-list probe checks the session at that moment; it does not verify tool support or keep the session alive.

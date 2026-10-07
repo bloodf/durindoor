@@ -1,6 +1,6 @@
 ---
 title: Cursor
-description: Import a Cursor IDE session as a DurinDoor provider, where auto-detect looks, what a manual import needs, and why there is no refresh.
+description: Import a Cursor IDE session, select a model, and recover an expired connection.
 ---
 
 The Cursor provider (`cursor`, alias `cu`) lets DurinDoor send requests to Cursor's own chat backend with the session from your Cursor IDE. It is the opposite direction from the [Cursor integration](../integrations/cursor.mdx), which points the Cursor editor at DurinDoor.
@@ -33,11 +33,11 @@ The HTTP route is `POST /api/oauth/cursor/import` with `accessToken`, `machineId
 
 Cursor publishes no refresh endpoint. The connection is saved with no refresh token and an expiry 24 hours out. When requests start failing with auth errors, sign in to the IDE again and repeat the import. Signing out of the IDE usually ends the imported session too.
 
-## How requests are sent
+## Choose and verify a model
 
-The executor speaks Cursor's Connect protocol with protobuf frames over HTTP/2 to `api2.cursor.sh`. Every request needs the saved machine id; headers include a checksum derived from it. A connection without a machine id fails before anything is sent.
+Send `cu/<model>` from `GET /v1/models`. `cu/default` selects Cursor Auto. The imported machine ID is required for every request; a connection without it fails before dispatch.
 
-Send `cu/<model>`. `cu/default` is Cursor's Auto choice. `GET /v1/models` lists the rest.
+Send a short prompt and find the account on **Usage**. Import validates token and machine-ID format, not a live Cursor request. A 401 after import can mean the session expired. Reimport after signing in to the IDE again.
 
 ## Quota
 

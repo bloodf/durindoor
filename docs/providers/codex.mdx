@@ -1,6 +1,6 @@
 ---
 title: OpenAI Codex
-description: Connect a ChatGPT account for Codex over OAuth or bulk import, the port 1455 callback, fingerprint mode, client version, reauth quarantine, and quota windows.
+description: Connect ChatGPT OAuth accounts, import tokens, recover authentication, and inspect Codex quota.
 ---
 
 OpenAI Codex (`codex`, alias `cx`) uses a ChatGPT subscription through the same OAuth login the Codex CLI uses. Requests go to `https://chatgpt.com/backend-api/codex/responses` in the Responses format, always streamed upstream. To point the Codex CLI at DurinDoor as a client, see [Codex integration](../integrations/codex.mdx).
@@ -40,7 +40,7 @@ The mode controls which identity values stay stable across requests from one con
 
 ## Bulk import
 
-The provider page has a bulk import button for accounts you already signed in elsewhere. Paste a JSON array, a single object, or `{ "accounts": [...] }`. Each item needs an `accessToken`. Include `refreshToken`, `idToken`, and `expiresAt` (or `expiresIn`) when you have them; without a refresh token the connection stops working when the access token expires. Email, account id, and plan are filled in from the JWT when missing. Imports run one at a time so priorities keep the input order.
+The provider page has a bulk import button for accounts you already signed in elsewhere. Paste a JSON array, a single object, or `{ "accounts": [...] }`. Each item needs an `accessToken`. Include `refreshToken`, `idToken`, and `expiresAt` (or `expiresIn`) when you have them; without a refresh token the connection stops working when the access token expires. Email, account id, and plan are filled in from the JWT when missing. Imported accounts retain input order for priority.
 
 Over HTTP, `POST /api/oauth/codex/bulk-import` takes the same body. `POST /api/oauth/codex/import-token` saves a single access token with no refresh token. DurinDoor does not read `~/.codex/auth.json`.
 
@@ -52,7 +52,7 @@ When Codex answers 401 with an invalidated or reused token message, DurinDoor qu
 
 ## Codex CLI version
 
-OpenAI gates some models on the Codex client version, answering with messages like `The 'gpt-6-astra' model requires a newer version of Codex.` DurinDoor pins `0.160.1` (`CODEX_CLI_VERSION` in `open-sse/providers/registry/codex.js`) and sends it as `Version` and `User-Agent: codex_cli_rs/0.160.1`.
+OpenAI gates some models on the Codex client version, answering with messages like `The 'gpt-6-astra' model requires a newer version of Codex.` For non-Codex clients, this build presents Codex version `0.160.1`. A real Codex client can supply its own version.
 
 When the caller is a real Codex CLI, its own version wins. DurinDoor reads the incoming `Version` header, or a `codex_cli_rs/x.y.z` style user agent, and forwards that version instead of the pin. A newer `codex` pointed at DurinDoor can therefore reach models the pin cannot. Other clients get the pin.
 
@@ -69,3 +69,5 @@ The [Quota Tracker](../features/quota-tracking.mdx) reads ChatGPT's usage endpoi
 When the plan offers rate-limit reset credits, the limits view can read and spend them through `/api/usage/{connectionId}/codex-reset-credits`. Spending one resets the upstream limit and cannot be undone. A successful redemption also clears that connection's local model cooldowns and marks it active again, so it does not stay locked out waiting for a cooldown that no longer matches the reset upstream window.
 
 Auto-ping can restart the five-hour window on a schedule; see [Quota tracking](../features/quota-tracking.mdx#auto-ping).
+
+After login or import, send a short request using a `cx/` ID from the catalog. Confirm the selected account on **Usage**. A successful login does not guarantee entitlement to every listed model. For `reauth_required`, sign in again on that connection; ordinary retries do not release the quarantine.

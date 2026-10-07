@@ -6,8 +6,8 @@ export default function CavemanOutputPreview({ level, enabled }) {
   if (!prompt) return null;
 
   return (
-    <details className="w-full basis-full rounded-dd border border-dd-border p-3">
-      <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-medium text-dd-text">
+    <details className="w-full min-w-0 rounded-dd border border-dd-border p-3">
+      <summary className="list-item min-h-11 cursor-pointer py-3 text-[13px] font-medium text-dd-text">
         Preview injected output instructions
       </summary>
       <p className="mb-3 text-xs text-dd-muted">

@@ -15,6 +15,9 @@ the source of each database key. **Save** probes PostgreSQL before atomically wr
 The file overrides process environment values for `DURINDOOR_DATABASE_ENGINE`,
 `DURINDOOR_PG_URL`, and `DURINDOOR_PG_SSLMODE` only. Other environment keys are ignored.
 An explicit managed SQLite selection clears inherited PostgreSQL selectors at startup.
+The engine selector follows a managed/process PostgreSQL URL's presence, even if its
+value is empty (fail-closed PostgreSQL boot). A stored cutover-target URL only prefills
+connection fields; it does not select PostgreSQL startup.
 
 Passwords are write-only: leaving the field untouched preserves the password from the
 managed URL, or the process URL when no managed URL exists. **Test** probes without
@@ -30,6 +33,12 @@ the URL encrypted in the settings row; failed probes leave the previous target i
 No URL or stored password is displayed. The target is available to **Cut over to Postgres**
 immediately, without restarting or saving a managed startup override. Configuring a
 target alone leaves the startup engine on its stored/active selection, usually SQLite.
+
+Connection selectors support `disable`, `require`, and `verify-full`. Legacy inherited
+modes such as `prefer` are conservatively displayed as `require` before editing.
+Startup fields that have not been edited follow refreshed target and engine status,
+including a successful cutover. Unsaved field edits and newly entered passwords are
+preserved during refreshes; stored passwords are never populated into either form.
 
 
 ## Version policy

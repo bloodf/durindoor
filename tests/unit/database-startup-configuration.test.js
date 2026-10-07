@@ -2,6 +2,10 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { within } from "@testing-library/dom";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import StartupConfiguration from "../../src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx";
 
 let host;
@@ -45,4 +49,33 @@ it("shows a failed probe and does not announce saved changes", async () => {
   expect(host.querySelector('[role="alert"]').textContent).toContain("probe failed");
   expect(saved).not.toHaveBeenCalled();
   expect(host.textContent).not.toContain("Restart DurinDoor");
+});
+
+it.each(["process", "file", "empty-process", "stored-target", "managed-sqlite"])("renders the engine selected by the real %s startup boundary without revealing credentials", async (source) => {
+  const savedEnv = { ...process.env };
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "dd-startup-view-"));
+  try {
+    process.env.DATA_DIR = directory;
+    for (const key of ["DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE", "DURINDOOR_DATABASE_ENV_SOURCE_JSON"]) delete process.env[key];
+    vi.resetModules();
+    const env = await import("@/lib/db/databaseEnvFile.js");
+    const url = "postgresql://operator:private@db.example.com/startup";
+    if (source === "process" || source === "managed-sqlite") process.env.DURINDOOR_PG_URL = url;
+    if (source === "empty-process") process.env.DURINDOOR_PG_URL = "";
+    if (source === "file") env.writeDatabaseEnvFile({ DURINDOOR_PG_URL: url });
+    if (source === "managed-sqlite") env.writeDatabaseEnvFile({ DURINDOOR_DATABASE_ENGINE: "sqlite" });
+    const description = env.describeDatabaseStartup("postgresql://operator:stored@target.example.com/cutover", "sqlite");
+    await act(async () => root.render(React.createElement(StartupConfiguration, { startupEnv: description, password: "dashboard", onSaved: vi.fn(), onUnauthorized: vi.fn() })));
+    const selected = source === "stored-target" || source === "managed-sqlite" ? "SQLite" : "PostgreSQL";
+    expect(within(host).getByRole("radio", { name: selected, exact: true }).checked).toBe(true);
+    if (selected === "PostgreSQL") {
+      expect(within(host).getByLabelText("Password").value).toBe("");
+      if (source !== "empty-process") expect(within(host).getByLabelText("Host").value).toBe("db.example.com");
+    }
+    expect(host.textContent).not.toContain("private");
+    expect(host.textContent).not.toContain("postgresql://");
+  } finally {
+    process.env = savedEnv;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

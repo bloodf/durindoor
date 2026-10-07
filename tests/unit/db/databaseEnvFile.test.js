@@ -105,11 +105,21 @@ describe("managed database startup file", () => {
     expect(env.describeDatabaseStartup(url, "sqlite").effective).toMatchObject({ engine: "sqlite", host: "db.example.com", database: "target", user: "operator" });
     expect(env.describeDatabaseStartup(url, "postgres").effective.engine).toBe("postgres");
     process.env.DURINDOOR_PG_URL = url;
-    expect(env.describeDatabaseStartup(undefined, "sqlite").effective.engine).toBe("sqlite");
+    expect(env.describeDatabaseStartup(undefined, "sqlite").effective.engine).toBe("postgres");
     process.env.DURINDOOR_DATABASE_ENGINE = "postgres";
     expect(env.describeDatabaseStartup(url, "sqlite").effective.engine).toBe("postgres");
     env.writeDatabaseEnvFile({ DURINDOOR_DATABASE_ENGINE: "sqlite" });
     expect(env.describeDatabaseStartup(url, "postgres").effective.engine).toBe("sqlite");
     expect(JSON.stringify(env.describeDatabaseStartup(url, "sqlite"))).not.toContain("private");
+  });
+
+  it.each(["process", "file"])("treats %s URL presence, including an empty URL, as a fail-closed PostgreSQL selector", (source) => {
+    for (const url of ["postgresql://operator:private@db.example.com/startup", ""]) {
+      if (source === "process") process.env.DURINDOOR_PG_URL = url;
+      else env.writeDatabaseEnvFile({ DURINDOOR_PG_URL: url });
+      expect(env.describeDatabaseStartup("postgresql://operator:stored@target.example.com/target", "sqlite").effective.engine).toBe("postgres");
+    }
+    env.writeDatabaseEnvFile({ DURINDOOR_DATABASE_ENGINE: "sqlite", DURINDOOR_PG_URL: null });
+    expect(env.describeDatabaseStartup(undefined, "postgres").effective.engine).toBe("sqlite");
   });
 });

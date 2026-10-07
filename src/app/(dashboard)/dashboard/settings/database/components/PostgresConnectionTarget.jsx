@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
+import { normalizeSslmode, SSL_MODES } from "./sslmode.js";
 
 export default function PostgresConnectionTarget({ effective, password, onUnauthorized, onPersisted }) {
-  const [draft, setDraft] = useState(() => ({ host: "", port: "5432", database: "", user: "", sslmode: "require", ...effective }));
+  const [draft, setDraft] = useState(() => ({ host: "", port: "5432", database: "", user: "", ...effective, sslmode: normalizeSslmode(effective?.sslmode) }));
   const [credential, setCredential] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -43,7 +44,7 @@ export default function PostgresConnectionTarget({ effective, password, onUnauth
           <Input label="Target password" type="password" autoComplete="new-password" value={credential} disabled={busy} onChange={(event) => { setCredential(event.target.value); setResult(null); }} hint="Write-only. Enter the target password each time; leave empty only for passwordless authentication." />
           <div className="flex flex-col gap-1">
             <span className="text-[13px] text-dd-muted">Target SSL mode</span>
-            <Select aria-label="Target SSL mode" disabled={busy} value={draft.sslmode} onChange={(value) => { setDraft((previous) => ({ ...previous, sslmode: value })); setResult(null); }} options={["disable", "require", "verify-full"].map((value) => ({ value, label: value }))} />
+            <Select aria-label="Target SSL mode" disabled={busy} value={draft.sslmode} onChange={(value) => { setDraft((previous) => ({ ...previous, sslmode: value })); setResult(null); }} options={SSL_MODES.map((value) => ({ value, label: value }))} />
           </div>
         </div>
         <Button variant="primary" disabled={busy || !draft.host || !draft.database || !draft.user} onClick={testAndPersist}>{busy ? "Testing..." : "Test connection and save target"}</Button>

@@ -36,7 +36,7 @@ const meta = {
             postgresPort: 5432,
             postgresDatabase: "durindoor",
             postgresUser: "durindoor",
-            postgresSslmode: "require",
+            postgresSslmode: "prefer",
             postgresAuthSource: "settings",
             snapshots: [],
           },

@@ -99,7 +99,10 @@ export function describeDatabaseStartup(fallbackUrl, fallbackEngine = "sqlite") 
   const sources = processSources();
   const value = (key) => file[key] ?? sources[key]?.processValue;
   const engine = value("DURINDOOR_DATABASE_ENGINE");
-  const effective = { engine: engine || fallbackEngine, sslmode: value("DURINDOOR_PG_SSLMODE") || "require" };
+  const hasStartupUrl = Object.hasOwn(file, "DURINDOOR_PG_URL") || Object.hasOwn(sources.DURINDOOR_PG_URL, "processValue");
+  const selectedEngine = file.DURINDOOR_DATABASE_ENGINE === "sqlite" ? "sqlite"
+    : engine === "postgres" || hasStartupUrl ? "postgres" : engine || fallbackEngine;
+  const effective = { engine: selectedEngine, sslmode: value("DURINDOOR_PG_SSLMODE") || "require" };
   if (value("DURINDOOR_PG_URL") || fallbackUrl) {
     try {
       const url = new URL(value("DURINDOOR_PG_URL") ?? fallbackUrl);

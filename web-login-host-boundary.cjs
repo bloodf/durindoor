@@ -1,7 +1,9 @@
 "use strict";
 
+const { isString } = require("./src/shared/utils/typeChecks.cjs");
+
 function parseOrigin(raw) {
-  if (typeof raw !== "string" || !raw || raw !== raw.trim()) return null;
+  if (!isString(raw) || !raw || raw !== raw.trim()) return null;
   try {
     const url = new URL(raw);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
@@ -29,7 +31,7 @@ function isLoginHost(req) {
   try {
     const configured = new URL(process.env.DURINDOOR_WEB_LOGIN_ORIGIN || "");
     const host = req.headers?.host;
-    if (typeof host !== "string" || /[\s,/@\\?#]/.test(host)) return false;
+    if (!isString(host) || /[\s,/@\\?#]/.test(host)) return false;
     return hostname(new URL(`http://${host}`)) === hostname(configured);
   } catch {
     return false;

@@ -1,5 +1,8 @@
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -85,5 +88,23 @@ describe("isolated login hostname boundary", () => {
     server.emit("upgrade", request(url), socket, Buffer.alloc(0));
     expect(nextUpgrade).not.toHaveBeenCalled();
     expect(socket.end).toHaveBeenCalledWith(expect.stringContaining("403 Forbidden"));
+  });
+
+  it("enforces the host boundary from a packaged tree without checkout resolution", () => {
+    const staged = mkdtempSync(path.join(tmpdir(), "web-login-package-"));
+    try {
+      mkdirSync(path.join(staged, "src/shared/utils"), { recursive: true });
+      copyFileSync(new URL("../../web-login-host-boundary.cjs", import.meta.url), path.join(staged, "web-login-host-boundary.cjs"));
+      copyFileSync(new URL("../../src/shared/utils/typeChecks.cjs", import.meta.url), path.join(staged, "src/shared/utils/typeChecks.cjs"));
+      const packagedRequire = createRequire(path.join(staged, "package.json"));
+      const packaged = packagedRequire("./web-login-host-boundary.cjs");
+      expect(packaged.configuredLoginOrigin("https://gateway.example")).toBe("https://login.gateway.example");
+      const res = { writeHead: vi.fn(), end: vi.fn() };
+      expect(packaged.denyIsolatedHttpRequest(request("/api/keys/k1/reveal"), res)).toBe(true);
+      expect(res.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+      expect(packaged.allowsLoginRequest(request("/__web_login/grok-web/"))).toBe(true);
+    } finally {
+      rmSync(staged, { recursive: true, force: true });
+    }
   });
 });

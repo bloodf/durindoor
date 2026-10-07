@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { canAccessManagementApi, isOperatorRequest, hasExactRequestOrigin } from "@/dashboardGuard";
-import { POST as createProvider } from "@/app/api/providers/route";
+import { createProvider } from "./providerRouteHandlers";
+import { isString } from "@/shared/utils/typeChecks";
 import {
   beginSession, ownedSession, destroySession, isolatedOrigin, requestOrigin, ownerBinding,
   issueBootstrap, sessionCookie, clearedSessionCookie, capturedCookieNames, checkReady,
@@ -41,8 +42,17 @@ export async function handleWebLogin(request, action) {
     destroySession(sess.id);
     return json({ cancelled: true }, 200, clearedSessionCookie());
   }
-  if (!(await checkReady(sess))) return json({ error: "Sign-in is not ready" }, 409);
-  if (typeof body.name !== "string" || !body.name.trim()) return json({ error: "Name is required" }, 400);
+  // A captured object is not authority after readiness or adapter lookup yields.
+  const provider = sess.provider;
+  const owner = sess.owner;
+  const dashboard = sess.dashboardOrigin;
+  const shouldCommit = () => ownedSession(request) === sess &&
+    sess.provider === provider && body.provider === provider &&
+    sess.owner === owner && sess.dashboardOrigin === dashboard && sess.loginOrigin === loginOrigin;
+  const ready = await checkReady(sess);
+  if (!shouldCommit()) return json({ error: "Login session expired or was cancelled or replaced" }, 409);
+  if (!ready) return json({ error: "Sign-in is not ready" }, 409);
+  if (!isString(body.name) || !body.name.trim()) return json({ error: "Name is required" }, 400);
   if (sess.finishing) return json({ error: "Connection save already in progress" }, 409);
   sess.finishing = true;
   try {
@@ -52,10 +62,14 @@ export async function handleWebLogin(request, action) {
       method: "POST", headers,
       body: JSON.stringify({ provider: sess.provider, name: body.name.trim(), apiKey: composeCookieHeader(sess) }),
     });
-    const response = await createProvider(forwarded);
+    const response = await createProvider(forwarded, { shouldCommit });
     if (!response.ok) return response;
-    destroySession(sess.id);
-    response.headers.append("Set-Cookie", clearedSessionCookie());
+    // Persistence has already committed, but a newer login may own the browser
+    // cookie while response sanitization awaits operator privilege.
+    if (shouldCommit()) {
+      destroySession(sess.id);
+      response.headers.append("Set-Cookie", clearedSessionCookie());
+    }
     response.headers.set("Cache-Control", "no-store");
     return response;
   } finally { sess.finishing = false; }

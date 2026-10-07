@@ -93,6 +93,8 @@ Set `DURINDOOR_WEB_LOGIN_ORIGIN=https://login.gateway.example` for dashboard-ass
 
 The isolated hostname accepts only `/__web_login/bootstrap` and `/__web_login/<provider>/…`. Before Next handles a request, the custom server denies dashboard pages, authentication and management APIs, static assets, local administration bridges, and all WebSocket upgrades on that hostname, regardless of credentials. Keep the original Host header at the reverse proxy; forwarded host headers are not trusted.
 
+Provider response headers are untrusted too. The login proxy removes Next routing, continuation, request-override and middleware-cookie directives before Next consumes the response. An upstream page cannot use these headers to bypass the isolated-host boundary or turn a provider response into an application or arbitrary-host dispatch; ordinary provider redirects still use rewritten `Location` headers.
+
 Bootstrap grants are short-lived and single-use. The login cookie is host-only and HttpOnly; do not configure Domain-wide dashboard cookies. Login pages run cross-origin to the dashboard, and iframe/popup access never falls back to the dashboard origin. Management mutations and protected reads with a foreign Origin cannot use dashboard cookies or an open-dashboard bypass; valid explicit CLI/API credentials retain their existing permissions, including the stricter raw-secret policy.
 
 ## Management routes

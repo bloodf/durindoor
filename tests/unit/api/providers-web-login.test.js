@@ -22,7 +22,6 @@ import { sessionFromRequest, absorbSetCookies, destroySession, consumeBootstrap,
 const DASHBOARD = "https://dashboard.example";
 const LOGIN = "https://login.example";
 let sessions;
-let persisted;
 function request(action, body = {}, cookie = "", token = "operator-one", origin = DASHBOARD) {
   return new NextRequest(`${DASHBOARD}/api/providers/web-login/${action}`, {
     method: action === "status" ? "GET" : "POST",
@@ -52,13 +51,7 @@ beforeEach(() => {
   guards.canAccessManagementApi.mockResolvedValue(true);
   guards.isOperatorRequest.mockResolvedValue(true);
   guards.hasExactRequestOrigin.mockReturnValue(true);
-  persisted = [];
   models.createProviderConnection.mockReset();
-  models.createProviderConnection.mockImplementation(async (data) => {
-    const connection = { id: "saved-connection", ...data };
-    persisted.push(connection);
-    return connection;
-  });
 });
 afterEach(() => { for (const sess of sessions) destroySession(sess.id); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -109,7 +102,7 @@ describe("provider web-login API authority", () => {
 });
 
 describe("provider web-login API lifecycle", () => {
-  it("starts, reports capture readiness and saves the exact composed Cookie through the existing create route", async () => {
+  it("starts, reports capture readiness and rejects missing names before creation", async () => {
     const { res, cookie, sess } = await begin();
     expect(res.headers.get("set-cookie")).toContain("HttpOnly");
     expect(res.headers.get("cache-control")).toBe("no-store");
@@ -120,31 +113,7 @@ describe("provider web-login API lifecycle", () => {
     capture(sess);
     expect(await (await status(request("status", {}, cookie))).json()).toEqual({ provider: "cookie-web", captured: ["cf_clearance", "session", "session.0", "session.1"], ready: true });
     expect((await finish(request("finish", { provider: "cookie-web", name: "  " }, cookie))).status).toBe(400);
-    const saved = await finish(request("finish", { provider: "cookie-web", name: " Account " }, cookie));
-    expect(saved.status).toBe(201);
-    expect(persisted).toHaveLength(1);
-    expect(persisted[0]).toMatchObject({ id: "saved-connection", provider: "cookie-web", authType: "cookie", name: "Account", apiKey: "session.0=first; session.1=second; cf_clearance=clear" });
-    expect(models.createProviderConnection.mock.calls[0][1]).toEqual({ createOnly: true });
-    const view = await saved.json();
-    expect(view.connection).toMatchObject({ id: "saved-connection", provider: "cookie-web", authType: "cookie", name: "Account" });
-    expect(view.connection).not.toHaveProperty("apiKey");
-    expect(view.connection).not.toHaveProperty("sessionToken");
-    expect(JSON.stringify(view)).not.toContain("session.0=first");
-    expect(saved.headers.get("set-cookie")).toContain("Max-Age=0");
-    expect((await status(request("status", {}, cookie))).status).toBe(403);
-  });
-
-  it("retains captured cookies after create failures so saving can be retried", async () => {
-    const { cookie, sess } = await begin();
-    capture(sess);
-    models.createProviderConnection.mockRejectedValueOnce(Object.assign(new Error("Name already exists"), { code: "PROVIDER_CONNECTION_NAME_CONFLICT" }));
-    expect((await finish(request("finish", { provider: "cookie-web", name: "Account" }, cookie))).status).toBe(409);
-    expect(sess.finishing).toBe(false);
-    expect((await status(request("status", {}, cookie))).status).toBe(200);
-    expect((await finish(request("finish", { provider: "cookie-web", name: "Account" }, cookie))).status).toBe(201);
-    expect(models.createProviderConnection).toHaveBeenCalledTimes(2);
-    for (const [data] of models.createProviderConnection.mock.calls) expect(data).toMatchObject({ authType: "cookie", name: "Account", apiKey: "session.0=first; session.1=second; cf_clearance=clear" });
-    expect(persisted).toHaveLength(1);
+    expect(models.createProviderConnection).not.toHaveBeenCalled();
   });
 
   it("issues independent popup grants without rotating proxy authority, and cancel invalidates all authority", async () => {

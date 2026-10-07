@@ -493,12 +493,17 @@ export const STRIP_UPSTREAM_HEADERS = new Set([
   "set-cookie", "set-cookie2",
   // Rewritten into the proxy space.
   "location",
+  "x-matched-path", "rsc",
   // Would wipe or pin the dashboard origin's own storage and policies.
   "clear-site-data", "cross-origin-opener-policy", "cross-origin-embedder-policy",
   "cross-origin-resource-policy", "report-to", "reporting-endpoints", "nel", "alt-svc",
   // fetch already decoded the body; length changes after rewriting.
   "content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive",
 ]);
+
+// Next interprets proxy response headers as routing and request-override
+// instructions before returning a body. A provider is never a framework peer.
+const STRIP_UPSTREAM_PREFIXES = ["x-middleware-", "x-nextjs-", "x-invoke-", "x-now-", "x-action-", "next-"];
 
 function forwardedRequestHeaders(request) {
   const headers = new Headers();
@@ -560,7 +565,8 @@ const TEXT_TYPE_RE = /text\/|javascript|json|xml|ecmascript/i;
 export async function buildBrowserResponse(sess, res, appOrigin, upstreamUrl) {
   const headers = new Headers();
   for (const [k, v] of res.headers) {
-    if (STRIP_UPSTREAM_HEADERS.has(k.toLowerCase())) continue;
+    const key = k.toLowerCase();
+    if (STRIP_UPSTREAM_HEADERS.has(key) || STRIP_UPSTREAM_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
     headers.append(k, v);
   }
   const location = res.headers.get("location");

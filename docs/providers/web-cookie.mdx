@@ -17,6 +17,8 @@ For **Grok Web** (`grok-web`), **Perplexity Web** (`perplexity-web`), **ChatGPT 
 
 Sign in inside the embedded page, or choose **Open in popup** if embedding fails. Each popup receives a fresh, one-time bootstrap grant for the same login session; it does not reuse the iframe's grant. The dashboard polls every two seconds and displays captured cookie **names**, never their values. Once the session is ready, enter a connection name and choose **Save connection**. Cancel, closing the modal, or leaving the page discards the login session. Sessions expire after 15 minutes. Signing in does not add an executor for a provider that is not yet runnable.
 
+Saving rechecks the exact provider/operator-bound session after readiness and immediately before the database commit. Cancellation, expiry, or a replacement login before that commit prevents an in-flight save from storing cookies.
+
 ### Isolated login origin
 
 The operator must configure `DURINDOOR_WEB_LOGIN_ORIGIN`, for example `https://login.gateway.example`, and route that hostname to the same DurinDoor server. Use a dedicated hostname different from the dashboard's hostname: a different port alone does not isolate cookies. The flow fails closed if the origin is missing, invalid, or shares the dashboard cookie hostname; there is no same-origin fallback.

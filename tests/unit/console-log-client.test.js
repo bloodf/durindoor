@@ -44,9 +44,24 @@ function visibleLabel(element) {
 }
 
 function button(name) {
-  const match = [...container.querySelectorAll("button")].find((element) => (name instanceof RegExp ? name.test(visibleLabel(element)) : visibleLabel(element) === name));
+  const match = [...container.querySelectorAll('button:not([role="combobox"])')].find((element) => visibleLabel(element) === name);
   if (!match) throw new Error(`button not found: ${name}`);
   return match;
+}
+
+function levelChip(label) {
+  const group = container.querySelector('[role="group"][aria-label="Filter by log level"]');
+  const match = [...group.querySelectorAll("button")].find((element) => element.firstElementChild?.textContent === label);
+  if (!match) throw new Error(`level chip not found: ${label}`);
+  return match;
+}
+
+function chipCount(label) {
+  return Number(levelChip(label).lastElementChild.textContent);
+}
+
+function tagOptions() {
+  return [...document.body.querySelectorAll('[role="listbox"] [role="option"]')];
 }
 
 function click(element) {
@@ -92,33 +107,36 @@ afterEach(() => {
 describe("ConsoleLogClient", () => {
   it("renders parsed rows with live level counts", () => {
     expect(rowTexts()).toHaveLength(6);
-    expect(button(/^All/).textContent).toBe("All6");
-    expect(button(/^Error/).textContent).toBe("Error1");
-    expect(button(/^Warn/).textContent).toBe("Warn1");
-    expect(button(/^Info/).textContent).toBe("Info3");
-    expect(button(/^Debug/).textContent).toBe("Debug1");
+    expect(chipCount("All")).toBe(6);
+    expect(chipCount("Error")).toBe(1);
+    expect(chipCount("Warn")).toBe(1);
+    expect(chipCount("Info")).toBe(3);
+    expect(chipCount("Debug")).toBe(1);
 
     emit({ type: "lines", lines: ["[17:48:07] ❌ [TIER] second failure"] });
-    expect(button(/^Error/).textContent).toBe("Error2");
+    expect(chipCount("Error")).toBe(2);
     expect(counter()).toBe("7 of 7 log lines");
   });
 
   it("filters by level chip", () => {
-    click(button(/^Error/));
-    expect(button(/^Error/).getAttribute("aria-pressed")).toBe("true");
+    click(levelChip("Error"));
+    expect(levelChip("Error").getAttribute("aria-pressed")).toBe("true");
     expect(rowTexts()).toEqual([expect.stringContaining("provider timeout")]);
-    click(button(/^All/));
+    click(levelChip("All"));
+    expect(levelChip("All").getAttribute("aria-pressed")).toBe("true");
+    expect(levelChip("Error").getAttribute("aria-pressed")).toBe("false");
     expect(rowTexts()).toHaveLength(6);
   });
 
   it("filters by an observed tag from the tag select", () => {
     click(container.querySelector('[role="combobox"][aria-label="Filter by tag"]'));
-    const options = [...document.body.querySelectorAll('[role="option"]')].map((option) => option.textContent);
-    expect(options).toEqual(["All tags", "BOOT", "CACHE", "HEADROOM", "POST", "TIER"]);
-    click([...document.body.querySelectorAll('[role="option"]')].find((option) => option.textContent === "HEADROOM"));
+    expect(tagOptions().map(visibleLabel)).toEqual(["All tags", "BOOT", "CACHE", "HEADROOM", "POST", "TIER"]);
+    click(tagOptions().find((option) => visibleLabel(option) === "HEADROOM"));
     expect(rowTexts()).toHaveLength(2);
+    expect(rowTexts().every((text) => text.includes("[HEADROOM]"))).toBe(true);
     expect(counter()).toBe("2 of 6 log lines");
-    expect(button(/^Warn/).textContent).toBe("Warn1");
+    expect(chipCount("Warn")).toBe(1);
+    expect(chipCount("All")).toBe(2);
   });
 
   it("searches case-insensitively and highlights matches", () => {
@@ -184,7 +202,7 @@ describe("ConsoleLogClient", () => {
   it("copies the visible lines", () => {
     const writeText = vi.fn(async () => {});
     vi.stubGlobal("navigator", { ...globalThis.navigator, clipboard: { writeText } });
-    click(button(/^Error/));
+    click(levelChip("Error"));
     click(button("Copy visible"));
     expect(writeText).toHaveBeenCalledWith("[17:48:05] ❌ [TIER] provider timeout after 30000ms");
     expect(button("Copied")).toBeTruthy();
@@ -197,7 +215,7 @@ describe("ConsoleLogClient", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function recordDownload() {
       downloads.push(this.download);
     });
-    click(button(/^Warn/));
+    click(levelChip("Warn"));
     click(button("Download .log"));
     expect(downloads).toHaveLength(1);
     expect(downloads[0]).toMatch(/^durindoor-console-.+\.log$/);

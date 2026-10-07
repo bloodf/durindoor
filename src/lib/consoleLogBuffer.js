@@ -68,10 +68,8 @@ function formatArg(arg) {
 function appendLine(line) {
   state.logs.push(line);
   state.revision += 1;
-  const maxLines = CONSOLE_LOG_CONFIG.maxLines;
-  if (state.logs.length > maxLines) {
-    state.logs = state.logs.slice(-maxLines);
-  }
+  const overflow = state.logs.length - CONSOLE_LOG_CONFIG.maxLines;
+  if (overflow > 0) state.logs.splice(0, overflow);
   state.pendingLines.push(line);
   if (state.pendingLines.length >= MAX_BATCH_LINES) {
     if (state.flushTimer) {

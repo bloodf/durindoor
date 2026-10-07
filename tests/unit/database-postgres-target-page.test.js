@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { within } from "@testing-library/dom";
 import DatabaseSettingsPage from "../../src/app/(dashboard)/dashboard/settings/database/page.js";
 
 let host;
@@ -28,7 +29,7 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
-const button = (text) => [...host.querySelectorAll("button")].find((node) => node.textContent === text);
+const button = (text) => within(host).getByRole("button", { name: text, exact: true });
 const input = (label) => {
   const labels = [...host.querySelectorAll("label")].filter((node) => node.textContent.trim() === label);
   expect(labels).toHaveLength(1);

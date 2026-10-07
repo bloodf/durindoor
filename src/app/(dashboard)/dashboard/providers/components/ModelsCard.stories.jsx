@@ -41,6 +41,24 @@ export const ModelsList = {
     await userEvent.type(modelId, "gpt-custom");
     await userEvent.click(within(dialog).getByRole("button", { name: /^add$/i }));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    await expect(firstModel).toBeVisible();
+  },
+};
+
+/** Retains the real custom-model form rather than capturing its completed submit. */
+export const AddCustomModelOpen = {
+  args: { providerId: "openai" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /add model/i }));
+    const dialog = await within(document.body).findByRole("dialog", { name: /add custom model/i });
+    await waitFor(() => expect(dialog).toBeVisible());
+    const form = within(dialog);
+    const input = form.getByLabelText("Model ID");
+    await expect(input).toBeVisible();
+    await expect(form.getByRole("button", { name: /^add$/i })).toBeDisabled();
+    await userEvent.type(input, "gpt-example");
+    await expect(form.getByRole("button", { name: /^add$/i })).toBeEnabled();
   },
 };
 

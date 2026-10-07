@@ -122,6 +122,7 @@ export const NewKeyKeyboard = {
     input.focus();
     await userEvent.keyboard("{Enter}");
     await expect(await dialog.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
+    await expect(dialog.queryByRole("dialog", { name: "Name gateway key" })).not.toBeInTheDocument();
   },
 };
 
@@ -136,6 +137,9 @@ export const NewKeyFreshMount = {
     await userEvent.click(dialog.getByRole("button", { name: "Close" }));
     await userEvent.click(canvas.getByRole("button", { name: "New key" }));
     await expect(await dialog.findByLabelText("Key name")).toHaveValue("");
+    const prompt = await dialog.findByRole("dialog", { name: "Name gateway key" });
+    await expect(prompt).toBeVisible();
+    await expect(within(prompt).getByText("Key name", { exact: true })).toBeVisible();
   },
 };
 

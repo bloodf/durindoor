@@ -6,6 +6,18 @@ export default {
   title: "Durin DS/Production Pages/cli-tools/BaseUrlSelect",
   component: BaseUrlSelect,
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools/claude" } },
+  // Isolate both endpoint stores; navigation must not overwrite remembered URLs.
+  beforeEach: () => {
+    const keys = ["durindoor.cliToolEndpointCustom", "durindoor.cliToolEndpointPresets"];
+    const previous = keys.map((key) => [key, localStorage.getItem(key)]);
+    for (const key of keys) localStorage.removeItem(key);
+    return () => {
+      for (const [key, value] of previous) {
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      }
+    };
+  },
 };
 
 function Controlled(props) {

@@ -9,7 +9,7 @@ Open `http://localhost:20128/dashboard`. Next.js serves that tree from `src/app/
 
 **Usage** (`/dashboard/usage`) is the home after that redirect. Its overview starts with gateway, 24-hour activity, latency, and storage cards, followed by in-flight requests and recorded provider health. Monitoring refreshes every 15 seconds independently of the usage date filter; pause it or refresh manually. Token totals, cost estimates, request history, provider topology, and per-request detail follow. The former `/dashboard/monitoring` URL redirects here.
 
-**Timeline** (`/dashboard/timeline`) is a live tail of proxy hops and SSE history. Open a row for one request's hop list.
+**Timeline** (`/dashboard/timeline`) shows proxy traces as provider or connection swimlanes, with a Table toggle and live updates. Open a trace for its hop waterfall and SSE history.
 
 **Quota Tracker** (`/dashboard/quota`) lists provider limits, remaining capacity, cooldowns, and reset hints.
 

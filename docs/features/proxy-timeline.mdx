@@ -26,13 +26,21 @@ The in-process queue caps at 10,000 items or 32 MiB. Extra `sse_chunk` events ar
 
 ## Dashboard
 
-**Dashboard → Timeline** (`/dashboard/timeline`) lists traces and can live-tail new events. Filters: `provider`, `model`, `connectionId`, `apiKeyId`, `status`, `endpoint`, `startDate`, `endDate`, and `q` (substring of the trace id). Page size is 1-100 (default 20). Status tones: `ok`, `aborted`, `error`, `running`.
+**Dashboard → Timeline** (`/dashboard/timeline`) opens on a swimlane view. Each lane is one provider or connection (pick with the lane selector; `lane=connection_id` on the URL). Each bar is one trace, placed by `started_at` and sized by `total_ms` (at least 2 px; running traces extend to now). Bar colour follows the status tone: `ok`, `aborted`, `error`, `running`. Lanes are sorted by name and capped at 12; when more values exist, the least busy share a final "other" lane. Window presets are 5m, 15m (default), 1h, and 6h (`window=` on the URL). The view loads the newest 100 traces in the window. Bars are keyboard-focusable; Enter, Space, or a click opens the trace.
 
-Live updates are coalesced at 500 ms so streamed frames do not trigger one full list reload each. The live write queue drops the oldest event above 1000 so a stalled browser tab cannot grow forever. Open a row (`/dashboard/timeline/<id>`) for oldest-first hops. Consecutive `sse_chunk` events collapse as "N chunks" until expanded.
+The chart uses its measured width without scaling down the 2 px duration bars. Each trace has a separate 44 px-tall slot within its lane and a selection target at least 44 px wide; even simultaneous short traces remain independently selectable instead of overlapping enlarged targets.
+
+Minimum-width markers near the right edge are shifted just enough to remain fully visible inside the plot; a plot narrower than 2 px uses its available width. Stored timestamps and durations are unchanged. Completed traces with missing timing remain unknown-duration markers, not elapsed-time bars, and their waterfall reports unavailable duration rather than claiming the trace is still running.
+
+The **Table** toggle (`view=table`) shows the paginated list. Filters for both views: `provider`, `model`, `connectionId`, `apiKeyId`, `status`, `endpoint`, and `q` (substring of the trace id); the table also accepts `startDate` and `endDate`. Table page size is 1-100 (default 20).
+
+**Live** keeps either view current. Updates are coalesced at 500 ms. The swimlane retains notified trace IDs and fetches each affected trace's metadata without reading event payloads, even when newer calls displace it beyond the newest 100. Notifications arriving during initial loading or an update are queued for a trailing update. Its stream observes status transitions without server-side filters, then applies URL filters to the fetched metadata; completed calls disappear from `status=running`. Re-enabling Live reloads the selected window and rechecks retained trace metadata, so paused completions and new calls do not need another notification to appear. Every five seconds while live, the advancing window prunes both completed and running traces from state, bars, and counts. Deleted traces are also removed. The live write queue drops the oldest event above 1000 so a stalled browser tab cannot grow forever.
+
+Open a trace (`/dashboard/timeline/<id>`) for a waterfall and the oldest-first hop list. Waterfall rows are ordered by `seq`; each bar runs from its event's `t_ms` to the next row's `t_ms`, and the last row ends at the trace's `total_ms`. Bars are coloured by direction (`in`, `out`, `system`). Consecutive `sse_chunk` events collapse into one "N chunks" row in both the waterfall and the hop list; click a waterfall row to show its event payloads.
 
 Provider and connection rows expose **View all**, which opens Timeline with `provider` or `connectionId` set on the query string.
 
-`GET /api/timeline` is the list. `GET /api/timeline/stream` is the live tail. `GET /api/timeline/<id>` is the detail. `connection` as a query name is ignored; use `connectionId`.
+`GET /api/timeline` is the list. `GET /api/timeline/stream` is the live tail. `GET /api/timeline/<id>/meta` returns only trace metadata for overview updates; it never reads events and is independent of the detail payload limit. `GET /api/timeline/<id>` is the detail. `connection` as a query name is ignored; use `connectionId`.
 
 PostgreSQL query results have a 32 MiB transport limit. The detail endpoint reads a trace's events together; a trace that exceeds the limit returns an error. The list page's pagination does not paginate events within a trace.
 

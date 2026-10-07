@@ -101,7 +101,7 @@ export const FEATURES = [
   {
     icon: "chat",
     title: "Realtime",
-    body: "GET /v1/realtime upgrades to a text WebSocket in the OpenAI Realtime shape. Audio is not supported.",
+    body: "Native realtime and audio where supported. Chat models use text events.",
     href: "/docs/features/realtime",
   },
   {

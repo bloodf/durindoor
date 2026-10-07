@@ -276,7 +276,7 @@ const messages = {
   "MCP, realtime, proxy traces, tunnels": "MCP, realtime, rastros de proxy, túneis",
   "Each card opens the matching docs page.": "Cada cartão abre a página de docs correspondente.",
   "One DurinDoor endpoint in front of several MCP servers, with gateway keys that map to specific instances.": "Um endpoint DurinDoor na frente de vários servidores MCP, com chaves de gateway ligadas a instâncias específicas.",
-  "GET /v1/realtime upgrades to a text WebSocket in the OpenAI Realtime shape. Audio is not supported.": "GET /v1/realtime sobe para um WebSocket de texto no formato OpenAI Realtime. Áudio não é suportado.",
+  "Native realtime and audio where supported. Chat models use text events.": "Realtime nativo e áudio quando houver suporte. Modelos de chat usam eventos de texto.",
   "Optional redacted hop log for proxy calls. Off by default. Stored next to the main database.": "Log opcional de hops de proxy, com segredos ocultos. Desligado por padrão. Fica ao lado do banco principal.",
   "Reach the gateway from another network over HTTPS. Cloudflare and Tailscale are the built-in tunnel providers.": "Alcance o gateway de outra rede por HTTPS. Cloudflare e Tailscale são os provedores de túnel embutidos.",
   "Realtime": "Realtime",

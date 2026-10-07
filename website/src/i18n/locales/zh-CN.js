@@ -276,7 +276,7 @@ const messages = {
   "MCP, realtime, proxy traces, tunnels": "MCP、realtime、代理轨迹、隧道",
   "Each card opens the matching docs page.": "每张卡片打开对应的文档页。",
   "One DurinDoor endpoint in front of several MCP servers, with gateway keys that map to specific instances.": "一个 DurinDoor 端点挡在多个 MCP 服务器前面，网关密钥对应到具体实例。",
-  "GET /v1/realtime upgrades to a text WebSocket in the OpenAI Realtime shape. Audio is not supported.": "GET /v1/realtime 升级成 OpenAI Realtime 形状的文本 WebSocket。不支持音频。",
+  "Native realtime and audio where supported. Chat models use text events.": "支持原生实时协议和音频，具体取决于提供商。聊天模型使用文本事件。",
   "Optional redacted hop log for proxy calls. Off by default. Stored next to the main database.": "可选的代理跳转日志，密钥已打码。默认关闭。存在主数据库旁边。",
   "Reach the gateway from another network over HTTPS. Cloudflare and Tailscale are the built-in tunnel providers.": "从另一张网用 HTTPS 打到网关。内置隧道是 Cloudflare 和 Tailscale。",
   "Realtime": "Realtime",

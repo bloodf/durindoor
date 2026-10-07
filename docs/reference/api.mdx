@@ -11,7 +11,7 @@ Key policy, minting, and lifetime caps are on [API keys](../guides/api-keys.mdx)
 
 ## Authentication
 
-When **Require API Key** is on, inference requires a valid DurinDoor key. Missing keys return HTTP 401 `Missing API key`; invalid or expired keys return `Invalid API key`. With the setting off, inference accepts requests without a key. Catalog routes have a separate policy below.
+When **Require API Key** is on, inference requires a valid DurinDoor key. Missing keys return HTTP 401 `Missing API key`; invalid or expired keys return `Invalid API key`. With the setting off, trusted loopback HTTP requests can omit a key. Remote HTTP callers still need a valid gateway key or CLI credential at the network boundary, regardless of this setting. Catalog routes have a separate policy below.
 
 Candidates, in order: `Authorization: Bearer`, `x-api-key`, `x-goog-api-key`, then the `key` query param. Anthropic-shaped clients often send `x-api-key`; that header is enough. Do not send upstream provider keys to these routes. Use a DurinDoor key from the dashboard.
 
@@ -33,7 +33,7 @@ Capability filters live at `GET /v1/models/{kind}` for `image`, `tts`, `stt`, `e
 
 Rows keep callable `id` and `owned_by`. Presentation may add `name`, `provider_name`, `provider_alias`, and `gateway_provider`. Send `id` in requests. `GET /v1/models/info?id={alias}/{modelId}` keeps the registry `name` and only attaches those extra fields. Optional `kind` disambiguates duplicate ids. Missing `id`: 400. Unknown id: 404.
 
-The catalog handlers do not consult `requireApiKey`. Reachability of `/v1/models` is not proof that a key is valid.
+The catalog handlers do not consult `requireApiKey`. On loopback, reaching `/v1/models` does not prove that a key is valid. Remote catalog requests must pass the network credential check; dashboard-session access is also allowed for the read-only `/api/models` and `/api/v1/models` paths.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
@@ -111,7 +111,7 @@ Together uses this same async job surface with its native `/v2/videos` upstream.
 
 ## Cached ChatGPT Web images
 
-`GET /v1/chatgpt-web/image/{id}` returns generated image bytes without authentication so browsers can render the link. Treat the opaque URL as temporary access to that image. The in-memory cache expires entries after 30 minutes, keeps at most 25 entries, and defaults to a total 10 MiB byte cap. Eviction or restart can expire a link sooner. Missing or expired IDs return `404 Image not found or expired`. Successful responses use `Cache-Control: private, max-age=1800`; `OPTIONS` is supported.
+`GET /v1/chatgpt-web/image/{id}` returns generated image bytes. Loopback callers can retrieve the opaque URL without a key; remote HTTP callers must pass the gateway credential check. A normal remote browser image element cannot attach an authorization header, so direct image rendering has this limitation. Treat the opaque URL as temporary access to that image. The in-memory cache expires entries after 30 minutes, keeps at most 25 entries, and defaults to a total 10 MiB byte cap. Eviction or restart can expire a link sooner. Missing or expired IDs return `404 Image not found or expired`. Successful responses use `Cache-Control: private, max-age=1800`; `OPTIONS` is supported.
 
 ## Native provider APIs
 
@@ -242,8 +242,6 @@ These JSON endpoints delegate directly to OpenAI's native session API. Supply a 
 | POST, OPTIONS | `/v1/live/sessions` | Create a direct Live session. |
 
 Direct sessions require an uncapped key and retain model/account policy checks. A usage-capped key returns `403 Usage-capped API keys cannot mint direct native sessions`. Gateway-relayed native WebSockets support scoped keys through [Realtime](../features/realtime.mdx).
-
-`POST /v1/realtime/native` is a same-process handoff endpoint. It requires a wrapper control proof and returns `404` to ordinary client calls. It is not a public credential-minting API.
 
 ## Gemini v1beta
 

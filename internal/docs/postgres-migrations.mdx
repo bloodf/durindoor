@@ -9,7 +9,7 @@ The PG engine is DurinDoor-owned. Do not send a PR to `decolua/9router` for it.
 
 ## Startup mode invariant
 
-`src/lib/db/driver.js` treats the presence of `DURINDOOR_PG_URL`, including an empty value, or `DURINDOOR_DATABASE_ENGINE=postgres` as explicit PostgreSQL mode. That mode must not read SQLite settings or silently fall back to SQLite on initialization failure. Tests and Compose fixtures for legacy cutover must omit `DURINDOOR_PG_URL` entirely. Preserve this distinction when changing adapters, environment normalization, readiness, or connection error handling.
+Packaged startup calls `normalizeProcessEnv()` before app imports and removes exact empty environment values. A nonempty `DURINDOOR_PG_URL` or `DURINDOOR_DATABASE_ENGINE=postgres` selects explicit PostgreSQL. The explicit engine selector remains fail-closed with a missing or empty URL. `src/lib/db/driver.js` uses a presence check internally, so direct module tests that bypass normalization can observe different empty-value behavior. Preserve the entrypoint ordering and test it with `tests/unit/normalize-env-6828.test.js`; an empty shipped Compose value is compatible with SQLite startup.
 
 ## Layout
 

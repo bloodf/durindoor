@@ -10,7 +10,7 @@ Before a native start, set a strong `INITIAL_PASSWORD` and a persistent `JWT_SEC
 ```bash
 export JWT_SECRET="$(openssl rand -hex 32)"
 export API_KEY_SECRET="$(openssl rand -hex 32)"
-export INITIAL_PASSWORD="REPLACE_WITH_YOUR_STRONG_PASSWORD"
+export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"
 ```
 
 <Tabs items={['npm', 'npx', 'source', 'Docker']}>
@@ -63,7 +63,7 @@ docker run -d \
   -v "$HOME/.durindoor:/app/data" \
   -e DATA_DIR=/app/data \
   -e JWT_SECRET="$(openssl rand -hex 32)" \
-  -e INITIAL_PASSWORD="REPLACE_WITH_YOUR_STRONG_PASSWORD" \
+  -e INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD" \
   ghcr.io/bloodf/durindoor:latest
 ```
 

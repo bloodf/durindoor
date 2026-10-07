@@ -9,7 +9,7 @@ Every page retains a complete pre-rewrite snapshot under `internal/docs/product/
 | Reviewed public page and mirror | Source evidence | Change and retained detail |
 | --- | --- | --- |
 | `docs/deployment/cloud.mdx`; `internal/docs/product/deployment/cloud.mdx` | `package.json`, `custom-server.js`, `src/lib/dataDir.js`, `src/lib/auth/dashboardSession.js` | Added service account, permissions, private environment, Node-path validation, local and public smoke tests, and recovery; retained TLS/header trust boundary. |
-| `docs/deployment/docker.mdx`; `internal/docs/product/deployment/docker.mdx` | `Dockerfile`, `docker-compose.yml`, `src/lib/db/driver.js`, `.github/workflows/docker-publish.yml` | Replaced undisclosed random-password example with a private reusable env file; documented empty-PG-selector conflict; made persistence, verification, and recovery explicit. |
+| `docs/deployment/docker.mdx`; `internal/docs/product/deployment/docker.mdx` | `Dockerfile`, `docker-compose.yml`, `src/lib/db/driver.js`, `.github/workflows/docker-publish.yml` | Replaced undisclosed random-password example with a private reusable env file; documented normalized empty Compose defaults and explicit PostgreSQL selection; made persistence, verification, and recovery explicit. |
 | `docs/deployment/index.mdx`; `internal/docs/product/deployment/index.mdx` | `docs/deployment/meta.json`, `package.json` | Rewrote introduction around tasks and verification; retained supported Cards/frontmatter; feature index adds the already-listed error-rules page and corrects realtime description. |
 | `docs/deployment/localhost.mdx`; `internal/docs/product/deployment/localhost.mdx` | `cli/cli.js`, `package.json`, `src/lib/auth/dashboardSession.js`, `src/lib/dataDir.js` | Added secret/password preparation before startup; defaulted examples to explicit loopback; focused tray, port, tunnel, verification, and recovery tasks. |
 | `docs/deployment/reverse-proxy-and-static-assets.mdx`; `internal/docs/product/deployment/reverse-proxy-and-static-assets.mdx` | `custom-server.js`, `scripts/build-app.mjs`, `scripts/verify-static-assets.mjs` | Moved literal wrapper code and fixed line numbers into snapshot; kept proxy configs and trust limits; added public-origin steps and static-check failure interpretation. |
@@ -46,7 +46,7 @@ Every page retains a complete pre-rewrite snapshot under `internal/docs/product/
 ## Corrections with operational impact
 
 - Headroom runs before translation on the source body. Cursor RTK also runs before translation; other RTK runs after.
-- `DURINDOOR_PG_URL` presence, including an empty value, forces explicit PostgreSQL. The shipped Compose empty entry must be omitted for SQLite and dashboard cutover.
+- Packaged startup strips empty environment values before app imports. A nonempty `DURINDOOR_PG_URL` or `DURINDOOR_DATABASE_ENGINE=postgres` selects explicit PostgreSQL. The shipped empty Compose default permits SQLite. The lower-level driver presence check remains relevant to direct tests.
 - CLI password reset does not clear MFA. Lost authenticator and all backup codes require administrator recovery of MFA state, with a verified backup.
 - Generated secrets in a one-off container command do not provide a usable saved login or stable reinstall environment. Public examples now prepare and reuse a private environment file.
 - Native realtime support coexists with a text-only facade. Catalog sync filtering does not mean the gateway lacks native realtime routes.

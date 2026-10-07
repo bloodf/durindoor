@@ -48,7 +48,8 @@ Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9ro
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DATA_DIR` | `~/.9router` or `%APPDATA%\9router` | Persistent root for SQLite, auth secrets, logs, intercept files, tunnels, Headroom venv, and backups. Created with permissions `0700` when set. Unix paths on Windows are ignored. |
-| `DURINDOOR_PG_URL` | unset | libpq URL. Wins over the dashboard secret at boot. Does not flip the engine; boot opens PG only when the saved database engine is `postgres`. |
+| `DURINDOOR_PG_URL` | unset | A nonempty libpq URL selects explicit PostgreSQL startup and wins over the dashboard secret. Packaged startup treats an exact empty value as unset. |
+| `DURINDOOR_DATABASE_ENGINE` | unset | Set to `postgres` for PostgreSQL-only startup, which fails closed even if the URL is missing or empty. Without either selector, the saved engine controls legacy cutover behavior. |
 | `DURINDOOR_PG_SSLMODE` | unset (`prefer` in Compose) | Appended to the URL when it has no `sslmode=` already. |
 | `DURINDOOR_PG_PREFERRED_VERSION` | `18` in Compose | Operator cap on the target major version (`16`, `17`, `18`). Compose only. |
 

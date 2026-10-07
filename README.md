@@ -176,7 +176,7 @@ Read [Connecting accounts](https://durindoor.vercel.app/docs/providers/connectin
 The gateway also has endpoints for images, speech, embeddings, reranking, moderation, video, music, web search, and web fetch. Model support varies by provider. Use the [API reference](https://durindoor.vercel.app/docs/reference/api) for exact request bodies and response formats.
 
 - The [MCP gateway](https://durindoor.vercel.app/docs/features/mcp-gateway) connects several MCP servers behind scoped gateway keys.
-- [Realtime](https://durindoor.vercel.app/docs/features/realtime) uses OpenAI-shaped text WebSocket events. Audio is not supported.
+- [Realtime](https://durindoor.vercel.app/docs/features/realtime) relays supported native provider protocols, including audio where available. Chat models use a text-only facade.
 - [Media routes](https://durindoor.vercel.app/docs/features/media-routes) configure fallback order for calls that omit a model or use `auto`.
 - The [proxy timeline](https://durindoor.vercel.app/docs/features/proxy-timeline) records redacted request hops when enabled. It is off by default.
 

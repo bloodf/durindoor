@@ -7,7 +7,7 @@ description: Publish and run ghcr.io/bloodf/durindoor with Compose, volumes, env
 
 Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/deployment/docker.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
 
-Container mounts must survive removal. Environment presence, not nonempty URL, forces PostgreSQL in getAdapter. Shipped Compose supplies an empty DURINDOOR_PG_URL and must omit that entry for SQLite/cutover. Image release tags omit v and can be republished; a verified digest pins content. Entrypoint owns data chown and optional Xvfb.
+Container mounts must survive removal. custom-server.js normalizes exact empty environment values before importing the app. A nonempty DURINDOOR_PG_URL or explicit postgres engine selects PostgreSQL; the shipped empty Compose default permits SQLite/cutover. getAdapter itself uses a presence check, relevant to tests that bypass the entrypoint. Image release tags omit v and can be republished; a verified digest pins content. Entrypoint owns data chown and optional Xvfb.
 
 ### Execution ownership and evidence
 

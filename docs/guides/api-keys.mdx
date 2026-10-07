@@ -62,7 +62,7 @@ Key groups are labels only. Membership never changes what a key can call.
 
 Patterns are case-insensitive globs, up to 200 per key. `*` matches any run of characters, `/` included. Write them against the ids `/v1/models` shows, for example `openai/*` or `cx/gpt-5.6-sol`.
 
-The rule is checked after model resolution, in the same place as `policy.allowedModels`, on every `/v1` endpoint. A model matches under the name it was requested by, its canonical `providerId/model`, and its `alias/model` or provider-node `prefix/model` form, so an alias cannot get around a rule. A blocked model returns HTTP 403 before any credential lookup. Combos are checked member by member; combo names stay under `allowedCombos`. `/v1/models` and `/v1/models/{kind}` only list what the calling key may use. Requests without a key are not restricted while *Require API key* is off.
+The rule is checked after model resolution, in the same place as `policy.allowedModels`, on every `/v1` endpoint. A model matches under the name it was requested by, its canonical `providerId/model`, and its `alias/model` or provider-node `prefix/model` form, so an alias cannot get around a rule. A blocked model returns HTTP 403 before any credential lookup. Combos are checked member by member; combo names stay under `allowedCombos`. `/v1/models` and `/v1/models/{kind}` only list what the calling key may use. Trusted loopback requests without a key are not restricted while *Require API key* is off. Remote HTTP callers still need a valid gateway key or CLI credential at the network boundary.
 
 ## Windowed limits
 

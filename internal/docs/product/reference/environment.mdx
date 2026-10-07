@@ -15,6 +15,8 @@ Host defaults differ by entrypoint: wrapper unset HOSTNAME is loopback; CLI and 
 
 Verification targets: `normalize-env-6828.test.js`, `rate-limit-backoff-config.test.js`, `cli-heap-flags-3365.test.js`, `cli-dns-order-2699.test.js`, and `provider-plugin-manifest-client.test.js`. Do not read real environment secrets to validate these defaults.
 
+Postgres startup: `custom-server.js` removes empty environment values before database modules load. A nonempty `DURINDOOR_PG_URL` or `DURINDOOR_DATABASE_ENGINE=postgres` forces fail-closed PostgreSQL. Direct driver imports that bypass normalization treat URL variable presence as explicit mode. Existing SQLite cutover must precede setting an explicit boot URL.
+
 ## Preserved pre-rewrite content
 
 

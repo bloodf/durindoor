@@ -7,7 +7,7 @@ description: Opt-in PostgreSQL engine, compose profiles, cutover lock, snapshot 
 
 Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/operations/postgres.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
 
-DURINDOOR_PG_URL presence including empty selects explicit PostgreSQL. Cutover is separate from direct startup, locks writes, snapshots and mirrors then writes engine flags before live flip. Snapshot/count failure prevents flip. Legacy dashboard mode can serve SQLite fallback; explicit mode fails initialization. Rollback requires force and loses PG-era writes. Sidecar timeline needs separate migration.
+Packaged startup normalizes exact empty environment values before app imports. A nonempty DURINDOOR_PG_URL or DURINDOOR_DATABASE_ENGINE=postgres selects explicit PostgreSQL; the engine selector fails closed with a missing/empty URL. Direct driver tests bypassing normalization still observe its presence check. Cutover is separate from direct startup, locks writes, snapshots and mirrors then writes engine flags before live flip. Snapshot/count failure prevents flip. Legacy dashboard mode can serve SQLite fallback; explicit mode fails initialization. Rollback requires force and loses PG-era writes. Sidecar timeline needs separate migration.
 
 ### Execution ownership and evidence
 

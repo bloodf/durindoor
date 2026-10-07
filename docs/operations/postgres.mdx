@@ -3,7 +3,7 @@ title: Postgres
 description: Opt-in PostgreSQL engine, compose profiles, cutover lock, snapshot abort, and rollback that discards PG-era writes.
 ---
 
-SQLite remains the default for unconfigured installations. `DURINDOOR_PG_URL` selects PostgreSQL directly even when present with an empty value; `DURINDOOR_DATABASE_ENGINE=postgres` additionally keeps startup PostgreSQL-only when the URL is missing or empty. This explicit mode never reads SQLite settings or falls back to SQLite. Installations without either environment setting retain the dashboard-managed cutover workflow below.
+SQLite remains the default for unconfigured installations. A nonempty `DURINDOOR_PG_URL` selects PostgreSQL directly; `DURINDOOR_DATABASE_ENGINE=postgres` additionally keeps startup PostgreSQL-only when the URL is missing or empty. This explicit mode never reads SQLite settings or falls back to SQLite. Packaged startup removes empty environment values. Installations without either selector retain the dashboard-managed cutover workflow below.
 
 The dashboard page is **Settings → Database** (`/dashboard/settings/database`). Cutover, test, and rollback routes require a dashboard JWT or CLI token plus the current dashboard password (`x-9r-password`).
 
@@ -15,7 +15,7 @@ Compose has `postgres16`, `postgres17`, and `postgres18` profiles. Start one pro
 
 <Steps>
 <Step>
-Start a cluster. Default compose `up` does not start Postgres. Before using a profile, replace its example PostgreSQL password and review the host port publication. For SQLite cutover, remove `DURINDOOR_PG_URL` from the app service environment entirely, including the empty default in the shipped Compose file.
+Start a cluster. Default compose `up` does not start Postgres. Before using a profile, replace its example PostgreSQL password and review the host port publication. For SQLite cutover, leave `DURINDOOR_PG_URL` unset or empty and do not set `DURINDOOR_DATABASE_ENGINE=postgres`.
 
 ```bash
 docker compose --profile postgres18 up -d

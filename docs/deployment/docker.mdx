@@ -57,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/bloodf/durindoor/main/docker-compos
 Point its `env_file` at `durindoor.env`, pin `image`, and change `ports` to `127.0.0.1:20128:20128` for a local install.
 
 <Callout type="warn">
-For SQLite, remove the `DURINDOOR_PG_URL` entry from the service's `environment` and omit it from the environment file. Its presence selects PostgreSQL even when empty. The shipped Compose file supplies an empty value by default, which conflicts with SQLite startup. Keep `DURINDOOR_DATABASE_ENGINE` absent too. For an existing SQLite database, use the dashboard [PostgreSQL cutover](../operations/postgres.mdx) before enabling explicit PostgreSQL startup.
+For SQLite, leave `DURINDOOR_PG_URL` unset or empty and do not set `DURINDOOR_DATABASE_ENGINE=postgres`. Packaged startup normalizes empty environment values to unset, so the shipped empty Compose default permits SQLite. A nonempty URL or the explicit engine selector enables PostgreSQL-only startup. For an existing SQLite database, use the dashboard [PostgreSQL cutover](../operations/postgres.mdx) before enabling that mode.
 </Callout>
 
 ```bash

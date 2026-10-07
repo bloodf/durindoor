@@ -1,5 +1,6 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Speak, friend, and enter.": "友よ、言葉を唱えて入れ。",
   "You choose the fallback order": "フォールバックの順序を自分で選ぶ",
   "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "コンボはクライアントにひとつのモデル名を提供します。DurinDoorは設定された順序でモデルを試し、次のモデルへ進む前に利用可能なアカウントで再試行します。",
   "Example configuration": "設定例",
@@ -17,7 +18,6 @@ const messages = {
   "Compatible tools": "対応ツール",
   "If it speaks OpenAI, it walks through": "OpenAI 対応なら、この扉を通れる",
   "Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.": "コーディングエージェント、エディター、CLI を、1 つのベース URL と DurinDoor キーで接続。",
-  "Speak, friend, and enter. A fork of 9router, self-hosted and MIT licensed.": "友よ、言葉を唱えて入れ。9router から派生した、MIT ライセンスのセルフホスト型ゲートウェイ。",
   "Footer": "フッター",
   "DurinDoor contributors.": "DurinDoor コントリビューター。",
   "Quick start": "クイックスタート",
@@ -282,7 +282,6 @@ const messages = {
   "Realtime": "Realtime",
   "Proxy timeline": "Proxy timeline",
   "npx durindoor starts a local process. Docker and a global install are under Quick start.": "npx durindoor はローカルプロセスを起こす。Docker とグローバルインストールは Quick start にある。",
-  "Speak, friend, and enter. A fork of 9router.": "友よ、言葉を唱えて入れ。9router のフォーク。",
   "Nine kinds of model call, one key.": "九種類の呼び出し、キーは一つ。"
 };
 

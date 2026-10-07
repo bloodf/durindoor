@@ -46,7 +46,7 @@ export default function Footer() {
               <BrandMark />
               <span>DurinDoor</span>
             </Link>
-            <p>{t("Speak, friend, and enter. A fork of 9router.")}</p>
+            <p>{t("Speak, friend, and enter.")}</p>
             <a href="/brand/durindoor-vector-kit.zip">SVG ↗</a>
           </div>
           <nav className="footer-nav" aria-label={t("Footer")}>

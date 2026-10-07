@@ -1,6 +1,6 @@
 # DurinDoor
 
-DurinDoor is a self-hosted AI gateway and fork of 9router. Developers connect provider credentials and use model IDs, aliases, or fallback combos from existing AI clients. It serves OpenAI chat completions and responses plus Anthropic messages, with modality support dependent on the provider registry.
+DurinDoor is a self-hosted AI gateway. Developers connect provider credentials and use model IDs, aliases, or fallback combos from existing AI clients. It serves OpenAI chat completions and responses plus Anthropic messages, with modality support dependent on the provider registry.
 
 The public website persuades developers to try the real dashboard with sample data, then install or read setup docs. The demo reuses production dashboard components and intercepts requests locally. It does not connect real provider accounts.
 

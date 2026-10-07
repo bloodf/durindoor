@@ -1,5 +1,6 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Speak, friend, and enter.": "说吧，朋友，然后进来。",
   "You choose the fallback order": "由你选择回退顺序",
   "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "组合向客户端提供一个模型名称。DurinDoor 按配置顺序尝试各个成员，在转到下一个模型之前重试符合条件的账户。",
   "Example configuration": "配置示例",
@@ -17,7 +18,6 @@ const messages = {
   "Compatible tools": "兼容工具",
   "If it speaks OpenAI, it walks through": "兼容 OpenAI，即可通行",
   "Coding agents, editors and CLIs connect with one base URL and one DurinDoor key.": "编程代理、编辑器和 CLI 只需一个基础 URL 和一把 DurinDoor 密钥即可连接。",
-  "Speak, friend, and enter. A fork of 9router, self-hosted and MIT licensed.": "说吧，朋友，然后进来。源自 9router，支持自托管，采用 MIT 许可证。",
   "Footer": "页脚",
   "DurinDoor contributors.": "DurinDoor 贡献者。",
   "Quick start": "快速开始",
@@ -282,7 +282,6 @@ const messages = {
   "Realtime": "Realtime",
   "Proxy timeline": "Proxy timeline",
   "npx durindoor starts a local process. Docker and a global install are under Quick start.": "npx durindoor 拉起本地进程。Docker 和全局安装在 Quick start 里。",
-  "Speak, friend, and enter. A fork of 9router.": "说吧，朋友，然后进来。9router 的 fork。",
   "Nine kinds of model call, one key.": "九种模型调用，一把密钥。"
 };
 

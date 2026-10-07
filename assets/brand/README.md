@@ -31,3 +31,5 @@ The gateway campaign illustration and identity board use the built-in image gene
 The website uses emerald mist shaders, pointer parallax, scroll reveals, and magnetic controls. Reduced motion uses the static gateway illustration. WebGL is optional; content and navigation work without it. The public site uses a dark fantasy palette, while docs support light and dark reading modes.
 
 The website copies this folder to `/brand` during `predev` and `prebuild`. Update canonical files here, then run `node website/scripts/sync-public.mjs`.
+
+Run `node scripts/sync-brand-assets.mjs` from the repository root after updating the canonical files. It renders the legacy project asset filenames from this kit. Website dependencies must be installed for SVG rasterization. Then run `node website/scripts/sync-public.mjs` to refresh the website’s generated assets.

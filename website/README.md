@@ -130,3 +130,5 @@ The docs index introduces both OpenAI and Anthropic APIs and guides readers thro
 The quick start sets dashboard credentials before the first boot. The first-request guide has separate OpenAI Chat, Anthropic Messages, and OpenAI Responses tabs. Placeholder model IDs must be replaced with IDs exposed by the running instance.
 
 The root Vitest suite also exercises website components. Install dependencies in the root, `website/`, and `tests/` before running that suite; its website tests use the website’s React runtime. The test workflow installs all three packages.
+
+The docs navigation uses the canonical `durindoor-mark.svg` from the shared brand kit. Root asset filenames retained for existing consumers are generated from the same emblem, outlined wordmarks, and social image. Fork acknowledgment appears in the root README.

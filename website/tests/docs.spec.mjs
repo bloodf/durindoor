@@ -379,6 +379,9 @@ test("docs onboarding links, API tabs, and reading themes work", async ({
   await expect(
     page.getByRole("heading", { name: "DurinDoor documentation", exact: true }),
   ).toBeVisible();
+  const brandLogo = page.locator('img[src="/brand/durindoor-mark.svg"]:visible').first();
+  await expect(brandLogo).toBeVisible();
+  await expect.poll(() => brandLogo.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(page.locator(".dd-docs-hero-pitch")).toContainText(
     "OpenAI and Anthropic APIs",
   );

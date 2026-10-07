@@ -4,7 +4,7 @@ export function baseOptions() {
       url: "/docs",
       title: (
         <>
-          <img src="/brand/mark.svg" alt="" width={28} height={28} />
+          <img src="/brand/durindoor-mark.svg" alt="" width={28} height={28} />
           DurinDoor
         </>
       ),

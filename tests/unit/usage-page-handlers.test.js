@@ -2,46 +2,109 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
 
-const state = vi.hoisted(() => ({ stats: [], params: new URLSearchParams() }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => state.params, useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("@/shared/components", () => ({
-  CardSkeleton: () => null,
-  RequestLogger: () => null,
-  UsageStats: (props) => { state.stats.push(props); return React.createElement("div", null, "Usage totals"); },
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
-vi.mock("@/app/(dashboard)/dashboard/usage/components/RequestDetailsTab", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/dashboard/usage/components/MonitoringWidgets", () => ({ default: () => null }));
+// The topology is browser-only; totals, date controls and the reset dialog are real.
+vi.mock("next/dynamic", () => ({ default: () => () => null }));
 import UsagePage from "@/app/(dashboard)/dashboard/usage/page.js";
 
+const stats = (totalRequests, totalPromptTokens) => ({
+  totalRequests, totalPromptTokens, totalCompletionTokens: 0, totalCachedTokens: 0, totalCost: 0,
+  byModel: {}, byProvider: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
+  pending: { byModel: {}, byAccount: {}, byKey: {} },
+  activeRequests: [], activeSessions: [], recentRequests: [],
+});
+const response = (body) => ({ ok: true, json: async () => body });
 let root;
 let host;
 const click = async (element) => act(async () => { element.click(); });
-const button = (label) => [...document.querySelectorAll("button")].find((node) => node.textContent.trim().endsWith(label));
+const button = (scope, label) => [...scope.querySelectorAll("button")].find((node) => node.textContent.trim().endsWith(label));
+const setDate = async (input, value) => act(async () => {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+});
+const displayedNumber = (value) => [...host.querySelectorAll("span")].some((node) =>
+  node.childElementCount === 0 && node.textContent.trim() === new Intl.NumberFormat().format(value)
+);
+
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  state.stats = [];
-  state.params = new URLSearchParams();
+  vi.stubGlobal("EventSource", class { close() {} });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("usage reset", () => {
-  it("refreshes totals after a successful reset without changing the selected range", async () => {
-    const fetch = vi.fn().mockResolvedValue({ ok: true }); vi.stubGlobal("fetch", fetch);
+  it("refetches and renders real totals after reset while preserving a selected custom range", async () => {
+    let reset = false;
+    let resolveRefreshed;
+    const statsRequests = [];
+    const fetch = vi.fn((input, options = {}) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/usage/stats") {
+        statsRequests.push(url);
+        if (reset) return new Promise((resolve) => { resolveRefreshed = resolve; });
+        return Promise.resolve(response(stats(137, 983)));
+      }
+      if (url.pathname === "/api/usage/reset" && options.method === "POST") {
+        reset = true;
+        return Promise.resolve(response({ success: true }));
+      }
+      const bodies = {
+        "/api/providers": { connections: [] },
+        "/api/provider-nodes": { nodes: [] },
+        "/api/settings": { disabledFreeProviders: [] },
+        "/api/usage/chart": [],
+        "/api/monitoring": { runtime: {}, activity: {}, health: [] },
+      };
+      if (!Object.hasOwn(bodies, url.pathname)) throw new Error(`Unexpected request: ${url.pathname}`);
+      return Promise.resolve(response(bodies[url.pathname]));
+    });
+    vi.stubGlobal("fetch", fetch);
     await act(async () => root.render(React.createElement(UsagePage)));
-    const before = state.stats.at(-1);
-    await click(button("Reset"));
+    expect(displayedNumber(137)).toBe(true);
+    expect(displayedNumber(983)).toBe(true);
+
+    const range = host.querySelector('[role="group"][aria-label="Date range"]');
+    await click(button(range, USAGE_PERIOD_OPTIONS.find((option) => option.value === "7d").label));
+    const custom = range.querySelector('button[aria-haspopup="dialog"]');
+    await click(custom);
+    const [from, to] = range.parentElement.querySelectorAll('input[type="date"]');
+    await setDate(from, "2026-02-03");
+    await setDate(to, "2026-02-09");
+    await click(button(range.parentElement.querySelector('[role="dialog"]'), "Apply"));
+    expect(custom.getAttribute("aria-pressed")).toBe("true");
+    const selectedQuery = statsRequests.at(-1).search;
+    expect(Object.fromEntries(statsRequests.at(-1).searchParams)).toEqual({
+      period: "7d", startDate: "2026-02-03", endDate: "2026-02-09",
+    });
+    const beforeReset = statsRequests.length;
+
+    await click(button(host, "Reset"));
     const dialog = document.body.querySelector("dialog");
     expect(dialog).not.toBeNull();
     expect(dialog.open).toBe(true);
-    expect(document.getElementById(dialog.getAttribute("aria-labelledby")).textContent).toBe("Reset usage data");
-    const confirm = [...dialog.querySelectorAll("button")].find((node) => node.textContent.trim() === "Reset");
-    await click(confirm);
+    await click(button(dialog, "Reset"));
     expect(fetch).toHaveBeenCalledWith("/api/usage/reset", expect.objectContaining({ method: "POST", body: JSON.stringify({ period: "all" }) }));
-    expect(state.stats.at(-1).resetNonce).toBe(before.resetNonce + 1);
-    expect(state.stats.at(-1).period).toBe(before.period);
-    expect(state.stats.at(-1).customRange).toEqual(before.customRange);
+    expect(statsRequests).toHaveLength(beforeReset + 1);
+    expect(statsRequests.at(-1).search).toBe(selectedQuery);
     expect(document.body.querySelector("dialog")).toBeNull();
+    expect(displayedNumber(137)).toBe(true);
+
+    await act(async () => resolveRefreshed(response(stats(41, 127))));
+    expect(displayedNumber(41)).toBe(true);
+    expect(displayedNumber(127)).toBe(true);
+    expect(displayedNumber(137)).toBe(false);
+    expect(displayedNumber(983)).toBe(false);
+    expect(custom.getAttribute("aria-pressed")).toBe("true");
+    await click(custom);
+    expect([...range.parentElement.querySelectorAll('input[type="date"]')].map((input) => input.value))
+      .toEqual(["2026-02-03", "2026-02-09"]);
   });
 });

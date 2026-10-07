@@ -128,3 +128,5 @@ The navigation drawer constrains the shared sidebar to its available height. Its
 The docs index introduces both OpenAI and Anthropic APIs and guides readers through installation, provider connection, and their first request. Its directory links replace duplicated navigation and hardcoded page counts. Guide pages use a bounded reading measure, larger titles, clear section spacing, and code blocks with the existing copy controls. Light mode uses parchment and green ink; dark mode uses the website's forest palette. The sidebar Demo link opens the authenticated sample preview.
 
 The quick start sets dashboard credentials before the first boot. The first-request guide has separate OpenAI Chat, Anthropic Messages, and OpenAI Responses tabs. Placeholder model IDs must be replaced with IDs exposed by the running instance.
+
+The root Vitest suite also exercises website components. Install dependencies in the root, `website/`, and `tests/` before running that suite; its website tests use the website’s React runtime. The test workflow installs all three packages.

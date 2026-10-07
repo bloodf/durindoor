@@ -39,6 +39,10 @@ jobs:
       - name: "📦 Install app dependencies"
         run: npm ci --no-audit --no-fund
 
+      - name: "📦 Install website dependencies"
+        working-directory: website
+        run: npm ci --no-audit --no-fund
+
       - name: "📦 Install test dependencies"
         working-directory: tests
         run: npm ci --no-audit --no-fund

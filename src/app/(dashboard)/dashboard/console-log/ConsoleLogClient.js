@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
@@ -18,6 +18,7 @@ import {
   countConsoleEntriesSince,
   reconcileConsoleSnapshot,
 } from "./consoleLogEntries";
+import { buildConsoleLayout, consoleWindow } from "./consoleLogWindow";
 
 /* Windowing contract: unwrapped rows are exactly ROW_HEIGHT px (Tailwind h-6). */
 const ROW_HEIGHT = 24;
@@ -100,20 +101,31 @@ function LevelChips({ value, counts, onChange }) {
   );
 }
 
-function LogRow({ entry, index, needle, wrap, top }) {
+function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
+  const rowRef = useRef(null);
+  useLayoutEffect(() => {
+    const element = rowRef.current;
+    if (!wrap || !element) return undefined;
+    const measure = () => onMeasure(entry.id, element.getBoundingClientRect().height);
+    measure();
+    const observer = globalThis.ResizeObserver ? new ResizeObserver(measure) : null;
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [entry.id, wrap, onMeasure]);
   const [firstLine, ...moreLines] = entry.message.split("\n");
   return (
     <div
       data-console-row={entry.id}
-      style={wrap ? undefined : { top }}
+      ref={rowRef}
+      style={{ top }}
       className={[
-        "flex gap-3 px-3 font-mono text-xs leading-6",
-        wrap ? "min-h-6" : "absolute inset-x-0 h-6 overflow-hidden",
+        "absolute inset-x-0 flex gap-3 px-3 font-mono text-xs leading-6",
+        wrap ? "min-h-6" : "h-6 overflow-hidden",
         index % 2 === 1 ? "bg-dd-surface-2" : "",
       ].join(" ")}
       title={wrap ? undefined : entry.raw}
     >
-      <span className="w-16 shrink-0 text-dd-subtle dd-tnum">{entry.ts ?? ""}</span>
+      <span className="w-20 shrink-0 text-dd-subtle dd-tnum"><HighlightedText text={entry.ts ? `[${entry.ts}]` : ""} needle={needle} /></span>
       <span className={`w-11 shrink-0 font-semibold uppercase ${LEVEL_TEXT[entry.level]}`}>{entry.level}</span>
       {wrap ? (
         <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-dd-text">
@@ -135,9 +147,9 @@ function LogRow({ entry, index, needle, wrap, top }) {
  * Live console log viewer over the server ring (`CONSOLE_LOG_CONFIG.maxLines`).
  * Lines are parsed by `parseConsoleLine` and filtered by level, tag and search.
  * Pausing freezes the rendered list while the stream keeps filling the ring;
- * the "N new" pill counts lines received since the pause. Unwrapped rows are
- * windowed (fixed 24px rows, viewport ±20); wrapped rows have variable height,
- * so wrap mode renders every filtered row.
+ * the "N new" pill counts all arrivals since pause, including evicted entries.
+ * Both row modes are windowed (viewport ±20); wrapped heights are estimated
+ * until measured, then positioned using measured cumulative offsets.
  */
 export default function ConsoleLogClient() {
   const [log, setLog] = useState(EMPTY_CONSOLE_LOG);
@@ -148,6 +160,8 @@ export default function ConsoleLogClient() {
   const [wrap, setWrap] = useState(false);
   const [following, setFollowing] = useState(true);
   const [viewport, setViewport] = useState({ top: 0, height: DEFAULT_VIEWPORT_HEIGHT });
+  const [measurements, setMeasurements] = useState({ width: 0, heights: new Map() });
+  const logRef = useRef(EMPTY_CONSOLE_LOG);
   const viewportRef = useRef(null);
   const transportRef = useRef(null);
   const { copied, copy } = useCopyToClipboard();
@@ -157,25 +171,32 @@ export default function ConsoleLogClient() {
   const newCount = paused ? countConsoleEntriesSince(log, frozen.nextId) : 0;
   const needle = search.trim().toLowerCase();
 
+  const applyLog = useCallback((change) => {
+    logRef.current = change(logRef.current);
+    setLog(logRef.current);
+  }, []);
+  const clearLog = useCallback(() => {
+    applyLog(clearConsoleEntries);
+    const nextId = logRef.current.nextId;
+    setFrozen((prev) => prev ? { entries: [], nextId } : prev);
+  }, [applyLog]);
+
   useEffect(() => {
     transportRef.current = startConsoleLogTransport({
       onEvent: (msg) => {
-        if (msg.type === "init") setLog((prev) => reconcileConsoleSnapshot(prev, msg.logs));
-        else if (msg.type === "line") setLog((prev) => appendConsoleLines(prev, [msg.line]));
-        else if (msg.type === "lines") setLog((prev) => appendConsoleLines(prev, msg.lines));
-        else if (msg.type === "clear") {
-          setLog(clearConsoleEntries);
-          setFrozen((prev) => (prev ? clearConsoleEntries(prev) : prev));
-        }
+        if (msg.type === "init") applyLog((prev) => reconcileConsoleSnapshot(prev, msg.logs));
+        else if (msg.type === "line") applyLog((prev) => appendConsoleLines(prev, [msg.line]));
+        else if (msg.type === "lines") applyLog((prev) => appendConsoleLines(prev, msg.lines));
+        else if (msg.type === "clear") clearLog();
       },
-      onSnapshot: (lines) => setLog((prev) => reconcileConsoleSnapshot(prev, lines)),
+      onSnapshot: (lines) => applyLog((prev) => reconcileConsoleSnapshot(prev, lines)),
     });
 
     return () => {
       transportRef.current?.stop();
       transportRef.current = null;
     };
-  }, []);
+  }, [applyLog, clearLog]);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -184,6 +205,7 @@ export default function ConsoleLogClient() {
     const observer = new Observer(() => {
       const height = element.clientHeight || DEFAULT_VIEWPORT_HEIGHT;
       setViewport((prev) => (prev.height === height ? prev : { ...prev, height }));
+      setMeasurements((prev) => prev.width === element.clientWidth ? prev : { width: element.clientWidth, heights: new Map() });
     });
     observer.observe(element);
     return () => observer.disconnect();
@@ -204,11 +226,23 @@ export default function ConsoleLogClient() {
     return { filtered: rows, counts: nextCounts, tags: [...seenTags].sort() };
   }, [shown, level, tag, needle]);
 
+  const layout = useMemo(() => buildConsoleLayout(filtered, wrap, measurements.width, measurements.heights), [filtered, wrap, measurements]);
+  const measureRow = useMemo(() => (id, height) => {
+    if (height < ROW_HEIGHT) return;
+    setMeasurements((prev) => {
+      if (prev.heights.get(id) === height) return prev;
+      const heights = new Map(prev.heights);
+      heights.set(id, height);
+      if (heights.size > CONSOLE_LOG_CONFIG.maxLines * 2) heights.delete(heights.keys().next().value);
+      return { ...prev, heights };
+    });
+  }, []);
+
   useLayoutEffect(() => {
     const element = viewportRef.current;
     if (!element || paused || !following) return;
     element.scrollTop = element.scrollHeight;
-  }, [filtered, paused, following, wrap]);
+  }, [filtered, paused, following, wrap, layout]);
 
   const handleScroll = (event) => {
     const element = event.currentTarget;
@@ -222,8 +256,7 @@ export default function ConsoleLogClient() {
       const response = await fetch("/api/translator/console-logs", { method: "DELETE" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       transportRef.current?.invalidate();
-      setLog(clearConsoleEntries);
-      setFrozen((prev) => (prev ? clearConsoleEntries(prev) : prev));
+      clearLog();
     } catch (err) {
       console.error("Failed to clear console logs:", err);
     }
@@ -237,9 +270,8 @@ export default function ConsoleLogClient() {
   const visibleText = () => filtered.map((entry) => entry.raw).join("\n");
   const total = filtered.length;
   const tailing = !paused && following;
-  const scrollTop = tailing ? Math.max(0, total * ROW_HEIGHT - viewport.height) : viewport.top;
-  const start = wrap ? 0 : Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
-  const end = wrap ? total : Math.min(total, Math.ceil((scrollTop + viewport.height) / ROW_HEIGHT) + OVERSCAN_ROWS);
+  const scrollTop = tailing ? Math.max(0, layout.height - viewport.height) : Math.min(viewport.top, Math.max(0, layout.height - viewport.height));
+  const { start, end } = consoleWindow(layout.offsets, scrollTop, viewport.height, OVERSCAN_ROWS);
   const rows = filtered.slice(start, end);
   const tagOptions = [{ value: ALL_TAGS, label: "All tags" }, ...tags.map((value) => ({ value, label: value }))];
 
@@ -274,11 +306,9 @@ export default function ConsoleLogClient() {
         <div ref={viewportRef} role="log" tabIndex={0} aria-label="Console log output" aria-live="off" onScroll={handleScroll} className="h-[calc(100vh-320px)] min-h-80 overflow-auto bg-dd-surface">
           {total === 0 ? (
             <div className="flex h-full items-center justify-center text-[13px] text-dd-muted">{shown.entries.length === 0 ? "No console logs yet." : "No matching console logs."}</div>
-          ) : wrap ? (
-            rows.map((entry, offset) => <LogRow key={entry.id} entry={entry} index={offset} needle={needle} wrap />)
           ) : (
-            <div className="relative" style={{ height: total * ROW_HEIGHT }}>
-              {rows.map((entry, offset) => <LogRow key={entry.id} entry={entry} index={start + offset} needle={needle} wrap={false} top={(start + offset) * ROW_HEIGHT} />)}
+            <div className="relative" style={{ height: layout.height }}>
+              {rows.map((entry, offset) => <LogRow key={entry.id} entry={entry} index={start + offset} needle={needle} wrap={wrap} top={layout.offsets[start + offset]} onMeasure={measureRow} />)}
             </div>
           )}
         </div>

@@ -57,15 +57,7 @@ export function clearConsoleEntries(state) {
   return { entries: [], nextId: state.nextId };
 }
 
-/** Number of entries whose id is at least `sinceId` (entries are id-ordered). */
+/** Arrival ids are cumulative, independent of how many entries the ring retains. */
 export function countConsoleEntriesSince(state, sinceId) {
-  const { entries } = state;
-  let low = 0;
-  let high = entries.length;
-  while (low < high) {
-    const mid = (low + high) >> 1;
-    if (entries[mid].id < sinceId) low = mid + 1;
-    else high = mid;
-  }
-  return entries.length - low;
+  return Math.max(0, state.nextId - sinceId);
 }

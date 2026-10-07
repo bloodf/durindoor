@@ -148,6 +148,36 @@ describe("ConsoleLogClient", () => {
     expect(container.textContent).toContain("No matching console logs.");
   });
 
+  it("highlights searches in the timestamp and displayed tag", () => {
+    typeSearch("17:48:05");
+    expect(rowTexts()).toEqual([expect.stringContaining("provider timeout")]);
+    expect([...container.querySelectorAll("[data-console-row] mark")].map((mark) => mark.textContent)).toEqual(["17:48:05"]);
+    typeSearch("[17:48:05]");
+    expect([...container.querySelectorAll("[data-console-row] mark")].map((mark) => mark.textContent)).toEqual(["[17:48:05]"]);
+    typeSearch("HEADROOM");
+    expect(rowTexts()).toHaveLength(2);
+    expect([...container.querySelectorAll("[data-console-row] mark")].map((mark) => mark.textContent)).toEqual(["HEADROOM", "HEADROOM"]);
+  });
+
+  it("counts arrivals beyond ring retention and resets the pause baseline on both clear paths", async () => {
+    click(button("Pause"));
+    emit({ type: "lines", lines: Array.from({ length: 2100 }, (_, index) => `arrival ${index}`) });
+    expect(container.textContent).toContain("2100 new");
+    expect(rowTexts()).toHaveLength(6);
+    emit({ type: "clear" });
+    expect(container.textContent).not.toContain("2100 new");
+    emit({ type: "line", line: "after stream clear" });
+    expect(container.textContent).toContain("1 new");
+    expect(rowTexts()).toHaveLength(0);
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true })));
+    await act(async () => button("Clear").dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.textContent).not.toContain("1 new");
+    emit({ type: "lines", lines: ["after delete one", "after delete two"] });
+    expect(container.textContent).toContain("2 new");
+    click(button("Resume"));
+    expect(rowTexts()).toEqual([expect.stringContaining("after delete one"), expect.stringContaining("after delete two")]);
+  });
+
   it("freezes rows while paused, counts new lines, and jumps to latest", () => {
     click(button("Pause"));
     expect(container.textContent).toContain("Paused");
@@ -193,10 +223,42 @@ describe("ConsoleLogClient", () => {
     expect(rendered.length).toBeLessThan(100);
     expect(rendered.at(-1)).toContain("line-2000");
     expect(rendered.some((text) => text.endsWith("line-1"))).toBe(false);
-    expect(container.querySelectorAll("[data-console-row]")).toHaveLength(rendered.length);
+    const viewer = container.querySelector('[role="log"]');
 
     click(button("Wrap lines"));
-    expect(rowTexts()).toHaveLength(2000);
+    expect(rowTexts().length).toBeLessThan(100);
+    expect(rowTexts().at(-1)).toContain("line-2000");
+    act(() => {
+      viewer.scrollTop = 0;
+      viewer.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(rowTexts()[0]).toContain("line-1");
+    expect(rowTexts().some((text) => text.endsWith("line-2000"))).toBe(false);
+    click(button("Jump to latest"));
+    expect(rowTexts().at(-1)).toContain("line-2000");
+  });
+
+  it("keeps multiline wrapped rows windowed as measured heights change", () => {
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function measure() {
+      return this.hasAttribute("data-console-row")
+        ? { top: 0, left: 0, width: 320, height: 96, right: 320, bottom: 96 }
+        : original.call(this);
+    });
+    emit({ type: "init", logs: Array.from({ length: 2000 }, (_, index) => `wrapped-${index}\nsecond line\nthird line`) });
+    click(button("Wrap lines"));
+    expect(rowTexts().length).toBeLessThan(100);
+    expect(rowTexts().at(-1)).toContain("wrapped-1999");
+    const viewer = container.querySelector('[role="log"]');
+    act(() => {
+      viewer.scrollTop = 0;
+      viewer.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    expect(rowTexts()[0]).toContain("wrapped-0");
+    expect(rowTexts()[0]).toContain("third line");
+    expect(rowTexts().some((text) => text.includes("wrapped-1999"))).toBe(false);
+    click(button("Jump to latest"));
+    expect(rowTexts().at(-1)).toContain("wrapped-1999");
   });
 
   it("copies the visible lines", () => {

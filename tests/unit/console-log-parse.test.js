@@ -95,6 +95,18 @@ describe("console log entries", () => {
     expect(countConsoleEntriesSince(next, state.nextId)).toBe(2);
   });
 
+  it("counts evicted arrivals without double-counting unchanged polling snapshots", () => {
+    const paused = appendConsoleLines(EMPTY_CONSOLE_LOG, ["before"], 2);
+    const updated = appendConsoleLines(paused, ["one", "two", "three"], 2);
+    expect(updated.entries.map((entry) => entry.raw)).toEqual(["two", "three"]);
+    expect(countConsoleEntriesSince(updated, paused.nextId)).toBe(3);
+    const polled = reconcileConsoleSnapshot(updated, ["two", "three"], 2);
+    expect(countConsoleEntriesSince(polled, paused.nextId)).toBe(3);
+    const cleared = clearConsoleEntries(polled);
+    const afterClear = appendConsoleLines(cleared, ["fresh"], 2);
+    expect(countConsoleEntriesSince(afterClear, cleared.nextId)).toBe(1);
+  });
+
   it("returns the same state for an unchanged snapshot", () => {
     const state = appendConsoleLines(EMPTY_CONSOLE_LOG, ["a", "b"]);
     expect(reconcileConsoleSnapshot(state, ["a", "b"])).toBe(state);

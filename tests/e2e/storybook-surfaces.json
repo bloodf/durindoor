@@ -2780,33 +2780,15 @@
       "id": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js#colorLine",
       "sourcePath": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js",
       "symbol": "colorLine",
-      "sourceSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
-      "proposedClassification": "nonvisual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Pure log-level class helper; no visual markup.",
-      "reviewStatus": "approved",
-      "reviewedBy": "FinalPendingC",
-      "requiredScenarioIds": [
-        "production-operations-consolelogclient--filter-pause-and-clear"
-      ],
-      "approvedScenarioIds": [
-        "production-operations-consolelogclient--filter-pause-and-clear"
-      ],
-      "storyScenarios": [
-        {
-          "id": "production-operations-consolelogclient--filter-pause-and-clear",
-          "storyId": "production-operations-consolelogclient--filter-pause-and-clear",
-          "runtimeArtifactId": "production-operations-consolelogclient--filter-pause-and-clear",
-          "expectedVisibleText": "No console logs yet.",
-          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
-          "axes": [
-            "text"
-          ],
-          "sourceHashes": {
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84"
-          }
-        }
-      ],
+      "sourceSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+      "proposedClassification": "retired",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Removed by structured log parsing; no replacement colorLine component or old filter-pause-and-clear story remains.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [],
+      "approvedScenarioIds": [],
+      "storyScenarios": [],
       "approvedException": null,
       "reviewEvidence": null
     },
@@ -2814,70 +2796,417 @@
       "id": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js#ConsoleLogClient",
       "sourcePath": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js",
       "symbol": "ConsoleLogClient",
-      "sourceSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
+      "sourceSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
-      "proposedCoverageRationale": "Direct Storybook source binding: production-operations-consolelogclient--streaming, production-operations-consolelogclient--empty, production-operations-consolelogclient--filter-pause-and-clear. Pending runtime review.",
-      "reviewStatus": "approved",
-      "reviewedBy": "integration-review",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Covered through the production client stories; new source requires independent review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
       "requiredScenarioIds": [
         "production-operations-consolelogclient--streaming",
-        "production-operations-consolelogclient--empty",
-        "production-operations-consolelogclient--filter-pause-and-clear"
+        "production-operations-consolelogclient--filtered",
+        "production-operations-consolelogclient--paused",
+        "production-operations-consolelogclient--empty"
       ],
-      "approvedScenarioIds": [
-        "production-operations-consolelogclient--streaming",
-        "production-operations-consolelogclient--empty",
-        "production-operations-consolelogclient--filter-pause-and-clear"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-operations-consolelogclient--streaming",
           "storyId": "production-operations-consolelogclient--streaming",
           "runtimeArtifactId": "production-operations-consolelogclient--streaming",
-          "expectedVisibleText": "Console log",
-          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
           "axes": [
-            "text"
+            "text",
+            "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84"
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
           },
-          "proposedSourceEvidence": "Direct client story."
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--filtered",
+          "storyId": "production-operations-consolelogclient--filtered",
+          "runtimeArtifactId": "production-operations-consolelogclient--filtered",
+          "expectedVisibleText": "skipped",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--paused",
+          "storyId": "production-operations-consolelogclient--paused",
+          "runtimeArtifactId": "production-operations-consolelogclient--paused",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
         },
         {
           "id": "production-operations-consolelogclient--empty",
           "storyId": "production-operations-consolelogclient--empty",
           "runtimeArtifactId": "production-operations-consolelogclient--empty",
           "expectedVisibleText": "No console logs yet.",
-          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
           "axes": [
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84"
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
           },
-          "proposedSourceEvidence": "Direct empty fixture."
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js#HighlightedText",
+      "sourcePath": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js",
+      "symbol": "HighlightedText",
+      "sourceSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Covered through the production client stories; new source requires independent review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-operations-consolelogclient--streaming",
+        "production-operations-consolelogclient--filtered",
+        "production-operations-consolelogclient--paused",
+        "production-operations-consolelogclient--empty"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-operations-consolelogclient--streaming",
+          "storyId": "production-operations-consolelogclient--streaming",
+          "runtimeArtifactId": "production-operations-consolelogclient--streaming",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
         },
         {
-          "id": "production-operations-consolelogclient--filter-pause-and-clear",
-          "storyId": "production-operations-consolelogclient--filter-pause-and-clear",
-          "runtimeArtifactId": "production-operations-consolelogclient--filter-pause-and-clear",
-          "expectedVisibleText": "Clear",
-          "expectedSha256": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84",
+          "id": "production-operations-consolelogclient--filtered",
+          "storyId": "production-operations-consolelogclient--filtered",
+          "runtimeArtifactId": "production-operations-consolelogclient--filtered",
+          "expectedVisibleText": "skipped",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--paused",
+          "storyId": "production-operations-consolelogclient--paused",
+          "runtimeArtifactId": "production-operations-consolelogclient--paused",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
           "axes": [
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "e8a3e7738217eb64bd6e727acd22f1bbbadca7826e66a9cd00e24107ec077e84"
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
           },
-          "proposedSourceEvidence": "Play exercises controls."
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--empty",
+          "storyId": "production-operations-consolelogclient--empty",
+          "runtimeArtifactId": "production-operations-consolelogclient--empty",
+          "expectedVisibleText": "No console logs yet.",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "empty"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
         }
       ],
       "approvedException": null,
-      "reviewEvidence": null,
-      "sourceReviewFindings": [],
-      "sourceReviewStatus": "pending-runtime-and-independent-check"
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js#LevelChips",
+      "sourcePath": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js",
+      "symbol": "LevelChips",
+      "sourceSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Covered through the production client stories; new source requires independent review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-operations-consolelogclient--streaming",
+        "production-operations-consolelogclient--filtered",
+        "production-operations-consolelogclient--paused",
+        "production-operations-consolelogclient--empty"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-operations-consolelogclient--streaming",
+          "storyId": "production-operations-consolelogclient--streaming",
+          "runtimeArtifactId": "production-operations-consolelogclient--streaming",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--filtered",
+          "storyId": "production-operations-consolelogclient--filtered",
+          "runtimeArtifactId": "production-operations-consolelogclient--filtered",
+          "expectedVisibleText": "skipped",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--paused",
+          "storyId": "production-operations-consolelogclient--paused",
+          "runtimeArtifactId": "production-operations-consolelogclient--paused",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--empty",
+          "storyId": "production-operations-consolelogclient--empty",
+          "runtimeArtifactId": "production-operations-consolelogclient--empty",
+          "expectedVisibleText": "No console logs yet.",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "empty"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js#LogRow",
+      "sourcePath": "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js",
+      "symbol": "LogRow",
+      "sourceSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Covered through the production client stories; new source requires independent review.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [
+        "production-operations-consolelogclient--streaming",
+        "production-operations-consolelogclient--filtered",
+        "production-operations-consolelogclient--paused",
+        "production-operations-consolelogclient--empty"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-operations-consolelogclient--streaming",
+          "storyId": "production-operations-consolelogclient--streaming",
+          "runtimeArtifactId": "production-operations-consolelogclient--streaming",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--filtered",
+          "storyId": "production-operations-consolelogclient--filtered",
+          "runtimeArtifactId": "production-operations-consolelogclient--filtered",
+          "expectedVisibleText": "skipped",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--paused",
+          "storyId": "production-operations-consolelogclient--paused",
+          "runtimeArtifactId": "production-operations-consolelogclient--paused",
+          "expectedVisibleText": "Streaming",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        },
+        {
+          "id": "production-operations-consolelogclient--empty",
+          "storyId": "production-operations-consolelogclient--empty",
+          "runtimeArtifactId": "production-operations-consolelogclient--empty",
+          "expectedVisibleText": "No console logs yet.",
+          "expectedSha256": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+          "axes": [
+            "empty"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+            "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+            "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd"
+          },
+          "proposedSourceEvidence": "Production client story; independent approval and runtime evidence remain pending."
+        }
+      ],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js#[module]",
+      "sourcePath": "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js",
+      "symbol": "[module]",
+      "sourceSha256": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
+      "proposedClassification": "nonvisual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Pure parsing, ring bookkeeping or height-aware window layout; no rendered markup. Proposed classification only.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [],
+      "approvedScenarioIds": [],
+      "storyScenarios": [],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js#[module]",
+      "sourcePath": "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js",
+      "symbol": "[module]",
+      "sourceSha256": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
+      "proposedClassification": "nonvisual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Pure parsing, ring bookkeeping or height-aware window layout; no rendered markup. Proposed classification only.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [],
+      "approvedScenarioIds": [],
+      "storyScenarios": [],
+      "approvedException": null,
+      "reviewEvidence": null
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js#[module]",
+      "sourcePath": "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js",
+      "symbol": "[module]",
+      "sourceSha256": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd",
+      "proposedClassification": "nonvisual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Pure parsing, ring bookkeeping or height-aware window layout; no rendered markup. Proposed classification only.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "requiredScenarioIds": [],
+      "approvedScenarioIds": [],
+      "storyScenarios": [],
+      "approvedException": null,
+      "reviewEvidence": null
     },
     {
       "id": "src/app/(dashboard)/dashboard/console-log/page.js#ConsoleLogPage",

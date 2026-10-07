@@ -151,7 +151,7 @@ macOS and Linux listen on `127.0.0.1:8443` with a user-scoped redirect from port
 - macOS/Linux: `~/.durindoor-mitm-state/redirect.json`.
 - Windows: `%USERPROFILE%\AppData\Local\DurinDoor\mitm-state\redirect.json`.
 
-A live integer-only `.mitm.pid` belongs to the older privileged launcher. Stop MITM with the old version before upgrading. If that is impossible, close DurinDoor and reboot. Do not kill the recorded PID directly; another process can reuse it.
+A live integer-only `.mitm.pid` belongs to the older privileged launcher. Stop MITM with the old version before upgrading. If that is impossible, close DurinDoor and reboot. Never raw-kill the recorded PID; another process can reuse it.
 
 <Callout type="warn">
 `MITM_PRIVILEGED_OPERATION_UNCERTAIN`, or a journal marked `installing` or `uncertain`, requires recovery. Close every DurinDoor process and reboot to end the unconfirmed privileged process tree. Inspect and remove only the current user's exact DurinDoor redirect rule, verify its absence, then delete that user's `redirect.json`. Preserve `.mitm.pid`, Root CA files, and trust-rotation journals.

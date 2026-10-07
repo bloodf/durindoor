@@ -11,8 +11,9 @@ Create a private environment file before starting the container:
 
 ```bash
 umask 077
-printf 'JWT_SECRET=%s\nAPI_KEY_SECRET=%s\n' \
-  "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > durindoor.env
+printf '%s=%s\n' \
+  JWT_SECRET "$(openssl rand -hex 32)" \
+  API_KEY_SECRET "$(openssl rand -hex 32)" > durindoor.env
 ```
 
 Add `INITIAL_PASSWORD` with a password of your own to `durindoor.env`. Keep this file private and reuse it for replacement containers. Do not regenerate its secrets during an upgrade.

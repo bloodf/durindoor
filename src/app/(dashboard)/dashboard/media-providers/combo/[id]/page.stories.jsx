@@ -77,7 +77,10 @@ export const ManageProvidersAndRunExample = {
     const roundRobin = await canvas.findByRole("switch", { name: "Round Robin" });
     await userEvent.click(roundRobin);
     await expect(roundRobin).toHaveAttribute("aria-checked", "true");
-    await userEvent.click(canvas.getByRole("button", { name: "Move down" }));
+    const providers = canvas.getByRole("heading", { name: "Providers" }).parentElement.parentElement.parentElement;
+    const firstProviderRow = within(providers).getByText("gpt-4o", { selector: "code" }).parentElement.parentElement;
+    await userEvent.click(within(firstProviderRow).getByRole("button", { name: "Move down" }));
+    await expect(Array.from(providers.querySelectorAll("code"), (element) => element.textContent)).toEqual(["claude-3.5", "gpt-4o"]);
     await userEvent.click(canvas.getByRole("button", { name: "Run" }));
     await expect(await canvas.findByRole("region", { name: "API response output" })).toHaveTextContent("Story result");
   },

@@ -63,4 +63,10 @@ export const EditingExisting = {
   },
 };
 
-export const Closed = { args: { isOpen: false, ...callbacks }, render: (args) => <AddCustomEmbeddingModal {...args} /> };
+export const Closed = {
+  args: { isOpen: false, ...callbacks },
+  render: (args) => <AddCustomEmbeddingModal {...args} />,
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement.ownerDocument.body).queryByRole("dialog", { name: "Add Custom Embedding" })).not.toBeInTheDocument();
+  },
+};

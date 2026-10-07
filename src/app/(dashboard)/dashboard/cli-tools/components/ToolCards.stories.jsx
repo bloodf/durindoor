@@ -159,7 +159,8 @@ export const PiConfigured = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     expect(await canvas.findByRole("button", { name: /pi/i })).toHaveAttribute("aria-expanded", "true");
-    expect(canvas.getByText(/configured/i)).toBeInTheDocument();
+    expect(await canvas.findByText("Connected")).toBeVisible();
+    expect(await canvas.findByText("openai/gpt-4.1")).toBeVisible();
   },
 };
 
@@ -170,8 +171,14 @@ export const CopilotConfigured = {
       pathname: "/dashboard/cli-tools/copilot",
       routes: {
         "GET /api/cli-tools/copilot-settings": {
-          body: { installed: true, has9Router: true, settings: { models: ["openai/gpt-4.1"] } },
+          body: {
+            installed: true,
+            has9Router: true,
+            currentUrl: "http://127.0.0.1:20128/v1",
+            config: [{ name: "9Router", models: [{ id: "openai/gpt-4.1" }] }],
+          },
         },
+        "GET /api/models/alias": { body: { aliases: {} } },
       },
     },
   },
@@ -189,5 +196,7 @@ export const CopilotConfigured = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     expect(await canvas.findByRole("button", { name: /copilot/i })).toHaveAttribute("aria-expanded", "true");
+    expect(await canvas.findByText("Connected")).toBeVisible();
+    expect(await canvas.findByText("openai/gpt-4.1")).toBeVisible();
   },
 };

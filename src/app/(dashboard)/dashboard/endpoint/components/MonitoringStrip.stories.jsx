@@ -25,9 +25,12 @@ export const Populated = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Active Requests")).toBeVisible();
-    await expect(await canvas.findByText("OpenAI")).toBeVisible();
-    await expect(await canvas.findByText("99.8%")).toBeVisible();
-    await expect(await canvas.findByText("0%")).toBeVisible();
+    const health = within(await canvas.findByRole("table"));
+    const healthyProvider = within(health.getByRole("row", { name: /OpenAI/ }));
+    const offlineProvider = within(health.getByRole("row", { name: /Offline provider/ }));
+    await expect(healthyProvider.getByRole("cell", { name: "OpenAI" })).toBeVisible();
+    await expect(healthyProvider.getByRole("cell", { name: "99.8%" })).toBeVisible();
+    await expect(offlineProvider.getByRole("cell", { name: "0%" })).toBeVisible();
     await expect(await canvas.findByText("fallback")).toBeVisible();
   },
 };

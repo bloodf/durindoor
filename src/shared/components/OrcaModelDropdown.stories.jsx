@@ -4,7 +4,7 @@ import OrcaModelDropdown from "./OrcaModelDropdown";
 
 const models = { source: "live", models: [{ id: "orca/chat-pro", name: "Orca Chat Pro", capabilities: ["chat"] }] };
 const fixture = (routes) => ({ storyFixture: { scenario: "default", pathname: "/dashboard/providers", routes } });
-function Controlled(props) { const [selected, setSelected] = useState(props.selectedModel || ""); return <OrcaModelDropdown {...props} selectedModel={selected} onSelect={(model) => setSelected(model.id)} onClear={() => setSelected("")} />; }
+function Controlled(props) { const [selected, setSelected] = useState(props.selectedModel || ""); return <OrcaModelDropdown {...props} selectedModel={selected} onSelect={setSelected} onClear={() => setSelected("")} />; }
 export default { title: "Production/shared-config/OrcaModelDropdown", component: OrcaModelDropdown };
 
 export const LiveCatalog = {
@@ -12,8 +12,13 @@ export const LiveCatalog = {
   parameters: fixture({ "GET /api/providers/orca-1/models?capability=chat": { body: models } }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByTestId("orca-model-trigger"));
-    expect(await canvas.findByRole("option", { name: /orca chat pro/i })).toBeVisible();
+    const trigger = canvas.getByTestId("orca-model-trigger");
+    await userEvent.click(trigger);
+    await userEvent.click(await canvas.findByRole("option", { name: /orca chat pro/i }));
+    await expect(trigger).toHaveTextContent("orca/chat-pro");
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(trigger);
+    await expect(await canvas.findByRole("option", { name: /orca chat pro/i })).toHaveAttribute("aria-selected", "true");
   },
 };
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import MediaRoutesPage from "./page.js";
 
 const automaticRoute = {
@@ -36,6 +36,13 @@ const routes = {
   "GET /api/media-providers/routes": { body: { routes: [automaticRoute, customRoute] }, status: 200 },
 };
 
+let savedFallbackOrder = [];
+const savedImageRoute = () => ({
+  ...automaticRoute,
+  saved: [...savedFallbackOrder],
+  effective: savedFallbackOrder.length ? [...savedFallbackOrder] : automaticRoute.effective,
+});
+
 export default {
   title: "Production/media/MediaRoutes",
   component: MediaRoutesPage,
@@ -62,6 +69,10 @@ export const AutomaticAndCustom = {
 };
 
 export const CustomizeAddRemoveAndSave = {
+  beforeEach: () => {
+    savedFallbackOrder = [];
+    return () => { savedFallbackOrder = []; };
+  },
   parameters: {
     storyFixture: {
       scenario: "default",
@@ -69,7 +80,12 @@ export const CustomizeAddRemoveAndSave = {
       params: {},
       routes: {
         ...routes,
-        "PUT /api/media-providers/routes": { body: { route: { ...automaticRoute, saved: ["openai/gpt-image-1", "openai/dall-e-3"] } }, status: 200 },
+        "GET /api/media-providers/routes": () => ({ body: { routes: [savedImageRoute(), customRoute] }, status: 200 }),
+        "PUT /api/media-providers/routes": async (request) => {
+          const { models } = await request.json();
+          savedFallbackOrder = [...models];
+          return { body: { route: savedImageRoute() }, status: 200 };
+        },
       },
     },
   },
@@ -85,9 +101,17 @@ export const CustomizeAddRemoveAndSave = {
     await userEvent.click(imageCard.getByRole("button", { name: /Remove openai\/gpt-image-1/ }));
     await userEvent.click(imageCard.getByRole("button", { name: "Discard" }));
     await userEvent.click(imageCard.getByRole("button", { name: "Customize" }));
+    await userEvent.click(imageCard.getByRole("combobox"));
+    await userEvent.click(await within(document.body).findByRole("option", { name: /openai\/dall-e-3/ }));
+    await userEvent.click(imageCard.getByRole("button", { name: "Add" }));
     await userEvent.click(imageCard.getByRole("button", { name: "Save" }));
-    const savedTitle = await canvas.findByText("Image generation");
-    await expect(within(savedTitle.parentElement?.parentElement?.parentElement).getByText("Custom order")).toBeVisible();
+    await waitFor(() => {
+      const savedTitle = canvas.getByText("Image generation");
+      const savedCard = within(savedTitle.parentElement.parentElement.parentElement);
+      expect(savedCard.getByRole("button", { name: "Use automatic order" })).toBeVisible();
+      expect(savedCard.getByRole("button", { name: "Save" })).toBeDisabled();
+      expect(savedCard.getAllByText(/openai\/(gpt-image-1|dall-e-3)/, { selector: "code" }).map((element) => element.textContent)).toEqual(["openai/gpt-image-1", "openai/dall-e-3"]);
+    });
   },
 };
 

@@ -20,9 +20,12 @@ export default meta;
 
 export const AllowListWithSecurityWarning = {
   play: async ({ canvasElement }) => {
-    const dialog = within(canvasElement.ownerDocument.body);
-    await expect(await dialog.findByRole("dialog", { name: "Model access for Build harness" })).toBeVisible();
-    await expect(await dialog.findByText("Rules only apply to requests that send this key.")).toBeVisible();
+    const dialogElement = await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Model access for Build harness" });
+    await expect(dialogElement).toBeVisible();
+    const dialog = within(dialogElement);
+    const warning = await dialog.findByRole("alert");
+    await expect(warning).toHaveTextContent(/Rules only apply to requests that send this key/i);
+    await expect(warning).toHaveTextContent(/Require API key/i);
     await expect(dialog.getByText("openai/*")).toBeVisible();
   },
 };
@@ -50,7 +53,8 @@ export const AddAndRejectDuplicateRule = {
 export const EmptyBlockList = {
   args: { apiKey: { ...apiKey, policy: { modelAccess: { mode: "deny", patterns: [] } } } },
   play: async ({ canvasElement }) => {
-    const dialog = within(canvasElement.ownerDocument.body);
-    await expect(await dialog.findByText("An empty blocklist blocks nothing.")).toBeVisible();
+    const dialog = within(await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Model access for Build harness" }));
+    const emptyState = await dialog.findByText(/empty blocklist blocks nothing/i);
+    await expect(emptyState).toBeVisible();
   },
 };

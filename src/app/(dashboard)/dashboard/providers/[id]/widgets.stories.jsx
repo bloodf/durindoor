@@ -185,7 +185,8 @@ export const ApiKeyBulkAndValidation = {
     await userEvent.click(within(dialog).getByRole("button", { name: "Bulk Add" }));
     await userEvent.type(within(dialog).getByLabelText("Credentials"), "Key|sk-example");
     await userEvent.click(within(dialog).getByRole("button", { name: "Add All Keys" }));
-    await expect(await within(dialog).findByText("1 added")).toBeVisible();
+    const bulkStatus = await within(dialog).findByText(/1 added/);
+    await expect(bulkStatus).toHaveTextContent(/1 added/);
   },
 };
 

@@ -298,6 +298,16 @@ export const RequestDetailsDefault = {
     await expect(drawerScope.getByText("json · 128 bytes")).toBeVisible();
     await userEvent.click(drawerScope.getByRole("button", { name: "Summary" }));
     await expect(drawerScope.getByRole("button", { name: "Summary" })).toHaveAttribute("aria-expanded", "false");
+    const rawToggle = drawerScope.getByRole("button", { name: "Raw detail (JSON tree)" });
+    await userEvent.click(rawToggle);
+    await expect(rawToggle).toHaveAttribute("aria-expanded", "true");
+    const rawScope = within(rawToggle.parentElement);
+    await userEvent.click(rawScope.getByText(/^detail(?:\s|$)/, { selector: "summary" }));
+    await userEvent.click(rawScope.getByText(/^tokens(?:\s|$)/, { selector: "summary" }));
+    const promptTokens = rawScope.getByText(/^prompt_tokens\b/);
+    promptTokens.parentElement.scrollIntoView({ block: "center" });
+    await expect(promptTokens).toBeVisible();
+    await expect(within(promptTokens.parentElement).getByText("200")).toBeVisible();
   },
 };
 
@@ -306,7 +316,7 @@ export const RequestDetailsError = {
   parameters: { storyFixture: requestDetailsFixture(500) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("alert")).toHaveTextContent(/Request details failed/));
+    await waitFor(() => expect(canvas.getByRole("alert")).toHaveTextContent(/Request details failed.*500/));
   },
 };
 
@@ -340,6 +350,15 @@ export const ProviderTopologyConnected = {
     });
     await waitFor(() => expect(canvas.getByRole("tooltip")).toBeVisible());
     await waitFor(() => expect(within(canvas.getByRole("tooltip")).getByText("gpt-5 ×2")).toBeVisible());
+  },
+};
+
+export const ProviderTopologyTooltipDismissal = {
+  ...ProviderTopologyConnected,
+  play: async ({ canvasElement }) => {
+    await ProviderTopologyConnected.play({ canvasElement });
+    const canvas = within(canvasElement);
+    const controls = canvas.getByRole("group", { name: "Control Panel" });
     within(controls).getByRole("button", { name: "Zoom In" }).focus();
     await waitFor(() => expect(canvas.queryByRole("tooltip")).not.toBeInTheDocument());
   },

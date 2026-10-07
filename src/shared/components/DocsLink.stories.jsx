@@ -8,6 +8,7 @@ export const ExternalDocumentation = {
   args: { path: "/providers", label: "Provider documentation" },
   play: ({ canvasElement }) => {
     const link = within(canvasElement).getByRole("link", { name: /provider documentation/i });
+    expect(link).toBeVisible();
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   },

@@ -46,6 +46,10 @@ export default {
   title: "Production/operations/ConsoleLogClient",
   component: ConsoleLogClient,
   parameters: fixture(routes),
+  beforeEach: () => {
+    polls = 0;
+    return () => { polls = 0; };
+  },
 };
 
 export const Streaming = {
@@ -83,9 +87,18 @@ export const Paused = {
     await expect(canvas.getByText("Paused")).toBeInTheDocument();
     const pill = await canvas.findByText(/^\d+ new$/, {}, { timeout: 5000 });
     await expect(pill).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Resume" })).toBeEnabled();
+  },
+};
+
+export const ResumeFromPause = {
+  parameters: fixture(pollingRoutes),
+  play: async ({ canvasElement }) => {
+    await Paused.play({ canvasElement });
+    const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Jump to latest" }));
     await waitFor(() => expect(canvas.queryByText(/^\d+ new$/)).not.toBeInTheDocument());
-    await expect(canvas.getByText("Streaming")).toBeInTheDocument();
+    await expect(canvas.getByText("Streaming")).toBeVisible();
   },
 };
 

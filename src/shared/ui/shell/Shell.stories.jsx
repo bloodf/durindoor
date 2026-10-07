@@ -128,11 +128,14 @@ export const HeaderWithActions = {
 export const HeaderThemeToggle = {
   render: () => <Header title="Providers" subtitle="Manage upstream model connections" icon="dns" />,
   play: async ({ canvasElement }) => {
+    const root = document.documentElement;
+    const initialTheme = root.style.colorScheme;
+    const invertedTheme = initialTheme === "dark" ? "light" : "dark";
     const toggle = within(canvasElement).getByRole("button", { name: "Toggle theme" });
     await userEvent.click(toggle);
-    await expect(document.documentElement).toHaveClass("dark");
+    await expect(root.style.colorScheme).toBe(invertedTheme);
     await userEvent.click(toggle);
-    await expect(document.documentElement).not.toHaveClass("dark");
+    await expect(root.style.colorScheme).toBe(initialTheme);
   },
 };
 

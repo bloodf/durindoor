@@ -96,6 +96,6 @@ export const Loading = {
   args: { toolId: "claude", machineId: "story-machine" },
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools/claude", params: { toolId: "claude" }, routes: pendingRoutes } },
   play: async ({ canvasElement }) => {
-    expect(await within(canvasElement).findByRole("status", { name: "Loading card" })).toBeInTheDocument();
+    await expect(await within(canvasElement).findByRole("status", { name: "Loading card" })).toBeVisible();
   },
 };

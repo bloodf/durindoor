@@ -160,6 +160,15 @@ const pendingGroupedData = [
 ];
 
 export const UsageTablePending = {
+  beforeEach: () => {
+    const storageKey = "story:usage:pending";
+    const savedExpandedGroups = window.localStorage.getItem(storageKey);
+    window.localStorage.removeItem(storageKey);
+    return () => {
+      if (savedExpandedGroups === null) window.localStorage.removeItem(storageKey);
+      else window.localStorage.setItem(storageKey, savedExpandedGroups);
+    };
+  },
   render: () => (
     <UsageTable
       title="Usage pending settlement"
@@ -177,11 +186,16 @@ export const UsageTablePending = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await expect(canvas.getByText("3 pending")).toBeVisible();
     const toggle = canvas.getByRole("button", { name: "Expand Group pending-openai" });
     await userEvent.click(toggle);
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(canvas.getByRole("table", { name: "Items for pending-openai" })).toBeVisible();
-    await expect(canvas.getByText("gpt-5-pending")).toBeVisible();
+    const detailTable = canvas.getByRole("table", { name: "Items for pending-openai" });
+    await expect(detailTable).toBeVisible();
+    await expect(within(detailTable).getByRole("columnheader", { name: "Model" })).toBeVisible();
+    await expect(within(detailTable).getByRole("columnheader", { name: "Provider" })).toBeVisible();
+    await expect(within(detailTable).getByRole("rowheader", { name: "gpt-5-pending" })).toBeVisible();
+    await expect(within(detailTable).getByText("openai")).toBeVisible();
   },
 };
 
@@ -212,6 +226,7 @@ export const QuotaProgressHealthy = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("progressbar", { name: /Codex Pro 5h/ })).toHaveAttribute("aria-valuenow", "85");
+    await expect(canvas.getByText("85%")).toBeVisible();
   },
 };
 

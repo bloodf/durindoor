@@ -29,10 +29,11 @@ const emptyRoutes = {
   "GET /api/translator/console-logs/stream": { events: [{ type: "init", logs: [] }] },
 };
 
-// No stream route: the transport takes its polling fallback, and every poll
-// returns one more line, so lines keep arriving after the story pauses.
+// Explicit null clears the inherited SSE descriptor during parameter merging.
+// The production transport then polls, including while display is paused.
 let polls = 0;
 const pollingRoutes = {
+  "GET /api/translator/console-logs/stream": null,
   "GET /api/translator/console-logs": () => {
     const extra = Array.from({ length: polls }, (_, index) => `[17:49:${String(index % 60).padStart(2, "0")}] 🟣 → POST gpt-5.5 poll ${index + 1}`);
     polls += 1;

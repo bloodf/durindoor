@@ -61,7 +61,8 @@ export const Loading = {
   args: { machineId: "story-machine" },
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools", params: {}, routes: pendingRoutes } },
   play: async ({ canvasElement }) => {
-    expect((await within(canvasElement).findAllByRole("status", { name: "Loading card" })).length).toBeGreaterThan(0);
+    const cards = await within(canvasElement).findAllByRole("status", { name: "Loading card" });
+    for (const card of cards) await expect(card).toBeVisible();
   },
 };
 

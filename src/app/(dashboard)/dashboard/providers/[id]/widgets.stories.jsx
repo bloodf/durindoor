@@ -187,6 +187,22 @@ export const ApiKeyBulkAndValidation = {
     await userEvent.click(within(dialog).getByRole("button", { name: "Add All Keys" }));
     const bulkStatus = await within(dialog).findByText(/1 added/);
     await expect(bulkStatus).toHaveTextContent(/1 added/);
+    await expect(bulkStatus).toBeVisible();
+    await expect(within(dialog).queryByText("Invalid", { exact: true })).not.toBeInTheDocument();
+  },
+};
+
+/** Retains the failed preflight result for error-state capture, without entering bulk mode. */
+export const ApiKeyValidationError = {
+  parameters: ApiKeyBulkAndValidation.parameters,
+  render: ApiKeyBulkAndValidation.render,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Add OpenAI API Key" });
+    const form = within(dialog);
+    await userEvent.type(form.getByLabelText("API Key"), "sk-example");
+    await userEvent.click(form.getByRole("button", { name: "Check" }));
+    await expect(await form.findByText("Invalid")).toBeVisible();
+    await expect(form.getByLabelText("API Key")).toHaveValue("sk-example");
   },
 };
 
@@ -226,6 +242,19 @@ export const ProviderErrorRules = {
     await userEvent.type(within(dialog).getByLabelText("Cooldown seconds (optional)"), "30");
     await userEvent.click(within(dialog).getByRole("button", { name: "Add Rule" }));
     await expect(await within(dialog).findByText('429 contains "daily cap"')).toBeVisible();
+    await expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+  },
+};
+
+/** Keeps the invalid draft visible separately from the successful rule-addition transition. */
+export const ProviderErrorRuleValidationError = {
+  render: ProviderErrorRules.render,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Provider Error Rules" });
+    const form = within(dialog);
+    await userEvent.click(form.getByRole("button", { name: "Add Rule" }));
+    await expect(await form.findByRole("alert")).toHaveTextContent("Match text is required");
+    await expect(form.getByLabelText("Match (substring, case-insensitive)")).toHaveValue("");
   },
 };
 

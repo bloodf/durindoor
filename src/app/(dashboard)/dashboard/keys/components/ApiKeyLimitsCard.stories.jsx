@@ -24,7 +24,8 @@ export const ConfiguredLimits = {
 };
 
 export const NoConfiguredLimits = {
-  parameters: { storyFixture: { scenario: "empty", pathname: "/dashboard/keys", routes: { ...routes, "GET /api/keys/usage": { body: { usage: { "key-1": { limits: [] } } } } } } },
+  // Null clears meta-level objects during Storybook's recursive parameter merge.
+  parameters: { storyFixture: { scenario: "empty", pathname: "/dashboard/keys", routes: { ...routes, "GET /api/keys/usage": { body: { usage: { "key-1": { rpm: null, tpm: null, limits: [] } } } } } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText("No limits set. Edit them on the Keys page.")).toBeVisible();
   },

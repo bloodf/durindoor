@@ -13,6 +13,9 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   output: "standalone",
+  // Isolated provider paths retain upstream slash semantics; src/proxy.js
+  // keeps the default no-trailing-slash redirect on ordinary application hosts.
+  skipTrailingSlashRedirect: true,
   serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg", "playwright", "playwright-core", "tls-client-node"],
   turbopack: {
     root: tracingRoot

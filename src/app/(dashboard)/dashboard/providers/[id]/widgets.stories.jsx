@@ -121,6 +121,21 @@ export const AddApiKey = {
   },
 };
 
+export const AddWebCookie = {
+  parameters: { storyFixture: { routes: {
+    "POST /api/providers/web-login/start": { status: 503, body: { error: "Configure a separate login origin." } },
+  } } },
+  render: () => <AddApiKeyModal isOpen provider="grok-web" providerName="Grok Web" authType="cookie" webLogin={{}} proxyPools={[]} existingConnectionNames={[]} onSave={noop} onBulkDone={noop} onClose={noop} />,
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.click(await body.findByRole("button", { name: "Sign in in-page" }));
+    const login = await body.findByRole("dialog", { name: "Sign in to Grok Web" });
+    await expect(await within(login).findByRole("alert")).toHaveTextContent("Configure a separate login origin.");
+    await userEvent.click(within(login).getByRole("button", { name: "Cancel" }));
+    await expect(await body.findByRole("dialog", { name: "Add Grok Web Cookie Value" })).toBeVisible();
+  },
+};
+
 export const AddCustomModel = {
   render: () => <AddCustomModelModal isOpen providerAlias="oc-prod" providerDisplayAlias="Compatible" onSave={noop} onClose={noop} />,
   play: async ({ canvasElement }) => {

@@ -16,6 +16,13 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste your __Secure-next-auth.session-token cookie value from perplexity.ai",
+  webLogin: {
+    startUrl: "https://www.perplexity.ai/",
+    origin: "https://www.perplexity.ai",
+    cookieNames: ["__Secure-next-auth.session-token"],
+    cookiePrefixes: ["__Secure-next-auth.session-token."],
+    readyProbe: { url: "https://www.perplexity.ai/api/auth/session", method: "GET", okStatus: [200] },
+  },
   transport: {
     baseUrl: "https://www.perplexity.ai/rest/sse/perplexity_ask",
     format: "perplexity-web",

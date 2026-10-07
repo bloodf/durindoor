@@ -5,6 +5,45 @@
   "plannedAt": "cf572ec911afbef2e7cc1248a9be2e7a7b0d439a",
   "rows": [
     {
+      "id": "src/shared/components/WebLoginModal.js#WebLoginModal",
+      "sourcePath": "src/shared/components/WebLoginModal.js",
+      "symbol": "WebLoginModal",
+      "sourceSha256": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Actual modal with offline provider-frame fixture; waiting, readiness and configuration failure. Real two-host browser verification is separate.",
+      "reviewStatus": "pending",
+      "requiredScenarioIds": [
+        "production-shared-web-login-webloginmodal--waiting",
+        "production-shared-web-login-webloginmodal--ready",
+        "production-shared-web-login-webloginmodal--origin-not-configured"
+      ],
+      "storyScenarios": [
+        {
+          "id": "production-shared-web-login-webloginmodal--waiting",
+          "storyId": "production-shared-web-login-webloginmodal--waiting",
+          "runtimeArtifactId": "production-shared-web-login-webloginmodal--waiting",
+          "axes": ["modal=open", "waiting", "controls"],
+          "sourceHashes": { "src/shared/components/WebLoginModal.js": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db" }
+        },
+        {
+          "id": "production-shared-web-login-webloginmodal--ready",
+          "storyId": "production-shared-web-login-webloginmodal--ready",
+          "runtimeArtifactId": "production-shared-web-login-webloginmodal--ready",
+          "axes": ["modal=open", "ready", "controls"],
+          "sourceHashes": { "src/shared/components/WebLoginModal.js": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db" }
+        },
+        {
+          "id": "production-shared-web-login-webloginmodal--origin-not-configured",
+          "storyId": "production-shared-web-login-webloginmodal--origin-not-configured",
+          "runtimeArtifactId": "production-shared-web-login-webloginmodal--origin-not-configured",
+          "axes": ["modal=open", "configuration-error", "controls"],
+          "sourceHashes": { "src/shared/components/WebLoginModal.js": "daf7cd83b7e4b703c0a81b21c4efd5d6a54de113044e256c68c69e72c08ed7db" }
+        }
+      ],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-runtime-and-independent-check"
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js#ActionEntry",
       "sourcePath": "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js",
       "symbol": "ActionEntry",
@@ -6387,14 +6426,15 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js#AddApiKeyModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js",
       "symbol": "AddApiKeyModal",
-      "sourceSha256": "e7bc55dc3c5ec322df041cc61f901d5c18808ff0693c9b0d5f9eb6f919931198",
+      "sourceSha256": "5c7a5e4bb9f326be94e95f7351394917d80b6b4504dc3938cb87172157806390",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Providers detail widget story renders this component, including private child through real parent.",
-      "reviewStatus": "approved",
+      "reviewStatus": "pending",
       "reviewedBy": "integration-review",
       "requiredScenarioIds": [
-        "production-providers-detail-widgets--add-api-key"
+        "production-providers-detail-widgets--add-api-key",
+        "production-providers-detail-widgets--add-web-cookie"
       ],
       "approvedScenarioIds": [
         "production-providers-detail-widgets--add-api-key"
@@ -6405,7 +6445,7 @@
           "storyId": "production-providers-detail-widgets--add-api-key",
           "runtimeArtifactId": "production-providers-detail-widgets--add-api-key",
           "expectedVisibleText": "Add Compatible API Key",
-          "expectedSha256": "e7bc55dc3c5ec322df041cc61f901d5c18808ff0693c9b0d5f9eb6f919931198",
+          "expectedSha256": "5c7a5e4bb9f326be94e95f7351394917d80b6b4504dc3938cb87172157806390",
           "axes": [
             "modal=open",
             "compatible",
@@ -6413,7 +6453,18 @@
           ],
           "proposedSourceEvidence": "Direct component story.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "e7bc55dc3c5ec322df041cc61f901d5c18808ff0693c9b0d5f9eb6f919931198"
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "5c7a5e4bb9f326be94e95f7351394917d80b6b4504dc3938cb87172157806390"
+          }
+        },
+        {
+          "id": "production-providers-detail-widgets--add-web-cookie",
+          "storyId": "production-providers-detail-widgets--add-web-cookie",
+          "runtimeArtifactId": "production-providers-detail-widgets--add-web-cookie",
+          "expectedVisibleText": "Add Grok Web Cookie Value",
+          "expectedSha256": "5c7a5e4bb9f326be94e95f7351394917d80b6b4504dc3938cb87172157806390",
+          "axes": ["modal=open", "manual-fallback", "controls"],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "5c7a5e4bb9f326be94e95f7351394917d80b6b4504dc3938cb87172157806390"
           }
         }
       ],
@@ -6861,7 +6912,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#bulkActionModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "bulkActionModal",
-      "sourceSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+      "sourceSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerdetailpage--compatible-branch; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -6877,13 +6928,13 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": null,
-          "expectedSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+          "expectedSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
           "axes": [
             "provider=compatible",
             "connection=present"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0"
           }
         }
       ],
@@ -6898,7 +6949,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#connectionsList",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "connectionsList",
-      "sourceSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+      "sourceSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerdetailpage--compatible-branch; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -6916,13 +6967,13 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": "OpenAI Compatible (Prod)",
-          "expectedSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+          "expectedSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
           "axes": [
             "provider=compatible",
             "connection=present"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0"
           },
           "proposedSourceEvidence": "Compatible fixture supplies node and connection."
         }
@@ -6936,7 +6987,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#ProviderDetailPage",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "ProviderDetailPage",
-      "sourceSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+      "sourceSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct Storybook source binding: production-providers-providerdetailpage--open-ai-detail, production-providers-providerdetailpage--settings-controls, production-providers-providerdetailpage--compatible-branch. Pending runtime review.",
@@ -6958,13 +7009,13 @@
           "storyId": "production-providers-providerdetailpage--open-ai-detail",
           "runtimeArtifactId": "production-providers-providerdetailpage--open-ai-detail",
           "expectedVisibleText": "OpenAI",
-          "expectedSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+          "expectedSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
           "axes": [
             "provider=openai",
             "loaded"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0"
           },
           "proposedSourceEvidence": "Direct source binding."
         },
@@ -6973,14 +7024,14 @@
           "storyId": "production-providers-providerdetailpage--settings-controls",
           "runtimeArtifactId": "production-providers-providerdetailpage--settings-controls",
           "expectedVisibleText": "Retry: 15s",
-          "expectedSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+          "expectedSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
           "axes": [
             "provider=openai",
             "controls",
             "retry-delay"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0"
           },
           "proposedSourceEvidence": "Direct source binding and play interaction."
         },
@@ -6989,13 +7040,13 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": "OpenAI Compatible (Prod)",
-          "expectedSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+          "expectedSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
           "axes": [
             "provider=compatible",
             "loaded"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0"
           },
           "proposedSourceEvidence": "Direct source binding."
         }
@@ -7009,7 +7060,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/page.js#renderModelsSection",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/page.js",
       "symbol": "renderModelsSection",
-      "sourceSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+      "sourceSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Source-proven unconditional render of parent story production-providers-providerdetailpage--compatible-branch; reaches this child via wrapper JSX tree. Pending runtime review.",
@@ -7027,12 +7078,12 @@
           "storyId": "production-providers-providerdetailpage--compatible-branch",
           "runtimeArtifactId": "production-providers-providerdetailpage--compatible-branch",
           "expectedVisibleText": "OpenAI Compatible (Prod)",
-          "expectedSha256": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa",
+          "expectedSha256": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
           "axes": [
             "provider=compatible"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "3a98e0b079cc0afadf9d9772bc43a48c19b264855bdb7b2a90ed89951a3866fa"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0"
           },
           "proposedSourceEvidence": "Compatible page branch invokes model-section renderer."
         }

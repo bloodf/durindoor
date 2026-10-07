@@ -20,6 +20,7 @@ const path = require("path");
 const STANDALONE_SIDECARS = [
   "custom-server.js",
   "head-response-guard.cjs",
+  "web-login-host-boundary.cjs",
 ];
 
 /**

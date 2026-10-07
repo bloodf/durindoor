@@ -45,6 +45,7 @@ const { consumeNativeRealtimeHandoff } = require("./open-sse/handlers/nativeReal
 const { MAX_REALTIME_FRAME_BYTES, MAX_REALTIME_PREAUTH_BYTES, MAX_REALTIME_PREAUTH_FRAMES } = require("./src/shared/utils/realtimeConfig");
 // Sidecar copied into the CLI bundle by cli/scripts/standaloneSidecars.js.
 const { applyHeadResponseGuard } = require("./head-response-guard.cjs");
+const { denyIsolatedHttpRequest, denyIsolatedUpgrade } = require("./web-login-host-boundary.cjs");
 
 const MITM_CONTROL_PATH = "/api/cli-tools/antigravity-mitm";
 const REALTIME_NATIVE_CONTROL_PATH = "/api/v1/realtime/native";
@@ -102,6 +103,7 @@ function installRequestWrapper({ httpModule = http, secret, peerToken, verifyPee
     const rest = args.filter((a) => !isFunction(a));
     if (!handler) return origCreate(...args);
     const wrapped = (req, res) => {
+      if (denyIsolatedHttpRequest(req, res)) return;
       const socketIp = req.socket?.remoteAddress || "";
       const xff = req.headers["x-forwarded-for"];
       const xRealIp = req.headers["x-real-ip"];
@@ -237,6 +239,7 @@ function installRealtimeUpgradeDispatcher(server, { dashboardPort, relayFactory 
     server.removeAllListeners("upgrade");
     server.on("upgrade", (req, socket, head) => {
       try {
+        if (denyIsolatedUpgrade(req, socket)) return;
         if (isRealtimePath(req.url)) {
           handleRealtimeUpgrade(req, socket, head, { port, relayFactory });
           return;

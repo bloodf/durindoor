@@ -13,7 +13,7 @@ curl http://localhost:20128/v1/realtime/auth \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
 ```
 
-Health returns `{ "ok": true }`. On loopback, the models catalog does not validate keys. With **Require API Key** enabled, the auth probe validates the key. With enforcement off, trusted loopback admits missing and unknown unsaved keys; paused or expired stored keys are still rejected. Remote HTTP requests require gateway credentials regardless of that setting. None of these checks proves provider inference works.
+Health returns `{ "ok": true }`. On loopback, the models catalog does not validate keys. With **Require API Key** enabled, the auth probe validates the key. With enforcement off, trusted loopback admits missing and unknown unsaved keys; paused or expired stored keys are still rejected. Remote HTTP `/v1` requests require a valid gateway key or CLI credential regardless of that setting. None of these checks proves provider inference works.
 
 ## Health check fails
 

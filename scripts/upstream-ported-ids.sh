@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Emit the set of upstream (decolua/9router) PR numbers already ported into this
-# fork, as a sorted JSON array.
+# Emit upstream (decolua/9router) port identifiers as a sorted JSON array.
+# Default output remains PR numbers for the open-PR scan.
 #
 #   upstream-ported-ids.sh [repo-root] > ported.json
+#   upstream-ported-ids.sh --commits [repo-root] # direct-commit SHA identifiers
 #
 # Two evidence sources, unioned:
 #
@@ -21,6 +22,14 @@
 # both mislabel real ports and hide real candidates. Membership is decided by
 # reviewed evidence in the ledger.
 set -euo pipefail
+
+if [ "${1:-}" = "--commits" ]; then
+  ROOT=${2:-.}
+  git -C "$ROOT" log --format='%s' \
+    | sed -nE 's/^port\(upstream\): ([0-9a-f]{7,40}) - .*/\1/p' \
+    | sort -u | jq -Rn '[inputs]'
+  exit 0
+fi
 
 ROOT=${1:-.}
 LEDGER="$ROOT/.github/upstream-ported.json"

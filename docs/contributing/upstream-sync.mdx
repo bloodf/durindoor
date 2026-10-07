@@ -5,21 +5,36 @@ description: Watch list for unmerged 9router and OmniRoute work, plus the dispat
 
 Unmerged upstream 9router pull requests and deliberately deferred OmniRoute/9router commits live here. Historical per-PR port ledgers are not committed.
 
-Last reviewed sync window: 2026-09-22 through 2026-09-25 (upstream head `39e36d3d0`, v0.5.86).
+Last reviewed sync window: 2026-09-30 through 2026-10-06 (9router snapshot head `a99cf57`, v0.5.95).
 
 | Source | Reviewed head |
 | --- | --- |
-| `decolua/9router` | `699edac3273e13d4744bc46f6082618f08560702` |
+| `decolua/9router` | `a99cf57239ff778b61e434c2786009d5ed1c412c` |
 | `diegosouzapw/OmniRoute` | `abd4df63dc25479853d0b7410f59d4c1b5816ccc` |
 
 Use those heads as the lower-bound anchors for the next sync review.
 
-Ported work is recorded two ways, unioned by `scripts/upstream-ported-ids.sh`:
+Ported work is recorded by `scripts/upstream-ported-ids.sh`:
 
 1. Commit subjects `port(upstream): #N - ...` or `port(upstream): #A+#B - ...`. Every number in the leading `#A+#B` group counts; a trailing `(#123)` is this repository's squash number.
 2. `.github/upstream-ported.json` `ported[].pr`, for PRs with no `port(upstream)` subject of their own.
+3. Direct-commit ports use `port(upstream): <sha7> - ...`; `scripts/upstream-ported-ids.sh --commits .` lists those SHA identifiers separately. Default output remains a numeric PR array for the open-PR scan.
 
 `CHANGELOG.md` is not parsed for membership.
+
+## 2026-10-06 direct-commit review
+
+All six approved diffs were fetched individually; the release snapshot was not applied as a whole-tree replacement. No upstream version or branding changes were imported.
+
+| Upstream commit | Decision | Fork evidence |
+| --- | --- | --- |
+| [`5e9bd46`](https://github.com/decolua/9router/commit/5e9bd46) | Ported | `translator/index.js` captures terminal roles from `contents[]` and `input[]`, mapping Gemini `model` to assistant. Source-format regression tests cover intentional prefill and emptied user tails with the existing preserve-prefill header. |
+| [`7111db3`](https://github.com/decolua/9router/commit/7111db3) | Ported missing deltas | Responses completion keeps real integer usage independently of provider-native pivot state, ignores zero placeholders, derives totals, and completes at a wire `[DONE]` without waiting for EOF. Cache-inclusive normalization and provider detail fields are retained. |
+| [`fbcaa28`](https://github.com/decolua/9router/commit/fbcaa28) | Ported | A three-second watchdog starts only after a Chat Completions finish reason lacks real usage. A trailer, `[DONE]`, or EOF ends the wait; terminal emission and accounting callbacks are single-shot. This is not a generation inactivity timeout. |
+| [`75834e9`](https://github.com/decolua/9router/commit/75834e9) | Already covered; skipped | `98fe038a` (`port(upstream): #4482`) implements `ensureTrailingUserTurn` in Claude cleanup; `tests/unit/claude-trailing-user-turn.test.js` covers dropped user content and the fork's explicit prefill policy. |
+| [`89ffac5`](https://github.com/decolua/9router/commit/89ffac5) | Covered core behavior; residuals deferred below | `vendorModelCapabilities.js` already publishes supported GPT-6/GPT-5.4+ models at 1,050,000 tokens and mini/nano at 400,000. `resolveModelLimits` accepts provider live metadata over exact entries; `buildModelsList.js` publishes nested, alias-aware combo minimum limits with existing `buildModelsList-static-alias-map.test.js` coverage. The fork does not have upstream's `modelCatalog/sync.js` or `setCatalogSource` pipeline. |
+| [`a99cf57`](https://github.com/decolua/9router/commit/a99cf57) | Release-only diff skipped; catalog residuals deferred below | The actual diff changes only changelog and package versions. GPT-6.1 Sol is already in `registry/codex.js` and the verified vendor table; Sonnet 5.5 is in `registry/anthropic.js`; Meta Muse OAuth is served by the fork's dual-auth `registry/muse-code.js`. Changelog prose is not an implementation diff. |
+
 
 ## Open upstream pull requests
 
@@ -33,7 +48,7 @@ Unmerged changes stay on the watch list. Do not port them until their final merg
 
 ## Deferred upstream commits
 
-Reviewed in the 2026-08-09 window and not ported. Each row is the trigger that would justify revisiting it.
+The older rows were reviewed in the 2026-08-09 window. Rows marked 2026-10-06 are residuals from the bounded direct-commit review above. Each deferred row names the trigger required before adoption.
 
 | Commit | Subject | Port trigger |
 | --- | --- | --- |
@@ -50,6 +65,12 @@ Reviewed in the 2026-08-09 window and not ported. Each row is the trigger that w
 | `fe547f4d` | self-hosted STT/TTS/Embedding | Local demand for self-hosted media services. |
 | `41588bea` | TokenRouter pricing + thinking config | Refreshed prices from the provider source rather than the stale upstream static table. |
 | `86131b9c` | Codex GPT-5.6 Max/Ultra overrides | Deferred until the unified limits resolver lands, so the executor consumes it rather than forking thinking-level logic. |
+| `89ffac5` (2026-10-06) | Deferred: seven Devin CLI GPT overrides and blanket future-family globs | A first-party or live Devin model declaration proving the 200k supported ceiling for those exact variants. The fork registry has only a transport default, no per-model limits; do not promote a request default into a capacity guarantee. Likewise require published limits before assigning 1.05M to every future GPT-6/5.4+ spelling. |
+| `89ffac5` (2026-10-06) | Deferred: models.dev provider overlay pipeline | A demonstrated limit gap not handled by the fork's unified live metadata resolver, with a scoped design using that resolver rather than a second catalog source. Copilot live limits already override exact metadata through `resolveModelLimits`. |
+| `a99cf57` (2026-10-06) | Deferred: Codex `[1m]` variants and additional snapshot-only model aliases | The original implementation diff plus an authoritative Codex model/transport declaration showing how the extended variant is requested. Canonical GPT-6.1 Sol already publishes 1.05M; do not manufacture separate variant support or prices from release prose. |
+| `a99cf57` (2026-10-06) | Deferred: v1m System One provider | A scoped new-vendor port with the original implementation diff, verified endpoint/auth contract, and systemone request/response regressions. Existing TypeSafe Jev routing is not evidence of v1m.ir compatibility. |
+| `a99cf57` (2026-10-06) | Deferred: GLM Z.ai OAuth dual-auth | The source implementation and verified OAuth protocol, followed by a dedicated credential-safe login/refresh/logout port preserving the current API-key path in `registry/zai.js`. The release snapshot contains no OAuth code. |
+| `a99cf57` (2026-10-06) | Deferred: per-provider custom header overrides | The original implementation diff and a scoped header precedence/security review against the fork's transport/executor pipeline, including tests that credentials cannot be overridden or disclosed. The release snapshot only announces the feature. |
 
 ## Scan workflow
 

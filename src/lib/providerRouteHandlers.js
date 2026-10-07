@@ -334,6 +334,10 @@ export async function createProvider(request, { shouldCommit } = {}) {
     // (createOnly → PROVIDER_CONNECTION_ALREADY_EXISTS → 409). The repo throws
     // atomically inside its transaction; the explicit update path is
     // updateProviderConnection (PUT /api/providers/[id]).
+    const connectionOptions = createOnly === true ? { requireNewName: true } : { createOnly: true };
+    if (isFunction(shouldCommit)) {
+      connectionOptions.shouldCommit = shouldCommit;
+    }
     let newConnection;
     try {
       newConnection = await createProviderConnection({
@@ -348,10 +352,7 @@ export async function createProvider(request, { shouldCommit } = {}) {
         providerSpecificData: mergedProviderSpecificData,
         isActive: true,
         testStatus: testStatus || "unknown"
-      }, {
-        ...(createOnly === true ? { requireNewName: true } : { createOnly: true }),
-        ...(isFunction(shouldCommit) ? { shouldCommit } : {})
-      });
+      }, connectionOptions);
     } catch (error) {
       if (isFunction(shouldCommit) && !shouldCommit()) {
         return NextResponse.json({ error: "Login session expired or was cancelled or replaced" }, { status: 409 });

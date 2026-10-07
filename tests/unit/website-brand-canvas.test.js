@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "../../website/node_modules/react/index.js";
 import { createRoot } from "../../website/node_modules/react-dom/client.js";
 
-vi.mock("../../website/node_modules/next/dynamic.js", () => ({ default: () => function GatewayScene({ onFailure }) {
-  return React.createElement("button", { onClick: onFailure }, "Simulate context loss");
+vi.mock("../../website/node_modules/next/dynamic.js", () => ({ default: () => function GatewayScene({ onFailure, onReady }) {
+  return React.createElement("div", null, React.createElement("button", { onClick: onFailure }, "Simulate context loss"), React.createElement("button", { onClick: onReady }, "First frame ready"));
 } }));
 import HeroCanvas from "../../website/src/components/home/hero/HeroCanvas.jsx";
 
@@ -24,6 +24,14 @@ function render({ reduced = false, webgl = true } = {}) {
 afterEach(() => { act(() => root?.unmount()); host?.remove(); vi.restoreAllMocks(); });
 
 describe("optional gateway animation", () => {
+  it("swaps the poster after the first frame without scroll input", () => {
+    const { onAvailability } = render();
+    expect(host.querySelector(".gateway-stage").dataset.ready).toBe("false");
+    expect(onAvailability).toHaveBeenLastCalledWith(false);
+    act(() => [...host.querySelectorAll("button")].find((button) => button.textContent === "First frame ready").click());
+    expect(host.querySelector(".gateway-stage").dataset.ready).toBe("true");
+    expect(onAvailability).toHaveBeenLastCalledWith(true);
+  });
   it("keeps the static gate visible without WebGL", () => {
     const { onAvailability } = render({ webgl: false });
     expect(onAvailability).toHaveBeenLastCalledWith(false);
@@ -43,6 +51,8 @@ describe("optional gateway animation", () => {
   });
   it("returns to static artwork when the canvas loses its context", () => {
     const { onAvailability } = render();
+    expect(onAvailability).toHaveBeenLastCalledWith(false);
+    act(() => [...host.querySelectorAll("button")].find((button) => button.textContent === "First frame ready").click());
     expect(onAvailability).toHaveBeenLastCalledWith(true);
     act(() => host.querySelector("button").click());
     expect(onAvailability).toHaveBeenLastCalledWith(false);

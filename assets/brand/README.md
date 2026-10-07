@@ -1,35 +1,16 @@
-# DurinDoor identity
+# Brand asset maintenance
 
-DurinDoor takes its name from Durin's Door at Moria. The visual language uses a vaulted gate, an open leaf, a guiding star, silver tree engravings, moonlit stone, and emerald light. Keep the emblem simple at small sizes; reserve the detailed gate illustration for large imagery.
+The [DurinDoor brand guide](../../docs/contributing/brand-guide.mdx) is the canonical guide for logo use, current public colors, typography, motion, and future dashboard work. Keep brand rules there rather than duplicating a palette in this file.
 
-## Logo files
+This directory owns the original logo SVGs, application icon, gateway illustration, identity board, and generated raster assets. Wordmark lettering is outlined from Cormorant Garamond at weight 600. The board is a presentation reference; production logos use the SVG originals.
 
-`durindoor-mark.svg` is the standalone emblem. `durindoor-app-icon.svg` puts it on dark stone. The dark, light, and monochrome logo SVGs include the wordmark as paths, with no font dependencies. The identity board is a presentation reference; use the SVG files for production logos.
+Image-generation prompts are retained in `prompts.md`. Local public font files and their SIL Open Font License notices live in `website/public/home/fonts/`. Dashboard Inter files live in `public/fonts/`.
 
-Preserve the proportions. Leave at least one pillar width of clear space around the mark. Use the dark wordmark on forest or stone, the light wordmark on chalk, and monochrome for one-color reproduction. Do not add gradients, shadows, or extra symbols to the logo itself.
+After changing a canonical asset, run these commands from the repository root:
 
-## Color
+```bash
+node scripts/sync-brand-assets.mjs
+node website/scripts/sync-public.mjs
+```
 
-| Role | Color |
-| --- | --- |
-| Emerald, brand and primary actions | `#10B981` |
-| Deep forest, atmospheric backgrounds | `#071D16` |
-| Moon silver, lettering and mithril | `#EEEAE4` |
-| Stone, neutral dark material | `#171719` |
-| Deep emerald, accessible actions on light docs | `#066247` |
-
-## Typography
-
-Cormorant Garamond is the display and wordmark face. Space Grotesk is the UI and documentation face. Both are locally served from `website/public/home/fonts/` with their SIL Open Font License files. Logo lettering is outlined from Cormorant Garamond at weight 600.
-
-Font sources: [Cormorant Garamond](https://github.com/google/fonts/tree/main/ofl/cormorantgaramond) and [Space Grotesk](https://github.com/google/fonts/tree/main/ofl/spacegrotesk).
-
-## Image and motion
-
-The gateway campaign illustration and identity board use the built-in image generation tool. The prompts are retained in `prompts.md`. The logo is an editable SVG emblem, and lettering is outlined from the actual font, independent of the generated board.
-
-The website uses emerald mist shaders, pointer parallax, scroll reveals, and magnetic controls. Reduced motion uses the static gateway illustration. WebGL is optional; content and navigation work without it. The public site uses a dark fantasy palette, while docs support light and dark reading modes.
-
-The website copies this folder to `/brand` during `predev` and `prebuild`. Update canonical files here, then run `node website/scripts/sync-public.mjs`.
-
-Run `node scripts/sync-brand-assets.mjs` from the repository root after updating the canonical files. It renders the legacy project asset filenames from this kit. Website dependencies must be installed for SVG rasterization. Then run `node website/scripts/sync-public.mjs` to refresh the website’s generated assets.
+The first command renders the existing project asset filenames and requires website dependencies for SVG rasterization. The second refreshes generated website assets, including the `/brand` copy. The website also runs the copy during `predev` and `prebuild`. Edit originals here, not the generated website copies.

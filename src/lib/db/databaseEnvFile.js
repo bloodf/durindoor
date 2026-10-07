@@ -6,7 +6,6 @@ import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 export const DATABASE_ENV_KEYS = ["DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE"];
 const SOURCE_KEY = "DURINDOOR_DATABASE_ENV_SOURCE_JSON";
-let applied = false;
 
 export function databaseEnvFilePath() {
   return path.join(DATA_DIR, "durindoor-database.env");
@@ -37,7 +36,7 @@ function processSources() {
 /** Apply once per startup, not again after a dashboard save awaiting restart. */
 export function applyDatabaseEnvFile() {
   const values = readDatabaseEnvFile();
-  if (applied) return values;
+  if (process.env[SOURCE_KEY]) return values;
   const sources = processSources();
   for (const key of DATABASE_ENV_KEYS) {
     if (Object.hasOwn(values, key)) {
@@ -52,7 +51,6 @@ export function applyDatabaseEnvFile() {
     delete process.env.DURINDOOR_PG_SSLMODE;
   }
   process.env[SOURCE_KEY] = JSON.stringify(sources);
-  applied = true;
   return values;
 }
 
@@ -96,13 +94,13 @@ export function describeDatabaseEnv() {
 }
 
 /** Pending startup values are redacted; runtime connections remain unchanged until restart. */
-export function describeDatabaseStartup(fallbackUrl) {
+export function describeDatabaseStartup(fallbackUrl, fallbackEngine = "sqlite") {
   const file = readDatabaseEnvFile();
   const sources = processSources();
   const value = (key) => file[key] ?? sources[key]?.processValue;
   const engine = value("DURINDOOR_DATABASE_ENGINE");
-  const effective = { engine: engine || (value("DURINDOOR_PG_URL") || fallbackUrl ? "postgres" : "sqlite"), sslmode: value("DURINDOOR_PG_SSLMODE") || "require" };
-  if (effective.engine !== "sqlite") {
+  const effective = { engine: engine || fallbackEngine, sslmode: value("DURINDOOR_PG_SSLMODE") || "require" };
+  if (value("DURINDOOR_PG_URL") || fallbackUrl) {
     try {
       const url = new URL(value("DURINDOOR_PG_URL") ?? fallbackUrl);
       Object.assign(effective, { host: url.hostname, port: url.port || "5432", database: decodeURIComponent(url.pathname.slice(1)), user: decodeURIComponent(url.username), sslmode: url.searchParams.get("sslmode") || effective.sslmode });

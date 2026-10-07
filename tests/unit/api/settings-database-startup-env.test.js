@@ -6,6 +6,7 @@ import path from "node:path";
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), probe: vi.fn() }));
 vi.mock("@/app/api/settings/database/route", () => ({ requireDatabaseDualAuth: mocks.auth }));
 vi.mock("@/lib/db/cutover", () => ({ testConnection: mocks.probe }));
+vi.mock("@/lib/db/driver", () => ({ getActiveEngine: () => "sqlite" }));
 let dir;
 let saved;
 let route;

@@ -9,6 +9,7 @@ import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
 import { CapabilityMatrix } from "./components/CapabilityMatrix.jsx";
 import StartupConfiguration from "./components/StartupConfiguration.jsx";
+import PostgresConnectionTarget from "./components/PostgresConnectionTarget.jsx";
 
 const REFRESH_MS = 5000;
 
@@ -190,6 +191,21 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
           setPasswordError("Password rejected — try again.");
         }}
         onSaved={(startupEnv) => setStatus((previous) => ({ ...previous, startupEnv }))}
+      />
+      <PostgresConnectionTarget
+        effective={{
+          host: status?.postgresHost || status?.startupEnv?.effective?.host || "",
+          port: status?.postgresPort || status?.startupEnv?.effective?.port || "5432",
+          database: status?.postgresDatabase || status?.startupEnv?.effective?.database || "",
+          user: status?.postgresUser || status?.startupEnv?.effective?.user || "",
+          sslmode: status?.postgresSslmode || status?.startupEnv?.effective?.sslmode || "require",
+        }}
+        password={password}
+        onUnauthorized={() => {
+          setPassword("");
+          setPasswordError("Password rejected — try again.");
+        }}
+        onPersisted={refresh}
       />
 
       <CapabilityMatrix features={status?.databasePgFeatures || {}} effective={status?.effectiveCapabilities || {}} />

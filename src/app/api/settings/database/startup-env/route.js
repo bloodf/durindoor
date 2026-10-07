@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireDatabaseDualAuth } from "../route";
 import { testConnection } from "@/lib/db/cutover";
 import { databaseEnvFilePath, composeDatabaseStartup, writeDatabaseEnvFile, describeDatabaseStartup } from "@/lib/db/databaseEnvFile";
+import { getActiveEngine } from "@/lib/db/driver";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function POST(request) {
   }
   try {
     writeDatabaseEnvFile(values);
-    return NextResponse.json({ ok: true, restartRequired: true, startupEnv: describeDatabaseStartup() });
+    return NextResponse.json({ ok: true, restartRequired: true, startupEnv: describeDatabaseStartup(undefined, getActiveEngine()) });
   } catch {
     return NextResponse.json({ error: "Failed to write managed database configuration" }, { status: 500 });
   }
@@ -48,7 +49,7 @@ export async function DELETE(request) {
   }
   try {
     fs.rmSync(databaseEnvFilePath(), { force: true });
-    return NextResponse.json({ ok: true, restartRequired: true, startupEnv: describeDatabaseStartup() });
+    return NextResponse.json({ ok: true, restartRequired: true, startupEnv: describeDatabaseStartup(undefined, getActiveEngine()) });
   } catch {
     return NextResponse.json({ error: "Failed to remove managed database configuration" }, { status: 500 });
   }

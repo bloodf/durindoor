@@ -48,7 +48,7 @@ export async function GET(request) {
   void publicSettings;
   return NextResponse.json({
     activeEngine,
-    startupEnv: describeDatabaseStartup(await resolvePostgresSecret()),
+    startupEnv: describeDatabaseStartup(await resolvePostgresSecret(), settings.databaseEngine || activeEngine),
     servingFallback: activeEngine !== (settings.databaseEngine || "sqlite"),
     databaseEngine: settings.databaseEngine,
     databaseEngineError: settings.databaseEngineError,

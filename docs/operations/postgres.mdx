@@ -23,6 +23,14 @@ process environment again. Saving or removing an override requires restarting Du
 Neither action changes the active adapter or migrates data. Complete a data cutover
 before selecting PostgreSQL startup; selecting SQLite does not copy PostgreSQL-era writes.
 
+The separate **PostgreSQL connection** card below Startup configuration configures the
+data-cutover target. Enter host, port, database, user, SSL mode and the write-only
+target password, then **Test connection and save target**. A successful probe saves
+the URL encrypted in the settings row; failed probes leave the previous target intact.
+No URL or stored password is displayed. The target is available to **Cut over to Postgres**
+immediately, without restarting or saving a managed startup override. Configuring a
+target alone leaves the startup engine on its stored/active selection, usually SQLite.
+
 
 ## Version policy
 
@@ -47,20 +55,16 @@ docker compose --profile postgres18 up -d
 
 </Step>
 <Step>
-For a SQLite installation, complete the cutover using the existing configured target before saving PostgreSQL startup settings. Direct PostgreSQL startup does not copy existing SQLite data.
+For a fresh SQLite installation, open **Settings → Database → PostgreSQL connection**. Enter the target fields and password, then **Test connection and save target**. This persists the validated target encrypted in SQLite without selecting PostgreSQL startup.
 
 Compose user, password, and database are all `durindoor`; the service hostname is `postgres18`. `DURINDOOR_PG_SSLMODE` is appended when the URL has no `sslmode=` already.
 </Step>
 <Step>
-Restart DurinDoor. It is still on SQLite.
-
-```bash
-docker compose restart durindoor
-```
+Choose **Cut over to Postgres** and confirm the migration before restarting or saving PostgreSQL startup settings. Direct PostgreSQL startup does not copy existing SQLite data.
 
 </Step>
 <Step>
-Open **Settings → Database**. **Test** in Startup configuration probes the supplied fields without saving. **Save** validates and stages the startup override; restart only after any required data cutover has completed.
+After cutover, the active engine is PostgreSQL. Optionally use **Startup configuration** to save a managed PostgreSQL override, then restart to apply it. Its **Test** button only probes; it does not configure the data-cutover target.
 </Step>
 </Steps>
 

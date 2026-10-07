@@ -1,9 +1,24 @@
 ---
 title: First request
-description: Call /v1/chat/completions with a provider/model id, curl or an SDK, streaming, and the error envelope.
+description: Choose a model and send OpenAI Chat Completions, Responses, or Anthropic Messages with a DurinDoor key.
 ---
 
-`POST /v1/chat/completions` is the OpenAI chat route. Next rewrites it to `/api/v1/chat/completions`. The body must be JSON, and `Content-Type` must start with `application/json`. Anything else gets 415.
+Start with a running gateway, a connected provider, and a DurinDoor API key. In the dashboard, open **API Keys**, create a key, and copy its secret. This is the gateway key, not the provider's API key.
+
+Choose the request format your client uses. DurinDoor translates it to the selected provider's supported format.
+
+| Format | Endpoint |
+| --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` |
+| OpenAI Responses | `POST /v1/responses` |
+| Anthropic Messages | `POST /v1/messages` |
+
+All examples below need a model ID available on your instance. Run this first, then replace `PROVIDER/MODEL` in the examples:
+
+```bash
+curl http://localhost:20128/v1/models \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+```
 
 ## Model names
 
@@ -17,22 +32,55 @@ provider/model
 
 Other accepted values: a compatible-node id (`openai-compatible-lab/model-name`), a custom alias you defined, or a combo name from the Combos page. `GET /v1/models` lists what this instance currently exposes.
 
-## curl
+## Choose a request format
+
+<Tabs items={['OpenAI Chat', 'Anthropic Messages', 'OpenAI Responses']}>
+<Tab value="OpenAI Chat">
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "openai/gpt-4.1",
-    "messages": [
-      {"role": "user", "content": "Reply with one short sentence."}
-    ],
-    "max_tokens": 32
+    "model": "PROVIDER/MODEL",
+    "messages": [{"role": "user", "content": "Reply with one short sentence."}],
+    "max_tokens": 64
   }'
 ```
 
-Omit `stream`, or set it to anything other than `true`, and the response is a single JSON object. A body that is not parseable returns 400 with message `Invalid JSON body`. A missing or rejected key returns 401.
+</Tab>
+<Tab value="Anthropic Messages">
+
+```bash
+curl http://localhost:20128/v1/messages \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "max_tokens": 64,
+    "messages": [{"role": "user", "content": "Reply with one short sentence."}]
+  }'
+```
+
+Anthropic Messages requires `max_tokens`. The response uses Anthropic's message format.
+
+</Tab>
+<Tab value="OpenAI Responses">
+
+```bash
+curl http://localhost:20128/v1/responses \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "PROVIDER/MODEL",
+    "input": "Reply with one short sentence."
+  }'
+```
+
+</Tab>
+</Tabs>
+
+The body must be JSON with `Content-Type: application/json`. A missing or rejected key returns 401. A body that is not parseable returns 400. For OpenAI Chat, omit `stream` or set it to `false` for a single JSON response.
 
 ## Node
 
@@ -45,7 +93,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "openai/gpt-4.1",
+  model: "PROVIDER/MODEL",
   messages: [{ role: "user", content: "Say hello." }],
 });
 
@@ -63,7 +111,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="openai/gpt-4.1",
+    model="PROVIDER/MODEL",
     messages=[{"role": "user", "content": "Say hello."}],
 )
 
@@ -80,7 +128,7 @@ curl http://localhost:20128/v1/chat/completions \
   -H "Content-Type: application/json" \
   -N \
   -d '{
-    "model": "openai/gpt-4.1",
+    "model": "PROVIDER/MODEL",
     "stream": true,
     "messages": [
       {"role": "user", "content": "Count to three."}

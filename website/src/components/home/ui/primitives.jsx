@@ -11,7 +11,13 @@ const MotionLink = motion.create(Link);
 
 // Counts from `from` to `to` the first time it scrolls into view. Server markup
 // and reduced-motion users get the final value, so the number is never wrong.
-export function CountUp({ to, from = 0, duration = 1.6, format, className = "" }) {
+export function CountUp({
+  to,
+  from = 0,
+  duration = 1.6,
+  format,
+  className = "",
+}) {
   const { locale } = useHomeLocale();
   const number = format ?? ((n) => Math.round(n).toLocaleString(locale));
   const ref = useRef(null);
@@ -21,7 +27,11 @@ export function CountUp({ to, from = 0, duration = 1.6, format, className = "" }
 
   useEffect(() => {
     if (!inView || reduce) return undefined;
-    const controls = animate(from, to, { duration, ease: [0.16, 1, 0.3, 1], onUpdate: setValue });
+    const controls = animate(from, to, {
+      duration,
+      ease: [0.16, 1, 0.3, 1],
+      onUpdate: setValue,
+    });
     return () => controls.stop();
   }, [inView, reduce, from, to, duration]);
 
@@ -38,21 +48,10 @@ export function CountUp({ to, from = 0, duration = 1.6, format, className = "" }
   );
 }
 
-// Fade-and-rise on first view. The page-level MotionConfig drops the movement
-// for reduced-motion users; only the opacity fade remains.
-export function Reveal({ children, delay = 0, y = 24, as = "div", className = "" }) {
-  const Tag = motion[as];
-  return (
-    <Tag
-      className={className}
-      initial={{ opacity: 0, y }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "0px 0px -12% 0px" }}
-      transition={{ duration: 0.8, delay, ease: [0.22, 1, 0.36, 1] }}
-    >
-      {children}
-    </Tag>
-  );
+// Supporting content is visible by default; the hero gate owns the entrance motion.
+export function Reveal({ children, as = "div", className = "" }) {
+  const Tag = as;
+  return <Tag className={className}>{children}</Tag>;
 }
 
 export function CopyButton({ text, label, className = "" }) {
@@ -69,15 +68,30 @@ export function CopyButton({ text, label, className = "" }) {
     }
   };
   return (
-    <button type="button" className={`copy-btn ${className}`} onClick={copy} aria-label={copied ? t("Copied") : t("{label} to clipboard", { label: actionLabel })}>
+    <button
+      type="button"
+      className={`copy-btn ${className}`}
+      onClick={copy}
+      aria-label={
+        copied ? t("Copied") : t("{label} to clipboard", { label: actionLabel })
+      }
+    >
       <Icon name={copied ? "check" : "copy"} size={16} />
-      <span className="copy-btn-text" aria-live="polite">{copied ? t("Copied") : actionLabel}</span>
+      <span className="copy-btn-text" aria-live="polite">
+        {copied ? t("Copied") : actionLabel}
+      </span>
     </button>
   );
 }
 
 // Pulls toward the cursor a little. Works as a link or button, keeps focus ring.
-export function Magnetic({ children, className = "", strength = 0.28, internal = false, ...props }) {
+export function Magnetic({
+  children,
+  className = "",
+  strength = 0.28,
+  internal = false,
+  ...props
+}) {
   const ref = useRef(null);
   const reduce = useReducedMotion();
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -110,15 +124,28 @@ export function Magnetic({ children, className = "", strength = 0.28, internal =
 // Tracks pointer position in CSS vars for the spotlight hover on cards.
 export function spotlight(event) {
   const rect = event.currentTarget.getBoundingClientRect();
-  event.currentTarget.style.setProperty("--mx", `${event.clientX - rect.left}px`);
-  event.currentTarget.style.setProperty("--my", `${event.clientY - rect.top}px`);
+  event.currentTarget.style.setProperty(
+    "--mx",
+    `${event.clientX - rect.left}px`,
+  );
+  event.currentTarget.style.setProperty(
+    "--my",
+    `${event.clientY - rect.top}px`,
+  );
 }
 
 export function RuneDivider({ className = "" }) {
   return (
     <div className={`rune-divider ${className}`} aria-hidden="true">
       <span className="rune-line" />
-      <svg width="120" height="20" viewBox="0 0 120 20" fill="none" stroke="currentColor" strokeWidth="1.3">
+      <svg
+        width="120"
+        height="20"
+        viewBox="0 0 120 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      >
         <path d="M8 16V4l6 6M26 4v12M26 8l6-4M26 12l6 4M50 10l10-6 10 6-10 6zM60 7v6M88 4v12l6-6M106 16V4M100 10h12" />
       </svg>
       <span className="rune-line" />
@@ -139,7 +166,7 @@ export function SectionHeader({ eyebrow, title, lead, align = "center" }) {
 export function DocsCta({ href = "/docs" }) {
   const { t } = useHomeLocale();
   return (
-    <Reveal>
+    <Reveal className="docs-cta">
       <Magnetic href={href} internal className="btn btn-ghost">
         {t("Read the docs")}
       </Magnetic>

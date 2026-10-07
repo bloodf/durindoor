@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { ReactLenis } from "lenis/react";
 import { MotionConfig, motion, useScroll, useSpring, useReducedMotion } from "motion/react";
 import { GitHubMark } from "./Icon.jsx";
+import BrandMark from "@site/components/brand/BrandMark.jsx";
+export { default as BrandMark } from "@site/components/brand/BrandMark.jsx";
 import { GITHUB_URL } from "../data.js";
 
 
@@ -148,7 +150,7 @@ export function Nav() {
           <ul className="nav-links">{links}</ul>
           <div className="nav-panel-cta">
             <Link className="btn btn-small btn-ghost" href="/docs" onClick={closeMenu}>{t("Docs")}</Link>
-            <Link className="btn btn-small btn-primary" href="/dashboard" onClick={closeMenu}>{t("Live demo")}</Link>
+            <Link className="btn btn-small btn-primary" href="/demo-preview" onClick={closeMenu}>{t("Live demo")}</Link>
           </div>
         </div>
         <div className="nav-actions">
@@ -157,7 +159,7 @@ export function Nav() {
           <a className="nav-icon" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label={t("DurinDoor on GitHub")}>
             <GitHubMark size={18} />
           </a>
-          <Link className="btn btn-small btn-primary nav-action-demo" href="/dashboard">{t("Live demo")}</Link>
+          <Link className="btn btn-small btn-primary nav-action-demo" href="/demo-preview">{t("Live demo")}</Link>
           <button
             ref={menuBtnRef}
             type="button"
@@ -172,17 +174,5 @@ export function Nav() {
         </div>
       </nav>
     </header>
-  );
-}
-
-// Tiny arch glyph used in the nav and footer.
-export function BrandMark({ size = 26 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <path d="M6 29V14a10 10 0 0 1 20 0v15" stroke="#D4AF37" strokeWidth="2.2" />
-      <path d="M10.5 29V14.5a5.5 5.5 0 0 1 11 0V29" stroke="#10E882" strokeWidth="1.6" opacity="0.9" />
-      <path d="M16 11v18" stroke="#10E882" strokeWidth="1.6" />
-      <circle cx="16" cy="19" r="1.8" fill="#10E882" />
-    </svg>
   );
 }

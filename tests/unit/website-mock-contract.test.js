@@ -67,6 +67,23 @@ afterEach(() => {
   temporaryDirectory = undefined;
 });
 
+describe("homepage dashboard preview contracts", () => {
+  it("authenticates only the browser-local sample session", async () => {
+    expect((await request("GET", "/api/auth/status")).authenticated).toBe(false);
+    await request("POST", "/api/auth/login", { password: "melon" });
+    expect((await request("GET", "/api/auth/status")).authenticated).toBe(true);
+  });
+  it("serves the endpoint activity strip from shared usage fixtures", async () => {
+    const monitoring = await request("GET", "/api/monitoring");
+    const stats = await request("GET", "/api/usage/stats?period=24h");
+    expect(monitoring.ok).toBe(true);
+    expect(monitoring.activity.today.requests).toBe(stats.totalRequests);
+    expect(monitoring.activity.today.promptTokens).toBe(stats.totalPromptTokens);
+    expect(monitoring.health.length).toBeGreaterThan(0);
+    expect(monitoring.activity.recent).toEqual((await request("GET", "/api/usage/stats?period=7d")).recentRequests);
+  });
+});
+
 describe("website persisted mock consumers", () => {
   it("reads created, renamed and deleted accounts in key options and scope validation", async () => {
     const { connection } = await request("POST", "/api/providers", { provider: "groq", name: "Added account", apiKey: "demo-key" }, 201);

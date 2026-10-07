@@ -40,6 +40,7 @@ async function copy(from, to, label) {
 for (const [source, target] of ENTRIES) {
   await copy(join(appPublic, source), join(sitePublic, target), target);
 }
+await copy(join(siteRoot, "..", "assets", "brand"), join(sitePublic, "brand"), "brand");
 await copy(join(siteRoot, "node_modules", "monaco-editor", "min", "vs"), join(sitePublic, "monaco", "vs"), "monaco/vs");
 
 // Tailwind resolves `@import "tailwindcss"` relative to the CSS file, so the

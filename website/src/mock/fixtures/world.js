@@ -1,10 +1,12 @@
+import { APP_CONFIG } from "@/shared/constants/config.js";
+
 // The shared demo world. Every fixture module references these ids so usage,
 // timeline, keys, combos and providers all tell the same story.
 
 export const OPERATOR = Object.freeze({ name: "Balin", email: "balin@erebor.dev" });
 export const MACHINE_ID = "demo-machine";
 export const LOCAL_PORT = 20128;
-export const DEMO_VERSION = "4.2.1";
+export const DEMO_VERSION = APP_CONFIG.version;
 
 export const DAY_MS = 86_400_000;
 export const HOUR_MS = 3_600_000;

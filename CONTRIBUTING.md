@@ -2,7 +2,7 @@
 
 The contributor guide is at [https://durindoor.vercel.app/docs/contributing](https://durindoor.vercel.app/docs/contributing).
 
-Open an issue before large changes. Pull requests target `bloodf/durindoor:main`. Do not send PRs to `decolua/9router:dev` from this fork.
+Open an issue before large changes. Pull requests target `bloodf/durindoor:main`. Submit changes to this repository.
 
 Use Node.js 20.20.2 and npm 10.8.2. A behaviour change needs a doc update and a test. Pure docs and CI edits can skip tests.
 

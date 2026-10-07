@@ -1,3 +1,5 @@
+// Bootstrap Next's Node globals before any framework imports create async stores.
+import "next/dist/server/node-environment.js";
 import http from "node:http";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

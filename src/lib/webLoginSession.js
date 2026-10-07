@@ -205,11 +205,12 @@ export function parseSetCookie(raw, requestUrl) {
   if (!nv) return null;
   const url = new URL(requestUrl);
   const host = url.hostname.toLowerCase();
+  const lastSlash = url.pathname.lastIndexOf("/");
   const cookie = {
     name: nv[1].trim(),
     value: (nv[2] || "").trim(),
     domain: host,
-    path: (url.pathname || "/").replace(/[^/]*$/, "") || "/",
+    path: lastSlash > 0 ? url.pathname.slice(0, lastSlash) : "/",
     hostOnly: true,
   };
   if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(cookie.name) || /[\r\n;]/.test(cookie.value)) return null;
@@ -552,12 +553,61 @@ function injectBootstrap(html, script) {
   return script + html;
 }
 
-/** Root-relative assets, navigation and form actions stay in the proxy scope. */
-function rewriteAssetPrefix(text, documentBase) {
-  return text
-    .replace(/(["'`])\/(?!\/|__web_login\/)/g, `$1${documentBase}/`)
-    .replace(/(url\(\s*)\/(?!\/|__web_login\/)/gi, `$1${documentBase}/`)
-    .replace(/(\b(?:src|href|action)=)\/(?!\/|__web_login\/)/gi, `$1${documentBase}/`);
+function rewriteRootUrl(value, documentBase) {
+  return value.replace(/^\/(?!\/|__web_login\/)/, `${documentBase}/`);
+}
+
+/** Rewrite CSS URL tokens, not comments or ordinary string literals. */
+function rewriteCssUrls(text, documentBase) {
+  return text.replace(/\/\*[\s\S]*?\*\/|@import\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\burl\(\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^)]*)\)|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gi, (token) => {
+    if (!/^(?:url\(|@import\s)/i.test(token)) return token;
+    return token.replace(/^((?:url\(\s*|@import\s+)["']?)\/(?!\/|__web_login\/)/i, `$1${documentBase}/`);
+  });
+}
+
+/** Srcset URL tokens may contain commas (notably data URLs); descriptors do not. */
+function rewriteSrcset(text, documentBase) {
+  let position = 0;
+  let result = "";
+  while (position < text.length) {
+    const start = position;
+    while (position < text.length && /[\t\n\f\r ,]/.test(text[position])) position++;
+    const urlStart = position;
+    while (position < text.length && !/[\t\n\f\r ]/.test(text[position])) position++;
+    const url = text.slice(urlStart, position);
+    result += text.slice(start, urlStart) + rewriteRootUrl(url, documentBase);
+    if (url.endsWith(",")) continue;
+    const comma = text.indexOf(",", position);
+    const end = comma < 0 ? text.length : comma;
+    result += text.slice(position, end);
+    position = end;
+  }
+  return result;
+}
+
+/** Rewrite URL attributes without interpreting strings inside other attributes. */
+function rewriteTagUrls(tag, documentBase) {
+  return tag.replace(/\s+([^\s"'<>/=]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g, (attribute, name, value) => {
+    if (value === undefined) return attribute;
+    const quote = /^["']/.test(value) ? value[0] : "";
+    const content = quote ? value.slice(1, -1) : value;
+    let rewritten = content;
+    if (/^(?:src|href|xlink:href|action|formaction|poster)$/i.test(name) ||
+      (/^data$/i.test(name) && /^<object(?=[\s/>])/i.test(tag))) rewritten = rewriteRootUrl(content, documentBase);
+    else if (/^(?:srcset|imagesrcset)$/i.test(name)) rewritten = rewriteSrcset(content, documentBase);
+    else if (/^style$/i.test(name)) rewritten = rewriteCssUrls(content, documentBase);
+    return attribute.slice(0, -value.length) + quote + rewritten + quote;
+  });
+}
+
+/** HTML URL contexts only; script, JSON and other raw-text bodies remain intact. */
+function rewriteHtmlUrls(text, documentBase) {
+  return text.replace(/<!--[\s\S]*?-->|(<(script|style|textarea|title)\b(?:[^"'<>]|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/\2\s*>|$)|<[a-z][^\s/>]*(?:[^"'<>]|"[^"]*"|'[^']*')*>/gi, (token, opening, name, body, closing) => {
+    if (token.startsWith("<!--")) return token;
+    if (!opening) return rewriteTagUrls(token, documentBase);
+    return rewriteTagUrls(opening, documentBase) +
+      (name.toLowerCase() === "style" ? rewriteCssUrls(body, documentBase) : body) + closing;
+  });
 }
 
 const TEXT_TYPE_RE = /text\/|javascript|json|xml|ecmascript/i;
@@ -570,7 +620,7 @@ export async function buildBrowserResponse(sess, res, appOrigin, upstreamUrl) {
     headers.append(k, v);
   }
   const location = res.headers.get("location");
-  if (location) headers.set("Location", rewriteLocation(sess, location, upstreamUrl));
+  if (location) headers.set("Location", new URL(rewriteLocation(sess, location, upstreamUrl), appOrigin).toString());
   // Provider pages must never persist in a browser or intermediary cache.
   headers.set("Cache-Control", "no-store");
   headers.set("Referrer-Policy", "no-referrer");
@@ -582,8 +632,12 @@ export async function buildBrowserResponse(sess, res, appOrigin, upstreamUrl) {
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
   }
   const documentBase = hostBase(sess, new URL(upstreamUrl).host) || proxyBase(sess);
-  let body = rewriteAssetPrefix(rewriteToProxy(await res.text(), sess, appOrigin), documentBase);
-  if (/text\/html/i.test(contentType)) body = injectBootstrap(body, bootstrapScript(sess, documentBase));
+  let body = rewriteToProxy(await res.text(), sess, appOrigin);
+  if (/text\/html/i.test(contentType)) {
+    body = injectBootstrap(rewriteHtmlUrls(body, documentBase), bootstrapScript(sess, documentBase));
+  } else if (/text\/css/i.test(contentType)) {
+    body = rewriteCssUrls(body, documentBase);
+  }
   return new Response(body, { status: res.status, statusText: res.statusText, headers });
 }
 
@@ -617,4 +671,4 @@ export async function proxyWebLoginRequest(sess, request, upstreamUrl, appOrigin
   return buildBrowserResponse(sess, res, appOrigin, target);
 }
 
-export const __test__ = { forwardedRequestHeaders, rewriteAssetPrefix, injectBootstrap, sessions };
+export const __test__ = { forwardedRequestHeaders, injectBootstrap, sessions };

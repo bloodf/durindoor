@@ -67,7 +67,7 @@ describe("isolated web-login proxy gate", () => {
     const bootstrapPath = bootstrapUrl.pathname + bootstrapUrl.search;
     const entered = await proxy(request(bootstrapPath));
     expect(entered.status).toBe(303);
-    expect(entered.headers.get("location")).toBe("/__web_login/cookie-web/login");
+    expect(entered.headers.get("location")).toBe(`${LOGIN}/__web_login/cookie-web/login`);
     expect(entered.headers.get("cache-control")).toBe("no-store");
     expect(entered.headers.get("referrer-policy")).toBe("no-referrer");
     const cookie = entered.headers.get("set-cookie").split(";")[0];

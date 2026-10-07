@@ -156,7 +156,7 @@ describe("web login upstream translation", () => {
     expect(JSON.parse(init.body.toString())).toEqual({ callback: "https://provider.example/account" });
     expect(composeCookieHeader(sess)).toBe("session=jar-only; extra=captured");
     for (const name of ["set-cookie", "x-frame-options", "clear-site-data", "content-security-policy", "access-control-allow-origin"]) expect(out.headers.has(name), name).toBe(false);
-    expect(out.headers.get("location")).toBe("/__web_login/cookie-web/account");
+    expect(out.headers.get("location")).toBe(`${LOGIN}/__web_login/cookie-web/account`);
     expect(out.headers.get("cache-control")).toBe("no-store");
     expect(await out.text()).toContain('href="/__web_login/cookie-web/account"');
   });

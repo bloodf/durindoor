@@ -1,7 +1,6 @@
 import http from "node:http";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
 
 const loginConfig = vi.hoisted(() => ({ origin: "", startUrl: "", cookieNames: ["session"] }));
 vi.mock("open-sse/providers/registry/index.js", () => ({ default: [{ id: "cookie-web", webLogin: loginConfig }] }));
@@ -10,9 +9,10 @@ vi.mock("../../src/dashboardGuard", () => ({
   canAccessManagementApi: async () => true,
 }));
 import proxy from "../../src/proxy.js";
-import { beginSession, destroySession, proxySessionCookie } from "../../src/lib/webLoginSession.js";
+import { beginSession, destroySession, issueBootstrap, proxySessionCookie } from "../../src/lib/webLoginSession.js";
 
 const require = createRequire(import.meta.url);
+const { adapter } = require("next/dist/server/web/adapter.js");
 const { getResolveRoutes } = require("next/dist/server/lib/router-utils/resolve-routes.js");
 const { proxyRequest } = require("next/dist/server/lib/router-utils/proxy-request.js");
 const { defaultConfig } = require("next/dist/server/config-shared.js");
@@ -41,11 +41,12 @@ function get(url, headers) {
   });
 }
 
-/** Actual installed Next resolver and outbound proxy consume the real T8 response. */
-async function transport(vendorHeaders, status = 200) {
+/** Installed adapter validates/reconstructs redirects before Next's resolver consumes them. */
+async function transport(vendorHeaders, status = 200, { bootstrap = false } = {}) {
   const appDispatches = [];
   const escapedRequests = [];
   const providerRequests = [];
+  const providerPaths = [];
   const failures = [];
   const attacker = await listen((req, res) => {
     escapedRequests.push({ url: req.url, headers: { ...req.headers } });
@@ -53,6 +54,7 @@ async function transport(vendorHeaders, status = 200) {
   });
   const provider = await listen((req, res) => {
     providerRequests.push({ ...req.headers });
+    providerPaths.push(req.url);
     const headers = vendorHeaders(attacker.url, provider.url);
     res.writeHead(status, { "content-type": "text/plain", "x-provider-response": "preserved", ...headers });
     res.end("provider response");
@@ -62,7 +64,8 @@ async function transport(vendorHeaders, status = 200) {
   const sess = beginSession("cookie-web", { loginOrigin: LOGIN, dashboardOrigin: "https://gateway.example" });
   sessions.add(sess);
   const cookie = `${proxySessionCookie(sess).split(";")[0]}; auth_token=dashboard-cookie`;
-  const incoming = { host: LOGIN_HOST, cookie, authorization: "Bearer dashboard-key", "x-9r-cli-token": "dashboard-cli" };
+  const incoming = { host: LOGIN_HOST, authorization: "Bearer dashboard-key", "x-9r-cli-token": "dashboard-cli" };
+  if (!bootstrap) incoming.cookie = cookie;
   const routedRequests = [];
   const fsChecker = {
     buildId: "isolated-transport-fixture",
@@ -77,9 +80,16 @@ async function transport(vendorHeaders, status = 200) {
     ...defaultConfig, experimental: { ...defaultConfig.experimental, trustHostHeader: true },
   }, { dir: process.cwd(), dev: false, minimalMode: false, hostname: LOGIN_HOST, port: 443 }, {
     initialize: async () => ({ requestHandler: async (req) => {
-      const request = new NextRequest(`${LOGIN}${req.url}`, { headers: req.headers });
-      const response = await proxy(request);
-      throw Object.assign(new Error("Next middleware response"), { result: { response } });
+      const result = await adapter({
+        page: "/src/proxy",
+        handler: proxy,
+        request: {
+          url: `${LOGIN}${req.url}`, method: req.method, headers: req.headers,
+          nextConfig: defaultConfig,
+        },
+      });
+      await result.waitUntil;
+      throw Object.assign(new Error("Next middleware response"), { result });
     } }),
   }, {});
   const router = await listen(async (req, res) => {
@@ -108,9 +118,26 @@ async function transport(vendorHeaders, status = 200) {
       res.end("transport failed");
     }
   });
-  const response = await get(`${router.url}/__web_login/cookie-web/login`, incoming);
+  const bootstrapUrl = bootstrap ? new URL(issueBootstrap(sess)) : null;
+  const initialPath = bootstrapUrl ? bootstrapUrl.pathname + bootstrapUrl.search : "/__web_login/cookie-web/login";
+  const response = await get(`${router.url}${initialPath}`, incoming);
+  let landing, replay, navigation, browserDestination, browserCookie;
+  if (bootstrap) {
+    expect(response.status).toBe(303);
+    // Follow Location as a browser would, retaining only the isolated host's cookie.
+    browserDestination = new URL(response.headers.location, LOGIN);
+    expect(browserDestination.origin).toBe(LOGIN);
+    browserCookie = response.headers["set-cookie"][0].split(";")[0];
+    const browserHeaders = { host: LOGIN_HOST, cookie: browserCookie };
+    landing = await get(`${router.url}${browserDestination.pathname}${browserDestination.search}`, browserHeaders);
+    replay = await get(`${router.url}${initialPath}`, browserHeaders);
+    navigation = await get(`${router.url}/__web_login/cookie-web/account`, browserHeaders);
+  }
   expect(failures).toEqual([]);
-  return { response, incoming, routedRequests, providerRequests, appDispatches, escapedRequests };
+  return {
+    response, incoming, routedRequests, providerRequests, providerPaths, appDispatches, escapedRequests,
+    landing, replay, navigation, browserDestination, browserCookie, sess,
+  };
 }
 
 beforeEach(() => {
@@ -130,6 +157,37 @@ afterEach(async () => {
 });
 
 describe("provider response containment at the Next routing transport", () => {
+
+  it("bootstraps through redirect reconstruction, browser cookie navigation, and one-time replay rejection", async () => {
+    const result = await transport(() => ({}), 200, { bootstrap: true });
+    expect(result.response.status).toBe(303);
+    expect(result.browserDestination.href).toBe(`${LOGIN}/__web_login/cookie-web/login`);
+    expect(result.response.headers["cache-control"]).toBe("no-store");
+    expect(result.response.headers["referrer-policy"]).toBe("no-referrer");
+    const cookie = result.response.headers["set-cookie"][0];
+    expect(cookie).toContain("Path=/;");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("SameSite=None");
+    expect(cookie).not.toMatch(/;\s*Domain=/i);
+    expect(result.browserCookie).toBe(`dd_web_login_proxy=${result.sess.proxyId}`);
+    expect(result.landing.status).toBe(200);
+    expect(result.landing.body).toBe("provider response");
+    expect(result.replay.status).toBe(403);
+    expect(result.replay.headers["set-cookie"]).toBeUndefined();
+    expect(result.navigation.status).toBe(200);
+    expect(result.navigation.body).toBe("provider response");
+    expect(result.providerRequests).toHaveLength(2);
+    expect(result.providerPaths).toEqual(["/login", "/account"]);
+    for (const headers of result.providerRequests) {
+      expect(headers.cookie).toBeUndefined();
+      expect(headers.authorization).toBeUndefined();
+      expect(headers["x-9r-cli-token"]).toBeUndefined();
+    }
+    expect(result.appDispatches).toEqual([]);
+    expect(result.escapedRequests).toEqual([]);
+  });
+
   it.each([
     ["application rewrite", () => ({ "x-middleware-rewrite": "/api/providers/secret/reveal" })],
     ["arbitrary-host rewrite", (attacker) => ({ "x-middleware-rewrite": `${attacker}/credential-collector` })],
@@ -175,10 +233,10 @@ describe("provider response containment at the Next routing transport", () => {
     expect(result.providerRequests[0]["x-9r-cli-token"]).toBeUndefined();
   });
 
-  it("preserves the ordinary rewritten provider Location without server-side redispatch", async () => {
+  it("reconstructs the ordinary provider redirect in the adapter without server-side redispatch", async () => {
     const result = await transport((_attacker, provider) => ({ location: `${provider}/signed-in?next=chat` }), 302);
     expect(result.response.status).toBe(302);
-    expect(result.response.headers.location).toBe("/__web_login/cookie-web/signed-in?next=chat");
+    expect(new URL(result.response.headers.location, LOGIN).href).toBe(`${LOGIN}/__web_login/cookie-web/signed-in?next=chat`);
     expect(result.appDispatches).toEqual([]);
     expect(result.escapedRequests).toEqual([]);
   });

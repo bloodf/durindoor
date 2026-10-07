@@ -22,8 +22,9 @@ async function webLoginProxy(request, loginOrigin) {
     if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
     const sess = consumeBootstrap(url.searchParams.get("grant"), url.searchParams.get("provider"), loginOrigin);
     if (!sess || sess.loginOrigin !== loginOrigin) return new Response("Invalid login grant", { status: 403 });
+    // Next's middleware adapter reconstructs Location without a base URL.
     return new Response(null, { status: 303, headers: {
-      Location: proxyPathFor(sess, sess.config.startUrl),
+      Location: new URL(proxyPathFor(sess, sess.config.startUrl), loginOrigin).href,
       "Set-Cookie": proxySessionCookie(sess), "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
     } });
   }

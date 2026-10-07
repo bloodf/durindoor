@@ -25,6 +25,8 @@ The operator must configure `DURINDOOR_WEB_LOGIN_ORIGIN`, for example `https://l
 
 The dedicated hostname serves only the one-time login bootstrap and provider-scoped reverse proxy, not dashboard pages or management APIs. Bootstrap grants are short-lived, single-use, and sent with no-referrer handling. The login page uses its own host-only HttpOnly session cookie, separate from dashboard authentication. Do not configure domain-wide dashboard cookies covering the login hostname.
 
+Bootstrap redirects and allowlisted provider redirect destinations use absolute URLs on the isolated login origin so Next.js can validate them. Root-relative HTML URL attributes and CSS URL tokens are provider-scoped; ordinary JavaScript literals and JSON data are not blanket-rewritten. Provider cookies without a valid `Path` use the RFC default directory (`/account/login` defaults to `/account`, including requests to `/account`).
+
 Use HTTPS for the dedicated origin. Cross-site iframe cookies can be blocked by browser third-party-cookie policy or by Secure/SameSite requirements, particularly on HTTP development hosts. If the iframe cannot retain its login cookie, try **Open in popup**, where the isolated site is top-level, or use manual paste.
 
 Cloudflare Turnstile, Google SSO, third-party cookies, cross-origin redirects, or other site protections may reject reverse-proxied login, including in a popup. Use manual cookie paste in that case. The flow captures upstream HTTP cookies, not localStorage tokens; only the five providers listed above support this dashboard login. Cookie capture and readiness are not a guarantee that the provider will accept every later chat request.

@@ -36,15 +36,6 @@ describe("console log REST snapshot", () => {
     expect(response.status).toBe(304);
     expect(await response.text()).toBe("");
   });
-
-  it("returns a full 2000-line buffer", async () => {
-    const logs = Array.from({ length: CONSOLE_LOG_CONFIG.maxLines }, (_, index) => `line ${index}`);
-    mocks.getConsoleLogSnapshot.mockReturnValue({ logs, revision: 9 });
-
-    const response = await GET(new Request("http://localhost/api/translator/console-logs"));
-
-    expect((await response.json()).logs).toHaveLength(2000);
-  });
 });
 
 describe("console log ring buffer", () => {

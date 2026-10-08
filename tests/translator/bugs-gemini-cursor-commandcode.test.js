@@ -4,22 +4,74 @@ import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
-const O2G = (body) => translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, "m", body, true, null, "gemini");
+const O2G = (body, stream) => translateRequest(FORMATS.OPENAI, FORMATS.GEMINI, "m", body, stream, null, "gemini");
 const O2C = (body) => translateRequest(FORMATS.OPENAI, FORMATS.CURSOR, "m", body, true, null, "cursor");
 const O2CC = (body) => translateRequest(FORMATS.OPENAI, FORMATS.COMMANDCODE, "m", body, true, null, "commandcode");
 
-describe("OpenAI → Gemini", () => {
-  // openai-to-gemini.js:92-96 — each system message overwrites systemInstruction → only last kept
-  // KNOWN BUG
-  it.fails("multiple system messages are all kept", () => {
+describe.each([true, false])("OpenAI → Gemini (stream=%s)", (stream) => {
+  it("multiple system messages are all kept", () => {
     const out = O2G({
       messages: [
-        { role: "system", content: "RULE_ONE" },
-        { role: "system", content: "RULE_TWO" },
+        { role: "system", content: "  RULE_ONE\n" },
         { role: "user", content: "hi" },
+        { role: "system", content: "\tRULE_TWO  " },
+        { role: "system", content: "" },
+        { role: "system", content: [{ type: "text", text: "\nRULE_THREE " }] },
+      ],
+    }, stream);
+    expect(out.systemInstruction).toEqual({
+      role: "user",
+      parts: [
+        { text: "  RULE_ONE\n" },
+        { text: "\tRULE_TWO  " },
+        { text: "" },
+        { text: "\nRULE_THREE " },
       ],
     });
-    expect(JSON.stringify(out.systemInstruction), "earlier system lost").toContain("RULE_ONE");
+    expect(out.contents).toEqual([{ role: "user", parts: [{ text: "hi" }] }]);
+  });
+
+  it("does not promote conversation text into system instructions", () => {
+    const out = O2G({
+      messages: [
+        { role: "user", content: "RULE_ONE" },
+        { role: "assistant", content: "RULE_TWO" },
+        { role: "user", content: "hi" },
+      ],
+    }, stream);
+    expect(out.systemInstruction).toBeUndefined();
+    expect(out.contents).toEqual([
+      { role: "user", parts: [{ text: "RULE_ONE" }] },
+      { role: "model", parts: [{ text: "RULE_TWO" }] },
+      { role: "user", parts: [{ text: "hi" }] },
+    ]);
+  });
+
+  it("preserves a single system instruction beside a user turn", () => {
+    const out = O2G({
+      messages: [
+        { role: "system", content: "  rule\n" },
+        { role: "user", content: "hi" },
+      ],
+    }, stream);
+    expect(out.systemInstruction).toEqual({ role: "user", parts: [{ text: "  rule\n" }] });
+  });
+
+  it("retains the lone system message as a user turn", () => {
+    const out = O2G({ messages: [{ role: "system", content: "rule" }] }, stream);
+    expect(out.systemInstruction).toBeUndefined();
+    expect(out.contents).toEqual([{ role: "user", parts: [{ text: "rule" }] }]);
+  });
+
+  it("preserves native Gemini system parts on same-format passthrough", () => {
+    const body = {
+      systemInstruction: { role: "user", parts: [{ text: "  first\n" }, { text: "\tsecond " }] },
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+    };
+    const expected = structuredClone(body);
+    const out = translateRequest(FORMATS.GEMINI, FORMATS.GEMINI, "m", body, stream, null, "gemini");
+    expect(out.systemInstruction).toEqual(expected.systemInstruction);
+    expect(out.contents).toEqual(expected.contents);
   });
 });
 

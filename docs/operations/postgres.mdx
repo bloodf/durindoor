@@ -3,7 +3,7 @@ title: Postgres
 description: Opt-in PostgreSQL engine, compose profiles, cutover lock, snapshot abort, and rollback that discards PG-era writes.
 ---
 
-SQLite remains the default for unconfigured installations. A nonempty `DURINDOOR_PG_URL` selects PostgreSQL directly; `DURINDOOR_DATABASE_ENGINE=postgres` additionally keeps startup PostgreSQL-only when the URL is missing or empty. This explicit mode never reads SQLite settings or falls back to SQLite. Packaged startup removes empty environment values. Installations without either selector retain the dashboard-managed cutover workflow below.
+SQLite remains the default for unconfigured installations. A nonempty `DURINDOOR_PG_URL` selects PostgreSQL directly; `DURINDOOR_DATABASE_ENGINE=postgres` additionally keeps startup PostgreSQL-only when the URL is missing or empty. This explicit mode never reads SQLite settings or falls back to SQLite. Packaged startup removes exact empty process-environment values before loading the managed file. Installations without either selector retain the dashboard-managed cutover workflow below.
 
 The dashboard page is **Settings → Database** (`/dashboard/settings/database`). Cutover, test, and rollback routes require a dashboard JWT or CLI token plus the current dashboard password (`x-9r-password`).
 
@@ -15,9 +15,14 @@ the source of each database key. **Save** probes PostgreSQL before atomically wr
 The file overrides process environment values for `DURINDOOR_DATABASE_ENGINE`,
 `DURINDOOR_PG_URL`, and `DURINDOOR_PG_SSLMODE` only. Other environment keys are ignored.
 An explicit managed SQLite selection clears inherited PostgreSQL selectors at startup.
-The engine selector follows a managed/process PostgreSQL URL's presence, even if its
-value is empty (fail-closed PostgreSQL boot). A stored cutover-target URL only prefills
-connection fields; it does not select PostgreSQL startup.
+Packaged `custom-server.js` removes an exact empty process `DURINDOOR_PG_URL` before
+app imports, so that value alone behaves as unset and does not force PostgreSQL.
+`DURINDOOR_DATABASE_ENGINE=postgres` still selects fail-closed PostgreSQL with a
+missing or empty URL. Managed-file values are applied after normalization: a managed
+PostgreSQL URL's presence, even if empty, selects PostgreSQL unless an explicit managed
+SQLite selection clears it. Direct driver imports that bypass packaged normalization
+also retain the URL-presence check, including empty process URLs. A stored cutover-target
+URL only prefills connection fields; it does not select PostgreSQL startup.
 
 Passwords are write-only: leaving the field untouched preserves the password from the
 managed URL, or the process URL when no managed URL exists. **Test** probes without
@@ -148,7 +153,7 @@ The boot log still prints `engine: postgres` for the requested engine even when 
 <Callout type="warn">
 Rollback restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live (keys, usage, settings) are not copied back. The PG cluster is left untouched. The confirm dialog on **Switch back to SQLite** says so.
 
-For an explicit PostgreSQL-only deployment, remove `DURINDOOR_DATABASE_ENGINE=postgres` and `DURINDOOR_PG_URL` from the protected service environment before restarting on a SQLite recovery snapshot. Leaving either selector in place selects PostgreSQL again. Preserve the archived timeline sidecar alongside the main SQLite recovery file; main-database rollback does not copy PostgreSQL timeline writes back.
+For an explicit PostgreSQL-only deployment, remove `DURINDOOR_DATABASE_ENGINE=postgres` and `DURINDOOR_PG_URL` from the protected service environment **and remove or change any managed PostgreSQL startup override** before restarting on a SQLite recovery snapshot. In **Startup configuration**, use **Remove override** to delete `DATA_DIR/durindoor-database.env`, or save an explicit SQLite selection instead. Removing only process selectors is insufficient: a retained managed PostgreSQL override reapplies them on restart. Removing the override alone is also insufficient if the process environment still selects PostgreSQL. These startup changes do not restore data or switch the running adapter. Preserve the archived timeline sidecar alongside the main SQLite recovery file; main-database rollback does not copy PostgreSQL timeline writes back.
 </Callout>
 
 **Switch back to SQLite** restores an allowlisted snapshot from `currentBackupsDir()` into `currentDataFile()`, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. Snapshot paths outside that backups directory are refused. A literal `~/.9router` path is never used; `path.join` does not expand `~`.

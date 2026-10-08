@@ -122,9 +122,10 @@ export default function OrcaModelDropdown({
           </label>
         )}
 
-        {/* Mobile uses the available row width; desktop keeps the panel
-            right-aligned to the trigger without shifting the toolbar. */}
-        <div className="relative min-w-0 w-full sm:w-auto">
+        {/* Anchor below the complete trigger/Clear row on mobile so neither
+            control sits behind the panel. Desktop still anchors to the trigger. */}
+        <div className="relative flex min-w-0 w-full items-center gap-2 sm:w-auto">
+        <div className="min-w-0 flex-1 sm:relative sm:flex-none">
           <button
             type="button"
             ref={triggerRef}
@@ -222,11 +223,12 @@ export default function OrcaModelDropdown({
             type="button"
             onClick={() => onClear?.(selectedModel)}
             data-testid="orca-model-clear"
-            className="min-h-11 min-w-11 rounded-dd px-2 text-xs text-dd-muted underline outline-none hover:text-dd-accent focus-visible:shadow-dd-focus">
+            className="min-h-11 min-w-11 shrink-0 rounded-dd px-2 text-xs text-dd-muted underline outline-none hover:text-dd-accent focus-visible:shadow-dd-focus">
 
             Clear
           </button>
         )}
+        </div>
       </div>
     </div>
   );

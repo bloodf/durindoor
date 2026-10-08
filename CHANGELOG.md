@@ -26,6 +26,7 @@
 - fix(ui): Give native action-log, request-detail, and diagnostic disclosures and visible-model search/selection rows 44px targets while preserving native keyboard interaction.
 - fix(qa): Prepare controls with native instant centered scrolling through nested scrollports before strict clipped-target measurement, preserving the 44px floor, real hits/focus, and genuine undersized or obstructed failures.
 - fix(ui): Use drawer navigation on narrow dashboard layouts, keep endpoint and quota toolbars within the available width, and make request previews and API key limit tables keyboard-scrollable.
+- docs(qa): Explicitly defer exhaustive Storybook catalog closure from the 4.11.0 release to separate work; mobile Drawer coverage, true-mobile verification, the full current-story matrix and final runtime validator remain incomplete, without claiming complete runtime or accessibility certification.
 
 ## Upstream ports
 

@@ -145,6 +145,41 @@ export const CreateInstance = {
     await userEvent.type(await dialog.findByRole("textbox", { name: "URL", exact: true }), "https://story.invalid/mcp");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await expect(await canvas.findByText("story-search")).toBeVisible();
+    await expect(portal.queryByRole("dialog", { name: "New instance" })).not.toBeInTheDocument();
+  },
+};
+
+/** Keep the actual custom-create modal unsubmitted for retained visual coverage. */
+export const RetainedCreateInstance = {
+  parameters: { storyFixture: defaultFixture() },
+  render: () => <McpGatewayPage />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "New instance" }));
+    const portal = within(canvasElement.ownerDocument.body);
+    const modal = await portal.findByRole("dialog", { name: "New instance" });
+    const dialog = within(modal);
+    const slug = dialog.getByRole("textbox", { name: "Slug", exact: true });
+    const url = dialog.getByRole("textbox", { name: "URL", exact: true });
+    await waitFor(() => {
+      expect(dialog.getByRole("heading", { name: "New instance", exact: true })).toBeVisible();
+      expect(slug).toBeVisible();
+      expect(url).toBeVisible();
+    });
+    await userEvent.click(dialog.getByRole("combobox", { name: "Server preset", exact: true }));
+    await userEvent.click(await portal.findByRole("option", { name: /^Custom\b/ }));
+    await userEvent.clear(slug);
+    await userEvent.type(slug, "story-search");
+    await userEvent.clear(url);
+    await userEvent.type(url, "https://story.invalid/mcp");
+    await expect(slug).toHaveValue("story-search");
+    await expect(url).toHaveValue("https://story.invalid/mcp");
+    await expect(dialog.getByText("Server preset", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Custom", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+    await expect(modal).toBeVisible();
+    await expect(canvas.queryByText("story-search", { exact: true })).not.toBeInTheDocument();
   },
 };
 

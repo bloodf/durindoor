@@ -172,6 +172,8 @@ async function geometry(page) {
     const root = [...document.querySelectorAll("dialog:modal")].at(-1) ?? document.querySelector("#storybook-root");
     const controls = [];
     const opener = document.activeElement;
+    const topLayer = (element) => element.matches(":modal, :popover-open")
+      || element === document.fullscreenElement;
     for (const node of root.querySelectorAll("button, a[href], input, select, textarea, summary, [tabindex]")) {
       if (!node.isConnected || node.tabIndex < 0 || node.matches(":disabled") || node.closest("[inert]")) continue;
       // Closed native disclosures remove their content from the interaction
@@ -209,7 +211,10 @@ async function geometry(page) {
       let top = Math.max(0, rect.top);
       let right = Math.min(document.documentElement.clientWidth, rect.right);
       let bottom = Math.min(document.documentElement.clientHeight, rect.bottom);
-      for (let ancestor = target.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      // Top-layer boxes escape clips imposed by their DOM ancestors. Apply
+      // clips inside/on the boundary, but never overflow-hidden body above it.
+      // A role=dialog or merely open dialog is not a top-layer boundary.
+      for (let ancestor = topLayer(target) ? null : target.parentElement; ancestor; ancestor = ancestor.parentElement) {
         const ancestorStyle = getComputedStyle(ancestor);
         const clip = ancestor.getBoundingClientRect();
         if (/^(auto|scroll|hidden|clip)$/.test(ancestorStyle.overflowX)) {
@@ -220,6 +225,7 @@ async function geometry(page) {
           top = Math.max(top, clip.top + ancestor.clientTop);
           bottom = Math.min(bottom, clip.top + ancestor.clientTop + ancestor.clientHeight);
         }
+        if (topLayer(ancestor)) break;
       }
       const visibleRect = { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
       const hitPoint = { x: left + visibleRect.width / 2, y: top + visibleRect.height / 2 };

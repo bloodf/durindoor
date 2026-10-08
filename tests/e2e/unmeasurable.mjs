@@ -34,6 +34,123 @@ export function contrastRatio(foreground, background) {
   const [hi, lo] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
   return (hi + 0.05) / (lo + 0.05);
 }
+/** Resolve the solid token/paint forms used by the guarded chart sources. */
+function proofRgb(value) {
+  const text = String(value).trim();
+  if (/^#[\da-f]{6}$/i.test(text)) {
+    return [1, 3, 5].map((offset) => Number.parseInt(text.slice(offset, offset + 2), 16));
+  }
+  if (!/^rgba?\([\d.,\s]+\)$/.test(text)) return null;
+  const rgb = solidRgb(text);
+  return rgb?.every((channel) => Number.isFinite(channel) && channel >= 0 && channel <= 255) ? rgb : null;
+}
+
+/** Composite CSS background layers, without inventing an opaque backdrop. */
+function paintedBackground(element, computeStyle, inspectOuterAncestors = false) {
+  const stack = [];
+  let background = null;
+  for (let node = element; node instanceof Element; node = node.parentElement) {
+    const style = computeStyle(node);
+    if (style.backgroundImage !== "none" || style.visibility !== "visible" || style.opacity !== "1") return null;
+    if (inspectOuterAncestors && (
+      style.display === "none" || style.filter !== "none" || style.mixBlendMode !== "normal"
+    )) return null;
+    if (background) continue;
+    if (inspectOuterAncestors && !/^rgba?\([\d.,\s]+\)$/.test(String(style.backgroundColor))) return null;
+    const parts = String(style.backgroundColor).match(/-?[\d.]+/g);
+    if (!parts || parts.length < 3) return null;
+    const alpha = parts.length > 3 ? Number(parts[3]) : 1;
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
+    const rgb = parts.slice(0, 3).map(Number);
+    if (!rgb.every((channel) => Number.isFinite(channel) && channel >= 0 && channel <= 255)) return null;
+    if (alpha === 0) continue;
+    if (alpha === 1) {
+      background = rgb;
+      if (!inspectOuterAncestors) break;
+    } else stack.push({ rgb, alpha });
+  }
+  if (!background) return null;
+  for (let i = stack.length - 1; i >= 0; i -= 1) {
+    const { rgb, alpha } = stack[i];
+    background = background.map((channel, c) => rgb[c] * alpha + channel * (1 - alpha));
+  }
+  return background;
+}
+
+/**
+ * Re-prove the source guard against this SVG's live paint, not an old capture.
+ * Guarded sources use muted/subtle glyphs, an opaque surface and accent area
+ * gradients capped at 0.14. Unrecognised paints remain unresolved. Bounding
+ * every possible area overlap is conservative: no glyph/background geometry
+ * or historical screenshot is assumed to establish a passing pair.
+ */
+function chartPaintProved(element, computeStyle) {
+  if (!(element instanceof SVGElement) || !element.matches("text, tspan")) return false;
+  const svg = element.closest("svg");
+  if (!svg) return false;
+  const style = computeStyle(element);
+  const same = (a, b) => a && b && a.every((channel, c) => channel === b[c]);
+  const token = (name) => proofRgb(style.getPropertyValue?.(name));
+  const foreground = proofRgb(style.fill);
+  const surface = token("--dd-surface");
+  if (!foreground || !surface || style.fillOpacity !== "1" || style.stroke !== "none") return false;
+  if (![token("--dd-text-muted"), token("--dd-text-subtle")].some((rgb) => same(foreground, rgb))) return false;
+  const background = paintedBackground(element, computeStyle, true);
+  if (!same(background, surface)) return false;
+  const accents = [token("--dd-accent"), token("--dd-accent-2")].filter(Boolean);
+  let darkest = [...background];
+  let lightest = [...background];
+  for (const paint of svg.querySelectorAll("path, rect, circle, ellipse, polygon, polyline, image, foreignObject, use")) {
+    if (paint.closest("defs")) continue;
+    if (paint.matches("image, foreignObject, use")) return false;
+    // A faded/filter/blended area is outside the guarded source paint model.
+    for (let ancestor = paint; ancestor && ancestor !== svg.parentElement; ancestor = ancestor.parentElement) {
+      const ancestorStyle = computeStyle(ancestor);
+      if (ancestorStyle.opacity !== "1" || ancestorStyle.visibility !== "visible"
+        || ancestorStyle.display === "none" || ancestorStyle.filter !== "none"
+        || ancestorStyle.mixBlendMode !== "normal" || ancestorStyle.backgroundImage !== "none") return false;
+    }
+    const paintStyle = computeStyle(paint);
+    if (paintStyle.fill === "none") continue;
+    // Some guarded charts explicitly paint the same opaque surface in SVG.
+    if (paint.matches("rect") && same(proofRgb(paintStyle.fill), surface) && paintStyle.fillOpacity === "1") continue;
+    const reference = String(paintStyle.fill).match(/^url\(["']?([^"')]+)["']?\)$/)?.[1];
+    if (!reference) return false;
+    let url;
+    try { url = new URL(reference, svg.ownerDocument.baseURI); } catch { return false; }
+    if (url.href.split("#")[0] !== new URL(svg.ownerDocument.baseURI).href.split("#")[0] || !url.hash) return false;
+    const gradient = svg.ownerDocument.getElementById(url.hash.slice(1));
+    if (!gradient || !svg.contains(gradient) || gradient.localName !== "linearGradient"
+      || gradient.hasAttribute("href") || gradient.hasAttribute("xlink:href")) return false;
+    const stops = [...gradient.children];
+    if (stops.length < 2 || stops.some((stop) => stop.localName !== "stop")) return false;
+    let fill = null;
+    let alpha = 0;
+    for (const stop of stops) {
+      const stopStyle = computeStyle(stop);
+      if (typeof stopStyle.stopOpacity !== "string" || !stopStyle.stopOpacity.trim()
+        || stopStyle.opacity !== "1" || stopStyle.filter !== "none"
+        || stopStyle.mixBlendMode !== "normal") return false;
+      const rgb = proofRgb(stopStyle.stopColor);
+      const opacity = Number(stopStyle.stopOpacity);
+      if (!rgb || !accents.some((accent) => same(rgb, accent)) || (fill && !same(fill, rgb))
+        || !Number.isFinite(opacity) || opacity < 0 || opacity > 0.14) return false;
+      fill = rgb;
+      alpha = Math.max(alpha, opacity);
+    }
+    if (typeof paintStyle.fillOpacity !== "string" || !paintStyle.fillOpacity.trim()) return false;
+    const fillOpacity = Number(paintStyle.fillOpacity);
+    if (!Number.isFinite(fillOpacity) || fillOpacity < 0 || fillOpacity > 1) return false;
+    alpha *= fillOpacity;
+    darkest = darkest.map((channel, c) => Math.min(channel, fill[c] * alpha + channel * (1 - alpha)));
+    lightest = lightest.map((channel, c) => Math.max(channel, fill[c] * alpha + channel * (1 - alpha)));
+  }
+  return [darkest, lightest].every((backdrop) => {
+    const ratio = contrastRatio(foreground, backdrop);
+    return Number.isFinite(ratio) && ratio >= 7;
+  });
+}
+
 
 /**
  * Why this node cannot be measured, or null when it must keep failing.
@@ -48,11 +165,10 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
   // `-tick-label`; axe reports the `tspan`, whose nearest labelled ancestor
   // can be either. Match both so nesting cannot silently defeat the policy.
   if (element.closest(".recharts-cartesian-axis-tick, .recharts-cartesian-axis-tick-label")) {
-    // A DOM walk cannot see the area fill drawn between the surface and the
-    // glyph, so the ratio is proved out of band, per chart source, by
-    // tests/unit/durin-ds-contrast.test.js. Honour that proof only for the
-    // stories it covers; any other chart keeps failing.
-    return chartStories.includes(storyId) ? "chart-axis-aaa-v1" : null;
+    // The allowlist identifies guarded sources, not an exemption by itself.
+    // Live glyphs, ancestor paint and SVG fills must still match that proof.
+    return chartStories.includes(storyId) && chartPaintProved(element, computeStyle)
+      ? "chart-axis-aaa-v1" : null;
   }
   // Monaco names its input proxy `inputarea` or `ime-text-area` depending on
   // version; both are declared `color: transparent; background-color:
@@ -80,27 +196,8 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
     const style = computeStyle(element);
     const foreground = solidRgb(style.color);
     if (!foreground) return null;
-    // Layers above the first opaque surface, nearest first.
-    const stack = [];
-    let background = null;
-    for (let node = element; node instanceof Element; node = node.parentElement) {
-      const nodeStyle = computeStyle(node);
-      if (nodeStyle.backgroundImage !== "none" || nodeStyle.visibility !== "visible" || nodeStyle.opacity !== "1") return null;
-      const parts = String(nodeStyle.backgroundColor).match(/-?[\d.]+/g);
-      if (!parts || parts.length < 3) return null;
-      const alpha = parts.length > 3 ? Number(parts[3]) : 1;
-      if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
-      if (alpha === 0) continue;
-      if (alpha === 1) { background = parts.slice(0, 3).map(Number); break; }
-      stack.push({ rgb: parts.slice(0, 3).map(Number), alpha });
-    }
-    // Without an opaque backdrop the tints have nothing to composite onto.
+    const background = paintedBackground(element, computeStyle);
     if (!background) return null;
-    // Composite outermost-inward: each tint paints over what is behind it.
-    for (let i = stack.length - 1; i >= 0; i -= 1) {
-      const { rgb, alpha } = stack[i];
-      background = background.map((channel, c) => rgb[c] * alpha + channel * (1 - alpha));
-    }
     const size = Number.parseFloat(style.fontSize);
     const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
     const ratio = contrastRatio(foreground, background);

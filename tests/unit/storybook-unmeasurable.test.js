@@ -12,9 +12,31 @@ const chartStories = [CHARTED];
 const styleOf = (overrides = {}) => () => ({ zIndex: "-10", color: "rgba(0, 0, 0, 0)", backgroundColor: "rgba(0, 0, 0, 0)", ...overrides });
 
 function chartTick() {
-  document.body.innerHTML = `<g class="recharts-cartesian-axis-tick"><text><tspan id="tick">12:00</tspan></text></g>`;
+  document.body.innerHTML = `<div id="chart-outer"><div id="chart-surface"><svg>
+    <defs><linearGradient id="area-fill">
+      <stop id="start" offset="0%"/><stop id="end" offset="100%"/>
+    </linearGradient></defs>
+    <path id="area" d="M0 0L10 10Z"/>
+    <g class="recharts-cartesian-axis-tick"><text><tspan id="tick">12:00</tspan></text></g>
+  </svg></div></div>`;
   return document.getElementById("tick");
 }
+
+/** Live computed paint with a real SVG gradient, surface and inherited tokens. */
+const chartStyle = (overrides = {}) => (element) => ({
+  color: "rgb(237, 230, 216)", backgroundColor: "rgba(0, 0, 0, 0)",
+  backgroundImage: "none", visibility: "visible", display: "block", opacity: "1",
+  filter: "none", mixBlendMode: "normal", fill: "none", fillOpacity: "1", stroke: "none",
+  getPropertyValue: (name) => ({
+    "--dd-text-muted": "#ede6d8", "--dd-text-subtle": "#ede6d8",
+    "--dd-surface": "#22201c", "--dd-accent": "#10e882",
+  })[name] ?? "",
+  ...(element.id === "chart-surface" ? { backgroundColor: "rgb(34, 32, 28)" } : {}),
+  ...(element.matches("text, tspan") ? { fill: "rgb(237, 230, 216)" } : {}),
+  ...(element.id === "area" ? { fill: "url(#area-fill)" } : {}),
+  ...(element.matches("stop") ? { stopColor: "rgb(16, 232, 130)", stopOpacity: element.id === "start" ? "0.14" : "0" } : {}),
+  ...overrides[element.id],
+});
 
 function monacoProxy(className = "inputarea") {
   document.body.innerHTML = `<div class="monaco-editor"><textarea id="proxy" class="${className}"></textarea></div>`;
@@ -27,17 +49,80 @@ const node = (id) => ({ target: [`#${id}`], html: `<${id}>` });
 const withStyle = ([element, style]) => [element, CHARTED, chartStories, style];
 
 describe("unmeasurable node policy", () => {
-  it("clears a chart tick only for a story whose contrast is proved", () => {
+  it("clears a listed chart only while its live paint matches the composite proof", () => {
     const tick = chartTick();
-    expect(exemptionFor(tick, CHARTED, chartStories, styleOf())).toBe("chart-axis-aaa-v1");
-    expect(exemptionFor(tick, UNCHARTED, chartStories, styleOf())).toBeNull();
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    expect(exemptionFor(tick, UNCHARTED, chartStories, chartStyle())).toBeNull();
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({ tick: { fill: "rgb(120, 116, 108)" } }))).toBeNull();
   });
 
-  it("recognises the tick-label shape axe actually reports", () => {
-    // Recharts nests the text in `-tick-label`; a policy matching only the
-    // outer `-tick` group silently exempted nothing on the real charts.
-    document.body.innerHTML = `<g><text class="recharts-cartesian-axis-tick-label"><tspan id="label">12:00</tspan></text></g>`;
-    expect(exemptionFor(document.getElementById("label"), CHARTED, chartStories, styleOf())).toBe("chart-axis-aaa-v1");
+  it("recognises a real SVG tick-label without requiring the outer tick class", () => {
+    const tick = chartTick();
+    tick.parentElement.classList.add("recharts-cartesian-axis-tick-label");
+    tick.parentElement.parentElement.removeAttribute("class");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+  });
+
+  it.each([
+    ["faded glyph", { tick: { opacity: "0.4" } }],
+    ["translucent glyph fill", { tick: { fillOpacity: "0.4" } }],
+    ["unresolved glyph", { tick: { fill: "url(#missing)" } }],
+    ["faded ancestor above the opaque surface", { "chart-outer": { opacity: "0.4" } }],
+    ["image background", { "chart-surface": { backgroundImage: "url(image.png)" } }],
+    ["no opaque backdrop", { "chart-surface": { backgroundColor: "rgba(0, 0, 0, 0)" } }],
+    ["different opaque backdrop", { "chart-surface": { backgroundColor: "rgb(255, 255, 255)" } }],
+    ["unresolved area", { area: { fill: "url(#missing)" } }],
+    ["foreign gradient", { area: { fill: "url(https://example.invalid/chart.svg#area-fill)" } }],
+    ["faded area", { area: { opacity: "0.4" } }],
+    ["unproved stop color", { start: { stopColor: "rgb(255, 255, 255)" } }],
+    ["stop alpha beyond the source bound", { start: { stopOpacity: "0.140001" } }],
+    ["unresolved stop alpha", { start: { stopOpacity: "unknown" } }],
+    ["empty stop alpha", { start: { stopOpacity: "" } }],
+    ["empty area alpha", { area: { fillOpacity: "" } }],
+    ["filtered paint", { area: { filter: "blur(2px)" } }],
+  ])("keeps a listed axis incomplete with %s", (_name, overrides) => {
+    expect(exemptionFor(chartTick(), CHARTED, chartStories, chartStyle(overrides))).toBeNull();
+  });
+
+  it.each([6.99, 7.01])("checks the live AAA ratio at %s rather than trusting token names", (ratio) => {
+    const tick = chartTick();
+    const channel = 255 * (1.055 * ((1.05 / ratio - 0.05) ** (1 / 2.4)) - 0.055);
+    const background = `rgb(${channel}, ${channel}, ${channel})`;
+    const tokens = (name) => ({
+      "--dd-text-muted": "#ffffff", "--dd-surface": background, "--dd-accent": "#10e882",
+    })[name] ?? "";
+    const style = chartStyle({
+      tick: { fill: "rgb(255, 255, 255)", getPropertyValue: tokens },
+      "chart-surface": { backgroundColor: background },
+      start: { stopOpacity: "0" }, end: { stopOpacity: "0" },
+    });
+    const reason = exemptionFor(tick, CHARTED, chartStories, style);
+    if (ratio < 7) expect(reason).toBeNull();
+    else expect(reason).toBe("chart-axis-aaa-v1");
+  });
+
+  it("refuses overlapping areas whose possible composite falls below AAA", () => {
+    const tick = chartTick();
+    const area = document.getElementById("area");
+    // Each individual 0.14 tint passes, but three overlapping tints do not.
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    for (let i = 0; i < 2; i += 1) {
+      const copy = area.cloneNode(true);
+      copy.removeAttribute("id");
+      copy.setAttribute("data-area", "");
+      area.after(copy);
+    }
+    const style = (element) => ({
+      ...chartStyle()(element),
+      ...(element.hasAttribute("data-area") ? { fill: "url(#area-fill)" } : {}),
+    });
+    expect(exemptionFor(tick, CHARTED, chartStories, style)).toBeNull();
+  });
+
+  it.each(["image", "foreignObject", "use"])("refuses an unproved SVG %s paint", (tag) => {
+    const tick = chartTick();
+    tick.closest("svg").append(document.createElementNS("http://www.w3.org/2000/svg", tag));
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
   });
 
   it("clears the ime-text-area proxy Monaco actually renders", () => {
@@ -153,12 +238,11 @@ describe("unmeasurable node policy", () => {
   });
 
   it("drops a cleared node and records why, keeping the rest of its entry", () => {
-    document.body.innerHTML = `
-      <g class="recharts-cartesian-axis-tick"><text><tspan id="tick">12:00</tspan></text></g>
-      <p id="copy">Requests over time</p>`;
+    chartTick();
+    document.body.insertAdjacentHTML("beforeend", `<p id="copy">Requests over time</p>`);
     const { entries, unmeasurable } = auditIncomplete(
       [{ id: "color-contrast", nodes: [node("tick"), node("copy")] }],
-      { storyId: CHARTED, chartStories, resolve: (n) => resolveNode(n, document), computeStyle: styleOf() },
+      { storyId: CHARTED, chartStories, resolve: (n) => resolveNode(n, document), computeStyle: chartStyle() },
     );
     expect(entries).toHaveLength(1);
     expect(entries[0].nodes.map((entry) => entry.target[0])).toEqual(["#copy"]);
@@ -169,7 +253,7 @@ describe("unmeasurable node policy", () => {
     chartTick();
     const { entries, unmeasurable } = auditIncomplete(
       [{ id: "color-contrast-enhanced", nodes: [node("tick")] }],
-      { storyId: CHARTED, chartStories, resolve: (n) => resolveNode(n, document), computeStyle: styleOf() },
+      { storyId: CHARTED, chartStories, resolve: (n) => resolveNode(n, document), computeStyle: chartStyle() },
     );
     expect(entries).toEqual([]);
     expect(unmeasurable).toHaveLength(1);

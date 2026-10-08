@@ -20,6 +20,7 @@
 - fix(skills): Offer deduplicated local, tunnel, external tunnel, Tailscale, external Tailscale, and remote browser-origin endpoints as skill copy targets.
 - fix(token-saver): Separate savings-chart labels from decorative axis strokes using the established dashboard axis presentation.
 - fix(providers): Keep the OrcaRouter model picker within the available mobile width and its Clear action beside the trigger above the popup, while preserving desktop popover placement.
+- fix(endpoint): Preserve autosized read-only URL heights in stacked mobile rows while retaining flexible desktop widths and native text selection.
 
 ## Upstream ports
 

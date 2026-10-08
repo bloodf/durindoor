@@ -37,8 +37,13 @@ export function contrastRatio(foreground, background) {
 /** Resolve the solid token/paint forms used by the guarded chart sources. */
 function proofRgb(value) {
   const text = String(value).trim();
-  if (/^#[\da-f]{6}$/i.test(text)) {
-    return [1, 3, 5].map((offset) => Number.parseInt(text.slice(offset, offset + 2), 16));
+  // Both opaque CSS hex forms are source tokens; alpha-bearing forms must
+  // remain unresolved rather than silently dropping their alpha channel.
+  if (/^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(text)) {
+    const width = (text.length - 1) / 3;
+    return [0, 1, 2].map((channel) => Number.parseInt(
+      text.slice(1 + channel * width, 1 + (channel + 1) * width), 16,
+    ) * (width === 1 ? 17 : 1));
   }
   if (!/^rgba?\([\d.,\s]+\)$/.test(text)) return null;
   const rgb = solidRgb(text);
@@ -176,8 +181,13 @@ function chartPaintProved(element, storyId, computeStyle) {
     darkest = darkest.map((channel, c) => Math.min(channel, rgb[c] * alpha + channel * (1 - alpha)));
     lightest = lightest.map((channel, c) => Math.max(channel, rgb[c] * alpha + channel * (1 - alpha)));
   };
-  for (const paint of svg.querySelectorAll("path, line, rect, circle, ellipse, polygon, polyline, image, foreignObject, use, text, tspan, textPath")) {
+  // Visit every descendant of SVG text, not just text/tspan tags: links and
+  // other containers can own rendered runs even when their wrapper owns none.
+  for (const paint of svg.querySelectorAll("*")) {
     if (paint.closest("defs")) continue;
+    const graphic = paint.matches("path, line, rect, circle, ellipse, polygon, polyline, image, foreignObject, use, textPath");
+    const textContainer = !graphic && paint.closest("text");
+    if (!graphic && !textContainer) continue;
     if (paint.matches("image, foreignObject, use, textPath")) return false;
     // A faded/filter/blended area is outside the guarded source paint model.
     for (let ancestor = paint; ancestor && ancestor !== svg.parentElement; ancestor = ancestor.parentElement) {
@@ -189,14 +199,14 @@ function chartPaintProved(element, storyId, computeStyle) {
     }
     const paintStyle = computeStyle(paint);
     if ([paintStyle.markerStart, paintStyle.markerMid, paintStyle.markerEnd].some((marker) => marker !== "none")) return false;
-    if (paint.matches("text, tspan")) {
+    if (textContainer) {
       // Shadow/decoration ink is not bounded by the text rectangle here.
       for (let ancestor = paint; ancestor && ancestor !== svg.parentElement; ancestor = ancestor.parentElement) {
         const ancestorStyle = computeStyle(ancestor);
         if (ancestorStyle.textShadow !== "none" || ancestorStyle.textDecorationLine !== "none") return false;
       }
-      // Wrapper text nodes do not add ink; every direct text run is visited.
-      // This still inspects siblings and ancestor-owned runs, not just labels.
+      // Nonpainting wrappers are skipped only after all their descendants
+      // have been included in the traversal, including linked direct runs.
       const ownsText = [...paint.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent.trim());
       if (!ownsText) continue;
       if (paint === element || element.contains(paint)) {

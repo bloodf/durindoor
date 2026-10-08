@@ -37,11 +37,24 @@ const chartStyle = (overrides = {}) => (element) => ({
     "--dd-surface": "#22201c", "--dd-accent": "#10e882", "--dd-info": "#60a5fa",
   })[name] ?? "",
   ...(element.id === "chart-surface" ? { backgroundColor: "rgb(34, 32, 28)" } : {}),
-  ...(element.matches("text, tspan") ? { fill: "rgb(237, 230, 216)" } : {}),
+  ...(element.closest("text") ? { fill: "rgb(237, 230, 216)" } : {}),
   ...(element.id === "area" ? { fill: "url(#area-fill)" } : {}),
   ...(element.matches("stop") ? { stopColor: "rgb(16, 232, 130)", stopOpacity: element.id === "start" ? "0.14" : "0" } : {}),
   ...overrides[element.id],
 });
+
+/** Actual inspected light paint, with controllable source-token/contrast faults. */
+function lightChartStyle(tokenOverrides = {}, foreground = "rgb(75, 68, 56)") {
+  const tokens = {
+    "--dd-text-muted": "#4b4438", "--dd-text-subtle": "#4b4438",
+    "--dd-surface": "#fff", "--dd-accent": "#03543b", ...tokenOverrides,
+  };
+  return chartStyle({
+    tick: { fill: foreground, getPropertyValue: (name) => tokens[name] ?? "" },
+    "chart-surface": { backgroundColor: "rgb(255, 255, 255)" },
+    start: { stopColor: "rgb(3, 84, 59)" }, end: { stopColor: "rgb(3, 84, 59)" },
+  });
+}
 
 /** happy-dom has no SVG layout: supply vector bounds at this policy boundary. */
 function strokeBehindTick(tick, tag) {
@@ -208,6 +221,62 @@ describe("unmeasurable node policy", () => {
     expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
       "other-text": { stroke: "rgb(237, 230, 216)", strokeWidth: "24px" },
     }))).toBeNull();
+  });
+
+  it("does not omit overlapping direct text inside an SVG link with an empty text wrapper", () => {
+    const tick = chartTick();
+    const wrapper = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    const link = document.createElementNS("http://www.w3.org/2000/svg", "a");
+    link.setAttribute("href", "#fixture");
+    link.textContent = "overlay";
+    wrapper.append(link);
+    tick.closest("svg").append(wrapper);
+    tick.getBoundingClientRect = () => ({ left: 10, right: 30, top: 10, bottom: 22 });
+    link.getBoundingClientRect = () => ({ left: 12, right: 28, top: 12, bottom: 20 });
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+    link.getBoundingClientRect = () => ({ left: 40, right: 50, top: 10, bottom: 22 });
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    link.getBoundingClientRect = () => ({ left: NaN, right: NaN, top: NaN, bottom: NaN });
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+  });
+
+  it("validates linked descendant foreground rather than treating it as an empty glyph", () => {
+    const tick = chartTick();
+    const link = document.createElementNS("http://www.w3.org/2000/svg", "a");
+    link.id = "linked-run";
+    link.setAttribute("href", "#fixture");
+    link.textContent = "12:00";
+    tick.replaceChildren(link);
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      "linked-run": { fill: "rgb(120, 116, 108)" },
+    }))).toBeNull();
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      "linked-run": { maskImage: "url(#fade)" },
+    }))).toBeNull();
+  });
+
+  it("keeps additional ancestor-owned linked text unresolved instead of skipping the link", () => {
+    const tick = chartTick();
+    const parent = tick.parentElement;
+    const link = document.createElementNS("http://www.w3.org/2000/svg", "a");
+    link.setAttribute("href", "#fixture");
+    parent.replaceChildren(link);
+    link.append(tick, document.createTextNode("other paint"));
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+  });
+
+  it("qualifies actual light chart paint with a short-hex surface only while contrast holds", () => {
+    const tick = chartTick();
+    expect(exemptionFor(tick, CHARTED, chartStories, lightChartStyle())).toBe("chart-axis-aaa-v1");
+    // The changed glyph still matches its source token; only the ratio refuses it.
+    expect(exemptionFor(tick, CHARTED, chartStories,
+      lightChartStyle({ "--dd-text-muted": "#bbb" }, "rgb(187, 187, 187)"))).toBeNull();
+  });
+
+  it.each(["#fff8", "#ffffff80", "rgba(255, 255, 255, 0.5)"])("refuses a translucent light source surface %s", (surface) => {
+    expect(exemptionFor(chartTick(), CHARTED, chartStories,
+      lightChartStyle({ "--dd-surface": surface }))).toBeNull();
   });
 
   it("does not count glyph wrappers twice or silently accept differing descendant paint", () => {

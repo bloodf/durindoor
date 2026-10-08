@@ -1,6 +1,8 @@
 import React, { Suspense } from "react";
 import { expect, userEvent, within, waitFor } from "storybook/test";
 import ProviderLimits from "./index.js";
+import claudeUsageA from "../../../../../../../tests/unit/fixtures/claude-usage-account-a.json";
+import claudeUsageB from "../../../../../../../tests/unit/fixtures/claude-usage-account-b.json";
 
 const codex = {
   id: "codex-primary",
@@ -220,5 +222,34 @@ export const DeleteConfirm = {
     await expect(await canvas.findByText("owner@example.com")).toBeVisible();
     await userEvent.click((await canvas.findAllByRole("button", { name: "Delete connection" }))[0]);
     await expect(await within(document.body).findByRole("dialog", { name: "Delete connection?" })).toBeVisible();
+  },
+};
+
+export const ClaudeModelWeeklyNotReported = {
+  parameters: {
+    storyFixture: fixture({
+      ...settingsRoutes(),
+      "GET /api/proxy-pools": { body: { proxyPools: [] }, status: 200 },
+      "GET /api/providers/client": {
+        body: connectionPage([
+          { id: "claude-a", provider: "claude", name: "Claude Account A", authType: "oauth", isActive: true },
+          { id: "claude-b", provider: "claude", name: "Claude Account B", authType: "oauth", isActive: true },
+        ], { providerOptions: ["claude"] }),
+        status: 200,
+      },
+      "GET /api/usage/claude-a": { body: claudeUsageA, status: 200 },
+      "GET /api/usage/claude-b": { body: claudeUsageB, status: 200 },
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Claude Account B")).toBeVisible());
+    const mergeToggle = canvas.getByRole("switch", { name: "Merge claude quotas across accounts" });
+    if (mergeToggle.getAttribute("aria-checked") === "true") await userEvent.click(mergeToggle);
+    await waitFor(() => expect(canvas.getAllByText("weekly fable (7d)")).toHaveLength(2));
+    const placeholder = canvas.getByText("not reported").closest("tr");
+    await expect(within(placeholder).getByText("—")).toBeVisible();
+    await expect(within(placeholder).queryByRole("button", { name: /Hide quota/ })).toBeNull();
+    await expect(canvas.getByText("Rate limited; showing cached quota.")).toBeVisible();
   },
 };

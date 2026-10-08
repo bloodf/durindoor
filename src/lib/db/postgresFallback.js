@@ -18,6 +18,7 @@ import { evaluateCapabilities } from "./postgresCapabilityGate.js";
 import { runMigrationOnce } from "./migrate.js";
 import { resolvePostgresSecret } from "./secrets.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
+import { applyDatabaseEnvFile } from "./databaseEnvFile.js";
 
 /**
  * Test seam for legacy settings-based selection: skip the live PG path
@@ -128,6 +129,7 @@ export const readClusterInfoForTest = readClusterInfo;
  * back to SQLite.
  */
 export async function openActiveAdapter() {
+  applyDatabaseEnvFile();
   // An environment URL is an explicit production mode. Do not read or write
   // SQLite here: configuration, connection, and migration failures must stop boot.
   if (process.env.DURINDOOR_DATABASE_ENGINE === "postgres" ||
@@ -148,6 +150,7 @@ export async function openActiveAdapter() {
     }
     return pg;
   }
+  if (process.env.DURINDOOR_DATABASE_ENGINE === "sqlite") return openSqliteAdapter(currentDataFile());
 
   let settings = null;
   try {

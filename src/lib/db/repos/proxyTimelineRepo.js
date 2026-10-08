@@ -317,7 +317,7 @@ export async function getTraceMeta(id) {
     const db = await getProxyTimelineAdapter();
     const { traces } = timelineTables(db);
     return db.get(
-      `SELECT id,started_at,status,provider,model,connection_id,api_key_id,endpoint FROM ${traces} WHERE id=?`,
+      `SELECT * FROM ${traces} WHERE id=?`,
       [id],
     ) || null;
   } catch { return null; }

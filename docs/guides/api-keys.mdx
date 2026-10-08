@@ -50,6 +50,8 @@ A key can carry several independent restrictions. Empty means unrestricted for t
 
 `policy.maxTokens` and `policy.maxCostUsd` are lifetime caps on that key. `dailyLimitTokens` is a calendar-day token cap that resets at local midnight. `isActive` false keeps the row visible and stops authentication.
 
+In the Edit dialog's committed usage display, empty lifetime token/cost fields mean unlimited and show only the amount used, not a false “Limit reached”. An explicit `0` remains a real lifetime limit; this differs from the windowed-limit convention below.
+
 Key groups are labels only. Membership never changes what a key can call.
 
 ## Model access rules
@@ -83,7 +85,7 @@ RPM and TPM are counted in memory per process: RPM when a request is admitted, T
 
 Monthly budgets use the estimated costs saved with request usage. They are not provider billing limits. Deleting usage history can affect usage-derived limits.
 
-`PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key; the Keys page and the Usage overview poll it.
+`PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key. The API key limits card below the key list on **Dashboard → API Keys** polls it; that card is no longer on Usage.
 
 ## Rotation
 

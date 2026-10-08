@@ -27,22 +27,23 @@ DATA_DIR/
 ├── headroom/
 ├── api-key-secret
 ├── jwt-secret          # legacy, read if JWT_SECRET unset
+├── durindoor-database.env  # managed PostgreSQL startup override
 └── durindoor-secrets.json  # legacy Postgres URL
 ```
 
-For SQLite installations, `DATA_DIR/db/data.sqlite` is the main store. Pre-upgrade copies go in `DATA_DIR/db/backups`. Postgres cutover copies use the same backups directory with prefix `data.sqlite.postgres-cutover-`. They are not the three-directory migration safety copies. Procedure: [Postgres](./postgres.mdx). Credential directories and the SQLite files are chmod'd owner-only on POSIX (`0700` / `0600`). Windows ACLs are left alone.
+For SQLite, the main database and its backups live under `DATA_DIR/db`. PostgreSQL cutover snapshots use that backup directory. Keep credential directories and database files owner-only.
 
 PostgreSQL installations keep the main store, usage, and proxy timeline in the selected PostgreSQL database. Copying `DATA_DIR` alone does not back up those rows. Take a full custom-format dump with `pg_dump -Fc`, verify its table listing with `pg_restore -l`, and rehearse the restore into an isolated database. Keep the dump owner-only and preserve the matching master key, machine ID, JWT secret, and protected service environment alongside it. A database dump without its encryption keys cannot recover provider credentials.
 
-## Include logs and legacy data when needed
+## Files that do not follow DATA_DIR
 
 Usage is stored in the active database.
 
-`DATA_DIR/usage.json` is a legacy import. Startup can read it once, then writes a `.migrated-from-json` marker. Runtime inserts go to the active database, not back to that JSON file.
+`DATA_DIR/usage.json` is a one-time legacy import. After startup marks it migrated, runtime writes stay in the active database.
 
 There is no `DATA_DIR/log.txt`. That name is not created.
 
-`ENABLE_REQUEST_LOGS=true` writes metadata-only session folders under `logs/` in `process.cwd()`, not under `DATA_DIR`. MITM dumps use `DATA_DIR/logs/mitm`. Dashboard **Console log** is an in-memory ring of 200 lines.
+`ENABLE_REQUEST_LOGS=true` writes metadata-only session folders under `logs/` in `process.cwd()`, not under `DATA_DIR`. MITM dumps use `DATA_DIR/logs/mitm`. Dashboard **Console log** is an in-memory ring of 2000 lines.
 
 If you still have a 9router tree and need provider-section labels rewritten in TOML or JSON configs, run the one-shot cutover:
 
@@ -53,11 +54,9 @@ node scripts/migrate-from-9router.mjs
 
 It tars `~/.9router` to `~/.9router-backup-<stamp>.tar` before any move. It does not rewrite API key secrets. SQLite files are not walked. Default `--target-dir` is `~/.durindoor`. Runtime `DATA_DIR` still defaults to `~/.9router`; set `DATA_DIR` if you pointed the script at another tree.
 
-## Integrity
+## SQLite recovery
 
-After schema work and before the file is accepted, DurinDoor runs `PRAGMA quick_check`. Corruption reported there stops startup. The check is structural, not `PRAGMA integrity_check` or `PRAGMA foreign_key_check`. There is no automatic repair.
-
-If logs say `SQLite integrity check failed`, stop every writer. Keep `data.sqlite` plus `-wal` and `-shm`. Restore only a backup you have already verified. Lite migration backups omit `requestDetails`. Any `REINDEX`, `VACUUM`, or salvage belongs on a copy.
+If SQLite reports corruption, stop every writer. Keep the database, WAL, and shared-memory files together. Restore only a verified backup; perform repair or salvage only on a copy.
 
 ## Backing up a host directory
 

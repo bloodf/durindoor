@@ -7,7 +7,7 @@ description: SQLite and PostgreSQL storage, backups, restore, and the files that
 
 Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/operations/data-management.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
 
-Full recovery needs DATA_DIR and protected environment plus a PostgreSQL dump for PG installs. master-key is required to decrypt provider columns. SQLite timeline is a sidecar, and migration lite backups omit requestDetails. Permission fallback can select the native default. Stop writers before copying or replacing storage.
+Full recovery needs `DATA_DIR`, protected environment, and a PostgreSQL dump for PG installations. `master-key` is required to decrypt provider columns. The managed startup file `DATA_DIR/durindoor-database.env` is owner-only and must be backed up with its protected environment. SQLite timeline is a sidecar, and migration lite backups omit `requestDetails`. Stop writers before copying or replacing storage. A permission fallback can select the native default.
 
 ### Execution ownership and evidence
 

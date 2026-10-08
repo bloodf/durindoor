@@ -56,6 +56,7 @@ try {
     // a root-level sidecar outside Next's NFT trace, so it must be copied by
     // hand or the standalone server crashes at boot with MODULE_NOT_FOUND.
     fs.copyFileSync(path.join(process.cwd(), "head-response-guard.cjs"), path.join(standaloneDir, "head-response-guard.cjs"));
+    fs.copyFileSync(path.join(process.cwd(), "web-login-host-boundary.cjs"), path.join(standaloneDir, "web-login-host-boundary.cjs"));
     fs.cpSync(path.join(process.cwd(), "src", "mitm"), path.join(standaloneDir, "src", "mitm"), {
       recursive: true,
     });

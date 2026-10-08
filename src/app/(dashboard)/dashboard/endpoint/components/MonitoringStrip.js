@@ -46,7 +46,7 @@ export default function MonitoringStrip() {
   return (
     <div className="flex flex-col gap-4">
       {err && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-2 text-sm text-red-500">
+        <div className="flex items-start gap-2 rounded-lg border border-dd-danger/30 bg-dd-danger/10 px-4 py-2 text-sm text-dd-danger">
           <span className="material-symbols-outlined text-[16px]">warning</span>
           <span>{err}</span>
         </div>
@@ -55,11 +55,11 @@ export default function MonitoringStrip() {
       {/* 1. Active requests */}
       <Card padding="none">
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
-          <span className="material-symbols-outlined text-[18px] text-text-muted">
+          <span className="material-symbols-outlined text-[18px] text-dd-muted">
             pending_actions
           </span>
           <h2 className="text-sm font-semibold text-text-main">Active Requests</h2>
-          <span className="text-xs text-text-muted">now</span>
+          <span className="text-xs text-dd-muted">now</span>
         </div>
         <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3">
@@ -80,22 +80,22 @@ export default function MonitoringStrip() {
       {/* 2. Provider health */}
       <Card padding="none">
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
-          <span className="material-symbols-outlined text-[18px] text-text-muted">
+          <span className="material-symbols-outlined text-[18px] text-dd-muted">
             health_and_safety
           </span>
           <h2 className="text-sm font-semibold text-text-main">Provider Health</h2>
-          <span className="text-xs text-text-muted">last 7 days</span>
+          <span className="text-xs text-dd-muted">last 7 days</span>
         </div>
 
         {health.length === 0 ? (
-          <p className="px-4 py-5 text-center text-sm text-text-muted">
+          <p className="px-4 py-5 text-center text-sm text-dd-muted">
             No provider activity recorded yet.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border-subtle text-left text-xs uppercase tracking-wider text-text-muted">
+                <tr className="border-b border-border-subtle text-left text-xs uppercase tracking-wider text-dd-muted">
                   <th className="px-4 py-2 font-semibold">Provider</th>
                   <th className="px-4 py-2 text-right font-semibold">Requests</th>
                   <th className="px-4 py-2 text-right font-semibold">Errors</th>
@@ -112,13 +112,13 @@ export default function MonitoringStrip() {
                     <td className="px-4 py-2 font-medium text-text-main" title={p.id}>
                       {p.name}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-text-muted">
+                    <td className="px-4 py-2 text-right tabular-nums text-dd-muted">
                       {formatNum(p.requests)}
                     </td>
                     <td
                       className={cn(
                         "px-4 py-2 text-right tabular-nums",
-                        p.errors > 0 ? "text-red-500" : "text-text-muted"
+                        p.errors > 0 ? "text-red-500" : "text-dd-muted"
                       )}
                     >
                       {formatNum(p.errors)}
@@ -126,7 +126,7 @@ export default function MonitoringStrip() {
                     <td className="px-4 py-2 text-right">
                       <SuccessBadge rate={p.successRate} />
                     </td>
-                    <td className="px-4 py-2 text-right text-xs text-text-muted">
+                    <td className="px-4 py-2 text-right text-xs text-dd-muted">
                       {formatWhen(p.lastUsed)}
                     </td>
                   </tr>
@@ -134,7 +134,7 @@ export default function MonitoringStrip() {
               </tbody>
             </table>
             {health.length > 10 && (
-              <p className="border-t border-border-subtle/50 px-4 py-2 text-xs text-text-muted">
+              <p className="border-t border-border-subtle/50 px-4 py-2 text-xs text-dd-muted">
                 +{health.length - 10} more providers, see the Monitoring page
               </p>
             )}
@@ -145,14 +145,14 @@ export default function MonitoringStrip() {
       {/* 3. Recent requests */}
       <Card padding="none">
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
-          <span className="material-symbols-outlined text-[18px] text-text-muted">
+          <span className="material-symbols-outlined text-[18px] text-dd-muted">
             receipt_long
           </span>
           <h2 className="text-sm font-semibold text-text-main">Recent Requests</h2>
         </div>
 
         {recent.length === 0 ? (
-          <p className="px-4 py-5 text-center text-sm text-text-muted">
+          <p className="px-4 py-5 text-center text-sm text-dd-muted">
             No request logs yet.
           </p>
         ) : (
@@ -171,11 +171,11 @@ export default function MonitoringStrip() {
                   {isOk(l.status) ? "check_circle" : "cancel"}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-text-main">
-                  <span className="text-text-muted">{l.provider}</span>
+                  <span className="text-dd-muted">{l.provider}</span>
                   {l.provider && l.model ? " · " : ""}
                   <span className="font-mono text-xs">{l.model}</span>
                 </span>
-                <span className="shrink-0 text-xs text-text-muted">
+                <span className="shrink-0 text-xs text-dd-muted">
                   {formatWhen(l.timestamp)}
                 </span>
               </li>
@@ -190,7 +190,7 @@ export default function MonitoringStrip() {
 function Metric({ label, value, tone = "neutral" }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-text-muted">{label}</span>
+      <span className="text-xs text-dd-muted">{label}</span>
       <span
         className={cn(
           "text-lg font-semibold tabular-nums",
@@ -205,7 +205,7 @@ function Metric({ label, value, tone = "neutral" }) {
 
 function SuccessBadge({ rate }) {
   if (rate === null || rate === undefined) {
-    return <span className="text-xs text-text-muted">—</span>;
+    return <span className="text-xs text-dd-muted">—</span>;
   }
   const good = rate >= 95;
   const mid = rate >= 80;

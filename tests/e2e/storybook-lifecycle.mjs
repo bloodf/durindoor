@@ -1,3 +1,6 @@
+// Shared evidence identity stays dependency-free so Playwright never loads the AST checker.
+export const artifactKey = (runtimeArtifactId, browser, theme, viewport) => `${runtimeArtifactId}::${browser}::${theme}::${viewport}`;
+
 const ORDER = ["preparing", "loading", "rendering", "playing", "played", "completing", "completed", "afterEach", "finished"];
 const RANK = new Map(ORDER.map((phase, index) => [phase, index]));
 const REQUIRED = new Set(["loading", "rendering", "completing", "completed", "afterEach", "finished"]);

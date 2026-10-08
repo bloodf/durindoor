@@ -14,6 +14,7 @@ Open `http://localhost:20128/dashboard`. Next.js serves that tree from `src/app/
 
 **Timeline** (`/dashboard/timeline`) is a live tail of proxy hops and SSE history. Open a row for one request's hop list.
 
+
 **Quota Tracker** (`/dashboard/quota`) lists provider limits, remaining capacity, cooldowns, and reset hints.
 
 **Health** (`/dashboard/health`) polls provider connection state (healthy, degraded, down, blocked, unconfigured).
@@ -88,4 +89,4 @@ These references describe repository behavior. They do not establish that a vend
 
 ### Current behavior and implementation boundaries
 
-The page separates dashboard navigation from source route ownership. The current guide preserves operational page functions and includes provider-key-request validation order; the snapshot retains exact route inventory and component names.
+The page separates dashboard navigation from source route ownership. The current guide preserves operational page functions and includes provider-key-request validation order; the snapshot retains exact route inventory and component names. Current behavior: Usage starts with monitoring cards and `/dashboard/monitoring` redirects there. Timeline defaults to swimlanes with 5m, 15m, 1h, and 6h windows; **Table** restores paginated rows, and trace details contain a direction-coloured waterfall. Combos owns seven-day connection usage; API Keys owns API-key limits.

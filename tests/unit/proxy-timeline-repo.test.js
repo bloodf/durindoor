@@ -93,6 +93,37 @@ describe("proxy timeline repository", () => {
     all.mockRestore();
   });
 
+  it("serves completed overview metadata when the event transport limit makes detail unavailable", async () => {
+    timeline.startTrace({ id: "transport-boundary", provider: "example-provider", model: "example-model" });
+    timeline.record({ traceId: "transport-boundary", type: "sse_chunk", direction: "in", payload: "example content" });
+    timeline.finishTrace({ id: "transport-boundary", status: "ok", total_ms: 1250 });
+    await timeline.flushProxyTimelineForTests();
+    const { getProxyTimelineAdapter } = await import("@/lib/db/proxyTimelineDb.js");
+    const adapter = await getProxyTimelineAdapter();
+    // Emulate PostgreSQL's event-result transport boundary without allocating
+    // a >32 MiB payload. Metadata still comes from the real persisted trace.
+    const eventsTransport = vi.spyOn(adapter, "all").mockImplementation(() => {
+      throw new RangeError("Event result exceeds transport limit");
+    });
+    try {
+      const detail = await import("@/app/api/timeline/[id]/route.js");
+      const metadata = await import("@/app/api/timeline/[id]/meta/route.js");
+      const context = { params: Promise.resolve({ id: "transport-boundary" }) };
+      expect((await detail.GET(null, context)).status).toBe(404);
+      const result = await metadata.GET(null, context);
+      expect(result.status).toBe(200);
+      const body = await result.json();
+      expect(body.trace).toMatchObject({
+        id: "transport-boundary", provider: "example-provider", model: "example-model",
+        status: "ok", total_ms: 1250, event_count: 1,
+      });
+      expect(body).not.toHaveProperty("events");
+      expect(body.trace).not.toHaveProperty("events");
+    } finally {
+      eventsTransport.mockRestore();
+    }
+  });
+
   it("keeps recording after start without reading settings again", async () => {
     const settings = await import("@/lib/db/repos/settingsRepo.js");
     timeline.startTrace({ id: "cached" });

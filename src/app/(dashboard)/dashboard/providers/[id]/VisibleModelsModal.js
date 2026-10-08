@@ -188,17 +188,18 @@ export default function VisibleModelsModal({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-0 basis-full sm:flex-1 sm:basis-0">
             <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">
               search
             </span>
             <input
               type="text"
               placeholder="Search..."
+              aria-label="Search visible models"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded border border-border bg-surface py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
+              className="min-h-11 w-full rounded border border-border bg-surface py-1.5 pl-8 pr-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
             />
           </div>
           <Button
@@ -228,7 +229,7 @@ export default function VisibleModelsModal({
             {filtered.map((row) => (
               <label
                 key={row.id}
-                className="flex cursor-pointer items-center gap-2 border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-sidebar/50"
+                className="flex min-h-11 cursor-pointer items-center gap-2 border-b border-border/50 px-3 py-2 last:border-b-0 hover:bg-sidebar/50"
               >
                 <input
                   type="checkbox"

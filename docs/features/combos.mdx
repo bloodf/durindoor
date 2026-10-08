@@ -12,8 +12,15 @@ Open **Dashboard → Combos** (`/dashboard/combos`) to create, edit, copy the na
 Before creating a combo, add active connections for its member providers and test each model directly. Use IDs from your live model picker.
 
 
+## Connection usage
+
+The **Connection usage** report at the bottom of **Dashboard → Combos** shows the last seven days of combo/account attribution, including unattributed requests. It has moved off Usage and does not follow Usage's period selector.
+
+## Create
 
 Name rules: letters, digits, `-`, `_`, and `.`. Duplicate names return HTTP 400. `POST /api/combos` needs `name`; `models` is the ordered member list. Optional `capabilities` is a ceiling (below). Optional `allowedConnectionIds` is at most 500 ids.
+
+The Create/Edit dialog uses the shared modal footer for its actions, boxed capability controls, and aligned model/field gutters on desktop and mobile.
 
 ```json
 {

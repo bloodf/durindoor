@@ -58,7 +58,7 @@ function LimitRow({ row }) {
 
 LimitRow.propTypes = { row: PropTypes.object.isRequired };
 
-/** Usage overview card: each key's configured limits, used and remaining. */
+/** Keys-page card: each key's configured limits, used and remaining. */
 export default function ApiKeyLimitsCard() {
   const [keys, setKeys] = useState(null);
   const [usage, setUsage] = useState({});
@@ -110,7 +110,7 @@ export default function ApiKeyLimitsCard() {
             {rows.length === 0 ? (
               <p className="text-xs text-dd-muted">No limits set. Edit them on the Keys page.</p>
             ) : (
-              <div className="overflow-x-auto rounded-dd border border-dd-border">
+              <div tabIndex={0} role="region" aria-label={`API key limits for ${key.name || key.id}`} className="min-h-11 min-w-0 overflow-x-auto rounded-dd border border-dd-border outline-none focus-visible:shadow-dd-focus">
                 <table className="w-full text-[13px]">
                   <thead className="bg-dd-surface-2 text-xs uppercase text-dd-muted">
                     <tr>

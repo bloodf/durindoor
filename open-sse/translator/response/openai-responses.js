@@ -36,6 +36,30 @@ function createEventEmitter(state) {
   return { events, emit };
 }
 
+// Completion usage must contain real integer counts, not a per-chunk zero
+// placeholder. Keep cache-inclusive normalization without trusting total_tokens.
+function completedUsage(raw) {
+  if (!raw || !isObject(raw) || Array.isArray(raw)) return null;
+  const input = [raw.input_tokens, raw.prompt_tokens].find(Number.isInteger);
+  const output = [raw.output_tokens, raw.completion_tokens].find(Number.isInteger);
+  if (input === undefined || output === undefined || input < 0 || output < 0) return null;
+  const usage = toResponsesUsage(raw);
+  if (!Number.isInteger(usage.input_tokens) || usage.input_tokens + usage.output_tokens <= 0) return null;
+  usage.total_tokens = usage.input_tokens + usage.output_tokens;
+  for (const [field, count] of [
+    ["input_tokens_details", "cached_tokens"],
+    ["output_tokens_details", "reasoning_tokens"]
+  ]) {
+    if (!usage[field]) continue;
+    // Codex requires this integer when the optional detail object is present.
+    // Preserve provider extras (e.g. cache creation/audio) when no cache read
+    // or reasoning count was reported, rather than dropping the whole object.
+    if (usage[field][count] === undefined) usage[field][count] = 0;
+    if (!Number.isInteger(usage[field][count]) || usage[field][count] < 0) delete usage[field];
+  }
+  return usage;
+}
+
 /**
  * Translate OpenAI chunk to Responses API events
  * @returns {Array} Array of events with { event, data } structure
@@ -51,12 +75,14 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (chunk.usage && isObject(chunk.usage)) {
     state.usage = { ...(state.usage || {}), ...chunk.usage };
   }
+  const responseUsage = completedUsage(chunk.usage);
+  if (responseUsage) state.responsesUsage = responseUsage;
 
   if (!chunk.choices?.length) {
     // Usage-only chunks trail finish_reason when include_usage is enabled upstream.
     // Complete only when usage was actually captured — an empty-choices chunk without
     // usage (or before finish_reason deferred completion) must not complete early.
-    if (state.awaitingTrailingUsage && !state.completedSent && state.usage) {
+    if (state.awaitingTrailingUsage && !state.completedSent && state.responsesUsage) {
       const { events, emit } = createEventEmitter(state);
       sendCompleted(state, emit);
       return events;
@@ -160,7 +186,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-    if (state.usage) {
+    if (state.responsesUsage) {
       sendCompleted(state, emit);
     } else {
       state.awaitingTrailingUsage = true;
@@ -565,7 +591,8 @@ function closeToolCall(state, emit, idx) {
 function sendCompleted(state, emit) {
   if (!state.completedSent) {
     state.completedSent = true;
-    const usage = toResponsesUsage(state.usage) || { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+    state.awaitingTrailingUsage = false;
+    const usage = state.responsesUsage;
     emit("response.completed", {
       type: "response.completed",
       response: {
@@ -577,7 +604,7 @@ function sendCompleted(state, emit) {
         background: false,
         error: null,
         output: (state.finalOutputItems || []).filter(Boolean),
-        usage
+        ...(usage ? { usage } : null)
       }
     });
   }

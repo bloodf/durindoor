@@ -144,7 +144,7 @@ To add a toggle:
 
 `cutoverLock.js` is the in-process mutex. `wrapCutoverGuard` on the live adapter rejects mutating SQL while the lock is held. Fresh adapters opened by cutover itself are not wrapped. A second cutover returns HTTP 503 with `Retry-After: 5` from `POST /api/settings/database/cutover`.
 
-`src/lib/db/secrets.js` is the only sanctioned reader of the Postgres URL. New writes go to `settings.postgresUrl` (AES-256-GCM, AAD `postgres-url`). `DURINDOOR_PG_URL` wins at boot. `DATA_DIR/durindoor-secrets.json` (mode `0600`) is a read-only legacy fallback. `GET /api/settings` and `GET /api/settings/database/engine` must not return the password or `postgresUrl`.
+`src/lib/db/secrets.js` is the sanctioned reader of the legacy settings URL. At startup, `DATA_DIR/durindoor-database.env` overrides process values for the three database selectors, then an unoverridden `DURINDOOR_PG_URL` wins, followed by `settings.postgresUrl` (AES-256-GCM, AAD `postgres-url`) and read-only legacy `DATA_DIR/durindoor-secrets.json` (mode `0600`). Managed-file passwords are write-only. `GET /api/settings` and `GET /api/settings/database/engine` must not return the password or `postgresUrl`.
 
 ## Test both engines
 

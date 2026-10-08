@@ -94,4 +94,7 @@ export const Closed = {
     onClose: () => {},
   },
   render: (args) => <ManualConfigModal {...args} />,
+  play: async () => {
+    await expect(within(document.body).queryByRole("dialog", { name: "Manual Configuration" })).not.toBeInTheDocument();
+  },
 };

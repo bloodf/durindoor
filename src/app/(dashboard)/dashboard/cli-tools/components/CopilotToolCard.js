@@ -213,7 +213,7 @@ export default function CopilotToolCard({ tool, isExpanded, onToggle, baseUrl, a
                 <span aria-hidden="true" className="material-symbols-outlined text-dd-info text-lg">info</span>
                 <div className="text-xs text-dd-info">
                   <p className="font-medium">Writes to <code className="px-1 bg-dd-surface-2 bg-dd-surface-3 rounded-dd">chatLanguageModels.json</code></p>
-                  <p className="mt-0.5 opacity-80">Reload VS Code after applying for changes to take effect.</p>
+                  <p className="mt-0.5 text-dd-muted">Reload VS Code after applying for changes to take effect.</p>
                 </div>
               </div>
 

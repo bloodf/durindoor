@@ -3,7 +3,13 @@ title: Monitoring usage
 description: Read request history, console output, and the health endpoint after traffic flows.
 ---
 
-Send a few requests, then open **Usage**. Use **Overview** for totals and trends, and **Details** to investigate one request.
+Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`), the dashboard home. The overview starts with gateway, 24-hour activity, latency, and storage monitoring cards, plus in-flight requests and provider health. These refresh every 15 seconds independently of the usage period, with pause and manual refresh controls. The former `/dashboard/monitoring` URL redirects here. Usage statistics follow: request counts, input and output tokens, cached tokens, estimated cost, and output speed, with charts, grouped rows, and provider topology.
+
+The Storage card currently labels its type as SQLite even when PostgreSQL is active. Check **Settings → Database** for the active engine rather than using that label to identify the history store.
+
+Combo/account attribution is under **Dashboard → Combos → Connection usage**, covering the last seven days. API key limits and consumption are below the key list on **Dashboard → API Keys**; see [API key limits](./api-keys.mdx#windowed-limits). Neither block remains on Usage.
+
+Use **Overview** for totals and trends, and **Details** to investigate one request.
 
 ## Inspect a request
 
@@ -18,7 +24,7 @@ A streaming request can begin with HTTP 200 and later fail. Such failures are re
 
 ## Read costs and speed
 
-Overview groups usage by provider, model, account, key, or endpoint and includes combo reports. Costs are estimates based on configured pricing. The provider's bill remains authoritative.
+Overview groups usage by provider, model, account, key, or endpoint. Costs are estimates based on configured pricing. The provider's bill remains authoritative.
 
 Costs can be split into fresh input, cached reads, cache writes, visible output, and reasoning. Older rows or provider-reported totals can appear under **Not split** when the individual amounts cannot be reconstructed. The categories plus **Not split** equal the total.
 
@@ -26,9 +32,10 @@ Output speed excludes the time to first token when timing is available. Non-stre
 
 Cache-hit percentage and output speed on detail rows are calculated from recorded tokens and timing. They are not separate provider measurements.
 
-## Read console output
+## Console log
 
-Open **Console Log** to inspect recent server messages. Filter by level, pause updates, or clear the buffer. The buffer keeps 200 lines in memory and disappears on restart. It is separate from persistent usage history.
+Open **Console Log** to inspect recent server messages. Filter by level, tag, or text; pause updates, copy or download visible lines, or clear the buffer. The in-memory 2000-line buffer disappears on restart and is separate from persistent usage history.
+
 
 ## Check HTTP health
 

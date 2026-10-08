@@ -16,6 +16,13 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste your sso= cookie value from grok.com",
+  webLogin: {
+    startUrl: "https://grok.com/",
+    origin: "https://grok.com",
+    allowedHosts: ["accounts.x.ai"],
+    cookieNames: ["sso"],
+    readyProbe: { url: "https://grok.com/rest/app-chat/conversations/new", method: "GET", okStatus: [200, 405] },
+  },
   transport: {
     baseUrl: "https://grok.com/rest/app-chat/conversations/new",
     format: "grok-web",

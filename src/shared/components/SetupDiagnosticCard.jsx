@@ -55,7 +55,7 @@ export default function SetupDiagnosticCard({ diagnostic, onRetry, className = "
       ) : null}
       {hasLogTail(diagnostic) ? (
         <details className="mt-4 rounded-dd border border-dd-border bg-dd-surface-2 p-3">
-          <summary className="cursor-pointer text-dd-muted outline-none focus-visible:rounded-dd focus-visible:shadow-dd-focus">Show recent Headroom log output</summary>
+          <summary className="list-item min-h-11 cursor-pointer py-3 text-dd-muted outline-none focus-visible:rounded-dd focus-visible:shadow-dd-focus">Show recent Headroom log output</summary>
           <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-dd bg-dd-surface p-2 text-xs text-dd-muted">{diagnostic.logTail}</pre>
         </details>
       ) : null}

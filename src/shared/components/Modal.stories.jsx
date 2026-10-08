@@ -68,6 +68,19 @@ export const Default = {
   },
 };
 
+export const OpenConfirmation = {
+  render: () => <ModalScenario confirm />,
+  play: async ({ canvasElement }) => {
+    const dialog = await waitFor(() => {
+      const node = within(canvasElement.ownerDocument.body).getByRole("dialog", { name: "Delete request?" });
+      expect(node).toBeVisible();
+      return node;
+    });
+    // Native dialog visibility precedes its inner animated message visibility.
+    await waitFor(() => expect(within(dialog).getByText("This action cannot be undone.")).toBeVisible());
+  },
+};
+
 export const Confirmation = {
   render: () => <ModalScenario confirm />,
   play: async ({ canvasElement }) => {

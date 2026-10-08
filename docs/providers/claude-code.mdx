@@ -82,6 +82,19 @@ The [Quota Tracker](../features/quota-tracking.mdx) reads Anthropic's OAuth usag
 - `weekly (7d)`, the seven-day window
 - per-model weekly rows when Anthropic reports them
 
+In the per-account view, if another Claude account on the current Quota Tracker
+page reports a model-specific weekly window (for example `weekly fable (7d)`),
+accounts that omit it show a muted row with `—` remaining and `not reported`
+for the reset. This row cannot be hidden: Anthropic did not report the window
+for that account, so it is not evidence of either available or exhausted quota.
+Placeholders are display-only and excluded from merged quota totals and routing.
+
+The account refresh icon's **Refresh (bypass cache)** action requests
+`GET /api/usage/<connectionId>?refresh=1`. It bypasses the fresh quota cache,
+but still honors Anthropic's 429 cooldown. During that cooldown the tracker
+keeps the cached rows and their stale warning instead of polling Anthropic
+again. The existing `?force=1` API flag remains supported.
+
 Preflight skips an account whose window is exhausted. Auto-ping can restart the five-hour window on a schedule; see [Quota tracking](../features/quota-tracking.mdx#auto-ping).
 
 After login, send a short request with a `cc/` ID from your catalog and confirm **Usage**. If authentication fails, reconnect. If a model requires a newer CLI, update the client and restart DurinDoor. Test tool calls separately from basic text replies.

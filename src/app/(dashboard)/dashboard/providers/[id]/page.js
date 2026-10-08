@@ -2395,6 +2395,7 @@ export default function ProviderDetailPage() {
         authHint={providerInfo?.authHint}
         authSnippet={providerInfo?.authSnippet}
         website={providerInfo?.website}
+        webLogin={providerInfo?.webLogin}
         proxyPools={proxyPools}
         existingConnectionNames={providerApiKeyConnectionNames}
         error={addConnectionError}

@@ -46,3 +46,13 @@ export const SudoPrompted = {
     expect(await body.findByRole("dialog", { name: /sudo password required/i })).toBeInTheDocument();
   },
 };
+
+export const KiroDnsActive = {
+  args: { ...baseArgs, tool: MITM_TOOLS.kiro, dnsActive: true },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools", routes } },
+  play: ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(canvas.getByRole("button", { name: /stop dns/i })).toBeInTheDocument();
+    expect(canvas.queryByRole("combobox", { name: /reasoning/i })).not.toBeInTheDocument();
+  },
+};

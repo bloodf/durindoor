@@ -30,6 +30,7 @@ export default function OrcaModelDropdown({
   const rootRef = useRef(null);
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
+  const searchRef = useRef(null);
 
   // A non-chat slice cannot be narrowed by input modality, so the filter is
   // cleared when the capability changes rather than silently sending a
@@ -65,10 +66,16 @@ export default function OrcaModelDropdown({
 
   useEffect(() => {
     if (!open) return undefined;
+    searchRef.current?.focus();
     const onPointerDown = (event) => {
       if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
     };
-    const onKeyDown = (event) => {if (event.key === "Escape") setOpen(false);};
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -80,6 +87,7 @@ export default function OrcaModelDropdown({
   const handleSelect = useCallback((model) => {
     onSelect?.(model.id);
     setOpen(false);
+    triggerRef.current?.focus();
   }, [onSelect]);
 
   const requestQuery = orcaCatalogQuery({ capability, imageOnly });
@@ -94,7 +102,7 @@ export default function OrcaModelDropdown({
           value={capability}
           onChange={(event) => selectCapability(event.target.value)}
           data-testid="orca-capability-select"
-          className="rounded-md border border-dd-border bg-dd-surface-2 px-2 py-1 text-xs focus:border-dd-accent focus:outline-none">
+          className="min-h-11 min-w-11 rounded-md border border-dd-border bg-dd-surface-2 px-2 py-1 text-xs focus:border-dd-accent focus:outline-none focus-visible:shadow-dd-focus">
 
           {ORCA_PICKER_CAPABILITIES.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
@@ -102,9 +110,10 @@ export default function OrcaModelDropdown({
         </select>
 
         {supportsImageFilter(capability) && (
-          <label className="flex items-center gap-1.5 text-xs text-dd-muted">
+          <label className="flex min-h-11 min-w-11 items-center gap-1.5 px-2 text-xs text-dd-muted">
             <input
               type="checkbox"
+              className="h-11 w-11 shrink-0 accent-dd-accent focus-visible:shadow-dd-focus"
               checked={imageOnly}
               onChange={(event) => setImageOnly(event.target.checked)}
               data-testid="orca-image-only" />
@@ -113,16 +122,18 @@ export default function OrcaModelDropdown({
           </label>
         )}
 
-        {/* The panel is anchored to the trigger itself, so its right edge tracks
-            the control the user clicked rather than the whole toolbar row. */}
-        <div className="relative" ref={triggerRef}>
+        {/* Narrow layouts anchor below the complete trigger/Clear row so
+            neither control sits behind the panel. Desktop anchors to the trigger. */}
+        <div className="relative flex min-w-0 w-full items-center gap-2 md:w-auto">
+        <div className="min-w-0 flex-1 md:relative md:flex-none">
           <button
             type="button"
+            ref={triggerRef}
             onClick={() => setOpen((value) => !value)}
             aria-expanded={open}
-            aria-haspopup="listbox"
+            aria-haspopup="dialog"
             data-testid="orca-model-trigger"
-            className="flex min-w-[220px] items-center justify-between gap-2 rounded-lg border border-dd-border bg-dd-surface px-3 py-1.5 text-xs text-dd-text hover:border-dd-accent">
+            className="flex min-h-11 min-w-0 w-full items-center justify-between gap-2 rounded-lg border border-dd-border bg-dd-surface px-3 py-1.5 text-xs text-dd-text outline-none hover:border-dd-accent focus-visible:shadow-dd-focus md:min-w-[220px] md:w-auto">
 
             <span className="truncate">{selectedModel || "Select an OrcaRouter model"}</span>
             <span className="material-symbols-outlined text-[16px] text-dd-muted">expand_more</span>
@@ -132,18 +143,20 @@ export default function OrcaModelDropdown({
             <div
               ref={panelRef}
               data-testid="orca-model-panel"
-              role="listbox"
+              role="dialog"
               aria-label={label}
-              className="absolute right-0 top-full z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-dd-border bg-dd-surface shadow-2xl">
+              className="absolute left-0 right-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-dd-border bg-dd-surface shadow-2xl md:left-auto md:w-[360px]">
 
               <div className="border-b border-dd-border-subtle px-3 py-2">
                 <input
                   type="text"
+                  ref={searchRef}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search..."
+                  aria-label="Search OrcaRouter models"
                   data-testid="orca-model-search"
-                  className="w-full rounded border border-dd-border bg-dd-surface-2 px-2 py-1 text-xs focus:border-dd-accent focus:outline-none" />
+                  className="min-h-11 w-full rounded border border-dd-border bg-dd-surface-2 px-2 py-1 text-xs focus:border-dd-accent focus:outline-none focus-visible:shadow-dd-focus" />
 
                 <p className="mt-1 text-[10px] text-dd-muted" data-testid="orca-catalog-status">
                   {catalog.live ?
@@ -154,7 +167,11 @@ export default function OrcaModelDropdown({
                 </p>
               </div>
 
-              <div className="max-h-[320px] overflow-y-auto p-1.5">
+              <div
+                role={options.length > 0 ? "listbox" : "status"}
+                aria-label={options.length > 0 ? label : undefined}
+                className="max-h-[320px] overflow-y-auto p-1.5"
+              >
                 {options.map((model) => (
                   <button
                     key={model.id}
@@ -163,7 +180,7 @@ export default function OrcaModelDropdown({
                     aria-selected={selectedModel === model.id}
                     onClick={() => handleSelect(model)}
                     data-testid="orca-model-option"
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs outline-none transition-colors focus-visible:shadow-dd-focus ${
                     selectedModel === model.id ? "bg-dd-accent-soft text-dd-accent" : "text-dd-text hover:bg-dd-surface-2"}`
                     }>
 
@@ -192,7 +209,7 @@ export default function OrcaModelDropdown({
                   type="button"
                   onClick={() => catalog.refresh()}
                   data-testid="orca-catalog-refresh"
-                  className="text-[11px] text-dd-muted underline hover:text-dd-accent">
+                  className="min-h-11 min-w-11 rounded-dd px-2 text-[11px] text-dd-muted underline outline-none hover:text-dd-accent focus-visible:shadow-dd-focus">
 
                   Refresh
                 </button>
@@ -206,11 +223,12 @@ export default function OrcaModelDropdown({
             type="button"
             onClick={() => onClear?.(selectedModel)}
             data-testid="orca-model-clear"
-            className="text-xs text-dd-muted underline hover:text-dd-accent">
+            className="min-h-11 min-w-11 shrink-0 rounded-dd px-2 text-xs text-dd-muted underline outline-none hover:text-dd-accent focus-visible:shadow-dd-focus">
 
             Clear
           </button>
         )}
+        </div>
       </div>
     </div>
   );

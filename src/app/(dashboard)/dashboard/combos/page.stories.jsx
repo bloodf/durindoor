@@ -44,6 +44,7 @@ let loggedCombosErrorCount = 0;
 const fixtureRoutes = (scenario) => {
   if (scenario === "empty") {
     return {
+      "GET /api/usage/combos": { body: { rows: [], boundary: "Last seven days" } },
       "GET /api/combos": { body: { combos: [] } },
       "GET /api/providers": { body: { connections: [] } },
       "GET /api/settings": { body: {} },
@@ -51,6 +52,7 @@ const fixtureRoutes = (scenario) => {
     };
   }
   return {
+    "GET /api/usage/combos": { body: { rows: [], boundary: "Last seven days" } },
     "GET /api/combos": { body: { combos: baseCombos } },
     "GET /api/providers": {
       body: {
@@ -112,7 +114,7 @@ export const LoadFailure = {
     const originalError = console.error;
     loggedCombosErrorCount = 0;
     console.error = (...args) => {
-      if (args[0] === "Combos page error:" && args[1] === fixtureCombosError) {
+      if (args.length === 2 && args[0] === "Combos page error:" && args[1] === fixtureCombosError) {
         loggedCombosErrorCount += 1;
         return;
       }
@@ -132,6 +134,9 @@ export const LoadFailure = {
     await waitFor(() => expect(loggedCombosErrorCount).toBe(1));
     await userEvent.click(canvas.getByRole("button", { name: "Try again" }));
     await expect(canvas.getByRole("main", { name: "Combos restored" })).toHaveTextContent("Combos restored");
+    await expect(canvas.queryByText("Something went wrong")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Back to Dashboard" })).not.toBeInTheDocument();
   },
 };
 
@@ -259,5 +264,99 @@ export const LoadFailureError = {
     await expect(within(dialog).getByRole("heading", { name: "Create Combo" })).toBeVisible();
     await expect(within(dialog).getByLabelText("Combo Name")).toBeVisible();
     await expect(within(dialog).getByText("No models added yet")).toBeVisible();
+  },
+};
+
+const spacingParameters = {
+  storyFixture: {
+    scenario: "default",
+    pathname: "/dashboard/combos",
+    routes: {
+      ...fixtureRoutes("default"),
+      "GET /api/models/alias": { body: { aliases: {} } },
+    },
+  },
+};
+
+const mobile390 = { name: "Mobile 390", styles: { width: "390px", height: "844px" } };
+const desktop1280 = { name: "Desktop 1280", styles: { width: "1280px", height: "900px" } };
+
+const assertSpacingModal = async () => {
+  const canvas = within(document.body);
+  await userEvent.click(await canvas.findByRole("button", { name: "Create Combo" }));
+  const dialog = await canvas.findByRole("dialog", { name: "Create Combo" });
+  const footer = dialog.querySelector("footer");
+  await expect(footer).toBeInTheDocument();
+  await expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(within(footer).getByRole("button", { name: "Create" })).toBeVisible();
+
+  // Select an existing combo through the real picker: nested combos are valid members.
+  await userEvent.click(within(dialog).getByRole("button", { name: "Add Model" }));
+  const picker = await canvas.findByRole("dialog", { name: "Add Model to Combo" });
+  await userEvent.click(await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ }));
+  await userEvent.click(within(picker).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(picker).not.toBeInTheDocument());
+  const drag = within(dialog).getByRole("button", { name: "Drag to reorder production-fallback" });
+  const row = drag.parentElement;
+  const nameInput = within(dialog).getByLabelText("Combo Name");
+  const weight = within(row).getByRole("spinbutton", { name: "Weight" });
+  await expect(drag).toBeVisible();
+  await expect(weight).toBeVisible();
+
+  // Pixel geometry catches the extra row inset without pinning Tailwind implementation.
+  await waitFor(() => {
+    const inputBox = nameInput.getBoundingClientRect();
+    const rowBox = row.getBoundingClientRect();
+    const dragBox = drag.getBoundingClientRect();
+    const weightBox = weight.getBoundingClientRect();
+    expect(rowBox.width).toBeGreaterThan(0);
+    expect(Math.abs(rowBox.left - inputBox.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rowBox.right - inputBox.right)).toBeLessThanOrEqual(1);
+    expect(Math.abs(dragBox.left - inputBox.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(weightBox.width - 64)).toBeLessThanOrEqual(1);
+    expect(rowBox.right).toBeLessThanOrEqual(window.innerWidth);
+  });
+};
+
+export const CreateComboSpacing = {
+  parameters: {
+    ...spacingParameters,
+    viewport: {
+      defaultViewport: "desktop1280",
+      viewports: { desktop1280 },
+      options: { desktop1280 },
+    },
+  },
+  globals: { viewport: { value: "desktop1280", isRotated: false } },
+  play: assertSpacingModal,
+};
+
+export const CreateComboSpacingMobile = {
+  parameters: {
+    ...spacingParameters,
+    viewport: {
+      defaultViewport: "mobile390",
+      viewports: { mobile390 },
+      options: { mobile390 },
+    },
+  },
+  globals: { viewport: { value: "mobile390", isRotated: false } },
+  play: assertSpacingModal,
+};
+
+export const ConnectionUsage = {
+  parameters: {
+    storyFixture: {
+      scenario: "default", pathname: "/dashboard/combos",
+      routes: { ...fixtureRoutes("default"), "GET /api/usage/combos": { body: {
+        boundary: "Last seven days",
+        rows: [{ comboId: "combo-prod-1", comboName: "production-fallback", connectionId: "conn-openai-1", requests: 12, promptTokens: 1400, completionTokens: 2200, cost: 0.84 }],
+      } } },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: "Connection usage" })).toBeVisible();
+    await expect(await canvas.findByText("OpenAI prod")).toBeVisible();
   },
 };

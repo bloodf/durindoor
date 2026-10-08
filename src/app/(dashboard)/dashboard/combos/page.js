@@ -27,6 +27,7 @@ import { translate } from "@/i18n/runtime";
 import ConnectionGroupsPanel from "./ConnectionGroupsPanel.jsx";
 import ComboAllowListEditor from "./ComboAllowListEditor.jsx";
 import { sortComboModels } from "@/lib/combos/comboSort.js";
+import ComboUsageReport from "./components/ComboUsageReport";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -526,6 +527,11 @@ export default function CombosPage() {
 
       <ConnectionGroupsPanel connections={providerConnections} onGroupsChange={setGroups} />
 
+      <section className="flex min-w-0 flex-col gap-4" aria-labelledby="connection-usage-heading">
+        <h2 id="connection-usage-heading" className="text-lg font-semibold text-dd-text">{translate("Connection usage")}</h2>
+        <ComboUsageReport period="7d" customRange={null} resetNonce={0} />
+      </section>
+
       {/* Create Modal - Use key to force remount and reset state */}
       <ComboFormModal
         key="create"
@@ -763,7 +769,7 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex min-w-0 flex-wrap items-center gap-1.5 rounded-dd bg-dd-surface-2 px-2 py-1 transition-colors sm:flex-nowrap ${isDragging ? "shadow-dd-elevated ring-1 ring-dd-accent/30" : ""}`}
+      className={`group flex min-w-0 flex-wrap items-center gap-1.5 rounded-dd bg-dd-surface-2 py-1 transition-colors sm:flex-nowrap ${isDragging ? "shadow-dd-elevated ring-1 ring-dd-accent/30" : ""}`}
     >
       {/* Drag handle */}
       <button
@@ -991,6 +997,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
 
   const isEdit = !!combo;
 
+  // Layout contract (mirrors KeysPageClient and shared/components/ComboFormModal):
+  // Cancel/Save live in the Modal `footer` slot so the primitive owns padding,
+  // the divider and 44px targets; the body must not render its own button row.
+  // The capability ceiling is a bordered `rounded-dd-lg p-4` fieldset.
+  // Covered by tests/unit/combos-modal-spacing.test.js.
   return (
     <>
       <Modal
@@ -999,6 +1010,21 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
         title={isEdit ? "Edit Combo" : "Create Combo"}
         size="lg"
         pending={saving}
+        footer={
+          <>
+            <Button onClick={onClose} variant="ghost" disabled={saving}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              loading={saving}
+              disabled={!name.trim() || !!nameError}
+            >
+              {isEdit ? "Save" : "Create"}
+            </Button>
+          </>
+        }
       >
         <div className="flex flex-col gap-4">
           <Input
@@ -1012,7 +1038,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
           {saveError ? <p role="alert" className="text-xs text-dd-danger">{saveError}</p> : null}
 
           <section aria-labelledby="combo-models-heading">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
               <h2 id="combo-models-heading" className="text-sm font-medium text-dd-text">Models</h2>
               <div className="flex items-center gap-2">
                 <Select
@@ -1067,10 +1093,10 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
               Add Model
             </Button>
           </section>
-          <fieldset className="border-t border-dd-border-subtle pt-3">
-            <legend className="px-1 text-sm font-medium text-dd-text">Capability ceiling</legend>
-            <p className="mb-2 text-[10px] text-dd-muted">Optional. Only disables derived features or lowers derived limits; blank fields preserve member-derived capabilities.</p>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          <fieldset className="rounded-dd-lg border border-dd-border p-4">
+            <legend className="px-1 text-sm font-semibold text-dd-text">Capability ceiling</legend>
+            <p className="mb-3 text-xs text-dd-muted">Optional. Only disables derived features or lowers derived limits; blank fields preserve member-derived capabilities.</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {["vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput", "videoOutput", "search", "tools", "reasoning"].map((key) => (
                 <Checkbox
                   key={key}
@@ -1085,26 +1111,11 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                 />
               ))}
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input label="Context window" type="number" min="1" value={capabilities.contextWindow ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, contextWindow: event.target.value === "" ? undefined : Number(event.target.value) }))} />
               <Input label="Max output" type="number" min="1" value={capabilities.maxOutput ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, maxOutput: event.target.value === "" ? undefined : Number(event.target.value) }))} />
             </div>
           </fieldset>
-
-          <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
-            <Button onClick={onClose} variant="ghost" size="sm">
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              size="sm"
-              loading={saving}
-              disabled={!name.trim() || !!nameError}
-            >
-              {isEdit ? "Save" : "Create"}
-            </Button>
-          </div>
         </div>
       </Modal>
 

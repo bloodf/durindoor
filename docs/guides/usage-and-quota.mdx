@@ -17,7 +17,7 @@ Resetting usage never touches upstream quota, and the provider's own dashboard i
 Open **Quota Tracker** and find the connection. A row that is exhausted or cooling down shows when it resets.
 </Step>
 <Step>
-If the numbers look stale, refresh that connection. Refresh bypasses the 60-second cache. Automation can request `GET /api/usage/{connectionId}?force=1`.
+If the numbers look stale, use the account's **Refresh (bypass cache)** action. The dashboard calls `GET /api/usage/{connectionId}?refresh=1`, which skips the fresh quota cache but still honors provider 429 cooldowns. The existing `?force=1` API flag remains supported.
 </Step>
 <Step>
 If the provider supports quota preflight and you have another eligible account, routing can skip the exhausted connection. Otherwise add a connection or put the model in a [combo](../features/combos.mdx) with a fallback member.
@@ -49,7 +49,7 @@ Being in this list does not mean routing uses the number. Preflight only reads p
 
 Per-provider notes: [Claude Code](../providers/claude-code.mdx#quota), [OpenAI Codex](../providers/codex.mdx#quota), [Cursor](../providers/cursor.mdx#quota), [Antigravity](../providers/antigravity.mdx#quota), [Kiro](../providers/kiro.mdx#models-and-quota).
 
-You can hide individual rows per connection in the limits view if a provider reports buckets you do not care about. The choice is stored per connection.
+You can hide individual reported rows per connection in the limits view if a provider reports buckets you do not care about. The choice is stored per connection. Claude model-scoped weekly windows omitted by an account appear as muted `—` / `not reported` placeholders when a sibling on the current page reports that window. These placeholders cannot be hidden and do not imply available or exhausted quota; they are excluded from totals and routing. See [Claude Code quota](../providers/claude-code.mdx#quota).
 
 ## Cooldowns
 
@@ -68,7 +68,7 @@ A 429 sent to the client carries `Retry-After` when the cooldown is known. The f
 
 Nothing is pruned by default. Turn on **Auto-clean old data** under **Profile → Observability** to delete usage history, request details, timeline traces, and quota snapshots older than the window you pick (30 days unless you change it; presets 7, 15, 30, 60, or 90, or a custom value from 1 to 3650). The sweep runs hourly, starting a minute after boot. **Clean now** runs it at once. Over HTTP it is `GET` and `POST /api/data-retention`.
 
-There is no CSV export for usage. **Download Backup** under **Profile → Data & Backups** saves the whole database, usage included, and a copy of `DATA_DIR/db/data.sqlite` works too.
+There is no CSV export for usage. **Download Backup** under **Profile → Data & Backups** saves portable configuration JSON, including API-key lifetime totals, but not request usage history, request details, or timeline events. To preserve that history, use an engine-level backup: the SQLite database or a PostgreSQL dump. See [Data management](../operations/data-management.mdx).
 
 ## Prices
 

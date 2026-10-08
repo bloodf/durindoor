@@ -91,12 +91,17 @@ describe("isolated web-login proxy gate", () => {
   });
 
   it("rejects invalid, expired and provider-mismatched bootstrap grants and expired proxy sessions", async () => {
+    const createdAt = Date.UTC(2026, 0, 1);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(createdAt);
     const sess = session();
+    // Grant lifetime starts at issuance, which can follow session creation.
+    const issuedAt = createdAt + 1;
+    clock.mockReturnValue(issuedAt);
     const grant = new URL(issueBootstrap(sess)).searchParams.get("grant");
     expect((await proxy(request("/__web_login/bootstrap?provider=cookie-web&grant=invalid"))).status).toBe(403);
     expect((await proxy(request(`/__web_login/bootstrap?provider=other-provider&grant=${grant}`))).status).toBe(403);
     expect((await proxy(request(`/__web_login/bootstrap?provider=cookie-web&grant=${grant}`, "", LOGIN, "POST"))).status).toBe(405);
-    const clock = vi.spyOn(Date, "now").mockReturnValue(sess.createdAt + 60_000);
+    clock.mockReturnValue(issuedAt + 60_000);
     expect((await proxy(request(`/__web_login/bootstrap?provider=cookie-web&grant=${grant}`))).status).toBe(403);
     clock.mockReturnValue(sess.createdAt + SESSION_TTL_MS);
     expect((await proxy(request("/__web_login/cookie-web/account", proxySessionCookie(sess).split(";")[0]))).status).toBe(404);

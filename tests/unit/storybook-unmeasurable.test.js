@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { auditIncomplete, contrastRatio, exemptionFor, resolveNode, solidRgb } from "../e2e/unmeasurable.mjs";
 
 const CHARTED = "durin-ds-pages-timeline--default";
+const CONSOLE_CHART = "durin-ds-pages-console-log--log";
 const UNCHARTED = "durin-ds-actions-button--primary";
 const chartStories = [CHARTED];
 
@@ -27,9 +28,12 @@ const chartStyle = (overrides = {}) => (element) => ({
   color: "rgb(237, 230, 216)", backgroundColor: "rgba(0, 0, 0, 0)",
   backgroundImage: "none", visibility: "visible", display: "block", opacity: "1",
   filter: "none", mixBlendMode: "normal", fill: "none", fillOpacity: "1", stroke: "none",
+  markerStart: "none", markerMid: "none", markerEnd: "none",
+  strokeWidth: "2px", strokeLinecap: "butt", strokeLinejoin: "miter", strokeMiterlimit: "4",
+  vectorEffect: "none", transform: "none", perspective: "none",
   getPropertyValue: (name) => ({
     "--dd-text-muted": "#ede6d8", "--dd-text-subtle": "#ede6d8",
-    "--dd-surface": "#22201c", "--dd-accent": "#10e882",
+    "--dd-surface": "#22201c", "--dd-accent": "#10e882", "--dd-info": "#60a5fa",
   })[name] ?? "",
   ...(element.id === "chart-surface" ? { backgroundColor: "rgb(34, 32, 28)" } : {}),
   ...(element.matches("text, tspan") ? { fill: "rgb(237, 230, 216)" } : {}),
@@ -37,6 +41,23 @@ const chartStyle = (overrides = {}) => (element) => ({
   ...(element.matches("stop") ? { stopColor: "rgb(16, 232, 130)", stopOpacity: element.id === "start" ? "0.14" : "0" } : {}),
   ...overrides[element.id],
 });
+
+/** happy-dom has no SVG layout: supply vector bounds at this policy boundary. */
+function strokeBehindTick(tick, tag) {
+  const paint = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  paint.id = "stroke-paint";
+  paint.setAttribute("fill", "none");
+  if (tag === "path") paint.setAttribute("d", "M12 14L28 14");
+  else {
+    for (const [name, value] of Object.entries({ x1: 12, y1: 14, x2: 28, y2: 14 })) paint.setAttribute(name, value);
+  }
+  const rect = (left, top, right, bottom) => ({ left, top, right, bottom });
+  tick.getBoundingClientRect = () => rect(10, 10, 30, 22);
+  paint.getBoundingClientRect = () => rect(12, 14, 28, 14);
+  paint.getScreenCTM = () => ({ a: 1, b: 0, c: 0, d: 1 });
+  tick.closest("svg").insertBefore(paint, tick.closest(".recharts-cartesian-axis-tick"));
+  return paint;
+}
 
 function monacoProxy(className = "inputarea") {
   document.body.innerHTML = `<div class="monaco-editor"><textarea id="proxy" class="${className}"></textarea></div>`;
@@ -61,6 +82,66 @@ describe("unmeasurable node policy", () => {
     tick.parentElement.classList.add("recharts-cartesian-axis-tick-label");
     tick.parentElement.parentElement.removeAttribute("class");
     expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+  });
+
+  it("accepts the qualified INFO gradient only for its source-proved chart", () => {
+    const tick = chartTick();
+    const infoStyle = chartStyle({
+      start: { stopColor: "rgb(96, 165, 250)" },
+      end: { stopColor: "rgb(96, 165, 250)" },
+    });
+    const qualified = [...chartStories, CONSOLE_CHART];
+    expect(exemptionFor(tick, CONSOLE_CHART, qualified, infoStyle)).toBe("chart-axis-aaa-v1");
+    expect(exemptionFor(tick, CHARTED, qualified, infoStyle)).toBeNull();
+    expect(exemptionFor(tick, CONSOLE_CHART, qualified, chartStyle())).toBeNull();
+    expect(exemptionFor(tick, CONSOLE_CHART, [], infoStyle)).toBeNull();
+  });
+
+  it.each(["line", "path"])("retains an identical-glyph %s stroke even when its fill is none", (tag) => {
+    const tick = chartTick();
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    strokeBehindTick(tick, tag);
+    const style = chartStyle({ "stroke-paint": { stroke: "rgb(237, 230, 216)", fill: "none" } });
+    expect(exemptionFor(tick, CHARTED, chartStories, style)).toBeNull();
+  });
+
+  it.each(["line", "path"])("excludes a %s stroke only after proving expanded bounds miss the glyph", (tag) => {
+    const tick = chartTick();
+    const paint = strokeBehindTick(tick, tag);
+    paint.getBoundingClientRect = () => ({ left: 12, right: 28, top: 0, bottom: 0 });
+    const style = chartStyle({ "stroke-paint": { stroke: "rgb(237, 230, 216)", fill: "none" } });
+    expect(exemptionFor(tick, CHARTED, chartStories, style)).toBe("chart-axis-aaa-v1");
+    // The centerline is still outside; only the wider stroke reaches the tick.
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      "stroke-paint": { stroke: "rgb(237, 230, 216)", fill: "none", strokeWidth: "24px" },
+    }))).toBeNull();
+    paint.getScreenCTM = () => ({ a: 10, b: 0, c: 0, d: 10 });
+    expect(exemptionFor(tick, CHARTED, chartStories, style)).toBeNull();
+    paint.getScreenCTM = () => null;
+    expect(exemptionFor(tick, CHARTED, chartStories, style)).toBeNull();
+  });
+
+  it("does not turn a line's irrelevant fill into a stroke exemption", () => {
+    const tick = chartTick();
+    const paint = strokeBehindTick(tick, "line");
+    const style = chartStyle({
+      "stroke-paint": { stroke: "rgb(237, 230, 216)", fill: "rgb(237, 230, 216)" },
+    });
+    expect(exemptionFor(tick, CHARTED, chartStories, style)).toBeNull();
+    paint.getBoundingClientRect = () => ({ left: 12, right: 28, top: 0, bottom: 0 });
+    expect(exemptionFor(tick, CHARTED, chartStories, style)).toBe("chart-axis-aaa-v1");
+  });
+
+  it("retains unknown stroke paint impact and marker paint rather than assuming a surface", () => {
+    const tick = chartTick();
+    const paint = strokeBehindTick(tick, "path");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      "stroke-paint": { stroke: "url(#unproved)", fill: "none" },
+    }))).toBeNull();
+    paint.getBoundingClientRect = () => ({ left: 12, right: 28, top: 0, bottom: 0 });
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      "stroke-paint": { stroke: "rgb(237, 230, 216)", fill: "none", markerEnd: "url(#unproved)" },
+    }))).toBeNull();
   });
 
   it.each([

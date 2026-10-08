@@ -76,15 +76,68 @@ function paintedBackground(element, computeStyle, inspectOuterAncestors = false)
   }
   return background;
 }
+// Paint tokens from the seven sources covered by the chart contrast proof.
+// The story allowlist is still required; these families do not add stories.
+const CHART_FILL_TOKENS = [
+  ["durin-ds-pages-console-log--", ["--dd-info"]],
+  ["production-usage-usage-surfaces--", ["--dd-accent", "--dd-accent-2"]],
+  ["durin-ds-pages-headroom--", ["--dd-accent"]],
+  ["durin-ds-pages-timeline--", ["--dd-accent"]],
+  ["durin-ds-pages-token-saver-statistics--", ["--dd-accent"]],
+  ["production-pxpipe-pxpipeclient--", ["--dd-accent"]],
+  ["production-pxpipe-pxpipepage--", ["--dd-accent"]],
+  ["production-savers-tokensaveroverview--", ["--dd-accent"]],
+  ["production-savers-tokensaverclient--", ["--dd-accent"]],
+];
+
+/** Prove separation using live vector bounds, including caps/joins/transform. */
+function strokeMissesGlyph(paint, glyph, style, computeStyle) {
+  const width = String(style.strokeWidth).match(/^([\d.]+)px$/);
+  if (!width || !["butt", "round", "square"].includes(style.strokeLinecap)
+    || !["miter", "round", "bevel"].includes(style.strokeLinejoin)) return false;
+  const strokeWidth = Number(width[1]);
+  const miterLimit = Number(style.strokeMiterlimit);
+  if (!Number.isFinite(strokeWidth) || strokeWidth < 0
+    || !Number.isFinite(miterLimit) || miterLimit < 1) return false;
+  for (let ancestor = paint; ancestor; ancestor = ancestor.parentElement) {
+    const ancestorStyle = computeStyle(ancestor);
+    if (ancestorStyle.perspective !== "none" || String(ancestorStyle.transform).startsWith("matrix3d(")) return false;
+  }
+  if (!["none", "non-scaling-stroke"].includes(style.vectorEffect)) return false;
+  const matrix = paint.getScreenCTM?.();
+  if (!matrix || ![matrix.a, matrix.b, matrix.c, matrix.d].every(Number.isFinite)) return false;
+  let scaleX = Math.hypot(matrix.a, matrix.c);
+  let scaleY = Math.hypot(matrix.b, matrix.d);
+  if (style.vectorEffect === "non-scaling-stroke") {
+    // Cover both host/CSS scaling and an unscaled SVG stroke conservatively.
+    scaleX = Math.max(1, scaleX);
+    scaleY = Math.max(1, scaleY);
+  }
+  const rect = paint.getBoundingClientRect();
+  const tick = glyph.getBoundingClientRect();
+  if (![rect.left, rect.right, rect.top, rect.bottom, tick.left, tick.right, tick.top, tick.bottom].every(Number.isFinite)
+    || tick.right <= tick.left || tick.bottom <= tick.top) return false;
+  const extent = strokeWidth / 2 * Math.max(
+    !paint.matches("line, circle, ellipse") && style.strokeLinejoin === "miter" ? miterLimit : 1,
+    style.strokeLinecap === "square" ? Math.SQRT2 : 1,
+  );
+  // Keep touching bounds unresolved; include a conservative fringe, not a
+  // claim about raster pixels or the glyph's exact outline.
+  const x = extent * scaleX + 1;
+  const y = extent * scaleY + 1;
+  return rect.right + x < tick.left || rect.left - x > tick.right
+    || rect.bottom + y < tick.top || rect.top - y > tick.bottom;
+}
+
 
 /**
  * Re-prove the source guard against this SVG's live paint, not an old capture.
- * Guarded sources use muted/subtle glyphs, an opaque surface and accent area
- * gradients capped at 0.14. Unrecognised paints remain unresolved. Bounding
- * every possible area overlap is conservative: no glyph/background geometry
- * or historical screenshot is assumed to establish a passing pair.
+ * Guarded sources use muted/subtle glyphs, an opaque surface and source-specific
+ * area gradients capped at 0.14. Unrecognised paints remain unresolved. Bound
+ * possible fill/stroke overlaps; exclude a stroke only with live conservative
+ * nonintersection proof. Historical captures establish no passing pair.
  */
-function chartPaintProved(element, computeStyle) {
+function chartPaintProved(element, storyId, computeStyle) {
   if (!(element instanceof SVGElement) || !element.matches("text, tspan")) return false;
   const svg = element.closest("svg");
   if (!svg) return false;
@@ -97,10 +150,16 @@ function chartPaintProved(element, computeStyle) {
   if (![token("--dd-text-muted"), token("--dd-text-subtle")].some((rgb) => same(foreground, rgb))) return false;
   const background = paintedBackground(element, computeStyle, true);
   if (!same(background, surface)) return false;
-  const accents = [token("--dd-accent"), token("--dd-accent-2")].filter(Boolean);
+  const paintTokens = CHART_FILL_TOKENS.find(([prefix]) => storyId.startsWith(prefix))?.[1];
+  if (!paintTokens) return false;
+  const fills = paintTokens.map(token).filter(Boolean);
   let darkest = [...background];
   let lightest = [...background];
-  for (const paint of svg.querySelectorAll("path, rect, circle, ellipse, polygon, polyline, image, foreignObject, use")) {
+  const bound = (rgb, alpha) => {
+    darkest = darkest.map((channel, c) => Math.min(channel, rgb[c] * alpha + channel * (1 - alpha)));
+    lightest = lightest.map((channel, c) => Math.max(channel, rgb[c] * alpha + channel * (1 - alpha)));
+  };
+  for (const paint of svg.querySelectorAll("path, line, rect, circle, ellipse, polygon, polyline, image, foreignObject, use")) {
     if (paint.closest("defs")) continue;
     if (paint.matches("image, foreignObject, use")) return false;
     // A faded/filter/blended area is outside the guarded source paint model.
@@ -111,7 +170,13 @@ function chartPaintProved(element, computeStyle) {
         || ancestorStyle.mixBlendMode !== "normal" || ancestorStyle.backgroundImage !== "none") return false;
     }
     const paintStyle = computeStyle(paint);
-    if (paintStyle.fill === "none") continue;
+    if ([paintStyle.markerStart, paintStyle.markerMid, paintStyle.markerEnd].some((marker) => marker !== "none")) return false;
+    // No fill does not mean no paint. Only proved separation can remove a
+    // stroke from this audit. Potential intersection/unknown bounds remain
+    // incomplete; do not assume paint order or an unchanged glyph foreground.
+    if (paintStyle.stroke !== "none" && !strokeMissesGlyph(paint, element, paintStyle, computeStyle)) return false;
+    // SVG lines have no fillable interior; their stroke was audited above.
+    if (paint.matches("line") || paintStyle.fill === "none") continue;
     // Some guarded charts explicitly paint the same opaque surface in SVG.
     if (paint.matches("rect") && same(proofRgb(paintStyle.fill), surface) && paintStyle.fillOpacity === "1") continue;
     const reference = String(paintStyle.fill).match(/^url\(["']?([^"')]+)["']?\)$/)?.[1];
@@ -133,7 +198,7 @@ function chartPaintProved(element, computeStyle) {
         || stopStyle.mixBlendMode !== "normal") return false;
       const rgb = proofRgb(stopStyle.stopColor);
       const opacity = Number(stopStyle.stopOpacity);
-      if (!rgb || !accents.some((accent) => same(rgb, accent)) || (fill && !same(fill, rgb))
+      if (!rgb || !fills.some((fillToken) => same(rgb, fillToken)) || (fill && !same(fill, rgb))
         || !Number.isFinite(opacity) || opacity < 0 || opacity > 0.14) return false;
       fill = rgb;
       alpha = Math.max(alpha, opacity);
@@ -142,8 +207,7 @@ function chartPaintProved(element, computeStyle) {
     const fillOpacity = Number(paintStyle.fillOpacity);
     if (!Number.isFinite(fillOpacity) || fillOpacity < 0 || fillOpacity > 1) return false;
     alpha *= fillOpacity;
-    darkest = darkest.map((channel, c) => Math.min(channel, fill[c] * alpha + channel * (1 - alpha)));
-    lightest = lightest.map((channel, c) => Math.max(channel, fill[c] * alpha + channel * (1 - alpha)));
+    bound(fill, alpha);
   }
   return [darkest, lightest].every((backdrop) => {
     const ratio = contrastRatio(foreground, backdrop);
@@ -167,7 +231,7 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
   if (element.closest(".recharts-cartesian-axis-tick, .recharts-cartesian-axis-tick-label")) {
     // The allowlist identifies guarded sources, not an exemption by itself.
     // Live glyphs, ancestor paint and SVG fills must still match that proof.
-    return chartStories.includes(storyId) && chartPaintProved(element, computeStyle)
+    return chartStories.includes(storyId) && chartPaintProved(element, storyId, computeStyle)
       ? "chart-axis-aaa-v1" : null;
   }
   // Monaco names its input proxy `inputarea` or `ime-text-area` depending on

@@ -114,7 +114,7 @@ export const LoadFailure = {
     const originalError = console.error;
     loggedCombosErrorCount = 0;
     console.error = (...args) => {
-      if (args[0] === "Combos page error:" && args[1] === fixtureCombosError) {
+      if (args.length === 2 && args[0] === "Combos page error:" && args[1] === fixtureCombosError) {
         loggedCombosErrorCount += 1;
         return;
       }
@@ -134,6 +134,9 @@ export const LoadFailure = {
     await waitFor(() => expect(loggedCombosErrorCount).toBe(1));
     await userEvent.click(canvas.getByRole("button", { name: "Try again" }));
     await expect(canvas.getByRole("main", { name: "Combos restored" })).toHaveTextContent("Combos restored");
+    await expect(canvas.queryByText("Something went wrong")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Back to Dashboard" })).not.toBeInTheDocument();
   },
 };
 

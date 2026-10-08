@@ -16,7 +16,7 @@
  * Edge-safe: no Node-only APIs (used from both middleware and API routes).
  */
 
-import { isNumber, isString } from "@/shared/utils/typeChecks";
+import { isNumber, isObject, isString } from "@/shared/utils/typeChecks";
 
 const ACCOUNT_HOST = "account.xiaomi.com";
 export const SESSION_COOKIE = "dd_mimo_login";
@@ -56,6 +56,47 @@ const MIMO_BASES = {
 const DEFAULT_REGION = "sgp";
 // passToken-prefix -> last failure ts (60s backoff for the service exchange)
 const _exchangeBackoff = new Map();
+
+const diagnosticIds = new WeakMap();
+const TRANSPORT_CODES = new Set([
+  "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN",
+  "EPIPE", "ENETUNREACH", "EHOSTUNREACH", "ECONNABORTED",
+  "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET", "ERR_PROXY_CONNECTION_FAILED",
+]);
+
+/**
+ * Content-free diagnostics: events are local literals; only HTTP status, signed
+ * 32-bit upstream failure codes and exact allowlisted transport codes survive.
+ * Never pass URLs, bodies, cookie inventories, exception messages or raw state
+ * to the console. State participates in the credential-release check in the
+ * status route, so correlation uses an independently generated random ID per
+ * in-memory session, never state or its digest. IDs are not persisted in cookies
+ * or accepted from callers; decoded sessions receive fresh diagnostic IDs.
+ */
+function logDiagnostic(sess, event, { status, upstreamCode, error } = {}) {
+  let correlation;
+  if (sess && isObject(sess)) {
+    if (!diagnosticIds.has(sess)) {
+      diagnosticIds.set(sess, crypto.randomUUID());
+    }
+    correlation = diagnosticIds.get(sess);
+  } else {
+    correlation = crypto.randomUUID();
+  }
+  const details = { event, correlation };
+  if (Number.isInteger(status) && status >= 100 && status <= 599) details.status = status;
+  if (Number.isInteger(upstreamCode) && upstreamCode !== 0
+    && upstreamCode >= -2147483648 && upstreamCode <= 2147483647) {
+    details.upstreamCode = upstreamCode;
+  }
+  // Never stringify/coerce unknown codes or forward error objects to loggers.
+  try {
+    const code = error?.code;
+    if (TRANSPORT_CODES.has(code) && isString(code)) details.transportCode = code;
+  } catch { /* A hostile code getter must not interrupt fallback or exchange. */ }
+  console.log("[mimo-login]", details);
+}
 
 export function resolveMimoRegionBase(region) {
   const r = String(region || "").toLowerCase();
@@ -283,19 +324,18 @@ export function readSessionIdentity(sess) {
 export async function ensureServiceSession(sess) {
   const id = readSessionIdentity(sess);
   if (!id) return false;
-  const T = () => new Date().toISOString().slice(11, 23);
-  const log = (m) => console.log(`${T()} [mimo-login][exchange] ${m}`);
+  const log = (event, details) => logDiagnostic(sess, event, details);
   // Backoff: a failed full 5-step chain must not re-run on every 2.5s poll.
   const bkKey = id.passToken.slice(0, 24);
   const lastFail = _exchangeBackoff.get(bkKey);
   if (lastFail && Date.now() - lastFail < 60_000) {
-    log("exchange in backoff (60s), skip");
+    log("exchange_backoff");
     return false;
   }
   try {
     const mod = await import("../../open-sse/shared/mimoAccount.js");
     const proxyOptions = sess.proxyUrl ? { enabled: true, url: sess.proxyUrl } : null;
-    log(`exchanging passToken (region=${sess.region}, egress=${sess.proxyUrl || "direct"}) ...`);
+    log("exchange_start");
     const serviceCookie = await mod.getMimoAccountCookie(
       {
         region: sess.region,
@@ -306,7 +346,7 @@ export async function ensureServiceSession(sess) {
       proxyOptions,
     );
     if (!serviceCookie) {
-      log("exchange failed: no service cookie");
+      log("exchange_no_service_cookie");
       _exchangeBackoff.set(bkKey, Date.now());
       return false;
     }
@@ -321,7 +361,7 @@ export async function ensureServiceSession(sess) {
       if (!name || !value) continue;
       sess.jar.set(`${name}|${host}|/`, { name, value, domain: host, path: "/" });
     }
-    log(`serviceCookie merged, jar=[${[...sess.jar.keys()].map((k) => k.split("|")[0]).join(",").slice(0, 160)}]`);
+    log("exchange_cookie_merged");
 
     const meUrl = `${sess.upstreamBase}/api/user/xiaomi/me`;
     const res = await fetchUpstream(
@@ -331,10 +371,10 @@ export async function ensureServiceSession(sess) {
       cookieHeaderFor(sess, meUrl),
     );
     absorbSetCookies(sess, res, meUrl);
-    log(`me confirm http=${res.status}`);
+    log("exchange_confirm", { status: res.status });
     return res.status === 200;
   } catch (e) {
-    log(`exchange error: ${e?.message || e}`);
+    log("exchange_error", { error: e });
     _exchangeBackoff.set(bkKey, Date.now());
     return false;
   }
@@ -445,12 +485,12 @@ let _pafPromise = null;
 let _socksPromise = null;
 
 /** fetch-compatible wrapper over socks-proxy-agent (undici ProxyAgent has no socks support). */
-async function socksFetch(url, init, proxyUrl) {
+async function socksFetch(url, init, proxyUrl, sess) {
   if (!_socksPromise) {
     _socksPromise = import("socks-proxy-agent")
       .then((m) => m.SocksProxyAgent || m.default?.SocksProxyAgent || m.default)
       .catch((e) => {
-        console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] socks-proxy-agent unavailable:`, e?.message || e);
+        logDiagnostic(sess, "socks_agent_unavailable", { error: e });
         return null;
       });
   }
@@ -498,36 +538,36 @@ async function socksFetch(url, init, proxyUrl) {
   });
 }
 
-async function loginFetch(url, init, sessionProxyUrl = null) {
+async function loginFetch(url, init, sessionProxyUrl = null, sess = null) {
   if (!sessionProxyUrl) return fetch(url, init); // direct — no agent machinery needed
   const proxyOptions = { enabled: true, url: sessionProxyUrl };
   try {
-    if (/^socks/i.test(sessionProxyUrl)) return await socksFetch(url, init, sessionProxyUrl);
+    if (/^socks/i.test(sessionProxyUrl)) return await socksFetch(url, init, sessionProxyUrl, sess);
     if (!_pafPromise) {
       _pafPromise = import("../../open-sse/utils/proxyFetch.js")
         .then((m) => m.proxyAwareFetch)
         .catch((e) => {
-          console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] proxyAwareFetch unavailable (runtime?), direct only:`, e?.message || e);
+          logDiagnostic(sess, "proxy_fetch_unavailable", { error: e });
           return null;
         });
     }
     const paf = await _pafPromise;
     if (paf) return await paf(url, init, proxyOptions);
   } catch (e) {
-    console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] proxied fetch failed, falling back to direct:`, e?.message || e);
+    logDiagnostic(sess, "proxy_fetch_direct_fallback", { error: e });
   }
   return fetch(url, init);
 }
 
 /** Public alias — start/status routes share the same egress path. */
-export const loginUpstreamFetch = (url, init, sess = null) => loginFetch(url, init, sess?.proxyUrl || null);
+export const loginUpstreamFetch = (url, init, sess = null) => loginFetch(url, init, sess?.proxyUrl || null, sess);
 
 // ---------- upstream proxying ----------
 
 async function fetchUpstream(sess, url, init, cookieValue) {
   const headers = new Headers(init.headers);
   if (cookieValue) headers.set("Cookie", cookieValue);
-  return loginFetch(url, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(20000) }, sess?.proxyUrl || null);
+  return loginFetch(url, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(20000) }, sess?.proxyUrl || null, sess);
 }
 
 function browserCookieHeader(req) {
@@ -606,7 +646,7 @@ export async function proxyAccountRequest(sess, req, origin) {
         headers["Content-Length"] = String(buf.length);
       } else if (/__mimo_login|localhost/.test(before)) {
         // Anomaly: a local callback shape we cannot rewrite — must never reach Xiaomi.
-        console.log(`${new Date().toISOString().slice(11, 23)} [mimo-login] body STILL local, not matchable: ${before.slice(0, 200)}`);
+        logDiagnostic(sess, "unmatched_local_callback");
       }
     }
     init.body = buf;
@@ -671,9 +711,14 @@ function buildBrowserResponse(sess, res, origin, reqPath = "", upstreamUrl = "")
     const body = /json/.test(ctType) ? rawBody.replaceAll("\\/", "/") : rawBody;
     // Surface upstream API errors (Xiaomi wraps JSON as &&&START&&&{code:...}).
     if (/^\/(pass|sts)/.test(reqPath) || res.status >= 400) {
-      const m = body.match(/"code"\s*:\s*(-?\d+)/);
-      if ((m && m[1] !== "0") || res.status >= 400) {
-        console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] upstream ${reqPath} http=${res.status} code=${m ? m[1] : "?"} | url=${upstreamUrl.slice(0, 180)} | ${body.replace(/\s+/g, " ").slice(0, 160)}`);
+      let upstreamCode;
+      try {
+        upstreamCode = JSON.parse(body.replace(/^&&&START&&&/, "")).code;
+      } catch { /* Non-JSON responses have no structured failure code. */ }
+      const safeFailure = Number.isInteger(upstreamCode) && upstreamCode !== 0
+        && upstreamCode >= -2147483648 && upstreamCode <= 2147483647;
+      if (safeFailure || res.status >= 400) {
+        logDiagnostic(sess, "upstream_failure", { status: res.status, upstreamCode });
       }
     }
     const rewritten = rewriteMimoBases(body, "toProxy", origin);
@@ -686,14 +731,7 @@ function buildBrowserResponse(sess, res, origin, reqPath = "", upstreamUrl = "")
  * Runs the whole redirect chain, absorbs cookies, verifies me=logged-in.
  */
 export async function runTakeover(sess, upstreamUrl, origin) {
-  const T = () => new Date().toISOString().slice(11, 23);
-  const log = (m) => console.log(`${T()} [mimo-login][takeover] ${m}`);
-  const idSnap = () => {
-    const id = readSessionIdentity(sess);
-    const names = [...sess.jar.keys()].map((k) => k.split("|")[0]).join(",");
-    return `passToken=${id ? "Y" : "N"} jar=[${names.slice(0, 160)}]`;
-  };
-  log(`sts-nav url=${upstreamUrl.slice(0, 160)} origin=${origin} | ${idSnap()}`);
+  logDiagnostic(sess, "takeover_start");
   const id = readSessionIdentity(sess);
   // AUTHORIZATION COMPLETION = passToken captured (that IS the credential the
   // connection persists for the account route). The serviceToken exchange

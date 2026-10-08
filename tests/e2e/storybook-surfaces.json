@@ -8056,15 +8056,13 @@
       "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Reusable select rendered through actual InstanceEditModal interaction.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--select-server-preset"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--select-server-preset"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
@@ -8076,7 +8074,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:80-104",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "Server preset",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -8084,15 +8082,54 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Reusable select rendered through actual InstanceEditModal interaction.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Reusable select rendered through actual InstanceEditModal interaction.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "axes": [
+                "preset selection"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:80-104",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "Server preset",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--select-server-preset"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Reusable select rendered through actual InstanceEditModal interaction.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#GrantsModal",
@@ -8204,17 +8241,14 @@
       "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Private PresetGuidance covered by preset parent state.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--create-instance",
         "durin-ds-production-pages-mcp-gateway--select-server-preset"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--create-instance",
-        "durin-ds-production-pages-mcp-gateway--select-server-preset"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--create-instance",
@@ -8226,7 +8260,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:80-99",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "New instance",
           "proposedVisibleTexts": [
@@ -8246,7 +8280,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:80-104",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "Server preset",
           "proposedVisibleTexts": [
@@ -8258,15 +8292,79 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Private PresetGuidance covered by preset parent state.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private PresetGuidance covered by preset parent state.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--create-instance",
+              "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--create-instance",
+              "axes": [
+                "new instance"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:80-99",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "New instance",
+              "proposedVisibleTexts": [
+                "New instance",
+                "Slug",
+                "URL"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "axes": [
+                "preset selection"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:80-104",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "Server preset",
+              "proposedVisibleTexts": [
+                "Server preset",
+                "https://mcp.notion.com/mcp"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--create-instance",
+            "durin-ds-production-pages-mcp-gateway--select-server-preset"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private PresetGuidance covered by preset parent state.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceRow",
@@ -8275,17 +8373,14 @@
       "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Covered by actual page parent.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--edit-instance",
         "durin-ds-production-pages-mcp-gateway--toggle-instance"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--edit-instance",
-        "durin-ds-production-pages-mcp-gateway--toggle-instance"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--edit-instance",
@@ -8297,7 +8392,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:63-67",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "jira-story",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -8312,7 +8407,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:63-67",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "Enable instance",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -8320,15 +8415,70 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Covered by actual page parent.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Covered by actual page parent.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--edit-instance",
+              "storyId": "durin-ds-production-pages-mcp-gateway--edit-instance",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--edit-instance",
+              "axes": [
+                "edit"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:63-67",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "jira-story",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+              "storyId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+              "axes": [
+                "toggle"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:63-67",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "Enable instance",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--edit-instance",
+            "durin-ds-production-pages-mcp-gateway--toggle-instance"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Covered by actual page parent.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstancesPanel",
@@ -8337,17 +8487,14 @@
       "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Covered by actual page parent.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--default",
         "durin-ds-production-pages-mcp-gateway--empty-instances"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--default",
-        "durin-ds-production-pages-mcp-gateway--empty-instances"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--default",
@@ -8360,7 +8507,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:58-61",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "Instances",
           "proposedVisibleTexts": [
@@ -8380,7 +8527,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:58-61",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "No instances yet",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -8388,15 +8535,76 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Covered by actual page parent.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Covered by actual page parent.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--default",
+              "storyId": "durin-ds-production-pages-mcp-gateway--default",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
+              "axes": [
+                "populated",
+                "test result"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:58-61",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "Instances",
+              "proposedVisibleTexts": [
+                "Instances",
+                "granola",
+                "6 tools discovered"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--empty-instances",
+              "storyId": "durin-ds-production-pages-mcp-gateway--empty-instances",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--empty-instances",
+              "axes": [
+                "empty"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:58-61",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "No instances yet",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--default",
+            "durin-ds-production-pages-mcp-gateway--empty-instances"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Covered by actual page parent.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#KeyRow",
@@ -8794,15 +9002,13 @@
       "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Private visual fragment covered by actual InstanceEditModal interaction.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--select-server-preset"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--select-server-preset"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
@@ -8814,7 +9020,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:100-103",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "Official setup documentation",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -8822,15 +9028,54 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Private visual fragment covered by actual InstanceEditModal interaction.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private visual fragment covered by actual InstanceEditModal interaction.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "axes": [
+                "preset guidance"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:100-103",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "Official setup documentation",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--select-server-preset"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private visual fragment covered by actual InstanceEditModal interaction.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#StatusBadge",
@@ -8839,17 +9084,14 @@
       "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Reusable visual component covered by actual page rows.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--default",
         "durin-ds-production-pages-mcp-gateway--toggle-instance"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--default",
-        "durin-ds-production-pages-mcp-gateway--toggle-instance"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--default",
@@ -8863,7 +9105,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:41-46",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "connected",
           "proposedVisibleTexts": [
@@ -8883,7 +9125,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:41-46",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "disabled",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -8891,15 +9133,77 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Reusable visual component covered by actual page rows.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Reusable visual component covered by actual page rows.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--default",
+              "storyId": "durin-ds-production-pages-mcp-gateway--default",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
+              "axes": [
+                "enabled",
+                "OAuth connected",
+                "needs login"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:41-46",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "connected",
+              "proposedVisibleTexts": [
+                "connected",
+                "enabled",
+                "needs login"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+              "storyId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+              "axes": [
+                "disabled"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:41-46",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "disabled",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--default",
+            "durin-ds-production-pages-mcp-gateway--toggle-instance"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Reusable visual component covered by actual page rows.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#TestResult",
@@ -8908,17 +9212,14 @@
       "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Covered by actual page parent.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--default",
         "durin-ds-production-pages-mcp-gateway--failed-test-requires-login"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--default",
-        "durin-ds-production-pages-mcp-gateway--failed-test-requires-login"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--default",
@@ -8931,7 +9232,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:68-70",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "6 tools discovered",
           "proposedVisibleTexts": [
@@ -8951,7 +9252,7 @@
           "proposedSourceEvidence": "McpGatewayComponents.jsx:68-70",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "Test failed: 401 requires re-login",
           "proposedVisibleTexts": [
@@ -8963,15 +9264,80 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Covered by actual page parent.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Covered by actual page parent.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--default",
+              "storyId": "durin-ds-production-pages-mcp-gateway--default",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
+              "axes": [
+                "success",
+                "sample"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:68-70",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "6 tools discovered",
+              "proposedVisibleTexts": [
+                "6 tools discovered",
+                "Sample: fetch, search"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+              "storyId": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+              "axes": [
+                "failure",
+                "relogin"
+              ],
+              "proposedSourceEvidence": "McpGatewayComponents.jsx:68-70",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "Test failed: 401 requires re-login",
+              "proposedVisibleTexts": [
+                "Test failed: 401 requires re-login",
+                "Login"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--default",
+            "durin-ds-production-pages-mcp-gateway--failed-test-requires-login"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Covered by actual page parent.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
@@ -8986,7 +9352,8 @@
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--error-boundary",
         "durin-ds-production-pages-mcp-gateway-keys--error-boundary",
-        "durin-ds-production-pages-mcp-gateway-keys--retained-error-boundary"
+        "durin-ds-production-pages-mcp-gateway-keys--retained-error-boundary",
+        "durin-ds-production-pages-mcp-gateway--retained-error-boundary"
       ],
       "approvedScenarioIds": [],
       "storyScenarios": [
@@ -8997,13 +9364,13 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b",
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c"
           },
           "expectedVisibleText": "Reset requested",
           "id": "durin-ds-production-pages-mcp-gateway--error-boundary",
           "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--error-boundary",
-          "proposedSourceEvidence": "The actual boundary play first asserts the production failed-load view, activates Try again, and ends with Reset requested in the harness after the production error is unmounted. This is a reset transition, not retained production-widget coverage. The exact fixture console diagnostic is intercepted and restored; unrelated errors are forwarded. No captured console event is declared for the intercepted call.",
+          "proposedSourceEvidence": "Accepted instances ErrorBoundary renders the actual McpGatewayError and shared view, asserts their initial failed-load heading and actual fixture console call, activates Try again, then asserts Reset requested and absence of both the production failed-load heading and Try again action. The harness conditionally replaces the production error, rather than appending reset text. Console interception matches the complete exact two-argument fixture call; all other argument lists are forwarded unchanged and the spy is restored. No intercepted browser-console event or runtime approval is claimed.",
           "proposedVisibleTexts": [
             "Reset requested"
           ]
@@ -9054,22 +9421,46 @@
             "This usually happens during initial hydration or when the dashboard API is unreachable. Try again to reload the page.",
             "If the error persists, the dashboard server logs may include more detail."
           ]
+        },
+        {
+          "storyId": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+          "axes": [
+            "error",
+            "text",
+            "controls",
+            "retained instances production error wrapper",
+            "retained shared production error widget"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282",
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b",
+            "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c"
+          },
+          "expectedVisibleText": "MCP Gateway failed to load",
+          "id": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+          "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+          "proposedSourceEvidence": "Accepted instances RetainedErrorBoundary renders the actual imported McpGatewayError from mcp-gateway/error.js and its McpGatewayErrorView, not the keys wrapper. Without reset activation, play retains and asserts the actual production heading, help/detail text, visible enabled Try again, absence of Reset requested and the actual fixture console call. Only the exact complete two-argument fixture call is intercepted; all other arguments are forwarded unchanged and interception is restored. Native/runtime/full-process evidence remains pending.",
+          "proposedVisibleTexts": [
+            "MCP Gateway failed to load",
+            "This usually happens during initial hydration or when the dashboard API is unreachable. Try again to reload the page.",
+            "If the error persists, the dashboard server logs may include more detail.",
+            "Try again"
+          ]
         }
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "final-combined-source-proposal-pending-independent-high",
-        "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Direct shared error view exercised through real error boundaries.",
         "changedDependencyPaths": [
-          "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx"
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
         ],
-        "addedImportPaths": [],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
       "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
-      "proposedSourceReviewNotes": "Direct shared error view exercised through real error boundaries.",
+      "proposedSourceReviewNotes": "Actual shared production error view is retained through each distinct real instances/keys wrapper scene. Both original reset transitions remain separate and unmount the error; retained scene and initial/error/retry/reset full-process evidence remain mandatory.",
       "runtimeStatus": "pending",
       "requiredIntegrationEvidence": [
         "Full initial error, retry and reset process accessibility and native focus behavior remain required; the final Reset requested harness does not retain the production error widget."
@@ -9414,10 +9805,10 @@
       "symbol": "McpGatewayPage",
       "sourceSha256": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Direct client page story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-mcp-gateway--default",
         "durin-ds-production-pages-mcp-gateway--create-instance",
@@ -9427,15 +9818,7 @@
         "durin-ds-production-pages-mcp-gateway--delete-instance",
         "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--default",
-        "durin-ds-production-pages-mcp-gateway--create-instance",
-        "durin-ds-production-pages-mcp-gateway--select-server-preset",
-        "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
-        "durin-ds-production-pages-mcp-gateway--empty-instances",
-        "durin-ds-production-pages-mcp-gateway--delete-instance",
-        "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-mcp-gateway--default",
@@ -9447,7 +9830,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:71-89",
           "expectedVisibleText": "MCP Gateway",
@@ -9468,7 +9851,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:31-40,84-88",
           "expectedVisibleText": "New instance",
@@ -9487,7 +9870,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:84-88",
           "expectedVisibleText": "https://mcp.notion.com/mcp",
@@ -9507,7 +9890,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:71-82",
           "expectedVisibleText": "Test failed: 401 requires re-login",
@@ -9526,7 +9909,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "proposedSourceEvidence": "McpGatewayPage.jsx:84-88",
           "expectedVisibleText": "No instances yet",
@@ -9544,7 +9927,7 @@
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "MCP Gateway",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -9561,7 +9944,7 @@
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "MCP Gateway",
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -9569,15 +9952,174 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Direct client page story.",
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Direct client page story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "sourceSha256": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+          "storyScenarios": [
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--default",
+              "storyId": "durin-ds-production-pages-mcp-gateway--default",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--default",
+              "axes": [
+                "instances",
+                "successful test"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "proposedSourceEvidence": "McpGatewayPage.jsx:71-89",
+              "expectedVisibleText": "MCP Gateway",
+              "proposedVisibleTexts": [
+                "MCP Gateway",
+                "6 tools discovered",
+                "Sample: fetch, search"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--create-instance",
+              "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--create-instance",
+              "axes": [
+                "create modal",
+                "create persistence"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "proposedSourceEvidence": "McpGatewayPage.jsx:31-40,84-88",
+              "expectedVisibleText": "New instance",
+              "proposedVisibleTexts": [
+                "New instance",
+                "story-search"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+              "axes": [
+                "preset"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "proposedSourceEvidence": "McpGatewayPage.jsx:84-88",
+              "expectedVisibleText": "https://mcp.notion.com/mcp",
+              "proposedVisibleTexts": [
+                "https://mcp.notion.com/mcp",
+                "Requires OAuth"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+              "storyId": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+              "axes": [
+                "failed test",
+                "relogin"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "proposedSourceEvidence": "McpGatewayPage.jsx:71-82",
+              "expectedVisibleText": "Test failed: 401 requires re-login",
+              "proposedVisibleTexts": [
+                "Test failed: 401 requires re-login",
+                "Login"
+              ],
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--empty-instances",
+              "storyId": "durin-ds-production-pages-mcp-gateway--empty-instances",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--empty-instances",
+              "axes": [
+                "empty"
+              ],
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "proposedSourceEvidence": "McpGatewayPage.jsx:84-88",
+              "expectedVisibleText": "No instances yet",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--delete-instance",
+              "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--delete-instance",
+              "axes": [
+                "text",
+                "controls",
+                "delete-instance"
+              ],
+              "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "MCP Gateway",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            },
+            {
+              "id": "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
+              "storyId": "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
+              "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
+              "axes": [
+                "text",
+                "controls",
+                "popup-boundary"
+              ],
+              "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
+              "sourceHashes": {
+                "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
+                "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f"
+              },
+              "expectedVisibleText": "MCP Gateway",
+              "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
+            }
+          ],
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-mcp-gateway--default",
+            "durin-ds-production-pages-mcp-gateway--create-instance",
+            "durin-ds-production-pages-mcp-gateway--select-server-preset",
+            "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+            "durin-ds-production-pages-mcp-gateway--empty-instances",
+            "durin-ds-production-pages-mcp-gateway--delete-instance",
+            "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Direct client page story.",
+            "runtimeStatus": "pending"
+          },
+          "sourceReviewStatus": "approved-source-contract-runtime-pending"
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#NewKeyDialog",
@@ -9692,7 +10234,8 @@
       "reviewStatus": "pending",
       "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
-        "durin-ds-production-pages-mcp-gateway--error-boundary"
+        "durin-ds-production-pages-mcp-gateway--error-boundary",
+        "durin-ds-production-pages-mcp-gateway--retained-error-boundary"
       ],
       "approvedScenarioIds": [],
       "storyScenarios": [
@@ -9705,27 +10248,53 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c",
-            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b",
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282"
           },
-          "proposedSourceEvidence": "The actual boundary play first asserts the production failed-load view, activates Try again, and ends with Reset requested in the harness after the production error is unmounted. This is a reset transition, not retained production-widget coverage. The exact fixture console diagnostic is intercepted and restored; unrelated errors are forwarded. No captured console event is declared for the intercepted call.",
+          "proposedSourceEvidence": "Accepted instances ErrorBoundary renders the actual McpGatewayError and shared view, asserts their initial failed-load heading and actual fixture console call, activates Try again, then asserts Reset requested and absence of both the production failed-load heading and Try again action. The harness conditionally replaces the production error, rather than appending reset text. Console interception matches the complete exact two-argument fixture call; all other argument lists are forwarded unchanged and the spy is restored. No intercepted browser-console event or runtime approval is claimed.",
           "expectedVisibleText": "Reset requested",
           "proposedVisibleTexts": [
             "Reset requested"
+          ]
+        },
+        {
+          "id": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+          "storyId": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+          "runtimeArtifactId": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+          "axes": [
+            "error",
+            "text",
+            "controls",
+            "retained instances production error wrapper",
+            "retained shared production error widget"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/mcp-gateway/error.js": "56a8a78eb19b1d97e1331f7b3d51490757a728f775180000be44a02ac4db993c",
+            "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b",
+            "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx": "7d08755fc2ba999b475e2b97dbf681d51dc8ddfa46992b81068fe906201e3282"
+          },
+          "proposedSourceEvidence": "Accepted instances RetainedErrorBoundary renders the actual imported McpGatewayError from mcp-gateway/error.js and its McpGatewayErrorView, not the keys wrapper. Without reset activation, play retains and asserts the actual production heading, help/detail text, visible enabled Try again, absence of Reset requested and the actual fixture console call. Only the exact complete two-argument fixture call is intercepted; all other arguments are forwarded unchanged and interception is restored. Native/runtime/full-process evidence remains pending.",
+          "expectedVisibleText": "MCP Gateway failed to load",
+          "proposedVisibleTexts": [
+            "MCP Gateway failed to load",
+            "This usually happens during initial hydration or when the dashboard API is unreachable. Try again to reload the page.",
+            "If the error persists, the dashboard server logs may include more detail.",
+            "Try again"
           ]
         }
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "final-combined-source-proposal-pending-independent-high",
-        "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
+        "scope": "accepted-instances-source-proposal-pending-independent-high",
+        "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
         "sourceReason": "Client boundary wraps shared error view; covered via source page story.",
-        "changedDependencyPaths": [],
-        "addedImportPaths": [],
+        "changedDependencyPaths": [
+          "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
-      "proposedSourceReviewNotes": "This actual gateway error wrapper is mounted during its own ErrorBoundary play and unmounted by reset. RetainedErrorBoundary covers the keys wrapper and shared error view, not this gateway wrapper. Keep wrapper-specific initial/retry/reset integration proof; do not re-label keys ownership as this distinct wrapper or add a closed-final waiver.",
+      "proposedSourceReviewNotes": "Actual instances wrapper ownership now includes its own real retained instances scene and separately asserted unmounting reset. The keys scene does not cover this wrapper. New source-contract ownership remains pending independent high; no closed-final waiver.",
       "sourceReviewFindings": [],
       "runtimeStatus": "pending",
       "requiredIntegrationEvidence": [
@@ -42983,7 +43552,7 @@
     "runtimeApproval": null,
     "independentApproval": null,
     "storySourceCommit": "ddac44f327b0e2aaebd982b617cd11c88ff0b77f",
-    "csfStoryCount": 869,
+    "csfStoryCount": 870,
     "sourceReviewRequired": [
       {
         "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js#ComboList",
@@ -43030,7 +43599,7 @@
       {
         "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
         "disposition": "retained-real-keys-error-widget-and-separate-reset-transitions",
-        "reason": "RetainedErrorBoundary keeps the actual keys boundary/shared view mounted; original ErrorBoundary plays end Reset requested with production widgets unmounted. No closed-final waiver or intercepted-console-event expectation.",
+        "reason": "Actual separate retained instances/keys scenes render their own real wrapper and the shared error view. Both original reset plays end Reset requested after asserted removal of heading/retry. Exact complete two-argument fixture matching and all-argument forwarding are source-correct; current catalog proposal remains pending independent high.",
         "sourceReviewStatus": "changed-contract-pending-independent-high",
         "runtimeStatus": "pending"
       },
@@ -43043,18 +43612,18 @@
       },
       {
         "id": "src/app/(dashboard)/dashboard/mcp-gateway/error.js#McpGatewayError",
-        "disposition": "gateway-wrapper-initial-and-reset-transition-only",
-        "reason": "This actual gateway error wrapper is mounted during its own ErrorBoundary play and unmounted by reset. RetainedErrorBoundary covers the keys wrapper and shared error view, not this gateway wrapper. Keep wrapper-specific initial/retry/reset integration proof; do not re-label keys ownership as this distinct wrapper or add a closed-final waiver.",
+        "disposition": "retained-real-instances-wrapper-and-separate-asserted-unmount-reset",
+        "reason": "Accepted instances RetainedErrorBoundary renders the actual imported McpGatewayError from mcp-gateway/error.js and its McpGatewayErrorView, not the keys wrapper. Without reset activation, play retains and asserts the actual production heading, help/detail text, visible enabled Try again, absence of Reset requested and the actual fixture console call. Only the exact complete two-argument fixture call is intercepted; all other arguments are forwarded unchanged and interception is restored. Native/runtime/full-process evidence remains pending. Accepted instances ErrorBoundary renders the actual McpGatewayError and shared view, asserts their initial failed-load heading and actual fixture console call, activates Try again, then asserts Reset requested and absence of both the production failed-load heading and Try again action. The harness conditionally replaces the production error, rather than appending reset text. Console interception matches the complete exact two-argument fixture call; all other argument lists are forwarded unchanged and the spy is restored. No intercepted browser-console event or runtime approval is claimed.",
         "sourceReviewStatus": "changed-contract-pending-independent-high",
         "runtimeStatus": "pending"
       }
     ],
     "previousStorySourceCommit": "9c099c24024d6556760c2795876858d20527105e",
     "storySourceStatus": "accepted-published-source-current-catalog-proposals-pending-independent-high-runtime-pending",
-    "sourceCorrectionCommit": "44e327921da6a944114301a42eb1080b6f56dde6",
+    "sourceCorrectionCommit": "515b401059d7635970d212e4ba78a3e111d27680",
     "sourceCorrectionStatus": "FINAL_COMBINED_SOURCE_PROPOSALS_PENDING_INDEPENDENT_HIGH_RUNTIME_PENDING",
-    "sourceStoryFilesChanged": 10,
-    "newStoryIdCount": 2,
+    "sourceStoryFilesChanged": 11,
+    "newStoryIdCount": 3,
     "round2SourceCorrections": {
       "baseCommit": "f9e2440b9f6c84c1c620c86612cc614c18eaa488",
       "storyCommit": "dbdac9f544ad9430fa51c6418e582cc795a76d3d",
@@ -43387,7 +43956,7 @@
       }
     ],
     "finalSourceReconciliation": {
-      "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
+      "sourceHead": "515b401059d7635970d212e4ba78a3e111d27680",
       "sourceHeadIsFrozenRuntimeCandidate": false,
       "status": "PROPOSED_PENDING_GENUINE_INDEPENDENT_HIGH",
       "independentApproval": null,
@@ -43400,19 +43969,19 @@
         "retired": 16,
         "references": 15,
         "csfFiles": 201,
-        "csfStoryIds": 869,
+        "csfStoryIds": 870,
         "astCandidates": 450,
-        "changedExistingRows": 71,
+        "changedExistingRows": 79,
         "newVisualRows": 1,
-        "changedProposalRows": 72,
-        "pendingRows": 77,
-        "retainedUnchangedApprovedRows": 437,
+        "changedProposalRows": 80,
+        "pendingRows": 85,
+        "retainedUnchangedApprovedRows": 429,
         "changedProductionPaths": 10,
-        "changedCsfPaths": 10,
+        "changedCsfPaths": 11,
         "ownSourceDigestRows": 18,
         "expectedSha256Refreshes": 10,
         "addedImportOccurrences": 30,
-        "affectedStoryIds": 116
+        "affectedStoryIds": 126
       },
       "changedContractRows": [
         "src/app/(dashboard)/dashboard/cli-tools/components/CopilotToolCard.js#CopilotToolCard",
@@ -43429,11 +43998,19 @@
         "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#MonitoringStrip",
         "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#SuccessBadge",
         "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#CreatedKeyDialog",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#FormSelect",
         "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#GrantsModal",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceEditModal",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceRow",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstancesPanel",
         "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#KeyRow",
         "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#KeysPanel",
         "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#NewKeyDialog",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#PresetGuidance",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#StatusBadge",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#TestResult",
         "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
         "src/app/(dashboard)/dashboard/mcp-gateway/error.js#McpGatewayError",
         "src/app/(dashboard)/dashboard/mcp-gateway/keys/McpGatewayKeysPage.jsx#McpGatewayKeysPage",
         "src/app/(dashboard)/dashboard/mcp-gateway/keys/error.js#McpGatewayKeysError",
@@ -43498,7 +44075,17 @@
         "durin-ds-production-pages-endpoint--loading",
         "durin-ds-production-pages-endpoint--tunnel-requires-api-key",
         "durin-ds-production-pages-endpoint--unsafe-tunnel",
+        "durin-ds-production-pages-mcp-gateway--create-instance",
+        "durin-ds-production-pages-mcp-gateway--default",
+        "durin-ds-production-pages-mcp-gateway--delete-instance",
+        "durin-ds-production-pages-mcp-gateway--edit-instance",
+        "durin-ds-production-pages-mcp-gateway--empty-instances",
         "durin-ds-production-pages-mcp-gateway--error-boundary",
+        "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+        "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
+        "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+        "durin-ds-production-pages-mcp-gateway--select-server-preset",
+        "durin-ds-production-pages-mcp-gateway--toggle-instance",
         "durin-ds-production-pages-mcp-gateway-keys--default",
         "durin-ds-production-pages-mcp-gateway-keys--delete-key",
         "durin-ds-production-pages-mcp-gateway-keys--empty-keys",
@@ -43608,7 +44195,8 @@
       ],
       "newStoryIds": [
         "production-endpoint-endpointrow--long-url-selection",
-        "durin-ds-production-pages-mcp-gateway-keys--retained-error-boundary"
+        "durin-ds-production-pages-mcp-gateway-keys--retained-error-boundary",
+        "durin-ds-production-pages-mcp-gateway--retained-error-boundary"
       ],
       "sourceHashRefreshes": [
         {
@@ -45040,6 +45628,174 @@
           "path": "src/shared/components/layouts/DashboardLayout.js",
           "previous": "53aa71040760110f48ba71717de22d15664b16b3a65b0dc20ac3c663c18c389d",
           "current": "097bda1828a5da09f3b6c3f6a9fc8cb357523dcb89dd67989b1b21f7422a5e22"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#FormSelect",
+          "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceEditModal",
+          "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceEditModal",
+          "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceRow",
+          "storyId": "durin-ds-production-pages-mcp-gateway--edit-instance",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceRow",
+          "storyId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstancesPanel",
+          "storyId": "durin-ds-production-pages-mcp-gateway--default",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstancesPanel",
+          "storyId": "durin-ds-production-pages-mcp-gateway--empty-instances",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#PresetGuidance",
+          "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#StatusBadge",
+          "storyId": "durin-ds-production-pages-mcp-gateway--default",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#StatusBadge",
+          "storyId": "durin-ds-production-pages-mcp-gateway--toggle-instance",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#TestResult",
+          "storyId": "durin-ds-production-pages-mcp-gateway--default",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#TestResult",
+          "storyId": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
+          "storyId": "durin-ds-production-pages-mcp-gateway--error-boundary",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+          "storyId": "durin-ds-production-pages-mcp-gateway--default",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+          "storyId": "durin-ds-production-pages-mcp-gateway--create-instance",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+          "storyId": "durin-ds-production-pages-mcp-gateway--select-server-preset",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+          "storyId": "durin-ds-production-pages-mcp-gateway--failed-test-requires-login",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+          "storyId": "durin-ds-production-pages-mcp-gateway--empty-instances",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+          "storyId": "durin-ds-production-pages-mcp-gateway--delete-instance",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+          "storyId": "durin-ds-production-pages-mcp-gateway--o-auth-login-popup-boundary",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
+        },
+        {
+          "rowId": "src/app/(dashboard)/dashboard/mcp-gateway/error.js#McpGatewayError",
+          "storyId": "durin-ds-production-pages-mcp-gateway--error-boundary",
+          "kind": "dependency",
+          "path": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+          "previous": "c9a33f0f325955cbd92542ff43d7a9008911f1cd92a688e9db3fd5e8c08a447f",
+          "current": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
         }
       ],
       "addedDirectImportProvenance": [
@@ -45238,7 +45994,7 @@
       },
       "referenceDisposition": "All15 actual reference identities/digests are unchanged. Genuine historical source-only approvals remain; no current runtime approval.",
       "nativeOwnership": "EndpointValue is proposed visual, through actual EndpointRow and external EndpointPageClient parents. LongUrlSelection uses real named native value/readOnly/focus/selection play, not URL textContent, placeholders, title/attributes or unenforced proposedControlAssertions. Loading is not helper ownership; keyboard/clipboard/frozen font and geometry proof remain separate.",
-      "mcpOwnership": "RetainedErrorBoundary owns actual McpGatewayKeysError and McpGatewayErrorView retained content/actions. Both original resets remain separate and end in Reset requested harness text with error views unmounted. The distinct gateway wrapper is transition-only and requires initial/process/real-route integration proof; it is not falsely owned by the keys retained story.",
+      "mcpOwnership": "Real RetainedErrorBoundary scenes separately own actual McpGatewayError instances wrapper and McpGatewayKeysError keys wrapper, plus their shared McpGatewayErrorView. Neither wrapper aliases the other. Both original ErrorBoundary plays assert the initial production error, retry, Reset requested and removal of heading/retry after actual conditional unmount. Exact complete two-argument fixture matching and unchanged all-argument forwarding/restoration are source-correct. No intercepted console event, closed-final waiver or source/runtime approval is claimed.",
       "liveMeasurementBoundary": "Current harness proves live viewport/internal-clipping intersections, genuine top-layer boundaries, effective44px center hits and focus. Narrow axis-incomplete qualification is source/story-scoped and requires live opaque token/gradient/composite paint plus masks/text/stroke conservative separation; unsupported masks, linked/textPath/graphic geometry, non-scaling strokes and unresolved paint stay incomplete. Standards/enhanced failures and every other incomplete remain failures; this source record grants no visual/a11y/runtime acceptance.",
       "historicalEvidenceBoundary": "Prior canary/sample/chart diagnostic evidence and rejected proposals remain revision-bound history, never current matrix qualification. Parent-reported accepted gates/high/native diagnostics are not the final frozen catalog matrix or worker-executed verification.",
       "remainingRequirements": [
@@ -45249,8 +46005,92 @@
         "All existing scenario axes, expected visible/absent states, requiredIntegrationEvidence, coverageScope boundaries and unsupported/pending runtime criteria remain mandatory.",
         "Applicable full-page/process accessibility evidence, automated checks and independent manual A/AA/AAA assessment; no global waiver, screenshot approval or full coverage closure.",
         "Parent performs genuine independent high review of this exact proposal, explicitly authorizes source-only approval bookkeeping, and only then freezes the complete final tracked-only runtime candidate.",
-        "Preserve the exact actual60 canary and60 sample selector arrays; run every current built story across all12 browser/theme/viewport projects. Current869 source identities are an observation, not a fixed quota or built-runtime approval."
+        "Preserve the exact actual60 canary and60 sample selector arrays; run every current built story across all12 browser/theme/viewport projects. Current870 source identities are an observation, not a fixed quota or built-runtime approval."
       ]
+    },
+    "historicalBlockedSourceProposals": [
+      {
+        "proposalCommit": "99c49232f6ed0382aec54fd78a58f20d64718be5",
+        "sourceHead": "44e327921da6a944114301a42eb1080b6f56dde6",
+        "verdict": "BLOCKED",
+        "scope": "Historical independent high source-contract findings; not an approval.",
+        "findings": [
+          "Instances reset appended Reset requested while retaining the production error; transition-only/unmount metadata and documentation contradicted the then-accepted CSF.",
+          "Instances console interception matched only the first two arguments and forwarding dropped additional arguments; it could suppress unexpected diagnostics."
+        ],
+        "mcpOwnership": "RetainedErrorBoundary owns actual McpGatewayKeysError and McpGatewayErrorView retained content/actions. Both original resets remain separate and end in Reset requested harness text with error views unmounted. The distinct gateway wrapper is transition-only and requires initial/process/real-route integration proof; it is not falsely owned by the keys retained story.",
+        "counts": {
+          "rows": 514,
+          "visual": 433,
+          "nonvisual": 65,
+          "retired": 16,
+          "references": 15,
+          "csfFiles": 201,
+          "csfStoryIds": 869,
+          "astCandidates": 450,
+          "changedExistingRows": 71,
+          "newVisualRows": 1,
+          "changedProposalRows": 72,
+          "pendingRows": 77,
+          "retainedUnchangedApprovedRows": 437,
+          "changedProductionPaths": 10,
+          "changedCsfPaths": 10,
+          "ownSourceDigestRows": 18,
+          "expectedSha256Refreshes": 10,
+          "addedImportOccurrences": 30,
+          "affectedStoryIds": 116
+        },
+        "sourceReviewDispositions": [
+          {
+            "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
+            "disposition": "retained-real-keys-error-widget-and-separate-reset-transitions",
+            "reason": "Actual separate retained instances/keys scenes render their own real wrapper and the shared error view. Both original reset plays end Reset requested after asserted removal of heading/retry. Exact complete two-argument fixture matching and all-argument forwarding are source-correct; current catalog proposal remains pending independent high.",
+            "sourceReviewStatus": "changed-contract-pending-independent-high",
+            "runtimeStatus": "pending"
+          },
+          {
+            "id": "src/app/(dashboard)/dashboard/mcp-gateway/error.js#McpGatewayError",
+            "disposition": "retained-real-instances-wrapper-and-separate-asserted-unmount-reset",
+            "reason": "Accepted instances RetainedErrorBoundary renders the actual imported McpGatewayError from mcp-gateway/error.js and its McpGatewayErrorView, not the keys wrapper. Without reset activation, play retains and asserts the actual production heading, help/detail text, visible enabled Try again, absence of Reset requested and the actual fixture console call. Only the exact complete two-argument fixture call is intercepted; all other arguments are forwarded unchanged and interception is restored. Native/runtime/full-process evidence remains pending. Accepted instances ErrorBoundary renders the actual McpGatewayError and shared view, asserts their initial failed-load heading and actual fixture console call, activates Try again, then asserts Reset requested and absence of both the production failed-load heading and Try again action. The harness conditionally replaces the production error, rather than appending reset text. Console interception matches the complete exact two-argument fixture call; all other argument lists are forwarded unchanged and the spy is restored. No intercepted browser-console event or runtime approval is claimed.",
+            "sourceReviewStatus": "changed-contract-pending-independent-high",
+            "runtimeStatus": "pending"
+          }
+        ]
+      }
+    ],
+    "instancesCorrection": {
+      "acceptedSourceCommit": "516c30ee6296230f860a1ee300bd841549e3dfcf",
+      "acceptedIntegrationHead": "515b401059d7635970d212e4ba78a3e111d27680",
+      "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
+      "sourceSha256": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b",
+      "newStoryId": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",
+      "changedContractRows": [
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#FormSelect",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceEditModal",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceRow",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstancesPanel",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#PresetGuidance",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#StatusBadge",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#TestResult",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage",
+        "src/app/(dashboard)/dashboard/mcp-gateway/error.js#McpGatewayError"
+      ],
+      "newPendingRows": [
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#FormSelect",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceEditModal",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstanceRow",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#InstancesPanel",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#PresetGuidance",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#StatusBadge",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx#TestResult",
+        "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx#McpGatewayPage"
+      ],
+      "status": "SOURCE_PROPOSAL_PENDING_INDEPENDENT_HIGH_RUNTIME_PENDING",
+      "independentApproval": null,
+      "runtimeApproval": null,
+      "runtimeStatus": "pending",
+      "scope": "Accepted actual instances source corrects both blocked99c claims. Source gate/review acceptance is not catalog-ownership or frozen runtime acceptance."
     }
   },
   "runtimeStatus": "pending",

@@ -1470,12 +1470,12 @@ export default function ProviderLimits() {
             const secondaryLabel = getConnectionSecondaryLabel(conn);
 
             return <section key={conn.id} aria-label={getConnectionLabel(conn) || conn.id} className={[sectionIndex > 0 ? "border-t border-dd-border-subtle" : "", isInactive ? "opacity-60" : "", "flex flex-col gap-3 p-3"].filter(Boolean).join(" ")}>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="flex min-w-0 flex-1 basis-full flex-col gap-0.5 sm:basis-0">
                   <span className="truncate text-[13px] font-medium text-dd-text">{getConnectionLabel(conn)}</span>
                   {secondaryLabel ? <span className="truncate text-xs text-dd-muted">{secondaryLabel}</span> : null}
                 </span>
-                <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                <span className="flex min-w-0 max-w-full w-full flex-wrap items-center gap-1.5 sm:w-auto">
                   {isCodex && codexPlan ? <Badge tone="accent" size="sm" className="capitalize">{codexPlan}</Badge> : null}
                   {isCodex || claudeReset ? <>
                     <Tooltip content={resetCreditCount > 0 ? claudeReset ? `Use your reset now (${resetCreditCount} left, use by ${formatCreditDate(claudeReset.expiresAt)}) · refills ${formatClaudeResetClears(claudeReset.clears)}` : `Use one ${resetLabel}. Available: ${resetCreditCount}` : `No ${resetLabel}s available`}><Button variant="secondary" size="sm" icon={isResettingLimit ? "progress_activity" : "restart_alt"} onClick={() => setResetConfirmState({ connection: conn, resetCreditCount, grantId: claudeReset?.nextGrantId })} disabled={resetCreditCount <= 0 || isLoading || rowBusy} className={isResettingLimit ? "[&_span]:animate-spin dd-tnum" : "dd-tnum"} aria-label={resetCreditCount > 0 ? `Use one ${resetLabel}. ${resetCreditCount} available.` : `No ${resetLabel}s available`}>{resetCreditCount}</Button></Tooltip>

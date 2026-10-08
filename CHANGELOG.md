@@ -25,6 +25,7 @@
 - fix(qa): Isolate artifact identity from coverage-checker imports and measure visible clipped targets with real focus/hits; qualify chart-axis incompletes only with live fail-closed paint, text, mask, and stroke proof, never a whole-story accessibility waiver.
 - fix(ui): Give native action-log, request-detail, and diagnostic disclosures and visible-model search/selection rows 44px targets while preserving native keyboard interaction.
 - fix(qa): Prepare controls with native instant centered scrolling through nested scrollports before strict clipped-target measurement, preserving the 44px floor, real hits/focus, and genuine undersized or obstructed failures.
+- fix(ui): Use drawer navigation on narrow dashboard layouts, keep endpoint and quota toolbars within the available width, and make request previews and API key limit tables keyboard-scrollable.
 
 ## Upstream ports
 

@@ -72,7 +72,10 @@ export const ApiKeyRequired = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("switch", { name: "Require API key" })).toBeChecked();
-    await expect(await canvas.findByText("http://localhost:20128/v1")).toBeVisible();
+    const endpoint = await canvas.findByRole("textbox", { name: "Local endpoint", exact: true });
+    await expect(endpoint).toBeVisible();
+    await expect(endpoint).toHaveProperty("readOnly", true);
+    await expect(endpoint).toHaveValue("http://localhost:20128/v1");
   },
 };
 
@@ -121,8 +124,16 @@ export const ExternalEndpoints = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByLabelText("External tunnel URL")).toHaveTextContent("https://tunnel.example.com/v1");
-    await expect(await canvas.findByLabelText("External Tailscale URL")).toHaveTextContent("https://tailscale.example.com/v1");
+    // EndpointValue exposes a selectable native value, not rendered textContent.
+    for (const [name, url] of [
+      ["External tunnel URL", "https://tunnel.example.com/v1"],
+      ["External Tailscale URL", "https://tailscale.example.com/v1"],
+    ]) {
+      const endpoint = await canvas.findByRole("textbox", { name, exact: true });
+      await expect(endpoint).toBeVisible();
+      await expect(endpoint).toHaveProperty("readOnly", true);
+      await expect(endpoint).toHaveValue(url);
+    }
   },
 };
 

@@ -59,10 +59,14 @@ export const DeviceCodeHandoff = {
       "_blank",
       "noopener,noreferrer"
     ));
-    expect(await within(dialog).findByText("GHE-1234")).toBeVisible();
-    expect(within(dialog).getByText("https://ghe.example.test/login/device?code=GHE-1234")).toBeVisible();
-    expect(within(dialog).getByRole("button", { name: "Copy login URL" })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: "Open login URL" })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: "Copy device code" })).toBeEnabled();
+    // The device scene mounts before its modal entrance animation is visible.
+    await waitFor(() => {
+      expect(within(dialog).getByText("GHE-1234")).toBeVisible();
+      expect(within(dialog).getByText("https://ghe.example.test/login/device?code=GHE-1234")).toBeVisible();
+      expect(within(dialog).getByText("Waiting for authorization…")).toBeVisible();
+      expect(within(dialog).getByRole("button", { name: "Copy login URL" })).toBeEnabled();
+      expect(within(dialog).getByRole("button", { name: "Open login URL" })).toBeEnabled();
+      expect(within(dialog).getByRole("button", { name: "Copy device code" })).toBeEnabled();
+    });
   },
 };

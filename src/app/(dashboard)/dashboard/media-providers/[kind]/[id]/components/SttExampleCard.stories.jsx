@@ -40,10 +40,17 @@ export const UploadAndTranscribe = {
     await expect(response).toHaveTextContent("Hello world");
     await expect(response).not.toHaveTextContent("Fixture transcription complete");
     const file = new File([new Uint8Array([82, 73, 70, 70, 36, 0, 0, 0, 87, 65, 86, 69, 102, 109, 116, 32, 16, 0, 0, 0, 1, 0, 1, 0, 128, 62, 0, 0, 0, 125, 0, 0, 2, 0, 16, 0, 100, 97, 116, 97, 0, 0, 0, 0])], "sample.wav", { type: "audio/wav" });
-    await userEvent.upload(await canvas.findByLabelText("Audio file"), file);
-    await expect(canvas.getByText(/sample.wav/)).toBeVisible();
+    const upload = await canvas.findByLabelText("Audio file");
+    await userEvent.upload(upload, file);
+    await expect(upload.files[0]).toBe(file);
+    // The curl example also contains the filename; assert the upload summary.
+    await expect(canvas.getByText(/^sample\.wav\s+·/)).toBeVisible();
+    await expect(canvas.getByRole("region", { name: "Request example" })).toHaveTextContent('file=@sample.wav');
     await userEvent.click(canvas.getByRole("button", { name: "Run" }));
-    await waitFor(() => expect(response).toHaveTextContent("Fixture transcription complete"));
+    await waitFor(() => {
+      expect(response).toBeVisible();
+      expect(response).toHaveTextContent("Fixture transcription complete");
+    });
     await expect(response).not.toHaveTextContent("Hello world");
   },
 };

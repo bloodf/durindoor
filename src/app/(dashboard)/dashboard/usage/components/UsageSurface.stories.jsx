@@ -194,8 +194,9 @@ export const UsageTablePending = {
     await expect(detailTable).toBeVisible();
     await expect(within(detailTable).getByRole("columnheader", { name: "Model" })).toBeVisible();
     await expect(within(detailTable).getByRole("columnheader", { name: "Provider" })).toBeVisible();
-    await expect(within(detailTable).getByRole("rowheader", { name: "gpt-5-pending" })).toBeVisible();
-    await expect(within(detailTable).getByText("openai")).toBeVisible();
+    // UsageTable's detail-column projection renders model/provider data cells.
+    await expect(within(detailTable).getByRole("cell", { name: "gpt-5-pending" })).toBeVisible();
+    await expect(within(detailTable).getByRole("cell", { name: "openai" })).toBeVisible();
   },
 };
 

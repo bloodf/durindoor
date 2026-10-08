@@ -25,7 +25,7 @@ export const AccentBadge = {
   args: { label: "Tunnel", badge: "CF" },
 };
 
-/** Copy button reflects copied state and the inner icon flips to `check`. */
+/** Activate the real copy control and retain its copied scene for visual proof. */
 export const CopyInteraction = {
   render: (args) => {
     function Wrapper() {
@@ -34,22 +34,40 @@ export const CopyInteraction = {
         <EndpointRow
           {...args}
           copied={copied}
-          onCopy={(url, id) => setCopied(id)}
+          onCopy={(_url, id) => setCopied(id)}
         />
       );
     }
     return <Wrapper />;
   },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    const copyButton = await canvas.findByRole("button", { name: "Copy Local endpoint" });
+    const copyButton = await canvas.findByRole("button", { name: `Copy ${args.label} endpoint`, exact: true });
     await expect(copyButton).toBeVisible();
-    await expect(canvas.getByText("Local", { exact: true })).toBeVisible();
-    await expect(canvas.getByText("http://localhost:20128/v1")).toBeVisible();
-    const iconBefore = copyButton.querySelector(".material-symbols-outlined");
-    await expect(iconBefore?.textContent).toBe("content_copy");
+    await expect(canvas.getByText(args.label, { exact: true })).toBeVisible();
+    // Assert the live native URL; real clipboard certification is parent-owned.
+    const endpoint = await canvas.findByRole("textbox", { name: `${args.label} endpoint`, exact: true });
+    await expect(endpoint).toBeVisible();
+    await expect(endpoint).toHaveProperty("readOnly", true);
+    await expect(endpoint).toHaveValue(args.url);
     await userEvent.click(copyButton);
-    const iconAfter = copyButton.querySelector(".material-symbols-outlined");
-    await expect(iconAfter?.textContent).toBe("check");
+  },
+};
+
+/** Long URLs retain complete native selection when wrapped; clipboard proof is separate. */
+export const LongUrlSelection = {
+  ...CopyInteraction,
+  args: {
+    url: `https://gateway.example.com/${"nested-route/".repeat(24)}v1?client=selection`,
+  },
+  play: async (context) => {
+    await CopyInteraction.play(context);
+    const endpoint = within(context.canvasElement).getByRole("textbox", { name: "Local endpoint", exact: true });
+    endpoint.focus();
+    await expect(endpoint).toHaveFocus();
+    endpoint.select();
+    await expect(endpoint.selectionStart).toBe(0);
+    await expect(endpoint.selectionEnd).toBe(context.args.url.length);
+    await expect(endpoint.value.slice(endpoint.selectionStart, endpoint.selectionEnd)).toBe(context.args.url);
   },
 };

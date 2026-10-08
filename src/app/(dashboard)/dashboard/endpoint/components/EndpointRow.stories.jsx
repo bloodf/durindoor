@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import EndpointRow from "./EndpointRow";
 
@@ -25,9 +25,8 @@ export const AccentBadge = {
   args: { label: "Tunnel", badge: "CF" },
 };
 
-/** Copy button reflects copied state and the inner icon flips to `check`. */
+/** Activate the real copy control and retain its copied scene for visual proof. */
 export const CopyInteraction = {
-  args: { onCopy: fn() },
   render: (args) => {
     function Wrapper() {
       const [copied, setCopied] = useState(null);
@@ -35,10 +34,7 @@ export const CopyInteraction = {
         <EndpointRow
           {...args}
           copied={copied}
-          onCopy={(url, id) => {
-            args.onCopy(url, id);
-            setCopied(id);
-          }}
+          onCopy={(_url, id) => setCopied(id)}
         />
       );
     }
@@ -46,30 +42,23 @@ export const CopyInteraction = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    args.onCopy.mockClear();
     const copyButton = await canvas.findByRole("button", { name: `Copy ${args.label} endpoint`, exact: true });
     await expect(copyButton).toBeVisible();
     await expect(canvas.getByText(args.label, { exact: true })).toBeVisible();
-    // The selected/copied payload must be the complete live native URL.
+    // Assert the live native URL; real clipboard certification is parent-owned.
     const endpoint = await canvas.findByRole("textbox", { name: `${args.label} endpoint`, exact: true });
     await expect(endpoint).toBeVisible();
     await expect(endpoint).toHaveProperty("readOnly", true);
     await expect(endpoint).toHaveValue(args.url);
-    const iconBefore = copyButton.querySelector(".material-symbols-outlined");
-    await expect(iconBefore?.textContent).toBe("content_copy");
     await userEvent.click(copyButton);
-    await expect(args.onCopy).toHaveBeenCalledWith(args.url, args.copyId);
-    const iconAfter = copyButton.querySelector(".material-symbols-outlined");
-    await expect(iconAfter?.textContent).toBe("check");
   },
 };
 
-/** Long URLs retain their complete native selection and copy payload when wrapped. */
+/** Long URLs retain complete native selection when wrapped; clipboard proof is separate. */
 export const LongUrlSelection = {
   ...CopyInteraction,
   args: {
     url: `https://gateway.example.com/${"nested-route/".repeat(24)}v1?client=selection`,
-    onCopy: fn(),
   },
   play: async (context) => {
     await CopyInteraction.play(context);

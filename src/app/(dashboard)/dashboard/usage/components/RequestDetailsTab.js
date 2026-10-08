@@ -168,7 +168,7 @@ function JsonTreeNode({ name, data, depth = 0 }) {
   }
   return (
     <details className="pl-3" style={{ marginLeft: depth * 12 }}>
-      <summary className="cursor-pointer py-0.5 text-[12px] font-mono text-dd-text">
+      <summary className="list-item min-h-11 cursor-pointer py-3 text-[12px] font-mono text-dd-text outline-none focus-visible:rounded-dd focus-visible:shadow-dd-focus">
         {name} <span className="text-dd-muted">{Array.isArray(data) ? `[${entries.length}]` : `{${entries.length}}`}</span>
       </summary>
       {entries.map(([key, value]) => (

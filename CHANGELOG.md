@@ -23,6 +23,7 @@
 - fix(endpoint): Preserve autosized read-only URL heights in stacked mobile rows and after font or width changes, retaining flexible desktop widths and complete native text selection.
 - fix(qa): Separate native endpoint value/selection assertions, retained MCP/Combos error widgets, and unsubmitted custom-create forms from reset/submission/cancel transitions; use exact fixture-console interception with complete forwarding, while keeping source review and frozen browser/process accessibility acceptance pending.
 - fix(qa): Isolate artifact identity from coverage-checker imports and measure visible clipped targets with real focus/hits; qualify chart-axis incompletes only with live fail-closed paint, text, mask, and stroke proof, never a whole-story accessibility waiver.
+- fix(ui): Give native action-log, request-detail, and diagnostic disclosures and visible-model search/selection rows 44px targets while preserving native keyboard interaction.
 
 ## Upstream ports
 

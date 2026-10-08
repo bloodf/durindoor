@@ -10,7 +10,8 @@ import { Badge } from "@/shared/ui/components/Badge.jsx";
  * <input>: an input clips anything past its width with no affordance, so a
  * tunnel or Tailscale hostname read as a truncated fragment
  * ("https://tim-rpg-phili") even though the full value was present and
- * copyable. Wrapping shows the whole URL at every width.
+ * copyable. Wrapping shows the whole URL at every width. The named, focusable
+ * read-only textbox exposes the value without making it editable.
  */
 export default function EndpointRow({ label, url, copyId, copied, onCopy, badge, actions }) {
   return (
@@ -19,8 +20,12 @@ export default function EndpointRow({ label, url, copyId, copied, onCopy, badge,
         {label}
       </Badge>
       <span
-        className="min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text"
+        className="min-h-11 min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text outline-none focus-visible:shadow-dd-focus"
         aria-label={`${label} endpoint`}
+        role="textbox"
+        aria-readonly="true"
+        aria-multiline="true"
+        tabIndex={0}
       >
         {url}
       </span>

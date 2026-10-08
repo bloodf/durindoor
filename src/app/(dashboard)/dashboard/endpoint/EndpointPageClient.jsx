@@ -705,8 +705,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                   <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">cloud_done</span>
                   <span className="font-medium">External</span>
                   <span
-                    className="min-w-0 flex-1 select-all break-all font-mono text-xs"
+                    className="min-h-11 min-w-0 flex-1 select-all break-all font-mono text-xs outline-none focus-visible:shadow-dd-focus"
                     aria-label="External tunnel URL"
+                    role="textbox"
+                    aria-readonly="true"
+                    aria-multiline="true"
+                    tabIndex={0}
                   >
                     {`${tunnelExternal.tunnelUrl}/v1`}
                   </span>
@@ -721,8 +725,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
               ) : tunnelEnabled && !tunnelLoading && tunnelReachable ? (
                 <>
                   <span
-                    className="min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text"
+                    className="min-h-11 min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text outline-none focus-visible:shadow-dd-focus"
                     aria-label="Cloudflare tunnel URL"
+                    role="textbox"
+                    aria-readonly="true"
+                    aria-multiline="true"
+                    tabIndex={0}
                   >
                     {`${tunnelUrl}/v1`}
                   </span>
@@ -816,8 +824,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                   <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">vpn_lock</span>
                   <span className="font-medium">External</span>
                   <span
-                    className="min-w-0 flex-1 select-all break-all font-mono text-xs"
+                    className="min-h-11 min-w-0 flex-1 select-all break-all font-mono text-xs outline-none focus-visible:shadow-dd-focus"
                     aria-label="External Tailscale URL"
+                    role="textbox"
+                    aria-readonly="true"
+                    aria-multiline="true"
+                    tabIndex={0}
                   >
                     {`${tsExternal.tunnelUrl}/v1`}
                   </span>
@@ -832,8 +844,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
               ) : tsEnabled && !tsLoading && tsReachable ? (
                 <>
                   <span
-                    className="min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text"
+                    className="min-h-11 min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text outline-none focus-visible:shadow-dd-focus"
                     aria-label="Tailscale URL"
+                    role="textbox"
+                    aria-readonly="true"
+                    aria-multiline="true"
+                    tabIndex={0}
                   >
                     {`${tsUrl}/v1`}
                   </span>
@@ -919,8 +935,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                   <div key={u} className="flex items-center gap-2 px-2 py-1 text-[13px]">
                     <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[16px] leading-none text-dd-muted">link</span>
                     <span
-                      className="min-w-0 flex-1 select-all break-all font-mono text-xs text-dd-text"
+                      className="min-h-11 min-w-0 flex-1 select-all break-all font-mono text-xs text-dd-text outline-none focus-visible:shadow-dd-focus"
                       aria-label={`Cloudflare endpoint ${u}`}
+                      role="textbox"
+                      aria-readonly="true"
+                      aria-multiline="true"
+                      tabIndex={0}
                     >
                       {`${u}/v1`}
                     </span>

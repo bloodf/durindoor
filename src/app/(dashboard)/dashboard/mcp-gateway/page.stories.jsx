@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { expect, fn, spyOn, userEvent, within } from "storybook/test";
+import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import McpGatewayError from "./error";
 import McpGatewayPage from "./page.js";
@@ -8,7 +8,9 @@ const MCP_GATEWAY_ERROR = new Error("MCP Gateway failed to load");
 
 function McpGatewayErrorHarness() {
   const [retried, setRetried] = useState(false);
-  return <><McpGatewayError error={MCP_GATEWAY_ERROR} reset={() => setRetried(true)} />{retried ? <p>Reset requested</p> : null}</>;
+  return retried
+    ? <p>Reset requested</p>
+    : <McpGatewayError error={MCP_GATEWAY_ERROR} reset={() => setRetried(true)} />;
 }
 
 const INSTANCES = [
@@ -215,15 +217,35 @@ export const ErrorBoundary = {
   render: () => <McpGatewayErrorHarness />,
   beforeEach: () => {
     const original = console.error;
-    const log = spyOn(console, "error").mockImplementation((message, error) => {
-      if (message !== "MCP Gateway page error:" || error !== MCP_GATEWAY_ERROR) original(message, error);
+    const log = spyOn(console, "error").mockImplementation((...args) => {
+      if (args.length !== 2 || args[0] !== "MCP Gateway page error:" || args[1] !== MCP_GATEWAY_ERROR) original(...args);
     });
     return () => log.mockRestore();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("MCP Gateway failed to load")).toBeVisible();
+    await waitFor(() => expect(console.error).toHaveBeenCalledWith("MCP Gateway page error:", MCP_GATEWAY_ERROR));
     await userEvent.click(canvas.getByRole("button", { name: "Try again" }));
     await expect(await canvas.findByText("Reset requested")).toBeVisible();
+    await expect(canvas.queryByText("MCP Gateway failed to load")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  },
+};
+
+/** Retain the actual instances boundary/view for capture; reset has its own story. */
+export const RetainedErrorBoundary = {
+  render: ErrorBoundary.render,
+  beforeEach: ErrorBoundary.beforeEach,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("MCP Gateway failed to load")).toBeVisible();
+    await expect(canvas.getByText("This usually happens during initial hydration or when the dashboard API is unreachable. Try again to reload the page.")).toBeVisible();
+    await expect(canvas.getByText("If the error persists, the dashboard server logs may include more detail.")).toBeVisible();
+    const retry = canvas.getByRole("button", { name: "Try again", exact: true });
+    await expect(retry).toBeVisible();
+    await expect(retry).toBeEnabled();
+    await expect(canvas.queryByText("Reset requested")).not.toBeInTheDocument();
+    await waitFor(() => expect(console.error).toHaveBeenCalledWith("MCP Gateway page error:", MCP_GATEWAY_ERROR));
   },
 };

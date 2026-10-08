@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { expect, spyOn, userEvent, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import McpGatewayKeysError from "./error";
 import McpGatewayKeysPage from "./page.js";
@@ -149,13 +149,22 @@ export const NewKeyFreshMount = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "New key" }));
     const dialog = within(document.body);
-    await userEvent.type(await dialog.findByLabelText("Key name"), "Discarded");
-    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
+    const firstPrompt = await dialog.findByRole("dialog", { name: "Name gateway key" });
+    const firstInput = within(firstPrompt).getByRole("textbox", { name: "Key name" });
+    await waitFor(() => expect(firstInput).toBeVisible());
+    await userEvent.type(firstInput, "Discarded");
+    await expect(firstInput).toHaveValue("Discarded");
+    await userEvent.click(within(firstPrompt).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(dialog.queryByRole("dialog", { name: "Name gateway key" })).not.toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "New key" }));
-    await expect(await dialog.findByLabelText("Key name")).toHaveValue("");
     const prompt = await dialog.findByRole("dialog", { name: "Name gateway key" });
-    await expect(prompt).toBeVisible();
-    await expect(within(prompt).getByText("Key name", { exact: true })).toBeVisible();
+    // Reopening mounts a blank form before its animated label becomes visible.
+    await waitFor(() => {
+      expect(prompt).toBeVisible();
+      expect(within(prompt).getByRole("textbox", { name: "Key name" })).toHaveValue("");
+      expect(within(prompt).getByRole("textbox", { name: "Key name" })).toBeVisible();
+      expect(within(prompt).getByText("Key name", { exact: true })).toBeVisible();
+    });
   },
 };
 

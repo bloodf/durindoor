@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import ApiKeyModelAccessModal from "./ApiKeyModelAccessModal";
 
@@ -39,8 +39,11 @@ export const AddAndRejectDuplicateRule = {
     return <Wrapper />;
   },
   play: async ({ canvasElement }) => {
-    const dialog = within(canvasElement.ownerDocument.body);
-    const rule = await dialog.findByRole("textbox", { name: "Add a rule" });
+    const dialogElement = await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Model access for Build harness" });
+    const dialog = within(dialogElement);
+    // A native input with a datalist exposes combobox, not textbox semantics.
+    const rule = await dialog.findByRole("combobox", { name: "Add a rule" });
+    await waitFor(() => expect(rule).toBeVisible());
     await userEvent.type(rule, "cx/gpt-5.6-sol");
     await userEvent.click(dialog.getByRole("button", { name: "Add" }));
     await expect(dialog.getByText("cx/gpt-5.6-sol")).toBeVisible();

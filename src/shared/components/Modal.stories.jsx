@@ -76,7 +76,8 @@ export const OpenConfirmation = {
       expect(node).toBeVisible();
       return node;
     });
-    expect(within(dialog).getByText("This action cannot be undone.")).toBeVisible();
+    // Native dialog visibility precedes its inner animated message visibility.
+    await waitFor(() => expect(within(dialog).getByText("This action cannot be undone.")).toBeVisible());
   },
 };
 

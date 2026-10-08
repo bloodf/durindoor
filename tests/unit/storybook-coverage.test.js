@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync, readFileSyn
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { artifactKey, scanSource, validateCoverage } from "../../scripts/check-storybook-coverage.mjs";
+import { scanSource, validateCoverage } from "../../scripts/check-storybook-coverage.mjs";
+import { artifactKey } from "../e2e/storybook-lifecycle.mjs";
 
 const FIXTURES = {
   defaultExport: "export default function Panel(){return <section><h1>ok</h1></section>;}",

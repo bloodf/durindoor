@@ -122,10 +122,10 @@ export default function OrcaModelDropdown({
           </label>
         )}
 
-        {/* Anchor below the complete trigger/Clear row on mobile so neither
-            control sits behind the panel. Desktop still anchors to the trigger. */}
-        <div className="relative flex min-w-0 w-full items-center gap-2 sm:w-auto">
-        <div className="min-w-0 flex-1 sm:relative sm:flex-none">
+        {/* Narrow layouts anchor below the complete trigger/Clear row so
+            neither control sits behind the panel. Desktop anchors to the trigger. */}
+        <div className="relative flex min-w-0 w-full items-center gap-2 md:w-auto">
+        <div className="min-w-0 flex-1 md:relative md:flex-none">
           <button
             type="button"
             ref={triggerRef}
@@ -133,7 +133,7 @@ export default function OrcaModelDropdown({
             aria-expanded={open}
             aria-haspopup="dialog"
             data-testid="orca-model-trigger"
-            className="flex min-h-11 min-w-0 w-full items-center justify-between gap-2 rounded-lg border border-dd-border bg-dd-surface px-3 py-1.5 text-xs text-dd-text outline-none hover:border-dd-accent focus-visible:shadow-dd-focus sm:min-w-[220px] sm:w-auto">
+            className="flex min-h-11 min-w-0 w-full items-center justify-between gap-2 rounded-lg border border-dd-border bg-dd-surface px-3 py-1.5 text-xs text-dd-text outline-none hover:border-dd-accent focus-visible:shadow-dd-focus md:min-w-[220px] md:w-auto">
 
             <span className="truncate">{selectedModel || "Select an OrcaRouter model"}</span>
             <span className="material-symbols-outlined text-[16px] text-dd-muted">expand_more</span>
@@ -145,7 +145,7 @@ export default function OrcaModelDropdown({
               data-testid="orca-model-panel"
               role="dialog"
               aria-label={label}
-              className="absolute left-0 right-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-dd-border bg-dd-surface shadow-2xl sm:left-auto sm:w-[360px]">
+              className="absolute left-0 right-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-dd-border bg-dd-surface shadow-2xl md:left-auto md:w-[360px]">
 
               <div className="border-b border-dd-border-subtle px-3 py-2">
                 <input

@@ -1,7 +1,7 @@
 import IconButton from "@/shared/ui/components/IconButton";
 
 /** Persistent dashboard bar with optional page identity and actions. */
-export function Header({ title, subtitle, icon, actions }) {
+export function Header({ title, subtitle, icon, actions, onMenuClick }) {
   function toggleTheme() {
     const root = document.documentElement;
     const dark = root.classList.toggle("dark");
@@ -11,8 +11,9 @@ export function Header({ title, subtitle, icon, actions }) {
   const hasIdentity = title || subtitle || icon;
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-dd-border bg-dd-surface px-6">
-      <div className="min-w-0">
+    <header className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-dd-border bg-dd-surface px-4 py-2 lg:h-14 lg:flex-nowrap lg:px-6 lg:py-0">
+      <div className="flex min-w-0 flex-1 basis-40 items-center gap-2 lg:basis-0">
+        {onMenuClick ? <IconButton icon="menu" label="Open navigation" onClick={onMenuClick} className="lg:hidden" /> : null}
         {hasIdentity ? (
           <div className="flex min-w-0 items-center gap-3">
             {icon ? (
@@ -35,9 +36,9 @@ export function Header({ title, subtitle, icon, actions }) {
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 lg:shrink-0">
         {actions ? (
-          <div className="mr-2 flex items-center gap-2 border-r border-dd-border-subtle pr-3">
+          <div className="mr-2 flex min-w-0 max-w-full flex-wrap items-center gap-2 border-r border-dd-border-subtle pr-3">
             {actions}
           </div>
         ) : null}

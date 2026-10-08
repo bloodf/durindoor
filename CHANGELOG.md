@@ -18,6 +18,7 @@
 - fix(quota): Show omitted Claude model-scoped weekly windows as unknown, non-hideable “not reported” rows when sibling accounts report them; bypass fresh cache on account refresh without bypassing 429 cooldowns.
 - fix(combos): Align Create/Edit Combo fields and model rows, box capability controls, and place actions in the shared modal footer on desktop and mobile.
 - fix(skills): Offer deduplicated local, tunnel, external tunnel, Tailscale, external Tailscale, and remote browser-origin endpoints as skill copy targets.
+- fix(token-saver): Separate savings-chart labels from decorative axis strokes using the established dashboard axis presentation.
 
 ## Upstream ports
 

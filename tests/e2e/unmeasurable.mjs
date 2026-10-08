@@ -44,6 +44,14 @@ function proofRgb(value) {
   const rgb = solidRgb(text);
   return rgb?.every((channel) => Number.isFinite(channel) && channel >= 0 && channel <= 255) ? rgb : null;
 }
+/** Mask paint is outside this proof, including SVG presentation attributes. */
+function unmasked(element, style) {
+  const mask = element.getAttribute("mask");
+  return style.maskImage === "none"
+    && (!style.webkitMaskImage || style.webkitMaskImage === "none")
+    && (mask === null || mask.trim() === "none");
+}
+
 
 /** Composite CSS background layers, without inventing an opaque backdrop. */
 function paintedBackground(element, computeStyle, inspectOuterAncestors = false) {
@@ -54,6 +62,7 @@ function paintedBackground(element, computeStyle, inspectOuterAncestors = false)
     if (style.backgroundImage !== "none" || style.visibility !== "visible" || style.opacity !== "1") return null;
     if (inspectOuterAncestors && (
       style.display === "none" || style.filter !== "none" || style.mixBlendMode !== "normal"
+      || !unmasked(node, style)
     )) return null;
     if (background) continue;
     if (inspectOuterAncestors && !/^rgba?\([\d.,\s]+\)$/.test(String(style.backgroundColor))) return null;
@@ -103,16 +112,13 @@ function strokeMissesGlyph(paint, glyph, style, computeStyle) {
     const ancestorStyle = computeStyle(ancestor);
     if (ancestorStyle.perspective !== "none" || String(ancestorStyle.transform).startsWith("matrix3d(")) return false;
   }
-  if (!["none", "non-scaling-stroke"].includes(style.vectorEffect)) return false;
+  // Non-scaling stroke geometry is unsupported by this proof. The total CTM
+  // cannot separate external CSS scale from a cancelling viewBox transform.
+  if (style.vectorEffect !== "none") return false;
   const matrix = paint.getScreenCTM?.();
   if (!matrix || ![matrix.a, matrix.b, matrix.c, matrix.d].every(Number.isFinite)) return false;
-  let scaleX = Math.hypot(matrix.a, matrix.c);
-  let scaleY = Math.hypot(matrix.b, matrix.d);
-  if (style.vectorEffect === "non-scaling-stroke") {
-    // Cover both host/CSS scaling and an unscaled SVG stroke conservatively.
-    scaleX = Math.max(1, scaleX);
-    scaleY = Math.max(1, scaleY);
-  }
+  const scaleX = Math.hypot(matrix.a, matrix.c);
+  const scaleY = Math.hypot(matrix.b, matrix.d);
   const rect = paint.getBoundingClientRect();
   const tick = glyph.getBoundingClientRect();
   if (![rect.left, rect.right, rect.top, rect.bottom, tick.left, tick.right, tick.top, tick.bottom].every(Number.isFinite)
@@ -127,6 +133,17 @@ function strokeMissesGlyph(paint, glyph, style, computeStyle) {
   const y = extent * scaleY + 1;
   return rect.right + x < tick.left || rect.left - x > tick.right
     || rect.bottom + y < tick.top || rect.top - y > tick.bottom;
+}
+
+/** Conservative SVG text fill bounds; unknown/touching bounds cannot clear. */
+function textMissesGlyph(paint, glyph) {
+  const rect = paint.getBoundingClientRect();
+  const tick = glyph.getBoundingClientRect();
+  if (![rect.left, rect.right, rect.top, rect.bottom, tick.left, tick.right, tick.top, tick.bottom].every(Number.isFinite)
+    || rect.right <= rect.left || rect.bottom <= rect.top
+    || tick.right <= tick.left || tick.bottom <= tick.top) return false;
+  return rect.right + 1 < tick.left || rect.left - 1 > tick.right
+    || rect.bottom + 1 < tick.top || rect.top - 1 > tick.bottom;
 }
 
 
@@ -159,18 +176,42 @@ function chartPaintProved(element, storyId, computeStyle) {
     darkest = darkest.map((channel, c) => Math.min(channel, rgb[c] * alpha + channel * (1 - alpha)));
     lightest = lightest.map((channel, c) => Math.max(channel, rgb[c] * alpha + channel * (1 - alpha)));
   };
-  for (const paint of svg.querySelectorAll("path, line, rect, circle, ellipse, polygon, polyline, image, foreignObject, use")) {
+  for (const paint of svg.querySelectorAll("path, line, rect, circle, ellipse, polygon, polyline, image, foreignObject, use, text, tspan, textPath")) {
     if (paint.closest("defs")) continue;
-    if (paint.matches("image, foreignObject, use")) return false;
+    if (paint.matches("image, foreignObject, use, textPath")) return false;
     // A faded/filter/blended area is outside the guarded source paint model.
     for (let ancestor = paint; ancestor && ancestor !== svg.parentElement; ancestor = ancestor.parentElement) {
       const ancestorStyle = computeStyle(ancestor);
       if (ancestorStyle.opacity !== "1" || ancestorStyle.visibility !== "visible"
         || ancestorStyle.display === "none" || ancestorStyle.filter !== "none"
-        || ancestorStyle.mixBlendMode !== "normal" || ancestorStyle.backgroundImage !== "none") return false;
+        || ancestorStyle.mixBlendMode !== "normal" || ancestorStyle.backgroundImage !== "none"
+        || !unmasked(ancestor, ancestorStyle)) return false;
     }
     const paintStyle = computeStyle(paint);
     if ([paintStyle.markerStart, paintStyle.markerMid, paintStyle.markerEnd].some((marker) => marker !== "none")) return false;
+    if (paint.matches("text, tspan")) {
+      // Shadow/decoration ink is not bounded by the text rectangle here.
+      for (let ancestor = paint; ancestor && ancestor !== svg.parentElement; ancestor = ancestor.parentElement) {
+        const ancestorStyle = computeStyle(ancestor);
+        if (ancestorStyle.textShadow !== "none" || ancestorStyle.textDecorationLine !== "none") return false;
+      }
+      // Wrapper text nodes do not add ink; every direct text run is visited.
+      // This still inspects siblings and ancestor-owned runs, not just labels.
+      const ownsText = [...paint.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent.trim());
+      if (!ownsText) continue;
+      if (paint === element || element.contains(paint)) {
+        // Runs inside the reported glyph share its proof only if their actual
+        // foreground still matches; differing descendants are not duplicates.
+        if (!same(proofRgb(paintStyle.fill), foreground) || paintStyle.fillOpacity !== "1"
+          || paintStyle.stroke !== "none") return false;
+        continue;
+      }
+      // An ancestor with its own direct run also paints beside the target.
+      // Its union rectangle cannot isolate that run, so keep it unresolved.
+      if (paint.contains(element) || !textMissesGlyph(paint, element)) return false;
+      if (paintStyle.stroke !== "none" && !strokeMissesGlyph(paint, element, paintStyle, computeStyle)) return false;
+      continue;
+    }
     // No fill does not mean no paint. Only proved separation can remove a
     // stroke from this audit. Potential intersection/unknown bounds remain
     // incomplete; do not assume paint order or an unchanged glyph foreground.

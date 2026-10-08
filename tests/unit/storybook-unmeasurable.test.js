@@ -31,6 +31,7 @@ const chartStyle = (overrides = {}) => (element) => ({
   markerStart: "none", markerMid: "none", markerEnd: "none",
   strokeWidth: "2px", strokeLinecap: "butt", strokeLinejoin: "miter", strokeMiterlimit: "4",
   vectorEffect: "none", transform: "none", perspective: "none",
+  maskImage: "none", webkitMaskImage: "none", textShadow: "none", textDecorationLine: "none",
   getPropertyValue: (name) => ({
     "--dd-text-muted": "#ede6d8", "--dd-text-subtle": "#ede6d8",
     "--dd-surface": "#22201c", "--dd-accent": "#10e882", "--dd-info": "#60a5fa",
@@ -56,6 +57,17 @@ function strokeBehindTick(tick, tag) {
   paint.getBoundingClientRect = () => rect(12, 14, 28, 14);
   paint.getScreenCTM = () => ({ a: 1, b: 0, c: 0, d: 1 });
   tick.closest("svg").insertBefore(paint, tick.closest(".recharts-cartesian-axis-tick"));
+  return paint;
+}
+
+function otherTextBehindTick(tick, tag) {
+  const paint = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  paint.id = "other-text";
+  paint.textContent = "overlay";
+  tick.getBoundingClientRect = () => ({ left: 10, right: 30, top: 10, bottom: 22 });
+  paint.getBoundingClientRect = () => ({ left: 12, right: 28, top: 12, bottom: 20 });
+  if (tag === "tspan") tick.before(paint);
+  else tick.closest("svg").insertBefore(paint, tick.closest(".recharts-cartesian-axis-tick"));
   return paint;
 }
 
@@ -141,6 +153,100 @@ describe("unmeasurable node policy", () => {
     paint.getBoundingClientRect = () => ({ left: 12, right: 28, top: 0, bottom: 0 });
     expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
       "stroke-paint": { stroke: "rgb(237, 230, 216)", fill: "none", markerEnd: "url(#unproved)" },
+    }))).toBeNull();
+  });
+
+  it.each([
+    ["glyph CSS mask", { tick: { maskImage: "url(#fade)" } }],
+    ["prefixed mask", { tick: { webkitMaskImage: "url(#fade)" } }],
+    ["masked ancestor above the opaque surface", { "chart-outer": { maskImage: "url(#fade)" } }],
+    ["unresolved mask state", { tick: { maskImage: "" } }],
+  ])("retains %s even when opacity and fill opacity remain one", (_name, overrides) => {
+    const tick = chartTick();
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle(overrides))).toBeNull();
+  });
+
+  it.each(["glyph", "ancestor"])("refuses a fading SVG mask on the %s without trusting unchanged opacity", (where) => {
+    const tick = chartTick();
+    tick.closest("svg").querySelector("defs").insertAdjacentHTML("beforeend",
+      `<mask id="fade"><rect width="100%" height="100%" fill="white" opacity="0.25"/></mask>`);
+    const masked = where === "glyph" ? tick : tick.parentElement.parentElement;
+    masked.setAttribute("mask", "url(#fade)");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+    masked.removeAttribute("mask");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+  });
+
+  it.each(["text", "tspan"])("requires proved nonintersection for other SVG %s paint", (tag) => {
+    const tick = chartTick();
+    const paint = otherTextBehindTick(tick, tag);
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+    paint.getBoundingClientRect = () => ({ left: 40, right: 50, top: 10, bottom: 22 });
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    paint.getBoundingClientRect = () => ({ left: NaN, right: NaN, top: NaN, bottom: NaN });
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+  });
+
+  it("does not ignore unproved textPath paint inside an otherwise empty text wrapper", () => {
+    const tick = chartTick();
+    const wrapper = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    const paint = document.createElementNS("http://www.w3.org/2000/svg", "textPath");
+    paint.setAttribute("href", "#area");
+    paint.textContent = "overlay";
+    wrapper.append(paint);
+    tick.closest("svg").append(wrapper);
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+  });
+
+  it("bounds other text stroke ink as well as its separated fill rectangle", () => {
+    const tick = chartTick();
+    const paint = otherTextBehindTick(tick, "text");
+    paint.getBoundingClientRect = () => ({ left: 40, right: 50, top: 10, bottom: 22 });
+    paint.getScreenCTM = () => ({ a: 1, b: 0, c: 0, d: 1 });
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      "other-text": { stroke: "rgb(237, 230, 216)", strokeWidth: "24px" },
+    }))).toBeNull();
+  });
+
+  it("does not count glyph wrappers twice or silently accept differing descendant paint", () => {
+    const tick = chartTick();
+    const wrapper = tick.parentElement;
+    expect(exemptionFor(wrapper, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    tick.innerHTML = `<tspan id="nested">12:00</tspan>`;
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBe("chart-axis-aaa-v1");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      nested: { fill: "rgb(120, 116, 108)" },
+    }))).toBeNull();
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      nested: { maskImage: "url(#fade)" },
+    }))).toBeNull();
+  });
+
+  it("retains an ancestor's additional direct text run instead of skipping its union bounds", () => {
+    const tick = chartTick();
+    tick.parentElement.append(document.createTextNode("other paint"));
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle())).toBeNull();
+  });
+
+  it("refuses a non-scaling stroke when external scale cancels the viewBox CTM scale", () => {
+    const tick = chartTick();
+    const paint = strokeBehindTick(tick, "line");
+    const svg = tick.closest("svg");
+    svg.id = "scaled-svg";
+    svg.setAttribute("viewBox", "0 0 1000 1000");
+    paint.getBoundingClientRect = () => ({ left: 12, right: 28, top: 7, bottom: 7 });
+    // External 10x CSS scale and 0.1x viewBox scale leave total CTM at 1.
+    paint.getScreenCTM = () => ({ a: 1, b: 0, c: 0, d: 1 });
+    const regular = chartStyle({
+      "scaled-svg": { transform: "matrix(10, 0, 0, 10, 0, 0)" },
+      "stroke-paint": { stroke: "rgb(237, 230, 216)" },
+    });
+    expect(exemptionFor(tick, CHARTED, chartStories, regular)).toBe("chart-axis-aaa-v1");
+    expect(exemptionFor(tick, CHARTED, chartStories, chartStyle({
+      "scaled-svg": { transform: "matrix(10, 0, 0, 10, 0, 0)" },
+      "stroke-paint": { stroke: "rgb(237, 230, 216)", vectorEffect: "non-scaling-stroke" },
     }))).toBeNull();
   });
 

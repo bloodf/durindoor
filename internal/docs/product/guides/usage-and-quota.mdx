@@ -98,3 +98,5 @@ These references describe repository behavior. They do not establish that a vend
 ### Current behavior and implementation boundaries
 
 A provider usage fetcher does not itself imply a quota preflight policy. Local usage reset does not restore upstream quota. Retryable errors can cause fallback; terminal errors stop it. Price changes apply to future stored requests. **Refresh (bypass cache)** calls `GET /api/usage/{connectionId}?refresh=1`, bypasses fresh cache, and still honors provider 429 cooldowns; `?force=1` remains supported. When Claude siblings differ, omitted model-scoped weekly windows appear as muted, non-hideable `—` / `not reported` placeholders. They are excluded from totals and routing and do not assert quota availability.
+
+The Profile **Download Backup** action is a portable configuration export, not a complete history backup. `exportDb` includes API-key lifetime counters and portable quota state, but omits request usage history, request details, and timeline events. Back up SQLite or PostgreSQL itself to preserve that history; the SQLite timeline sidecar remains separate.

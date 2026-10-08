@@ -5,7 +5,7 @@ description: Optional redacted hop log for proxy calls, stored in PostgreSQL or 
 
 ## Current implementation and precedence
 
-Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/proxy-timeline.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+Use these current source notes and the [current operator guide](../../../../docs/features/proxy-timeline.mdx) for present behavior. Baseline `0e7307831` identifies only the preserved pre-rewrite snapshot below; it does not identify these later corrections or establish independent/runtime approval.
 
 Capture is opt-in and settings-read failures keep it off. PostgreSQL stores traces in the active main database; SQLite owns an independent sidecar. Redaction is structural plus recognized inline secret patterns, not a guarantee to remove all sensitive prose. Queue pressure can drop stream events. PostgreSQL detail results remain subject to the 32 MiB transport cap. Timeline defaults to provider or connection swimlanes with 5m, 15m, 1h, and 6h windows. Table remains paginated; Live updates both views; waterfall rows order by `seq`, span each event to the next (last to `total_ms`), colour direction, and collapse consecutive `sse_chunk` events.
 

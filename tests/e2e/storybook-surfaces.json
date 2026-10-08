@@ -32500,7 +32500,7 @@
       "approvedException": null,
       "reviewEvidence": null,
       "proposedException": {
-        "reason": "withDashboardShell is a factory returning nested DashboardShellDecorator. AST inventory intentionally sees no visual candidate for the outer factory; approved ConsoleLogPage consumer story durin-ds-pages-console-log--log owns visual shell composition."
+        "reason": "withDashboardShell returns DashboardShellDecorator, which renders DashboardShell around Story. ConsoleLogPage Log declares this decorator and its play asserts Dashboard navigation before switching to Timeline. This is a proposed consumer composition, not approved production-route or runtime evidence."
       },
       "sourceReviewStatus": "pending-independent-review-and-runtime-proof"
     }
@@ -32568,7 +32568,7 @@
       "sourceSha256": "d05c4b0a6c48b66d2ae3d581c0ffce492cc0b950e39147e480fa179f9e908739",
       "reviewStatus": "pending",
       "reviewedBy": null,
-      "reason": "Pending reference-only source disposition: Successful import calls onSuccess and onClose; no component-owned final visible scene remains for this callback-only story. No final visual-source approval or runtime coverage is claimed."
+      "reason": "Pending reference-only source disposition: ManualImportSuccess asserts onSuccess and onClose callbacks. Its meta fixes isOpen=true and both callbacks are spies, so callback invocation does not prove dialog removal. No retained final-scene or absence assertion is supplied; independent disposition and runtime proof remain pending."
     },
     {
       "storyId": "production-shared-oauth-gitlabauthmodal--pat-submit",
@@ -32592,7 +32592,7 @@
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
-      "reason": "Pending reference-only source disposition: Successful IDC Continue calls onMethodSelect; no component-owned final scene is asserted. No final visual-source approval or runtime coverage is claimed."
+      "reason": "Pending reference-only source disposition: IdcContinueSuccess asserts onMethodSelect with the typed IDC URL and region. Meta fixes isOpen=true with a callback spy; no final dialog state or absence is asserted. This is callback-contract evidence, not approved visual coverage."
     },
     {
       "storyId": "production-shared-kiro-kiroauthmodal--api-key-submit-success",
@@ -32600,7 +32600,7 @@
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
-      "reason": "Pending reference-only source disposition: Successful API-key import calls onMethodSelect; no final visual branch is retained. No final visual-source approval or runtime coverage is claimed."
+      "reason": "Pending reference-only source disposition: ApiKeySubmitSuccess asserts onMethodSelect after an accepted API-key fixture response. Meta fixes isOpen=true with a callback spy; the play does not establish dialog removal or a retained final scene. Independent disposition and runtime proof remain pending."
     },
     {
       "storyId": "production-shared-kiro-kiroauthmodal--import-token-submit-success",
@@ -32608,7 +32608,7 @@
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
-      "reason": "Pending reference-only source disposition: Successful token import calls onMethodSelect; no final visual branch is retained. No final visual-source approval or runtime coverage is claimed."
+      "reason": "Pending reference-only source disposition: ImportTokenSubmitSuccess asserts onMethodSelect after an accepted import fixture response. Meta fixes isOpen=true with a callback spy; no closed-state or retained final-scene assertion is supplied. Independent disposition and runtime proof remain pending."
     },
     {
       "storyId": "production-shared-kiro-kiroauthmodal--cli-proxy-import-success",
@@ -32616,7 +32616,7 @@
       "sourceSha256": "39477e62a88ad90942c98922bb4add63388d8a4960806751cb42bdf9638017a0",
       "reviewStatus": "pending",
       "reviewedBy": null,
-      "reason": "Pending reference-only source disposition: Successful CLIProxyAPI import calls onMethodSelect; no final visual branch is retained. No final visual-source approval or runtime coverage is claimed."
+      "reason": "Pending reference-only source disposition: CliProxyImportSuccess asserts the native JSON field value and onMethodSelect callback. Neither assertion proves a final visual scene or dialog removal; meta fixes isOpen=true. Independent disposition and runtime proof remain pending."
     },
     {
       "storyId": "production-shared-kiro-kirooauthwrapper--import-success-short-circuits",
@@ -32624,7 +32624,7 @@
       "sourceSha256": "ece080d900dfa30dfdb55bd278a03e1111fcc8df0fd04ed0c643ad3f2843257c",
       "reviewStatus": "pending",
       "reviewedBy": null,
-      "reason": "Pending reference-only source disposition: Successful import makes wrapper invoke onSuccess; story asserts callback, not a wrapper-owned final visible state. No final visual-source approval or runtime coverage is claimed."
+      "reason": "Pending reference-only source disposition: ImportSuccessShortCircuits asserts onSuccess. The wrapper import branch invokes that callback without changing authMethod or closing the modal, and the story fixes isOpen=true. No final visible-state or absence assertion is supplied; independent disposition and runtime proof remain pending."
     }
   ],
   "catalogReconciliation": {
@@ -32708,7 +32708,7 @@
         "src/app/(dashboard)/dashboard/mcp-gateway/keys/page.stories.jsx"
       ],
       "sourceOnly": true,
-      "sourceEvidence": "Each defaultFixture snapshots its complete initial graph and exposes reset(). Meta beforeEach invokes the current story fixture reset before render and returns it as disposal cleanup. Instances, keys, grants Map and nested arrays are freshly cloned on both boundaries; route closures retain no mutations between visits. Production components and play transitions/assertions unchanged.",
+      "sourceEvidence": "Each defaultFixture snapshots its initial graph with structuredClone and exposes reset(). Meta beforeEach calls that reset and returns it for disposal; routes read the reassigned state variable. This is source-level fixture reset wiring only, not proof of native A/B/A navigation teardown or React unmount. Parent reports an actual next/navigation teardown failure; runtime acceptance remains blocked pending corrected published source and proof. Existing source commits and hashes are not advanced to an unpublished repair.",
       "runtimeApproval": null,
       "independentApproval": null
     },

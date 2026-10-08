@@ -5,7 +5,7 @@ description: Named fallback chains with strategies, capability ceilings, and con
 
 ## Current implementation and precedence
 
-Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/combos.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+Use these current source notes and the [current operator guide](../../../../docs/features/combos.mdx) for present behavior. Baseline `0e7307831` identifies only the preserved pre-rewrite snapshot below; it does not identify these later corrections or establish independent/runtime approval.
 
 Combo dispatch owns strategy and nested members; account fallback runs inside each member before moving on. Capability ceilings only narrow derived capabilities and nested account allow-lists intersect. Preserve outer combo usage attribution. The create/edit modal uses the shared footer, boxed capability controls, and aligned model rows. **Connection usage** belongs at bottom of Combos, reports the last seven days of combo/account attribution including unattributed requests, and does not follow Usage's period selector. Classifier privacy covers the classifier request only; inference still goes to the selected provider.
 

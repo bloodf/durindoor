@@ -5,6 +5,8 @@ description: Read request history, console output, and the health endpoint after
 
 Send a few requests, then open **Dashboard → Usage** (`/dashboard/usage`), the dashboard home. The overview starts with gateway, 24-hour activity, latency, and storage monitoring cards, plus in-flight requests and provider health. These refresh every 15 seconds independently of the usage period, with pause and manual refresh controls. The former `/dashboard/monitoring` URL redirects here. Usage statistics follow: request counts, input and output tokens, cached tokens, estimated cost, and output speed, with charts, grouped rows, and provider topology.
 
+The Storage card currently labels its type as SQLite even when PostgreSQL is active. Check **Settings → Database** for the active engine rather than using that label to identify the history store.
+
 Combo/account attribution is under **Dashboard → Combos → Connection usage**, covering the last seven days. API key limits and consumption are below the key list on **Dashboard → API Keys**; see [API key limits](./api-keys.mdx#windowed-limits). Neither block remains on Usage.
 
 Use **Overview** for totals and trends, and **Details** to investigate one request.

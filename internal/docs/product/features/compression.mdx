@@ -5,9 +5,11 @@ description: RTK, the chat compression seam, Test Savers preview, and the per-re
 
 ## Current implementation and precedence
 
-Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/features/compression.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
+Use these current source notes and the [current operator guide](../../../../docs/features/compression.mdx) for present behavior. Baseline `0e7307831` identifies only the preserved pre-rewrite snapshot below; it does not identify these later corrections or establish independent/runtime approval.
 
 Current order is Headroom on source format, Cursor-only RTK on source format, translation, normal RTK on target format, runCompressionSeam, then separate Caveman/Ponytail/PXPIPE. Headroom is not restricted to already translated requests. Stack engines are `session-dedup`, `caveman`, and `headroom`; catalog labels `rtk`, `lite`, `ccr`, `relevance`, `aggressive`, `llmlingua`, and `ultra` are not dispatched. Dedicated RTK remains separate. An actual body change plus compressed=true gates the stack response header. A dedicated RTK event alone does not produce that header.
+
+The standalone Caveman toggle injects `CAVEMAN_PROMPTS[level]`, rather than running the stack's rule-based Caveman engine. `CavemanOutputPreview` reads that same prompt table; its preview remains available when the toggle is off. `chatCore` skips standalone Caveman and Ponytail style injection for bodies carrying media.
 
 ### Execution ownership and evidence
 

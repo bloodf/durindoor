@@ -68,7 +68,7 @@ A 429 sent to the client carries `Retry-After` when the cooldown is known. The f
 
 Nothing is pruned by default. Turn on **Auto-clean old data** under **Profile → Observability** to delete usage history, request details, timeline traces, and quota snapshots older than the window you pick (30 days unless you change it; presets 7, 15, 30, 60, or 90, or a custom value from 1 to 3650). The sweep runs hourly, starting a minute after boot. **Clean now** runs it at once. Over HTTP it is `GET` and `POST /api/data-retention`.
 
-There is no CSV export for usage. **Download Backup** under **Profile → Data & Backups** saves the whole database, usage included, and a copy of `DATA_DIR/db/data.sqlite` works too.
+There is no CSV export for usage. **Download Backup** under **Profile → Data & Backups** saves portable configuration JSON, including API-key lifetime totals, but not request usage history, request details, or timeline events. To preserve that history, use an engine-level backup: the SQLite database or a PostgreSQL dump. See [Data management](../operations/data-management.mdx).
 
 ## Prices
 

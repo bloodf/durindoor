@@ -89,3 +89,5 @@ These references describe repository behavior. They do not establish that a vend
 ### Current behavior and implementation boundaries
 
 Usage metadata, rates, history, and console logs have different persistence boundaries. SQLite usage records are persistent; console ring is memory-only. HTTP 200 can precede an in-stream failure. Speed excludes TTFT when it is known, while cost splits preserve unknown historical rates rather than inventing them. The current console viewer retains 2000 lines, parses timestamp, level, and tag, filters by level/tag/search, pauses while buffering, highlights matches, wraps, copies visible rows, and downloads `.log`.
+
+`MonitoringWidgets` polls `/api/monitoring` every 15000 ms independently of the Usage period and aborts its fetch on effect cleanup. Its Storage Type row is currently a literal `SQLite`, not an active-engine descriptor. Use Settings → Database for engine identity. The Profile download calls `/api/settings/database` for portable configuration JSON; `exportDb` includes API-key lifetime totals but does not export `usageHistory`, request details, or timeline events. Preserve request history with an engine-level backup.

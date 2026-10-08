@@ -147,7 +147,8 @@ export const AddCustomModel = {
     const dialog = await body.findByRole("dialog", { name: /add custom model/i });
     await expect(dialog).toBeVisible();
     await userEvent.click(await within(dialog).findByRole("button", { name: "Advanced" }));
-    await expect(await within(dialog).findByLabelText("Thinking format")).toBeInTheDocument();
+    const thinking = await within(dialog).findByRole("combobox", { name: "Thinking format" });
+    await waitFor(() => expect(thinking).toBeVisible());
   },
 };
 
@@ -211,7 +212,12 @@ export const AddCustomModelAdvanced = {
   render: () => <AddCustomModelModal isOpen providerAlias="oc-prod" providerDisplayAlias="Compatible" initialModel={{ id: "gpt-example", capabilities: { tools: true, thinkingFormat: "openai" } }} onSave={noop} onClose={noop} />,
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: /edit custom model/i });
-    await expect(within(dialog).getByLabelText("Thinking format")).toBeVisible();
+    // Opening resets from the stored capabilities in an effect; await that scene.
+    const thinking = await within(dialog).findByRole("combobox", { name: "Thinking format" });
+    await waitFor(() => {
+      expect(thinking).toBeVisible();
+      expect(thinking).toHaveTextContent("OpenAI reasoning");
+    });
   },
 };
 
@@ -225,9 +231,12 @@ export const VisibleModels = {
   render: () => <VisibleModelsModal isOpen providerId="openai" providerAlias="oc-prod" connections={[connection]} customModels={[{ id: "custom-model", providerAlias: "oc-prod" }]} disabledModelIds={[]} onSaved={noop} onClose={noop} />,
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: "Visible models" });
-    await expect(await within(dialog).findByText("Live model")).toBeVisible();
-    await expect(within(dialog).getByText("not in catalog")).toBeVisible();
-    await expect(within(dialog).getByText("custom-model")).toBeVisible();
+    // Loaded rows can exist while the modal's content is still animating in.
+    await waitFor(() => {
+      expect(within(dialog).getByText("Live model")).toBeVisible();
+      expect(within(dialog).getByText("not in catalog")).toBeVisible();
+      expect(within(dialog).getByText("custom-model")).toBeVisible();
+    });
   },
 };
 

@@ -10,6 +10,15 @@ const backupCodes = ["backup-amber", "backup-copper", "backup-ivory"];
 
 const baseFixture = { scenario: "default", pathname: "/dashboard/profile" };
 
+// Password inputs have no implicit textbox role. Match their associated label,
+// allowing Field's decorative required marker without changing native security.
+async function currentPassword(dialog) {
+  const password = dialog.getByLabelText(/^Current password\s*\*?$/);
+  await waitFor(() => expect(password).toBeVisible());
+  await expect(password).toBeRequired();
+  return password;
+}
+
 async function openEnrollment(canvas) {
   await userEvent.click(await canvas.findByRole("button", { name: "Enable two-factor" }));
   return within(await within(document.body).findByRole("dialog", { name: "Enable two-factor authentication" }));
@@ -27,7 +36,7 @@ export const SetupApiError = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const dialog = await openEnrollment(canvas);
-    await userEvent.type(dialog.getByLabelText("Current password"), "wrong-password");
+    await userEvent.type(await currentPassword(dialog), "wrong-password");
     await userEvent.click(dialog.getByRole("button", { name: "Continue" }));
     await expect(await dialog.findByText("Invalid password")).toBeVisible();
   },
@@ -46,7 +55,7 @@ export const EnrollmentShowsBackupCodes = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     let dialog = await openEnrollment(canvas);
-    await userEvent.type(dialog.getByLabelText("Current password"), "current-password");
+    await userEvent.type(await currentPassword(dialog), "current-password");
     await userEvent.click(dialog.getByRole("button", { name: "Continue" }));
 
     dialog = within(await within(document.body).findByRole("dialog", { name: "Enable two-factor authentication" }));
@@ -58,7 +67,7 @@ export const EnrollmentShowsBackupCodes = {
       expect(qr.naturalHeight).toBeGreaterThan(0);
     });
     await expect(dialog.getByText(secret)).toBeVisible();
-    await userEvent.type(dialog.getByLabelText("6-digit code"), "123456");
+    await userEvent.type(dialog.getByRole("textbox", { name: "6-digit code" }), "123456");
     await userEvent.click(dialog.getByRole("button", { name: "Verify and enable" }));
 
     for (const backupCode of backupCodes) await expect(await dialog.findByText(backupCode)).toBeVisible();
@@ -79,7 +88,7 @@ export const VerificationApiError = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     let dialog = await openEnrollment(canvas);
-    await userEvent.type(dialog.getByLabelText("Current password"), "current-password");
+    await userEvent.type(await currentPassword(dialog), "current-password");
     await userEvent.click(dialog.getByRole("button", { name: "Continue" }));
     dialog = within(await within(document.body).findByRole("dialog", { name: "Enable two-factor authentication" }));
     const qr = await dialog.findByRole("img", { name: "Authenticator QR code" });
@@ -88,7 +97,7 @@ export const VerificationApiError = {
       expect(qr.complete).toBe(true);
       expect(qr.naturalWidth).toBeGreaterThan(0);
     });
-    await userEvent.type(dialog.getByLabelText("6-digit code"), "000000");
+    await userEvent.type(dialog.getByRole("textbox", { name: "6-digit code" }), "000000");
     await userEvent.click(dialog.getByRole("button", { name: "Verify and enable" }));
     await expect(await dialog.findByText("Invalid code. Check your authenticator and try again.")).toBeVisible();
   },
@@ -102,8 +111,8 @@ export const Enabled = {
     await expect(await canvas.findByText(/4 backup codes remaining/i)).toBeVisible();
     await userEvent.click(canvas.getByRole("button", { name: "Disable two-factor" }));
     const dialog = within(await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Disable two-factor authentication" }));
-    await expect(dialog.getByLabelText("Current password")).toBeVisible();
-    await expect(dialog.getByLabelText("Authentication or backup code")).toBeVisible();
+    await expect(await currentPassword(dialog)).toBeVisible();
+    await expect(dialog.getByRole("textbox", { name: "Authentication or backup code" })).toBeVisible();
   },
 };
 
@@ -114,8 +123,8 @@ export const DisableApiError = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Disable two-factor" }));
     const dialog = within(await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Disable two-factor authentication" }));
-    await userEvent.type(dialog.getByLabelText("Current password"), "current-password");
-    await userEvent.type(dialog.getByLabelText("Authentication or backup code"), "123456");
+    await userEvent.type(await currentPassword(dialog), "current-password");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Authentication or backup code" }), "123456");
     await userEvent.click(dialog.getByRole("button", { name: "Disable two-factor" }));
     await expect(await dialog.findByText("Invalid code. 4 attempt(s) left before lockout.")).toBeVisible();
   },

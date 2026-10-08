@@ -8,8 +8,11 @@ import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import ConnectionRow from "./ConnectionRow";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
+import ModelAutoSyncPanel from "./ModelAutoSyncPanel";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import ProviderDetailError from "./error";
+import ProviderErrorRulesModal from "./ProviderErrorRulesModal";
+import VisibleModelsModal from "./VisibleModelsModal";
 
 const noop = fn();
 const fixtureError = new Error("Fixture error");
@@ -162,6 +165,121 @@ export const BulkImports = {
     const body = within(document.body);
     await expect(await body.findByRole("dialog", { name: /bulk add codex accounts/i })).toBeVisible();
     await expect(await body.findByRole("dialog", { name: /bulk add grok cli accounts/i })).toBeVisible();
+  },
+};
+
+/** API-key form covers bulk planning success and preflight-safe failure with real request handlers. */
+export const ApiKeyBulkAndValidation = {
+  parameters: { storyFixture: { routes: {
+    "GET /api/providers": { body: { connections: [{ id: "existing", provider: "openai", authType: "apikey", name: "Key 1" }] } },
+    "POST /api/providers": { body: { connection: { id: "created" } } },
+    "POST /api/providers/validate": { body: { valid: false } },
+  } } },
+  render: () => <AddApiKeyModal isOpen provider="openai" providerName="OpenAI" authType="apikey" proxyPools={[]} existingConnectionNames={["Key 1"]} onSave={noop} onBulkDone={noop} onClose={noop} />,
+  play: async () => {
+    const body = within(document.body);
+    const dialog = await body.findByRole("dialog", { name: "Add OpenAI API Key" });
+    await userEvent.type(within(dialog).getByLabelText("API Key"), "sk-example");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Check" }));
+    await expect(await within(dialog).findByText("Invalid")).toBeVisible();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Bulk Add" }));
+    await userEvent.type(within(dialog).getByLabelText("Credentials"), "Key|sk-example");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add All Keys" }));
+    const bulkStatus = await within(dialog).findByText(/1 added/);
+    await expect(bulkStatus).toHaveTextContent(/1 added/);
+    await expect(bulkStatus).toBeVisible();
+    await expect(within(dialog).queryByText("Invalid", { exact: true })).not.toBeInTheDocument();
+  },
+};
+
+/** Retains the failed preflight result for error-state capture, without entering bulk mode. */
+export const ApiKeyValidationError = {
+  parameters: ApiKeyBulkAndValidation.parameters,
+  render: ApiKeyBulkAndValidation.render,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Add OpenAI API Key" });
+    const form = within(dialog);
+    await userEvent.type(form.getByLabelText("API Key"), "sk-example");
+    await userEvent.click(form.getByRole("button", { name: "Check" }));
+    await expect(await form.findByText("Invalid")).toBeVisible();
+    await expect(form.getByLabelText("API Key")).toHaveValue("sk-example");
+  },
+};
+
+/** Custom-model advanced form keeps capability and thinking controls visible. */
+export const AddCustomModelAdvanced = {
+  render: () => <AddCustomModelModal isOpen providerAlias="oc-prod" providerDisplayAlias="Compatible" initialModel={{ id: "gpt-example", capabilities: { tools: true, thinkingFormat: "openai" } }} onSave={noop} onClose={noop} />,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: /edit custom model/i });
+    await expect(within(dialog).getByLabelText("Thinking format")).toBeVisible();
+  },
+};
+
+/** Live allowlist mixes upstream-only, stale selected, registry, and always-visible custom rows. */
+export const VisibleModels = {
+  parameters: { storyFixture: { routes: {
+    "GET /api/models/enabled?providerAlias=oc-prod": { body: { ids: ["stale-model"] } },
+    "GET /api/providers/oc-prod-main/models": { body: { models: [{ id: "live-model", name: "Live model" }] } },
+    "PUT /api/models/enabled": { body: { ok: true } },
+  } } },
+  render: () => <VisibleModelsModal isOpen providerId="openai" providerAlias="oc-prod" connections={[connection]} customModels={[{ id: "custom-model", providerAlias: "oc-prod" }]} disabledModelIds={[]} onSaved={noop} onClose={noop} />,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Visible models" });
+    await expect(await within(dialog).findByText("Live model")).toBeVisible();
+    await expect(within(dialog).getByText("not in catalog")).toBeVisible();
+    await expect(within(dialog).getByText("custom-model")).toBeVisible();
+  },
+};
+
+/** Error-rule dialog rejects invalid draft, then adds an explicit scoped cooldown rule. */
+export const ProviderErrorRules = {
+  render: () => <ProviderErrorRulesModal isOpen providerId="oc-prod" rules={[]} onSave={noop} onClose={noop} />,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Provider Error Rules" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add Rule" }));
+    await expect(await within(dialog).findByRole("alert")).toHaveTextContent("Match text is required");
+    await userEvent.type(within(dialog).getByLabelText("Match (substring, case-insensitive)"), "daily cap");
+    await userEvent.type(within(dialog).getByLabelText("Cooldown seconds (optional)"), "30");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add Rule" }));
+    await expect(await within(dialog).findByText('429 contains "daily cap"')).toBeVisible();
+    await expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+  },
+};
+
+/** Keeps the invalid draft visible separately from the successful rule-addition transition. */
+export const ProviderErrorRuleValidationError = {
+  render: ProviderErrorRules.render,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Provider Error Rules" });
+    const form = within(dialog);
+    await userEvent.click(form.getByRole("button", { name: "Add Rule" }));
+    await expect(await form.findByRole("alert")).toHaveTextContent("Match text is required");
+    await expect(form.getByLabelText("Match (substring, case-insensitive)")).toHaveValue("");
+  },
+};
+
+/** Auto-sync panel exposes eligible saved, changed-catalog, and failed-last-attempt state. */
+export const ModelAutoSync = {
+  parameters: { storyFixture: { routes: {
+    "GET /api/models/auto-sync?provider=openai": { body: { providers: { openai: { eligible: true, enabled: true, models: ["gpt-live"], syncedAt: "2026-01-01T00:00:00.000Z", newModelIds: ["gpt-live"], removedModelIds: ["gpt-retired"], error: "Upstream timeout" } } } },
+    "POST /api/models/auto-sync": { body: { results: [{ status: "synced", modelCount: 1 }] } },
+  } } },
+  render: () => <ModelAutoSyncPanel providerId="openai" hasConnection onModelsChange={noop} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("New: gpt-live")).toBeVisible();
+    await expect(canvas.getByText("Removed in last sync: gpt-retired")).toBeVisible();
+    await expect(canvas.getByText("Last attempt failed: Upstream timeout")).toBeVisible();
+  },
+};
+
+/** ChatGPT web-cookie helper exposes copyable browser extraction instructions. */
+export const ChatgptWebCookie = {
+  render: () => <AddApiKeyModal isOpen provider="chatgpt-web" providerName="ChatGPT Web" authType="cookie" authHint="Paste a session cookie." proxyPools={[]} existingConnectionNames={[]} onSave={noop} onBulkDone={noop} onClose={noop} />,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Add ChatGPT Web Cookie Value" });
+    await expect(within(dialog).getByTestId("chatgpt-web-cookie-steps")).toBeVisible();
+    await expect(within(dialog).getByRole("button", { name: "Copy snippet" })).toBeVisible();
   },
 };
 

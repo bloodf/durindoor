@@ -45,3 +45,27 @@ export const CreateComboError = {
     await expect(await canvas.findByRole("alert")).toHaveTextContent(/Server rejected combo/);
   },
 };
+
+export const ConnectionStatuses = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-providers/web",
+      params: {},
+      routes: {
+        "GET /api/providers": { body: { connections: [
+          { id: "tavily-1", provider: "tavily", testStatus: "success", isActive: true },
+          { id: "exa-1", provider: "exa", testStatus: "error", isActive: true },
+          { id: "jina-1", provider: "jina", testStatus: "success", isActive: false },
+        ] }, status: 200 },
+        "GET /api/combos": { body: { combos: [] }, status: 200 },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("1 Connected")).toBeVisible();
+    await expect(canvas.getByText("1 Error")).toBeVisible();
+    await expect(canvas.getByText("Disabled")).toBeVisible();
+  },
+};

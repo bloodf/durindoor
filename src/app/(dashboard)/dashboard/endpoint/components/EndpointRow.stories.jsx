@@ -43,6 +43,9 @@ export const CopyInteraction = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const copyButton = await canvas.findByRole("button", { name: "Copy Local endpoint" });
+    await expect(copyButton).toBeVisible();
+    await expect(canvas.getByText("Local", { exact: true })).toBeVisible();
+    await expect(canvas.getByText("http://localhost:20128/v1")).toBeVisible();
     const iconBefore = copyButton.querySelector(".material-symbols-outlined");
     await expect(iconBefore?.textContent).toBe("content_copy");
     await userEvent.click(copyButton);

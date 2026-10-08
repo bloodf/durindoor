@@ -18,13 +18,23 @@ function ToastExample({ type }) {
 const toast = (type) => ({ render: () => <ToastExample type={type} />, play: async ({ canvasElement }) => {
   const canvas = within(canvasElement);
   await waitFor(() => expect(canvas.getByText(`${type} message`)).toBeVisible());
-  await userEvent.click(canvas.getByRole("button", { name: "Dismiss notification" }));
-  await waitFor(() => expect(canvas.queryByText(`${type} message`)).not.toBeInTheDocument());
+  await expect(canvas.getByRole("button", { name: "Dismiss notification" })).toBeVisible();
 } });
 export const SuccessToast = { ...toast("success"), tags: ["play-fn"] };
 export const ErrorToast = { ...toast("error"), tags: ["play-fn"] };
 export const WarningToast = { ...toast("warning"), tags: ["play-fn"] };
 export const InfoToast = { ...toast("info"), tags: ["play-fn"] };
+
+export const ToastDismissal = {
+  ...SuccessToast,
+  play: async ({ canvasElement }) => {
+    await SuccessToast.play({ canvasElement });
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Dismiss notification" }));
+    await waitFor(() => expect(canvas.queryByText("success message")).not.toBeInTheDocument());
+    await expect(canvas.getByText("Page content")).toBeVisible();
+  },
+};
 export const MobileDrawer = {
   parameters: { viewport: { defaultViewport: "mobile1" } },
   globals: { viewport: { value: "mobile1", isRotated: false } },
@@ -35,11 +45,22 @@ export const MobileDrawer = {
     await userEvent.click(toggle);
     const dialog = await within(document.body).findByRole("dialog", { name: "Navigation" });
     await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
+    await expect(within(dialog).getByRole("link", { name: /Usage/ })).toBeVisible();
+  },
+};
+
+export const MobileDrawerTransitions = {
+  ...MobileDrawer,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = canvas.getByRole("button", { name: "Open navigation" });
+    await MobileDrawer.play({ canvasElement });
+    const dialog = within(document.body).getByRole("dialog", { name: "Navigation" });
     await userEvent.click(within(dialog).getByRole("link", { name: /Usage/ }));
-    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(within(document.body).queryByRole("dialog", { name: "Navigation" })).not.toBeInTheDocument());
     await userEvent.click(toggle);
     const reopened = await within(document.body).findByRole("dialog", { name: "Navigation" });
-    // Native Escape is exercised by Playwright, not synthetic userEvent.
+    await Promise.all(reopened.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect?.getTiming?.().iterations)).map(({ finished }) => finished.catch(() => {})));
     await userEvent.click(within(reopened).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(toggle).toHaveFocus());
   },

@@ -14,6 +14,31 @@ import { setupStoryScope } from "./decorators.jsx";
 
 // Serve the real editor and workers locally; offline QA never uses a CDN.
 loader.config({ paths: { vs: "/monaco/vs" } });
+
+const storyUnmounts = new WeakMap();
+
+/**
+ * Retain the renderer's own unmount (including its act scheduling). Storybook
+ * runs beforeEach disposers before renderer teardown, so fixture disposal must
+ * invoke this first while navigation and network dependencies are still live.
+ */
+async function renderStoryToCanvas(renderContext, canvasElement) {
+  const rendered = import("@storybook/react/entry-preview").then(
+    ({ renderToCanvas }) => renderToCanvas(renderContext, canvasElement)
+  );
+  const cleanup = async () => {
+    // An older render's final teardown must not unmount a newer canvas owner.
+    if (storyUnmounts.get(canvasElement) !== cleanup) return;
+    const unmount = await rendered;
+    if (storyUnmounts.get(canvasElement) !== cleanup) return;
+    storyUnmounts.delete(canvasElement);
+    await unmount();
+  };
+  storyUnmounts.set(canvasElement, cleanup);
+  // Register before awaiting mount so aborted renders also unmount before disposal.
+  await rendered;
+  return cleanup;
+}
 /**
  * Reveal Material Symbols ligatures once icon fonts are ready, mirroring the
  * app's inline script in src/app/layout.js (globals.css hides the ligature
@@ -54,8 +79,9 @@ export function setupStoryThemeScope(context) {
 
 /**
  * `preview.beforeEach` establishes production theme before fixtures and story
- * render. Fixture setup order delegates unchanged to `setupStoryScope`; cleanup
- * reverses every completed step when later setup fails.
+ * render. Disposal first unmounts React, then releases fixtures, then restores
+ * theme. Store restoration must never re-render a tree whose navigation is gone.
+ * Failed setup still rolls back every completed step in reverse order.
  */
 export async function setupStoryLifecycle(context) {
   const cleanups = [];
@@ -64,6 +90,7 @@ export async function setupStoryLifecycle(context) {
     cleanups.push(teardownTheme);
     const teardownScope = await setupStoryScope(context);
     cleanups.push(teardownScope);
+    cleanups.push(async () => { await storyUnmounts.get(context.canvasElement)?.(); });
   } catch (error) {
     const rollbackErrors = [];
     for (const restore of cleanups.reverse()) {
@@ -103,6 +130,7 @@ function ThemeDecorator(Story) {
 
 const preview = {
   decorators: [ThemeDecorator],
+  renderToCanvas: renderStoryToCanvas,
   beforeEach: setupStoryLifecycle,
   globalTypes: {
     theme: {

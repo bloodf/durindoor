@@ -201,7 +201,10 @@ async function geometry(page) {
         : null;
       const target = editorHost
         ?? (node.matches("input[type=checkbox],input[type=radio]") && node.labels?.length ? node.labels[0] : node);
-      target.scrollIntoView({ block: "nearest", inline: "nearest" });
+      // Center through native nested-scrollport traversal instead of leaving a
+      // fitting control on a fractional clip edge. Instant scrolling completes
+      // preparation before measurement; oversized targets still use strict clips.
+      target.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const rect = target.getBoundingClientRect();
       // A tall keyboard region can extend beyond a modal's scrollport. Hit-test

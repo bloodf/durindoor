@@ -1765,16 +1765,14 @@
       "symbol": "CopilotToolCard",
       "sourceSha256": "579ebc557a7a6d08b280d57037128eb9d4aba4bedd0ab1a24cba41bea18942a0",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. direct reusable card story",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-cli-tools-toolcards--copilot-configured"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-cli-tools-toolcards--copilot-configured"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-cli-tools-toolcards--copilot-configured",
@@ -1798,15 +1796,35 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. direct reusable card story",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/cli-tools/components/CopilotToolCard.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "direct reusable card story",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-cli-tools-toolcards--copilot-configured"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. direct reusable card story",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/cli-tools/components/CoworkToolCard.js#CoworkToolCard",
@@ -3706,24 +3724,21 @@
       "symbol": "CombosError",
       "sourceSha256": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Error boundary direct story; new story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-combos-combospage--load-failure",
         "production-combos-comboserror--retry"
       ],
-      "approvedScenarioIds": [
-        "production-combos-combospage--load-failure",
-        "production-combos-comboserror--retry"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-combos-combospage--load-failure",
           "storyId": "production-combos-combospage--load-failure",
           "runtimeArtifactId": "production-combos-combospage--load-failure",
-          "expectedVisibleText": "Something went wrong",
+          "expectedVisibleText": "Combos restored",
           "expectedSha256": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
           "axes": [
             "error"
@@ -3732,11 +3747,10 @@
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
           },
-          "proposedSourceEvidence": "CombosError Retry harness renders source component; play proves visible heading then reset outcome.",
-          "expectedConsoleErrors": [
-            "Combos page error:"
-          ],
-          "proposedConsoleErrorEvidence": "LoadFailure renders CombosError with fixtureCombosError; its effect emits this boundary diagnostic once."
+          "proposedSourceEvidence": "LoadFailure renders CombosErrorResetHarness: initial real CombosError heading/link are asserted, Try again replaces it with the main Combos restored scene. This is an error-boundary transition, not retained CombosPage widget markup; source ownership requires independent re-review.",
+          "expectedConsoleErrors": [],
+          "proposedConsoleErrorEvidence": "beforeEach intercepts only Combos page error: with the exact fixtureCombosError, increments the verified counter, forwards other calls and restores console.error. That intercepted call is not a browser-console event.",
+          "coverageScope": "error-boundary-transition-only"
         },
         {
           "id": "production-combos-comboserror--retry",
@@ -3751,28 +3765,51 @@
             "src/app/(dashboard)/dashboard/combos/error.js": "e7a157116be604edf56db8baee57e1e9b905b5f75b81cda0fd5278330f9fe05b",
             "src/app/(dashboard)/dashboard/combos/error.stories.jsx": "b9ec64de522cc3593e6151f2345ed8611f5e70e539eca3d213e985db8e2c8613"
           },
-          "proposedSourceEvidence": "error.stories.jsx Retry",
-          "expectedVisibleText": "Something went wrong",
+          "proposedSourceEvidence": "Retry play asserts initial Something went wrong, activates the production reset callback and retains Retry requested from RetryHarness. Frozen ff930 screenshot confirms this final scene; the removed error heading is a transition state, not the retained text expectation.",
+          "expectedVisibleText": "Retry requested",
           "proposedVisibleTexts": [
-            "Something went wrong",
             "Retry requested"
           ]
         }
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Error boundary direct story; new story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [
+          "production-combos-combospage--load-failure",
+          "production-combos-comboserror--retry"
+        ],
+        "publishedDependencyPathsPendingCombinedIntegration": [],
         "runtimeStatus": "pending"
       },
-      "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewFindings": [
+        "LoadFailure retains a harness recovery scene, not CombosPage markup. Preserve the error/reset transition and case; independent review must reconcile source ownership without treating recovery text as retained widget coverage."
+      ],
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "historicalSourceReviewFindings": [
         "production-combos-combospage--load-failure renders CombosPage fetch-error state, not Next error boundary export. Need direct error-boundary story."
       ],
       "proposedSourceReviewNotes": "Error boundary direct story; new story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-combos-combospage--load-failure",
+            "production-combos-comboserror--retry"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Error boundary direct story; new story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
@@ -3923,10 +3960,10 @@
       "symbol": "CombosPage",
       "sourceSha256": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Route client page; direct story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-combos-combospage--default",
         "production-combos-combospage--empty",
@@ -3939,18 +3976,7 @@
         "production-combos-combospage--create-combo-spacing",
         "production-combos-combospage--create-combo-spacing-mobile"
       ],
-      "approvedScenarioIds": [
-        "production-combos-combospage--default",
-        "production-combos-combospage--empty",
-        "production-combos-combospage--load-failure",
-        "production-combos-combospage--delete-flow",
-        "production-combos-combospage--create-flow",
-        "production-combos-combospage--edit-flow",
-        "production-combos-combospage--save-failure",
-        "production-combos-combospage--connection-usage",
-        "production-combos-combospage--create-combo-spacing",
-        "production-combos-combospage--create-combo-spacing-mobile"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-combos-combospage--default",
@@ -3997,15 +4023,14 @@
             "src/app/(dashboard)/dashboard/combos/page.js": "2a864cbcc2c80a6f0cbf54f64d5719dd5aad67d3bc194f6fba69dda1e2e649c4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "2e3f4fda8bce9057c722b57797f0db02e403edae17c92056518dfad231b8cd44"
           },
-          "proposedSourceEvidence": "combos/page.stories.jsx LoadFailure",
-          "expectedVisibleText": "Upstream broken",
+          "proposedSourceEvidence": "LoadFailure renders CombosErrorResetHarness: initial real CombosError heading/link are asserted, Try again replaces it with the main Combos restored scene. This is an error-boundary transition, not retained CombosPage widget markup; source ownership requires independent re-review.",
+          "expectedVisibleText": "Combos restored",
           "proposedVisibleTexts": [
             "Upstream broken"
           ],
-          "expectedConsoleErrors": [
-            "Combos page error:"
-          ],
-          "proposedConsoleErrorEvidence": "LoadFailure renders CombosError with fixtureCombosError; its effect emits this boundary diagnostic once."
+          "expectedConsoleErrors": [],
+          "proposedConsoleErrorEvidence": "beforeEach intercepts only Combos page error: with the exact fixtureCombosError, increments the verified counter, forwards other calls and restores console.error. That intercepted call is not a browser-console event.",
+          "coverageScope": "error-boundary-transition-only"
         },
         {
           "id": "production-combos-combospage--delete-flow",
@@ -4114,15 +4139,46 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Route client page; direct story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [
+          "production-combos-combospage--load-failure"
+        ],
+        "publishedDependencyPathsPendingCombinedIntegration": [],
         "runtimeStatus": "pending"
       },
-      "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewFindings": [
+        "LoadFailure retains a harness recovery scene, not CombosPage markup. Preserve the error/reset transition and case; independent review must reconcile source ownership without treating recovery text as retained widget coverage."
+      ],
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Route client page; direct story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-combos-combospage--default",
+            "production-combos-combospage--empty",
+            "production-combos-combospage--load-failure",
+            "production-combos-combospage--delete-flow",
+            "production-combos-combospage--create-flow",
+            "production-combos-combospage--edit-flow",
+            "production-combos-combospage--save-failure",
+            "production-combos-combospage--connection-usage",
+            "production-combos-combospage--create-combo-spacing",
+            "production-combos-combospage--create-combo-spacing-mobile"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Route client page; direct story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ModelItem",
@@ -4928,33 +4984,51 @@
       "symbol": "APIPageClient",
       "sourceSha256": "77181fac8f082a7b2c40aae646096869a119a036d824f24bd035fa1bb8543df3",
       "proposedClassification": "retired",
-      "approvedClassification": "retired",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current AST no longer declares APIPageClient at this source identity; ownership migrated to src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [],
       "approvedScenarioIds": [],
       "storyScenarios": [],
-      "approvedException": {
-        "reason": "Current AST no longer declares APIPageClient at this source identity; ownership migrated to src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient.",
-        "scope": "source-contract-only",
-        "notRuntimeWaiver": true
-      },
+      "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current AST no longer declares APIPageClient at this source identity; ownership migrated to src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedException": {
         "reason": "Current AST no longer declares APIPageClient at this source identity; ownership migrated to src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient."
       },
       "supersededBy": [
         "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient"
       ],
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "retired",
+          "approvedScenarioIds": [],
+          "approvedException": {
+            "reason": "Current AST no longer declares APIPageClient at this source identity; ownership migrated to src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient.",
+            "scope": "source-contract-only",
+            "notRuntimeWaiver": true
+          },
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current AST no longer declares APIPageClient at this source identity; ownership migrated to src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#ApiKeyRow",
@@ -4962,33 +5036,51 @@
       "symbol": "ApiKeyRow",
       "sourceSha256": "77181fac8f082a7b2c40aae646096869a119a036d824f24bd035fa1bb8543df3",
       "proposedClassification": "retired",
-      "approvedClassification": "retired",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current AST no longer declares ApiKeyRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [],
       "approvedScenarioIds": [],
       "storyScenarios": [],
-      "approvedException": {
-        "reason": "Current AST no longer declares ApiKeyRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow.",
-        "scope": "source-contract-only",
-        "notRuntimeWaiver": true
-      },
+      "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current AST no longer declares ApiKeyRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedException": {
         "reason": "Current AST no longer declares ApiKeyRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow."
       },
       "supersededBy": [
         "src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow"
       ],
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "retired",
+          "approvedScenarioIds": [],
+          "approvedException": {
+            "reason": "Current AST no longer declares ApiKeyRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow.",
+            "scope": "source-contract-only",
+            "notRuntimeWaiver": true
+          },
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current AST no longer declares ApiKeyRow at this source identity; ownership migrated to src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#ApiKeyRow.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#CardSkeleton",
@@ -4996,16 +5088,14 @@
       "symbol": "CardSkeleton",
       "sourceSha256": "77181fac8f082a7b2c40aae646096869a119a036d824f24bd035fa1bb8543df3",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Private loading fragment owned by EndpointPageClient; fixture-loaded client route is direct production owner.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-endpoint--loading"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-endpoint--loading"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-endpoint--loading",
@@ -5029,15 +5119,35 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private loading fragment owned by EndpointPageClient; fixture-loaded client route is direct production owner.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private loading fragment owned by EndpointPageClient; fixture-loaded client route is direct production owner.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-endpoint--loading"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private loading fragment owned by EndpointPageClient; fixture-loaded client route is direct production owner.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient",
@@ -5046,9 +5156,9 @@
       "sourceSha256": "77181fac8f082a7b2c40aae646096869a119a036d824f24bd035fa1bb8543df3",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Private CardSkeleton, RowLabel, StatePill render only inside endpoint client and are covered by client states.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-endpoint--api-key-required",
         "durin-ds-production-pages-endpoint--external-endpoints",
@@ -5059,16 +5169,7 @@
         "durin-ds-production-pages-endpoint--default",
         "durin-ds-production-pages-endpoint--unsafe-tunnel"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-endpoint--api-key-required",
-        "durin-ds-production-pages-endpoint--external-endpoints",
-        "durin-ds-production-pages-endpoint--enabled-endpoints-policy",
-        "durin-ds-production-pages-endpoint--enabled-endpoints-checking",
-        "durin-ds-production-pages-endpoint--tunnel-requires-api-key",
-        "durin-ds-production-pages-endpoint--loading",
-        "durin-ds-production-pages-endpoint--default",
-        "durin-ds-production-pages-endpoint--unsafe-tunnel"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-endpoint--api-key-required",
@@ -5214,15 +5315,42 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private CardSkeleton, RowLabel, StatePill render only inside endpoint client and are covered by client states.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private CardSkeleton, RowLabel, StatePill render only inside endpoint client and are covered by client states.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-endpoint--api-key-required",
+            "durin-ds-production-pages-endpoint--external-endpoints",
+            "durin-ds-production-pages-endpoint--enabled-endpoints-policy",
+            "durin-ds-production-pages-endpoint--enabled-endpoints-checking",
+            "durin-ds-production-pages-endpoint--tunnel-requires-api-key",
+            "durin-ds-production-pages-endpoint--loading",
+            "durin-ds-production-pages-endpoint--default",
+            "durin-ds-production-pages-endpoint--unsafe-tunnel"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private CardSkeleton, RowLabel, StatePill render only inside endpoint client and are covered by client states.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#RowLabel",
@@ -5230,16 +5358,14 @@
       "symbol": "RowLabel",
       "sourceSha256": "77181fac8f082a7b2c40aae646096869a119a036d824f24bd035fa1bb8543df3",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Private visual fragment covered by direct client page story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-endpoint--api-key-required"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-endpoint--api-key-required"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-endpoint--api-key-required",
@@ -5263,15 +5389,35 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private visual fragment covered by direct client page story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private visual fragment covered by direct client page story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-endpoint--api-key-required"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private visual fragment covered by direct client page story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#StatePill",
@@ -5279,16 +5425,14 @@
       "symbol": "StatePill",
       "sourceSha256": "77181fac8f082a7b2c40aae646096869a119a036d824f24bd035fa1bb8543df3",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Private visual fragment covered by direct client page story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "durin-ds-production-pages-endpoint--enabled-endpoints-checking"
       ],
-      "approvedScenarioIds": [
-        "durin-ds-production-pages-endpoint--enabled-endpoints-checking"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-endpoint--enabled-endpoints-checking",
@@ -5311,15 +5455,35 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private visual fragment covered by direct client page story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private visual fragment covered by direct client page story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "durin-ds-production-pages-endpoint--enabled-endpoints-checking"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private visual fragment covered by direct client page story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/apiKeyExpiry.js#[module]",
@@ -5654,20 +5818,16 @@
       "symbol": "EndpointRow",
       "sourceSha256": "a62c0605f0a6c3313d35648a1af3d4d5c3ef7be1d4b76b779f68df6cf90b8e5b",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Direct reusable component story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-endpoint-endpointrow--idle",
         "production-endpoint-endpointrow--accent-badge",
         "production-endpoint-endpointrow--copy-interaction"
       ],
-      "approvedScenarioIds": [
-        "production-endpoint-endpointrow--idle",
-        "production-endpoint-endpointrow--accent-badge",
-        "production-endpoint-endpointrow--copy-interaction"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-endpoint-endpointrow--idle",
@@ -5736,15 +5896,37 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Direct reusable component story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Direct reusable component story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-endpoint-endpointrow--idle",
+            "production-endpoint-endpointrow--accent-badge",
+            "production-endpoint-endpointrow--copy-interaction"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Direct reusable component story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#Metric",
@@ -5753,15 +5935,13 @@
       "sourceSha256": "50d6c1093724331e827658355c8839201809ac0db240f3e3682fbb0dfe7c242a",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Private visual fragment covered by direct MonitoringStrip story.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-endpoint-monitoringstrip--populated"
       ],
-      "approvedScenarioIds": [
-        "production-endpoint-monitoringstrip--populated"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-endpoint-monitoringstrip--populated",
@@ -5785,15 +5965,35 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private visual fragment covered by direct MonitoringStrip story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private visual fragment covered by direct MonitoringStrip story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-endpoint-monitoringstrip--populated"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private visual fragment covered by direct MonitoringStrip story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#MonitoringStrip",
@@ -5802,17 +6002,14 @@
       "sourceSha256": "50d6c1093724331e827658355c8839201809ac0db240f3e3682fbb0dfe7c242a",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Private Metric and SuccessBadge covered by populated parent state.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-endpoint-monitoringstrip--populated",
         "production-endpoint-monitoringstrip--empty-and-error"
       ],
-      "approvedScenarioIds": [
-        "production-endpoint-monitoringstrip--populated",
-        "production-endpoint-monitoringstrip--empty-and-error"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-endpoint-monitoringstrip--populated",
@@ -5861,15 +6058,36 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private Metric and SuccessBadge covered by populated parent state.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private Metric and SuccessBadge covered by populated parent state.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-endpoint-monitoringstrip--populated",
+            "production-endpoint-monitoringstrip--empty-and-error"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private Metric and SuccessBadge covered by populated parent state.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#SuccessBadge",
@@ -5878,15 +6096,13 @@
       "sourceSha256": "50d6c1093724331e827658355c8839201809ac0db240f3e3682fbb0dfe7c242a",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Private visual fragment covered by direct MonitoringStrip story.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-endpoint-monitoringstrip--populated"
       ],
-      "approvedScenarioIds": [
-        "production-endpoint-monitoringstrip--populated"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-endpoint-monitoringstrip--populated",
@@ -5909,15 +6125,35 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Private visual fragment covered by direct MonitoringStrip story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Private visual fragment covered by direct MonitoringStrip story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-endpoint-monitoringstrip--populated"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Private visual fragment covered by direct MonitoringStrip story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/endpoint/components/SecurityWarning.js#SecurityWarning",
@@ -8851,20 +9087,16 @@
       "symbol": "TtsExampleCard",
       "sourceSha256": "4aabfe886f01943dd0a799add7771c01addc7d97f6dcd6fbf172452758725f06",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Direct reusable exported card.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-media-ttsexamplecard--open-language-modal",
         "production-media-ttsexamplecard--generate-audio",
         "production-media-ttsexamplecard--default"
       ],
-      "approvedScenarioIds": [
-        "production-media-ttsexamplecard--open-language-modal",
-        "production-media-ttsexamplecard--generate-audio",
-        "production-media-ttsexamplecard--default"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-media-ttsexamplecard--open-language-modal",
@@ -8924,18 +9156,40 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Direct reusable exported card.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "historicalSourceReviewFindings": [
         "Audio result/error branches not reached."
       ],
       "proposedSourceReviewNotes": "Direct reusable exported card.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-media-ttsexamplecard--open-language-modal",
+            "production-media-ttsexamplecard--generate-audio",
+            "production-media-ttsexamplecard--default"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Direct reusable exported card.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/exampleShared.js#Row",
@@ -10214,10 +10468,10 @@
       "symbol": "PlaygroundPageClient",
       "sourceSha256": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Actual client story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-playground-playgroundpageclient--empty-conversation",
         "production-playground-playgroundpageclient--sends-completion",
@@ -10225,13 +10479,7 @@
         "production-playground-playgroundpageclient--chat-history-popover",
         "production-playground-playgroundpageclient--completion-error"
       ],
-      "approvedScenarioIds": [
-        "production-playground-playgroundpageclient--empty-conversation",
-        "production-playground-playgroundpageclient--sends-completion",
-        "production-playground-playgroundpageclient--model-menu-provider-switch",
-        "production-playground-playgroundpageclient--chat-history-popover",
-        "production-playground-playgroundpageclient--completion-error"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-playground-playgroundpageclient--empty-conversation",
@@ -10306,21 +10554,49 @@
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
-          "proposedSourceEvidence": "PlaygroundPageClient.stories.jsx#CompletionError",
-          "expectedVisibleText": "Fixture completion failed"
+          "proposedSourceEvidence": "CompletionError fixture returns HTTP503 with error Fixture provider unavailable.; sendMessage sets the sanitized loadError banner and assistant error message. Frozen ff930 screenshot shows both retained texts; the real play asserts the Error status.",
+          "expectedVisibleText": "Fixture provider unavailable.",
+          "proposedVisibleTexts": [
+            "Fixture provider unavailable.",
+            "Error: Fixture provider unavailable."
+          ]
         }
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Actual client story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [
+          "production-playground-playgroundpageclient--completion-error"
+        ],
+        "publishedDependencyPathsPendingCombinedIntegration": [],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Actual client story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-playground-playgroundpageclient--empty-conversation",
+            "production-playground-playgroundpageclient--sends-completion",
+            "production-playground-playgroundpageclient--model-menu-provider-switch",
+            "production-playground-playgroundpageclient--chat-history-popover",
+            "production-playground-playgroundpageclient--completion-error"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Actual client story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/playground/page.js#PlaygroundPage",
@@ -13506,10 +13782,10 @@
       "symbol": "PxpipeClient",
       "sourceSha256": "0affa7adc09ff33ca34d82c12f84aec48e8e61030623fed761f6c1526e90d8ac",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-pxpipe-pxpipeclient--populated",
         "production-pxpipe-pxpipeclient--empty",
@@ -13521,17 +13797,7 @@
         "production-pxpipe-pxpipepage--default",
         "production-savers-tokensaverclient--overview"
       ],
-      "approvedScenarioIds": [
-        "production-pxpipe-pxpipeclient--populated",
-        "production-pxpipe-pxpipeclient--empty",
-        "production-pxpipe-pxpipeclient--unavailable",
-        "production-pxpipe-pxpipeclient--loading",
-        "production-pxpipe-pxpipeclient--keyboard-paging-and-range",
-        "production-pxpipe-pxpipeclient--rtl",
-        "production-pxpipe-pxpipeclient--mobile-viewport",
-        "production-pxpipe-pxpipepage--default",
-        "production-savers-tokensaverclient--overview"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-pxpipe-pxpipeclient--populated",
@@ -13711,15 +13977,43 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Direct reusable component.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-pxpipe-pxpipeclient--populated",
+            "production-pxpipe-pxpipeclient--empty",
+            "production-pxpipe-pxpipeclient--unavailable",
+            "production-pxpipe-pxpipeclient--loading",
+            "production-pxpipe-pxpipeclient--keyboard-paging-and-range",
+            "production-pxpipe-pxpipeclient--rtl",
+            "production-pxpipe-pxpipeclient--mobile-viewport",
+            "production-pxpipe-pxpipepage--default",
+            "production-savers-tokensaverclient--overview"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js#SummaryCard",
@@ -13727,16 +14021,14 @@
       "symbol": "SummaryCard",
       "sourceSha256": "0affa7adc09ff33ca34d82c12f84aec48e8e61030623fed761f6c1526e90d8ac",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-pxpipe-pxpipeclient--populated"
       ],
-      "approvedScenarioIds": [
-        "production-pxpipe-pxpipeclient--populated"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-pxpipe-pxpipeclient--populated",
@@ -13759,18 +14051,38 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "historicalSourceReviewFindings": [
         "Empty, unavailable, and loading paths may omit summary-card data; reject inherited mappings."
       ],
       "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-pxpipe-pxpipeclient--populated"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/pxpipe/error.js#PxpipeError",
@@ -15766,20 +16078,16 @@
       "symbol": "TokenSaverClient",
       "sourceSha256": "1640a5fd8a5b1f3471cfb7628bbd805389925f5ce188a35dfc16b7e7e29c948c",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Actual client story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-savers-tokensaverclient--settings",
         "production-savers-tokensaverclient--unavailable-services",
         "production-savers-tokensaverclient--overview"
       ],
-      "approvedScenarioIds": [
-        "production-savers-tokensaverclient--settings",
-        "production-savers-tokensaverclient--unavailable-services",
-        "production-savers-tokensaverclient--overview"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-savers-tokensaverclient--settings",
@@ -15862,15 +16170,37 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Actual client story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Actual client story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-savers-tokensaverclient--settings",
+            "production-savers-tokensaverclient--unavailable-services",
+            "production-savers-tokensaverclient--overview"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Actual client story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/token-saver/components/CavemanOutputPreview.jsx#CavemanOutputPreview",
@@ -16009,20 +16339,16 @@
       "symbol": "TokenSaverOverview",
       "sourceSha256": "d38d8f08f2dde5d4b48ffcb81c642e685b9ca81619f50fe8b121bae95ab03c7b",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Reusable export direct story.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-savers-tokensaveroverview--metrics",
         "production-savers-tokensaveroverview--empty-with-diagnostic",
         "production-savers-tokensaverclient--overview"
       ],
-      "approvedScenarioIds": [
-        "production-savers-tokensaveroverview--metrics",
-        "production-savers-tokensaveroverview--empty-with-diagnostic",
-        "production-savers-tokensaverclient--overview"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-savers-tokensaveroverview--metrics",
@@ -16097,15 +16423,37 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source and actual CSF ownership proposal. Reusable export direct story.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Reusable export direct story.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-savers-tokensaveroverview--metrics",
+            "production-savers-tokensaveroverview--empty-with-diagnostic",
+            "production-savers-tokensaverclient--overview"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source and actual CSF ownership proposal. Reusable export direct story.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/app/(dashboard)/dashboard/token-saver/page.js#TokenSaverPage",
@@ -25022,19 +25370,15 @@
       "sourceSha256": "df29d4ce5f4da990aa5ae1c6fc4ab46d6844d6e870dd6d42895f625b11e673cb",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Current source/CSF audit: OrcaModelDropdown maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "approvedClassification": "visual",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "approvedClassification": null,
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-shared-config-orcamodeldropdown--live-catalog",
         "production-shared-config-orcamodeldropdown--degraded-empty-catalog",
         "production-shared-config-orcamodeldropdown--no-connection"
       ],
-      "approvedScenarioIds": [
-        "production-shared-config-orcamodeldropdown--live-catalog",
-        "production-shared-config-orcamodeldropdown--degraded-empty-catalog",
-        "production-shared-config-orcamodeldropdown--no-connection"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-config-orcamodeldropdown--live-catalog",
@@ -25083,15 +25427,37 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: OrcaModelDropdown maps through colocated production stories.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/shared/components/OrcaModelDropdown.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Current source/CSF audit: OrcaModelDropdown maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-config-orcamodeldropdown--live-catalog",
+            "production-shared-config-orcamodeldropdown--degraded-empty-catalog",
+            "production-shared-config-orcamodeldropdown--no-connection"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: OrcaModelDropdown maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/shared/components/OrcaRouterAuthModal.js#OrcaRouterAuthModal",
@@ -25318,22 +25684,17 @@
       "symbol": "PricingCell",
       "sourceSha256": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source/CSF audit: PricingCell maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-shared-domain-pricingmodal--loaded",
         "production-shared-domain-pricingmodal--save-persists-and-reopens",
         "production-shared-domain-pricingmodal--save-error-visible",
         "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
       ],
-      "approvedScenarioIds": [
-        "production-shared-domain-pricingmodal--loaded",
-        "production-shared-domain-pricingmodal--save-persists-and-reopens",
-        "production-shared-domain-pricingmodal--save-error-visible",
-        "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-domain-pricingmodal--loaded",
@@ -25381,10 +25742,8 @@
             "src/shared/components/PricingModal.stories.jsx": "32d20eddab9348594dd98c1daaa9ea7ecfdfd0ee909ef6b0246df19a1ef31cbf"
           },
           "proposedSourceEvidence": "SaveErrorVisible retains PricingCell after rate-locked response. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
-          "expectedConsoleErrors": [
-            "Failed to save pricing:"
-          ],
-          "proposedConsoleErrorEvidence": "SaveErrorVisible fixture returns HTTP 423 from PATCH /api/pricing; PricingModal catches and logs this exact prefix.",
+          "expectedConsoleErrors": [],
+          "proposedConsoleErrorEvidence": "PATCH HTTP423 rate-locked is handled by the non-OK response branch, which sets the visible alert without throwing or logging. Only a thrown fetch/parse exception reaches the logging catch; frozen ff930 captured zero console errors.",
           "expectedControl": {
             "role": "spinbutton",
             "name": "gpt-5 input rate"
@@ -25410,15 +25769,38 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: PricingCell maps through colocated production stories.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [
+          "production-shared-domain-pricingmodal--save-error-visible"
+        ],
+        "publishedDependencyPathsPendingCombinedIntegration": [],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Current source/CSF audit: PricingCell maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-domain-pricingmodal--loaded",
+            "production-shared-domain-pricingmodal--save-persists-and-reopens",
+            "production-shared-domain-pricingmodal--save-error-visible",
+            "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: PricingCell maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/shared/components/PricingModal.js#PricingModal",
@@ -25426,10 +25808,10 @@
       "symbol": "PricingModal",
       "sourceSha256": "53570fd22d20aacc661788526e0170798c2beb371fe7cdb33ece721c1413757b",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source/CSF audit: PricingModal maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-shared-domain-pricingmodal--loaded",
         "production-shared-domain-pricingmodal--save-persists-and-reopens",
@@ -25437,13 +25819,7 @@
         "production-shared-domain-pricingmodal--load-error-visible",
         "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
       ],
-      "approvedScenarioIds": [
-        "production-shared-domain-pricingmodal--loaded",
-        "production-shared-domain-pricingmodal--save-persists-and-reopens",
-        "production-shared-domain-pricingmodal--save-error-visible",
-        "production-shared-domain-pricingmodal--load-error-visible",
-        "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shared-domain-pricingmodal--loaded",
@@ -25493,10 +25869,8 @@
           },
           "proposedSourceEvidence": "SaveErrorVisible fixture returns rate-locked and play asserts alert while input remains.",
           "expectedVisibleText": "rate-locked",
-          "expectedConsoleErrors": [
-            "Failed to save pricing:"
-          ],
-          "proposedConsoleErrorEvidence": "SaveErrorVisible fixture returns HTTP 423 from PATCH /api/pricing; PricingModal catches and logs this exact prefix."
+          "expectedConsoleErrors": [],
+          "proposedConsoleErrorEvidence": "PATCH HTTP423 rate-locked is handled by the non-OK response branch, which sets the visible alert without throwing or logging. Only a thrown fetch/parse exception reaches the logging catch; frozen ff930 captured zero console errors."
         },
         {
           "id": "production-shared-domain-pricingmodal--load-error-visible",
@@ -25512,10 +25886,8 @@
           },
           "proposedSourceEvidence": "LoadErrorVisible asserts db offline and default fallback input.",
           "expectedVisibleText": "db offline",
-          "expectedConsoleErrors": [
-            "Failed to load pricing:"
-          ],
-          "proposedConsoleErrorEvidence": "LoadErrorVisible fixture returns HTTP 503 from GET /api/pricing; PricingModal catches and logs this exact prefix."
+          "expectedConsoleErrors": [],
+          "proposedConsoleErrorEvidence": "GET HTTP503 db offline is handled by the non-OK response branch, which installs default pricing and sets the visible alert without throwing or logging. Only a thrown fetch exception reaches the logging catch; frozen ff930 captured zero console errors."
         },
         {
           "id": "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates",
@@ -25538,15 +25910,40 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: PricingModal maps through colocated production stories.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [
+          "production-shared-domain-pricingmodal--save-error-visible",
+          "production-shared-domain-pricingmodal--load-error-visible"
+        ],
+        "publishedDependencyPathsPendingCombinedIntegration": [],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Current source/CSF audit: PricingModal maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-domain-pricingmodal--loaded",
+            "production-shared-domain-pricingmodal--save-persists-and-reopens",
+            "production-shared-domain-pricingmodal--save-error-visible",
+            "production-shared-domain-pricingmodal--load-error-visible",
+            "production-shared-domain-pricingmodal--reset-pending-disables-close-and-changes-rates"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: PricingModal maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/shared/components/ProviderIcon.js#ProviderIcon",
@@ -25657,22 +26054,17 @@
       "symbol": "RequestLogger",
       "sourceSha256": "d69c585c4ba25bd73bb40bcab58da4d4c84eb57588d78f73c34d7bb7c605dca7",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source/CSF audit: RequestLogger maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-shared-analytics-requestlogger--populated",
         "production-shared-analytics-requestlogger--empty",
         "production-shared-analytics-requestlogger--fetch-error",
         "production-shared-analytics-requestlogger--auto-refresh-control"
       ],
-      "approvedScenarioIds": [
-        "production-shared-analytics-requestlogger--populated",
-        "production-shared-analytics-requestlogger--empty",
-        "production-shared-analytics-requestlogger--fetch-error",
-        "production-shared-analytics-requestlogger--auto-refresh-control"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "storyId": "production-shared-analytics-requestlogger--populated",
@@ -25762,15 +26154,38 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: RequestLogger maps through colocated production stories.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/shared/components/RequestLogger.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Current source/CSF audit: RequestLogger maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shared-analytics-requestlogger--populated",
+            "production-shared-analytics-requestlogger--empty",
+            "production-shared-analytics-requestlogger--fetch-error",
+            "production-shared-analytics-requestlogger--auto-refresh-control"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: RequestLogger maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/shared/components/SegmentedControl.js#SegmentedControl",
@@ -26299,16 +26714,14 @@
       "symbol": "SidebarTooltip",
       "sourceSha256": "fc4b2dc354f7bea0b6243435e597508653cc6ee2e576eeba66379475ff180c24",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source/CSF audit: SidebarTooltip maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-shell-sidebar--collapsed-tooltip"
       ],
-      "approvedScenarioIds": [
-        "production-shell-sidebar--collapsed-tooltip"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shell-sidebar--collapsed-tooltip",
@@ -26332,18 +26745,38 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: SidebarTooltip maps through colocated production stories.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/shared/components/layouts/DashboardLayout.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "historicalSourceReviewFindings": [
         "Collapsed navigation changed: runtime measured every link63x44, CollapsibleRail geometry play success on sidebar-fixed build; full final matrix pending."
       ],
       "proposedSourceReviewNotes": "Current source/CSF audit: SidebarTooltip maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shell-sidebar--collapsed-tooltip"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: SidebarTooltip maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/shared/components/Sidebar.js#renderGroup",
@@ -27645,10 +28078,10 @@
       "symbol": "DashboardLayout",
       "sourceSha256": "53aa71040760110f48ba71717de22d15664b16b3a65b0dc20ac3c663c18c389d",
       "proposedClassification": "visual",
-      "approvedClassification": "visual",
+      "approvedClassification": null,
       "proposedCoverageRationale": "Current source/CSF audit: DashboardLayout maps through colocated production stories.",
-      "reviewStatus": "approved",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
       "requiredScenarioIds": [
         "production-shell-dashboardlayout--success-toast",
         "production-shell-dashboardlayout--error-toast",
@@ -27660,17 +28093,7 @@
         "production-shell-dashboardlayout--toast-dismissal",
         "production-shell-dashboardlayout--mobile-drawer-transitions"
       ],
-      "approvedScenarioIds": [
-        "production-shell-dashboardlayout--success-toast",
-        "production-shell-dashboardlayout--error-toast",
-        "production-shell-dashboardlayout--warning-toast",
-        "production-shell-dashboardlayout--info-toast",
-        "production-shell-dashboardlayout--mobile-drawer",
-        "production-shell-dashboardlayout--persisted-desktop-collapse",
-        "production-shell-dashboardlayout--playground-full-bleed",
-        "production-shell-dashboardlayout--toast-dismissal",
-        "production-shell-dashboardlayout--mobile-drawer-transitions"
-      ],
+      "approvedScenarioIds": [],
       "storyScenarios": [
         {
           "id": "production-shell-dashboardlayout--success-toast",
@@ -27819,15 +28242,43 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "source-contract-only",
-        "provenance": "catalogReconciliation.sourceContractReview",
-        "sourceReason": "Current source/CSF audit: DashboardLayout maps through colocated production stories.",
+        "scope": "source-contract-repair-pending-independent-review",
+        "baselineCandidate": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+        "changedScenarioIds": [],
+        "publishedDependencyPathsPendingCombinedIntegration": [
+          "src/shared/components/layouts/DashboardLayout.js"
+        ],
         "runtimeStatus": "pending"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "approved-source-contract-runtime-pending",
+      "sourceReviewStatus": "changed-contract-pending-independent-review-and-runtime-proof",
       "proposedSourceReviewNotes": "Current source/CSF audit: DashboardLayout maps through colocated production stories.",
-      "runtimeStatus": "pending"
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": [
+        {
+          "reviewStatus": "approved",
+          "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+          "approvedClassification": "visual",
+          "approvedScenarioIds": [
+            "production-shell-dashboardlayout--success-toast",
+            "production-shell-dashboardlayout--error-toast",
+            "production-shell-dashboardlayout--warning-toast",
+            "production-shell-dashboardlayout--info-toast",
+            "production-shell-dashboardlayout--mobile-drawer",
+            "production-shell-dashboardlayout--persisted-desktop-collapse",
+            "production-shell-dashboardlayout--playground-full-bleed",
+            "production-shell-dashboardlayout--toast-dismissal",
+            "production-shell-dashboardlayout--mobile-drawer-transitions"
+          ],
+          "approvedException": null,
+          "reviewEvidence": {
+            "scope": "source-contract-only",
+            "provenance": "catalogReconciliation.sourceContractReview",
+            "sourceReason": "Current source/CSF audit: DashboardLayout maps through colocated production stories.",
+            "runtimeStatus": "pending"
+          }
+        }
+      ]
     },
     {
       "id": "src/shared/components/layouts/index.js#[module]",
@@ -37691,20 +38142,13 @@
     }
   ],
   "catalogReconciliation": {
-    "status": "SOURCE_CONTRACT_APPROVED_RUNTIME_PENDING",
+    "status": "CHANGED_SOURCE_CONTRACTS_PENDING_REVIEW_RUNTIME_PENDING",
     "sourceInventory": "Current production AST via scanSource; current CSF titles/exports via Storybook identifier normalization. No runtime validation executed.",
     "scannedSourceFiles": 1001,
     "astCandidateCount": 449,
     "parserVersion": "7.29.8",
     "runtimeApproval": null,
-    "independentApproval": {
-      "scope": "source-contract-only",
-      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
-      "reviewedCommit": "58f8d22a60036342fdd413b21dd454fd436508b6",
-      "verdict": "NO BLOCKERS",
-      "provenance": "catalogReconciliation.sourceContractReview",
-      "runtimeStatus": "pending"
-    },
+    "independentApproval": null,
     "storySourceCommit": "9c099c24024d6556760c2795876858d20527105e",
     "csfStoryCount": 867,
     "sourceReviewRequired": [
@@ -37747,7 +38191,7 @@
     "previousStorySourceCommit": "f51be6c223428744077ae298c4a61e0bc18ec92e",
     "storySourceStatus": "source-reviewed-published-runtime-pending",
     "sourceCorrectionCommit": "9c099c24024d6556760c2795876858d20527105e",
-    "sourceCorrectionStatus": "SOURCE_CONTRACT_APPROVED_RUNTIME_PENDING",
+    "sourceCorrectionStatus": "CANARY_MEASUREMENT_CORRECTIONS_PENDING_INDEPENDENT_AND_RUNTIME_APPROVAL",
     "sourceStoryFilesChanged": 2,
     "newStoryIdCount": 0,
     "round2SourceCorrections": {
@@ -37870,6 +38314,164 @@
         "All existing scenario axes, expected visible/absent states, requiredIntegrationEvidence, coverageScope boundaries and unsupported/pending runtime criteria remain mandatory.",
         "Applicable full-page/process accessibility evidence, automated checks and independent manual A/AA/AAA assessment; no global waiver, screenshot approval or full coverage closure."
       ]
+    },
+    "historicalIndependentApprovals": [
+      {
+        "scope": "source-contract-only",
+        "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+        "reviewedCommit": "58f8d22a60036342fdd413b21dd454fd436508b6",
+        "verdict": "NO BLOCKERS",
+        "provenance": "catalogReconciliation.sourceContractReview",
+        "runtimeStatus": "pending"
+      }
+    ],
+    "canaryMeasurementCorrection": {
+      "baselineCandidateCommitSha": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+      "baselineImageSha256": "a66f5d597acd887ccdccb752542c04ae523dcb7ecf11db7d4819b0732db1ff0a",
+      "parentObservedRiskCanary": {
+        "project": "chromium-dark-desktop",
+        "cases": 60,
+        "passed": 44,
+        "failed": 16,
+        "basis": "dd411-canary-failures-ff930dda.json",
+        "notRepresentativeFailureRate": true
+      },
+      "parentObservedRandomSample": {
+        "project": "chromium-dark-desktop",
+        "cases": 60,
+        "diagnosticFailures": 11,
+        "basis": "dd411-sample-failures-ff930dda.json",
+        "rawFinalCountsRemainInSampleLog": true
+      },
+      "status": "measurement-and-source-contract-corrections-pending-independent-review-and-parent-rerun",
+      "changedContractRows": [
+        "src/app/(dashboard)/dashboard/cli-tools/components/CopilotToolCard.js#CopilotToolCard",
+        "src/app/(dashboard)/dashboard/combos/error.js#CombosError",
+        "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
+        "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#APIPageClient",
+        "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#ApiKeyRow",
+        "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#CardSkeleton",
+        "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient",
+        "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#RowLabel",
+        "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#StatePill",
+        "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js#EndpointRow",
+        "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#Metric",
+        "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#MonitoringStrip",
+        "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js#SuccessBadge",
+        "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.js#TtsExampleCard",
+        "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js#PlaygroundPageClient",
+        "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js#PxpipeClient",
+        "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js#SummaryCard",
+        "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx#TokenSaverClient",
+        "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js#TokenSaverOverview",
+        "src/shared/components/OrcaModelDropdown.js#OrcaModelDropdown",
+        "src/shared/components/PricingModal.js#PricingCell",
+        "src/shared/components/PricingModal.js#PricingModal",
+        "src/shared/components/RequestLogger.js#RequestLogger",
+        "src/shared/components/Sidebar.js#SidebarTooltip",
+        "src/shared/components/layouts/DashboardLayout.js#DashboardLayout"
+      ],
+      "geometrySourceFacts": [
+        "Actual AutoConfigure RunFailure diagnostic scope is storybook-root; screenshot/source show a closed native Action log details disclosure. Four failed command/copy entries are its non-rendered descendants with cached layout. Native modal root and inert filtering are retained, not waived.",
+        "Closed details content is excluded only outside its first summary. Native summary is included in the same actionable-control audit; if the existing Action log summary lacks a44px target, it remains a real product blocker rather than being silently ignored.",
+        "After scrolling, visibleRect intersects the target with viewport and overflow-clipping ancestor client areas. elementFromPoint uses that visible center; focus and >=44px effective width/height remain mandatory. Original full rect, visible rect and hit point are retained in diagnostics.",
+        "Pricing LoadErrorVisible region has a2598.25px layout height inside a clipped modal; its full-layout center is not an in-view hit point. No keyboard role or tabindex is removed.",
+        "WarningToast obstruction and the40px PXPIPE transform region are genuine product failures; they are not geometry exemptions."
+      ],
+      "chartAssociation": {
+        "storyId": "production-savers-tokensaverclient--overview",
+        "scope": "existing contrast-incomplete policy, Recharts axis ticks only; every standards/enhanced violation and all other incomplete nodes remain failures",
+        "composition": "TokenSaverClient overview branch renders actual TokenSaverOverview and embedded PxpipeClient, both in the seven-source contrast guard.",
+        "sourceProof": {
+          "guard": "tests/unit/durin-ds-contrast.test.js chart axis label contrast",
+          "alphaMaximum": 0.14,
+          "fillToken": "--dd-accent",
+          "opaqueSurfaceToken": "--dd-surface",
+          "tickTokens": [
+            "--dd-text-muted",
+            "--dd-text-subtle"
+          ],
+          "sourceCompositeRatios": {
+            "lightMutedAndSubtle": 7.6009314194391715,
+            "darkMuted": 8.469340720340254,
+            "darkSubtle": 7.387062156592483
+          },
+          "threshold": 7,
+          "calculationKind": "read-only source math; no test executed"
+        },
+        "actualPaintEvidence": [
+          {
+            "file": "dd411-token-overview-chart-paint-ff930.json",
+            "sha256": "e18ffe5d6b103e2ed120d81a0137b3a0c519e5c633943fe78b05b794044c2b64",
+            "candidateCommitSha": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+            "theme": "dark",
+            "tickCount": 17,
+            "minimumMeasuredRatio": 9.8214444340738,
+            "scope": "Actual dark rendered SVG axis paint with measured opaque/composited ancestor background; not full accessibility approval",
+            "measuredBy": "parent",
+            "runtimeApproval": null
+          },
+          {
+            "file": "dd411-token-overview-chart-paint-light-ff930.json",
+            "sha256": "12a027a59fee7ee446228d308852025c952c4fa9c85a42f5b8f7d869f1beb535",
+            "candidateCommitSha": "ff930ddaccbc26c38aca4b942dbede8366d52415",
+            "theme": "light",
+            "tickCount": 17,
+            "minimumMeasuredRatio": 9.619239516395531,
+            "scope": "Actual light rendered SVG axis paint and opaque ancestor background, no assumed color or whole-story exemption",
+            "measuredBy": "parent",
+            "runtimeApproval": null
+          }
+        ],
+        "proofBoundary": "Parent measured actual17 axis ticks per theme on opaque paint with opacity1 and11px text. This associates only the reviewed chart-axis incomplete policy; it is not whole-story accessibility, manual AAA, browser-matrix or runtime approval.",
+        "runtimeApproval": null
+      },
+      "publishedDependencyCandidates": {
+        "productCommit": "87912e4662602a20c20327e57cfcf19e03d80e77",
+        "sourceDigests": {
+          "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": {
+            "before": "a62c0605f0a6c3313d35648a1af3d4d5c3ef7be1d4b76b779f68df6cf90b8e5b",
+            "after": "1ccf8dd111b2155d7fa82efbed1a2b6feba6d92f6ac8b552fc87986da4af9d56"
+          },
+          "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": {
+            "before": "77181fac8f082a7b2c40aae646096869a119a036d824f24bd035fa1bb8543df3",
+            "after": "329094c3c11d118da1cc2a0fb8b860c7b5ba4b8418293d91c129aeca64f6455f"
+          },
+          "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": {
+            "before": "50d6c1093724331e827658355c8839201809ac0db240f3e3682fbb0dfe7c242a",
+            "after": "a9d0baa53be58bc726f13e3b73d773e92dc505a86ce88956e574e52f1dbe990a"
+          },
+          "src/app/(dashboard)/dashboard/cli-tools/components/CopilotToolCard.js": {
+            "before": "579ebc557a7a6d08b280d57037128eb9d4aba4bedd0ab1a24cba41bea18942a0",
+            "after": "b319546e18814823e945b3d1ca29f1a404a1620be6a823bcc1c90b1624c0c8ba"
+          },
+          "src/shared/components/RequestLogger.js": {
+            "before": "d69c585c4ba25bd73bb40bcab58da4d4c84eb57588d78f73c34d7bb7c605dca7",
+            "after": "10544cd32b325251c82850ade2ad5d4a3230a2d4c928ba83ec930a32aa0e2a5d"
+          },
+          "src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.js": {
+            "before": "4aabfe886f01943dd0a799add7771c01addc7d97f6dcd6fbf172452758725f06",
+            "after": "c6a4689dd704a5e02f814a82884003afe666692dbde19ca4faadacb0b00a6c6a"
+          },
+          "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": {
+            "before": "0affa7adc09ff33ca34d82c12f84aec48e8e61030623fed761f6c1526e90d8ac",
+            "after": "2a6a4cd9e40f7549f5638830d4962cdfbc9007b8dfff96a22518f9a8c1b787bf"
+          },
+          "src/shared/components/OrcaModelDropdown.js": {
+            "before": "df29d4ce5f4da990aa5ae1c6fc4ab46d6844d6e870dd6d42895f625b11e673cb",
+            "after": "0c38c86bf552511338c9a19e87a3023e8cfb30f61d8e5ba072ffa8a2f07fdbf0"
+          },
+          "src/shared/components/layouts/DashboardLayout.js": {
+            "before": "53aa71040760110f48ba71717de22d15664b16b3a65b0dc20ac3c663c18c389d",
+            "after": "4a91f720cf0915047fd1fefcee85cb57c20a896e473cb7c4ecc03b192e40ebc7"
+          }
+        },
+        "acceptance": "parent high/private gate/browser proof pending",
+        "activeManifestHashes": "Retain frozen/current hashes until the parent supplies final combined published integration, including active story repairs. Never use editable or mixed uncommitted sources."
+      },
+      "storyPublication": "original story owner still active; no unpublished CSF hashes adopted",
+      "remainingRequirements": "Repeat the same canary and random sample plus complete12-project matrix on one newly frozen combined candidate. All existing source review, actual Next document/theme/locale/font/bootstrap/context, effective target/focus/hit, lifecycle/error/containment, full accessibility and manual AAA requirements remain mandatory; no dropped cases or global waiver.",
+      "runtimeApproval": null
     }
   },
   "runtimeStatus": "pending"

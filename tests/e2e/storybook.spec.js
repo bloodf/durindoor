@@ -103,6 +103,12 @@ const CHART_AAA_STORIES = [
   "production-pxpipe-pxpipepage--default",
   "production-savers-tokensaveroverview--empty-with-diagnostic",
   "production-savers-tokensaveroverview--metrics",
+  // TokenSaverClient's Overview branch composes exactly these two guarded charts.
+  // Max accent fill alpha 0.14 over dd-surface: light muted/subtle 7.60:1,
+  // dark muted 8.47:1 and subtle 7.39:1 (source math, not runtime approval).
+  // Parent's ff930 SVG paint evidence: 17 ticks/theme, dark >=9.82:1,
+  // light 9.62:1 on measured opaque surfaces. Only axis incompletes qualify.
+  "production-savers-tokensaverclient--overview",
   "production-usage-usage-surfaces--usage-trend",
   "production-usage-usage-surfaces--usage-trend-empty",
 ];
@@ -166,8 +172,21 @@ async function geometry(page) {
     const root = [...document.querySelectorAll("dialog:modal")].at(-1) ?? document.querySelector("#storybook-root");
     const controls = [];
     const opener = document.activeElement;
-    for (const node of root.querySelectorAll("button, a[href], input, select, textarea, [tabindex]")) {
+    const topLayer = (element) => element.matches(":modal, :popover-open")
+      || element === document.fullscreenElement;
+    for (const node of root.querySelectorAll("button, a[href], input, select, textarea, summary, [tabindex]")) {
       if (!node.isConnected || node.tabIndex < 0 || node.matches(":disabled") || node.closest("[inert]")) continue;
+      // Closed native disclosures remove their content from the interaction
+      // surface even when cached layout rectangles remain nonzero. Their first
+      // summary stays actionable; open disclosures and all modal controls remain measured.
+      let hiddenDisclosure = false;
+      for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        if (ancestor.matches("details:not([open])") && !ancestor.querySelector(":scope > summary")?.contains(node)) {
+          hiddenDisclosure = true;
+          break;
+        }
+      }
+      if (hiddenDisclosure) continue;
       const style = getComputedStyle(node);
       if (style.visibility !== "visible" || style.display === "none" || !node.getClientRects().length) continue;
       // Measure the surface a user actually points at. Checkboxes/radios are
@@ -185,13 +204,38 @@ async function geometry(page) {
       target.scrollIntoView({ block: "nearest", inline: "nearest" });
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const rect = target.getBoundingClientRect();
-      const center = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-      const hitTest = center === target || target.contains(center);
+      // A tall keyboard region can extend beyond a modal's scrollport. Hit-test
+      // its actually visible intersection, not a center outside the painted area.
+      // Clipping reduces the effective target too; it never relaxes the 44px floor.
+      let left = Math.max(0, rect.left);
+      let top = Math.max(0, rect.top);
+      let right = Math.min(document.documentElement.clientWidth, rect.right);
+      let bottom = Math.min(document.documentElement.clientHeight, rect.bottom);
+      // Top-layer boxes escape clips imposed by their DOM ancestors. Apply
+      // clips inside/on the boundary, but never overflow-hidden body above it.
+      // A role=dialog or merely open dialog is not a top-layer boundary.
+      for (let ancestor = topLayer(target) ? null : target.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const ancestorStyle = getComputedStyle(ancestor);
+        const clip = ancestor.getBoundingClientRect();
+        if (/^(auto|scroll|hidden|clip)$/.test(ancestorStyle.overflowX)) {
+          left = Math.max(left, clip.left + ancestor.clientLeft);
+          right = Math.min(right, clip.left + ancestor.clientLeft + ancestor.clientWidth);
+        }
+        if (/^(auto|scroll|hidden|clip)$/.test(ancestorStyle.overflowY)) {
+          top = Math.max(top, clip.top + ancestor.clientTop);
+          bottom = Math.min(bottom, clip.top + ancestor.clientTop + ancestor.clientHeight);
+        }
+        if (topLayer(ancestor)) break;
+      }
+      const visibleRect = { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+      const hitPoint = { x: left + visibleRect.width / 2, y: top + visibleRect.height / 2 };
+      const center = visibleRect.width > 0 && visibleRect.height > 0 ? document.elementFromPoint(hitPoint.x, hitPoint.y) : null;
+      const hitTest = center === target || (center !== null && target.contains(center));
       const inlineLink = node.tagName === "A" && getComputedStyle(node).display === "inline" && node.parentElement?.closest("p,li");
-      const targetSize = !!inlineLink || (rect.width >= 44 && rect.height >= 44);
+      const targetSize = !!inlineLink || (visibleRect.width >= 44 && visibleRect.height >= 44);
       node.focus({ preventScroll: true });
       const focused = document.activeElement === node || (!!editorHost && editorHost.contains(document.activeElement));
-      controls.push({ name: node.getAttribute("aria-label") || node.textContent.trim(), rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, hitTest, targetSize, focused, status: hitTest && targetSize && focused ? "pass" : "fail" });
+      controls.push({ name: node.getAttribute("aria-label") || node.textContent.trim(), rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, visibleRect, hitPoint, hitTest, targetSize, focused, status: hitTest && targetSize && focused ? "pass" : "fail" });
     }
     if (opener?.isConnected) opener.focus({ preventScroll: true });
     return controls;

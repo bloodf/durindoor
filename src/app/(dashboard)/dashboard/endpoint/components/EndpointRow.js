@@ -19,7 +19,9 @@ export function EndpointValue({ label, url, className = "rounded-dd border borde
       field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
     };
     resize();
-    document.fonts.addEventListener("loadingdone", resize);
+    // FontFaceSet is optional; initial/value/width sizing does not depend on it.
+    const fonts = field.ownerDocument.fonts;
+    fonts?.addEventListener("loadingdone", resize);
     const observer = new ResizeObserver(() => {
       if (field.clientWidth === width) return;
       width = field.clientWidth;
@@ -28,7 +30,7 @@ export function EndpointValue({ label, url, className = "rounded-dd border borde
     observer.observe(field);
     return () => {
       observer.disconnect();
-      document.fonts.removeEventListener("loadingdone", resize);
+      fonts?.removeEventListener("loadingdone", resize);
     };
   }, [url]);
 

@@ -1,3 +1,21 @@
+# 4.11.0
+
+## Features
+
+- feat: integrate DurinDoor 4.11 improvements
+- feat(website): expand the hero scene and publish the brand guide
+- feat(gateway): add MCP presets and PostgreSQL-only operation (#1049)
+- feat(web): rebuild DurinDoor identity, website, and documentation
+
+## Fixes
+
+- fix(website): restore the dimensional gateway animation
+
+## Maintenance
+
+- docs: separate user guides from comprehensive AI references (#1053)
+
+
 # Unreleased
 
 ## Features

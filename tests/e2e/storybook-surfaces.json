@@ -47899,7 +47899,7 @@
         "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
         "reviewedCommit": "c68722152b0988a2078acdb114bda68181f1b631",
         "verdict": "NO BLOCKERS",
-        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval",
+        "provenance": "catalogReconciliation.historicalSourceReconciliations[0].reconciliation.independentApproval",
         "runtimeStatus": "pending"
       }
     ],

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "SOURCE_PROPOSALS_PENDING_INDEPENDENT_HIGH_RUNTIME_PENDING",
+  "status": "SOURCE_CONTRACTS_APPROVED_RUNTIME_PENDING",
   "plannedAt": "cf572ec911afbef2e7cc1248a9be2e7a7b0d439a",
   "rows": [
     {
@@ -9,14 +9,16 @@
       "symbol": "ActionEntry",
       "sourceSha256": "c726f14cca95db8b441370f00aacde8b986fe4b18e0920c3b4bd8de740d4fecd",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "durin-ds-production-pages-auto-configure--status-preview"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "durin-ds-production-pages-auto-configure--status-preview"
+      ],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-auto-configure--status-preview",
@@ -36,17 +38,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "historicalSourceReviewFindings": [
         "RunSuccess action-entry evidence missing.",
         "RunFailure has no action entry."
@@ -98,16 +101,20 @@
       "symbol": "AutoConfigureClient",
       "sourceSha256": "c726f14cca95db8b441370f00aacde8b986fe4b18e0920c3b4bd8de740d4fecd",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "durin-ds-production-pages-auto-configure--status-preview",
         "durin-ds-production-pages-auto-configure--run-success",
         "durin-ds-production-pages-auto-configure--run-failure"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "durin-ds-production-pages-auto-configure--status-preview",
+        "durin-ds-production-pages-auto-configure--run-success",
+        "durin-ds-production-pages-auto-configure--run-failure"
+      ],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-auto-configure--status-preview",
@@ -165,17 +172,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -263,14 +271,16 @@
       "symbol": "ResultSummary",
       "sourceSha256": "c726f14cca95db8b441370f00aacde8b986fe4b18e0920c3b4bd8de740d4fecd",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "durin-ds-production-pages-auto-configure--run-success"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "durin-ds-production-pages-auto-configure--run-success"
+      ],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-auto-configure--run-success",
@@ -293,17 +303,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "historicalSourceReviewFindings": [
         "StatusPreview does not render result.",
         "RunFailure does not render result."
@@ -358,15 +369,18 @@
       "symbol": "ServiceRow",
       "sourceSha256": "c726f14cca95db8b441370f00aacde8b986fe4b18e0920c3b4bd8de740d4fecd",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "durin-ds-production-pages-auto-configure--status-preview",
         "durin-ds-production-pages-auto-configure--run-success"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "durin-ds-production-pages-auto-configure--status-preview",
+        "durin-ds-production-pages-auto-configure--run-success"
+      ],
       "storyScenarios": [
         {
           "id": "durin-ds-production-pages-auto-configure--status-preview",
@@ -405,17 +419,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "historicalSourceReviewFindings": [
         "RunFailure has no service rows."
       ],
@@ -15198,17 +15213,22 @@
       "symbol": "AddApiKeyModal",
       "sourceSha256": "5c7a5e4bb9f326be94e95f7351394917d80b6b4504dc3938cb87172157806390",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--add-api-key",
         "production-providers-detail-widgets--add-web-cookie",
         "production-providers-detail-widgets--api-key-bulk-and-validation",
         "production-providers-detail-widgets--api-key-validation-error"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--add-api-key",
+        "production-providers-detail-widgets--add-web-cookie",
+        "production-providers-detail-widgets--api-key-bulk-and-validation",
+        "production-providers-detail-widgets--api-key-validation-error"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--add-api-key",
@@ -15310,17 +15330,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -15570,13 +15591,15 @@
       "sourceSha256": "5c7a5e4bb9f326be94e95f7351394917d80b6b4504dc3938cb87172157806390",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual helper. New direct parent story covers browser extraction instructions and copy control.",
-      "reviewStatus": "pending",
-      "approvedClassification": null,
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "approvedClassification": "visual",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--chatgpt-web-cookie"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--chatgpt-web-cookie"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--chatgpt-web-cookie",
@@ -15604,17 +15627,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual helper. New direct parent story covers browser extraction instructions and copy control.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private visual helper. New direct parent story covers browser extraction instructions and copy control.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -15715,15 +15739,18 @@
       "symbol": "AddCustomModelModal",
       "sourceSha256": "6f739a2910493238e11883f2383c640ba28a258b836826ab5c68f8f609925316",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--add-custom-model",
         "production-providers-detail-widgets--add-custom-model-advanced"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--add-custom-model",
+        "production-providers-detail-widgets--add-custom-model-advanced"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--add-custom-model",
@@ -15773,17 +15800,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -15928,14 +15956,16 @@
       "symbol": "BulkImportCodexModal",
       "sourceSha256": "6650f0a985db63ea79a0fc69b0128e82cd88262c314199493303ee6b7c211150",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--bulk-imports"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--bulk-imports"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--bulk-imports",
@@ -15963,17 +15993,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -16074,14 +16105,16 @@
       "symbol": "BulkImportGrokCliModal",
       "sourceSha256": "e8ade29618d8e26a6b4fa9dfff95356669b463be57e00bef699c401e5d59e039",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--bulk-imports"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--bulk-imports"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--bulk-imports",
@@ -16109,17 +16142,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -16220,14 +16254,16 @@
       "symbol": "CompatibleModelRow",
       "sourceSha256": "025ac6a0ec8f5bbe4b7851d46a8258b8058835b4ca808c8c00ab7feb07493df1",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--compatible-models"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--compatible-models"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--compatible-models",
@@ -16255,17 +16291,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -16366,14 +16403,16 @@
       "symbol": "CompatibleModelsSection",
       "sourceSha256": "025ac6a0ec8f5bbe4b7851d46a8258b8058835b4ca808c8c00ab7feb07493df1",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--compatible-models"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--compatible-models"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--compatible-models",
@@ -16401,17 +16440,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -16512,14 +16552,16 @@
       "symbol": "ConnectionRow",
       "sourceSha256": "a5a80c3f0e9c11d225c2a806782c15519ac8fc39189c3b56896ce0280a246606",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--connection-row-scenario"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--connection-row-scenario"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--connection-row-scenario",
@@ -16547,17 +16589,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -16658,14 +16701,16 @@
       "symbol": "CooldownTimer",
       "sourceSha256": "77c65e0dafff009adc7963a9f2ddad51b3dfe3bf6cbf5ee7e2657c25ae8eb2fd",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--connection-row-cooldown"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--connection-row-cooldown"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--connection-row-cooldown",
@@ -16694,17 +16739,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -16807,14 +16853,16 @@
       "symbol": "EditCompatibleNodeModal",
       "sourceSha256": "9d098a61d89364a98b4c795814189ad3f0d4dfad72c15b1103b4f06c265ec5cf",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--compatible-edit"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--compatible-edit"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--compatible-edit",
@@ -16842,17 +16890,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -16954,13 +17003,15 @@
       "sourceSha256": "a43db54621fc3c34ae24c34fe6274fc5d43b39a18333ca2f0a3a290e5a584da2",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. New production component. Direct story covers eligible state, catalog delta, and prior error.",
-      "reviewStatus": "pending",
-      "approvedClassification": null,
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "approvedClassification": "visual",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--model-auto-sync"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--model-auto-sync"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--model-auto-sync",
@@ -16990,17 +17041,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. New production component. Direct story covers eligible state, catalog delta, and prior error.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "New production component. Direct story covers eligible state, catalog delta, and prior error.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -17159,14 +17211,16 @@
       "symbol": "PassthroughModelRow",
       "sourceSha256": "4977e2e26517a28ab04fa6bb2f3b835e78f89855900a9be13567556def07598f",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--passthrough-models"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--passthrough-models"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--passthrough-models",
@@ -17194,17 +17248,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -17305,14 +17360,16 @@
       "symbol": "PassthroughModelsSection",
       "sourceSha256": "4977e2e26517a28ab04fa6bb2f3b835e78f89855900a9be13567556def07598f",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--passthrough-models"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--passthrough-models"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--passthrough-models",
@@ -17340,17 +17397,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -17452,14 +17510,17 @@
       "sourceSha256": "d8505ece176a5c4e7e7f0c1399cc71bde84d740ce3cd540dcd12c4d2d50ab399",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. New production component. Direct story covers invalid validation and added cooldown rule.",
-      "reviewStatus": "pending",
-      "approvedClassification": null,
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "approvedClassification": "visual",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--provider-error-rules",
         "production-providers-detail-widgets--provider-error-rule-validation-error"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--provider-error-rules",
+        "production-providers-detail-widgets--provider-error-rule-validation-error"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--provider-error-rules",
@@ -17519,17 +17580,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. New production component. Direct story covers invalid validation and added cooldown rule.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "New production component. Direct story covers invalid validation and added cooldown rule.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -17695,13 +17757,15 @@
       "sourceSha256": "03ddc2133e7f51cfa43d6fbc48fa868e8874494d525dc5d162f91b0c91887135",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. New production component. Direct story covers live catalog, stale allowlist, and custom model state.",
-      "reviewStatus": "pending",
-      "approvedClassification": null,
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "approvedClassification": "visual",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--visible-models"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--visible-models"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--visible-models",
@@ -17729,17 +17793,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. New production component. Direct story covers live catalog, stale allowlist, and custom model state.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "New production component. Direct story covers live catalog, stale allowlist, and custom model state.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -17932,14 +17997,16 @@
       "symbol": "ProviderDetailError",
       "sourceSha256": "e6f2ab8e622c55c009c0e98dfc6cbc1289e2e314895562b6ba1177c18a86e69b",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-providers-detail-widgets--error-state"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-providers-detail-widgets--error-state"
+      ],
       "storyScenarios": [
         {
           "id": "production-providers-detail-widgets--error-state",
@@ -17966,17 +18033,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Visual candidate in current production source. Mapped through current CSF.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Visual candidate in current production source. Mapped through current CSF.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -23913,14 +23981,16 @@
       "symbol": "OverviewCards",
       "sourceSha256": "4a73a7038304a920a9309cd891d2537c4da19dc697daec3fd4af03143927ccf5",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--overview"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--overview"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--overview",
@@ -23949,17 +24019,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -24062,16 +24133,20 @@
       "symbol": "ProviderLimitCard",
       "sourceSha256": "925bb19c584183984b7f6b06a68cf940dd94d7bfc7f2d6d31c76e4ae678eb5bd",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--provider-limit-card-healthy",
         "production-usage-usage-surfaces--provider-limit-card-message",
         "production-usage-usage-surfaces--provider-limit-card-error"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--provider-limit-card-healthy",
+        "production-usage-usage-surfaces--provider-limit-card-message",
+        "production-usage-usage-surfaces--provider-limit-card-error"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--provider-limit-card-healthy",
@@ -24147,17 +24222,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -24354,15 +24430,18 @@
       "symbol": "QuotaProgressBar",
       "sourceSha256": "2cbdb4fe4f3f43e5bc4b8c8373406a56a51424f66451cafaf1cdd069677d8e60",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--quota-progress-healthy",
         "production-usage-usage-surfaces--quota-progress-depleted"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--quota-progress-healthy",
+        "production-usage-usage-surfaces--quota-progress-depleted"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--quota-progress-healthy",
@@ -24415,17 +24494,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -24576,14 +24656,16 @@
       "symbol": "QuotaTable",
       "sourceSha256": "7405407079995ea695b7f4428bb8a888b9368de19eea7ae384df3b64b689ba33",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--quota-table-paged"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--quota-table-paged"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--quota-table-paged",
@@ -24612,17 +24694,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -25019,15 +25102,18 @@
       "symbol": "ProviderNode",
       "sourceSha256": "0a8380a2989c447b302c93f657aac46e2b139566889564717175287e3253d499",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Private React Flow node mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--provider-topology-connected",
         "production-usage-usage-surfaces--provider-topology-tooltip-dismissal"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--provider-topology-connected",
+        "production-usage-usage-surfaces--provider-topology-tooltip-dismissal"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--provider-topology-connected",
@@ -25082,17 +25168,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Private React Flow node mapped through parent.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private React Flow node mapped through parent.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -25247,17 +25334,22 @@
       "symbol": "ProviderTopology",
       "sourceSha256": "0a8380a2989c447b302c93f657aac46e2b139566889564717175287e3253d499",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--provider-topology-connected",
         "production-usage-usage-surfaces--provider-topology-empty",
         "production-usage-usage-surfaces--provider-topology-tooltip-dismissal",
         "production-shared-analytics-usagestats--default"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--provider-topology-connected",
+        "production-usage-usage-surfaces--provider-topology-empty",
+        "production-usage-usage-surfaces--provider-topology-tooltip-dismissal",
+        "production-shared-analytics-usagestats--default"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--provider-topology-connected",
@@ -25353,17 +25445,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -25602,14 +25695,16 @@
       "symbol": "RouterNode",
       "sourceSha256": "0a8380a2989c447b302c93f657aac46e2b139566889564717175287e3253d499",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--provider-topology-connected"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--provider-topology-connected"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--provider-topology-connected",
@@ -25637,17 +25732,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Private visual fragment mapped through parent.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "historicalSourceReviewFindings": [
         "Connected topology story lacks source-visible router node fixture/assertion; no inherited mapping."
       ],
@@ -25751,15 +25847,18 @@
       "symbol": "TopologyControls",
       "sourceSha256": "0a8380a2989c447b302c93f657aac46e2b139566889564717175287e3253d499",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Private controls mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--provider-topology-connected",
         "production-usage-usage-surfaces--provider-topology-tooltip-dismissal"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--provider-topology-connected",
+        "production-usage-usage-surfaces--provider-topology-tooltip-dismissal"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--provider-topology-connected",
@@ -25820,17 +25919,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Private controls mapped through parent.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private controls mapped through parent.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -25997,14 +26097,16 @@
       "symbol": "CollapsibleSection",
       "sourceSha256": "85ff2248fd8e1dcf69f86a796fb07742603b8e9c04d5e779c5dfb17c1771f2bb",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--request-details-default"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--request-details-default"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--request-details-default",
@@ -26031,17 +26133,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Private visual fragment mapped through parent.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "historicalSourceReviewFindings": [
         "request-details-default story mounts tab but proposal gives no source-proven section-open final state."
       ],
@@ -26146,13 +26249,15 @@
       "sourceSha256": "85ff2248fd8e1dcf69f86a796fb07742603b8e9c04d5e779c5dfb17c1771f2bb",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Private JSON tree is reached through actual expanded parent controls, not merely mounted inside a closed drawer section.",
-      "reviewStatus": "pending",
-      "approvedClassification": null,
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "approvedClassification": "visual",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--request-details-default"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--request-details-default"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--request-details-default",
@@ -26182,19 +26287,20 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Private JSON tree is reached through actual expanded parent controls, not merely mounted inside a closed drawer section.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [
         "Updated parent play now exercises raw tree and nested token scalar; independent source review and runtime evidence remain pending."
       ],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -26301,14 +26407,16 @@
       "symbol": "PayloadMetadata",
       "sourceSha256": "85ff2248fd8e1dcf69f86a796fb07742603b8e9c04d5e779c5dfb17c1771f2bb",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--request-details-default"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--request-details-default"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--request-details-default",
@@ -26335,17 +26443,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Private visual fragment mapped through parent.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "historicalSourceReviewFindings": [
         "request-details-default story mounts tab but proposal gives no source-proven payload-metadata final state."
       ],
@@ -26449,15 +26558,18 @@
       "symbol": "RequestDetailsTab",
       "sourceSha256": "85ff2248fd8e1dcf69f86a796fb07742603b8e9c04d5e779c5dfb17c1771f2bb",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--request-details-default",
         "production-usage-usage-surfaces--request-details-error"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--request-details-default",
+        "production-usage-usage-surfaces--request-details-error"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--request-details-default",
@@ -26510,17 +26622,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Direct reusable component.",
         "changedDependencyPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -26675,14 +26788,16 @@
       "symbol": "RequestsPanel",
       "sourceSha256": "eccb9a0dd7a858d635656a14ea53ad359f12bfe3681761c5facc2291f7ff52b7",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--recent-and-sessions"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--recent-and-sessions"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--recent-and-sessions",
@@ -26711,17 +26826,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -26824,14 +26940,16 @@
       "symbol": "tokens",
       "sourceSha256": "eccb9a0dd7a858d635656a14ea53ad359f12bfe3681761c5facc2291f7ff52b7",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--recent-and-sessions"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--recent-and-sessions"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--recent-and-sessions",
@@ -26861,16 +26979,17 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
       "sourceReviewFindings": [],
       "runtimeStatus": "pending",
@@ -26976,15 +27095,18 @@
       "symbol": "UsageChart",
       "sourceSha256": "07342fef84279183496bfa04441946c9d0981cfb03c53a15c03d9516bf7024c9",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--usage-trend",
         "production-usage-usage-surfaces--usage-trend-empty"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--usage-trend",
+        "production-usage-usage-surfaces--usage-trend-empty"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--usage-trend",
@@ -27037,17 +27159,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -27198,16 +27321,20 @@
       "symbol": "UsageTable",
       "sourceSha256": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Direct reusable component.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--usage-table-collapsed",
         "production-usage-usage-surfaces--usage-table-cost-view",
         "production-usage-usage-surfaces--usage-table-pending"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--usage-table-collapsed",
+        "production-usage-usage-surfaces--usage-table-cost-view",
+        "production-usage-usage-surfaces--usage-table-pending"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--usage-table-collapsed",
@@ -27288,17 +27415,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Direct reusable component.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Direct reusable component.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -27505,14 +27633,16 @@
       "symbol": "detailTable",
       "sourceSha256": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--usage-table-pending"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--usage-table-pending"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--usage-table-pending",
@@ -27548,17 +27678,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -27675,14 +27806,16 @@
       "symbol": "pendingBadge",
       "sourceSha256": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--usage-table-pending"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--usage-table-pending"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--usage-table-pending",
@@ -27709,17 +27842,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -27818,14 +27952,16 @@
       "symbol": "renderExpandedRow",
       "sourceSha256": "59ef40465f64f088ac1a923ddce5c469e51e583c70bd8e6b60f99784f5b892f5",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-usage-usage-surfaces--usage-table-pending"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-usage-usage-surfaces--usage-table-pending"
+      ],
       "storyScenarios": [
         {
           "id": "production-usage-usage-surfaces--usage-table-pending",
@@ -27859,17 +27995,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source and actual CSF ownership proposal. Private visual fragment mapped through parent.",
         "changedDependencyPaths": [],
         "addedDirectImportPaths": [
           "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js"
         ],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Private visual fragment mapped through parent.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -35745,16 +35882,20 @@
       "symbol": "SetupDiagnosticCard",
       "sourceSha256": "56faec09efd03890fac00644db37911d1315ba14b06eb73435632d856f877172",
       "proposedClassification": "visual",
-      "approvedClassification": null,
+      "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source/CSF audit: SetupDiagnosticCard maps through colocated production stories.",
-      "reviewStatus": "pending",
-      "reviewedBy": "pending-independent-source-review",
+      "reviewStatus": "approved",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
       "requiredScenarioIds": [
         "production-shared-provider-setupdiagnosticcard--with-fixes-and-retry",
         "production-shared-provider-setupdiagnosticcard--copy-command-flips-to-copied",
         "production-shared-provider-setupdiagnosticcard--retry-invokes-callback"
       ],
-      "approvedScenarioIds": [],
+      "approvedScenarioIds": [
+        "production-shared-provider-setupdiagnosticcard--with-fixes-and-retry",
+        "production-shared-provider-setupdiagnosticcard--copy-command-flips-to-copied",
+        "production-shared-provider-setupdiagnosticcard--retry-invokes-callback"
+      ],
       "storyScenarios": [
         {
           "id": "production-shared-provider-setupdiagnosticcard--with-fixes-and-retry",
@@ -35807,17 +35948,18 @@
       ],
       "approvedException": null,
       "reviewEvidence": {
-        "scope": "accepted-native-control-scroll-proposal-pending-independent-high",
+        "scope": "source-contract-only",
         "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
         "sourceReason": "Current source/CSF audit: SetupDiagnosticCard maps through colocated production stories.",
         "changedDependencyPaths": [
           "src/shared/components/SetupDiagnosticCard.jsx"
         ],
         "addedDirectImportPaths": [],
-        "runtimeStatus": "pending"
+        "runtimeStatus": "pending",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval"
       },
       "sourceReviewFindings": [],
-      "sourceReviewStatus": "changed-contract-pending-independent-high",
+      "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Current source/CSF audit: SetupDiagnosticCard maps through colocated production stories.",
       "runtimeStatus": "pending",
       "historicalSourceApprovals": [
@@ -47649,13 +47791,20 @@
     }
   ],
   "catalogReconciliation": {
-    "status": "CHANGED_SOURCE_CONTRACTS_PENDING_REVIEW_RUNTIME_PENDING",
+    "status": "SOURCE_CONTRACTS_APPROVED_RUNTIME_PENDING",
     "sourceInventory": "Read-only AST and static CSF identity analysis of immutable accepted Git blobs. Counts are current observations, not limits, built-index validation, gates or runtime acceptance.",
     "scannedSourceFiles": 1001,
     "astCandidateCount": 450,
     "parserVersion": "7.29.8",
     "runtimeApproval": null,
-    "independentApproval": null,
+    "independentApproval": {
+      "scope": "source-contract-only",
+      "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+      "reviewedCommit": "c28f493a62fa10e01c93576d155b65ec96b606ab",
+      "verdict": "NO BLOCKERS",
+      "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval",
+      "runtimeStatus": "pending"
+    },
     "storySourceCommit": "9fda79064378b625a1c600f12f345a5c9e89fc01",
     "csfStoryCount": 872,
     "sourceReviewRequired": [
@@ -47691,7 +47840,7 @@
         "id": "src/app/(dashboard)/dashboard/usage/components/RequestDetailsTab.js#JsonTreeNode",
         "disposition": "source-interaction-repaired-runtime-pending",
         "reason": "Actual parent play now opens raw JSON detail, expands detail/tokens and asserts prompt_tokens: 200. Independent source-contract approval is recorded; no runtime approval is claimed. Current accepted source/CSF/dependency bytes changed: historical approval is not carried to this proposal.",
-        "sourceReviewStatus": "changed-contract-pending-independent-high",
+        "sourceReviewStatus": "approved-source-contract-runtime-pending",
         "runtimeStatus": "pending"
       },
       {
@@ -47759,9 +47908,9 @@
       }
     ],
     "previousStorySourceCommit": "fc9d52d0f10b921be577ea118a1344b8ed0d8b04",
-    "storySourceStatus": "unchanged-published-csf-current-source-dependency-proposals-pending-independent-high-runtime-pending",
+    "storySourceStatus": "unchanged-published-csf-current-source-dependency-contracts-source-approved-runtime-pending",
     "sourceCorrectionCommit": "ea7198f5917d27d37d11104d51d442be09af47ab",
-    "sourceCorrectionStatus": "ACCEPTED_NATIVE_CONTROL_SCROLL_PROPOSALS_PENDING_INDEPENDENT_HIGH_RUNTIME_PENDING",
+    "sourceCorrectionStatus": "ACCEPTED_NATIVE_CONTROL_SCROLL_SOURCE_CONTRACTS_APPROVED_RUNTIME_PENDING",
     "sourceStoryFilesChanged": 13,
     "newStoryIdCount": 5,
     "round2SourceCorrections": {
@@ -48075,7 +48224,7 @@
       "astCandidateCount": 449,
       "csfStoryCount": 867
     },
-    "sourceContractReviewApplicability": "Historical58f8d22a and exactc687/a136 source-only approvals remain genuine at their original source/scenario revisions. Unchanged contracts/references retain those approvals; c687 provenance is preserved in historicalSourceReconciliations[0]. The 40 changed own-source/dependency/import contracts and current geometry helper await new independent high review and explicit source-only bookkeeping authorization. No approval transfers to the accepted changed bytes or a future frozen runtime candidate.",
+    "sourceContractReviewApplicability": "Historical58f8d22a and exactc687/a136 source-only approvals remain genuine at their original source/scenario revisions. Unchanged contracts/references retain those approvals, with c687 provenance preserved in historicalSourceReconciliations[0]. All 40 affected own-source/dependency/import contracts and the current geometry helper provenance were independently reviewed at exactc28 and explicitly authorized for source-only bookkeeping. Current review is finalSourceReconciliation.independentApproval; none of these records grants a future combined candidate, runtime or manual acceptance.",
     "historicalSourceReviewRequired": [
       {
         "id": "src/app/(dashboard)/dashboard/media-providers/[kind]/page.js#ComboList",
@@ -48116,8 +48265,33 @@
     "finalSourceReconciliation": {
       "sourceHead": "ea7198f5917d27d37d11104d51d442be09af47ab",
       "sourceHeadIsFrozenRuntimeCandidate": false,
-      "status": "PROPOSED_PENDING_GENUINE_INDEPENDENT_HIGH",
-      "independentApproval": null,
+      "status": "SOURCE_CONTRACTS_APPROVED_RUNTIME_PENDING",
+      "independentApproval": {
+        "scope": "source-contract-only",
+        "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+        "reviewedCommit": "c28f493a62fa10e01c93576d155b65ec96b606ab",
+        "reviewedCandidateCommitSha": "c28f493a62fa10e01c93576d155b65ec96b606ab",
+        "verdict": "NO BLOCKERS",
+        "persistedMetadata": {
+          "provider": "openai-codex",
+          "model": "gpt-6.1-sol",
+          "stopReason": "stop"
+        },
+        "effort": "high",
+        "effortProvenance": "Parent confirms current exact-request successful persisted independent INLINE high NO BLOCKERS review of corrected c28, covering all 40 pending affected source contracts and revision-correct archived provenance.",
+        "verdictArtifact": "dd411-review-verdict-Tcatalog.json",
+        "verdictArtifactSha256": "e4d621e790b4af731766c850024d186a0aa4bef33ce3105332d4ad430a2c7ff6",
+        "scopeAuthorization": "Parent explicitly authorizes source-only approval bookkeeping for the exact 40 reviewed proposals. Preserve 474 unchanged row approvals and 15 references; no runtime acceptance is authorized.",
+        "approvedCounts": {
+          "visual": 40,
+          "nonvisual": 0,
+          "retired": 0,
+          "references": 0
+        },
+        "approvalBoundary": "Source classifications, scenario ownership, actual accepted source/dependency/import and geometry helper provenance only. Supplemental native and strict positive/negative geometry diagnostics are not final matrix, manual A/AA/AAA, native A/B/A, Next document/prepaint/theme/locale/fonts/context, real clipboard or full-page/process acceptance. Historical6ba first-project canary/sample each57/3 stay immutable; other11/full are unrun. The exact original60+60 and every actual current built story across all12 projects remain required without waiver. The final combined frozen candidate is not assigned by this bookkeeping.",
+        "runtimeStatus": "pending",
+        "runtimeApproval": null
+      },
       "runtimeApproval": null,
       "runtimeStatus": "pending",
       "counts": {
@@ -48132,7 +48306,7 @@
         "changedExistingRows": 89,
         "newVisualRows": 1,
         "changedProposalRows": 90,
-        "pendingRows": 40,
+        "pendingRows": 0,
         "retainedUnchangedApprovedRows": 474,
         "changedProductionPaths": 14,
         "changedCsfPaths": 13,
@@ -54202,8 +54376,15 @@
       "scope": "Actual native disclosure and visible-model search/checkbox-label targets keep native behavior, labels, focus and closed-details semantics. Geometry prepares targets with native instant centered scrolling through nested scrollports, then measures the same strict visible viewport/ancestor intersection, min44px, actual center hit and focus with unchanged top-layer/Monaco rules. Imported source provenance does not claim the changed widget renders in every scene of its CSF module. Genuine undersized, clipped or obstructed targets remain failures; no rounding, tolerance, exclusion or waiver.",
       "parentReportedSourceAcceptance": "Parent reports strict serial source gates and exact-candidate independent high NO BLOCKERS for each source/harness commit. This does not approve the current reconciled catalog proposal or final runtime matrix.",
       "nativeProductProofStatus": "parent proof in progress; no passed result claimed",
-      "status": "SOURCE_PROPOSAL_PENDING_INDEPENDENT_HIGH_RUNTIME_PENDING",
-      "independentApproval": null,
+      "status": "SOURCE_CONTRACTS_APPROVED_RUNTIME_PENDING",
+      "independentApproval": {
+        "scope": "source-contract-only",
+        "reviewedBy": "openai-codex/gpt-6.1-sol (independent INLINE high source review)",
+        "reviewedCommit": "c28f493a62fa10e01c93576d155b65ec96b606ab",
+        "verdict": "NO BLOCKERS",
+        "provenance": "catalogReconciliation.finalSourceReconciliation.independentApproval",
+        "runtimeStatus": "pending"
+      },
       "runtimeApproval": null,
       "runtimeStatus": "pending",
       "historicalRuntimeDiagnostics": {

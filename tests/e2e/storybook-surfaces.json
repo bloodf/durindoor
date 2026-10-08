@@ -8277,15 +8277,14 @@
           "axes": [
             "preset selection"
           ],
-          "proposedSourceEvidence": "McpGatewayComponents.jsx:80-104",
+          "proposedSourceEvidence": "SelectServerPreset retains the actual modal and visible Server preset label. Its existing real CSF play asserts the named URL textbox's live value with toHaveValue and the Requires OAuth switch's checked state. The Notion URL is native control data, not DOM text or descriptive manifest enforcement.",
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayComponents.jsx": "bada94b5f3d68b5031b9de477610ef87a6abe5eb93ab77b1e3e0e253869c10c3",
             "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
           "expectedVisibleText": "Server preset",
           "proposedVisibleTexts": [
-            "Server preset",
-            "https://mcp.notion.com/mcp"
+            "Server preset"
           ],
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
         }
@@ -9872,10 +9871,10 @@
             "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayPage.jsx": "ca3c7ff2ff6748e6a1e689e84bcf86c65052815cd0c3dad04d9b10a3da07400d",
             "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b"
           },
-          "proposedSourceEvidence": "McpGatewayPage.jsx:84-88",
-          "expectedVisibleText": "https://mcp.notion.com/mcp",
+          "proposedSourceEvidence": "SelectServerPreset retains the actual modal and visible Server preset label. Existing real CSF play selects Notion, asserts the named URL textbox value with toHaveValue, and asserts Requires OAuth checked. The URL is not a getByText expectation; no native-value assertion is replaced by manifest metadata.",
+          "expectedVisibleText": "Server preset",
           "proposedVisibleTexts": [
-            "https://mcp.notion.com/mcp",
+            "Server preset",
             "Requires OAuth"
           ],
           "proposedFixtureLifecycle": "Actual CSF meta beforeEach resets the complete cloned fixture graph before render and returns reset for disposal; instances, keys, grant Map and nested arrays do not retain route mutations across A/B/A navigation. Source contract only; runtime and independent approvals remain pending."
@@ -46044,14 +46043,14 @@
           {
             "id": "src/app/(dashboard)/dashboard/mcp-gateway/McpGatewayErrorView.jsx#McpGatewayErrorView",
             "disposition": "retained-real-keys-error-widget-and-separate-reset-transitions",
-            "reason": "Actual separate retained instances/keys scenes render their own real wrapper and the shared error view. Both original reset plays end Reset requested after asserted removal of heading/retry. Exact complete two-argument fixture matching and all-argument forwarding are source-correct; current catalog proposal remains pending independent high.",
+            "reason": "RetainedErrorBoundary keeps the actual keys boundary/shared view mounted; original ErrorBoundary plays end Reset requested with production widgets unmounted. No closed-final waiver or intercepted-console-event expectation.",
             "sourceReviewStatus": "changed-contract-pending-independent-high",
             "runtimeStatus": "pending"
           },
           {
             "id": "src/app/(dashboard)/dashboard/mcp-gateway/error.js#McpGatewayError",
-            "disposition": "retained-real-instances-wrapper-and-separate-asserted-unmount-reset",
-            "reason": "Accepted instances RetainedErrorBoundary renders the actual imported McpGatewayError from mcp-gateway/error.js and its McpGatewayErrorView, not the keys wrapper. Without reset activation, play retains and asserts the actual production heading, help/detail text, visible enabled Try again, absence of Reset requested and the actual fixture console call. Only the exact complete two-argument fixture call is intercepted; all other arguments are forwarded unchanged and interception is restored. Native/runtime/full-process evidence remains pending. Accepted instances ErrorBoundary renders the actual McpGatewayError and shared view, asserts their initial failed-load heading and actual fixture console call, activates Try again, then asserts Reset requested and absence of both the production failed-load heading and Try again action. The harness conditionally replaces the production error, rather than appending reset text. Console interception matches the complete exact two-argument fixture call; all other argument lists are forwarded unchanged and the spy is restored. No intercepted browser-console event or runtime approval is claimed.",
+            "disposition": "gateway-wrapper-initial-and-reset-transition-only",
+            "reason": "This actual gateway error wrapper is mounted during its own ErrorBoundary play and unmounted by reset. RetainedErrorBoundary covers the keys wrapper and shared error view, not this gateway wrapper. Keep wrapper-specific initial/retry/reset integration proof; do not re-label keys ownership as this distinct wrapper or add a closed-final waiver.",
             "sourceReviewStatus": "changed-contract-pending-independent-high",
             "runtimeStatus": "pending"
           }
@@ -46061,6 +46060,17 @@
     "instancesCorrection": {
       "acceptedSourceCommit": "516c30ee6296230f860a1ee300bd841549e3dfcf",
       "acceptedIntegrationHead": "515b401059d7635970d212e4ba78a3e111d27680",
+      "metadataCorrectionRevision": "2a916fb608db6b5be7be84efaf064511ca598a55",
+      "historicalDispositionBoundary": "The blocked99c sourceReviewDispositions are copied verbatim from immutable99c source, including its incorrect then-current claims. Corrected retained instances ownership and exact console handling are recorded separately here against accepted516c source,515b integration and2a metadata, never backdated into99c.",
+      "ownedReviewCorrections": {
+        "baseProposalCommit": "2a916fb608db6b5be7be84efaf064511ca598a55",
+        "nativePreset": "Actual retained Server preset text replaces native URL-as-text declarations; the existing real CSF toHaveValue assertion remains authoritative.",
+        "historicalArchive": "Original rejected99c dispositions restored verbatim from its frozen source; later source corrections remain revision-bound separately.",
+        "modalSourceBlocker": "CreateInstance currently completes creation and closes its modal. Retained custom-create modal ownership remains blocked and pending until the original owner publishes accepted source. No future source bytes, identities, hashes or approval stamps are adopted.",
+        "independentApproval": null,
+        "runtimeApproval": null,
+        "runtimeStatus": "pending"
+      },
       "sourcePath": "src/app/(dashboard)/dashboard/mcp-gateway/page.stories.jsx",
       "sourceSha256": "8479e90af4a5a975b467be5e08b6a6c2fceb6382a49503903ae389f7403ffc1b",
       "newStoryId": "durin-ds-production-pages-mcp-gateway--retained-error-boundary",

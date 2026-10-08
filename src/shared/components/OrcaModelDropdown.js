@@ -122,9 +122,10 @@ export default function OrcaModelDropdown({
           </label>
         )}
 
-        {/* The panel is anchored to the trigger itself, so its right edge tracks
-            the control the user clicked rather than the whole toolbar row. */}
-        <div className="relative">
+        {/* Narrow layouts anchor below the complete trigger/Clear row so
+            neither control sits behind the panel. Desktop anchors to the trigger. */}
+        <div className="relative flex min-w-0 w-full items-center gap-2 md:w-auto">
+        <div className="min-w-0 flex-1 md:relative md:flex-none">
           <button
             type="button"
             ref={triggerRef}
@@ -132,7 +133,7 @@ export default function OrcaModelDropdown({
             aria-expanded={open}
             aria-haspopup="dialog"
             data-testid="orca-model-trigger"
-            className="flex min-h-11 min-w-[220px] items-center justify-between gap-2 rounded-lg border border-dd-border bg-dd-surface px-3 py-1.5 text-xs text-dd-text outline-none hover:border-dd-accent focus-visible:shadow-dd-focus">
+            className="flex min-h-11 min-w-0 w-full items-center justify-between gap-2 rounded-lg border border-dd-border bg-dd-surface px-3 py-1.5 text-xs text-dd-text outline-none hover:border-dd-accent focus-visible:shadow-dd-focus md:min-w-[220px] md:w-auto">
 
             <span className="truncate">{selectedModel || "Select an OrcaRouter model"}</span>
             <span className="material-symbols-outlined text-[16px] text-dd-muted">expand_more</span>
@@ -144,7 +145,7 @@ export default function OrcaModelDropdown({
               data-testid="orca-model-panel"
               role="dialog"
               aria-label={label}
-              className="absolute right-0 top-full z-50 mt-2 w-[360px] overflow-hidden rounded-xl border border-dd-border bg-dd-surface shadow-2xl">
+              className="absolute left-0 right-0 top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-dd-border bg-dd-surface shadow-2xl md:left-auto md:w-[360px]">
 
               <div className="border-b border-dd-border-subtle px-3 py-2">
                 <input
@@ -222,11 +223,12 @@ export default function OrcaModelDropdown({
             type="button"
             onClick={() => onClear?.(selectedModel)}
             data-testid="orca-model-clear"
-            className="min-h-11 min-w-11 rounded-dd px-2 text-xs text-dd-muted underline outline-none hover:text-dd-accent focus-visible:shadow-dd-focus">
+            className="min-h-11 min-w-11 shrink-0 rounded-dd px-2 text-xs text-dd-muted underline outline-none hover:text-dd-accent focus-visible:shadow-dd-focus">
 
             Clear
           </button>
         )}
+        </div>
       </div>
     </div>
   );

@@ -5,8 +5,9 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 
 /**
- * Native read-only selection with wrapping and automatic height. Re-measure
- * on value and width changes so long endpoint URLs stay fully visible.
+ * Native read-only selection with wrapping and automatic height. An automatic
+ * flex basis preserves that height in stacked rows and flexible width in rows.
+ * Re-measure on value and width changes so long URLs stay fully visible.
  */
 export function EndpointValue({ label, url, className = "rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 text-dd-text" }) {
   const ref = useRef(null);
@@ -42,7 +43,7 @@ export function EndpointValue({ label, url, className = "rounded-dd border borde
       rows={1}
       wrap="soft"
       value={url}
-      className={`min-h-11 min-w-0 w-full flex-1 self-start resize-none overflow-hidden whitespace-pre-wrap break-all font-mono text-xs outline-none focus-visible:shadow-dd-focus ${className}`}
+      className={`min-h-11 min-w-0 w-full flex-auto self-start resize-none overflow-hidden whitespace-pre-wrap break-all font-mono text-xs outline-none focus-visible:shadow-dd-focus ${className}`}
     />
   );
 }

@@ -20,7 +20,9 @@
 - fix(skills): Offer deduplicated local, tunnel, external tunnel, Tailscale, external Tailscale, and remote browser-origin endpoints as skill copy targets.
 - fix(token-saver): Separate savings-chart labels from decorative axis strokes using the established dashboard axis presentation.
 - fix(providers): Keep the OrcaRouter model picker within the available mobile and narrow-tablet width and its Clear action beside the trigger above the popup, while preserving desktop popover placement.
-- fix(endpoint): Preserve autosized read-only URL heights in stacked mobile rows while retaining flexible desktop widths and native text selection.
+- fix(endpoint): Preserve autosized read-only URL heights in stacked mobile rows and after font or width changes, retaining flexible desktop widths and complete native text selection.
+- fix(qa): Separate native endpoint value/selection assertions, retained MCP/Combos error widgets, and unsubmitted custom-create forms from reset/submission/cancel transitions; use exact fixture-console interception with complete forwarding, while keeping source review and frozen browser/process accessibility acceptance pending.
+- fix(qa): Isolate artifact identity from coverage-checker imports and measure visible clipped targets with real focus/hits; qualify chart-axis incompletes only with live fail-closed paint, text, mask, and stroke proof, never a whole-story accessibility waiver.
 
 ## Upstream ports
 

@@ -92,7 +92,7 @@ export default function DashboardLayout({ children }) {
         <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
       {/* Notifications occupy their own row below Header, never its hit area.
           Errors interrupt speech; other outcomes wait for a pause. */}
-      <div className="z-[80] flex max-h-[40vh] w-[min(100%,412px)] shrink-0 self-end flex-col gap-2 overflow-y-auto px-4 [&:not(:empty)]:py-2">
+      <div className="z-0 flex max-h-[40vh] w-[min(100%,412px)] shrink-0 self-end flex-col gap-2 overflow-y-auto px-4 [&:not(:empty)]:py-2">
         {notifications.map((n) => {
           const style = getToastStyle(n.type);
           const urgent = n.type === "error";

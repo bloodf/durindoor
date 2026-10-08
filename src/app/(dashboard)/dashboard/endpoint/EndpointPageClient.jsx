@@ -20,7 +20,7 @@ import {
   getLocalEndpointUrl,
 } from "./endpointConstants";
 import { clientPingUrl, clientPingAny } from "./endpointPing";
-import EndpointRow from "./components/EndpointRow";
+import EndpointRow, { EndpointValue } from "./components/EndpointRow";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
 import StatusAlert from "./components/StatusAlert";
@@ -704,16 +704,11 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                 <div className="flex min-w-0 flex-1 items-center gap-2 bg-dd-accent-soft px-3 py-1.5 text-[13px] text-dd-accent">
                   <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">cloud_done</span>
                   <span className="font-medium">External</span>
-                  <span
-                    className="min-h-11 min-w-0 flex-1 select-all break-all font-mono text-xs outline-none focus-visible:shadow-dd-focus"
-                    aria-label="External tunnel URL"
-                    role="textbox"
-                    aria-readonly="true"
-                    aria-multiline="true"
-                    tabIndex={0}
-                  >
-                    {`${tunnelExternal.tunnelUrl}/v1`}
-                  </span>
+                  <EndpointValue
+                    label="External tunnel URL"
+                    url={`${tunnelExternal.tunnelUrl}/v1`}
+                    className="bg-transparent text-dd-accent"
+                  />
                   <IconButton
                     icon={copied === "tunnel_url" ? "check" : "content_copy"}
                     label="Copy external tunnel URL"
@@ -724,16 +719,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                 </div>
               ) : tunnelEnabled && !tunnelLoading && tunnelReachable ? (
                 <>
-                  <span
-                    className="min-h-11 min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text outline-none focus-visible:shadow-dd-focus"
-                    aria-label="Cloudflare tunnel URL"
-                    role="textbox"
-                    aria-readonly="true"
-                    aria-multiline="true"
-                    tabIndex={0}
-                  >
-                    {`${tunnelUrl}/v1`}
-                  </span>
+                  <EndpointValue label="Cloudflare tunnel URL" url={`${tunnelUrl}/v1`} />
                   <IconButton
                     icon={copied === "tunnel_url" ? "check" : "content_copy"}
                     label="Copy Cloudflare tunnel URL"
@@ -823,16 +809,11 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                 <div className="flex min-w-0 flex-1 items-center gap-2 bg-dd-accent-soft px-3 py-1.5 text-[13px] text-dd-accent">
                   <span aria-hidden="true" className="material-symbols-outlined text-[16px] leading-none">vpn_lock</span>
                   <span className="font-medium">External</span>
-                  <span
-                    className="min-h-11 min-w-0 flex-1 select-all break-all font-mono text-xs outline-none focus-visible:shadow-dd-focus"
-                    aria-label="External Tailscale URL"
-                    role="textbox"
-                    aria-readonly="true"
-                    aria-multiline="true"
-                    tabIndex={0}
-                  >
-                    {`${tsExternal.tunnelUrl}/v1`}
-                  </span>
+                  <EndpointValue
+                    label="External Tailscale URL"
+                    url={`${tsExternal.tunnelUrl}/v1`}
+                    className="bg-transparent text-dd-accent"
+                  />
                   <IconButton
                     icon={copied === "ts_url" ? "check" : "content_copy"}
                     label="Copy external Tailscale URL"
@@ -843,16 +824,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                 </div>
               ) : tsEnabled && !tsLoading && tsReachable ? (
                 <>
-                  <span
-                    className="min-h-11 min-w-0 flex-1 select-all break-all rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 py-1.5 font-mono text-xs text-dd-text outline-none focus-visible:shadow-dd-focus"
-                    aria-label="Tailscale URL"
-                    role="textbox"
-                    aria-readonly="true"
-                    aria-multiline="true"
-                    tabIndex={0}
-                  >
-                    {`${tsUrl}/v1`}
-                  </span>
+                  <EndpointValue label="Tailscale URL" url={`${tsUrl}/v1`} />
                   <IconButton
                     icon={copied === "ts_url" ? "check" : "content_copy"}
                     label="Copy Tailscale URL"
@@ -934,16 +906,11 @@ export default function EndpointPageClient({ localPort = 20128 }) {
                 {tunnelAllUrls.map((u) => (
                   <div key={u} className="flex items-center gap-2 px-2 py-1 text-[13px]">
                     <span aria-hidden="true" className="material-symbols-outlined shrink-0 text-[16px] leading-none text-dd-muted">link</span>
-                    <span
-                      className="min-h-11 min-w-0 flex-1 select-all break-all font-mono text-xs text-dd-text outline-none focus-visible:shadow-dd-focus"
-                      aria-label={`Cloudflare endpoint ${u}`}
-                      role="textbox"
-                      aria-readonly="true"
-                      aria-multiline="true"
-                      tabIndex={0}
-                    >
-                      {`${u}/v1`}
-                    </span>
+                    <EndpointValue
+                      label={`Cloudflare endpoint ${u}`}
+                      url={`${u}/v1`}
+                      className="bg-transparent text-dd-text"
+                    />
                     <IconButton
                       icon={copied === `all_${u}` ? "check" : "content_copy"}
                       label={`Copy Cloudflare endpoint ${u}`}

@@ -30,6 +30,7 @@ export default function OrcaModelDropdown({
   const rootRef = useRef(null);
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
+  const searchRef = useRef(null);
 
   // A non-chat slice cannot be narrowed by input modality, so the filter is
   // cleared when the capability changes rather than silently sending a
@@ -65,10 +66,16 @@ export default function OrcaModelDropdown({
 
   useEffect(() => {
     if (!open) return undefined;
+    searchRef.current?.focus();
     const onPointerDown = (event) => {
       if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
     };
-    const onKeyDown = (event) => {if (event.key === "Escape") setOpen(false);};
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -80,6 +87,7 @@ export default function OrcaModelDropdown({
   const handleSelect = useCallback((model) => {
     onSelect?.(model.id);
     setOpen(false);
+    triggerRef.current?.focus();
   }, [onSelect]);
 
   const requestQuery = orcaCatalogQuery({ capability, imageOnly });
@@ -105,6 +113,7 @@ export default function OrcaModelDropdown({
           <label className="flex min-h-11 min-w-11 items-center gap-1.5 px-2 text-xs text-dd-muted">
             <input
               type="checkbox"
+              className="h-11 w-11 shrink-0 accent-dd-accent focus-visible:shadow-dd-focus"
               checked={imageOnly}
               onChange={(event) => setImageOnly(event.target.checked)}
               data-testid="orca-image-only" />
@@ -115,9 +124,10 @@ export default function OrcaModelDropdown({
 
         {/* The panel is anchored to the trigger itself, so its right edge tracks
             the control the user clicked rather than the whole toolbar row. */}
-        <div className="relative" ref={triggerRef}>
+        <div className="relative">
           <button
             type="button"
+            ref={triggerRef}
             onClick={() => setOpen((value) => !value)}
             aria-expanded={open}
             aria-haspopup="dialog"
@@ -139,6 +149,7 @@ export default function OrcaModelDropdown({
               <div className="border-b border-dd-border-subtle px-3 py-2">
                 <input
                   type="text"
+                  ref={searchRef}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search..."

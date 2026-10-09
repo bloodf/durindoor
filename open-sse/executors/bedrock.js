@@ -132,7 +132,8 @@ function groupToolResults(messages) {
           toolResult: {
             toolUseId: m.tool_call_id || `toolu_${randomUUID()}`,
             content: toolResultContentFromMessage(m),
-            status: "success"
+            // Consume the bridge marker before sending Bedrock's native schema.
+            status: m.is_error === true ? "error" : "success"
           }
         }))
       };
@@ -154,7 +155,7 @@ function messagesFromOpenAI(messages) {
           toolResult: {
             toolUseId: message.tool_call_id || `toolu_${randomUUID()}`,
             content: toolResultContentFromMessage(message),
-            status: "success"
+            status: message.is_error === true ? "error" : "success"
           }
         }]
 

@@ -98,7 +98,7 @@ export function generateRequestToken() {
 
 export const tokenCache = { value: "", expiresAt: 0 };
 
-async function directFetch(reqBody, signal) {
+async function directFetch(bodyStr, signal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
   const onSignal = signal ? () => controller.abort(signal.reason) : null;
@@ -113,7 +113,7 @@ async function directFetch(reqBody, signal) {
         "X-Request-Token": generateRequestToken(),
         "User-Agent": CHROME_UA
       },
-      body: JSON.stringify(reqBody),
+      body: bodyStr,
       signal: controller.signal
     });
   } finally {
@@ -219,12 +219,14 @@ export class TheOldLlmExecutor extends BaseExecutor {
 
     try {
       const reqBody = { ...(body || {}), model: mapModel(model), stream: true };
-      let upstream = await directFetch(reqBody, signal);
+      // Serialize a wire-only copy once so token retries cannot duplicate error markers.
+      const bodyStr = JSON.stringify(this.prepareOpenAIToolMessagesForWire(reqBody));
+      let upstream = await directFetch(bodyStr, signal);
       let upstreamText = await upstream.text();
 
       if (isTokenRejected(upstream.status, upstreamText)) {
         log?.warn?.("THEOLDLLM", `Token rejected (${upstream.status}), retrying with fresh token`);
-        upstream = await directFetch(reqBody, signal);
+        upstream = await directFetch(bodyStr, signal);
         upstreamText = await upstream.text();
       }
 

@@ -268,7 +268,9 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     blocks.push({
       type: CLAUDE_BLOCK.TOOL_RESULT,
       tool_use_id: msg.tool_call_id,
-      content: msg.content
+      content: msg.content,
+      // Reverse of claude-to-openai: restore the Claude-native error flag carried on the tool message.
+      ...(msg.is_error === true && { is_error: true })
     });
   } else if (msg.role === ROLE.USER) {
     if (isString(msg.content)) {

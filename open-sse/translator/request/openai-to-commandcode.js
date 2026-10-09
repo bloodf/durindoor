@@ -142,7 +142,8 @@ function convertMessages(messages = []) {
           type: "tool-result",
           toolCallId,
           toolName,
-          output: { type: "text", value }
+          // Consume bridge metadata using CommandCode's native error output type.
+          output: { type: m.is_error === true ? "error-text" : "text", value }
         }]
       });
       continue;

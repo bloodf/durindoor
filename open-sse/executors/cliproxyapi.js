@@ -93,7 +93,8 @@ export class CliproxyapiExecutor extends BaseExecutor {
       const response = await proxyAwareFetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify(transformedBody),
+        // Keep bridge metadata internal; serialize failure meaning on a wire-only copy.
+        body: JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody)),
         signal: mergedSignal
       });
       return { response, url, headers, transformedBody };

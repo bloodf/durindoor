@@ -8,6 +8,7 @@ import { clientFor } from "./client";
 import { filterToolsByGrants, isToolAllowed } from "./grants";
 import { isRecord } from "./guards";
 import { isString } from "../../../shared/utils/typeChecks.js";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 export const TOOL_PREFIX_SEP = "__";
 
@@ -57,7 +58,7 @@ export async function aggregateTools(instances, grants = []) {
       const reason = r.reason;
       const message = isRecord(reason) && isString(reason.message) ? reason.message : String(reason);
       errors.push({ slug, message });
-      console.warn(`[mcp-gw] listTools failed for ${slug}: ${message}`);
+      console.warn(sanitizeErrorMessage(`[mcp-gw] listTools failed for ${slug}: ${message}`));
     }
   }
   return { tools: filterToolsByGrants(tools, grants), errors };

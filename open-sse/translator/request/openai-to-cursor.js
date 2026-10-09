@@ -9,7 +9,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
-import { DEFAULT_MIN_TOKENS } from "../../config/runtimeConfig.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function extractContent(content) {
@@ -170,7 +170,26 @@ function convertMessages(messages) {
   return result;
 }
 
+/**
+ * The current Cursor executor/protobuf encoder has no output-token cap field,
+ * for either streaming or buffered responses. Reject explicit caps with HTTP
+ * 400 rather than silently discard them or advertise an unenforced default.
+ * As with legacy OpenAI targets, a defined max_tokens takes precedence over
+ * max_completion_tokens. The selected value must be a positive integer;
+ * null is invalid, while undefined means absent. Uncapped requests stay uncapped.
+ * Same-format requests bypass this adapter in translateRequest.
+ */
 export function openaiToCursorRequest(model, body, stream, credentials) {
+  const capField = body.max_tokens !== undefined ? "max_tokens" : "max_completion_tokens";
+  const cap = body[capField];
+  if (cap !== undefined) {
+    const error = new Error(!Number.isInteger(cap) || cap < 1 ?
+      `${capField} must be a positive integer` :
+      `Cursor transport does not support ${capField}; explicit output-token limits cannot be enforced`);
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
+
   const messages = convertMessages(body.messages || []);
 
   // Strip fields irrelevant to Cursor (OpenAI/Anthropic-specific)
@@ -178,8 +197,7 @@ export function openaiToCursorRequest(model, body, stream, credentials) {
 
   return {
     ...rest,
-    messages,
-    max_tokens: DEFAULT_MIN_TOKENS
+    messages
   };
 }
 

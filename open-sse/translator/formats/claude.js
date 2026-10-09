@@ -553,6 +553,12 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       let removedServerTool = false;
       const kept = [];
       for (const block of msg.content) {
+        // Opaque redacted data has no readable-thinking signature to validate.
+        if (block.type === CLAUDE_BLOCK.REDACTED_THINKING && (provider === "claude" || provider?.startsWith("anthropic-compatible"))) {
+          hasKeptThinking = true;
+          kept.push(block);
+          continue;
+        }
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
           const isAdaptiveModel = isAdaptiveThinkingModel(model);
           const isPlaceholder = block.signature === DEFAULT_THINKING_CLAUDE_SIGNATURE;
@@ -619,8 +625,8 @@ export function ensureTrailingUserTurn(messages, originalLastRole) {
   if (!Array.isArray(messages) || originalLastRole !== ROLE.USER) return messages;
   const last = messages[messages.length - 1];
   if (last?.role !== ROLE.ASSISTANT) return messages;
-  // Trailing tool_use / text-less assistant: leave to applyAssistantPrefillPolicy
-  // (synthesizes tool_result / drops the empty turn).
+  // Leave trailing tool_use / empty assistants to applyAssistantPrefillPolicy:
+  // it synthesizes tool results, drops empty turns, and preserves opaque turns.
   const c = last.content;
   if (!hasValidContent(last) || (Array.isArray(c) && c.some((b) => b?.type === CLAUDE_BLOCK.TOOL_USE))) return messages;
   return [...messages, { role: ROLE.USER, content: [{ type: CLAUDE_BLOCK.TEXT, text: TRAILING_USER_PLACEHOLDER }] }];
@@ -720,8 +726,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           let hasToolUse = false;
           let hasKeptThinking = false;
 
-          // Claude native: preserve valid signatures, drop invalid blocks.
-          // anthropic-compatible: replace with default (safe fallback for lenient upstreams).
+          // Readable thinking only: Claude preserves valid signatures and drops invalid blocks.
+          // anthropic-compatible replaces readable signatures with the default fallback.
           // DeepSeek: keep existing thinking as-is; add an unsigned placeholder only if missing.
           const isClaudeNative = provider === "claude";
           const preservesNativeThinkingBlocks = provider === "ollama" || provider === "ollama-local";
@@ -729,6 +735,12 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           const isAdaptiveModel = isAdaptiveThinkingModel(body.model);
           const kept = [];
           for (const block of msg.content) {
+            // Preserve opaque data verbatim, including empty data, without inventing a signature.
+            if (block.type === CLAUDE_BLOCK.REDACTED_THINKING && (isClaudeNative || provider?.startsWith("anthropic-compatible"))) {
+              hasKeptThinking = true;
+              kept.push(block);
+              continue;
+            }
             const isThinking = block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING;
             if (isThinking) {
               if (preservesNativeThinkingBlocks) {

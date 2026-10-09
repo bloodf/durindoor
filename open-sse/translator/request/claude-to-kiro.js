@@ -35,6 +35,7 @@ import {
 "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 
 /** Stringify a tool_use input as a readable line. */
 import { isString } from "../../../src/shared/utils/typeChecks.js";
@@ -405,6 +406,15 @@ function reconcileOrphanedToolResults(history, currentMessage) {
  */
 export function claudeToKiroRequest(model, body, stream, credentials, translationContext = null) {
   let messages = Array.isArray(body.messages) ? body.messages : [];
+  // CodeWhisperer has no opaque thinking field. Reject before tool flattening can erase it.
+  for (const message of messages) {
+    if (!Array.isArray(message?.content)) continue;
+    if (message.content.some((block) => block?.type === CLAUDE_BLOCK.REDACTED_THINKING)) {
+      const error = new Error("Cannot translate redacted_thinking to Kiro without losing continuity; use a compatible Claude Messages route.");
+      error.statusCode = HTTP_STATUS.BAD_REQUEST;
+      throw error;
+    }
+  }
   const tools = Array.isArray(body.tools) ? body.tools : [];
   const clientProvidedTools = tools.length > 0;
   const maxTokens = body.max_tokens || 32000;

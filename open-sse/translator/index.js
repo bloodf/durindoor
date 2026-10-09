@@ -1,4 +1,5 @@
 import { FORMATS } from "./formats.js";
+import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
@@ -64,6 +65,7 @@ function detectClientLastRole(body) {
 // Translate request: source -> openai -> target. `translationContext` carries
 // request-scoped routing intent (never serialized into the provider body).
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
+  if (targetFormat === FORMATS.CURSOR) validateCursorImages(body);
   ensureInitialized();
   let result = body;
   // Role the client actually ended on, before any translator drops an emptied turn.

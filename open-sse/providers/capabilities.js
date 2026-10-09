@@ -1156,6 +1156,8 @@ function isCommandCodeTextOnly(model) {
 /**
  * Resolve capabilities for a model using the 4-step fallback chain,
  * merged over DEFAULT_CAPABILITIES so the result is always complete.
+ * Cursor (`cursor`/`cu`) cannot encode image input in its current protobuf
+ * transport, so final resolution forces vision off without changing other capabilities.
  *
  * @param {string} provider
  * @param {string} model
@@ -1163,7 +1165,7 @@ function isCommandCodeTextOnly(model) {
  */
 export function getCapabilitiesForModel(provider, model) {
   const finalize = (caps) => {
-    let result = provider === "huggingchat" ? { ...caps, vision: false } : caps;
+    let result = provider === "huggingchat" || provider === "cursor" || provider === "cu" ? { ...caps, vision: false } : caps;
     // Workers AI pages publish max_tokens defaults, never enforceable ceilings.
     if ((provider === "cloudflare-ai" || provider === "cf") && model?.startsWith("@cf/")) {
       result = { ...result, maxOutput: undefined };

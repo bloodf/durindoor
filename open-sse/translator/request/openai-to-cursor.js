@@ -8,9 +8,90 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
-import { DEFAULT_MIN_TOKENS } from "../../config/runtimeConfig.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { DEFAULT_MIN_TOKENS, HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+
+/**
+ * Cursor's current protobuf encoder carries text and tool results, not images.
+ * Reject image input before normalization, modality stripping, or RTK can erase
+ * it. Inspect explicit message image fields, attachment metadata, content blocks,
+ * inline image data URIs in message strings, and Responses tool-output arrays,
+ * never arbitrary tool JSON or schemas. Inline recognition mirrors modality.js;
+ * text blocks and nested strings are not scanned by its inline stripper. Empty
+ * image fields are not input. Untyped attachments require image MIME/data URLs
+ * or a known image URL extension when MIME is absent; ambiguous URLs and raw
+ * data are allowed without fetching. Leave the body untouched; statusCode feeds
+ * chatCore's client-error handling.
+ */
+export function validateCursorImages(body) {
+  function rejectImage() {
+    const error = new Error("Cursor image input is not supported by this transport. Remove images or use a vision-capable provider.");
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
+  function hasImageValue(value) {
+    if (isString(value)) return value.trim().length > 0;
+    if (Array.isArray(value)) return value.some(hasImageValue);
+    if (value !== null && isObject(value)) return Object.values(value).some(hasImageValue);
+    return false;
+  }
+  function isImageExtensionInUrl(value) {
+    if (!isString(value)) return false;
+    try {
+      return /\.(?:png|jpe?g|gif|webp|bmp|svg|ico|avif|heic|heif|tiff?)$/i.test(new URL(value).pathname);
+    } catch {
+      return false;
+    }
+  }
+  function visitBlocks(blocks) {
+    if (!Array.isArray(blocks)) return;
+    for (const block of blocks) {
+      if (!block || !isObject(block)) continue;
+      const mimeType = block.inlineData?.mimeType || block.inline_data?.mime_type ||
+        block.fileData?.mimeType || block.file_data?.mime_type;
+      if (block.type === OPENAI_BLOCK.IMAGE_URL ||
+          block.type === CLAUDE_BLOCK.IMAGE ||
+          block.type === RESPONSES_ITEM.INPUT_IMAGE ||
+          (isString(mimeType) && mimeType.startsWith("image/"))) rejectImage();
+      // Only Claude tool-result content is another protocol block array.
+      if (block.type === CLAUDE_BLOCK.TOOL_RESULT) visitBlocks(block.content);
+    }
+  }
+  function visitMessages(messages, checkInlineImages = false) {
+    if (!Array.isArray(messages)) return;
+    for (const message of messages) {
+      if (!message || !isObject(message)) continue;
+      if (checkInlineImages && isString(message.content)) {
+        // Keep the full URI matcher identical to replaceUnsupportedDataUris.
+        for (const match of message.content.matchAll(/data:([^;,:]{1,255})(?:;base64)?,[^\s)]+/gi)) {
+          if (match[1].toLowerCase().startsWith("image/")) rejectImage();
+        }
+      }
+      if (hasImageValue(message.images) || hasImageValue(message.image) || hasImageValue(message.image_url)) rejectImage();
+      for (const field of ["attachments", "experimental_attachments"]) {
+        if (!Array.isArray(message[field])) continue;
+        for (const attachment of message[field]) {
+          const mimeType = attachment?.contentType || attachment?.mediaType ||
+            (isString(attachment?.url) && attachment.url.match(/^data:([^;,:]{1,255})/)?.[1]);
+          if ((isString(mimeType) && mimeType.startsWith("image/")) ||
+              (!mimeType && isImageExtensionInUrl(attachment?.url))) rejectImage();
+        }
+      }
+      visitBlocks(message.content);
+      visitBlocks(message.parts);
+    }
+  }
+  visitMessages(body.messages, true);
+  if (Array.isArray(body.input)) {
+    for (const item of body.input) {
+      if (item?.type === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) visitBlocks(item.output);
+      else if (item?.type === RESPONSES_ITEM.MESSAGE || item?.role) visitMessages([item]);
+    }
+  }
+  visitMessages(body.contents);
+  visitMessages(body.request?.contents);
+}
 
 function extractContent(content) {
   if (isString(content)) return content;
@@ -171,6 +252,7 @@ function convertMessages(messages) {
 }
 
 export function openaiToCursorRequest(model, body, stream, credentials) {
+  validateCursorImages(body);
   const messages = convertMessages(body.messages || []);
 
   // Strip fields irrelevant to Cursor (OpenAI/Anthropic-specific)

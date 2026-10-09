@@ -17,6 +17,8 @@ Use the DurinDoor key, not the vendor credential. OpenAI clients send `Authoriza
 
 With **Require API Key** enabled on **Endpoint**, missing, unknown, paused, and expired keys cannot authenticate. With enforcement off, an unknown local placeholder may pass, but a paused or expired saved key is still rejected. Use a real key whenever you need client scoping or usage attribution.
 
+When multiple credentials are present, the first valid saved key wins in this order: Bearer, `x-api-key`, `x-goog-api-key`, then query `key`. A stale Bearer token does not hide a valid `x-api-key`; when both are valid, Bearer wins. Local and native Files/Batches ownership uses that accepted key's stable ID, not another presented credential or the requested resource's owner. A valid CLI operator token retains its separate cross-owner authorization; a saved API key never gains it.
+
 New keys use the `sk-` prefix. Older stored keys remain supported. Keep the full secret unchanged when copying it.
 
 ## Expiry

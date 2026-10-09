@@ -97,6 +97,141 @@ describe("native provider facade", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
+  describe.each([
+    { collection: "/v1/files", id: "file-private", paths: [["GET", ""], ["GET", "/content"], ["DELETE", ""]] },
+    { collection: "/v1/messages/batches", id: "batch-private", paths: [["GET", ""], ["GET", "/results"], ["POST", "/cancel"], ["DELETE", ""]] },
+  ])("Anthropic $collection ownership", ({ collection, id, paths }) => {
+    const call = (method, path, query = "") => handleNativeProvider(new Request(
+      `http://local/v1/native/anthropic${path}?model=anthropic/claude-haiku-4-5${query}`,
+      { method, headers: { authorization: "Bearer gateway", "x-connection-id": "conn-a" } },
+    ), "anthropic", path);
+
+    it("records creation ownership before allowing the creator to read the resource", async () => {
+      const owners = new Map();
+      mocks.createOwner.mockImplementationOnce(async (owner) => { owners.set(owner.resourceId, owner); });
+      mocks.readOwner.mockImplementation(async (provider, connectionId, resourceId) => owners.get(resourceId) ?? null);
+      mocks.fetch.mockResolvedValueOnce(Response.json({ id }));
+      const created = await call("POST", collection);
+      expect(created.status).toBe(200);
+      expect(await created.json()).toEqual({ id });
+      expect(created.headers.get("x-9router-connection-id")).toBe("conn-a");
+      expect(owners.get(id)).toEqual({ ownerId: "key", provider: "anthropic", connectionId: "conn-a", model: "claude-haiku-4-5", resourceId: id });
+      mocks.fetch.mockResolvedValueOnce(Response.json({ id }));
+      expect((await call("GET", `${collection}/${id}`)).status).toBe(200);
+      mocks.resolveOwner.mockResolvedValueOnce({ authorized: true, ownerId: "foreign-key", allowAllOwners: false });
+      mocks.fetch.mockClear();
+      expect((await call("GET", `${collection}/${id}`)).status).toBe(403);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
+    it.each(paths)("allows the owner for %s %s", async (method, suffix) => {
+      mocks.fetch.mockResolvedValueOnce(new Response("native payload"));
+      const result = await call(method, `${collection}/${id}${suffix}`);
+      expect(result.status).toBe(200);
+      expect(await result.text()).toBe("native payload");
+      expect(mocks.readOwner).toHaveBeenCalledWith("anthropic", "conn-a", id);
+      expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(paths)("denies foreign and unknown ownership before %s %s dispatch", async (method, suffix) => {
+      for (const owner of [{ ownerId: "foreign-key" }, null]) {
+        mocks.readOwner.mockResolvedValueOnce(owner);
+        expect((await call(method, `${collection}/${id}${suffix}`)).status).toBe(403);
+      }
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
+    it("preserves the operator exception only for known owners", async () => {
+      mocks.resolveOwner.mockResolvedValue({ authorized: true, ownerId: "operator", allowAllOwners: true });
+      mocks.readOwner.mockResolvedValueOnce({ ownerId: "foreign-key" });
+      expect((await call("GET", `${collection}/${id}`)).status).toBe(200);
+      mocks.fetch.mockClear();
+      mocks.readOwner.mockResolvedValueOnce(null);
+      expect((await call("GET", `${collection}/${id}`)).status).toBe(403);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
+    it("filters list entries and boundary IDs without leaking foreign or unknown resources", async () => {
+      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) =>
+        resourceId === id ? { ownerId: "key" } : resourceId === "foreign" ? { ownerId: "foreign-key" } : null);
+      mocks.fetch.mockResolvedValueOnce(Response.json({ data: [{ id: "foreign" }, { id }, { id: "unknown" }], first_id: "foreign", last_id: "unknown", has_more: false }));
+      expect(await (await call("GET", collection)).json()).toEqual({ data: [{ id }], first_id: id, last_id: id, has_more: false });
+      mocks.resolveOwner.mockResolvedValueOnce({ authorized: true, ownerId: "operator", allowAllOwners: true });
+      mocks.fetch.mockResolvedValueOnce(Response.json({ data: [{ id: "foreign" }, { id: "unknown" }], first_id: "foreign", last_id: "unknown", has_more: false }));
+      expect(await (await call("GET", collection)).json()).toEqual({ data: [{ id: "foreign" }], first_id: "foreign", last_id: "foreign", has_more: false });
+    });
+
+    it.each(["after_id", "before_id"])("skips hidden pages using %s without exposing their cursors", async (cursorParam) => {
+      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => resourceId === id ? { ownerId: "key" } : null);
+      const urls = [];
+      mocks.fetch.mockImplementationOnce(async (url) => {
+        urls.push(String(url));
+        return Response.json({ data: [{ id: "hidden" }], first_id: "hidden", last_id: "hidden", has_more: true });
+      }).mockImplementationOnce(async (url) => {
+        urls.push(String(url));
+        return Response.json({ data: [{ id }], first_id: id, last_id: id, has_more: false });
+      });
+      expect(await (await call("GET", collection, `&${cursorParam}=start&limit=1`)).json()).toEqual({ data: [{ id }], first_id: id, last_id: id, has_more: false });
+      expect(new URL(urls[1]).searchParams.get(cursorParam)).toBe("hidden");
+      expect(new URL(urls[1]).searchParams.get("limit")).toBe("1");
+    });
+
+    it.each(["after_id", "before_id"])("does not report a foreign-only tail via %s", async (cursorParam) => {
+      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => resourceId === id ? { ownerId: "key" } : { ownerId: "foreign-key" });
+      mocks.fetch.mockResolvedValueOnce(Response.json({ data: [{ id }], first_id: id, last_id: id, has_more: true, total: 2 }))
+        .mockResolvedValueOnce(Response.json({ data: [{ id: "foreign" }], first_id: "foreign", last_id: "foreign", has_more: false, total: 2 }));
+      expect(await (await call("GET", collection, `&${cursorParam}=start&limit=1`)).json()).toEqual({ data: [{ id }], first_id: id, last_id: id, has_more: false });
+    });
+
+    it.each(["after_id", "before_id"])("keeps owned lookahead reachable via %s", async (cursorParam) => {
+      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => resourceId === "hidden" ? null : { ownerId: "key" });
+      mocks.fetch.mockImplementation(async (url) => {
+        const cursor = new URL(url).searchParams.get(cursorParam);
+        const row = cursor === "start" ? id : cursor === id ? "hidden" : "next-owned";
+        return Response.json({ data: [{ id: row }], first_id: row, last_id: row, has_more: row !== "next-owned" });
+      });
+      expect(await (await call("GET", collection, `&${cursorParam}=start&limit=1`)).json()).toEqual({ data: [{ id }], first_id: id, last_id: id, has_more: true });
+      expect(await (await call("GET", collection, `&${cursorParam}=${id}&limit=1`)).json()).toEqual({ data: [{ id: "next-owned" }], first_id: "next-owned", last_id: "next-owned", has_more: false });
+    });
+
+    it.each(["after_id", "before_id"])("limits an oversized upstream page via %s", async (cursorParam) => {
+      mocks.fetch.mockResolvedValueOnce(Response.json({ data: [{ id }, { id: "second" }], first_id: id, last_id: "second", has_more: false }));
+      const expected = cursorParam === "before_id" ? "second" : id;
+      expect(await (await call("GET", collection, `&${cursorParam}=start&limit=1`)).json()).toEqual({ data: [{ id: expected }], first_id: expected, last_id: expected, has_more: true });
+    });
+
+    it.each([false, true])("bounds hidden scans without partial success (owned prefix: %s)", async (ownedPrefix) => {
+      let requests = 0;
+      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => resourceId === id ? { ownerId: "key" } : null);
+      mocks.fetch.mockImplementation(async () => {
+        const row = ++requests === 1 && ownedPrefix ? id : `foreign-${requests}`;
+        return Response.json({ data: [{ id: row }], first_id: row, last_id: row, has_more: true });
+      });
+      const response = await call("GET", collection, "&limit=1");
+      expect(response.status).toBe(502);
+      expect(requests).toBe(10);
+      const body = await response.text();
+      expect(body).toContain("scan limit exceeded");
+      expect(body).not.toContain("foreign-");
+      expect(body).not.toContain(id);
+    });
+
+    it("does not expose hidden cursors in continuation errors", async () => {
+      mocks.readOwner.mockResolvedValue(null);
+      mocks.fetch.mockResolvedValueOnce(Response.json({ data: [{ id: "foreign-secret" }], first_id: "foreign-secret", last_id: "foreign-secret", has_more: true }))
+        .mockResolvedValueOnce(Response.json({ error: { message: "Invalid cursor foreign-secret" } }, { status: 400 }));
+      const response = await call("GET", collection, "&limit=1");
+      expect(response.status).toBe(502);
+      expect(await response.text()).not.toContain("foreign-secret");
+    });
+
+    it("rejects unresolved request ownership even with an account pin", async () => {
+      mocks.resolveOwner.mockResolvedValue({ authorized: false, ownerId: null, allowAllOwners: false });
+      for (const path of [collection, `${collection}/${id}`]) expect((await call("GET", path)).status).toBe(403);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+  });
+
   it("forwards resolved native model identity only in execution slots", async () => {
     mocks.model.mockImplementation(async (id) => id === "openai/alias" ? { provider: "openai", model: "gpt-4.1" } : { provider: "openai", model: id.split("/")[1] });
     await handleNativeProvider(request("http://local/v1/native/openai/chat/completions?model=openai/alias", { model: "openai/alias", messages: [{ content: "openai/alias" }] }), "openai", "/v1/chat/completions");
@@ -276,6 +411,30 @@ describe("native provider facade", () => {
     const result = await handleNativeProvider(request(`http://local/v1/native/${provider}${operation}`, body), provider, operation);
     expect(result.status).toBe(403);
     expect(mocks.credentials).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects another key's native Anthropic file content on a shared account", async () => {
+    // A connection pin identifies the upstream account, not the resource owner.
+    mocks.readOwner.mockResolvedValueOnce({ ownerId: "other-key", model: "claude-haiku-4-5" });
+    mocks.fetch.mockResolvedValueOnce(new Response("other-key-file-content"));
+    const result = await handleNativeProvider(new Request(
+      "http://local/v1/native/anthropic/v1/files/file-private/content?model=anthropic/claude-haiku-4-5",
+      { headers: { authorization: "Bearer gateway", "x-connection-id": "conn-a" } },
+    ), "anthropic", "/v1/files/file-private/content");
+    expect(result.status).toBe(403);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects another key's native Anthropic batch results on a shared account", async () => {
+    // Model permission does not grant access to another key's completed work.
+    mocks.readOwner.mockResolvedValueOnce({ ownerId: "other-key", model: "claude-haiku-4-5" });
+    mocks.fetch.mockResolvedValueOnce(new Response('{"custom_id":"private","result":{"type":"succeeded"}}\n'));
+    const result = await handleNativeProvider(new Request(
+      "http://local/v1/native/anthropic/v1/messages/batches/batch-private/results?model=anthropic/claude-haiku-4-5",
+      { headers: { authorization: "Bearer gateway", "x-connection-id": "conn-a" } },
+    ), "anthropic", "/v1/messages/batches/batch-private/results");
+    expect(result.status).toBe(403);
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 });

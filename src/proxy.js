@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { proxy as dashboardProxy, canAccessManagementApi } from "./dashboardGuard";
 import {
   SESSION_COOKIE,
@@ -15,6 +16,83 @@ import {
   isolatedOrigin, requestOrigin, isIsolatedLoginRequest, consumeBootstrap, proxySessionFromRequest,
   proxySessionCookie, proxyPathFor, upstreamUrlFor, proxyWebLoginRequest,
 } from "./lib/webLoginSession";
+
+// Normalize static prefixes and the known terminal leaves after file/batch IDs.
+// Dynamic IDs and catch-all tails must reach Next in their original encoding.
+const API_STATIC_PATHS = [
+  "chat/completions", "chatgpt-web/image", "responses/compact", "responses",
+  "messages/count_tokens", "messages/batches", "messages", "files", "batches",
+  "audio/music", "audio/speech", "audio/transcriptions", "audio/translations", "audio/voices",
+  "images/edits", "images/generations", "music/generations", "video/generations", "videos",
+  "realtime/translations/client_secrets", "realtime/auth", "realtime/client_secrets",
+  "realtime/native", "realtime/transcription_sessions", "live/sessions",
+  "models/info", "models", "native", "web/fetch", "search", "systemone", "rerank",
+  "moderations", "completions", "embeddings", "provider-plugin-manifest", "api/chat",
+].map((path) => path.split("/"));
+
+function staticSegment(segment) {
+  // Decode only single-encoded ASCII token characters, never %, dots or separators.
+  return segment?.replace(/%([0-9a-f]{2})/gi, (escape, hex) => {
+    const character = String.fromCharCode(Number.parseInt(hex, 16));
+    return /^[a-z0-9_-]$/i.test(character) ? character : escape;
+  });
+}
+
+async function guardedApiDispatch(request) {
+  const response = await dashboardProxy(request);
+  if (response.headers.get("x-middleware-next") !== "1") return response;
+
+  const pathname = request.nextUrl.pathname;
+  if (!pathname.includes("%")) return response;
+  const segments = pathname.split("/");
+  let offset = 1;
+  let root = staticSegment(segments[offset]);
+  if (root === "api") root = staticSegment(segments[++offset]);
+  if (!["v1", "v1beta", "responses", "codex"].includes(root)) return response;
+
+  // Fail closed before URL construction could normalize an ambiguous path.
+  // Dynamic escapes remain byte-for-byte intact; they are never decoded here.
+  if (/%(?![0-9a-f]{2})|%2f|%5c|\\/i.test(pathname) ||
+      segments.some((segment) => /^(?:\.|%2e){1,2}$/i.test(segment))) {
+    const headers = new Headers(response.headers);
+    headers.delete("x-middleware-next");
+    return NextResponse.json({ error: "Invalid API path" }, { status: 400, headers });
+  }
+
+  let destination;
+  if (offset === 1 && (root === "responses" || root === "codex")) {
+    if (root === "responses" && segments.length !== 2) return response;
+    destination = "/api/v1/responses";
+  } else {
+    if (root !== "v1" && root !== "v1beta") return response;
+    offset++;
+    if (root === "v1" && offset === 2 && staticSegment(segments[offset]) === "v1") offset++;
+    const paths = root === "v1beta" ? [["models"]] : API_STATIC_PATHS;
+    const prefix = paths.find((parts) => parts.every((part, index) => staticSegment(segments[offset + index]) === part));
+    // Unknown routes stay unknown; never decode a catch-all into a static route.
+    if (!prefix) return response;
+    const route = prefix.join("/");
+    const idIndex = offset + prefix.length;
+    const leafIndex = idIndex + 1;
+    if (root === "v1" && segments[idIndex] && segments.length === leafIndex + 1) {
+      const leaf = staticSegment(segments[leafIndex]);
+      if ((route === "files" && leaf === "content") ||
+          (route === "batches" && leaf === "cancel") ||
+          (route === "messages/batches" && (leaf === "cancel" || leaf === "results"))) {
+        segments[leafIndex] = leaf;
+      }
+    }
+    destination = `/api/${root}/${route}${segments.slice(idIndex).map((part) => `/${part}`).join("")}`;
+  }
+  if (destination === pathname) return response;
+  const url = new URL(request.url);
+  url.pathname = destination;
+  const headers = new Headers(response.headers);
+  headers.delete("x-middleware-next");
+  // Internal rewrite retains the original method, headers and unread body. Do
+  // not rebuild searchParams: query order, duplicate keys and escapes matter.
+  return NextResponse.rewrite(url, { headers });
+}
 
 async function webLoginProxy(request, loginOrigin) {
   const url = request.nextUrl || new URL(request.url);
@@ -36,7 +114,7 @@ async function webLoginProxy(request, loginOrigin) {
 }
 
 async function withClearedMimoSession(request) {
-  const res = await dashboardProxy(request);
+  const res = await guardedApiDispatch(request);
   const headers = new Headers(res.headers);
   headers.append("Set-Cookie", clearedSessionCookie());
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
@@ -71,7 +149,7 @@ async function mimoLoginProxy(request) {
     console.log("[mimo-login] proxy error:", e?.message || e);
     return new Response("mimo login proxy error", { status: 502 });
   }
-  return dashboardProxy(request);
+  return guardedApiDispatch(request);
 }
 
 export default async function proxy(request) {
@@ -88,7 +166,7 @@ export default async function proxy(request) {
     return new Response(null, { status: 308, headers: { Location: canonical.href } });
   }
   if (request.cookies?.get?.(SESSION_COOKIE)) return mimoLoginProxy(request);
-  return dashboardProxy(request);
+  return guardedApiDispatch(request);
 }
 
 export const config = {

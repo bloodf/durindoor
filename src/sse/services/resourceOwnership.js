@@ -1,31 +1,17 @@
-import { getApiKeyByKey, getSettings } from "@/lib/localDb";
-import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
-import { extractApiKey, hasValidCliToken } from "./auth.js";
+import { getSettings } from "@/lib/localDb";
+import { resolveClientApiKey } from "./auth.js";
 
-/** Resolve the stable owner used by local Files/Batches resources. */
-export async function resolveResourceOwner(request) {
-  if (await hasValidCliToken(request)) {
-    return { authorized: true, ownerId: "operator", allowAllOwners: true };
-  }
-  const secret = extractApiKey(request);
-  if (!secret) {
+/**
+ * Resolve Files/Batches ownership from the accepted authentication principal.
+ * Native handlers pass their already-resolved auth; callers without one use the
+ * same credential precedence. The optional auth is internal, never request data.
+ */
+export async function resolveResourceOwner(request, auth) {
+  if (auth === undefined) {
     const settings = await getSettings();
-    return settings.requireApiKey === true
-      ? { authorized: false, ownerId: null, allowAllOwners: false }
-      : { authorized: true, ownerId: "local", allowAllOwners: false };
+    ({ auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true }));
   }
-  const record = await getApiKeyByKey(secret);
-  if (!record) {
-    // Match the rest of the API surface: local placeholder credentials remain
-    // compatible only while global key enforcement is disabled. Remote
-    // unknown credentials are rejected by the dashboard proxy before routing.
-    const settings = await getSettings();
-    return settings.requireApiKey === true
-      ? { authorized: false, ownerId: null, allowAllOwners: false }
-      : { authorized: true, ownerId: "local", allowAllOwners: false };
-  }
-  if (record.isActive !== true || isApiKeyExpired(record.expiresAt)) {
-    return { authorized: false, ownerId: null, allowAllOwners: false };
-  }
-  return { authorized: true, ownerId: record.id, allowAllOwners: false };
+  if (!auth.ok) return { authorized: false, ownerId: null, allowAllOwners: false };
+  if (auth.operator) return { authorized: true, ownerId: "operator", allowAllOwners: true };
+  return { authorized: true, ownerId: auth.stored ? auth.apiKeyId : "local", allowAllOwners: false };
 }

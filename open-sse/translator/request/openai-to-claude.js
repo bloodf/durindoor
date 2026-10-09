@@ -1,6 +1,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -13,7 +14,12 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
-// Convert OpenAI request to Claude format
+/**
+ * Convert OpenAI requests to Claude format.
+ * OpenAI input_audio has no supported Claude mapping. Reject it before content
+ * extraction can discard it, for both streaming and non-streaming requests.
+ * @throws {Error} With statusCode 400 so chatCore rejects the request before upstream dispatch.
+ */
 export function openaiToClaudeRequest(model, body, stream, credentials = null, translationContext = null) {
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
@@ -55,6 +61,11 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   if (body.messages && Array.isArray(body.messages)) {
     // Extract system messages
     for (const msg of body.messages) {
+      if (Array.isArray(msg.content) && msg.content.some((part) => part?.type === OPENAI_BLOCK.INPUT_AUDIO)) {
+        const error = new Error("OpenAI input_audio is not supported by the Claude request format. Use text or an image instead.");
+        error.statusCode = HTTP_STATUS.BAD_REQUEST;
+        throw error;
+      }
       if (msg.role === ROLE.SYSTEM) {
         systemParts.push(isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n"));
       }

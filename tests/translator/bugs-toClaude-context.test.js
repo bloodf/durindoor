@@ -43,16 +43,52 @@ describe("OpenAI → Claude context mapping", () => {
     expect(out.tool_choice?.type).toBe("none");
   });
 
-  // getContentBlocksFromMessage — no input_audio branch → audio dropped
-  // KNOWN BUG
-  it.fails("input_audio content is preserved", () => {
-    const out = T({
-      messages: [{ role: "user", content: [
-        { type: "text", text: "transcribe" },
-        { type: "input_audio", input_audio: { data: "AUDIO_B64", format: "wav" } },
-      ] }],
+  describe.each([false, true])("input_audio rejection (stream=%s)", (stream) => {
+    const translate = (body, target = FORMATS.CLAUDE) =>
+      translateRequest(FORMATS.OPENAI, target, "m", body, stream, null, "anthropic-compatible-x");
+    const audio = { type: "input_audio", input_audio: { data: "AUDIO_B64", format: "wav" } };
+
+    it.each([
+      ["audio-only", [audio]],
+      ["mixed text/audio", [{ type: "text", text: "transcribe" }, audio]],
+      ["missing audio payload", [{ type: "input_audio" }]],
+    ])("rejects %s with a client error instead of dropping content", (_label, content) => {
+      const body = { messages: [{ role: "user", content }] };
+      const original = structuredClone(body);
+      expect(() => translate(body)).toThrow(expect.objectContaining({
+        statusCode: 400,
+        message: expect.stringMatching(/input_audio.*not supported.*Claude/),
+      }));
+      expect(body).toEqual(original);
     });
-    expect(JSON.stringify(out), "audio dropped").toContain("AUDIO_B64");
+
+    it.each(["system", "assistant"])("rejects audio in %s history before extraction", (role) => {
+      expect(() => translate({ messages: [
+        { role, content: [audio] },
+        { role: "user", content: "continue" },
+      ] })).toThrow(expect.objectContaining({ statusCode: 400 }));
+    });
+
+    it("preserves supported text and images without audio", () => {
+      const out = translate({ messages: [{ role: "user", content: [
+        { type: "text", text: "describe these images" },
+        { type: "image_url", image_url: { url: "https://example.com/pic.png" } },
+        { type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2U=" } },
+      ] }] });
+      expect(out.messages).toEqual([{ role: "user", content: [
+        { type: "text", text: "describe these images" },
+        { type: "image", source: { type: "url", url: "https://example.com/pic.png" } },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+      ] }]);
+      expect(out.stream).toBe(stream);
+    });
+
+    it("does not reject audio on the same-format OpenAI path", () => {
+      const messages = [{ role: "user", content: [audio] }];
+      const out = translate({ messages, stream }, FORMATS.OPENAI);
+      expect(out.messages).toEqual(messages);
+      expect(out.stream).toBe(stream);
+    });
   });
 
   // openai-to-claude.js:235-251 — remote http image_url is kept (regression guard)

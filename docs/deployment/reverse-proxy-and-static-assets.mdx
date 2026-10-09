@@ -72,6 +72,23 @@ After `npm run build`:
 npm run verify:static
 ```
 
-The check starts `.next/standalone/custom-server.js` on a free `127.0.0.1` port, with a throwaway `DATA_DIR` and dummy `JWT_SECRET` / `API_KEY_SECRET`. It `GET`s `/dashboard`, parses local `.js`, `.css`, `.woff2`, `.svg`, `.ico`, `.webmanifest`, and `.png` URLs, and requires HTTP 200 for each. Missing assets print and the process exits non-zero. No JS/CSS in the HTML is also a failure.
+The check starts `.next/standalone/custom-server.js` on a free `127.0.0.1` port, with a throwaway `DATA_DIR` and dummy `JWT_SECRET` / `API_KEY_SECRET`. It `GET`s `/dashboard`, parses local `.js`, `.css`, `.woff2`, `.svg`, `.ico`, `.webmanifest`, and `.png` URLs, and requires HTTP 200 and a nonempty, non-HTML body for each. JS/CSS must also have the matching content type. Missing assets print and the process exits non-zero. No JS/CSS in the HTML is also a failure.
 
 A zero exit code confirms those assets are reachable in the checked build. It does not run browser interactions. If the check fails, rebuild before restarting, and inspect missing files in the packaged build. Run the check before deploying. Install choices: [Laptop](./localhost.mdx). Docker copies: [Docker](./docker.mdx). VPS unit: [VPS and cloud](./cloud.mdx).
+
+### `npm run verify:installed`
+
+After building standalone output or installing the npm package, pass the actual bundled server executable:
+
+```bash
+npm run verify:installed -- /absolute/standalone/custom-server.js
+npm run verify:installed -- /absolute/npm-prefix/lib/node_modules/durindoor/app/custom-server.js
+```
+
+The second form checks the installed npm server payload, not the interactive CLI launcher or its installer. Supply a self-contained artifact: the harness never copies dependencies from the checkout, an npm sibling directory, or the user's runtime cache. A missing packaged dependency is a failure, not permission to install it. It rejects external/absolute symlinks, copies the artifact to a temporary directory, and runs that copy with isolated `HOME`, `DATA_DIR`, cache directories, generated test secrets, and a loopback-only port. It does not inherit credentials, proxy settings, `NODE_PATH`, or `NODE_OPTIONS`.
+
+The check requires JSON health success, wrong-password rejection, correct-password session issuance, authenticated provider discovery with no saved connections, and dashboard static assets using the same verifier as `verify:static`. Redirects and HTML masquerading as an asset fail. Any failure exits nonzero; the child and temporary directory are cleaned up.
+
+Before launching the server, the harness checks the shipped PostgreSQL worker at `src/lib/db/adapters/pgSyncWorker.cjs`, resolves `pg` and `pg-query-stream`, and sends the real worker a `close` operation without connecting to PostgreSQL. It dynamically imports `playwright` from the packaged browser-pool boundary without launching or downloading a browser. These advertised optional runtimes must resolve even though this smoke uses SQLite and makes no provider inference calls. This is not PostgreSQL query or browser-session proof. No unrelated upstream worker is assumed.
+
+The harness does not build, install, publish, enable browser auto-install, or use live provider credentials. Build/install and exercise it separately for each release artifact. Docker verification remains **pending on this host: Docker is unavailable**; a host artifact smoke does not prove the Docker image.

@@ -37,9 +37,150 @@ function shouldExclude(name) {
   });
 }
 
-function copyRecursive(src, dest) {
+// npm pack drops symlinks. Hoist each physical package once, then retain only
+// version conflicts below consumers. Conflict payloads use hard links, not copies;
+// npm/tar can archive them as safe internal hardlink entries; installs need no repair.
+function copyRuntimeModules(sources, dest, sourceRoot) {
+  const packages = new Map();
+  const checkedRealpath = (file) => {
+    const real = fs.realpathSync(file);
+    const relative = path.relative(sourceRoot, real);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new Error(`Copy link escapes its runtime bundle: ${file} -> ${real}`);
+    }
+    return real;
+  };
+  const scan = (dir) => {
+    const entries = new Map();
+    if (!fs.existsSync(dir)) return entries;
+    checkedRealpath(dir);
+    for (const entry of fs.readdirSync(dir).sort()) {
+      if (entry.startsWith(".") || shouldExclude(entry)) continue;
+      const names = entry.startsWith("@")
+        ? fs.readdirSync(checkedRealpath(path.join(dir, entry))).sort().map(name => `${entry}/${name}`)
+        : [entry];
+      for (const name of names) {
+        const file = path.join(dir, name);
+        const real = checkedRealpath(file);
+        if (!fs.existsSync(path.join(real, "package.json"))) {
+          throw new Error(`Runtime dependency has no package.json: ${file}`);
+        }
+        entries.set(name, real);
+        if (!packages.has(real)) {
+          const pkg = { dependencies: null, payload: null };
+          packages.set(real, pkg); // Register before following dependency cycles.
+          pkg.dependencies = scan(path.join(real, "node_modules"));
+        }
+      }
+    }
+    return entries;
+  };
+  const roots = new Map();
+  for (const source of sources) {
+    for (const [name, real] of scan(source)) {
+      if (!roots.has(name)) roots.set(name, real);
+    }
+  }
+  // Preserve each package's original resolution before merging local and fallback
+  // roots. A fallback consumer may need a different version than the app root.
+  for (const [real, pkg] of packages) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(real, "package.json"), "utf8"));
+    const names = Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies });
+    for (const name of names) {
+      if (shouldExclude(name.split("/")[0]) || pkg.dependencies.has(name)) continue;
+      for (let dir = real; ; dir = path.dirname(dir)) {
+        const candidate = path.join(dir, "node_modules", name);
+        if (fs.existsSync(path.join(candidate, "package.json"))) {
+          const dependency = checkedRealpath(candidate);
+          if (!packages.has(dependency)) {
+            const child = { dependencies: null, payload: null };
+            packages.set(dependency, child);
+            child.dependencies = scan(path.join(dependency, "node_modules"));
+          }
+          pkg.dependencies.set(name, dependency);
+          break;
+        }
+        if (dir === sourceRoot || dir === path.dirname(dir)) break;
+      }
+    }
+  }
+  // Explicit root aliases win over transitive versions encountered during DFS.
+  for (const pkg of packages.values()) {
+    for (const [name, real] of pkg.dependencies) {
+      if (!roots.has(name)) roots.set(name, real);
+    }
+  }
+  const placements = new Map();
+  const copyPayload = (source, target, ancestors = new Set()) => {
+    const real = checkedRealpath(source);
+    if (ancestors.has(real)) throw new Error(`Runtime payload directory cycle: ${source}`);
+    const next = new Set(ancestors).add(real);
+    fs.mkdirSync(target, { recursive: true });
+    for (const entry of fs.readdirSync(real, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || shouldExclude(entry.name)) continue;
+      const file = checkedRealpath(path.join(real, entry.name));
+      const output = path.join(target, entry.name);
+      if (fs.statSync(file).isDirectory()) copyPayload(file, output, next);
+      else fs.copyFileSync(file, output);
+    }
+  };
+  const place = (real, target) => {
+    placements.set(target, real);
+    const pkg = packages.get(real);
+    if (pkg.payload) {
+      // This source is already inside the destination, not the input bundle.
+      const linkPayload = (from, to) => {
+        fs.mkdirSync(to, { recursive: true });
+        for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+          if (entry.name === "node_modules") continue;
+          const input = path.join(from, entry.name);
+          const output = path.join(to, entry.name);
+          if (entry.isDirectory()) linkPayload(input, output);
+          else fs.linkSync(input, output);
+        }
+      };
+      linkPayload(pkg.payload, target);
+    } else {
+      copyPayload(real, target);
+      pkg.payload = target;
+    }
+  };
+  for (const [name, real] of roots) place(real, path.join(dest, name));
+  const resolve = (from, name) => {
+    for (let dir = from; ; dir = path.dirname(dir)) {
+      const found = placements.get(path.join(dir, "node_modules", name));
+      if (found) return found;
+      if (dir === path.dirname(dest)) return null;
+    }
+  };
+  const wire = (real, target, ancestors = new Set()) => {
+    if (ancestors.has(real)) {
+      throw new Error(`Cannot flatten shadowed runtime dependency cycle: ${real}`);
+    }
+    const next = new Set(ancestors).add(real);
+    const nestedPackages = [];
+    for (const [name, dependency] of packages.get(real).dependencies) {
+      if (resolve(target, name) === dependency) continue;
+      const nested = path.join(target, "node_modules", name);
+      place(dependency, nested);
+      nestedPackages.push([dependency, nested]);
+    }
+    // Install siblings before resolving their dependencies: a sibling version
+    // can shadow a hoisted package for every nested consumer.
+    for (const [dependency, nested] of nestedPackages) wire(dependency, nested, next);
+  };
+  for (const [name, real] of roots) wire(real, path.join(dest, name));
+}
+
+// Reject external links instead of pulling shared dependencies or ancestors in.
+function copyRecursive(src, dest, sourceRoot, fallbackModules = null) {
   if (!fs.existsSync(src)) {
     console.warn(`Warning: Source ${src} does not exist`);
+    return;
+  }
+  sourceRoot ??= fs.realpathSync(src);
+  if (path.basename(src) === "node_modules") {
+    copyRuntimeModules([src], dest, sourceRoot);
     return;
   }
   
@@ -56,33 +197,32 @@ function copyRecursive(src, dest) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
-    // Skip broken symlinks (common in workspace setups)
-    try {
-      fs.accessSync(srcPath);
-    } catch {
-      continue;
-    }
-
-    if (entry.isDirectory()) {
-      copyRecursive(srcPath, destPath);
+    if (entry.name === "node_modules") {
+      copyRuntimeModules(fallbackModules ? [srcPath, fallbackModules] : [srcPath], destPath, sourceRoot);
     } else if (entry.isSymbolicLink()) {
-      // Resolve and copy target (avoid linking outside bundle)
-      try {
-        const real = fs.realpathSync(srcPath);
-        if (fs.statSync(real).isDirectory()) {
-          copyRecursive(real, destPath);
-        } else {
-          fs.copyFileSync(real, destPath);
-        }
-      } catch {}
+      const real = fs.realpathSync(srcPath);
+      const relative = path.relative(sourceRoot, real);
+      if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        throw new Error(`Copy link escapes its runtime bundle: ${srcPath} -> ${real}`);
+      }
+      if (fs.statSync(real).isDirectory()) {
+        throw new Error(`Runtime payload directory symlink is not supported: ${srcPath}`);
+      }
+      fs.copyFileSync(real, destPath);
+    } else if (entry.isDirectory()) {
+      copyRecursive(srcPath, destPath, sourceRoot);
     } else {
-      try {
-        fs.copyFileSync(srcPath, destPath);
-      } catch {}
+      fs.copyFileSync(srcPath, destPath);
     }
+  }
+  if (fallbackModules && !fs.existsSync(path.join(src, "node_modules"))) {
+    copyRuntimeModules([fallbackModules], path.join(dest, "node_modules"), sourceRoot);
   }
 }
 
+module.exports = { copyRecursive };
+
+if (require.main === module) {
 console.log("📦 Building 9Router CLI package with Next.js...\n");
 
 fs.mkdirSync(buildHomeDir, { recursive: true });
@@ -163,13 +303,11 @@ if (!fs.existsSync(standaloneApp)) {
   console.error("Expected either .next/standalone/server.js or .next/standalone/app/ or .next/standalone/[folder]/");
   process.exit(1);
 }
-copyRecursive(standaloneApp, cliAppDir);
-
-// Older nested-app layout stores traced node_modules at standalone root.
+// Merge nested-app and standalone-root dependencies in one placement graph.
+// Local aliases win, while fallback consumers retain their original versions.
 const standaloneNodeModules = path.join(standaloneRootToUse, "node_modules");
-if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules)) {
-  copyRecursive(standaloneNodeModules, path.join(cliAppDir, "node_modules"));
-}
+copyRecursive(standaloneApp, cliAppDir, fs.realpathSync(standaloneRootToUse),
+  standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules) ? standaloneNodeModules : null);
 console.log("✅ Copied standalone build\n");
 
 // Step 3a: Copy custom server + required root sidecars (custom-server.js
@@ -305,4 +443,5 @@ try {
   console.log(`📊 Package size: ${size.split("\t")[0]}`);
 } catch (e) {
   // Silent fail on size check
+}
 }

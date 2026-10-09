@@ -17,6 +17,7 @@ import {
 import { parseDataUri } from "../concerns/image.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 
 /** Render a single tool call as a readable text line. */
 import { isString } from "../../../src/shared/utils/typeChecks.js";
@@ -320,15 +321,17 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
           if (c.type === OPENAI_BLOCK.TEXT || c.text) {
             textParts.push(c.text || "");
           } else if (c.type === OPENAI_BLOCK.IMAGE_URL) {
-            // OpenAI format: image_url.url with data URI
-            const url = c.image_url?.url || "";
+            // chatCore prefetches remote URLs through the guarded image resolver.
+            const url = isString(c.image_url) ? c.image_url : c.image_url?.url || "";
             const parsed = parseDataUri(url);
             if (parsed) {
               const format = parsed.mimeType.split("/")[1] || parsed.mimeType;
               pendingImages.push({ format, source: { bytes: parsed.base64 } });
             } else if (url.startsWith("http://") || url.startsWith("https://")) {
-              // Kiro only supports base64 — fallback to URL text
-              textParts.push(`[Image: ${url}]`);
+              // Synchronous callers and failed prefetches must not lose vision input.
+              const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 data URI.");
+              error.statusCode = HTTP_STATUS.BAD_REQUEST;
+              throw error;
             }
           } else if (c.type === CLAUDE_BLOCK.IMAGE) {
             // Claude format: source.type = "base64", source.media_type, source.data

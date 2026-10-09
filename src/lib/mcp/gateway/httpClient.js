@@ -8,6 +8,7 @@ import { isJsonRpcResponse, isRecord } from "./guards";
 import { assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { updateInstance, getInstanceById } from "@/lib/localDb";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 const TIMEOUT_MS = 30_000;
 const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
@@ -362,7 +363,7 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
     baseDelayMs: 100,
     onRetry: (err, attempt, delayMs) => {
       const msg = err instanceof Error ? err.message : String(err);
-      console.log(`[mcp-http:${instance.slug}] transient retry ${attempt + 1} after ${delayMs}ms: ${msg}`);
+      console.log(sanitizeErrorMessage(`[mcp-http:${instance.slug}] transient retry ${attempt + 1} after ${delayMs}ms: ${msg}`));
     }
   });
 }

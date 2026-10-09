@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Isolated security repro for G11/E03 (MCP)/S02/S05/M05/M08, not a green CI gate.
@@ -196,6 +197,10 @@ describe("MCP gateway error boundaries through real HTTP client and retry", () =
     installUpstream(method, "http");
     await initializeGateway();
     const frame = toolFrame(method);
+    // Capture every argument without suppressing the real diagnostic output.
+    const logs = vi.spyOn(console, "log");
+    const warnings = vi.spyOn(console, "warn");
+    const errors = vi.spyOn(console, "error");
     const response = await gateway(frame);
     // Establish the intended method failed, not initialize or its notification.
     assertTrace(method, 3, 500);
@@ -214,6 +219,33 @@ describe("MCP gateway error boundaries through real HTTP client and retry", () =
       ]);
     }
     assertSafe(response);
+    for (const spy of [logs, warnings, errors]) {
+      for (const args of spy.mock.calls) {
+        // Include nested objects and Error message/stack, not only enumerable fields.
+        assertSafe(inspect(args, {
+          depth: null, showHidden: true, customInspect: false,
+          maxArrayLength: null, maxStringLength: null,
+        }));
+        expect(args).toEqual([expect.any(String)]);
+        expect(args[0]).toContain(`upstream 500 for ${instance.slug}`);
+        expect(args[0]).toContain(`${method} failed`);
+        expect(args[0]).toContain("api_key=[redacted]");
+        expect(args[0]).toContain("<path>");
+      }
+    }
+    expect(logs).toHaveBeenCalledTimes(2);
+    for (const [index, [message]] of logs.mock.calls.entries()) {
+      expect(message).toContain(`[mcp-http:${instance.slug}] transient retry ${index + 1} after `);
+      const delay = message.match(/ after (\d+)ms: /);
+      expect(delay).not.toBeNull();
+      expect(Number(delay[1])).toBeGreaterThanOrEqual(75 * 2 ** index);
+      expect(Number(delay[1])).toBeLessThanOrEqual(125 * 2 ** index);
+    }
+    expect(warnings).toHaveBeenCalledTimes(method === "tools/list" ? 1 : 0);
+    if (method === "tools/list") {
+      expect(warnings.mock.calls[0][0]).toContain(`[mcp-gw] listTools failed for ${instance.slug}: `);
+    }
+    expect(errors).not.toHaveBeenCalled();
   }, 10_000);
 
   it("preserves JSON-RPC error code and client id without leaking upstream message", async () => {

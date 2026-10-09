@@ -51,23 +51,14 @@ describe("openaiToClaudeRequest", () => {
       expect(systemText).toContain("Respond ONLY with a JSON object");
     });
 
-    it("should not modify system prompt when response_format is missing", () => {
-      const body = {
-        messages: [{ role: "user", content: "Hello" }]
-      };
+    it.each([undefined, "Keep the caller's instructions unchanged."])("does not synthesize instructions without response_format (%s)", (instructions) => {
+      const messages = [{ role: "user", content: "Hello" }];
+      if (instructions !== undefined) messages.unshift({ role: "system", content: instructions });
 
-      const result = openaiToClaudeRequest("claude-sonnet-4.5", body, false);
+      const result = openaiToClaudeRequest("claude-sonnet-4.5", { messages }, false);
 
-      // Should have system but without JSON instructions
-      expect(result.system).toBeDefined();
-      
-      const systemText = result.system
-        .filter(s => s.type === "text")
-        .map(s => s.text)
-        .join("\n");
-      
-      // Should NOT contain JSON-specific instructions
-      expect(systemText).not.toContain("You must respond with valid JSON");
+      expect((result.system ?? []).map((block) => block.text)).toEqual(instructions === undefined ? [] : [instructions]);
+      expect(result.output_config?.format).toBeUndefined();
     });
 
   });

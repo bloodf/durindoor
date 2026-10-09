@@ -1,10 +1,9 @@
 import { BaseExecutor, waitForRetryDelay } from "./base.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, GITHUB_COPILOT, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
 import { HTTP_STATUS, DEFAULT_RETRY_CONFIG, resolveRetryEntry, resolveRequestRetryPolicy, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule } from "../config/runtimeConfig.js";
 import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
-import { detectClientTool } from "../utils/clientDetector.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-responses.js";
 import { initState, translateRequest, translateResponse } from "../translator/index.js";
@@ -230,9 +229,11 @@ export class GithubExecutor extends BaseExecutor {
    * cache_control — /chat/completions never gets there, so it never surfaces
    * prompt-cache token counts.
    *
-   * This path bypasses BaseExecutor.execute(), so it must re-apply four behaviors
+   * System instructions belong to the caller: the GitHub translation neither
+   * injects a persona nor removes matching caller text, regardless of client identity.
+   * This path bypasses BaseExecutor.execute(), so it must re-apply these behaviors
    * the normal route gets for free (Codex #291 findings):
-   *   1. stripUnsupportedParams + persona guard + thinking-strip before dispatch;
+   *   1. stripUnsupportedParams + thinking-strip before dispatch;
    *   2. a per-attempt FETCH_CONNECT_TIMEOUT_MS header-timeout abort;
    *   3. a transient 502/503/504 (and network-as-502) retry loop honoring
    *      DEFAULT_RETRY_CONFIG, with connect_timeout getting 0 in-place retries.
@@ -268,23 +269,6 @@ export class GithubExecutor extends BaseExecutor {
     // rejects the extra field with a 400.
     const toolNameMap = transformedBody._toolNameMap;
     delete transformedBody._toolNameMap;
-
-    /**
-     * Persona guard (Codex #291 P2): the generic OpenAI→Claude translator prepends
-     * the Claude Code persona (CLAUDE_SYSTEM_PROMPT) as the first system block —
-     * correct for a real Claude Code client, but it silently re-personas a normal
-     * Copilot chat. Detect the client from the frozen per-request headers
-     * (requestContext.clientHeaders, set by chatCore) and remove ONLY the exact
-     * synthetic leading block when the caller is not Claude Code. A caller-supplied
-     * system block with the same text is preserved because we drop strictly the
-     * first block, only when it matches verbatim.
-     */
-    if (detectClientTool(requestContext?.clientHeaders || {}, strippedBody) !== "claude" &&
-    Array.isArray(transformedBody.system) &&
-    transformedBody.system[0]?.text === CLAUDE_SYSTEM_PROMPT) {
-      transformedBody.system = transformedBody.system.slice(1);
-      if (transformedBody.system.length === 0) delete transformedBody.system;
-    }
 
     /**
      * Thinking-strip (Codex #291 P2): an assistant history turn carrying

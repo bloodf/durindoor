@@ -82,6 +82,9 @@ function normalizeGeminiContents(contents) {
  * both for Antigravity/Gemini replay.
  * decolua/9router#3055 also treats an explicitly empty tool result as present;
  * Gemini must receive its functionResponse instead of dropping it as falsy.
+ * Multiple system messages append separate parts in source order, preserving
+ * their text without trimming or inserting separators. A lone system message
+ * retains the existing user-turn fallback used by Gemini variants.
  *
  * @param {string} model - Target Gemini model id.
  * @param {object} body - OpenAI-shaped request body.
@@ -167,10 +170,10 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       const content = msg.content;
 
       if (role === ROLE.SYSTEM && body.messages.length > 1) {
-        result.systemInstruction = {
-          role: GEMINI_ROLE.USER,
-          parts: [{ text: isString(content) ? content : extractTextContent(content) }]
-        };
+        result.systemInstruction ??= { role: GEMINI_ROLE.USER, parts: [] };
+        result.systemInstruction.parts.push({
+          text: isString(content) ? content : extractTextContent(content)
+        });
       } else if (role === ROLE.USER || role === ROLE.SYSTEM && body.messages.length === 1) {
         const parts = convertOpenAIContentToParts(content);
         if (parts.length > 0) {

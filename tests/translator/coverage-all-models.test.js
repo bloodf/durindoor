@@ -35,9 +35,20 @@ describe("coverage: every model translates without throwing", () => {
     for (const m of models) {
       const target = resolveTargetFormat(alias, m.id);
       const body = baseBody(m.id);
+      // Cursor supports text and tools; unsupported images have focused 400 coverage.
+      if (target === FORMATS.CURSOR) {
+        body.messages[1].content = [{ type: "text", text: "Hello" }];
+      }
       // source = openai (lingua franca); exercise openai → target path
       const out = translateRequest(FORMATS.OPENAI, target, m.id, body, true, null, alias);
       expect(out, `${alias}/${m.id} → ${target} returned falsy`).toBeTruthy();
+      if (target === FORMATS.CURSOR) {
+        expect(out.messages).toEqual([
+          { role: "user", content: "[System Instructions]\nYou are a helper." },
+          { role: "user", content: "Hello" },
+        ]);
+        expect(out.tools).toEqual(body.tools);
+      }
     }
   });
 });

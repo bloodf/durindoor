@@ -1,5 +1,6 @@
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
+import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
@@ -314,6 +315,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   rawCredentials;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
+  if (provider === "cursor" || provider === "cu") {
+    try {
+      validateCursorImages(body);
+    } catch (error) {
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
+  }
   const requestedCatalogModel = parseSuffix(requestedModel).cleanModel;
   const unavailableModel = getProviderModels(provider).find((entry) =>
     entry.id === requestedCatalogModel || entry.aliases?.includes(requestedCatalogModel));

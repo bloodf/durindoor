@@ -3,12 +3,11 @@ name: "🧪 Tests"
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: tests-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   vitest:
@@ -48,7 +47,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Select baseline comparison ref
-        run: echo "BASELINE_BASE_REF=${{ github.event.pull_request.base.sha || github.event.before }}" >> "$GITHUB_ENV"
+        run: echo "BASELINE_BASE_REF=${{ github.event.before }}" >> "$GITHUB_ENV"
 
       - name: "🧪 Run Vitest + fail-closed no-regression gate"
         working-directory: tests

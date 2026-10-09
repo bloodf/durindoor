@@ -76,6 +76,21 @@ function stripOrphanedToolOutputs(input) {
 const MAX_TOOL_NAME_LEN = 128;
 
 /**
+ * Chat Completions has no file-ID image reference and DurinDoor cannot resolve
+ * a client's scoped file ID here, so a bare `file_id` is rejected (chatCore
+ * maps statusCode 400 to a client error) instead of shipped as an image URL.
+ */
+function responsesImageUrl(part) {
+  if (part.image_url) return part.image_url;
+  if (part.file_id) {
+    const error = new Error("input_image.file_id is not supported for this provider; send image_url (URL or data: base64) instead");
+    error.statusCode = 400;
+    throw error;
+  }
+  return "";
+}
+
+/**
  * Split a `function_call_output.output` value into the tool message text and
  * the images it carries. Chat Completions `tool` messages cannot hold images,
  * so `input_image` parts become `image_url` parts for a following user message
@@ -88,7 +103,7 @@ function splitToolOutputImages(output) {
   }
   const images = output.
   filter((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE).
-  map((c) => ({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: c.image_url || c.file_id || "", detail: c.detail || "auto" } }));
+  map((c) => ({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: responsesImageUrl(c), detail: c.detail || "auto" } }));
   const text = coerceResponsesOutput(output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE));
   const note = "[tool returned an image; see attached]";
   return { content: text ? `${text}\n${note}` : note, images };
@@ -260,8 +275,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
         if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
         if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-          const url = c.image_url || c.file_id || "";
-          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
+          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: responsesImageUrl(c), detail: c.detail || "auto" } };
         }
         return c;
       }) :

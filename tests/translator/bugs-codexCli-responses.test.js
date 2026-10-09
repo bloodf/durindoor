@@ -32,18 +32,49 @@ describe("Codex CLI Responses → OpenAI", () => {
     expect(typeof asst.tool_calls[0].function.arguments).toBe("string");
   });
 
-  // openai-responses.js:75-77 — input_image uses file_id as raw url
-  // KNOWN BUG
-  it.fails("input_image with file_id is not used as a raw url", () => {
-    const out = R2O({
-      input: [{ type: "message", role: "user", content: [
-        { type: "input_image", file_id: "file-abc" },
-      ] }],
-    });
-    const userMsg = out.messages.find((m) => m.role === "user");
-    const img = Array.isArray(userMsg?.content) ? userMsg.content.find((c) => c.type === "image_url") : null;
-    // A bare file_id is not a valid image URL
-    expect(img?.image_url?.url === "file-abc").toBe(false);
+  // input_image file_id cannot be resolved here: reject with 400, never emit it as a URL.
+  it.each([true, false])("input_image with file_id is rejected with statusCode 400 (stream=%s)", (stream) => {
+    const body = { stream, input: [{ type: "message", role: "user", content: [
+      { type: "input_image", file_id: "file-abc" },
+    ] }] };
+    expect(() => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", body, stream, null, null))
+      .toThrowError(expect.objectContaining({
+        statusCode: 400,
+        message: expect.stringMatching(/file_id is not supported/),
+      }));
+  });
+
+  it.each([true, false])("function_call_output input_image with file_id is rejected with statusCode 400 (stream=%s)", (stream) => {
+    const body = { stream, input: [
+      { type: "function_call", call_id: "c1", name: "f", arguments: "{}" },
+      { type: "function_call_output", call_id: "c1", output: [{ type: "input_image", file_id: "file-abc" }] },
+    ] };
+    expect(() => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", body, stream, null, null))
+      .toThrowError(expect.objectContaining({
+        statusCode: 400,
+        message: expect.stringMatching(/file_id is not supported/),
+      }));
+  });
+
+  it.each([true, false])("same-format Responses preserves input_image file references (stream=%s)", (stream) => {
+    const body = { stream, input: [
+      { type: "message", role: "user", content: [{ type: "input_image", file_id: "file-user" }] },
+      { type: "function_call", call_id: "c1", name: "f", arguments: "{}" },
+      { type: "function_call_output", call_id: "c1", output: [{ type: "input_image", file_id: "file-tool" }] },
+    ] };
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSES, "m", body, stream, null, null);
+    expect(out.input[0].content).toEqual([{ type: "input_image", file_id: "file-user" }]);
+    expect(out.input[2].output).toEqual([{ type: "input_image", file_id: "file-tool" }]);
+  });
+
+  it("input_image with image_url (URL and base64) is preserved; image_url wins over file_id", () => {
+    for (const url of ["https://example.com/a.png", "data:image/png;base64,AAAA"]) {
+      const out = R2O({ input: [{ type: "message", role: "user", content: [
+        { type: "input_image", image_url: url, file_id: "file-abc" },
+      ] }] });
+      const img = out.messages.find((m) => m.role === "user").content.find((c) => c.type === "image_url");
+      expect(img.image_url.url).toBe(url);
+    }
   });
 
   // The unit-level openaiResponsesToOpenAIRequest test only checks the merged

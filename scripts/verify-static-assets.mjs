@@ -4,6 +4,33 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+// Shared by the build-tree check and the relocated installed-artifact check.
+export async function verifyStaticAssets(baseUrl, pageHtml, headers = {}) {
+  const urls = new Set();
+  const pattern = /(?:src|href)="(\/(?!\/)[^"?#]+\.(?:js|css|ico|webmanifest|woff2|svg|png)(?:[?#][^"]*)?)"/g;
+  for (const match of pageHtml.matchAll(pattern)) urls.add(match[1]);
+  if (![...urls].some((url) => /\.(js|css)(?:[?#]|$)/.test(url))) {
+    throw new Error("No local .js/.css assets found in page HTML");
+  }
+  for (const url of urls) {
+    const response = await fetch(new URL(url, baseUrl), {
+      headers, redirect: "manual", signal: AbortSignal.timeout(10000),
+    });
+    const body = Buffer.from(await response.arrayBuffer());
+    const type = response.headers.get("content-type") || "";
+    if (response.status !== 200 || !body.length || /text\/html/i.test(type) ||
+        /^\s*(?:<!doctype\s+html|<html\b)/i.test(body.toString("utf8", 0, 512))) {
+      throw new Error(`Asset ${url}: HTTP ${response.status}, ${type || "no content type"}, ${body.length} bytes`);
+    }
+    if (/\.js(?:[?#]|$)/.test(url) && !/(?:javascript|ecmascript)/i.test(type) ||
+        /\.css(?:[?#]|$)/.test(url) && !/^text\/css\b/i.test(type)) {
+      throw new Error(`Asset ${url}: unexpected content type ${type}`);
+    }
+  }
+  return urls.size;
+}
 
 const DIST_DIR = process.env.NEXT_DIST_DIR || ".next";
 const BASE_STANDALONE = path.join(process.cwd(), DIST_DIR, "standalone");
@@ -109,44 +136,14 @@ async function main() {
     }
 
     const pageHtml = await fetch(pageUrl, { redirect: "follow" }).then((r) => r.text());
-    const requiredUrls = new Set();
-    const extraUrls = new Set();
-    const requiredPattern = /(?:src|href)="(\/[^"?#]+\.(?:js|css)(?:[?#][^"]*)?)"/g;
-    const extraPattern = /(?:src|href)="(\/[^"?#]+\.(?:ico|webmanifest|woff2|svg|png)(?:[?#][^"]*)?)"/g;
-    let match;
-    while ((match = requiredPattern.exec(pageHtml)) !== null) {
-      requiredUrls.add(match[1]);
-    }
-    while ((match = extraPattern.exec(pageHtml)) !== null) {
-      extraUrls.add(match[1]);
-    }
-
-    if (!requiredUrls.size) {
-      throw new Error("No local .js/.css assets found in page HTML");
-    }
-
-    const assetUrls = new Set([...requiredUrls, ...extraUrls]);
-    const failures = [];
-    for (const url of assetUrls) {
-      const response = await fetch(`${baseUrl}${url}`);
-      if (response.status !== 200) {
-        failures.push(`${url} -> ${response.status}`);
-      } else {
-        console.log(`  OK ${url}`);
-      }
-    }
-
-    if (failures.length) {
-      throw new Error(`Asset failures:\n${failures.join("\n")}`);
-    }
-
-    console.log(`Static asset smoke OK: ${requiredUrls.size} required JS/CSS, ${extraUrls.size} extra assets, port ${port}`);
+    const count = await verifyStaticAssets(baseUrl, pageHtml);
+    console.log(`Static asset smoke OK: ${count} assets, port ${port}`);
   } finally {
     await cleanup();
   }
 }
 
-main().then(
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().then(
   () => process.exit(0),
   (error) => {
     console.error(error?.message || error);

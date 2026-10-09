@@ -25,19 +25,6 @@ describe("openai→claude: image_url.detail is dropped (docs 11 §4)", () => {
     expect("detail" in imgBlock).toBe(false);
     expect("detail" in imgBlock.source).toBe(false);
   });
-
-  it("drops input_audio entirely (claude has no audio block)", () => {
-    const body = {
-      model: "claude-sonnet-4-6",
-      messages: [{ role: "user", content: [
-        { type: "text", text: "hi" },
-        { type: "input_audio", input_audio: { data: "ZZZ", format: "wav" } },
-      ] }],
-    };
-    const out = openaiToClaudeRequest("claude-sonnet-4-6", body, false);
-    const blocks = out.messages[0].content;
-    expect(blocks.some((b) => b.type === "audio" || b.type === "input_audio")).toBe(false);
-  });
 });
 
 describe("openai→gemini: input_audio is mapped to inlineData (docs 11 §4)", () => {

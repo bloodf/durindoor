@@ -8,6 +8,7 @@ import {
 "@/lib/localDb";
 import { isRecord } from "./guards";
 import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 const SERVER_INFO = { name: "9router-gateway", version: "1" };
 const PROTOCOL_VERSION = "2025-06-18";
@@ -35,7 +36,7 @@ function jsonRpcOk(id, result) {
 }
 
 function jsonRpcErr(id, code, message, data) {
-  return { jsonrpc: "2.0", id: id ?? null, error: { code, message, ...(data !== undefined ? { data } : null) } };
+  return { jsonrpc: "2.0", id: id ?? null, error: { code, message: sanitizeErrorMessage(message), ...(data !== undefined ? { data } : null) } };
 }
 
 async function authenticate(request) {
@@ -91,6 +92,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
     case "tools/list":{
         const { aggregateTools } = await import("./aggregator");
         const { tools, errors } = await aggregateTools(instances, grants);
+        for (const error of errors) error.message = sanitizeErrorMessage(error.message);
         return respond(jsonRpcOk(obj.id, { tools, nextCursor: null, _gateway: { errors } }));
       }
     case "tools/call":{
@@ -118,6 +120,16 @@ export async function handleJsonRpc(request, body, opts = {}) {
             tokens: {},
             status: "ok"
           }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
+          // Tool failures can arrive as successful RPC results rather than throws.
+          if (isRecord(result) && result.isError === true && Array.isArray(result.content)) {
+            return respond(jsonRpcOk(obj.id, {
+              ...result,
+              content: result.content.map((item) =>
+                isRecord(item) && item.type === "text" && isString(item.text)
+                  ? { ...item, text: sanitizeErrorMessage(item.text) }
+                  : item)
+            }));
+          }
           return respond(jsonRpcOk(obj.id, result ?? { content: [], isError: false }));
         } catch (e) {
           const errMsg = (isString(e.message) ? e.message : undefined) || String(e);
@@ -134,7 +146,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
           if (isUpstream) {
             return respond(jsonRpcOk(obj.id, {
-              content: [{ type: "text", text: `tool error: ${errMsg}` }],
+              content: [{ type: "text", text: sanitizeErrorMessage(`tool error: ${errMsg}`) }],
               isError: true
             }));
           }

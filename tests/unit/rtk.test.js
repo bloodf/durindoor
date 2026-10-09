@@ -16,6 +16,9 @@ import { searchList } from "../../open-sse/rtk/filters/searchList.js";
 import { gitLog } from "../../open-sse/rtk/filters/gitLog.js";
 import { autoDetectFilter } from "../../open-sse/rtk/autodetect.js";
 import { safeApply } from "../../open-sse/rtk/applyFilter.js";
+import "../translator/registerAll.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 function makeLongDiff() {
   const lines = ["diff --git a/foo.js b/foo.js", "index abc..def 100644", "--- a/foo.js", "+++ b/foo.js", "@@ -1,3 +1,200 @@"];
@@ -670,6 +673,52 @@ describe("compressMessages (enabled)", () => {
     const stats = compressMessages(body, true);
     expect(stats.hits.length).toBe(0);
     expect(body.messages[0].content[0].content).toBe(big);
+  });
+
+  it("skips OpenAI tool message flagged is_error:true (string and array forms)", () => {
+    const big = makeLongDiff();
+    const body = {
+      messages: [
+        { role: "tool", tool_call_id: "e1", is_error: true, content: big },
+        { role: "tool", tool_call_id: "e2", is_error: true, content: [{ type: "text", text: big }] },
+      ]
+    };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.length).toBe(0);
+    expect(body.messages[0].content).toBe(big);
+    expect(body.messages[1].content[0].text).toBe(big);
+  });
+
+  it("preserves bridged failure content through spread clones while compressing success", () => {
+    const big = makeLongDiff();
+    const translated = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, "m", {
+      messages: [
+        { role: "assistant", content: ["error", "success"].map((id) => ({ type: "tool_use", id, name: "run", input: {} })) },
+        { role: "user", content: [
+          { type: "tool_result", tool_use_id: "error", is_error: true, content: big },
+          { type: "tool_result", tool_use_id: "success", content: big },
+        ] },
+      ],
+    }, false);
+    const body = { ...translated, messages: translated.messages.map((message) => ({ ...message })) };
+    compressMessages(body, true);
+    const failed = body.messages.find((message) => message.tool_call_id === "error");
+    const success = body.messages.find((message) => message.tool_call_id === "success");
+    expect(failed.content).toBe(big);
+    expect(success.content).not.toBe(big);
+    expect(success.content).toContain("foo.js");
+    const native = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "m", body, false);
+    const results = native.messages.flatMap((message) => Array.isArray(message.content) ? message.content : [])
+      .filter((block) => block.type === "tool_result");
+    expect(results.find((block) => block.tool_use_id === "error")).toMatchObject({ is_error: true, content: big });
+  });
+
+  it("still compresses OpenAI tool message with is_error:false", () => {
+    const big = makeLongDiff();
+    const body = { messages: [{ role: "tool", tool_call_id: "ok", is_error: false, content: big }] };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.length).toBeGreaterThan(0);
+    expect(body.messages[0].content.length).toBeLessThan(big.length);
   });
 
   it("skips below MIN_COMPRESS_SIZE (<500 bytes)", () => {

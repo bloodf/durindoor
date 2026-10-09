@@ -30,12 +30,12 @@ function toolCallToText(name, input) {
   return `[Tool call: ${name || "unknown"}(${argStr})]`;
 }
 
-/** Render a tool result (string or content-block array) as a text line. */
-function toolResultToText(content) {
+/** Preserve error meaning when tool results must be salvaged as plain text. */
+function toolResultToText(content, isError = false) {
   const text = Array.isArray(content) ?
   content.map((c) => isString(c) ? c : c.text || "").join("\n") :
   isString(content) ? content : "";
-  return `[Tool result: ${text}]`;
+  return `[Tool ${isError ? "error" : "result"}: ${text}]`;
 }
 
 /**
@@ -62,7 +62,7 @@ function flattenToolInteractions(messages) {
   for (const msg of messages) {
     // OpenAI tool-result message → user text line
     if (msg.role === ROLE.TOOL) {
-      out.push({ role: ROLE.USER, content: toolResultToText(msg.content) });
+      out.push({ role: ROLE.USER, content: toolResultToText(msg.content, msg.is_error === true) });
       continue;
     }
 
@@ -90,7 +90,7 @@ function flattenToolInteractions(messages) {
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
       const newContent = msg.content.map((c) =>
       c.type === CLAUDE_BLOCK.TOOL_RESULT ?
-      { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content) } :
+      { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content, c.is_error === true) } :
       c
       );
       out.push({ ...msg, content: newContent });
@@ -142,7 +142,7 @@ function reconcileOrphanedToolResults(history, currentMessage) {
       if (validIds.has(tr.toolUseId)) {
         kept.push(tr);
       } else {
-        salvaged.push(toolResultToText(tr.content));
+        salvaged.push(toolResultToText(tr.content, tr.status === "error"));
       }
     }
 
@@ -351,7 +351,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
 
             pendingToolResults.push({
               toolUseId: block.tool_use_id,
-              status: "success",
+              status: block.is_error === true ? "error" : "success",
               content: [{ text: text }]
             });
           });
@@ -363,7 +363,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         const toolContent = isString(msg.content) ? msg.content : "";
         pendingToolResults.push({
           toolUseId: msg.tool_call_id,
-          status: "success",
+          status: msg.is_error === true ? "error" : "success",
           content: [{ text: toolContent }]
         });
       } else if (content) {

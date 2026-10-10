@@ -1,6 +1,7 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
@@ -206,6 +207,18 @@ function describeOmittedMedia(mediaType) {
   return `[tool result omitted image: ${label}]`;
 }
 
+/**
+ * A nested tool_result document we cannot represent as a URI is the caller's fault:
+ * chatCore answers a `statusCode` 400 with this message, not a silent omission.
+ */
+function unsupportedDocument(sourceType) {
+  const error = new Error(
+    `UNSUPPORTED_DOCUMENT: nested Claude tool_result document source "${sourceType ?? "unknown"}" is not supported for OpenAI; only a http(s) document URL can be forwarded`
+  );
+  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+  return error;
+}
+
 // A Claude image whose source is a URL (`{ type: "url", url }`) maps straight
 // to an OpenAI image_url part; returns null for any other image source.
 function urlImagePart(block) {
@@ -314,6 +327,16 @@ function convertClaudeMessage(msg) {
             for (const c of block.content) {
               if (c.type === CLAUDE_BLOCK.TEXT) {
                 textParts.push(c.text);
+              } else if (c.type === CLAUDE_BLOCK.DOCUMENT) {
+                // A nested document is never forwarded as bytes: OpenAI tool messages
+                // cannot carry it. A URL document keeps its URI verbatim so the upstream
+                // can fetch the reference; every other source is an explicit rejection
+                // rather than a silent drop.
+                if (isString(c.source?.url) && /^https?:\/\//i.test(c.source.url)) {
+                  textParts.push(`[tool result contained a document: ${c.source.url}]`);
+                } else {
+                  throw unsupportedDocument(c.source?.type);
+                }
               } else if (c.type === CLAUDE_BLOCK.IMAGE && c.source?.type === "base64") {
                 textParts.push(describeOmittedMedia(c.source.media_type));
                 hasOmittedMedia = true;

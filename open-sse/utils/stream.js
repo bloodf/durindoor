@@ -28,6 +28,7 @@ import {
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
+import { sanitizeErrorMessageWithSecrets } from "./error.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -47,20 +48,46 @@ const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "g
 // usage trailer or [DONE]. This is not a general stream inactivity timeout.
 const PENDING_COMPLETION_FLUSH_MS = 3000;
 
-function normalizeStreamError(error) {
+function normalizeStreamError(error, secrets = []) {
+  // Public fields only: redact the selected credential values before they reach the client.
+  const safe = (value) => sanitizeErrorMessageWithSecrets(String(value), secrets);
   if (!error || !isObject(error)) {
-    return { message: String(error || "Upstream stream error"), type: "server_error", code: "stream_error" };
+    return { message: safe(error || "Upstream stream error"), type: "server_error", code: "stream_error" };
   }
   return {
-    message: String(error.message || "Upstream stream error"),
-    type: String(error.type || "server_error"),
-    code: String(error.code || "stream_error")
+    message: safe(error.message || "Upstream stream error"),
+    type: safe(error.type || "server_error"),
+    code: safe(error.code || "stream_error")
   };
 }
 
+/**
+ * Redact the selected credential values from a PUBLIC error envelope in place.
+ *
+ * Passthrough mode forwards the upstream frame verbatim, so message/type/code
+ * reach the client unredacted. `streamErrorPayload` is a separate copy produced
+ * by `extractStreamErrorPayload`, so the internal upstreamError stays raw.
+ */
+function sanitizePublicErrorEnvelope(parsed, secrets = []) {
+  // isObject(null) is true here, so a bare `data: null` frame would pass and then throw
+  // on the property read below.
+  if (!isObject(parsed) || parsed === null) return false;
+  const error = parsed.type === "response.failed" ? parsed.response?.error :
+  parsed.error ?? (parsed.type === "error" ? parsed : null);
+  // isObject(null) is true here, so exclude null explicitly: a non-error frame yields
+  // error === null and reading error.message would throw into the caller's catch, which
+  // drops the whole frame instead of forwarding it.
+  if (!isObject(error) || error === null) return false;
+  const safe = (value) => sanitizeErrorMessageWithSecrets(String(value), secrets);
+  if (error.message !== undefined) error.message = safe(error.message);
+  if (isString(error.type)) error.type = safe(error.type);
+  if (isString(error.code)) error.code = safe(error.code);
+  return true;
+}
+
 /** Forward executor-side validation failures in the client's SSE format (#2681). */
-function formatTranslatedStreamError(error, sourceFormat) {
-  const normalized = normalizeStreamError(error);
+function formatTranslatedStreamError(error, sourceFormat, secrets = []) {
+  const normalized = normalizeStreamError(error, secrets);
   if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
     const now = Math.floor(Date.now() / 1000);
     const failed = {
@@ -118,6 +145,8 @@ export function createSSEStream(options = {}) {
     credentials = null
   } = options;
 
+  // Selected/refreshed credential values redacted from the PUBLIC translated error only.
+  const errorSecrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken, credentials?.providerSpecificData?.sessionToken];
   let buffer = "";
   let usage = null;
 
@@ -724,6 +753,7 @@ export function createSSEStream(options = {}) {
             try {
               const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
               streamErrorPayload ??= extractStreamErrorPayload(parsed);
+              const publicError = sanitizePublicErrorEnvelope(parsed, errorSecrets);
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -1013,6 +1043,12 @@ export function createSSEStream(options = {}) {
                 output = isDataLine ? `data: ${JSON.stringify(parsed)}\n` : `${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
               }
+              // A redaction mutated the frame, so the raw `line` fallback below would
+              // forward the unsanitized bytes; re-serialize instead.
+              if (publicError) {
+                output = isDataLine ? `data: ${JSON.stringify(parsed)}\n` : `${JSON.stringify(parsed)}\n`;
+                injectedUsage = true;
+              }
             } catch {
               upstreamTerminal.fail();
               // Skip non-JSON data lines silently — don't forward garbage to clients.
@@ -1050,7 +1086,7 @@ export function createSSEStream(options = {}) {
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
         if (parsed.error) {
           clearCompletionFlushTimer();
-          const output = formatTranslatedStreamError(parsed.error, sourceFormat);
+          const output = formatTranslatedStreamError(parsed.error, sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           upstreamErrorForwarded = true;
@@ -1305,6 +1341,10 @@ export function createSSEStream(options = {}) {
               PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
               const normalized = normalizeOpenAIPassthroughChunk(parsed);
               if (normalized.keep) {
+                // An unterminated final error frame never reached the main loop; capture the
+                // raw payload for settlement and redact the public copy before it goes out.
+                streamErrorPayload ??= extractStreamErrorPayload(parsed);
+                sanitizePublicErrorEnvelope(parsed, errorSecrets);
                 upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
                 currentUpstreamEvent = null;
                 recordCompletionData(parsed, { content: true });
@@ -1377,6 +1417,21 @@ export function createSSEStream(options = {}) {
             }, usage, ttftAt, providerSummary.finalize(usage));
           }
           return;
+        }
+
+        // An unterminated final error line never reached the main loop: route it through the
+        // same formatter instead of letting the translators ignore it and synthesize success.
+        if (mode === STREAM_MODE.TRANSLATE && !upstreamErrorForwarded && buffer.trim()) {
+          const tail = parseSSELine(buffer.trim(), targetFormat);
+          if (tail?.error) {
+            streamErrorPayload ??= extractStreamErrorPayload(tail);
+            const output = formatTranslatedStreamError(tail.error, sourceFormat, errorSecrets);
+            reqLogger?.appendConvertedChunk?.(output);
+            controller.enqueue(sharedEncoder.encode(output));
+            upstreamErrorForwarded = true;
+            streamDoneSent = true;
+            if (sourceFormat === FORMATS.OPENAI_RESPONSES) openAIResponsesDoneSent = true;
+          }
         }
 
         if (upstreamErrorForwarded) {
@@ -1494,7 +1549,7 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null, onCoherentTerminal = null, providerBody = null, claudeCloaked = false) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, targetFormat = null, onCoherentTerminal = null, providerBody = null, claudeCloaked = false, credentials = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     targetFormat,
@@ -1508,6 +1563,8 @@ export function createPassthroughStreamWithLogger(provider = null, reqLogger = n
     onCoherentTerminal,
     providerBody,
     apiKey,
-    claudeCloaked
+    claudeCloaked,
+    // Selected/refreshed credential values redacted from the PUBLIC error envelope.
+    credentials
   });
 }

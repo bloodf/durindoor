@@ -49,12 +49,17 @@ const completed = (cost) => event("response.completed", { response: { status: "c
 
 beforeEach(async () => {
   listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
-  originalEnv = { DATA_DIR: process.env.DATA_DIR, DURINDOOR_DATABASE_ENGINE: process.env.DURINDOOR_DATABASE_ENGINE };
+  originalEnv = Object.fromEntries(["HOME", "DATA_DIR", "TMPDIR", "TMP", "TEMP", "DURINDOOR_DATABASE_ENGINE"].map((name) => [name, process.env[name]]));
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "image-embedding-budget-"));
-  process.env.DATA_DIR = directory;
+  for (const name of ["home", "data", "tmp"]) fs.mkdirSync(path.join(directory, name));
+  process.env.HOME = path.join(directory, "home");
+  process.env.DATA_DIR = path.join(directory, "data");
+  for (const name of ["TMPDIR", "TMP", "TEMP"]) process.env[name] = path.join(directory, "tmp");
   process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
   delete global._dbAdapter;
   delete global._apiKeyLimitState;
+  vi.doMock("open-sse/handlers/embeddingsCore.js", () => ({ handleEmbeddingsCore: (...args) => state.embedding(...args) }));
+  vi.doMock("open-sse/executors/index.js", () => ({ getExecutor: () => ({ noAuth: false }) }));
   vi.resetModules();
   vi.clearAllMocks();
   state.combo = null;
@@ -194,5 +199,80 @@ describe("embedding handler into the dollar budget", () => {
     expect(await database.getApiKeyUsageTotals("media-key")).toMatchObject({ totalRequests: 2, totalCost: 0, unknownCostRequests: 1 });
     state.embedding.mockResolvedValueOnce(receipt(0.25));
     expect((await handleEmbeddings(embedRequest())).status).toBe(200);
+  });
+});
+
+// New composition coverage: provider HTTP receipts, not manufactured core results.
+describe("embedding raw provider receipt through real core and SQLite policy", () => {
+  const model = "openrouter/openai/text-embedding-3-small";
+  const send = (id) => new Request("http://localhost/v1/embeddings", {
+    method: "POST", headers: { "x-request-id": id },
+    body: JSON.stringify({ model, input: ["first", "second"] }),
+  });
+  const raw = (usage) => ({ object: "list", model: "openai/text-embedding-3-small",
+    data: [{ object: "embedding", index: 0, embedding: [0.25, -0.5] },
+      { object: "embedding", index: 1, embedding: [0.75, 0.125] }],
+    ...(usage === undefined ? {} : { usage }) });
+  const reopen = async () => {
+    await global._dbAdapter.instance.close();
+    delete global._dbAdapter;
+    delete global._apiKeyLimitState;
+    vi.resetModules();
+    adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+    database = await import("@/lib/db/index.js");
+    ({ handleEmbeddings } = await import("@/sse/handlers/embeddings.js"));
+  };
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-10T12:00:00Z"));
+    vi.doUnmock("open-sse/handlers/embeddingsCore.js");
+    vi.doUnmock("open-sse/executors/index.js");
+    vi.resetModules();
+    ({ handleEmbeddings } = await import("@/sse/handlers/embeddings.js"));
+    database = await import("@/lib/db/index.js");
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it.each([["cost_usd", 0.5], ["cost_in_usd_ticks", 500_000_000_000]])("persists raw %s and denies before the next provider HTTP call", async (field, value) => {
+    const usage = { [field]: value, prompt_tokens: 9, total_tokens: 9 };
+    const payload = raw(usage);
+    fetch.mockResolvedValueOnce(json(payload));
+    const response = await handleEmbeddings(send(`paid-${field}`));
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toEqual(payload.data);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ model: "openai/text-embedding-3-small", input: ["first", "second"] });
+    await reopen();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ apiKey: "media-secret", provider: "openrouter", model: "openai/text-embedding-3-small", connectionId: "account-i", endpoint: "/v1/embeddings", cost: 0.5, promptTokens: 9 });
+    expect(meta(rows()[0])).toMatchObject({ modality: "embedding", costStatus: "known", costSource: "provider",
+      providerUsage: { path: "usage", value: usage }, providerCost: { path: `usage.${field}`, value } });
+    const totals = await database.getApiKeyUsageTotals("media-key");
+    expect(totals).toMatchObject({ totalRequests: 1, totalCost: 0.5, unknownCostRequests: 0 });
+    expect((await handleEmbeddings(send(`denied-${field}`))).status).toBe(429);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(await database.getApiKeyUsageTotals("media-key")).toEqual(totals);
+  });
+
+  it("keeps missing and invalid receipts unknown, explicit zero known, and failed requests outside allowance", async () => {
+    adapter.run("UPDATE apiKeys SET policy = ? WHERE id = ?", [JSON.stringify({ maxCostUsd: 0.5, monthlyRequestLimit: 3 }), "media-key"]);
+    fetch.mockResolvedValueOnce(json({ error: { message: "synthetic provider rejection" } }, 503));
+    expect((await handleEmbeddings(send("failed"))).status).toBe(503);
+    expect(rows()).toEqual([]);
+    const usages = [undefined, { cost_usd: "invalid", prompt_tokens: 9 }, { cost_usd: 0, prompt_tokens: 9 }];
+    for (const [index, usage] of usages.entries()) {
+      const payload = raw(usage);
+      fetch.mockResolvedValueOnce(json(payload));
+      const response = await handleEmbeddings(send(`unknown-zero-${index}`));
+      expect(response.status).toBe(200);
+      expect((await response.json()).data).toEqual(payload.data);
+    }
+    await reopen();
+    expect(rows().map((row) => row.cost)).toEqual([null, null, 0]);
+    expect(rows().map((row) => meta(row).costStatus)).toEqual(["unknown", "unknown", "known"]);
+    expect(await database.getApiKeyUsageTotals("media-key")).toMatchObject({ totalRequests: 3, totalCost: 0, unknownCostRequests: 2 });
+    expect((await handleEmbeddings(send("allowance-denied"))).status).toBe(429);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(rows()).toHaveLength(3);
   });
 });

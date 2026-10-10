@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   getGrantsForKeyDetailed: vi.fn(),
   getEnabledInstancesByIds: vi.fn(),
   saveRequestUsage: vi.fn(),
+  getBillingEpoch: vi.fn(),
   getInstanceById: vi.fn(),
   updateInstance: vi.fn(),
   // aggregator
@@ -47,6 +48,8 @@ vi.mock("@/lib/localDb", () => ({
   getInstanceById: mocks.getInstanceById,
   updateInstance: mocks.updateInstance,
 }));
+
+vi.mock("@/lib/db/repos/usageRepo.js", () => ({ getBillingEpoch: mocks.getBillingEpoch }));
 
 vi.mock("../../src/lib/mcp/gateway/aggregator.js", () => ({
   dispatchToolCall: mocks.dispatchToolCall,
@@ -124,6 +127,7 @@ describe("handler.js — fire-and-forget usage save", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getBillingEpoch.mockResolvedValue(null);
     unhandledCount = 0;
     unhandledRejection = () => {
       unhandledCount += 1;
@@ -196,6 +200,41 @@ describe("handler.js — fire-and-forget usage save", () => {
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     expect(unhandledCount).toBe(0);
+  });
+
+  it.each([false, true])("retains admission epoch when credentials and tool completion cross imports (error=%s)", async (fails) => {
+    let epoch = "admitted-generation";
+    mocks.getBillingEpoch.mockImplementation(async () => epoch);
+    mocks.validateGatewayKey.mockImplementation(async () => {
+      epoch = "credential-import-generation";
+      return { id: "key-1" };
+    });
+    mocks.dispatchToolCall.mockImplementation(async () => {
+      epoch = "completion-import-generation";
+      if (fails) throw new Error("upstream timeout");
+      return { result: { content: [{ type: "text", text: "ok" }] } };
+    });
+    const charged = [];
+    mocks.saveRequestUsage.mockImplementation(async (event) => {
+      if (event.billingEpoch === epoch) charged.push(event);
+    });
+    const { handleJsonRpc } = await import("../../src/lib/mcp/gateway/handler.js");
+    const result = await handleJsonRpc(fakeRequest(), {
+      jsonrpc: "2.0", id: 3, method: "tools/call",
+      params: { name: "granola__list_tools", arguments: {} },
+    });
+    expect(result.body.result).toMatchObject(fails ? { isError: true } : { content: [{ type: "text", text: "ok" }] });
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({
+      billingEpoch: "admitted-generation", status: fails ? "error" : "ok",
+    }));
+    expect(charged).toEqual([]);
+    mocks.validateGatewayKey.mockResolvedValue({ id: "key-1" });
+    await handleJsonRpc(fakeRequest(), {
+      jsonrpc: "2.0", id: 4, method: "tools/call",
+      params: { name: "granola__list_tools", arguments: {} },
+    });
+    expect(charged).toHaveLength(1);
+    expect(charged[0]).toMatchObject({ billingEpoch: "completion-import-generation", status: fails ? "error" : "ok" });
   });
 });
 

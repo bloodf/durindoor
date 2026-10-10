@@ -1,5 +1,6 @@
 // Gemini TTS — generateContent with AUDIO modality returns PCM L16, wrap as WAV
 import { Buffer } from "node:buffer";
+import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
 import { PROVIDER_MEDIA, PROVIDER_MODELS } from "../../providers/index.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 
@@ -59,6 +60,47 @@ function buildPrompt(text, language) {
   return language ? `Say in ${language}: ${text}` : `Say: ${text}`;
 }
 
+// Gemini candidates exclude thoughts; the ledger's output component includes them.
+// Never infer missing components from a total or manufacture a zero receipt.
+function geminiAccounting(data, audio) {
+  const usage = data.usageMetadata ?? data.usage;
+  const tokens = {};
+  if (usage != null) {
+    if (!isObject(usage) || Array.isArray(usage)) throw new Error("Invalid Gemini TTS usage");
+    const count = (value) => {
+      if (value !== undefined && (!isNumber(value) || !Number.isSafeInteger(value) || value < 0)) throw new Error("Invalid Gemini TTS token count");
+      return value;
+    };
+    const input = count(usage.promptTokenCount ?? usage.total_input_tokens);
+    const candidates = count(usage.candidatesTokenCount);
+    const thoughts = count(usage.thoughtsTokenCount);
+    const output = count(usage.responseTokenCount ?? usage.total_output_tokens);
+    const total = count(usage.totalTokenCount ?? usage.total_tokens);
+    const cached = count(usage.cachedContentTokenCount ?? usage.total_cached_tokens);
+    if (input !== undefined) tokens.input_tokens = input;
+    if (candidates !== undefined) tokens.output_tokens = candidates + (thoughts ?? 0);
+    else if (output !== undefined) tokens.output_tokens = output;
+    else if (thoughts !== undefined) throw new Error("Gemini TTS thoughts require an output component");
+    if (thoughts !== undefined) tokens.reasoning_tokens = thoughts;
+    if (cached !== undefined) tokens.cached_tokens = cached;
+    if (total !== undefined) {
+      if (input === undefined || tokens.output_tokens === undefined || total !== input + tokens.output_tokens) throw new Error("Gemini TTS total does not match token components");
+      tokens.total_tokens = total;
+    }
+    if (tokens.output_tokens !== undefined && !Number.isSafeInteger(tokens.output_tokens)) throw new Error("Invalid Gemini TTS output count");
+    if (thoughts !== undefined && thoughts > tokens.output_tokens || cached !== undefined && (input === undefined || cached > input)) throw new Error("Invalid Gemini TTS token detail");
+  }
+  const receipt = {};
+  if (usage !== undefined) receipt.usage = usage;
+  if (data.responseId !== undefined) receipt.responseId = data.responseId;
+  if (data.id !== undefined) receipt.id = data.id;
+  const duration = audio.duration_seconds;
+  if (duration !== undefined && (!isNumber(duration) || !Number.isFinite(duration) || duration < 0)) throw new Error("Invalid Gemini TTS duration");
+  const accounting = { tokens, nativeUnits: duration === undefined ? {} : { audioSeconds: duration } };
+  if (Object.keys(receipt).length) accounting.meta = { providerReceipt: receipt };
+  return accounting;
+}
+
 export default {
   async synthesize(text, model, credentials, _responseFormat, opts = {}) {
     if (!credentials?.apiKey) throw new Error("No Gemini API key configured");
@@ -85,12 +127,13 @@ export default {
       const reason = data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || "unknown";
       throw new Error(`Gemini TTS returned no audio (finishReason: ${reason}, voice: ${voiceId}, model: ${modelId})`);
     }
+    const accounting = geminiAccounting(data, audio);
     const bytes = Buffer.from(audio.data, "base64");
     const mime = audio.mime_type || audio.mimeType;
     const isWav = mime === "audio/wav" || bytes.subarray(0, 4).toString("ascii") === "RIFF";
     if (mime && mime !== "audio/wav" && mime !== "audio/l16" && mime !== "audio/pcm") throw new Error(`Unsupported Gemini audio MIME type: ${mime}`);
     const wav = isWav ? bytes : pcmToWav(bytes);
-    return { base64: wav.toString("base64"), format: "wav" };
+    return { base64: wav.toString("base64"), format: "wav", accounting };
   },
 };
 

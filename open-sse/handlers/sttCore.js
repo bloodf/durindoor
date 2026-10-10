@@ -3,7 +3,7 @@ import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/err
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveLocalWhisperHost } from "../config/providers.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 
@@ -65,7 +65,7 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-  return jsonResponse({ text });
+  return jsonResponse({ text }, data, data.metadata?.duration);
 }
 
 /** Sends AssemblyAI language_code when supplied, otherwise enabling detection (upstream #3058). */
@@ -96,8 +96,9 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData) {
     const poll = await fetch(`${cfg.baseUrl}/${id}`, { headers: auth });
     if (!poll.ok) continue;
     const r = await poll.json();
-    if (r.status === "completed") return jsonResponse({ text: r.text || "" });
-    if (r.status === "error") return createErrorResult(500, r.error || "AssemblyAI failed");
+    if (r.status === "completed") return jsonResponse({ text: r.text || "" }, r, r.audio_duration);
+    // Terminal errors can echo the token used for this transcription.
+    if (r.status === "error") return createErrorResult(500, sanitizeErrorMessageWithSecrets(r.error || "AssemblyAI failed", [token]));
   }
   return createErrorResult(504, "AssemblyAI timeout after 120s");
 }
@@ -155,7 +156,7 @@ async function transcribeGemini(cfg, file, model, token, formData, proxyOptions)
   const interaction = await proxyAwareFetch("https://generativelanguage.googleapis.com/v1beta/interactions", { method: "POST", headers: { "x-goog-api-key": token, "Content-Type": "application/json" }, body: JSON.stringify({ model, input: [{ type: "audio", uri: uploaded?.file?.uri, mime_type: uploaded?.file?.mime_type || mime }], generation_config: { transcription_config: transcription } }) }, proxyOptions);
   if (!interaction.ok) return upstreamError(interaction, [token]);
   const data = await interaction.json();
-  return jsonResponse({ text: data?.output_text || data?.outputs?.flatMap((output) => output.content || []).map((contentPart) => contentPart.text).filter(Boolean).join("") || "" });
+  return jsonResponse({ text: data?.output_text || data?.outputs?.flatMap((output) => output.content || []).map((contentPart) => contentPart.text).filter(Boolean).join("") || "" }, data);
 }
 
 async function transcribeGeminiGenerateContent(cfg, file, model, token, formData, proxyOptions) {
@@ -169,7 +170,7 @@ async function transcribeGeminiGenerateContent(cfg, file, model, token, formData
   const res = await proxyAwareFetch(`${cfg.baseUrl}/${model}:generateContent?key=${token}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mime, data: b64 } }] }] }) }, proxyOptions);
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
-  return jsonResponse({ text: data?.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("") || "" });
+  return jsonResponse({ text: data?.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("") || "" }, data);
 }
 
 // HuggingFace: POST raw binary to {baseUrl}/{model_id}
@@ -184,7 +185,7 @@ async function transcribeHuggingFace(cfg, file, model, token) {
   });
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
-  return jsonResponse({ text: data.text || "" });
+  return jsonResponse({ text: data.text || "" }, data);
 }
 
 // Default: OpenAI/Groq/Whisper-compatible multipart
@@ -205,7 +206,7 @@ async function transcribeOpenAICompatible(cfg, file, model, token, formData, pro
     await guardedProbeFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd }) :
     await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd }, proxyOptions);
   if (!res.ok) return upstreamError(res, [token]);
-  return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
+  return await transcriptionResponse(res);
 }
 
 // MiniMax and xAI require options before multipart file; MiniMax language is an HTTP header.
@@ -224,11 +225,44 @@ async function transcribeNativeSpeech(cfg, file, model, token, formData, proxyOp
   }
   const res = await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers, body: fd }, proxyOptions);
   if (!res.ok) return upstreamError(res, [token]);
-  return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
+  return await transcriptionResponse(res);
 }
-function jsonResponse(obj) {
+/** Capture provider billing metadata before transcript normalization discards it.
+ * Duration is seconds, never inferred from file bytes or transcript length.
+ * Token values remain untouched for strict ledger validation, including totals.
+ */
+function transcriptionUsage(data, duration = data?.duration ?? (data?.usage?.type === "duration" ? data.usage.seconds : undefined)) {
+  const usage = data?.usageMetadata ?? data?.usage ?? data?.meta?.tokens;
+  if (usage !== undefined && (usage === null || !isObject(usage) || Array.isArray(usage))) {
+    throw new TypeError("STT provider usage must be an object");
+  }
+  if (duration !== undefined && (!isNumber(duration) || !Number.isFinite(duration) || duration < 0)) {
+    throw new TypeError("STT provider duration must be nonnegative seconds");
+  }
+  return {
+    usageValue: data?.usageMetadata ? { usageMetadata: usage } : { usage },
+    nativeUnits: duration === undefined ? {} : { audioSeconds: duration },
+  };
+}
+
+async function transcriptionResponse(res) {
+  const contentType = res.headers.get("content-type") || "application/json";
+  // Text/subtitle responses expose no duration; preserve their stream unchanged.
+  if (!/(?:application\/json|\+json)/i.test(contentType)) {
+    return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": contentType, "Access-Control-Allow-Origin": "*" } }) };
+  }
+  const text = await res.text();
   return {
     success: true,
+    ...transcriptionUsage(JSON.parse(text)),
+    response: new Response(text, { status: res.status, headers: { "Content-Type": contentType, "Access-Control-Allow-Origin": "*" } }),
+  };
+}
+
+function jsonResponse(obj, data = obj, duration) {
+  return {
+    success: true,
+    ...transcriptionUsage(data, duration),
     response: new Response(JSON.stringify(obj), {
       status: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
@@ -245,7 +279,8 @@ export function supportsSttTranslation(cfg, model = null) {
  * STT core handler — dispatch by sttConfig.format.
  * `kind: "translation"` targets the OpenAI-style `/audio/translations` route;
  * only OpenAI-format providers have one, so other formats are rejected.
- * @returns {Promise<{success, response, status?, error?}>}
+ * Successful results include usageValue and nativeUnits captured at provider decode.
+ * @returns {Promise<{success, response, usageValue?, nativeUnits?, status?, error?}>}
  */
 export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription" }) {
   const file = formData.get("file");

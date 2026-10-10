@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -13,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  getApiKeyByKey: async () => ({ id: "music-owner", isActive: true, policy: {} }),
 }));
 
 vi.mock("../../src/sse/services/model.js", () => ({
@@ -46,27 +50,54 @@ function makeRequest(model = "suno-override", headers = {}) {
   });
 }
 
-function successResponse() {
-  return new Response(JSON.stringify({ object: "music.generation", data: [] }));
+function successResult() {
+  return {
+    success: true,
+    job: { resourceId: "song-1", terminal: null },
+    accounting: { state: "pending", modality: "music", tokens: {}, nativeUnits: {}, cost: null, costStatus: "unknown", costSource: "unavailable", meta: {} },
+    response: new Response(JSON.stringify({ object: "music.generation", request_id: "song-1", status: "submitted", data: [{ id: "song-1", status: "submitted" }] })),
+  };
 }
+
+let tempDir;
+let originalDataDir;
+let originalEngine;
+let adapter;
+
+afterEach(async () => {
+  await adapter?.close?.();
+  delete global._dbAdapter;
+  if (originalDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = originalDataDir;
+  if (originalEngine === undefined) delete process.env.DURINDOOR_DATABASE_ENGINE;
+  else process.env.DURINDOOR_DATABASE_ENGINE = originalEngine;
+  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+});
 
 function makeCredentials(overrides = {}) {
   return { connectionId: "conn-1", apiKey: "ak", providerSpecificData: {}, ...overrides };
 }
 
 describe("music handler credential fallback", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    originalDataDir = process.env.DATA_DIR;
+    originalEngine = process.env.DURINDOOR_DATABASE_ENGINE;
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "music-fallback-"));
+    process.env.DATA_DIR = tempDir;
+    process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+    delete global._dbAdapter;
+    adapter = await (await import("../../src/lib/db/driver.js")).getAdapter();
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.getModelInfo.mockResolvedValue({ provider: "suno", model: "suno-override" });
-    mocks.extractApiKey.mockReturnValue(null);
-    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: false });
+    mocks.extractApiKey.mockReturnValue("music-owner-secret");
+    mocks.evaluateApiKeyAuth.mockResolvedValue({ ok: true, reason: null, stored: true, apiKeyId: "music-owner" });
     mocks.hasValidCliToken.mockResolvedValue(false);
   });
 
   it("passes x-connection-id to getProviderCredentials as preferred connection", async () => {
     mocks.getProviderCredentials.mockResolvedValue({ ...makeCredentials(), connectionId: "conn-pinned" });
-    mocks.handleMusicGenerationCore.mockResolvedValue({ success: true, response: successResponse() });
+    mocks.handleMusicGenerationCore.mockResolvedValue(successResult());
 
     const req = makeRequest("suno-override", { "x-connection-id": "conn-pinned" });
     const res = await handleMusicGeneration(req);
@@ -75,8 +106,9 @@ describe("music handler credential fallback", () => {
       "suno",
       expect.any(Set),
       "suno-override",
-      { preferredConnectionId: "conn-pinned" }
+      { preferredConnectionId: "conn-pinned", apiKeyId: "music-owner" }
     );
+    expect(JSON.parse(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value)).toMatchObject({ apiKeyId: "music-owner", connectionId: "conn-pinned", resourceId: "song-1" });
   });
 
   it("falls back to a second credential on failure and passes excludeConnectionIds", async () => {
@@ -90,7 +122,7 @@ describe("music handler credential fallback", () => {
     });
     mocks.handleMusicGenerationCore
       .mockResolvedValueOnce({ success: false, status: 503, error: "rate limit", response: undefined })
-      .mockResolvedValueOnce({ success: true, response: successResponse() });
+      .mockResolvedValueOnce(successResult());
     mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: true });
 
     const response = await handleMusicGeneration(makeRequest());
@@ -102,6 +134,8 @@ describe("music handler credential fallback", () => {
       ["suno", ["conn-1"], "suno-override"],
     ]);
     expect(mocks.markAccountUnavailable).toHaveBeenCalledWith("conn-1", 503, "rate limit", "suno", "suno-override", null, { usedCredential: "ak" });
+    expect(JSON.parse(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value)).toMatchObject({ apiKeyId: "music-owner", connectionId: "conn-2", resourceId: "song-1" });
+    expect(adapter.all("SELECT * FROM usageHistory")).toEqual([]);
   });
 
   it("returns unavailable when all credentials are rate limited", async () => {

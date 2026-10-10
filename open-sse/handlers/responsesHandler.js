@@ -23,9 +23,10 @@ import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP } from "../utils/tokenSav
  * @param {function} options.onRequestSuccess - Callback when request succeeds
  * @param {function} options.onDisconnect - Callback when client disconnects
  * @param {string} options.connectionId - Connection ID for usage tracking
+ * @param {string|null} options.billingEpoch - Epoch captured at admission before acquiring credentials.
  * @returns {Promise<{success: boolean, response?: Response, status?: number, error?: string}>}
  */
-export async function handleResponsesCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, connectionId }) {
+export async function handleResponsesCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, connectionId, billingEpoch }) {
   // Intercept before converting to Chat Completions. Synthetic Responses are
   // already native and must not pass through the downstream SSE transformer.
   const ponytailResponse = await handlePonytailCommands(body, body.model || modelInfo?.model, {
@@ -60,6 +61,7 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
     onRequestSuccess,
     onDisconnect,
     connectionId,
+    billingEpoch,
     sourceFormatOverride: FORMATS.OPENAI_RESPONSES,
     skipPonytailCommands: true,
     onTokenSaverEvent: (event) => { lastTokenSaverEvent = event; },

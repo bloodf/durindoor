@@ -1552,6 +1552,9 @@ export async function handleComboChat({
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
+      // The provider already completed billable work. A ledger failure must not
+      // become another dispatch, a provider-health penalty, or a masked abort.
+      if (error?.code === "USAGE_ACCOUNTING_FAILED") throw error;
       if (signal?.aborted) return abortedResponse();
       if (error?.isComboTimeout) {
         // Deadline miss is not a real failure; skip setting lastError so the final

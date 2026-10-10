@@ -285,18 +285,49 @@ describe("exportDb / importDb round-trip of apiKeys.policy + expiresAt", () => {
     const policy = { maxTokens: 100 };
     await sqliteDb.updateApiKey(original.id, { policy, expiresAt: "2031-01-01T00:00:00.000Z" });
 
+    const { recordApiKeyUsageForResponse } = await import("@/sse/services/apiKeyPolicy.js");
+    const event = {
+      usageEventId: "roundtrip-unknown-cost",
+      billingEpoch: (await sqliteDb.exportDb()).billingEpoch,
+      timestamp: "2026-01-02T12:00:00.000Z",
+      provider: "openai",
+      model: "text-embedding-3-small",
+      endpoint: "/v1/embeddings",
+      connectionId: "connection-1",
+      modality: "embedding",
+      tokens: { prompt_tokens: 12, completion_tokens: 0 },
+      nativeUnits: {},
+      cost: null,
+      costStatus: "unknown",
+      costSource: "unavailable",
+    };
+    const response = new Response("ok");
+    expect(await recordApiKeyUsageForResponse(original.key, response, event)).toBe(response);
+
     const snap = await sqliteDb.exportDb();
+    expect(snap.apiKeyUsageTotals).toEqual([
+      expect.objectContaining({
+        apiKeyId: original.id, totalTokens: 12, totalCost: 0, totalRequests: 1, unknownCostRequests: 1,
+      }),
+    ]);
     // Wipe the apiKeys table (simulate importing into an empty DB).
     const db = await (await import("@/lib/db/driver.js")).getAdapter();
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM apiKeyUsageTotals`);
     expect(await sqliteDb.getApiKeyById(original.id)).toBeNull();
 
-    await sqliteDb.importDb(snap);
+    const imported = await sqliteDb.importDb(snap);
     const back = await sqliteDb.getApiKeyById(original.id);
     expect(back).not.toBeNull();
     expect(back.key).toBe(original.key);
     expect(back.policy).toEqual(policy);
     expect(back.expiresAt).toBe("2031-01-01T00:00:00.000Z");
+    expect((await sqliteDb.exportDb()).apiKeyUsageTotals).toEqual(snap.apiKeyUsageTotals);
+    // A pre-import event must be rejected after the import fence: no recharge, no new epoch stamp.
+    await expect(recordApiKeyUsageForResponse(original.key, response, event)).rejects.toMatchObject({ code: "USAGE_ACCOUNTING_FAILED" });
+    const after = await sqliteDb.exportDb();
+    expect(after.apiKeyUsageTotals).toEqual(snap.apiKeyUsageTotals);
+    expect(after.usageEventReceipts).toEqual(imported.usageEventReceipts);
+    expect(after.billingEpoch).toBe(imported.billingEpoch);
   });
 });

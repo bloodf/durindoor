@@ -3,8 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getApiKeyByKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
+  getBillingEpoch: vi.fn(),
+  captureRequestBillingEpoch: vi.fn(),
 }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: mocks.getConsistentMachineId }));
+vi.mock("@/lib/db/repos/usageRepo.js", () => ({ getBillingEpoch: mocks.getBillingEpoch }));
+vi.mock("../../src/sse/utils/requestCorrelation.js", () => ({
+  captureRequestBillingEpoch: mocks.captureRequestBillingEpoch,
+}));
 
 vi.mock("@/lib/localDb", () => ({
   getApiKeyByKey: mocks.getApiKeyByKey,
@@ -19,8 +25,11 @@ const { evaluateApiKeyAuth, extractApiKey, extractApiKeyCandidates, resolveClien
 
 describe("API-key authentication expiry", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.getConsistentMachineId.mockResolvedValue("operator-token");
+    // Keep both admission paths isolated from the database and request cache.
+    mocks.getBillingEpoch.mockResolvedValue("direct-epoch");
+    mocks.captureRequestBillingEpoch.mockResolvedValue("request-epoch");
   });
 
   it("accepts only the valid operator token without borrowing a stored API key", async () => {
@@ -40,7 +49,7 @@ describe("API-key authentication expiry", () => {
     const request = new Request("http://localhost/v1/chat");
 
     expect(extractApiKeyCandidates(request)).toEqual([]);
-    await expect(resolveClientApiKey(request, { required: true })).resolves.toEqual({
+    await expect(resolveClientApiKey(request, { required: true })).resolves.toMatchObject({
       apiKey: null,
       auth: { ok: false, reason: "missing", stored: false },
     });
@@ -59,7 +68,7 @@ describe("API-key authentication expiry", () => {
 
   it("resolves a valid x-api-key when the Bearer credential is stale", async () => {
     mocks.getApiKeyByKey.mockImplementation(async (key) => key === "sk-valid"
-      ? { isActive: true, expiresAt: null }
+      ? { id: "valid-key-id", isActive: true, expiresAt: null }
       : null);
     const request = new Request("http://localhost/v1/messages", {
       headers: {
@@ -71,8 +80,13 @@ describe("API-key authentication expiry", () => {
     expect(extractApiKeyCandidates(request)).toEqual(["stale-session-token", "sk-valid"]);
     await expect(resolveClientApiKey(request, { required: true })).resolves.toMatchObject({
       apiKey: "sk-valid",
-      auth: { ok: true, stored: true },
+      auth: { ok: true, stored: true, apiKeyId: "valid-key-id", billingEpoch: "request-epoch" },
     });
+    expect(mocks.captureRequestBillingEpoch).toHaveBeenCalledExactlyOnceWith(request);
+    expect(mocks.captureRequestBillingEpoch.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.getApiKeyByKey.mock.invocationCallOrder[0],
+    );
+    expect(mocks.getBillingEpoch).not.toHaveBeenCalled();
   });
 
   it("rejects when every presented credential is invalid", async () => {
@@ -84,19 +98,19 @@ describe("API-key authentication expiry", () => {
       },
     });
 
-    await expect(resolveClientApiKey(request, { required: true })).resolves.toEqual({
+    await expect(resolveClientApiKey(request, { required: true })).resolves.toMatchObject({
       apiKey: "stale-session-token",
       auth: { ok: false, reason: "invalid", stored: false },
     });
   });
 
   it("requires a key only when configured", async () => {
-    await expect(evaluateApiKeyAuth(null, { required: false, now: 1 })).resolves.toEqual({
+    await expect(evaluateApiKeyAuth(null, { required: false, now: 1 })).resolves.toMatchObject({
       ok: true,
       reason: null,
       stored: false,
     });
-    await expect(evaluateApiKeyAuth(null, { required: true, now: 1 })).resolves.toEqual({
+    await expect(evaluateApiKeyAuth(null, { required: true, now: 1 })).resolves.toMatchObject({
       ok: false,
       reason: "missing",
       stored: false,
@@ -107,7 +121,7 @@ describe("API-key authentication expiry", () => {
     mocks.getApiKeyByKey.mockResolvedValue(null);
 
     await expect(evaluateApiKeyAuth("sk_durindoor", { required: false, now: 1 })).resolves.toMatchObject({ ok: true, stored: false });
-    await expect(evaluateApiKeyAuth("sk_durindoor", { required: true, now: 1 })).resolves.toEqual({ ok: false, reason: "invalid", stored: false });
+    await expect(evaluateApiKeyAuth("sk_durindoor", { required: true, now: 1 })).resolves.toMatchObject({ ok: false, reason: "invalid", stored: false });
   });
 
   it.each([
@@ -123,15 +137,17 @@ describe("API-key authentication expiry", () => {
     await expect(evaluateApiKeyAuth("sk-stored", {
       required: false,
       now: Date.parse("2030-01-01T00:00:00.000Z"),
-    })).resolves.toEqual({ ok: false, reason: "invalid", stored: true });
+    })).resolves.toMatchObject({ ok: false, reason: "invalid", stored: true });
   });
 
   it("accepts an active future or non-expiring stored key", async () => {
     mocks.getApiKeyByKey
-      .mockResolvedValueOnce({ isActive: true, expiresAt: null })
-      .mockResolvedValueOnce({ isActive: true, expiresAt: "2030-01-01T00:00:00.001Z" });
+      .mockResolvedValueOnce({ id: "never-key-id", isActive: true, expiresAt: null })
+      .mockResolvedValueOnce({ id: "future-key-id", isActive: true, expiresAt: "2030-01-01T00:00:00.001Z" });
 
-    await expect(evaluateApiKeyAuth("sk-never", { required: true, now: Date.parse("2030-01-01T00:00:00Z") })).resolves.toMatchObject({ ok: true, stored: true });
-    await expect(evaluateApiKeyAuth("sk-future", { required: true, now: Date.parse("2030-01-01T00:00:00Z") })).resolves.toMatchObject({ ok: true, stored: true });
+    await expect(evaluateApiKeyAuth("sk-never", { required: true, now: Date.parse("2030-01-01T00:00:00Z") })).resolves.toMatchObject({ ok: true, stored: true, apiKeyId: "never-key-id", billingEpoch: "direct-epoch" });
+    await expect(evaluateApiKeyAuth("sk-future", { required: true, now: Date.parse("2030-01-01T00:00:00Z") })).resolves.toMatchObject({ ok: true, stored: true, apiKeyId: "future-key-id", billingEpoch: "direct-epoch" });
+    expect(mocks.getBillingEpoch).toHaveBeenCalledTimes(2);
+    expect(mocks.captureRequestBillingEpoch).not.toHaveBeenCalled();
   });
 });

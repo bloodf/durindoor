@@ -6,6 +6,7 @@ import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 function serializeRequestBody(requestBody) {
   if (!isUndefined(FormData) && requestBody instanceof FormData) return requestBody;
@@ -26,7 +27,11 @@ function serializeRequestBody(requestBody) {
  * @param {boolean} [options.binaryOutput] - Return raw image bytes
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
- * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
+ * @param {function} [options.onStreamComplete] - Awaited once with ({status, accounting, error}, response).
+ * Codex completion resolves (never rejects) after this callback and upstream cleanup.
+ * Status is success, failure, or abort; only success has complete accounting.
+ * Callback rejection resolves failure with failed accounting and a client error event.
+ * @returns {Promise<{ success: boolean, response: Response, accounting?: object, completion?: Promise<object>, status?: number, error?: string }>}
  */
 export async function handleImageGenerationCore({
   body,
@@ -36,7 +41,8 @@ export async function handleImageGenerationCore({
   streamToClient = false,
   binaryOutput = false,
   onCredentialsRefreshed,
-  onRequestSuccess
+  onRequestSuccess,
+  onStreamComplete
 }) {
   const { provider, model } = modelInfo;
   const proxyOptions = resolveCredentialProxyOptions(credentials);
@@ -65,8 +71,10 @@ export async function handleImageGenerationCore({
         proxyOptions
       );
       if (onRequestSuccess) await onRequestSuccess();
+      const accounting = mediaAccounting(responseBody, provider, "image");
       const normalized = adapter.normalize(responseBody, body.prompt);
       const finalBody = normalized.created && Array.isArray(normalized.data) ? normalized : responseBody;
+      returnedImageUnits(accounting, finalBody);
 
       if (binaryOutput) {
         const first = finalBody.data?.[0];
@@ -81,6 +89,7 @@ export async function handleImageGenerationCore({
           const mime = fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png";
           return {
             success: true,
+            accounting,
             response: new Response(buf, {
               headers: { "Content-Type": mime, "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`, "Access-Control-Allow-Origin": "*" }
             })
@@ -90,6 +99,7 @@ export async function handleImageGenerationCore({
 
       return {
         success: true,
+        accounting,
         response: new Response(JSON.stringify(finalBody), {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         })
@@ -181,14 +191,44 @@ export async function handleImageGenerationCore({
   }
 
   // Parse provider response — adapter may override (codex SSE / async polling / binary)
+  // Parsers that consume SSE or polling envelopes need an adapter metadata hook
+  // to retain receipts discarded inside parseResponse. Do not guess those fields.
+  let accounting = mediaAccounting(null, provider, "image");
+  if (streamToClient && provider === "codex") accounting.state = "pending";
   let parsed;
+  let hasReceipt = false;
   try {
     if (adapter.parseResponse) {
       parsed = await adapter.parseResponse(providerResponse, {
         headers,
+        credentials,
         log,
         streamToClient,
-        onRequestSuccess,
+        onReceipt: (value, prefix) => {
+          const receipt = mediaAccounting(value, provider, "image");
+          if (!receipt.meta.providerUsage) return;
+          hasReceipt = true;
+          for (const field of ["providerUsage", "providerCost"]) {
+            if (receipt.meta[field]) receipt.meta[field].path = prefix + receipt.meta[field].path;
+          }
+          const receipts = [...(accounting.meta.providerReceipts || []), { ...receipt.meta }];
+          Object.assign(accounting, receipt, { state: accounting.state });
+          accounting.meta.providerReceipts = receipts;
+        },
+        onStreamComplete: async (outcome, response) => {
+          accounting.state = outcome.status === "success" ? "complete" : outcome.status;
+          if (outcome.status === "success") returnedImageUnits(accounting, outcome.value);
+          outcome.accounting = accounting;
+          try {
+            // Clear account health before the ledger write, so a health failure
+            // cannot turn an already-persisted operation into a failed completion.
+            if (outcome.status === "success" && onRequestSuccess) await onRequestSuccess();
+            if (onStreamComplete) await onStreamComplete(outcome, response);
+          } catch (error) {
+            accounting.state = "failure";
+            throw error;
+          }
+        },
         url,
         requestBody,
         model,
@@ -196,7 +236,7 @@ export async function handleImageGenerationCore({
       });
       // Codex streaming case: returns an SSE Response directly
       if (parsed?.sseResponse) {
-        return { success: true, response: parsed.sseResponse };
+        return { success: true, response: parsed.sseResponse, accounting, completion: parsed.completion };
       }
     } else {
       parsed = await providerResponse.json();
@@ -215,11 +255,14 @@ export async function handleImageGenerationCore({
 
   if (onRequestSuccess) await onRequestSuccess();
 
+  if (!hasReceipt) accounting = mediaAccounting(parsed, provider, "image");
   // Normalize → OpenAI-compatible shape
   const normalized = adapter.normalize(parsed, body.prompt);
 
   // Already in OpenAI shape? skip re-normalize
   const finalBody = normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
+  // Runway's adapter also accepts video models; those outputs are not images.
+  if (provider !== "runwayml" || model.includes("image")) returnedImageUnits(accounting, finalBody);
 
   // Binary output: decode first b64_json (or fetch url) into raw bytes
   if (binaryOutput) {
@@ -235,6 +278,7 @@ export async function handleImageGenerationCore({
       const mime = fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png";
       return {
         success: true,
+        accounting,
         response: new Response(buf, {
           headers: {
             "Content-Type": mime,
@@ -248,6 +292,7 @@ export async function handleImageGenerationCore({
 
   return {
     success: true,
+    accounting,
     response: new Response(JSON.stringify(finalBody), {
       headers: {
         "Content-Type": "application/json",

@@ -14,6 +14,7 @@ import { createNativeResourceOwner, readNativeResourceOwner } from "../services/
 import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredentialManager.js";
 import { resolveResourceOwner } from "../services/resourceOwnership.js";
 import { applyEdits, findNodeAtLocation, modify, parseTree } from "jsonc-parser";
+import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
 const { collectNativeModelSlots } = nativeModelSlots;
 
 const MAX_ERROR_BYTES = 8192;
@@ -51,6 +52,7 @@ export async function handleNativeProvider(request, provider, path) {
   const settings = await getSettings();
   const { apiKey, auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true });
   if (!auth.ok) return fail(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key");
+  const billingEpoch = auth.billingEpoch;
 
   const url = new URL(request.url);
   const queryModel = url.searchParams.get("model");
@@ -131,11 +133,8 @@ export async function handleNativeProvider(request, provider, path) {
     const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
     if (policyError) return policyError;
   }
-  const fallbackText = parsed?.prompt ?? parsed?.text ?? parsed?.input;
-  const fallbackUsage = dispatchInference && ["image", "video", "music", "tts", "stt"].includes(operation.kind) ? {
-    input_tokens: fallbackText ? Math.ceil(String(fallbackText).length / 4) : 0
-  } : null;
   const nativeUsageEventId = dispatchInference ? crypto.randomUUID() : null;
+  const asynchronousCreation = operation.createsResource && ["task_id", "request_id"].includes(operation.resourceResponseField) || parsed?.background === true;
   if (["realtime", "realtime-translation", "realtime-transcription", "live"].includes(operation.kind) &&
     !await nativeDirectSessionAllowed(apiKey)) {
     return fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot mint direct native sessions");
@@ -182,6 +181,10 @@ export async function handleNativeProvider(request, provider, path) {
   if (trackedResource && !resourceOwner) return fail(HTTP_STATUS.FORBIDDEN, "Unknown native resource owner");
   if (resourceOwner && !requestOwner.allowAllOwners && resourceOwner.ownerId !== requestOwner.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Forbidden");
   if (resourceOwner?.model && resourceOwner.model !== model) return fail(HTTP_STATUS.BAD_REQUEST, "Native resource model does not match its creation model");
+  // Completion must have durable creation identity before any upstream work.
+  if (observeCompletion && (!isString(resourceOwner?.usageEventId) || !resourceOwner.usageEventId.trim())) {
+    return fail(HTTP_STATUS.FORBIDDEN, "Native resource billing identity is unavailable");
+  }
   const keyedCreator = resourceOwner && !["local", "operator"].includes(resourceOwner.ownerId);
   const creator = observeCompletion && keyedCreator ? await getApiKeyById(resourceOwner.ownerId) : null;
   if (observeCompletion && keyedCreator && !creator?.key) return fail(HTTP_STATUS.FORBIDDEN, "Native resource creator key is no longer available");
@@ -195,6 +198,11 @@ export async function handleNativeProvider(request, provider, path) {
   headers.set("accept-encoding", "identity");
   const upstream = new URL(path, origin);
   for (const [name, value] of url.searchParams) upstream.searchParams.append(name, value);
+  // Polls retain the creation generation, not the polling caller's fresh stamp.
+  const operationBillingEpoch = resourceOwner ? resourceOwner.billingEpoch : billingEpoch;
+  if ((operationBillingEpoch ?? null) !== await getBillingEpoch()) {
+    return fail(HTTP_STATUS.FORBIDDEN, "Stale or missing billing epoch");
+  }
   let response;
   try {
     response = await proxyAwareFetch(upstream, { method: request.method, headers, body: rawBody, signal: request.signal, redirect: "error", duplex: rawBody ? "half" : undefined }, resolveCredentialProxyOptions(credentials));
@@ -214,16 +222,21 @@ export async function handleNativeProvider(request, provider, path) {
   if (dispatchInference || observeCompletion || operation.createsResource) {
     response = observeNativeResponse(response, {
       apiKey: resourceOwner ? creator?.key : apiKey, provider, model: resourceOwner?.model || model, connectionId: credentials.connectionId, endpoint: path,
-      terminalOnly: observeCompletion, resourceId: pollResourceId, fallbackUsage, usageEventId: nativeUsageEventId,
+      // Creation and completion polls share one operation ID, never a reusable resource ID.
+      terminalOnly: observeCompletion || asynchronousCreation,
+      usageEventId: observeCompletion ? resourceOwner?.usageEventId : nativeUsageEventId,
+      billingEpoch: operationBillingEpoch,
+      modality: operation.kind, tokens: dispatchInference || observeCompletion ? {} : null, nativeUnits: {},
+      cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable",
       onValue: operation.createsResource ? async (metadata) => {
         const field = operation.resourceResponseField || operation.resourceResponsePath?.at(-1);
         const resourceId = metadata?.[field];
         if (!resourceId || createdResourceId) return;
         if (!isString(resourceId)) throw new Error("Native resource ownership could not be recorded");
-        await createNativeResourceOwner({ ownerId: requestOwner.ownerId, provider, model, connectionId: credentials.connectionId, resourceId });
+        await createNativeResourceOwner({ ownerId: requestOwner.ownerId, provider, model, connectionId: credentials.connectionId, resourceId, usageEventId: nativeUsageEventId, billingEpoch });
         createdResourceId = resourceId;
       } : null,
-      onComplete: operation.createsResource ? () => {
+      onEnd: operation.createsResource ? () => {
         if (!createdResourceId) throw new Error("Native resource response omitted its ownership ID");
       } : null
     });

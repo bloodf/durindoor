@@ -8,6 +8,7 @@ import {
 "@/lib/localDb";
 import { isRecord } from "./guards";
 import { isNumber, isString } from "../../../shared/utils/typeChecks.js";
+import { captureRequestBillingEpoch } from "@/sse/utils/requestCorrelation.js";
 
 const SERVER_INFO = { name: "9router-gateway", version: "1" };
 const PROTOCOL_VERSION = "2025-06-18";
@@ -58,9 +59,11 @@ async function authenticate(request) {
  * @param {Request} request
  * @param {unknown} body
  * @param {object} [opts]
+ * Usage retains the admission epoch across credential reads and tool completion.
  * @returns {Promise<{kind: "notification"} | {kind: "response", status: number, body: object}>}
  */
 export async function handleJsonRpc(request, body, opts = {}) {
+  const billingEpoch = await captureRequestBillingEpoch(request);
   const auth = await authenticate(request);
   if (!auth.ok) {
     return { kind: "response", status: 401, body: jsonRpcErr(null, -32000, `gateway key ${auth.reason}`) };
@@ -110,6 +113,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           const args = isRecord(params.arguments) ? params.arguments : {};
           const { result } = await dispatchToolCall(instances, grants, toolName, args);
           saveRequestUsage({
+            billingEpoch,
             provider: "mcp-gateway",
             model: toolName,
             connectionId: instance.id,
@@ -124,6 +128,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           const code = isNumber(e.code) ? e.code : -32603;
           const isUpstream = !e.code;
           saveRequestUsage({
+            billingEpoch,
             provider: "mcp-gateway",
             model: toolName,
             connectionId: instance.id,

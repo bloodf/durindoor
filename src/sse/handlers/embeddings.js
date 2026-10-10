@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -18,10 +18,13 @@ import { wantsDefaultRoute, resolveMediaRoute } from "../services/mediaRoutes.js
 /**
  * Handle embeddings request for the SSE/Next.js server.
  * Follows the same auth + fallback pattern as handleChat.
+ * Records complete core accounting without reinterpreting provider provenance.
+ * Adapter-synthesized zero usage cannot establish a free provider charge.
  *
  * @param {Request} request
  */
 async function handleEmbeddingsHandler(request) {
+  await captureRequestBillingEpoch(request);
   let body;
   try {
     body = await request.json();
@@ -39,6 +42,8 @@ async function handleEmbeddingsHandler(request) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
+  // Keep the admission epoch, including null, across upstream retries.
+  const { billingEpoch } = apiKeyAuth;
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
@@ -75,7 +80,6 @@ async function handleEmbeddingsHandler(request) {
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
-  const estimatedTokens = JSON.stringify(body.input).length / 4;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -137,7 +141,14 @@ async function handleEmbeddingsHandler(request) {
     });
 
     if (result.success) {
-      return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+      if (result.accounting?.state !== "complete") return result.response;
+      const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = result.accounting;
+      return recordApiKeyUsageForResponse(apiKey, result.response, {
+        billingEpoch,
+        usageEventId: JSON.stringify([getRequestId(request), "embedding", provider, model, credentials.connectionId ?? null]), provider, model,
+        connectionId: credentials.connectionId ?? null, endpoint: "/v1/embeddings",
+        modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+      });
     }
     if (result.status === 499) return result.response;
 

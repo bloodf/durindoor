@@ -3,6 +3,24 @@ import { errorResponse, readBoundedResponseText, sanitizeErrorMessage } from "op
 
 const PROVIDER_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const requestIds = new WeakMap();
+const requestBillingEpochs = new WeakMap();
+
+/**
+ * Capture once at admission, before authentication reads or upstream dispatch.
+ * Reuse the same Request for retries; cloned requests must carry the captured
+ * billingEpoch explicitly. Cache the promise (including null or rejection), so
+ * concurrent admissions cannot upgrade an in-flight request after an import.
+ * Never call this for the first time from a usage completion callback.
+ */
+export function captureRequestBillingEpoch(request) {
+  if (!request || (!isObject(request) && !isFunction(request))) {
+    throw new TypeError("Billing admission requires a request object");
+  }
+  if (!requestBillingEpochs.has(request)) {
+    requestBillingEpochs.set(request, import("@/lib/db/repos/usageRepo.js").then(({ getBillingEpoch }) => getBillingEpoch()));
+  }
+  return requestBillingEpochs.get(request);
+}
 
 export function createRequestId() {
   return globalThis.crypto.randomUUID();

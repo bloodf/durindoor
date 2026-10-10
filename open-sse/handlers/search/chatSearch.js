@@ -4,7 +4,8 @@
  */
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { sanitizeErrorMessage } from "../../utils/error.js";
+import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
+import { mediaAccounting } from "../mediaAccounting.js";
 
 // Default search model + endpoint derive from registry searchViaChat (single source)
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -351,7 +352,7 @@ export async function handleChatSearch({
       log?.warn?.(`[chatSearch] timeout provider=${provider}`);
       return { success: false, status: 504, error: "Upstream timeout" };
     }
-    const safeError = sanitizeErrorMessage(err?.message || "unknown");
+    const safeError = sanitizeErrorMessageWithSecrets(err?.message || "unknown", [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken]);
     log?.error?.(`[chatSearch] network error provider=${provider}: ${safeError}`);
     return {
       success: false,
@@ -380,8 +381,9 @@ export async function handleChatSearch({
     data?.message ||
     `Upstream HTTP ${resp.status}`;
     log?.warn?.(`[chatSearch] upstream error provider=${provider} status=${resp.status}`);
-    const safeError = sanitizeErrorMessage(
-      isString(errMsg) ? errMsg : JSON.stringify(errMsg)
+    const safeError = sanitizeErrorMessageWithSecrets(
+      isString(errMsg) ? errMsg : JSON.stringify(errMsg),
+      [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken]
     );
     return {
       success: false,
@@ -390,6 +392,8 @@ export async function handleChatSearch({
     };
   }
 
+  // Capture the provider receipt before normalization; never bill synthesized usage.
+  const accounting = mediaAccounting(data, provider, "search");
   const { text, citations, tokens } = cfg.extractAnswer(data);
   const retrievedAt = new Date().toISOString();
   const limited = (citations || []).slice(0, limit);
@@ -398,6 +402,7 @@ export async function handleChatSearch({
   return {
     success: true,
     status: 200,
+    accounting,
     data: {
       provider,
       query,

@@ -1,4 +1,5 @@
 // Public API barrel — all DB functions
+import { randomUUID } from "node:crypto";
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 import { normalizeApiKeyPolicy } from "./helpers/apiKeyPolicy.js";
@@ -24,6 +25,7 @@ import { validateComboInvariant } from "@/lib/combos/invariants.js";
 import { normalizeComboMembers } from "./repos/combosRepo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { validateGroupName, validateGroupDescription } from "./repos/connectionGroupsRepo.js";
+import { backfillUsageEventReceiptsSync, getBillingEpochSync } from "./repos/usageRepo.js";
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -110,8 +112,9 @@ function validateApiKeyImport(payload) {
   const totalIds = assertUniqueNonEmpty(totals, "apiKeyId", "API-key total");
   for (const total of totals) {
     if (!ids.has(total.apiKeyId)) throw new Error(`API-key total references missing key: ${total.apiKeyId}`);
-    for (const field of ["totalTokens", "totalCost", "totalRequests"]) {
-      const value = total[field];
+    for (const field of ["totalTokens", "totalCost", "totalRequests", "unknownCostRequests"]) {
+      // Older backups cannot prove unknown-cost history; omission means zero.
+      const value = field === "unknownCostRequests" && !Object.hasOwn(total, field) ? 0 : total[field];
       if (!isNumber(value) || !Number.isFinite(value) || value < 0 || field !== "totalCost" && !Number.isSafeInteger(value)) {
         throw new Error(`API-key total ${total.apiKeyId} ${field} is invalid`);
       }
@@ -375,6 +378,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
   const db = await getAdapter();
   const quotaNow = canonicalizeQuotaNow(now).timestamp;
   return db.transaction(() => {
+    backfillUsageEventReceiptsSync(db);
     const settingsRow = db.get(`SELECT data FROM settings WHERE id = 1`);
     const out = {
       settings: settingsRow ? parseJson(settingsRow.data, {}) : {},
@@ -426,8 +430,14 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         totalTokens: Number(r.totalTokens) || 0,
         totalCost: Number(r.totalCost) || 0,
         totalRequests: Number(r.totalRequests) || 0,
+        unknownCostRequests: Number(r.unknownCostRequests) || 0,
         updatedAt: r.updatedAt || null
       })),
+      usageEventReceipts: db.all(`SELECT key FROM kv WHERE scope = 'usageEventReceipts' ORDER BY key`).map((row) => row.key),
+      billingEpoch: getBillingEpochSync(db),
+      // Receipt presence/backfill proves individual events, not complete history.
+      usageEventReceiptsVersion: db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'receiptsVersion'")?.value === "1" ? 1 : null,
+      billingCutoverVersion: db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'cutoverVersion'")?.value === "1" ? 1 : null,
       quota: readQuotaPortableStateSync(db, { now: quotaNow }),
       combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, allowedConnectionIds: parseJson(r.allowedConnectionIds, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
       connectionGroups: db.all(`SELECT * FROM connectionGroups`).map((r) => ({ id: r.id, name: r.name, description: r.description, createdAt: r.createdAt, updatedAt: r.updatedAt })),
@@ -457,6 +467,31 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   // This makes duplicate keys, dangling totals, and malformed policies a hard
   // import error instead of silently collapsing or weakening enforcement.
   const { apiKeys, totals } = validateApiKeyImport(payload);
+  // Every full restore replaces accounting, so rotate the billing generation
+  // atomically with totals and receipts. This also preserves charged legacy
+  // totals without allowing old callbacks or pending jobs to charge them again.
+  // Producers must capture billingEpoch before dispatch, never at completion.
+  const receipts = payload.usageEventReceipts ?? [];
+  if (!Array.isArray(receipts) || receipts.some((key) => !isString(key) || !/^[a-f0-9]{64}$/.test(key))) {
+    throw new Error("Database import requires valid usageEventReceipts alongside lifetime usage totals");
+  }
+  if (payload.usageEventReceiptsVersion != null && payload.usageEventReceiptsVersion !== 1) {
+    throw new Error("Unsupported usageEventReceiptsVersion");
+  }
+  if (payload.usageEventReceiptsVersion === 1 && !Array.isArray(payload.usageEventReceipts)) {
+    throw new Error("Complete billing backups require usageEventReceipts");
+  }
+  if (payload.billingCutoverVersion != null && payload.billingCutoverVersion !== 1) {
+    throw new Error("Unsupported billingCutoverVersion");
+  }
+  if (payload.billingCutoverVersion === 1 &&
+      (!isString(payload.billingEpoch) || !payload.billingEpoch.trim() || !Array.isArray(payload.usageEventReceipts))) {
+    throw new Error("Cutover backups require billingEpoch and usageEventReceipts");
+  }
+  const importedEpoch = payload.billingEpoch ?? null;
+  if (importedEpoch !== null && (!isString(importedEpoch) || !importedEpoch.trim())) {
+    throw new Error("Invalid imported billingEpoch");
+  }
   const { groups, members, combos } = validateConnectionGroupImport(payload);
   const quotaNow = canonicalizeQuotaNow(now).timestamp;
   const { quota } = validateQuotaImport(payload, { now: quotaNow });
@@ -471,11 +506,31 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     return { ...combo, members: normalizeComboMembers(combo.models, combo.members) };
   });
   const db = await getAdapter();
+  // sql.js has process-local transactions, not a shared writer fence. Ordinary
+  // fallback reads/writes remain supported, but destructive cutover must fail
+  // before locks, receipt backfill, epoch changes, or any other mutation.
+  if (db.capabilities?.sharedFileTransactions !== true) {
+    throw new Error("Database import requires a transactional engine with shared writer fencing; sql.js cutover is unsupported");
+  }
 
   db.transaction(() => {
     // Acquire SQLite's writer lock and recheck inside the destructive
     // transaction so another process cannot reserve between guard and wipe.
     assertNoActiveQuotaReservationsSync(db, { now: quotaNow });
+    const billingEpoch = randomUUID();
+    db.run(`INSERT INTO kv(scope, key, value) VALUES('billing', 'epoch', ?)
+      ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, [stringifyJson(billingEpoch)]);
+    db.run("DELETE FROM kv WHERE scope = 'mediaJobs'");
+    // A new generation proves only post-fence replay coverage, not historical
+    // completeness. Restore the receipt snapshot matching the imported totals;
+    // never union later local receipts with earlier accounting.
+    db.run("DELETE FROM kv WHERE scope = 'billing' AND key IN ('receiptsVersion', 'cutoverVersion')");
+    db.run("INSERT INTO kv(scope, key, value) VALUES('billing', 'cutoverVersion', '1')");
+    db.run("DELETE FROM kv WHERE scope = 'usageEventReceipts'");
+    for (const key of receipts) {
+      db.run(`INSERT INTO kv(scope, key, value) VALUES('usageEventReceipts', ?, '1')
+        ON CONFLICT(scope, key) DO NOTHING`, [key]);
+    }
     // Wipe all tables (keep _meta)
     // Usage history is intentionally retained for operator analytics, but its
     // literal-secret attribution belongs to the pre-import key set. Detach it
@@ -555,8 +610,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       for (const total of totals) {
         if (!total?.apiKeyId) continue;
         db.run(
-          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
-          [total.apiKeyId, Number(total.totalTokens) || 0, Number(total.totalCost) || 0, Number(total.totalRequests) || 0, total.updatedAt || null]
+          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
+          [total.apiKeyId, Number(total.totalTokens) || 0, Number(total.totalCost) || 0, Number(total.totalRequests) || 0, total.unknownCostRequests ?? 0, total.updatedAt || null]
         );
       }
     } else {

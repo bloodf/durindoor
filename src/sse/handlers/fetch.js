@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight,
@@ -29,7 +29,7 @@ import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "
  *
  * @param {Request} request
  */
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../shared/utils/typeChecks.js";
 async function handleFetchHandler(request) {
   let body;
   try {
@@ -93,13 +93,16 @@ async function handleFetchHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, err.message);
   }
 
+  // Keep the admission epoch unchanged across combo and account fallback attempts.
+  const usageContext = { billingEpoch: apiKeyAuth.billingEpoch, usageEventId: `${getRequestId(request)}:${reqUrl.pathname}`, endpoint: reqUrl.pathname, comboId: null, comboName: null };
   if (wantsDefaultRoute(providerInput)) {
     const route = await resolveMediaRoute("webFetch", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
+    usageContext.comboName = defaultRouteComboOptions("webFetch").comboName;
     return handleComboChat({
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, settings),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings),
       log,
       ...defaultRouteComboOptions("webFetch")
     });
@@ -133,6 +136,8 @@ async function handleFetchHandler(request) {
   if (comboModels) {
     const combo = isAutoComboId(providerInput) ? null : await getComboForModel(providerInput);
     const comboName = combo?.name || providerInput;
+    usageContext.comboId = combo?.id || null;
+    usageContext.comboName = comboName;
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(providerInput) ?
@@ -145,7 +150,7 @@ async function handleFetchHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings, comboRouting),
+      handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings, comboRouting),
       log,
       comboName,
       comboStrategy,
@@ -153,7 +158,7 @@ async function handleFetchHandler(request) {
       comboMembers: combo?.members || []
     });
   }
-  return handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, settings);
+  return handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings);
 }
 
 /**
@@ -176,7 +181,7 @@ export function normalizeFetchProviderInput(providerInput) {
   return providerInput;
 }
 
-async function handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyId, settings, comboRouting = null) {
+async function handleSingleProviderFetch(body, providerInput, request, apiKey, apiKeyId, usageContext, settings, comboRouting = null) {
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
@@ -203,6 +208,29 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
   } else {
     log.info("ROUTING", `Provider: ${providerId}`);
   }
+
+  /** Preserve the raw receipt; estimate only evidenced operations without a receipt. */
+  const recordSuccess = (result, response, credentials) => {
+    const accounting = result.accounting;
+    const rate = providerConfig.costPerQuery;
+    const operations = accounting.nativeUnits.operations;
+    const cost = rate * operations;
+    const priced = accounting.costStatus === "unknown" &&
+      !accounting.meta?.providerUsage && !accounting.meta?.providerCost && !accounting.meta?.providerMetadata &&
+      isNumber(rate) && Number.isFinite(rate) && rate >= 0 &&
+      isNumber(operations) && Number.isFinite(operations) && operations > 0 && Number.isFinite(cost);
+    return recordApiKeyUsageForResponse(apiKey, response, {
+      ...accounting,
+      ...usageContext,
+      provider: providerId,
+      model: "fetch",
+      connectionId: credentials.connectionId || null,
+      modality: "webFetch",
+      cost: priced ? cost : accounting.cost,
+      costStatus: priced ? "estimated" : accounting.costStatus,
+      costSource: priced ? "pricing" : accounting.costSource
+    });
+  };
 
   // All registry no-auth fetch paths, including firecrawl_custom's optional
   // saved account, pass through the shared provider-account selector.
@@ -235,10 +263,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
       const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
-      return recordApiKeyUsageForResponse(apiKey, response, {
-        tokens: 0,
-        cost: Number(result.data?.usage?.fetch_cost_usd) || 0
-      });
+      return recordSuccess(result, response, credentials);
     }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");
   }
@@ -300,10 +325,7 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
       const response = new Response(JSON.stringify(result.data), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
-      return recordApiKeyUsageForResponse(apiKey, response, {
-        tokens: 0,
-        cost: Number(result.data?.usage?.fetch_cost_usd) || 0
-      });
+      return recordSuccess(result, response, credentials);
     }
 
     const { shouldFallback } = await markAccountUnavailable(

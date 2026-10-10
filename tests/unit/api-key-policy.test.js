@@ -4,16 +4,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const {
   getApiKeyByKeyMock,
   getApiKeyUsageTotalsMock,
-  incrementApiKeyUsageSyncMock,
-  getAdapterMock,
+  saveRequestUsageMock,
   extractApiKeyMock,
   hasValidCliTokenMock,
   errorResponseMock,
 } = vi.hoisted(() => ({
   getApiKeyByKeyMock: vi.fn(),
   getApiKeyUsageTotalsMock: vi.fn(),
-  incrementApiKeyUsageSyncMock: vi.fn(),
-  getAdapterMock: vi.fn(),
+  saveRequestUsageMock: vi.fn(),
   extractApiKeyMock: vi.fn(),
   hasValidCliTokenMock: vi.fn(),
   errorResponseMock: vi.fn((status, message) => ({ status, message })),
@@ -23,16 +21,12 @@ vi.mock("@/lib/localDb", () => ({
   getApiKeyByKey: getApiKeyByKeyMock,
   getApiKeyUsageTotals: getApiKeyUsageTotalsMock,
   getApiKeyById: vi.fn(),
-  incrementApiKeyUsageSync: incrementApiKeyUsageSyncMock,
+  saveRequestUsage: saveRequestUsageMock,
 }));
 
 vi.mock("../../src/sse/services/auth.js", () => ({
   extractApiKey: extractApiKeyMock,
   hasValidCliToken: hasValidCliTokenMock,
-}));
-
-vi.mock("@/lib/db/driver.js", () => ({
-  getAdapter: getAdapterMock,
 }));
 
 vi.mock("open-sse/utils/error.js", () => ({
@@ -71,6 +65,7 @@ const VALID_CLI_TOKEN = "valid-cli-token";
 describe("api-key-policy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    saveRequestUsageMock.mockReset().mockResolvedValue(true);
     hasValidCliTokenMock.mockImplementation(
       async (request) => request?.headers?.get?.("x-9r-cli-token") === VALID_CLI_TOKEN
     );
@@ -229,30 +224,52 @@ describe("api-key-policy", () => {
     expect(isModelAllowed({ allowedModels: ["tinyfish"] }, "tinyfish/search")).toBe(true);
   });
 
-  it("records non-chat usage by looking up the key and incrementing its usage totals", async () => {
-    const apiKey = "key-non-chat";
-    const db = { get: vi.fn() };
-    getAdapterMock.mockResolvedValue(db);
-    db.get.mockReturnValue({ id: "k5" });
-
+  it("rejects totals-only events before any ledger write", async () => {
     const { recordApiKeyUsage } = await load();
-    await recordApiKeyUsage(apiKey, { tokens: 42, cost: 0.01 });
-
-    expect(db.get).toHaveBeenCalledWith("SELECT id FROM apiKeys WHERE key = ?", [apiKey]);
-    expect(incrementApiKeyUsageSyncMock).toHaveBeenCalledWith(db, "k5", { tokens: 42, cost: 0.01 });
+    await expect(recordApiKeyUsage("key", { tokens: 42, cost: 0.01 })).rejects.toMatchObject({
+      code: "USAGE_ACCOUNTING_FAILED",
+      cause: expect.any(TypeError),
+    });
+    expect(saveRequestUsageMock).not.toHaveBeenCalled();
   });
 
-  it("records non-chat usage only for successful responses", async () => {
-    const db = { get: vi.fn(() => ({ id: "k-success" })) };
-    getAdapterMock.mockResolvedValue(db);
+  const usage = {
+    usageEventId: "policy-event",
+    provider: "openai",
+    model: "tts-1",
+    endpoint: "/v1/audio/speech",
+    connectionId: "connection-1",
+    modality: "tts",
+    tokens: {},
+    nativeUnits: { characters: 9 },
+    cost: null,
+    costStatus: "unknown",
+    costSource: "unavailable",
+  };
+
+  it.each([400, 401, 403, 429, 500])("does not account for a %s response", async (status) => {
     const { recordApiKeyUsageForResponse } = await load();
+    const response = new Response("failed", { status });
+    expect(await recordApiKeyUsageForResponse("key", response, usage)).toBe(response);
+    expect(saveRequestUsageMock).not.toHaveBeenCalled();
+  });
 
-    const failed = new Response("bad input", { status: 400 });
-    expect(await recordApiKeyUsageForResponse("key", failed, { tokens: 99, cost: 1 })).toBe(failed);
-    expect(incrementApiKeyUsageSyncMock).not.toHaveBeenCalled();
+  it("propagates storage failure after a successful upstream response", async () => {
+    const cause = new Error("storage unavailable");
+    saveRequestUsageMock.mockRejectedValue(cause);
+    const { recordApiKeyUsageForResponse } = await load();
+    await expect(recordApiKeyUsageForResponse("key", new Response("ok"), usage)).rejects.toMatchObject({
+      code: "USAGE_ACCOUNTING_FAILED",
+      cause,
+    });
+  });
 
-    const success = new Response("ok", { status: 200 });
-    expect(await recordApiKeyUsageForResponse("key", success, { tokens: 9, cost: 0 })).toBe(success);
-    expect(incrementApiKeyUsageSyncMock).toHaveBeenCalledOnce();
+  it("rejects an uncommitted ledger result instead of reporting success", async () => {
+    saveRequestUsageMock.mockResolvedValue(false);
+    const { recordApiKeyUsage } = await load();
+    await expect(recordApiKeyUsage("key", usage)).rejects.toMatchObject({
+      code: "USAGE_ACCOUNTING_FAILED",
+      message: "Usage accounting was not committed",
+    });
   });
 });

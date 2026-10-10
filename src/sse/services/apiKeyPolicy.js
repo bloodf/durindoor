@@ -1,10 +1,11 @@
-import { getApiKeyByKey, getApiKeyUsageTotals, getApiKeyById, incrementApiKeyUsageSync } from "@/lib/localDb";
+import { getApiKeyByKey, getApiKeyUsageTotals, getApiKeyById, saveRequestUsage } from "@/lib/localDb";
 import { extractApiKey, hasValidCliToken } from "./auth.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { validateApiKeyPolicy } from "@/lib/db/helpers/apiKeyPolicy.js";
 import { canonicalizePolicyModelIdentity } from "./apiKeyPolicyIdentity.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 
 /**
  * Check if a model is allowed by the API key policy.
@@ -33,26 +34,45 @@ export function isModelAllowed(policy, modelStr) {
 }
 
 /**
- * Record usage for an API key before enforcing non-chat limits.
- * Runs in its own adapter write so non-chat handlers can count usage even when
- * no saveRequestUsage transaction is active.
+ * Record a normalized non-chat event through the shared atomic usage ledger.
+ * Callers must provide a stable usageEventId, provider, model, endpoint,
+ * connectionId (null only for credential-free execution), modality, token
+ * object, nativeUnits object, USD cost and costStatus/costSource provenance.
+ * known means authoritative, estimated means a caller estimate, and unknown
+ * requires null cost. Never pass guessed free cost or scalar token totals.
+ * Incomplete legacy events and storage failures throw; there is no totals-only
+ * fallback. A missing API key still records local usage without key totals.
+ * Every failure carries code USAGE_ACCOUNTING_FAILED and the original cause:
+ * upstream work has completed, so callers must propagate it without dispatching again.
+ * usage.billingEpoch must be the admission auth.billingEpoch (or the durable
+ * job's creation epoch), never a completion-time lookup. Preserve explicit null:
+ * legacy null/omitted epochs are valid only before cutover; the ledger checks
+ * exact equality under its import/write lock after cutover. This wrapper never
+ * fills in a missing epoch or retries upstream work after a fence rejection.
  *
- * @param {string} apiKey
- * @param {{ tokens?: number, cost?: number }} usage
+ * @param {string|null} apiKey Resolved caller credential, never a provider key.
+ * @param {object} usage Normalized event; see saveRequestUsage.
  */
 export async function recordApiKeyUsage(apiKey, usage) {
-  if (!apiKey || !usage) return;
-  const { getAdapter } = await import("@/lib/db/driver.js");
-  const db = await getAdapter();
-  const row = db.get(`SELECT id FROM apiKeys WHERE key = ?`, [apiKey]);
-  if (!row) return;
   try {
-    incrementApiKeyUsageSync(db, row.id, usage);
-  } catch (err) {
-    if (err?.message?.includes("no such table: apiKeyUsageTotals")) {
-      return;
+    for (const field of ["usageEventId", "provider", "model", "endpoint", "modality", "costSource"]) {
+      if (!isString(usage?.[field]) || !usage[field].trim()) throw new TypeError(`Usage event requires ${field}`);
     }
-    throw err;
+    if (usage.connectionId !== null && (!isString(usage.connectionId) || !usage.connectionId.trim())) {
+      throw new TypeError("Usage event requires connectionId or explicit null");
+    }
+    for (const field of ["tokens", "nativeUnits"]) {
+      if (usage[field] === null || !isObject(usage[field]) || Array.isArray(usage[field])) throw new TypeError(`Usage event requires ${field} object`);
+    }
+    if (usage.cost === undefined || !["known", "estimated", "unknown"].includes(usage.costStatus)) {
+      throw new TypeError("Usage event requires cost and costStatus");
+    }
+    const committed = await saveRequestUsage({ ...usage, apiKey, status: "ok", strict: true });
+    if (committed === false) throw new Error("Usage accounting was not committed");
+  } catch (cause) {
+    const error = new Error(cause?.message || String(cause), { cause });
+    error.code = "USAGE_ACCOUNTING_FAILED";
+    throw error;
   }
 }
 
@@ -62,7 +82,7 @@ export async function recordApiKeyUsage(apiKey, usage) {
  * allowance.
  */
 export async function recordApiKeyUsageForResponse(apiKey, response, usage) {
-  if (apiKey && response && response.status >= 200 && response.status < 300) {
+  if (response && response.status >= 200 && response.status < 300) {
     await recordApiKeyUsage(apiKey, usage);
   }
   return response;

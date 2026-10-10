@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -7,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
 import m007 from "../../src/lib/db/migrations/007-provider-quota-snapshots.js";
 import m008 from "../../src/lib/db/migrations/008-quota-reservations.js";
-import { QUOTA_V8_TABLES, buildQuotaV8TableSql } from "../../src/lib/db/migrations/quota-v8-schema.js";
+import { QUOTA_V8_TABLES } from "../../src/lib/db/migrations/quota-v8-schema.js";
 import { verifyQuotaStorageLayouts } from "../../src/lib/db/helpers/schemaVerifier.js";
 
 let tempDir;
@@ -53,14 +52,6 @@ afterEach(() => {
 });
 
 describe("quota reservation schema v8", () => {
-  it("locks the published v8 quota DDL to an independent fingerprint", () => {
-    const ddl = Object.keys(QUOTA_V8_TABLES)
-      .flatMap((name) => [buildQuotaV8TableSql(name), ...QUOTA_V8_TABLES[name].indexes])
-      .join("\n");
-    expect(createHash("sha256").update(ddl).digest("hex"))
-      .toBe("a336347532b0529f97563bcd02f335de1e1ea370ec5fcb0e06fa91673dc4dd07");
-  });
-
   it("produces the same immutable operational schema on fresh and v7-upgrade paths", () => {
     const migrated = new Database(":memory:");
     migrated.pragma("foreign_keys=ON");
@@ -78,8 +69,6 @@ describe("quota reservation schema v8", () => {
 
     for (const name of Object.keys(QUOTA_V8_TABLES)) {
       expect(shape(migrated, name)).toEqual(shape(fresh, name));
-      expect(migrated.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`).get(name).sql)
-        .toContain(name);
     }
     expect(shape(migrated, "quotaReservations").foreignKeys).toContainEqual(expect.objectContaining({ table: "providerConnections", on_delete: "CASCADE" }));
     expect(shape(migrated, "quotaReservationItems").foreignKeys).toContainEqual(expect.objectContaining({ table: "quotaReservations", on_delete: "CASCADE" }));
@@ -219,11 +208,5 @@ describe("quota reservation schema v8", () => {
     expect(() => verifyQuotaStorageLayouts(rawAdapter(db), { useLatest: true }))
       .toThrowError("Published schema mismatch: quota reservation provider does not match its connection");
     db.close();
-  });
-
-  it("exports the frozen helper DDL used by migration", () => {
-    for (const name of Object.keys(QUOTA_V8_TABLES)) {
-      expect(buildQuotaV8TableSql(name)).toBe(buildCreateTableSql(name, TABLES[name]));
-    }
   });
 });

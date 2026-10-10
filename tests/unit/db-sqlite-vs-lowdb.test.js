@@ -629,7 +629,7 @@ describe("DB SQLite layer — public API parity", () => {
   });
 
   it("usage: 24h and today byApiKey keep keys with the same masked prefix separate", async () => {
-    await sqliteDb.importDb({
+    const { billingEpoch } = await sqliteDb.importDb({
       settings: {},
       apiKeys: [
         { id: "ak-collision-1", key: "sk-c84eb11fa877e0e9-aaaaaa-11111111", name: "collision-one", machineId: "m1", isActive: true },
@@ -641,13 +641,13 @@ describe("DB SQLite layer — public API parity", () => {
       provider: "codex", model: "gpt-5.5", connectionId: "c1",
       apiKey: "sk-c84eb11fa877e0e9-aaaaaa-11111111",
       tokens: { prompt_tokens: 11, completion_tokens: 5 },
-      endpoint: "/v1/chat/completions", status: "ok",
+      endpoint: "/v1/chat/completions", status: "ok", billingEpoch, strict: true,
     });
     await sqliteDb.saveRequestUsage({
       provider: "codex", model: "gpt-5.5", connectionId: "c1",
       apiKey: "sk-c84eb11fa877e0e9-bbbbbb-22222222",
       tokens: { prompt_tokens: 17, completion_tokens: 7 },
-      endpoint: "/v1/chat/completions", status: "ok",
+      endpoint: "/v1/chat/completions", status: "ok", billingEpoch, strict: true,
     });
 
     for (const period of ["24h", "today"]) {
@@ -672,14 +672,14 @@ describe("DB SQLite layer — public API parity", () => {
 
   it("never exposes legacy key material or an offline-verifiable digest", async () => {
     const legacySecret = "sk-deadbeef";
-    await sqliteDb.importDb({
+    const { billingEpoch } = await sqliteDb.importDb({
       settings: {},
       apiKeys: [{ id: "legacy-key-id", key: legacySecret, name: "Legacy key", machineId: "m1", isActive: true }],
     });
     await sqliteDb.saveRequestUsage({
       provider: "openai", model: "gpt-4o", apiKey: legacySecret,
       tokens: { prompt_tokens: 7, completion_tokens: 3 },
-      endpoint: "/v1/chat/completions", status: "ok",
+      endpoint: "/v1/chat/completions", status: "ok", billingEpoch, strict: true,
     });
 
     const expectedHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(legacySecret));

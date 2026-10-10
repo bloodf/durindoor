@@ -55,3 +55,25 @@ The rewrite preserves credential prerequisites, working configuration shapes, re
 - No public-to-internal link, source behavior change, provider credential read, package installation, network provider test, key rewrite, migration, push, merge, or deployment.
 - Documentation checks validate syntax and link integrity. They do not establish vendor account authorization, external client version compatibility, live inference, quotas, or billing accuracy.
 - Unchanged files are the generated catalog and four metadata files, for the reasons listed above. Pure documentation changes do not require application behavior tests under AGENTS.md.
+
+## #1085 rerank raw-receipt composition — 2026-10-10
+
+The authorized independent run on published #1275 base `b95242249163fef3c40d257be35170cc89a2ba14` collected five cases: two existing mocked-core controls and three new real-core composition cases, all passed. Launcher `2441966` was explicitly waited and reaped with exit 0 after corrected static acceptance and separately recorded delivery GO. Full 4418 source rows were unchanged before and after execution.
+
+The new cases exercise the real rerank handler, core, receipt accounting, isolated SQLite ledger and next-request policy. Only credential/model discovery, account callbacks and external transport are synthetic. Existing `usage.cost_usd` and `usage.cost_in_usd_ticks` receipts retain exact ranking bytes and durable key/provider/model/connection attribution; committed spend denies the next request before HTTP. Missing or invalid cost remains unknown, explicit zero remains known, and failed requests do not consume successful-use allowance.
+
+This supplies scoped C1 attribution and C3 spend/allowance evidence, C2 existing provider-USD receipt interpretation, and C4 database-reopen durability only. It does not define a new per-operation price or unit, prove the complete modality/asynchronous matrix, PostgreSQL, live billing, full CI, merge readiness or whole #1085 acceptance.
+
+The earlier corrected run with launcher `2435625` remains historical observation-only evidence because its separately recorded post-acceptance delivery GO was missing. Its results are not used for acceptance. The accepted result comes only from the distinct authorized run `2441966`; original failed fixture and ordering-exception artifacts remain preserved.
+
+Independent terminal receipt: `worker-state/roadmap-lead/rerank-independent-proof/AUTHORIZED_TERMINAL_RECEIPT.md` in the private delivery evidence store. No production source change was required.
+
+## #1085 embedding raw-receipt composition — 2026-10-10
+
+The authorized independent full-file run used published #1275 base `00ef44911ce21152f1c33ff6cfb753d05bdf4597` plus the accepted embedding test delta. It collected eleven cases, all passed: six existing real-image controls, two existing manufactured-embedding controls and three new raw-provider embedding compositions. These counts are not added to earlier proof totals. Launcher `2478731` was explicitly waited and reaped with exit 0 in 14.53 seconds; the exclusive lease was released after reap. Independent static acceptance and separately recorded HEAD GO preceded execution. Full 4418 private source rows matched manifest `0ea52d0d1256de6e79094daebbefeb5a2253d7e2a2ff0c8022eb6dd2aefb52c0` before and after execution.
+
+The three new cases exercise the real embedding handler, core, OpenRouter adapter, receipt accounting, isolated SQLite and next-request policy. Synthetic credentials/model/account discovery and external HTTP remain isolated seams. Raw `usage.cost_usd` and `usage.cost_in_usd_ticks` receipts preserve vectors and durable key/provider/model/connection/endpoint/token attribution through database reopen. Committed spend denies the next request before HTTP; missing or invalid costs remain unknown, explicit zero remains known, and failed upstream requests do not consume successful-use allowance.
+
+This supplies scoped offline embedding attribution, provider-USD interpretation, spend/allowance and database-reopen evidence only. No production RED or repair occurred. It does not invent native units or prices, prove arbitrary-sized tick precision, PostgreSQL runtime, the full modality/asynchronous matrix, full C3/full CI/whole #1085, or #1133 pricing acceptance. The unverified async variant is excluded. This run does not test the subsequent proof-note publication delta.
+
+Independent terminal receipt: `worker-state/delivery-lead/rerank-provenance-review/EMBEDDING_COMPOSITION_TERMINAL.md` in the private delivery evidence store. Accepted test SHA256: `7e6ed8fd8d1936fc332dcb1697f991a24a4577e0a9e41a0db8ecc4823c7c5f32`.

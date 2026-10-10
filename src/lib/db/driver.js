@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import { ensureDirs, hardenPermissions, currentDataFile } from "./paths.js";
+import path from "node:path";
+import { ensureDirs, hardenPermissions, currentDataFile, SECRET_DIR_MODE } from "./paths.js";
 import { wrapCutoverGuard } from "./cutoverLock.js";
 import { applyDatabaseEnvFile } from "./databaseEnvFile.js";
 
@@ -54,6 +55,20 @@ async function initAdapter(engine = "sqlite") {
  *   Node: better-sqlite3 → node:sqlite (≥22.5) → sql.js
  */
 export async function openSqliteAdapter(filePath) {
+  // Only exclusive creation proves provenance; an existing empty file may be
+  // a legacy installation. Keep this claim across the runtime fallback chain.
+  let created = filePath === ":memory:";
+  if (!created) {
+    // Writable opens may target a fresh data directory, including sidecars.
+    fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: SECRET_DIR_MODE });
+    try {
+      const fd = fs.openSync(filePath, "wx", 0o600);
+      fs.closeSync(fd);
+      created = true;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+  }
   const tryBun = async () => {
     if (!process.versions.bun) return null;
     try {
@@ -101,6 +116,13 @@ export async function openSqliteAdapter(filePath) {
   if (!adapter) adapter = await tryNode();
   if (!adapter) adapter = await trySqlJs();
   if (!adapter) throw new Error("[DB] No SQLite driver available (bun/better/node/sql.js all failed)");
+  const takeAdapterCreation = adapter.takeFreshDatabase;
+  adapter.takeFreshDatabase = () => {
+    const ownCreation = takeAdapterCreation?.() === true;
+    const result = created || ownCreation;
+    created = false;
+    return result;
+  };
   return adapter;
 }
 

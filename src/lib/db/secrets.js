@@ -126,6 +126,8 @@ export async function readPostgresUrlFromSettings() {
   const { stringifyJson: _sj, parseJson: _pj } = await import("./helpers/jsonCol.js");
   void _sj; void _pj;
   const dataFile = path.default.join(getDataDir(), "db", "data.sqlite");
+  // A settings probe must not create a database or consume fresh-install provenance.
+  if (!fs.existsSync(dataFile)) return null;
   const adapter = await openSqliteAdapter(dataFile);
   try {
     const row = await adapter.get(`SELECT data FROM settings WHERE id = 1`);

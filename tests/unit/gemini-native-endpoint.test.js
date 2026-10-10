@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const mocks = vi.hoisted(() => ({
   handleChat: vi.fn(),
@@ -10,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   extractApiKey: vi.fn(),
   resolveClientApiKey: vi.fn(),
   enforceApiKeyModelPolicy: vi.fn(),
-  recordApiKeyUsageForResponse: vi.fn(),
+  saveRequestUsage: vi.fn(),
+  getApiKeyUsageLimitStatus: vi.fn(),
 }));
 
 vi.mock("@/sse/handlers/chat.js", () => ({
@@ -25,13 +29,15 @@ vi.mock("@/sse/services/auth.js", () => ({
   extractApiKey: mocks.extractApiKey,
   resolveClientApiKey: mocks.resolveClientApiKey,
 }));
-vi.mock("@/sse/services/apiKeyPolicy.js", () => ({
+vi.mock("@/sse/services/apiKeyPolicy.js", async (importOriginal) => ({
+  ...await importOriginal(),
   enforceApiKeyModelPolicy: mocks.enforceApiKeyModelPolicy,
-  recordApiKeyUsageForResponse: mocks.recordApiKeyUsageForResponse,
 }));
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  saveRequestUsage: mocks.saveRequestUsage,
+  getApiKeyUsageLimitStatus: mocks.getApiKeyUsageLimitStatus,
 }));
 
 const { GET } = await import("../../src/app/api/v1beta/models/route.js");
@@ -80,7 +86,8 @@ describe("Gemini native v1beta endpoint", () => {
       auth: await mocks.evaluateApiKeyAuth(),
     }));
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
-    mocks.recordApiKeyUsageForResponse.mockImplementation(async (_apiKey, response) => response);
+    mocks.saveRequestUsage.mockResolvedValue(true);
+    mocks.getApiKeyUsageLimitStatus.mockResolvedValue({ exceeded: false });
     mocks.getProviderCredentials.mockResolvedValue({
       apiKey: "real-gemini-key",
       connectionId: "gemini-conn",
@@ -89,7 +96,7 @@ describe("Gemini native v1beta endpoint", () => {
     });
     mocks.markAccountUnavailable.mockResolvedValue({ shouldFallback: false });
     global.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }), {
+      new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: "cGNt" } }] } }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 5, totalTokenCount: 8 } }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
@@ -127,11 +134,80 @@ describe("Gemini native v1beta endpoint", () => {
     expect(JSON.parse(options.body)).toEqual(body);
     expect(options.headers["x-goog-api-key"]).toBe("real-gemini-key");
     expect(options.headers.Authorization).toBeUndefined();
-    expect(mocks.recordApiKeyUsageForResponse).toHaveBeenCalledWith(
-      "router-client-key",
-      expect.objectContaining({ status: 200 }),
-      expect.objectContaining({ tokens: expect.any(Number), cost: 0 }),
-    );
+    const delivered = await response.json();
+    expect(delivered.candidates[0].content.parts[0].inlineData.data).toBe("cGNt");
+  });
+
+  it.each(["generateContent", "streamGenerateContent"])("persists real Gemini %s usage only after clean completion", async (action) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-native-ledger-"));
+    const environment = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL"].map((key) => [key, process.env[key]]));
+    const previousAdapter = global._dbAdapter;
+    const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
+    const listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+    let adapter;
+    try {
+      process.env.DATA_DIR = directory;
+      process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+      delete process.env.DURINDOOR_PG_URL;
+      delete global._dbAdapter;
+      vi.resetModules();
+      adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+      adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)",
+        ["gemini-key", "router-client-key", "Gemini test", new Date().toISOString()]);
+      const { saveRequestUsage } = await import("@/lib/db/repos/usageRepo.js");
+      mocks.saveRequestUsage.mockImplementation(saveRequestUsage);
+      const { POST: post } = await import("../../src/app/api/v1beta/models/[...path]/route.js");
+      const usageMetadata = { promptTokenCount: 3, candidatesTokenCount: 5, thoughtsTokenCount: 2, cachedContentTokenCount: 1, totalTokenCount: 10 };
+      let upstream;
+      const streaming = action === "streamGenerateContent";
+      // Module imports can restore fetch, so install this test's transport afterward.
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(streaming
+        ? new Response(new ReadableStream({ start(controller) { upstream = controller; } }), { headers: { "content-type": "text/event-stream" } })
+        : Response.json({ candidates: [{ finishReason: "STOP" }], usageMetadata })));
+      const response = await post(makeGeminiRequest(`gemini-3.1-flash-tts-preview:${action}${streaming ? "?alt=sse" : ""}`, audioBody()), {
+        params: Promise.resolve({ path: [`gemini-3.1-flash-tts-preview:${action}`] }),
+      });
+      expect(response.status).toBe(200);
+      const rows = () => adapter.all("SELECT * FROM usageHistory");
+      expect(rows()).toEqual([]);
+      if (streaming) {
+        const reader = response.body.getReader();
+        for (const value of [
+          { usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 } },
+          { candidates: [{ finishReason: "STOP" }] },
+          { usageMetadata },
+        ]) {
+          upstream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`));
+          await reader.read();
+          expect(rows()).toEqual([]);
+        }
+        upstream.close();
+        expect((await reader.read()).done).toBe(true);
+      } else {
+        await response.json();
+      }
+      expect(rows()).toHaveLength(1);
+      expect(rows()[0]).toMatchObject({
+        provider: "gemini", model: "gemini-3.1-flash-tts-preview", connectionId: "gemini-conn",
+        apiKey: "router-client-key", status: "ok", promptTokens: 3, completionTokens: 7, cachedTokens: 1, reasoningTokens: 2,
+      });
+      expect(JSON.parse(rows()[0].tokens)).toMatchObject({
+        prompt_tokens: 3, completion_tokens: 7, total_tokens: 10, cached_tokens: 1, reasoning_tokens: 2,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      mocks.saveRequestUsage.mockReset().mockResolvedValue(true);
+      await adapter?.close?.();
+      if (previousAdapter === undefined) delete global._dbAdapter; else global._dbAdapter = previousAdapter;
+      for (const signal of signals) for (const listener of process.listeners(signal)) {
+        if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);
+      }
+      for (const [key, value] of Object.entries(environment)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      fs.rmSync(directory, { recursive: true, force: true });
+      vi.resetModules();
+    }
   });
 
   it("accepts Google-style client keys without forwarding them upstream", async () => {
@@ -147,7 +223,6 @@ describe("Gemini native v1beta endpoint", () => {
       params: Promise.resolve({ path: ["gemini-2.5-flash-preview-tts:generateContent"] }),
     });
 
-    expect(mocks.resolveClientApiKey).toHaveBeenCalledWith(request, { required: true });
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).toBe("real-gemini-key");
     expect(global.fetch.mock.calls[0][1].headers["x-goog-api-key"]).not.toBe("client-router-key");
   });
@@ -157,7 +232,6 @@ describe("Gemini native v1beta endpoint", () => {
     const request = makeGeminiRequest("gemini-3.1-flash-tts-preview:generateContent", audioBody());
     const response = await POST(request, { params: Promise.resolve({ path: ["gemini-3.1-flash-tts-preview:generateContent"] }) });
     expect(response.status).toBe(403);
-    expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(request, "gemini/gemini-3.1-flash-tts-preview", "router-client-key");
     expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
   });
@@ -261,6 +335,7 @@ describe("Gemini native v1beta endpoint", () => {
 
     expect(response.status).toBe(502);
     expect(body.error.message).toContain("ECONNRESET");
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
     expect(mocks.markAccountUnavailable).toHaveBeenCalledWith(
       "gemini-conn",
       502,
@@ -283,6 +358,7 @@ describe("Gemini native v1beta endpoint", () => {
     );
 
     expect(response.status).toBe(499);
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
   });
 

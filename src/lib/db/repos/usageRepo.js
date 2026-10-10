@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMetaSync } from "../helpers/metaStore.js";
@@ -15,9 +15,9 @@ import {
   VALID_USAGE_STATS_PERIODS } from
 "../../usagePeriods.js";
 import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
-import { getCommittedTokenCount } from "../helpers/committedTokens.js";
+import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "./quotaSql.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
-import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { deriveLatencyRates } from "../../../shared/utils/usageFormat.js";
 import { USAGE_COST_FIELDS } from "../../../shared/utils/usageCostAllocation.js";
 import { usageTokenColumns } from "../migrations/usage-token-columns.js";
@@ -165,8 +165,43 @@ export function addCostSplit(target, source) {
   if (rest.mixed) target.unsplit.mixed = true;
 }
 
+// One durable representation: numeric, nonnegative integer components. Fractional
+// estimates round up before pricing and persistence. Conflicting totals cannot
+// be allocated to input/output without inventing usage, so reject them.
+function normalizeLedgerTokens(tokens = {}) {
+  const count = (value) => {
+    if (value == null) return undefined;
+    if (!isNumber(value) || !Number.isFinite(value) || value < 0 || !Number.isSafeInteger(Math.ceil(value))) {
+      throw new TypeError("Usage token counts must be finite nonnegative numbers");
+    }
+    return Math.ceil(value);
+  };
+  const first = (...values) => values.map(count).find((value) => value !== undefined);
+  const prompt = first(tokens.prompt_tokens, tokens.input_tokens, tokens.promptTokenCount) ?? 0;
+  const completion = first(tokens.completion_tokens, tokens.output_tokens, tokens.candidatesTokenCount) ?? 0;
+  const cached = first(tokens.cached_tokens, tokens.cache_read_input_tokens,
+    tokens.prompt_tokens_details?.cached_tokens, tokens.input_tokens_details?.cached_tokens) ?? 0;
+  const reasoning = first(tokens.reasoning_tokens, tokens.completion_tokens_details?.reasoning_tokens,
+    tokens.output_tokens_details?.reasoning_tokens, tokens.thoughtsTokenCount) ?? 0;
+  const creation = first(tokens.cache_creation_input_tokens,
+    tokens.prompt_tokens_details?.cache_creation_tokens, tokens.input_tokens_details?.cache_creation_tokens) ?? 0;
+  const total = first(tokens.total_tokens, tokens.totalTokenCount);
+  if (!Number.isSafeInteger(prompt + completion) || (total !== undefined && total !== prompt + completion)) {
+    throw new TypeError("Usage total_tokens must equal input and output components");
+  }
+  return {
+    ...Object.fromEntries(["cost_usd", "cost_in_usd", "cost_in_usd_ticks", "kiro_credits", "kiro_credit_unit", "estimated"]
+      .filter((key) => Object.hasOwn(tokens, key)).map((key) => [key, tokens[key]])),
+    prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion,
+    cached_tokens: cached, reasoning_tokens: reasoning, cache_creation_input_tokens: creation,
+  };
+}
+
 function addToCounter(target, key, values) {
-  if (!target[key]) target[key] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
+  if (!Object.hasOwn(target, key)) Object.defineProperty(target, key, {
+    value: { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 },
+    enumerable: true, configurable: true, writable: true,
+  });
   addCostSplit(target[key], values);
   target[key].requests += values.requests ?? 1;
   target[key].promptTokens += values.promptTokens || 0;
@@ -175,17 +210,22 @@ function addToCounter(target, key, values) {
   target[key].reasoningTokens += values.reasoningTokens || 0;
   target[key].cacheCreationTokens += values.cacheCreationTokens || 0;
   target[key].cost += values.cost || 0;
+  target[key].unknownCostRequests = (target[key].unknownCostRequests || 0) + (values.unknownCostRequests || 0);
   addLatency(target[key], values, values.completionTokens || 0);
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
 export function aggregateEntryToDay(day, entry, identitySalt) {
-  const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
-  const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
+  const promptTokens = entry.tokens?.prompt_tokens ?? entry.tokens?.input_tokens ?? 0;
+  const completionTokens = entry.tokens?.completion_tokens ?? entry.tokens?.output_tokens ?? 0;
   const { cachedTokens, reasoningTokens, cacheCreationTokens } = usageTokenColumns(entry.tokens);
-  const cost = entry.cost || 0;
+  const cost = entry.cost ?? 0;
+  // A numeric aggregate is known spend only; retain unpriced request counts
+  // in every dimension, including buckets rebuilt from raw history.
+  const unknownCostRequests = Number(entry.unknownCostRequests ?? (entry.cost === null ? entry.requests ?? 1 : 0));
   const vals = {
     requests: entry.requests ?? 1, promptTokens, completionTokens, cachedTokens, reasoningTokens, cacheCreationTokens, cost,
+    unknownCostRequests,
     latencyMs: entry.latencyMs || 0, ttftMs: entry.ttftMs || 0,
     latencySamples: entry.latencySamples, ttftSamples: entry.ttftSamples,
     timedCompletionTokens: entry.timedCompletionTokens,
@@ -200,6 +240,7 @@ export function aggregateEntryToDay(day, entry, identitySalt) {
   day.reasoningTokens = (day.reasoningTokens || 0) + reasoningTokens;
   day.cacheCreationTokens = (day.cacheCreationTokens || 0) + cacheCreationTokens;
   day.cost = (day.cost || 0) + cost;
+  day.unknownCostRequests = (day.unknownCostRequests || 0) + unknownCostRequests;
 
   day.byProvider ||= {};
   day.byModel ||= {};
@@ -294,29 +335,28 @@ export async function getRecentlyActiveConnectionIds(withinMs, now = Date.now())
  * `split` is null when the components do not make up the total, which is the
  * case for a provider-reported cost: there are no rates to divide it with.
  *
- * @returns {Promise<{cost: number, split: object|null}>}
+ * @returns {Promise<{cost: number|null, split: object|null, costStatus: string, costSource: string}>}
  */
 async function calculateCost(provider, model, tokens) {
-  if (!tokens) return { cost: 0, split: null };
-  try {
-    const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");
-    const { getPricingForModel } = await import("./pricingRepo.js");
-    const pricing = provider && model ? await getPricingForModel(provider, model) : null;
-
-    // Delegate the actual math to the single source of truth (avoids the two
-    // copies drifting apart — see open-sse/providers/pricing.js for the
-    // cache-inclusive prompt_tokens convention this assumes).
-    const breakdown = calculateCostBreakdown(tokens, pricing);
-    // Summed in the same order as `totalCost`, so a rate-derived total matches exactly.
-    const componentSum = USAGE_COST_FIELDS.reduce((sum, field) => sum + breakdown[field], 0);
-    const split = componentSum === breakdown.totalCost ?
-    Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, breakdown[field]])) :
-    null;
-    return { cost: breakdown.totalCost, split };
-  } catch (e) {
-    console.error("Error calculating cost:", e);
-    return { cost: 0, split: null };
+  const unknown = { cost: null, split: null, costStatus: "unknown", costSource: "unavailable" };
+  if (!tokens) return unknown;
+  for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
+    if (tokens[field] == null) continue;
+    const cost = Number(tokens[field]);
+    if (!Number.isFinite(cost) || cost < 0) throw new TypeError(`Invalid usage ${field}`);
+    return { cost: field === "cost_in_usd_ticks" ? cost / 1e12 : cost, split: null, costStatus: "known", costSource: "provider" };
   }
+  const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");
+  const { getPricingForModel } = await import("./pricingRepo.js");
+  const pricing = provider && model ? await getPricingForModel(provider, model) : null;
+  if (!pricing) return unknown;
+
+  // Delegate to the shared cache-inclusive token pricing calculation.
+  const breakdown = calculateCostBreakdown(tokens, pricing);
+  const componentSum = USAGE_COST_FIELDS.reduce((sum, field) => sum + breakdown[field], 0);
+  const split = componentSum === breakdown.totalCost ?
+  Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, breakdown[field]])) : null;
+  return { cost: breakdown.totalCost, split, costStatus: "estimated", costSource: "pricing" };
 }
 
 function evictActiveSession(requestId) {
@@ -535,6 +575,7 @@ function aggregateChartWindow(db, startTime, endTime, bucketMs, bucketCount) {
     SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
     SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
     SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost,
+    SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unknownCostRequests,
     ${LATENCY_SUM_SQL}
     FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY bucket`, params);
 }
@@ -547,6 +588,7 @@ function aggregateUsageWindow(db, start, end) {
       SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens,
       SUM(cachedTokens) AS cachedTokens, SUM(reasoningTokens) AS reasoningTokens,
       SUM(cacheCreationTokens) AS cacheCreationTokens, SUM(cost) AS cost,
+      SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unknownCostRequests,
       ${USAGE_COST_FIELDS.map((field) => `SUM(${field}) AS ${field}`).join(", ")},
       ${LATENCY_SUM_SQL}
     FROM usageHistory WHERE timestamp >= ? AND timestamp <= ?
@@ -596,23 +638,135 @@ function readLastSeen(db, cutoff, end) {
   return db.all(`SELECT MAX(timestamp) AS timestamp, ${publicDims} FROM (${parts.join(" UNION ALL ")}) AS bounded GROUP BY ${dims}`, params);
 }
 
+/** Capture before dispatch, never in a completion callback. Null is the pre-cutover
+ * generation. After cutover every producer must carry the captured billingEpoch;
+ * missing or stale stamps fail closed, including events without idempotency IDs.
+ */
+export function getBillingEpochSync(db) {
+  const row = db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'epoch'");
+  if (!row) return null;
+  const epoch = parseJson(row.value, null);
+  if (!isString(epoch) || !epoch.trim()) throw new Error("Invalid billing epoch storage");
+  return epoch;
+}
+
+export async function getBillingEpoch() {
+  return getBillingEpochSync(await getAdapter());
+}
+
+/** Call inside a transaction before any billing/job mutation. Shares the import
+ * writer lock so a cutover cannot race between stamp validation and commit.
+ */
+export function assertBillingEpochSync(db, billingEpoch) {
+  if (db.capabilities?.isPostgres) {
+    if (!db.get(QUOTA_WRITE_LOCK_SQL_PG)) throw new Error("Usage storage is not initialized");
+  } else {
+    db.run(QUOTA_WRITE_LOCK_SQL);
+  }
+  const current = getBillingEpochSync(db);
+  if ((billingEpoch ?? null) !== current) throw new Error("Stale or missing billing epoch");
+}
+
+function claimUsageEventReceipt(db, usageEventId) {
+  // Event IDs already include their producer's scope. Hash the exact ID to
+  // preserve the existing global identity without retaining caller material.
+  const key = createHash("sha256").update(usageEventId).digest("hex");
+  return db.run(`INSERT INTO kv(scope, key, value) VALUES('usageEventReceipts', ?, '1')
+    ON CONFLICT(scope, key) DO NOTHING`, [key]).changes > 0;
+}
+
+/** Preserve legacy event identities before history removal or portable export.
+ * Call inside the same transaction as the purge/export. Receipts contain no
+ * accounting data and are retained independently of dashboard history.
+ */
+export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
+  if (db.capabilities?.isPostgres && !db.get(QUOTA_WRITE_LOCK_SQL_PG)) {
+    throw new Error("Usage storage is not initialized");
+  }
+  // Retained analytics may include events newer than restored accounting.
+  // After a cutover, receipts already commit with every new event; importing
+  // old history identities would mix snapshots and resurrect discarded receipts.
+  if (db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'cutoverVersion'")?.value === "1") return;
+  const where = cutoffIso === null ? "" : " AND timestamp < ?";
+  for (const row of db.all(`SELECT usageEventId FROM usageHistory
+    WHERE usageEventId IS NOT NULL AND usageEventId <> ''${where}`, cutoffIso === null ? [] : [cutoffIso])) {
+    claimUsageEventReceipt(db, row.usageEventId);
+  }
+}
+
+/**
+ * Commit one event to history, daily aggregates and key totals atomically.
+ * Explicit cost is USD: finite nonnegative values (including zero) are never
+ * repriced; null means unknown. costStatus is known (authoritative), estimated,
+ * or unknown. Missing cost uses provider token charges, then configured pricing.
+ * Metadata retains modality, nativeUnits and cost provenance. Aggregates sum
+ * known numeric charges only; unknownCostRequests preserves unpriced daily and
+ * dimension counts. Zero aggregate spend does not imply free usage.
+ * usageEventId identifies retries, not identical payloads. Its durable kv receipt
+ * commits with accounting and survives history resets. strict propagates
+ * validation and storage errors; successful duplicates return true.
+ */
 export async function saveRequestUsage(entry) {
+  entry = { ...entry };
   try {
     const db = await getAdapter();
-    const identitySalt = getOrCreateUsageIdentitySalt(db);
 
-    if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    const { cost, split } = await calculateCost(entry.provider, entry.model, entry.tokens);
-    entry.cost = cost;
-    const costSplit = split || Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, null]));
+    if (entry.usageEventId != null && (!isString(entry.usageEventId) || !entry.usageEventId.trim())) {
+      throw new TypeError("Usage event ID must be a nonempty string");
+    }
+    if (entry.timestamp === undefined) entry.timestamp = new Date().toISOString();
+    if (!isString(entry.timestamp) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(entry.timestamp) ||
+        !Number.isFinite(Date.parse(entry.timestamp)) ||
+        new Date(`${entry.timestamp.slice(0, 10)}T00:00:00.000Z`).toISOString().slice(0, 10) !== entry.timestamp.slice(0, 10)) {
+      throw new TypeError("Usage timestamp must be a valid ISO timestamp");
+    }
+    entry.timestamp = new Date(entry.timestamp).toISOString();
+    if (entry.tokens != null && (!isObject(entry.tokens) || Array.isArray(entry.tokens))) {
+      throw new TypeError("Usage tokens must be an object");
+    }
+    entry.tokens = normalizeLedgerTokens(entry.tokens ?? {});
+    let priced;
+    if (entry.cost !== undefined) {
+      const costStatus = entry.costStatus ?? (entry.cost === null ? "unknown" : "known");
+      if (!["known", "estimated", "unknown"].includes(costStatus) ||
+          (costStatus === "unknown" ? entry.cost !== null :
+            !isNumber(entry.cost) || !Number.isFinite(entry.cost) || entry.cost < 0)) {
+        throw new TypeError("Usage cost must match known, estimated or unknown costStatus");
+      }
+      priced = { cost: entry.cost, split: null, costStatus, costSource: entry.costSource ?? (costStatus === "unknown" ? "unavailable" : "caller") };
+    } else {
+      if (entry.costStatus !== undefined || entry.costSource !== undefined) throw new TypeError("Usage cost provenance requires an explicit cost");
+      priced = await calculateCost(entry.provider, entry.model, entry.tokens);
+    }
+    if (!isString(priced.costSource) || !priced.costSource.trim()) throw new TypeError("Usage costSource must be nonempty");
+    if (entry.nativeUnits !== undefined && (entry.nativeUnits === null || !isObject(entry.nativeUnits) || Array.isArray(entry.nativeUnits) ||
+        Object.values(entry.nativeUnits).some((value) => !isNumber(value) || !Number.isFinite(value) || value < 0))) {
+      throw new TypeError("Usage nativeUnits must contain finite nonnegative numbers");
+    }
+    entry.cost = priced.cost;
+    entry.requests = 1;
+    entry.unknownCostRequests = entry.cost === null ? 1 : 0;
+    entry.meta = { ...entry.meta, costStatus: priced.costStatus, costSource: priced.costSource };
+    if (entry.modality !== undefined) entry.meta.modality = entry.modality;
+    if (entry.nativeUnits !== undefined) entry.meta.nativeUnits = entry.nativeUnits;
+    const costSplit = priced.split || Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, null]));
 
     const tokens = entry.tokens || {};
-    const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
-    const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
+    const promptTokens = tokens.prompt_tokens;
+    const completionTokens = tokens.completion_tokens;
     // Stored on the usage row itself so throughput aggregates per model,
     // account and key without joining requestDetails. 0 means "not timed".
-    const latencyMs = Math.max(0, Math.round(entry.latencyMs || 0));
-    const ttftMs = Math.max(0, Math.round(entry.ttftMs || 0));
+    for (const field of ["latencyMs", "ttftMs"]) {
+      if (entry[field] != null && (!isNumber(entry[field]) || !Number.isFinite(entry[field]) || entry[field] < 0)) {
+        throw new TypeError("Usage timing must contain finite nonnegative numbers");
+      }
+    }
+    const latencyMs = Math.round(entry.latencyMs ?? 0);
+    const ttftMs = Math.round(entry.ttftMs ?? 0);
+    // The writer accepts one event, never caller-supplied aggregate samples.
+    entry.latencySamples = latencyMs > 0 ? 1 : 0;
+    entry.ttftSamples = ttftMs > 0 ? 1 : 0;
+    entry.timedCompletionTokens = latencyMs > ttftMs ? completionTokens : 0;
 
     let inserted = false;
 
@@ -621,13 +775,22 @@ export async function saveRequestUsage(entry) {
     // model + connectionId + tokens) would silently clobber each other (write loss).
     // Only an explicit idempotency key (`usageEventId`) dedupes — that is a real
     // retry of the SAME logical event, not a coincidentally-identical new event.
-    // All writes (history insert, daily upsert, lifetime counter) happen in ONE
+    // All writes (receipt claim, history insert, daily upsert, lifetime counter) happen in ONE
     // transaction; better-sqlite3/node:sqlite are synchronous, so no JS yield
     // occurs mid-transaction and the writes remain atomic/serialized in-process.
     db.transaction(() => {
+      // Reuse the quota writer lock: the schema row exists even when this day
+      // and lifetime counter do not. PostgreSQL holds it until commit/rollback.
+      // ponytail: global writer lock; use per-day locks if throughput demands it.
+      assertBillingEpochSync(db, entry.billingEpoch);
+      const identitySalt = getOrCreateUsageIdentitySalt(db);
+      // Scope storage identity, not the caller's request ID used by live sessions.
+      const usageEventId = entry.usageEventId && entry.billingEpoch != null ?
+        JSON.stringify(["billing", entry.billingEpoch, entry.usageEventId]) : entry.usageEventId;
       // Idempotency: only when the caller supplies a real event id.
       if (entry.usageEventId) {
-        const existing = db.get(`SELECT * FROM usageHistory WHERE usageEventId = ?`, [entry.usageEventId]);
+        const claimed = claimUsageEventReceipt(db, usageEventId);
+        const existing = db.get(`SELECT * FROM usageHistory WHERE usageEventId = ?`, [usageEventId]);
         if (existing) {
           if (!existing.endpoint && entry.endpoint) {
             db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [entry.endpoint, existing.id]);
@@ -644,6 +807,7 @@ export async function saveRequestUsage(entry) {
           }
           return;
         }
+        if (!claimed) return;
       }
 
       const insert = db.run(
@@ -651,8 +815,8 @@ export async function saveRequestUsage(entry) {
         [
         entry.timestamp, entry.provider || null, entry.model || null,
         entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
-        promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-        stringifyJson(tokens), stringifyJson({}), entry.usageEventId || null,
+        promptTokens, completionTokens, entry.cost, entry.status || "ok",
+        stringifyJson(tokens), stringifyJson(entry.meta), usageEventId || null,
         entry.comboId || null, entry.comboName || null, ...Object.values(usageTokenColumns(tokens)),
         latencyMs, ttftMs, ...USAGE_COST_FIELDS.map((field) => costSplit[field])]
 
@@ -676,13 +840,12 @@ export async function saveRequestUsage(entry) {
       null;
 
       // Atomic counter increment in same transaction
-      const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
-      const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
-      db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+      db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', '1')
+        ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(_meta.value AS BIGINT) + 1 AS TEXT)`);
       if (apiKeyId) {
         incrementApiKeyUsageSync(db, apiKeyId, {
-          tokens: getCommittedTokenCount(tokens, { promptTokens, completionTokens }),
-          cost: entry.cost || 0
+          tokens: tokens.total_tokens,
+          cost: entry.cost
         });
       }
       inserted = true;
@@ -712,7 +875,7 @@ export async function saveRequestUsage(entry) {
 // Usage totals for one API key: today and this month (used by per-key limits).
 // Today always falls inside this month, so one scan from monthStart covers both.
 export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso) {
-  const empty = () => ({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0 });
+  const empty = () => ({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
   if (!apiKey) return { day: empty(), month: empty() };
   const db = await getAdapter();
   const row = db.get(
@@ -721,17 +884,19 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
        COALESCE(SUM(CASE WHEN timestamp >= ? THEN completionTokens ELSE 0 END), 0) AS dayOutput,
        COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS dayRequests,
        COALESCE(SUM(CASE WHEN timestamp >= ? THEN cost ELSE 0 END), 0) AS dayCost,
+       COALESCE(SUM(CASE WHEN timestamp >= ? AND cost IS NULL THEN 1 ELSE 0 END), 0) AS dayUnknown,
        COALESCE(SUM(promptTokens), 0) AS monthInput,
        COALESCE(SUM(completionTokens), 0) AS monthOutput,
        COUNT(*) AS monthRequests,
+       COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS monthUnknown,
        COALESCE(SUM(cost), 0) AS monthCost
      FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso]
+    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso]
   );
   const n = (v) => Number(v) || 0;
   return {
-    day: { inputTokens: n(row?.dayInput), outputTokens: n(row?.dayOutput), requests: n(row?.dayRequests), cost: n(row?.dayCost) },
-    month: { inputTokens: n(row?.monthInput), outputTokens: n(row?.monthOutput), requests: n(row?.monthRequests), cost: n(row?.monthCost) },
+    day: { inputTokens: n(row?.dayInput), outputTokens: n(row?.dayOutput), requests: n(row?.dayRequests), cost: n(row?.dayCost), unknownCostRequests: n(row?.dayUnknown) },
+    month: { inputTokens: n(row?.monthInput), outputTokens: n(row?.monthOutput), requests: n(row?.monthRequests), cost: n(row?.monthCost), unknownCostRequests: n(row?.monthUnknown) },
   };
 }
 
@@ -873,10 +1038,10 @@ export async function getUsageStats(period = "all", opts = {}) {
 
   let allConnections = [];
   try {allConnections = await getProviderConnections();} catch {}
-  const connectionMap = {};
+  const connectionMap = Object.create(null);
   for (const c of allConnections) connectionMap[c.id] = c.name || c.email || c.id;
 
-  const providerNodeNameMap = {};
+  const providerNodeNameMap = Object.create(null);
   try {
     const nodes = await getProviderNodes();
     for (const n of nodes) if (n.id && n.name) providerNodeNameMap[n.id] = n.name;
@@ -884,7 +1049,7 @@ export async function getUsageStats(period = "all", opts = {}) {
 
   let allApiKeys = [];
   try {allApiKeys = await getApiKeys();} catch {}
-  const apiKeyMap = {};
+  const apiKeyMap = Object.create(null);
   for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
 
   // API responses use database IDs for registered keys and salted HMACs for
@@ -940,9 +1105,10 @@ export async function getUsageStats(period = "all", opts = {}) {
 
   const stats = {
     totalRequests: 0,
+    unknownCostRequests: 0,
     totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedTokens: 0,
     totalReasoningTokens: 0, totalCacheCreationTokens: 0, totalCost: 0,
-    byProvider: {}, byModel: {}, byAccount: {}, byApiKey: {}, byEndpoint: {},
+    byProvider: Object.create(null), byModel: Object.create(null), byAccount: Object.create(null), byApiKey: Object.create(null), byEndpoint: Object.create(null),
     last10Minutes: [],
     pending: pendingRequests,
     activeRequests: [],
@@ -976,11 +1142,11 @@ export async function getUsageStats(period = "all", opts = {}) {
   const bucketMap = {};
   for (let i = 0; i < 10; i++) {
     const ts = currentMinuteStart.getTime() - (9 - i) * 60 * 1000;
-    bucketMap[ts] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 };
+    bucketMap[ts] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, unknownCostRequests: 0 };
     stats.last10Minutes.push(bucketMap[ts]);
   }
   const recent10 = db.all(
-    `SELECT SUBSTR(timestamp, 1, 16) AS timestamp, COUNT(*) AS requests, SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens, SUM(cost) AS cost FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY SUBSTR(timestamp, 1, 16)`,
+    `SELECT SUBSTR(timestamp, 1, 16) AS timestamp, COUNT(*) AS requests, SUM(promptTokens) AS promptTokens, SUM(completionTokens) AS completionTokens, SUM(cost) AS cost, SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unknownCostRequests FROM usageHistory WHERE timestamp >= ? AND timestamp <= ? GROUP BY SUBSTR(timestamp, 1, 16)`,
     [tenMinutesAgo.toISOString(), now.toISOString()]
   );
   for (const r of recent10) {
@@ -991,6 +1157,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       bucketMap[minuteStart].promptTokens += r.promptTokens || 0;
       bucketMap[minuteStart].completionTokens += r.completionTokens || 0;
       bucketMap[minuteStart].cost += r.cost || 0;
+      bucketMap[minuteStart].unknownCostRequests += Number(r.unknownCostRequests) || 0;
     }
   }
 
@@ -1018,12 +1185,14 @@ export async function getUsageStats(period = "all", opts = {}) {
     for (const dr of dayRows) {
       const dateKey = dr.dateKey;
       const day = parseJson(dr.data, {});
+      stats.totalRequests += Number(day.requests) || 0;
       stats.totalPromptTokens += day.promptTokens || 0;
       stats.totalCompletionTokens += day.completionTokens || 0;
       stats.totalCachedTokens += day.cachedTokens || 0;
       stats.totalReasoningTokens += day.reasoningTokens || 0;
       stats.totalCacheCreationTokens += day.cacheCreationTokens || 0;
       stats.totalCost += day.cost || 0;
+      stats.unknownCostRequests += Number(day.unknownCostRequests) || 0;
       addLatency(stats, day, day.completionTokens || 0);
 
       for (const [prov, p] of Object.entries(day.byProvider || {})) {
@@ -1035,6 +1204,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byProvider[prov].reasoningTokens += p.reasoningTokens || 0;
         stats.byProvider[prov].cacheCreationTokens += p.cacheCreationTokens || 0;
         stats.byProvider[prov].cost += p.cost || 0;
+        stats.byProvider[prov].unknownCostRequests = (stats.byProvider[prov].unknownCostRequests || 0) + (Number(p.unknownCostRequests) || 0);
         addLatency(stats.byProvider[prov], p, p.completionTokens || 0);
       }
 
@@ -1054,6 +1224,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byModel[statsKey].reasoningTokens += m.reasoningTokens || 0;
         stats.byModel[statsKey].cacheCreationTokens += m.cacheCreationTokens || 0;
         stats.byModel[statsKey].cost += m.cost || 0;
+        stats.byModel[statsKey].unknownCostRequests = (stats.byModel[statsKey].unknownCostRequests || 0) + (Number(m.unknownCostRequests) || 0);
         addLatency(stats.byModel[statsKey], m, m.completionTokens || 0);
         if (dateKey > (stats.byModel[statsKey].lastUsed || "")) stats.byModel[statsKey].lastUsed = dateKey;
       }
@@ -1081,6 +1252,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byAccount[accountKey].reasoningTokens += a.reasoningTokens || 0;
         stats.byAccount[accountKey].cacheCreationTokens += a.cacheCreationTokens || 0;
         stats.byAccount[accountKey].cost += a.cost || 0;
+        stats.byAccount[accountKey].unknownCostRequests = (stats.byAccount[accountKey].unknownCostRequests || 0) + (Number(a.unknownCostRequests) || 0);
         addLatency(stats.byAccount[accountKey], a, a.completionTokens || 0);
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
       }
@@ -1105,6 +1277,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byApiKey[statsKey].reasoningTokens += ak.reasoningTokens || 0;
         stats.byApiKey[statsKey].cacheCreationTokens += ak.cacheCreationTokens || 0;
         stats.byApiKey[statsKey].cost += ak.cost || 0;
+        stats.byApiKey[statsKey].unknownCostRequests = (stats.byApiKey[statsKey].unknownCostRequests || 0) + (Number(ak.unknownCostRequests) || 0);
         addLatency(stats.byApiKey[statsKey], ak, ak.completionTokens || 0);
         if (dateKey > (stats.byApiKey[statsKey].lastUsed || "")) stats.byApiKey[statsKey].lastUsed = dateKey;
       }
@@ -1125,6 +1298,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byEndpoint[epKey].reasoningTokens += ep.reasoningTokens || 0;
         stats.byEndpoint[epKey].cacheCreationTokens += ep.cacheCreationTokens || 0;
         stats.byEndpoint[epKey].cost += ep.cost || 0;
+        stats.byEndpoint[epKey].unknownCostRequests = (stats.byEndpoint[epKey].unknownCostRequests || 0) + (Number(ep.unknownCostRequests) || 0);
         addLatency(stats.byEndpoint[epKey], ep, ep.completionTokens || 0);
         if (dateKey > (stats.byEndpoint[epKey].lastUsed || "")) stats.byEndpoint[epKey].lastUsed = dateKey;
       }
@@ -1194,12 +1368,14 @@ export async function getUsageStats(period = "all", opts = {}) {
       const entryCost = r.cost || 0;
       const providerDisplayName = providerNodeNameMap[r.provider] || r.provider;
 
+      stats.totalRequests += r.requests;
       stats.totalPromptTokens += promptTokens;
       stats.totalCompletionTokens += completionTokens;
       stats.totalCachedTokens += cachedTokens;
       stats.totalReasoningTokens += reasoningTokens;
       stats.totalCacheCreationTokens += cacheCreationTokens;
       stats.totalCost += entryCost;
+      stats.unknownCostRequests += Number(r.unknownCostRequests) || 0;
       addLatency(stats, r, completionTokens);
 
       if (!stats.byProvider[r.provider]) stats.byProvider[r.provider] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0 };
@@ -1211,6 +1387,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       stats.byProvider[r.provider].cacheCreationTokens += cacheCreationTokens;
       stats.byProvider[r.provider].cost += entryCost;
       addLatency(stats.byProvider[r.provider], r, completionTokens);
+      stats.byProvider[r.provider].unknownCostRequests = (stats.byProvider[r.provider].unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
 
       const modelKey = r.provider ? `${r.model} (${r.provider})` : r.model;
       if (!stats.byModel[modelKey]) {
@@ -1225,6 +1402,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       stats.byModel[modelKey].cacheCreationTokens += cacheCreationTokens;
       stats.byModel[modelKey].cost += entryCost;
       addLatency(stats.byModel[modelKey], r, completionTokens);
+      stats.byModel[modelKey].unknownCostRequests = (stats.byModel[modelKey].unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
       if (new Date(r.timestamp) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = r.timestamp;
 
       if (r.connectionId) {
@@ -1242,6 +1420,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         stats.byAccount[accountKey].cacheCreationTokens += cacheCreationTokens;
         stats.byAccount[accountKey].cost += entryCost;
         addLatency(stats.byAccount[accountKey], r, completionTokens);
+        stats.byAccount[accountKey].unknownCostRequests = (stats.byAccount[accountKey].unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
       }
 
@@ -1257,6 +1436,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         addCostSplit(ake, r);
         ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
         addLatency(ake, r, completionTokens);
+        ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       } else {
         const akKey = getApiKeyStatsKey(null, r.model, r.provider, identitySalt);
@@ -1267,6 +1447,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         addCostSplit(ake, r);
         ake.requests += r.requests;ake.promptTokens += promptTokens;ake.completionTokens += completionTokens;ake.cachedTokens += cachedTokens;ake.reasoningTokens += reasoningTokens;ake.cacheCreationTokens += cacheCreationTokens;ake.cost += entryCost;
         addLatency(ake, r, completionTokens);
+        ake.unknownCostRequests = (ake.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       }
 
@@ -1279,11 +1460,10 @@ export async function getUsageStats(period = "all", opts = {}) {
       addCostSplit(epe, r);
       epe.requests += r.requests;epe.promptTokens += promptTokens;epe.completionTokens += completionTokens;epe.cachedTokens += cachedTokens;epe.reasoningTokens += reasoningTokens;epe.cacheCreationTokens += cacheCreationTokens;epe.cost += entryCost;
       addLatency(epe, r, completionTokens);
+      epe.unknownCostRequests = (epe.unknownCostRequests || 0) + (Number(r.unknownCostRequests) || 0);
       if (new Date(r.timestamp) > new Date(epe.lastUsed)) epe.lastUsed = r.timestamp;
     }
   }
-
-  stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
 
   await applyCostBreakdowns(stats);
 
@@ -1389,7 +1569,7 @@ export async function applyCostBreakdowns(stats, lookupPricing) {
     return split;
   };
 
-  const providerSplits = {};
+  const providerSplits = Object.create(null);
   for (const bucket of ["byModel", "byAccount", "byApiKey", "byEndpoint"]) {
     for (const entry of Object.values(stats[bucket])) {
       const split = await bucketSplit(entry);
@@ -1469,7 +1649,7 @@ export async function getChartData(period = "7d", timeZone) {
     });
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({
       label: labelFn(startTime + i * bucketMs), tokens: 0, cachedTokens: 0,
-      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, tps: null
+      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, unknownCostRequests: 0, tps: null
     }));
 
     const rows = aggregateChartWindow(db, startTime, Math.min(now, endTime - 1), bucketMs, bucketCount);
@@ -1480,6 +1660,7 @@ export async function getChartData(period = "7d", timeZone) {
       bucket.reasoningTokens = Number(r.reasoningTokens || 0);
       bucket.cacheCreationTokens = Number(r.cacheCreationTokens || 0);
       bucket.cost = Number(r.cost || 0);
+      bucket.unknownCostRequests = Number(r.unknownCostRequests) || 0;
       bucket.tps = deriveLatencyRates(latencyFromRow(r)).avgTps;
     }
     return buckets;
@@ -1494,7 +1675,7 @@ export async function getChartData(period = "7d", timeZone) {
     const startTime = now - bucketCount * bucketMs;
     const buckets = Array.from({ length: bucketCount }, (_, i) => ({
       label: labelFn(startTime + i * bucketMs), tokens: 0, cachedTokens: 0,
-      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, tps: null
+      reasoningTokens: 0, cacheCreationTokens: 0, cost: 0, unknownCostRequests: 0, tps: null
     }));
 
     const rows = aggregateChartWindow(db, startTime, now, bucketMs, bucketCount);
@@ -1505,6 +1686,7 @@ export async function getChartData(period = "7d", timeZone) {
       bucket.reasoningTokens = Number(r.reasoningTokens || 0);
       bucket.cacheCreationTokens = Number(r.cacheCreationTokens || 0);
       bucket.cost = Number(r.cost || 0);
+      bucket.unknownCostRequests = Number(r.unknownCostRequests) || 0;
       bucket.tps = deriveLatencyRates(latencyFromRow(r)).avgTps;
     }
     return buckets;
@@ -1521,6 +1703,7 @@ export async function getChartData(period = "7d", timeZone) {
       promptTokens: day.promptTokens, completionTokens: day.completionTokens,
       cachedTokens: day.cachedTokens, reasoningTokens: day.reasoningTokens,
       cacheCreationTokens: day.cacheCreationTokens, cost: day.cost,
+      unknownCostRequests: day.unknownCostRequests,
       latencyMs: day.latencyMs, ttftMs: day.ttftMs,
       latencySamples: day.latencySamples, ttftSamples: day.ttftSamples,
       timedCompletionTokens: day.timedCompletionTokens,
@@ -1556,6 +1739,7 @@ export async function getChartData(period = "7d", timeZone) {
       reasoningTokens: 0,
       cacheCreationTokens: 0,
       cost: 0,
+      unknownCostRequests: 0,
       // Latency sums live on the bucket only long enough to become `tps` below;
       // a multi-day bucket may merge several days, so the rate is derived once
       // after every contributing day has been added.
@@ -1577,6 +1761,7 @@ export async function getChartData(period = "7d", timeZone) {
     buckets[index].reasoningTokens += day.reasoningTokens || 0;
     buckets[index].cacheCreationTokens += day.cacheCreationTokens || 0;
     buckets[index].cost += day.cost || 0;
+    buckets[index].unknownCostRequests += Number(day.unknownCostRequests) || 0;
     buckets[index].latencyMs += day.latencyMs || 0;
     buckets[index].ttftMs += day.ttftMs || 0;
     buckets[index].timedCompletionTokens += day.timedCompletionTokens || 0;
@@ -1626,6 +1811,7 @@ function pruneUsageBeforeInTx(db, cutoffMs, identitySalt) {
   const cutoffDate = new Date(cutoffMs);
   const cutoffKey = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, "0")}-${String(cutoffDate.getDate()).padStart(2, "0")}`;
   const before = db.get(`SELECT COUNT(*) AS cnt FROM usageHistory WHERE timestamp < ?`, [cutoffIso]);
+  backfillUsageEventReceiptsSync(db, cutoffIso);
 
   // Delete usageHistory entries older than the cutoff (keep recent data within the period)
   db.run(`DELETE FROM usageHistory WHERE timestamp < ?`, [cutoffIso]);
@@ -1675,6 +1861,7 @@ export async function resetUsageHistory(period) {
 
   db.transaction(() => {
     if (period === "all") {
+      backfillUsageEventReceiptsSync(db);
       // Delete everything
       db.run(`DELETE FROM usageHistory`);
       db.run(`DELETE FROM usageLastSeen`);

@@ -8,7 +8,7 @@ import { MINIMAX_V1_JOB_PREFIX, prepareMinimaxVideoRequest, normalizeMinimaxVide
 
 // Upstream fetch deadline for video job submission/polling (the job itself is
 // async upstream — this only bounds the HTTP round-trip, not video rendering).
-import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 const VIDEO_FETCH_TIMEOUT_MS = Number(process.env.VIDEO_FETCH_TIMEOUT_MS || 120000);
 
 // POST /videos/* creates a billable upstream job. A network error after the
@@ -72,6 +72,37 @@ function combineSignals(signal, timeoutMs) {
     return AbortSignal.any([signal, timeoutSignal]);
   }
   return signal || timeoutSignal || undefined;
+}
+
+// Only response evidence is billable. Requested duration and prompt length are
+// not measured output, and absent USD pricing must never become free usage.
+function videoJobEvidence(responseBody, bodyText) {
+  let value;
+  let raw;
+  try { value = JSON.parse(responseBody); raw = JSON.parse(bodyText); } catch { return null; }
+  const resourceId = value?.request_id ?? value?.id;
+  const status = String(value?.status || "").toLowerCase();
+  const failed = Boolean(value?.error) || ["failed", "fail", "cancelled", "canceled", "expired"].includes(status);
+  const succeeded = !failed && ["done", "completed", "succeeded", "success"].includes(status);
+  const evidence = raw?.task || raw;
+  const nativeUnits = {};
+  const seconds = value?.video?.duration ?? evidence?.video?.duration ?? evidence?.duration ?? evidence?.seconds;
+  if (seconds !== undefined) {
+    const numeric = isString(seconds) && /^\d+(?:\.\d+)?$/.test(seconds) ? Number(seconds) : seconds;
+    if (isNumber(numeric) && Number.isFinite(numeric) && numeric >= 0) nativeUnits.videoSeconds = numeric;
+  }
+  const usageValue = evidence?.usage ? { usage: evidence.usage } : value;
+  const reportedCost = usageValue?.usage?.cost_usd ?? usageValue?.usage?.cost_in_usd;
+  const knownCost = isNumber(reportedCost) && Number.isFinite(reportedCost) && reportedCost >= 0;
+  return {
+    resourceId: isString(resourceId) && resourceId ? resourceId : null,
+    terminal: failed ? { status: "failed" } : succeeded ? {
+      status: "succeeded", usageValue, nativeUnits,
+      cost: knownCost ? reportedCost : null,
+      costStatus: knownCost ? "known" : "unknown",
+      costSource: knownCost ? "provider" : "unavailable",
+    } : null,
+  };
 }
 
 /**
@@ -204,6 +235,7 @@ export async function handleVideoProxyCore({
   }
   return {
     success: true,
+    job: videoJobEvidence(responseBody, bodyText),
     response: new Response(responseBody, {
       status: upstream.status,
       headers: {

@@ -1,4 +1,4 @@
-// ../../node_modules/@oxlint/plugins/index.js
+// ../deps-node20/node_modules/@oxlint/plugins/index.js
 function defineRule(rule) {
   return rule;
 }

@@ -119,6 +119,11 @@ afterAll(() => {
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+// Provider cores return normalized receipts; keep the real ledger and ACL path.
+function accounting(modality, nativeUnits) {
+  return { state: "complete", modality, tokens: {}, nativeUnits, cost: null, costStatus: "unknown", costSource: "unavailable", meta: {} };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   core.chat.mockResolvedValue({
@@ -128,9 +133,10 @@ beforeEach(() => {
       headers: { "content-type": "application/json" },
     }),
   });
-  core.fetch.mockResolvedValue({ success: true, data: { title: "ok", content: "ok", links: [] } });
+  core.fetch.mockResolvedValue({ success: true, data: { title: "ok", content: "ok", links: [] }, accounting: accounting("webFetch", { operations: 1 }) });
   core.search.mockResolvedValue({
     success: true,
+    accounting: accounting("webSearch", { operations: 1 }),
     data: { results: [{ title: "ok" }] },
     response: new Response(JSON.stringify({ results: [{ title: "ok" }] }), {
       status: 200,
@@ -139,6 +145,7 @@ beforeEach(() => {
   });
   core.image.mockResolvedValue({
     success: true,
+    accounting: accounting("image", { images: 1 }),
     response: new Response(JSON.stringify({ data: [{ url: "https://example.test/image.png" }] }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -146,6 +153,8 @@ beforeEach(() => {
   });
   core.tts.mockResolvedValue({
     success: true,
+    accounting: accounting("tts", { characters: 5 }),
+    audioBuffered: true,
     response: new Response("audio", { status: 200, headers: { "content-type": "audio/mpeg" } }),
   });
 });
@@ -203,6 +212,8 @@ describe("combo connection allow-list dispatch (#747)", () => {
     const response = await invoke();
 
     expect(response.status).toBe(200);
+    // Drain the body so deferred completion/persistence errors cannot pass unnoticed.
+    await response.text();
     expect(providerCore).toHaveBeenCalledOnce();
     const selected = providerCore.mock.calls.map(([input]) => input.credentials?.connectionId);
     expect(selected).toContain(connectionIds[provider].included);

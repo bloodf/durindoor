@@ -55,3 +55,15 @@ The rewrite preserves credential prerequisites, working configuration shapes, re
 - No public-to-internal link, source behavior change, provider credential read, package installation, network provider test, key rewrite, migration, push, merge, or deployment.
 - Documentation checks validate syntax and link integrity. They do not establish vendor account authorization, external client version compatibility, live inference, quotas, or billing accuracy.
 - Unchanged files are the generated catalog and four metadata files, for the reasons listed above. Pure documentation changes do not require application behavior tests under AGENTS.md.
+
+## #1085 rerank raw-receipt composition — 2026-10-10
+
+The authorized independent run on published #1275 base `b95242249163fef3c40d257be35170cc89a2ba14` collected five cases: two existing mocked-core controls and three new real-core composition cases, all passed. Launcher `2441966` was explicitly waited and reaped with exit 0 after corrected static acceptance and separately recorded delivery GO. Full 4418 source rows were unchanged before and after execution.
+
+The new cases exercise the real rerank handler, core, receipt accounting, isolated SQLite ledger and next-request policy. Only credential/model discovery, account callbacks and external transport are synthetic. Existing `usage.cost_usd` and `usage.cost_in_usd_ticks` receipts retain exact ranking bytes and durable key/provider/model/connection attribution; committed spend denies the next request before HTTP. Missing or invalid cost remains unknown, explicit zero remains known, and failed requests do not consume successful-use allowance.
+
+This supplies scoped C1 attribution and C3 spend/allowance evidence, C2 existing provider-USD receipt interpretation, and C4 database-reopen durability only. It does not define a new per-operation price or unit, prove the complete modality/asynchronous matrix, PostgreSQL, live billing, full CI, merge readiness or whole #1085 acceptance.
+
+The earlier corrected run with launcher `2435625` remains historical observation-only evidence because its separately recorded post-acceptance delivery GO was missing. Its results are not used for acceptance. The accepted result comes only from the distinct authorized run `2441966`; original failed fixture and ordering-exception artifacts remain preserved.
+
+Independent terminal receipt: `worker-state/roadmap-lead/rerank-independent-proof/AUTHORIZED_TERMINAL_RECEIPT.md` in the private delivery evidence store. No production source change was required.

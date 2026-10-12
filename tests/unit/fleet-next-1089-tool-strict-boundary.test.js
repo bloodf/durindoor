@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import "../translator/registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { OPENAI_BLOCK } from "../../open-sse/translator/schema/index.js";
+import { OPENAI_BLOCK, RESPONSES_ITEM, ROLE, CLAUDE_BLOCK } from "../../open-sse/translator/schema/index.js";
 
 const schema = {
   type: "object", properties: { q: { type: "string" } }, required: ["q"], additionalProperties: false,
@@ -56,4 +56,42 @@ describe("#1089 registered mixed custom/namespace strict and parallel boundary",
     });
     expect(claude).not.toHaveProperty("parallel_tool_calls");
   });
+});
+
+const toolRequest = (output) => ({ input: [
+  { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "call_fixture", name: "inspect", arguments: "{}" },
+  { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "call_fixture", output },
+] });
+
+describe.each([FORMATS.CLAUDE, FORMATS.GEMINI, FORMATS.CURSOR])("#1089 registered tool-output validation for %s", (target) => {
+  it("preserves text-only arrays through the second hop", () => {
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, target, "m", toolRequest([
+      { type: RESPONSES_ITEM.INPUT_TEXT, text: "first" },
+      { type: RESPONSES_ITEM.OUTPUT_TEXT, text: "second" },
+    ]), false);
+    if (target === FORMATS.CLAUDE) {
+      const result = out.messages.flatMap((message) => message.content).find((block) => block.type === CLAUDE_BLOCK.TOOL_RESULT);
+      expect(result.content).toBe("first\nsecond");
+    } else if (target === FORMATS.GEMINI) {
+      const result = out.contents.flatMap((turn) => turn.parts).find((part) => part.functionResponse);
+      expect(JSON.stringify(result.functionResponse.response)).toContain("first\\nsecond");
+    } else {
+      expect(out.messages.find((message) => message.role === ROLE.USER).content).toContain("<result>first\nsecond</result>");
+    }
+  });
+
+  it.each([
+    { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: "https://example.invalid/image" } },
+    { type: "input_file", file_id: "file_fixture" },
+    { type: "input_audio", input_audio: { data: "QUJD", format: "wav" } },
+  ])("rejects unsupported $type beside text before second-hop dispatch", (media) => {
+    expect(() => translateRequest(FORMATS.OPENAI_RESPONSES, target, "m", toolRequest([
+      { type: RESPONSES_ITEM.INPUT_TEXT, text: "report" }, media,
+    ]), false)).toThrow(expect.objectContaining({ statusCode: 400 }));
+  });
+});
+
+it("does not reject legal media on native same-format Responses requests", () => {
+  const body = toolRequest([{ type: RESPONSES_ITEM.INPUT_IMAGE, image_url: "https://example.invalid/image" }]);
+  expect(translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSES, "m", body, false).input).toEqual(body.input);
 });

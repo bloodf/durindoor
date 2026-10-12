@@ -6,6 +6,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
   normalizeResponsesInput,
   clampResponsesCallId,
@@ -78,8 +79,9 @@ const MAX_TOOL_NAME_LEN = 128;
 /**
  * Lower tool-output content parts without serializing away typed media. Native
  * Responses `input_image` parts become `image_url` parts in a following user
- * message; other non-text blocks retain their structure for target validation.
- * Text-only arrays collapse to text, while scalar output keeps its old encoding.
+ * message. Other non-text blocks have no shared Chat tool-result representation
+ * and are rejected before the second hop. Text-only arrays collapse to text;
+ * scalar output keeps its old encoding.
  */
 function splitToolOutputImages(output) {
   if (!Array.isArray(output)) {
@@ -89,8 +91,14 @@ function splitToolOutputImages(output) {
   filter((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE).
   map(responsesContentToOpenAI);
   const parts = output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE).map(responsesContentToOpenAI);
+  for (const part of parts) {
+    if (part?.type !== OPENAI_BLOCK.TEXT || !isString(part.text)) {
+      const error = new Error(`UNSUPPORTED_TOOL_OUTPUT: Responses tool-output block "${part?.type ?? "unknown"}" cannot be lowered to Chat; use a native Responses transport`);
+      error.statusCode = HTTP_STATUS.BAD_REQUEST;
+      throw error;
+    }
+  }
   if (images.length > 0) parts.push({ type: OPENAI_BLOCK.TEXT, text: "[tool returned an image; see attached]" });
-  // Keep non-text blocks structured until the target translator can validate them.
   return { content: collapseTextParts(parts), images };
 }
 

@@ -124,27 +124,24 @@ describe("#1274 Responses structured tool output", () => {
     { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "call_media", output },
   ] });
 
-  it.each([false, true])("preserves typed image blocks at the registered Chat boundary (stream=%s)", (stream) => {
+  it.each([false, true])("rejects unsupported image blocks at the registered Chat boundary (stream=%s)", (stream) => {
     const output = [
       { type: RESPONSES_ITEM.INPUT_TEXT, text: "inspect this" },
       { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: "https://example.invalid/download/123" } },
     ];
     const original = structuredClone(output);
-    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", request(output), stream);
-    expect(out.messages[1]).toEqual({ role: ROLE.TOOL, tool_call_id: "call_media", content: [
-      { type: OPENAI_BLOCK.TEXT, text: "inspect this" }, original[1],
-    ] });
+    expect(() => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", request(output), stream))
+      .toThrow(expect.objectContaining({ statusCode: 400, message: expect.stringContaining("UNSUPPORTED_TOOL_OUTPUT") }));
     expect(output).toEqual(original);
   });
 
   it.each([
     { type: "input_file", file_id: "file_private_fixture" },
     { type: "input_audio", input_audio: { data: "QUJD", format: "wav" } },
-  ])("preserves $type tool output beside sibling text", (media) => {
-    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", request([
+  ])("rejects unsupported $type tool output beside sibling text", (media) => {
+    expect(() => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", request([
       { type: RESPONSES_ITEM.INPUT_TEXT, text: "report" }, media,
-    ]), false);
-    expect(out.messages[1].content).toEqual([{ type: OPENAI_BLOCK.TEXT, text: "report" }, media]);
+    ]), false)).toThrow(expect.objectContaining({ statusCode: 400, message: expect.stringContaining("UNSUPPORTED_TOOL_OUTPUT") }));
   });
 
   it("lowers text-only arrays to text before the registered Cursor hop", () => {

@@ -117,6 +117,52 @@ describe("#1274 Claude parallel ban guards", () => {
   });
 });
 
+// #1262 integration boundary: typed array output must remain visible to target validation.
+describe("#1274 Responses structured tool output", () => {
+  const request = (output) => ({ input: [
+    { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "call_media", name: "inspect", arguments: "{}" },
+    { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "call_media", output },
+  ] });
+
+  it.each([false, true])("preserves typed image blocks at the registered Chat boundary (stream=%s)", (stream) => {
+    const output = [
+      { type: RESPONSES_ITEM.INPUT_TEXT, text: "inspect this" },
+      { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: "https://example.invalid/download/123" } },
+    ];
+    const original = structuredClone(output);
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", request(output), stream);
+    expect(out.messages[1]).toEqual({ role: ROLE.TOOL, tool_call_id: "call_media", content: [
+      { type: OPENAI_BLOCK.TEXT, text: "inspect this" }, original[1],
+    ] });
+    expect(output).toEqual(original);
+  });
+
+  it.each([
+    { type: "input_file", file_id: "file_private_fixture" },
+    { type: "input_audio", input_audio: { data: "QUJD", format: "wav" } },
+  ])("preserves $type tool output beside sibling text", (media) => {
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", request([
+      { type: RESPONSES_ITEM.INPUT_TEXT, text: "report" }, media,
+    ]), false);
+    expect(out.messages[1].content).toEqual([{ type: OPENAI_BLOCK.TEXT, text: "report" }, media]);
+  });
+
+  it("lowers text-only arrays to text before the registered Cursor hop", () => {
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.CURSOR, "m", request([
+      { type: RESPONSES_ITEM.INPUT_TEXT, text: "first" },
+      { type: RESPONSES_ITEM.OUTPUT_TEXT, text: "second" },
+    ]), false);
+    expect(out.messages[1].content).toContain("<result>first\nsecond</result>");
+    expect(out.messages[1].content).not.toContain("input_text");
+  });
+
+  it("keeps ordinary object output as JSON data, not typed input", () => {
+    const output = { type: "image", image_url: "https://example.invalid/photo.png" };
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", request(output), false);
+    expect(out.messages[1].content).toBe(JSON.stringify(output));
+  });
+});
+
 // #1089 N2/T1: existing custom JSON tests call a helper; exercise the complete JSON dispatch seam.
 describe("#1274 Responses custom JSON dispatch", () => {
   it.each([FORMATS.OPENAI, FORMATS.CLAUDE])("keeps raw custom input, call identity and cache usage for %s clients", (client) => {

@@ -76,22 +76,31 @@ function stripOrphanedToolOutputs(input) {
 const MAX_TOOL_NAME_LEN = 128;
 
 /**
- * Split a `function_call_output.output` value into the tool message text and
- * the images it carries. Chat Completions `tool` messages cannot hold images,
- * so `input_image` parts become `image_url` parts for a following user message
- * and the tool text notes they were attached there. Returns no images for a
- * string output or one without `input_image` parts, keeping the old content.
+ * Lower tool-output content parts without serializing away typed media. Native
+ * Responses `input_image` parts become `image_url` parts in a following user
+ * message; other non-text blocks retain their structure for target validation.
+ * Text-only arrays collapse to text, while scalar output keeps its old encoding.
  */
 function splitToolOutputImages(output) {
-  if (!Array.isArray(output) || !output.some((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE)) {
+  if (!Array.isArray(output)) {
     return { content: isString(output) ? output : JSON.stringify(output), images: [] };
   }
   const images = output.
   filter((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE).
-  map((c) => ({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: c.image_url || c.file_id || "", detail: c.detail || "auto" } }));
-  const text = coerceResponsesOutput(output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE));
-  const note = "[tool returned an image; see attached]";
-  return { content: text ? `${text}\n${note}` : note, images };
+  map(responsesContentToOpenAI);
+  const parts = output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE).map(responsesContentToOpenAI);
+  if (images.length > 0) parts.push({ type: OPENAI_BLOCK.TEXT, text: "[tool returned an image; see attached]" });
+  // Keep non-text blocks structured until the target translator can validate them.
+  return { content: collapseTextParts(parts), images };
+}
+
+function responsesContentToOpenAI(c) {
+  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+  if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
+    const url = c.image_url || c.file_id || "";
+    return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
+  }
+  return c;
 }
 
 /**
@@ -256,15 +265,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (itemType === RESPONSES_ITEM.MESSAGE) {
       // Convert content: input_text → text, output_text → text, input_image → image_url
       const content = Array.isArray(item.content) ?
-      item.content.map((c) => {
-        if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-        if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-        if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-          const url = c.image_url || c.file_id || "";
-          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
-        }
-        return c;
-      }) :
+      item.content.map(responsesContentToOpenAI) :
       item.content;
 
       // Assistant content joins the pending turn instead of starting a second

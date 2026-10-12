@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { request as httpRequest } from "node:http";
-import { beginSession, encodeSessionCookie, rewriteMimoBases, absorbSetCookies as absorbResponseCookies, originOf, loginUpstreamFetch, SESSION_COOKIE } from "@/lib/mimoLoginSession";
+import { beginSession, encodeSessionCookie, rewriteMimoBases, absorbSetCookies as absorbResponseCookies, originOf, logDiagnostic, loginUpstreamFetch, SESSION_COOKIE } from "@/lib/mimoLoginSession";
 
 /**
  * POST /api/oauth/xiaomi-mimo/login/start
@@ -70,6 +70,7 @@ async function hop(sess, url, ua) {
 }
 
 export async function POST(request) {
+  let sess;
   try {
     let region = "cn";
     try {
@@ -79,7 +80,7 @@ export async function POST(request) {
       if (LOGIN_REGIONS.has(r)) region = r;
     } catch { /* empty body — default cn */ }
 
-    const sess = beginSession(region);
+    sess = beginSession(region);
 
     // Egress — non-CN clusters may need an overseas exit for the login page's
     // geo-decided features (e.g. Google sign-in); CN is always direct.
@@ -139,7 +140,9 @@ export async function POST(request) {
     });
     return res;
   } catch (error) {
-    console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] start error:`, error?.message || error);
-    return NextResponse.json({ error: error?.message || "login start failed" }, { status: 500 });
+    // Raw error messages can embed URLs, cookies or proxy credentials — log a
+    // content-free diagnostic and return a fixed message.
+    logDiagnostic(sess, "start_error", { status: 500, error });
+    return NextResponse.json({ error: "login start failed" }, { status: 500 });
   }
 }

@@ -80,3 +80,21 @@ describe("MiMo login credential redaction acceptance (#1088)", () => {
     expectNoSecrets();
   });
 });
+
+describe("MiMo login start route error redaction (#1088)", () => {
+  it("returns and logs a fixed message when the upstream hop throws credential-bearing errors", async () => {
+    const { POST } = await import("../../src/app/api/oauth/xiaomi-mimo/login/start/route.js");
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error(`fetch failed https://account.xiaomi.com/pass?code=${SECRET.code}; Cookie: passToken=${SECRET.token}; ${SECRET.cookie}`);
+    }));
+    const res = await POST(new Request("http://localhost:20128/api/oauth/xiaomi-mimo/login/start", {
+      method: "POST", headers: { host: "localhost:20128" }, body: JSON.stringify({ region: "cn" }),
+    }));
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(typeof body.error).toBe("string");
+    for (const s of Object.values(SECRET)) expect(JSON.stringify(body)).not.toContain(s);
+    expect(logs).not.toEqual([]);
+    expectNoSecrets();
+  });
+});

@@ -13,6 +13,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { readFreshReport, validateVitestExecution } from "../tests/__baseline__/run-ci.mjs";
+import { isString } from "../src/shared/utils/typeChecks.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Unknown or shared-risk paths deliberately require the existing full gate.
@@ -38,10 +39,10 @@ export function validateSelection(selection, identity, floor, inventory) {
   for (const key of ["base", "head", "policySha256", "runnerSha256"]) {
     if (selection[key] !== identity[key]) throw new Error(`reviewed selection ${key} mismatch`);
   }
-  if (typeof selection.reviewer !== "string" || !selection.reviewer.trim()) throw new Error("independent reviewer required");
+  if (!isString(selection.reviewer) || !selection.reviewer.trim()) throw new Error("independent reviewer required");
   if (!Array.isArray(selection.tests) || new Set(selection.tests).size !== selection.tests.length) throw new Error("unique explicit test selection required");
   for (const test of selection.tests) {
-    if (typeof test !== "string" || !/^(unit|translator|functional)\/[\w/.-]+\.test\.js$/.test(test)
+    if (!isString(test) || !/^(unit|translator|functional)\/[\w/.-]+\.test\.js$/.test(test)
       || test.split("/").includes("..") || test.endsWith(".live.test.js") || test.startsWith("translator/real/")
       || !inventory.includes(test)) throw new Error(`invalid selected test: ${test}`);
   }

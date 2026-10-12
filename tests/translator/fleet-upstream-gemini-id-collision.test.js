@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import "../translator/registerAll.js";
+import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { encodeToolCallIdWithSignature } from "../../open-sse/translator/concerns/signatureTransport.js";

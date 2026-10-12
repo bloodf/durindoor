@@ -82,9 +82,9 @@ describe("PR #1273 optional runtime acceptance through registered executors", ()
     expect(network.http).not.toHaveBeenCalled();
   });
 
-  it("reports an explicitly disabled runtime before loading Chromium or making provider requests", async () => {
+  it.each(["chatgpt-web", "cgpt-web"])("%s reports an explicitly disabled runtime before loading Chromium or making provider requests", async (provider) => {
     vi.stubEnv("DURINDOOR_BROWSER_POOL", "off");
-    const executor = getExecutor("chatgpt-web");
+    const executor = getExecutor(provider);
     const network = forbidNetwork(executor);
 
     const result = await executor.execute(browserRequest());

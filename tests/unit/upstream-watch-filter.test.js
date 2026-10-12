@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -194,11 +194,34 @@ describe("ported ledger", () => {
     }
   });
 
-  it("unions the ledger with commit subjects", () => {
+  it("qualifies ledger PR numbers by source while preserving legacy rows and commit evidence", () => {
+    const repo = mkdtempSync(join(dir, "ledger-"));
+    const git = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+    git("init", "--quiet");
+    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+      "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty",
+      "-m", "port(upstream): #7+#8 - fixture (#999)");
+    mkdirSync(join(repo, ".github"));
+    writeFileSync(join(repo, ".github/upstream-ported.json"), JSON.stringify({ ported: [
+      { pr: 3 },
+      { pr: 42, source: "decolua/9router" },
+      { pr: 42, source: "diegosouzapw/OmniRoute" },
+      { pr: 7, source: "diegosouzapw/OmniRoute" },
+      { pr: 15589, source: "diegosouzapw/OmniRoute" },
+      { pr: 55, source: "unknown/repo" },
+      { pr: 56, source: null },
+      { pr: 57, source: "" },
+    ] }));
+    expect(JSON.parse(execFileSync(IDS_SCRIPT, [repo], { encoding: "utf8" })))
+      .toEqual([3, 7, 8, 42]);
+  });
+
+  it("unions the 9router ledger with commit subjects", () => {
     const out = JSON.parse(execFileSync(IDS_SCRIPT, [ROOT], { encoding: "utf8" }));
-    for (const pr of ledger().ported.map((e) => e.pr)) {
-      expect(out).toContain(pr);
+    for (const entry of ledger().ported) {
+      if (!("source" in entry) || entry.source === "decolua/9router") expect(out).toContain(entry.pr);
     }
+    expect(out).not.toContain(15589);
     // #3497 has its own `port(upstream): #3497` subject, so the subject source
     // covers it without a ledger entry.
     expect(out).toContain(3497);

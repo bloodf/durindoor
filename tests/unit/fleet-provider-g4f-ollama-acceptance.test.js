@@ -23,6 +23,7 @@ import { POST as validate } from "../../src/app/api/providers/validate/route.js"
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
+import { OllamaLocalExecutor } from "../../open-sse/executors/ollama-local.js";
 import { openaiToOllamaRequest } from "../../open-sse/translator/request/openai-to-ollama.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { AI_PROVIDERS } from "../../src/shared/constants/providers.js";
@@ -71,6 +72,32 @@ describe("#1188 g4f-ollama is not installed native Ollama", () => {
     }), null);
     transport.mockClear();
     expect(await probeRegistryProvider("ollama", credentials.apiKey, transport)).toBeNull();
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("discovers and chats through configured local native endpoints without requiring cloud credentials", async () => {
+    const local = { id: "offline-local-1188", provider: "ollama-local", providerSpecificData: { baseUrl: "http://127.0.0.1:11434" } };
+    const localModel = "offline-local-1188:latest";
+    transport.mockImplementation(async (url) => {
+      if (url.endsWith("/api/tags")) return json({ models: [{ name: localModel, capabilities: ["completion"] }] });
+      if (url.endsWith("/api/ps")) return json({ models: [] });
+      if (url.endsWith("/api/chat")) return json({ model: localModel, message: { role: "assistant", content: "local" }, done: true });
+      throw new Error(`Unexpected local endpoint: ${url}`);
+    });
+    expect(await fetchConnectionModels(local)).toMatchObject({ models: [{ id: localModel, kind: "llm", capabilities: { tools: false, vision: false } }] });
+    expect(transport.mock.calls.map(([url]) => url).sort()).toEqual([
+      "http://127.0.0.1:11434/api/ps", "http://127.0.0.1:11434/api/tags",
+    ]);
+    const body = openaiToOllamaRequest(localModel, { messages: [{ role: "user", content: "hi" }] }, false);
+    const result = await new OllamaLocalExecutor().execute({ model: localModel, body, stream: false, credentials: local });
+    expect(result.url).toBe("http://127.0.0.1:11434/api/chat");
+    expect(await result.response.json()).toMatchObject({ message: { content: "local" }, done: true });
+    expect(transport).toHaveBeenCalledTimes(3);
+    for (const [, init] of transport.mock.calls) {
+      expect(new Headers(init.headers).has("Authorization")).toBe(false);
+    }
+    transport.mockClear();
+    expect(await fetchConnectionModels({ provider: "ollama" })).toEqual({ error: "No valid token found", status: 401 });
     expect(transport).not.toHaveBeenCalled();
   });
 

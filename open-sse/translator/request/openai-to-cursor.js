@@ -17,8 +17,9 @@ import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
  * Reject image input before normalization, modality stripping, or RTK can erase
  * it. Inspect explicit message image fields, attachment metadata, content blocks,
  * inline image data URIs in message strings, and Responses tool-output arrays,
- * never arbitrary tool JSON or schemas. Inline recognition mirrors modality.js;
- * text blocks and nested strings are not scanned by its inline stripper. Empty
+ * never arbitrary tool JSON or schemas. Serialized tool-output arrays retain
+ * block classification; nested text mentions are not inline image input.
+ * Inline recognition mirrors modality.js for other message strings. Empty
  * image fields are not input. Untyped attachments require image MIME/data URLs
  * or a known image URL extension when MIME is absent; ambiguous URLs and raw
  * data are allowed without fetching. Leave the body untouched; statusCode feeds
@@ -63,9 +64,19 @@ export function validateCursorImages(body) {
     for (const message of messages) {
       if (!message || !isObject(message)) continue;
       if (checkInlineImages && isString(message.content)) {
-        // Keep the full URI matcher identical to replaceUnsupportedDataUris.
-        for (const match of message.content.matchAll(/data:([^;,:]{1,255})(?:;base64)?,[^\s)]+/gi)) {
-          if (match[1].toLowerCase().startsWith("image/")) rejectImage();
+        // Responses conversion serializes tool-output blocks into tool text.
+        // Inspect their types, not data URI mentions inside nested text or JSON.
+        let toolOutput;
+        if (message.role === ROLE.TOOL) {
+          try { toolOutput = JSON.parse(message.content); } catch { /* ordinary tool text */ }
+        }
+        if (toolOutput !== null && isObject(toolOutput)) {
+          visitBlocks(toolOutput);
+        } else {
+          // Keep the full URI matcher identical to replaceUnsupportedDataUris.
+          for (const match of message.content.matchAll(/data:([^;,:]{1,255})(?:;base64)?,[^\s)]+/gi)) {
+            if (match[1].toLowerCase().startsWith("image/")) rejectImage();
+          }
         }
       }
       if (hasImageValue(message.images) || hasImageValue(message.image) || hasImageValue(message.image_url)) rejectImage();

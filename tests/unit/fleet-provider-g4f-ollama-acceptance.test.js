@@ -8,17 +8,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const transport = vi.hoisted(() => vi.fn());
+const stored = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: stored.get, updateProviderConnection: stored.update }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: transport }));
 // Registry import otherwise starts an unrelated release lookup at module load.
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "kimchi/offline-fixture" }));
 vi.mock("@/lib/network/connectionProxy", () => ({
-  resolveConnectionProxyConfig: vi.fn(async () => null),
+  resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false })),
 }));
 vi.mock("@/models", () => ({
   getProviderConnectionById: vi.fn(),
   getProviderNodeById: vi.fn(),
 }));
 
+import { testSingleConnection } from "../../src/app/api/providers/[id]/test/testUtils.js";
 import { POST as validate } from "../../src/app/api/providers/validate/route.js";
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
@@ -41,6 +44,8 @@ const validateProvider = (provider) => validate(new Request("http://localhost:20
 }));
 
 beforeEach(() => {
+  stored.get.mockReset();
+  stored.update.mockReset().mockResolvedValue(undefined);
   transport.mockReset();
   transport.mockImplementation(() => { throw new Error("Unexpected offline transport call"); });
   vi.stubGlobal("fetch", transport);
@@ -69,7 +74,7 @@ describe("#1188 g4f-ollama is not installed native Ollama", () => {
     expect(result.models).toEqual(models);
     expect(transport).toHaveBeenCalledExactlyOnceWith("https://ollama.com/api/tags", expect.objectContaining({
       method: "GET", headers: expect.objectContaining({ Authorization: `Bearer ${credentials.apiKey}` }),
-    }), null);
+    }), { connectionProxyEnabled: false });
     transport.mockClear();
     expect(await probeRegistryProvider("ollama", credentials.apiKey, transport)).toBeNull();
     expect(transport).not.toHaveBeenCalled();
@@ -145,6 +150,31 @@ describe("#1188 g4f-ollama is not installed native Ollama", () => {
     }));
     expect(await response.json()).toEqual({ valid: false, skipped: true, error: "Model endpoint reachable; credentials not verified" });
     expect(transport).toHaveBeenCalledExactlyOnceWith("http://192.168.1.5:11434/api/tags", expect.objectContaining({ headers: { Authorization: `Bearer ${credentials.apiKey}` } }));
+  });
+
+  it.each([
+    { provider: "ollama", ...credentials },
+    { provider: "ollama-local", ...credentials, providerSpecificData: { baseUrl: "http://192.168.1.5:11434" } },
+  ])("does not mark stored $provider credentials valid or active from public tags", async (connection) => {
+    stored.get.mockResolvedValue({ id: "stored-fixture", authType: "apikey", testStatus: "active", ...connection });
+    transport.mockResolvedValueOnce(json({ models: [{ name: model }] }));
+    const result = await testSingleConnection("stored-fixture");
+    expect(result.valid).toBe(false);
+    expect(result).toMatchObject({ skipped: true, error: "Model endpoint reachable; credentials not verified" });
+    expect(stored.update).toHaveBeenCalledExactlyOnceWith("stored-fixture", expect.objectContaining({ testStatus: "unknown" }));
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(transport.mock.calls[0][0]).toBe(connection.provider === "ollama" ? "https://ollama.com/api/tags" : "http://192.168.1.5:11434/api/tags");
+  });
+
+  it.each(["http://127.0.0.1:11434", "http://192.168.1.5:11434"])("keeps stored explicit keyless backend %s active on reachability", async (baseUrl) => {
+    stored.get.mockResolvedValue({ id: "stored-local", provider: "ollama-local", authType: "apikey", apiKey: "", providerSpecificData: { baseUrl } });
+    transport.mockResolvedValueOnce(json({ models: [{ name: model }] }));
+    const result = await testSingleConnection("stored-local");
+    expect(result).toMatchObject({ valid: true, error: null });
+    expect(result.skipped).not.toBe(true);
+    expect(stored.update).toHaveBeenCalledExactlyOnceWith("stored-local", expect.objectContaining({ testStatus: "active" }));
+    expect(transport).toHaveBeenCalledExactlyOnceWith(`${baseUrl}/api/tags`, expect.objectContaining({ signal: expect.any(AbortSignal) }), expect.any(Object));
+    expect(new Headers(transport.mock.calls[0][1].headers).has("Authorization")).toBe(false);
   });
 
   it.each([401, 403])("preserves native auth rejection (%i) in validation, discovery, and chat", async (status) => {

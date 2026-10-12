@@ -128,6 +128,33 @@ describe("PR #1276 UTF-8 public stream error boundaries", () => {
     expect(result.onError).not.toHaveBeenCalled();
   });
 
+  it.each(["\n\n", ""])("redacts byte-split Claude passthrough error with tail %j", async (tail) => {
+    const result = await consume(FORMATS.CLAUDE,
+      `event: error\ndata: ${JSON.stringify({ type: "error", error: upstreamError })}${tail}`, FORMATS.CLAUDE);
+    expect(result.events.filter((event) => event.type === "error")).toHaveLength(1);
+    expectSafeError(result.events[0].error);
+    expect(result.onStreamComplete).toHaveBeenCalledTimes(1);
+    expect(result.onStreamComplete.mock.calls[0][0].upstreamError).toEqual(upstreamError);
+    expect(result.onCoherentTerminal).not.toHaveBeenCalled();
+    expect(result.events.some((event) => event.type === "message_stop")).toBe(false);
+  });
+
+  it.each([FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES])("preserves ordinary %s passthrough EOF frame bytes", async (format) => {
+    const terminal = format === FORMATS.CLAUDE ? { type: "message_stop" } :
+      { type: "response.completed", response: { id: "resp-byte-control", status: "completed" } };
+    const content = format === FORMATS.CLAUDE ?
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: `${publicText} ${credentials.apiKey}` } } :
+      { type: "response.output_text.delta", delta: `${publicText} ${credentials.apiKey}` };
+    const prefix = `event: ${content.type}\r\ndata: ${JSON.stringify(content)}\r\n\r\nevent: ${terminal.type}\r\n`;
+    const tail = `data:   ${JSON.stringify(terminal, null, 0)}  `;
+    const result = await consume(format, prefix + tail, format);
+    // Existing EOF framing trims trailing whitespace and appends a delimiter; it must not reserialize ordinary JSON.
+    expect(result.output.startsWith(prefix + tail.trimEnd() + "\n\n")).toBe(true);
+    expect(result.output).toContain(credentials.apiKey);
+    expect(result.onStreamComplete).toHaveBeenCalledTimes(1);
+    expect(result.onCoherentTerminal).toHaveBeenCalledTimes(1);
+  });
+
   it.each(["\n\n", ""])("redacts byte-split Responses passthrough failure with tail %j", async (tail) => {
     const failure = { type: "response.failed", response: { id: "resp-utf8-fixture", status: "failed", error: upstreamError } };
     const result = await consume(FORMATS.OPENAI_RESPONSES,

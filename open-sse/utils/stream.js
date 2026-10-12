@@ -1329,6 +1329,7 @@ export function createSSEStream(options = {}) {
           if (buffer) {
             const trimmedBuffer = buffer.trim();
             const parsed = parseSSELine(trimmedBuffer, targetFormat);
+            const bufferedError = extractStreamErrorPayload(parsed);
             let output = "";
             if (parsed?.done) {
               if (!streamDoneSent) {
@@ -1337,6 +1338,15 @@ export function createSSEStream(options = {}) {
                 streamDoneSent = true;
                 output = "data: [DONE]\n\n";
               }
+            } else if (bufferedError) {
+              // Match the live error boundary: retain raw diagnostics before redacting public fields.
+              streamErrorPayload ??= bufferedError;
+              sanitizePublicErrorEnvelope(parsed, errorSecrets);
+              upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
+              currentUpstreamEvent = null;
+              recordCompletionData(parsed, { content: true });
+              const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
+              output = `${prefix}${JSON.stringify(parsed)}\n\n`;
             } else if (parsed && targetFormat === FORMATS.OPENAI) {
               PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
               const normalized = normalizeOpenAIPassthroughChunk(parsed);
@@ -1384,7 +1394,7 @@ export function createSSEStream(options = {}) {
           const isGeminiFamily = GEMINI_PASSTHROUGH_PROVIDERS.has(provider);
           const isClaudeStream = targetFormat === FORMATS.CLAUDE;
           const isResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
-          if (isClaudeStream && !claudeTerminalSeen) {
+          if (isClaudeStream && !claudeTerminalSeen && !streamErrorPayload) {
             throw new Error("Claude passthrough stream ended before message_stop");
           }
           if (isResponsesStream && upstreamTerminal.outcome !== "success") {

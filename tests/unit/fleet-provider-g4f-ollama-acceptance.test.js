@@ -122,6 +122,29 @@ describe("#1188 g4f-ollama is not installed native Ollama", () => {
     expect(transport.mock.calls[0][0]).toBe("https://ollama.com/api/tags");
     expect(transport.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${credentials.apiKey}`);
     expect(result.valid).toBe(false);
+    expect(result).toEqual({ valid: false, skipped: true, error: "Model endpoint reachable; credentials not verified" });
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["http://127.0.0.1:11434", "http://192.168.1.5:11434"])("preserves explicit no-auth Ollama backend validation at %s", async (baseUrl) => {
+    transport.mockResolvedValueOnce(json({ models: [{ name: model }] }));
+    const response = await validate(new Request("http://localhost:20127/api/providers/validate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "ollama-local", providerSpecificData: { baseUrl } }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ valid: true, error: null });
+    expect(transport).toHaveBeenCalledExactlyOnceWith(`${baseUrl}/api/tags`, expect.objectContaining({ headers: {} }));
+  });
+
+  it("does not claim an optional self-hosted bearer key is verified by tags reachability", async () => {
+    transport.mockResolvedValueOnce(json({ models: [{ name: model }] }));
+    const response = await validate(new Request("http://localhost:20127/api/providers/validate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "ollama-local", ...credentials, providerSpecificData: { baseUrl: "http://192.168.1.5:11434" } }),
+    }));
+    expect(await response.json()).toEqual({ valid: false, skipped: true, error: "Model endpoint reachable; credentials not verified" });
+    expect(transport).toHaveBeenCalledExactlyOnceWith("http://192.168.1.5:11434/api/tags", expect.objectContaining({ headers: { Authorization: `Bearer ${credentials.apiKey}` } }));
   });
 
   it.each([401, 403])("preserves native auth rejection (%i) in validation, discovery, and chat", async (status) => {

@@ -17,6 +17,7 @@ vi.mock("@/lib/db/repos/connectionsRepo.js", () => ({
 
 const { POST: gatewayPost } = await import("../../src/app/api/mcp-gateway/route.js");
 const { POST: probePost } = await import("../../src/app/api/mcp-gateway/instances/[id]/test/route.js");
+const { sanitizeErrorMessage } = await import("../../open-sse/utils/error.js");
 const PROTOCOL = "2025-06-18";
 const SECRET = "fleet1270-synthetic-private-value";
 const PRIVATE_PATH = "/srv/private/fleet1270.ts:44";
@@ -88,6 +89,40 @@ function assertPrivate(value) {
 }
 
 describe("fleet PR1270 registered MCP entry points", () => {
+  it.each([
+    JSON.stringify({ detail: JSON.stringify({ token: "SYNTHETIC_SECRET_1270" }) }),
+    '{"to\\u006ben":"SYNTHETIC_SECRET_1270"}',
+    JSON.stringify({ token: 'prefix"SYNTHETIC_SECRET_1270' }),
+    "p".repeat(4050) + JSON.stringify({ detail: JSON.stringify({ token: "SYNTHETIC_SECRET_1270".repeat(8) }) }),
+  ])("canonical sanitizer rejects encoded credential diagnostic %#", (diagnostic) => {
+    const safe = sanitizeErrorMessage(diagnostic);
+    expect(safe).not.toContain("SYNTHETIC_SECRET_1270");
+    expect(safe).not.toContain("SYNTHETIC_SECRET");
+    expect(safe.length).toBeLessThanOrEqual(4096);
+  });
+
+  it("registered gateway hides nested credentials in list response and rendered warning", async () => {
+    const secret = "SYNTHETIC_SECRET_1270";
+    upstream({ listError: { detail: JSON.stringify({ token: secret }) } });
+    db.validateGatewayKey.mockResolvedValue({ id: "principal-alpha" });
+    db.getGrantsForKeyDetailed.mockResolvedValue([{ instanceId: INSTANCES[0].id, toolAllowlist: ["echo"] }]);
+    db.getEnabledInstancesByIds.mockResolvedValue([INSTANCES[0]]);
+    const warnings = vi.spyOn(console, "warn");
+    const response = await gatewayPost(request({ jsonrpc: "2.0", id: "nested-list", method: "tools/list" }));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ jsonrpc: "2.0", id: "nested-list", result: {
+      tools: [], _gateway: { errors: [{ slug: "alpha", message: "Upstream provider error" }] },
+    } });
+    expect(trace.map((row) => row.frame.method)).toEqual(["initialize", "notifications/initialized", "tools/list"]);
+    expect(JSON.stringify(body)).not.toContain(secret);
+    expect(warnings).toHaveBeenCalledExactlyOnceWith("Upstream provider error");
+  });
+
+  it("canonical sanitizer preserves safe connection-refused diagnostics", () => {
+    const message = "connect ECONNREFUSED 127.0.0.1:59999";
+    expect(sanitizeErrorMessage(message)).toBe(message);
+  });
   it.each(["alpha", "beta"])("%s lists and calls only its granted instance/tool", async (slug) => {
     upstream();
     vi.stubEnv("OMNIROUTE_API_KEY", "fleet1270-unrelated-env-key");

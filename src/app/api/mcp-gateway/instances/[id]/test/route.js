@@ -38,7 +38,12 @@ export async function POST(_request, context) {
       toolCount: tools.length,
       sample: tools.slice(0, 5).map((t) => ({ name: t.name, description: t.description || "" })),
     });
-  } catch {
-    return NextResponse.json({ error: "MCP upstream tool probe failed", ok: false }, { status: 502 });
+  } catch (error) {
+    const refused = error instanceof Error &&
+      (error.code === "ECONNREFUSED" || /^(?:connect )?ECONNREFUSED\b/.test(error.message));
+    return NextResponse.json({
+      error: refused ? "MCP upstream tool probe failed (ECONNREFUSED)" : "MCP upstream tool probe failed",
+      ok: false,
+    }, { status: 502 });
   }
 }

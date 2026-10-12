@@ -92,7 +92,7 @@
     "@storybook/react-vite": "^10.6.0",
     "@tailwindcss/postcss": "^4.3.2",
     "@vitejs/plugin-react": "^5.2.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
     "eslint-plugin-react-hooks": "7.1.1",
@@ -101,7 +101,7 @@
     "postcss": "^8.5.28",
     "storybook": "^10.6.0",
     "tailwindcss": "^4",
-    "vite": "7.2.7"
+    "vite": "8.3.4"
   },
   "lint-staged": {
     "src/**/*.{js,jsx,mjs}": "eslint --max-warnings=0"

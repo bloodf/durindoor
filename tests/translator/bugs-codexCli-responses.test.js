@@ -67,11 +67,12 @@ describe("Codex CLI Responses → OpenAI", () => {
     expect(out.input[2].output).toEqual([{ type: "input_image", file_id: "file-tool" }]);
   });
 
-  it("input_image with image_url (URL and base64) is preserved; image_url wins over file_id", () => {
+  it.each([true, false])("input_image with image_url (URL and base64) is preserved; image_url wins over file_id (stream=%s)", (stream) => {
     for (const url of ["https://example.com/a.png", "data:image/png;base64,AAAA"]) {
-      const out = R2O({ input: [{ type: "message", role: "user", content: [
+      const body = { stream, input: [{ type: "message", role: "user", content: [
         { type: "input_image", image_url: url, file_id: "file-abc" },
-      ] }] });
+      ] }] };
+      const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", body, stream, null, null);
       const img = out.messages.find((m) => m.role === "user").content.find((c) => c.type === "image_url");
       expect(img.image_url.url).toBe(url);
     }

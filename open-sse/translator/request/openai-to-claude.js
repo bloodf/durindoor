@@ -58,15 +58,15 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   const systemParts = [];
 
   if (body.messages && Array.isArray(body.messages)) {
-    // Extract system messages
+    // Extract system and developer instructions in their original order.
     for (const msg of body.messages) {
-      if (msg.role === ROLE.SYSTEM) {
+      if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
         systemParts.push(isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n"));
       }
     }
 
-    // Filter out system messages for separate processing
-    const nonSystemMessages = body.messages.filter((m) => m.role !== ROLE.SYSTEM);
+    // Instruction messages belong only in the top-level system field.
+    const nonSystemMessages = body.messages.filter((m) => m.role !== ROLE.SYSTEM && m.role !== ROLE.DEVELOPER);
 
     // Process messages with merging logic
     // CRITICAL: tool_result must be in separate message immediately after tool_use

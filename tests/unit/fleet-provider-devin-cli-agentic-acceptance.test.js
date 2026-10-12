@@ -9,6 +9,11 @@
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Hoisted before executor/registry imports: no release refresh or background timer.
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: () => "kimchi/0.1.01",
+  updateKimchiUserAgent: vi.fn(async () => "kimchi/0.1.01"),
+}));
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
 import { spawn } from "node:child_process";
@@ -138,17 +143,16 @@ describe("#1174 Devin CLI agentic acceptance boundary (offline partial)", () => 
 
   it("rejects unsupported agentic identity rather than dispatching credentials to OpenAI (security regression)", async () => {
     const fetcher = offlineFetch();
-    let rejected = false;
-    try {
-      const result = await getExecutor("devin-cli-agentic").execute({
-        model: "fixture-model", body: { messages: [{ role: "user", content: "Hello" }] },
-        stream: false, credentials: { apiKey: "fixture-only-candidate-token" },
-      });
-      await result.response.text();
-    } catch {
-      rejected = true;
-    }
+    const dispatch = async () => getExecutor("devin-cli-agentic").execute({
+      model: "fixture-model", body: { messages: [{ role: "user", content: "Hello" }] },
+      stream: false, credentials: { apiKey: "fixture-only-candidate-token" },
+    });
+    // Require a caller-facing unsupported-provider error, not an unrelated TypeError.
+    await expect.soft(dispatch()).rejects.toMatchObject({
+      name: "Error",
+      message: 'Unsupported provider: devin-cli-agentic',
+      status: 400,
+    });
     expect(fetcher, "Unsupported Devin candidate must not dispatch to any HTTP provider").not.toHaveBeenCalled();
-    expect(rejected, "Unsupported native transport needs an explicit rejection").toBe(true);
   });
 });

@@ -222,6 +222,7 @@ export function renderMarkdown(audit) {
 }
 
 export function classifyProvider(provider) {
+  if (provider.dynamicFields?.some((field) => ["executor", "authType", "<spread>"].includes(field))) return "unknown";
   const id = provider.id.toLowerCase();
   const executor = (provider.executor || "").toLowerCase();
   const source = provider.source.toLowerCase();
@@ -432,19 +433,64 @@ function loadModule(file, ctx) {
   return mod;
 }
 
-function lookupExport(mod, name, depth = 0) {
-  if (mod.exports.has(name)) return mod.exports.get(name);
-  if (name === "default" || depth > MAX_DEPTH) return null;
+const UNKNOWN_EXPORT = { kind: "unknown" };
+
+/** Enumerate ESM names, excluding defaults from stars and breaking barrel cycles. */
+function exportNames(mod, seen = new Set()) {
+  if (seen.has(mod)) return new Set();
+  const visited = new Set([...seen, mod]);
+  const names = new Set(mod.exports.keys());
   for (const source of mod.stars) {
     const target = importTarget(mod, source);
-    const found = target && lookupExport(target, name, depth + 1);
-    if (found) return found;
+    if (!target) {
+      note(mod.ctx, mod, `unresolved star export ${source}`);
+      continue;
+    }
+    for (const name of exportNames(target, visited)) {
+      if (name !== "default") names.add(name);
+    }
   }
-  return null;
+  return names;
+}
+
+/** Resolve the original binding, not the first star match; diamond exports agree. */
+function lookupExport(mod, name, depth = 0, seen = new Set()) {
+  if (depth > MAX_DEPTH) {
+    note(mod.ctx, mod, `unresolved export ${name}: nesting too deep`);
+    return UNKNOWN_EXPORT;
+  }
+  const key = `${mod.file}\0${name}`;
+  if (seen.has(key)) return null;
+  const visited = new Set([...seen, key]);
+  if (mod.exports.has(name)) {
+    const binding = mod.exports.get(name);
+    if (binding.kind === "value") return binding;
+    const target = importTarget(mod, binding.source);
+    const found = target && lookupExport(target, binding.imported, depth + 1, visited);
+    if (!found) note(mod.ctx, mod, `unresolved export ${name} from ${binding.source}`);
+    return found || UNKNOWN_EXPORT;
+  }
+  if (name === "default") return null;
+  let result = null;
+  for (const source of mod.stars) {
+    const target = importTarget(mod, source);
+    if (!target) {
+      note(mod.ctx, mod, `unresolved star export ${source}`);
+      result = UNKNOWN_EXPORT;
+      continue;
+    }
+    const found = lookupExport(target, name, depth + 1, visited);
+    if (!found) continue;
+    if (result && result !== found) {
+      note(mod.ctx, mod, `ambiguous star export ${name}; inspect reexports ${mod.stars.join(", ")}`);
+      result = UNKNOWN_EXPORT;
+    } else result = found;
+  }
+  return result;
 }
 
 function resolveBinding(binding, mod, depth) {
-  if (!binding || depth > MAX_DEPTH) return null;
+  if (!binding || binding.kind === "unknown" || depth > MAX_DEPTH) return null;
   if (binding.kind === "value") return resolveValue(binding.node, binding.mod || mod, depth + 1);
   const target = importTarget(mod, binding.source);
   return target ? resolveBinding(lookupExport(target, binding.imported), target, depth + 1) : null;
@@ -526,6 +572,7 @@ function readProps(objectNode, mod, depth = 0) {
       continue;
     }
     if (prop.computed) {
+      note(mod.ctx, mod, "computed property not statically resolvable; inspect possible field overrides", prop);
       for (const key of map.keys()) map.set(key, { node: null, mod });
       spreadUnresolved = true;
       continue;
@@ -590,6 +637,8 @@ function collect(node, mod, out, depth = 0) {
       return;
     }
     note(owner.ctx, owner, `call ${name || owner.clean.slice(callee.start, callee.end)}() not statically resolvable`, target);
+  } else if (!["StringLiteral", "NumericLiteral", "BooleanLiteral", "NullLiteral", "ArrowFunctionExpression", "FunctionDeclaration", "FunctionExpression"].includes(target.type)) {
+    note(owner.ctx, owner, `exported ${target.type} not statically resolvable; inspect registry membership`, target);
   }
 }
 
@@ -655,9 +704,13 @@ function scanProviders(files, providerSelection, root) {
   const seen = new Set();
   for (const file of files) {
     const mod = loadModule(file, ctx);
-    for (const binding of mod.exports.values()) {
+    for (const name of exportNames(mod)) {
+      const binding = lookupExport(mod, name);
       const resolved = resolveBinding(binding, mod, 0);
-      if (!resolved) continue;
+      if (!resolved) {
+        note(ctx, mod, `unresolved exported value ${name}`);
+        continue;
+      }
       const entries = [];
       collect(resolved.node, resolved.mod, entries);
       for (const entry of entries) {

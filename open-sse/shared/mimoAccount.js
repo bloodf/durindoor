@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isNumber } from "../../src/shared/utils/typeChecks.js";
+import { logDiagnostic } from "../../src/lib/mimoLoginSession.js";
 
 /**
  * Xiaomi MiMo account-session helpers (used for weekly quota).
@@ -160,12 +161,13 @@ async function acquireServiceCookie(passJar, proxyOptions, apiBase = DEFAULT_API
   const effectiveProxy = r === "cn" ? null : proxyOptions;
   const sid = sidForRegion(r);
   const viaDesktop = await acquireViaDesktopPhases(passJar, effectiveProxy, apiBase, sid);
-  if (viaDesktop) console.log(`[mimoAccount] desktop 2-phase OK (sid=${sid})`);
+  if (viaDesktop) logDiagnostic(null, "desktop_two_phase_ok");
   return viaDesktop;
 }
 
 async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid) {
-  const failLog = (reason) => console.log(`[mimoAccount] desktopPhase fail: ${reason}`);
+  // Content-free: never log response bodies, URLs, cookie names or values.
+  const failLog = (event, details) => logDiagnostic(null, event, details);
   const jar = { ...passJar };
 
   // PHASE 1 — single serviceLogin call with the TARGET sid (no passportapi
@@ -191,11 +193,7 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid) {
   if (rawNonce && j) j.nonce = rawNonce;
 
   if (!j || !isNumber(j.code) || j.code !== 0 || !j.location || !j.nonce || !j.ssecurity) {
-    failLog(
-      `phase1 sid=${sid} http=${p1.status} code=${j?.code ?? "?"} hasLoc=${!!j?.location}`
-      + ` secondValidation=${j?.bSecondValidation ?? "?"} notificationUrl=${j?.notificationUrl ? "present" : "no"}`
-      + ` body=${JSON.stringify(raw.slice(0, 200))}`,
-    );
+    failLog("desktop_phase1_failed", { status: p1.status, upstreamCode: j?.code });
     return null;
   }
   absorbSetCookie(jar, p1);
@@ -227,7 +225,7 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid) {
   }
 
   if (!jar.serviceToken) {
-    failLog(`phase2 no serviceToken sid=${sid} jar=[${Object.keys(jar).join(",")}]`);
+    failLog("desktop_phase2_no_service_token");
     return null;
   }
   const out = {};
@@ -270,7 +268,7 @@ async function getServiceCookie(providerSpecificData, proxyOptions) {
     try {
       return await acquireServiceCookie(passJar, proxyOptions, apiBase, providerSpecificData?.region);
     } catch (e) {
-      console.log(`[mimoAccount] acquire threw: ${e?.message || e} | ${String(e?.stack || "").split("\n").slice(1, 4).join(" <- ")}`);
+      logDiagnostic(null, "acquire_error", { error: e });
       return null; // network/parse failure — callers degrade, never throw
     } finally {
       _inflight.delete(key);
@@ -302,7 +300,7 @@ export async function getMimoAccountCookie(providerSpecificData = null, proxyOpt
     const { cookie } = await getServiceCookie(providerSpecificData, proxyOptions);
     return cookie;
   } catch (e) {
-    console.log(`[mimoAccount] getMimoAccountCookie threw: ${e?.message || e} | ${String(e?.stack || "").split("\n").slice(1, 4).join(" <- ")}`);
+    logDiagnostic(null, "account_cookie_error", { error: e });
     return null;
   }
 }

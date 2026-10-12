@@ -74,7 +74,7 @@ const TRANSPORT_CODES = new Set([
  * in-memory session, never state or its digest. IDs are not persisted in cookies
  * or accepted from callers; decoded sessions receive fresh diagnostic IDs.
  */
-function logDiagnostic(sess, event, { status, upstreamCode, error } = {}) {
+export function logDiagnostic(sess, event, { status, upstreamCode, error } = {}) {
   let correlation;
   if (sess && isObject(sess)) {
     if (!diagnosticIds.has(sess)) {

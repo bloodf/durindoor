@@ -20,6 +20,13 @@ const digest = (value) => createHash("sha256").update(value).digest("hex");
 export function selectRiskFloor(paths, inventory, deleted = []) {
   const full = { mode: "full", risk: "shared-or-unknown", tests: [] };
   if (deleted.length || paths.some(p => ["AGENTS.md", "internal/docs/testing.mdx", "internal/docs/agent-workflow.md"].includes(p))) return full;
+  // Exact helper domain only; the base caller is mandatory, with its adjacent suite when present.
+  if (paths.length && paths.every(p => ["scripts/upstream-ported-ids.sh", "tests/unit/upstream-watch-filter.test.js",
+    "internal/docs/upstream-sync.mdx"].includes(p))) {
+    if (!inventory.includes("unit/upstream-watch-filter.test.js")) return full;
+    return { mode: "scoped", risk: "upstream-watch", tests: inventory.filter(p => ["unit/upstream-watch-filter.test.js",
+      "unit/upstream-watch.test.js"].includes(p)).sort() };
+  }
   if (paths.length && paths.every(p => /^(docs\/|internal\/docs\/).*\.(md|mdx)$/.test(p))) {
     return { mode: "scoped", risk: "docs", tests: [] };
   }
@@ -487,6 +494,9 @@ await job("vitest", [
     ["lint", "npm", ["run", "lint"]],
     ["check-docs", "npm", ["run", "check:docs"]],
   ]);
+  if (evidence.riskFloor.risk === "upstream-watch") {
+    await run("check-upstream-watch-shell", "scoped-checks", "bash", ["-n", "scripts/upstream-ported-ids.sh"]);
+  }
   if (selected.length) {
     const step = await run("vitest-scoped", "vitest", "node", scopedTestArgs(tests, selected), {
       cwd: tests, env: { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE },

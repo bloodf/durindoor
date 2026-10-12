@@ -80,8 +80,10 @@ const MAX_TOOL_NAME_LEN = 128;
  * Lower tool-output content parts without serializing away typed media. Native
  * Responses `input_image` parts become `image_url` parts in a following user
  * message. Other non-text blocks have no shared Chat tool-result representation
- * and are rejected before the second hop. Text-only arrays collapse to text;
- * scalar output keeps its old encoding.
+ * and fail closed with HTTP 400 before the second hop or upstream dispatch.
+ * Missing/non-string text also fails closed. Text-only arrays collapse to text;
+ * scalar output keeps its old encoding. Native same-format Responses bypasses
+ * this lowering and retains its legal media output.
  */
 function splitToolOutputImages(output) {
   if (!Array.isArray(output)) {

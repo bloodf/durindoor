@@ -1,13 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { OPENAI_BLOCK, ROLE } from "../../open-sse/translator/schema/index.js";
 
-// Issue #1089 rows T5, T8 (numeric), T12 (audio/documents). Ordinary assertions from a static
-// trace; none has been run. The contract under test is "supported or explicitly rejected, never
-// silently lost". Where the repo defines no ceiling or strict contract, the assertion is that
-// nothing is fabricated.
+const mocks = vi.hoisted(() => ({ execute: vi.fn() }));
+vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: () => ({ noAuth: true, execute: mocks.execute }) }));
+vi.mock("@/lib/usageDb.js", () => ({
+  trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}),
+  saveRequestDetail: vi.fn(async () => {}), recordTokenSaverEvent: vi.fn(async () => {}),
+}));
+vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: () => null, record: vi.fn(), finishTrace: vi.fn() }));
+vi.mock("../../open-sse/utils/requestLogger.js", () => ({
+  createRequestLogger: async () => ({
+    logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(),
+    logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn(),
+  }), maskSensitiveUrl: (url) => url,
+}));
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: () => "kimchi/offline-test", updateKimchiUserAgent: async () => "kimchi/offline-test",
+}));
+const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.execute.mockImplementation(async ({ body }) => ({
+    response: new Response(JSON.stringify({ error: { message: "Offline dispatch sentinel" } }), {
+      status: 502, headers: { "content-type": "application/json" },
+    }), url: "https://example.invalid/offline", headers: {}, transformedBody: body,
+  }));
+});
+
+// Issue #1089: unsupported typed output fails closed before dispatch; supported
+// text and native Responses media remain usable. No universal numeric ceiling.
 const schema = { type: "object", properties: { q: { type: "string" } }, required: ["q"] };
 const chat = (extra = {}) => ({
   messages: [{ role: ROLE.USER, content: "hi" }],
@@ -34,23 +58,54 @@ describe("#1089 T8 numeric call ceilings", () => {
 });
 
 describe("#1089 T12 tool-result audio and documents", () => {
-  const responses = (output) => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", {
-    input: [
-      { type: "function_call", call_id: "c1", name: "fetch", arguments: "{}" },
-      { type: "function_call_output", call_id: "c1", output },
-    ],
-  }, false, null, null);
-  const toolContent = (out) => out.messages.find((m) => m.role === ROLE.TOOL).content;
-
-  it("keeps a Responses tool-output file reference visible to the upstream", () => {
-    const content = toolContent(responses([{ type: "input_text", text: "report" }, { type: "input_file", file_id: "file-report-1" }]));
-    expect(content).toContain("report");
-    expect(content).toContain("file-report-1");
+  const bodyFor = (output) => ({ stream: false, input: [
+    { type: "function_call", call_id: "c1", name: "fetch", arguments: "{}" },
+    { type: "function_call_output", call_id: "c1", output },
+  ] });
+  const gateway = (output, provider = "openai", model = "gpt-4o") => handleChatCore({
+    body: bodyFor(output), modelInfo: { provider, model }, credentials: null,
+    sourceFormatOverride: FORMATS.OPENAI_RESPONSES,
   });
 
-  it("keeps a Responses tool-output audio part visible to the upstream", () => {
-    const content = toolContent(responses([{ type: "input_audio", input_audio: { data: "QUJD", format: "wav" } }]));
-    expect(content).toContain("input_audio");
+  it.each([
+    { type: "input_file", file_id: "file-report-1" },
+    { type: "input_audio", input_audio: { data: "QUJD", format: "wav" } },
+    { type: "input_text", text: 123 },
+    { type: "output_text" },
+    null,
+  ])("returns HTTP 400 with zero dispatch for unsupported/malformed tool output %j", async (part) => {
+    const result = await gateway([{ type: "input_text", text: "report" }, part]);
+    expect(result.status).toBe(400);
+    expect(result.response.status).toBe(400);
+    expect(await result.response.json()).toMatchObject({ error: {
+      type: "invalid_request_error", message: expect.stringContaining("UNSUPPORTED_TOOL_OUTPUT"),
+    } });
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it("dispatches supported text with exact content fidelity", async () => {
+    const result = await gateway([{ type: "input_text", text: "report" }, { type: "output_text", text: "summary" }]);
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(mocks.execute.mock.calls[0][0].body.messages.find((message) => message.role === ROLE.TOOL).content).toBe("report\nsummary");
+    expect(result.status).toBe(502);
+  });
+
+  it("dispatches supported lifted image media instead of serializing its bytes", async () => {
+    const url = "https://example.invalid/report.png";
+    const result = await gateway([{ type: "input_text", text: "report" }, { type: "input_image", image_url: url }]);
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(mocks.execute.mock.calls[0][0].body.messages.at(-1).content).toEqual([
+      { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: "auto" } },
+    ]);
+    expect(result.status).toBe(502);
+  });
+
+  it("keeps legal native Responses media untouched through gateway dispatch", async () => {
+    const output = [{ type: "input_image", image_url: "https://example.invalid/report.png" }];
+    const result = await gateway(output, "codex", "gpt-5-codex");
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(mocks.execute.mock.calls[0][0].body.input.find((item) => item.type === "function_call_output").output).toEqual(output);
+    expect(result.status).toBe(502);
   });
 
   it("does not silently drop a Claude tool_result document that sits beside text", () => {

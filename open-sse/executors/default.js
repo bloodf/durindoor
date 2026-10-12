@@ -2,6 +2,8 @@ import crypto from "crypto";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
+import { PROVIDER_DEFAULTS } from "../providers/schema.js";
+import { resolveProviderAlias } from "../services/model.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
@@ -272,7 +274,9 @@ export function computeThinkingBudget(current, cap) {
 
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
-    super(provider, PROVIDERS[provider] || PROVIDERS.openai);
+    const providerId = resolveProviderAlias(provider);
+    // Dynamic nodes resolve their endpoint from credentials, never another vendor.
+    super(providerId, PROVIDERS[providerId] || { ...PROVIDER_DEFAULTS });
   }
 
   applyRequestDefaults(body) {
@@ -499,6 +503,11 @@ export class DefaultExecutor extends BaseExecutor {
       return `${this.config.baseUrl}${this.config.urlSuffix}`;
     }
     const url = this.config.baseUrl;
+    if (!url) {
+      const error = new Error(`Unknown provider "${this.provider}": no supported transport endpoint`);
+      error.status = 400;
+      throw error;
+    }
     if (url?.includes("{accountId}")) {
       const accountId = normalizeAccountIdPlaceholder(this.provider, credentials?.providerSpecificData?.accountId);
       return url.replace("{accountId}", accountId);

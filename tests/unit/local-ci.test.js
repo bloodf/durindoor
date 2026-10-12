@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from "node:fs";
 import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   selectRiskFloor, validateSelection, testEnvironment, scopedTestArgs,
@@ -41,6 +41,31 @@ describe("local CI frozen policy", () => {
     expect(validateSelection({ ...selection, tests: floor.tests }, identity, floor, trustedInventory)).toEqual(floor.tests);
     expect(selectRiskFloor(["open-sse/translator/request/claude-to-openai.js"], inventory).mode).toBe("full");
     expect(selectRiskFloor(["tests/translator/removed.test.js"], trustedInventory, ["tests/translator/removed.test.js"]).mode).toBe("full");
+  });
+  it("scopes only the exact upstream-watch helper domain and requires its base caller", () => {
+    const paths = ["scripts/upstream-ported-ids.sh", "tests/unit/upstream-watch-filter.test.js", "internal/docs/upstream-sync.mdx"];
+    const caller = "unit/upstream-watch-filter.test.js";
+    const adjacent = "unit/upstream-watch.test.js";
+    for (const changed of [paths, ...paths.map(p => [p])]) {
+      expect(selectRiskFloor(changed, [caller])).toEqual({ mode: "scoped", risk: "upstream-watch", tests: [caller] });
+    }
+    const floor = selectRiskFloor(paths, [caller, adjacent]);
+    expect(floor.tests).toEqual([caller, adjacent].sort());
+    expect(() => validateSelection({ ...selection, tests: [caller] }, identity, floor, [caller, adjacent])).toThrow(/mandatory/);
+    expect(validateSelection({ ...selection, tests: floor.tests }, identity, floor, [caller, adjacent])).toEqual(floor.tests);
+    expect(selectRiskFloor([paths[0]], [adjacent]).mode).toBe("full");
+    expect(selectRiskFloor([paths[0]], [caller], [paths[0]]).mode).toBe("full");
+    for (const extra of ["scripts/upstream-scan-report.sh", "scripts/upstream-ported-ids.sh.bak",
+      "tests/unit/upstream-watch.test.js", ".github/workflows/upstream-watch.yml", ".github/upstream-ported.json",
+      "docs/reference/api.mdx", "open-sse/translator/request/claude-to-openai.js", "AGENTS.md",
+      "scripts/local-ci.mjs", "internal/docs/testing.mdx", "internal/docs/agent-workflow.md"]) {
+      expect(selectRiskFloor([...paths, extra], [caller, adjacent]).mode).toBe("full");
+    }
+  });
+  it("runs recorded shell syntax checks for the upstream-watch scoped domain", () => {
+    const source = readFileSync(new URL("../../scripts/local-ci.mjs", import.meta.url), "utf8");
+    expect(source).toContain('if (evidence.riskFloor.risk === "upstream-watch")');
+    expect(source).toContain('await run("check-upstream-watch-shell", "scoped-checks", "bash", ["-n", "scripts/upstream-ported-ids.sh"])');
   });
   it("requires exact reviewed identities, reviewer, and literal existing non-live test files", () => {
     const floor = { mode: "scoped", tests: translatorTests };

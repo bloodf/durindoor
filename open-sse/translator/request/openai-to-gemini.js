@@ -123,27 +123,39 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   // (decolua/9router#4274) so a call id reused across turns doesn't clobber
   // an earlier turn's function name.
   const tcID2Name = {};
-  const nameOccurrences = new Map();
+  const callIds = new Map();
+  // Reserve even future caller-supplied ids before allocating suffixes (#4532).
+  const reservedIds = new Set((Array.isArray(body.messages) ? body.messages : []).flatMap((msg) =>
+    msg.role === ROLE.ASSISTANT && Array.isArray(msg.tool_calls) ?
+    msg.tool_calls.filter((tc) => tc.type === OPENAI_BLOCK.FUNCTION && tc.id)
+      .map((tc) => decodeToolCallId(tc.id).id) : []
+  ));
+  const allocatedIds = new Set();
   if (body.messages && Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
-          if (tc.type === OPENAI_BLOCK.FUNCTION && tc.id && tc.function?.name) {
+          if (tc.type === OPENAI_BLOCK.FUNCTION && tc.id) {
             // Decode signature-transport ids (#676) so name/response maps key
             // on the raw upstream id; plain ids decode to themselves.
             const rawId = decodeToolCallId(tc.id).id;
-            const count = nameOccurrences.get(rawId) || 0;
-            nameOccurrences.set(rawId, count + 1);
-            const uniqueId = count === 0 ? rawId : `${rawId}_${count}`;
-            tcID2Name[uniqueId] = tc.function.name;
+            const ids = callIds.get(rawId) || [];
+            let suffix = ids.length;
+            let uniqueId = suffix === 0 ? rawId : `${rawId}_${suffix}`;
+            while (allocatedIds.has(uniqueId) || (suffix > 0 && reservedIds.has(uniqueId))) {
+              uniqueId = `${rawId}_${++suffix}`;
+            }
+            allocatedIds.add(uniqueId);
+            ids.push(uniqueId);
+            callIds.set(rawId, ids);
+            if (tc.function?.name) tcID2Name[uniqueId] = tc.function.name;
           }
         }
       }
     }
   }
 
-  // Build tool responses cache, disambiguated the same way so a repeated
-  // tool_call_id across turns keeps each turn's own response.
+  // Reuse allocated ids so each occurrence keeps its own response.
   const toolResponses = {};
   const responseOccurrences = new Map();
   if (body.messages && Array.isArray(body.messages)) {
@@ -152,8 +164,8 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
         const rawId = decodeToolCallId(msg.tool_call_id).id;
         const count = responseOccurrences.get(rawId) || 0;
         responseOccurrences.set(rawId, count + 1);
-        const uniqueId = count === 0 ? rawId : `${rawId}_${count}`;
-        toolResponses[uniqueId] = msg.content;
+        const uniqueId = callIds.get(rawId)?.[count];
+        if (uniqueId !== undefined) toolResponses[uniqueId] = msg.content;
       }
     }
   }
@@ -216,12 +228,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             const cachedSig = decoded.id ? getGeminiThoughtSignatureSync(decoded.id, sessionId, model) : null;
             // Disambiguate a call id reused across turns (decolua/9router#4274):
             // Gemini requires strict 1:1 functionCall/functionResponse pairing,
-            // so a repeated id gets a `_<n>` suffix from its second occurrence on.
+            // so repeated ids reuse the collision-free allocation made above.
             let uniqueId = decoded.id;
             if (decoded.id) {
               const count = callIdOccurrences.get(decoded.id) || 0;
               callIdOccurrences.set(decoded.id, count + 1);
-              uniqueId = count === 0 ? decoded.id : `${decoded.id}_${count}`;
+              uniqueId = callIds.get(decoded.id)?.[count];
             }
             const functionCallPart = {
               functionCall: {

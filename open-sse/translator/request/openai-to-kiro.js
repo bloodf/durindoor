@@ -528,6 +528,21 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   return { history: mergedHistory, currentMessage };
 }
 
+/** Reject explicit output ceilings on either translated Kiro request route. */
+export function validateKiroOutputLimit(body) {
+  const requestedMaxTokens = body.max_tokens ?? body.max_completion_tokens;
+  if (requestedMaxTokens != null) {
+    const field = body.max_tokens != null ? "max_tokens" : "max_completion_tokens";
+    const valid = Number.isFinite(requestedMaxTokens) &&
+      Number.isInteger(requestedMaxTokens) && requestedMaxTokens > 0;
+    const error = new Error(valid
+      ? `Kiro cannot enforce ${field} output ceilings; omit the limit or choose a provider that supports it.`
+      : `${field} must be a finite positive integer.`);
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
+}
+
 /**
  * Build Kiro payload from OpenAI format
  *
@@ -552,17 +567,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
  *    name hints.
  */
 export function openaiToKiroRequest(model, body, stream, credentials, translationContext = null) {
-  const requestedMaxTokens = body.max_tokens ?? body.max_completion_tokens;
-  if (requestedMaxTokens != null) {
-    const field = body.max_tokens != null ? "max_tokens" : "max_completion_tokens";
-    const valid = Number.isFinite(requestedMaxTokens) &&
-      Number.isInteger(requestedMaxTokens) && requestedMaxTokens > 0;
-    const error = new Error(valid
-      ? `Kiro cannot enforce ${field} output ceilings; omit the limit or choose a provider that supports it.`
-      : `${field} must be a finite positive integer.`);
-    error.statusCode = HTTP_STATUS.BAD_REQUEST;
-    throw error;
-  }
+  validateKiroOutputLimit(body);
   const messages = body.messages || [];
   const tools = body.tools || [];
   const maxTokens = 32000;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getInstanceById } from "@/lib/localDb";
 import { clientFor } from "@/lib/mcp/gateway/client";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
  * Probe a registered upstream MCP instance by listing its tools. Failure
  * responses use the `{ error: string, ok: false }` shape (same convention as
  * `src/app/api/settings/route.js:60`) so the dashboard can render the error.
+ * Sanitize transport and upstream diagnostics before exposing them to callers.
  *
  * Status codes:
  * - 200 success → `{ ok: true, toolCount, sample }` (existing shape preserved)
@@ -28,7 +30,7 @@ export async function POST(_request, context) {
   try {
     mcpClient = clientFor(inst);
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = sanitizeErrorMessage(e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: message, ok: false }, { status: 400 });
   }
   try {
@@ -39,7 +41,7 @@ export async function POST(_request, context) {
       sample: tools.slice(0, 5).map((t) => ({ name: t.name, description: t.description || "" })),
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = sanitizeErrorMessage(e instanceof Error ? e.message : String(e));
     return NextResponse.json({ error: message, ok: false }, { status: 502 });
   }
 }

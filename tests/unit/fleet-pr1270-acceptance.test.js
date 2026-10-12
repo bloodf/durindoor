@@ -184,6 +184,19 @@ describe("fleet PR1270 registered MCP entry points", () => {
     }
   });
 
+  it("instance probe sanitizes invalid transport diagnostics without dispatch", async () => {
+    db.getInstanceById.mockResolvedValue({ ...INSTANCES[0], transport: `invalid api_key=${SECRET} at ${PRIVATE_PATH}` });
+    const response = await probePost(request({}, null), { params: Promise.resolve({ id: INSTANCES[0].id }) });
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toEqual({ ok: false, error: expect.stringContaining("unknown transport:") });
+    expect(body.error).toContain("for alpha");
+    expect(body.error).toContain("api_key=[redacted]");
+    expect(body.error).toContain("<path>");
+    assertPrivate(body);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("instance probe preserves successful tool count and sample", async () => {
     upstream();
     const response = await probePost(request({}, null), { params: Promise.resolve({ id: INSTANCES[0].id }) });

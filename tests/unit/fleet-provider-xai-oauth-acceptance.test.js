@@ -8,8 +8,14 @@
  * proxy) and `grok-web` (web SSO) are distinct identities, not xAI native.
  * Static registry exports below only assert metadata, never runtime support.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Stub before dependency evaluation, including registry import-time side effects.
+vi.hoisted(() => vi.stubGlobal("fetch", vi.fn()));
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: vi.fn(() => "kimchi/0.1.01"),
+  updateKimchiUserAgent: vi.fn(async () => "kimchi/0.1.01"),
+}));
 vi.mock("@/models", () => ({ getProviderNodeById: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -24,6 +30,12 @@ import { POST as validate } from "../../src/app/api/providers/validate/route.js"
 import { normalizeProviderId } from "../../src/lib/providerNormalization.js";
 import { PROVIDER_MODELS_CONFIG } from "../../src/app/api/providers/[id]/models/providerModelsConfig.js";
 
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn());
+  proxyAwareFetch.mockReset();
+});
+afterEach(() => vi.unstubAllGlobals());
+
 const validateReq = (body) =>
   new Request("http://localhost/api/providers/validate", {
     method: "POST",
@@ -32,8 +44,6 @@ const validateReq = (body) =>
   });
 
 describe("xai native: validator (mocked fetch)", () => {
-  beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
-
   it.each([
     [200, true],
     [403, true], // valid key without credit
@@ -70,8 +80,6 @@ describe("xai native: executor request/tool/stream/error fixtures (mocked fetch)
     accessToken: "oauth-token",
     runtimeTransport: { format: "openai-responses-oauth", baseUrl: "https://api.x.ai/v1/responses" },
   };
-
-  beforeEach(() => proxyAwareFetch.mockReset());
 
   it("forwards tools on the OAuth Responses transport and returns the SSE stream untouched", async () => {
     const sse = 'event: response.output_text.delta\ndata: {"delta":"hi"}\n\n';
@@ -119,11 +127,27 @@ describe("candidate identity: xai-oauth is not installed; grok-cli/grok-web are 
   it("registers no `xai-oauth` provider and normalizes it to itself (unsupported, not aliased to xai)", async () => {
     expect(PROVIDERS["xai-oauth"]).toBeUndefined();
     expect(normalizeProviderId("xai-oauth")).toBe("xai-oauth");
-    fetch.mockClear?.();
-    vi.stubGlobal("fetch", vi.fn());
     const res = await validate(validateReq({ provider: "xai-oauth", apiKey: "k" }));
-    expect((await res.json()).valid).not.toBe(true);
-    expect(fetch).not.toHaveBeenCalledWith("https://api.x.ai/v1/models", expect.anything());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Provider validation not supported" });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(proxyAwareFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported xai-oauth execution with status 400 and ZERO fetches", async () => {
+    // Genuine regression: DefaultExecutor currently falls back to OpenAI.
+    // Keep this test RED until shared1283 supplies the shared unsupported guard.
+    proxyAwareFetch.mockResolvedValue(new Response("{}", { status: 200 }));
+    fetch.mockResolvedValue(new Response("{}", { status: 200 }));
+    const result = await getExecutor("xai-oauth").execute({
+      model: "grok-4.5",
+      body: { model: "grok-4.5", messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { accessToken: "fixture-xai-oauth-token" },
+    });
+    expect.soft(result.response.status).toBe(400);
+    expect.soft(proxyAwareFetch).not.toHaveBeenCalled();
+    expect.soft(fetch).not.toHaveBeenCalled();
   });
 
   it("grok-cli and grok-web are separate identities and transports from native xai", () => {

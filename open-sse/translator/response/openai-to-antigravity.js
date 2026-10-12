@@ -111,6 +111,12 @@ export function openaiToAntigravityResponse(chunk, state) {
     };
     if (usage.completion_tokens_details?.reasoning_tokens) {
       response.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
+      // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
+      // The non-streaming projector (nonStreamingHandler) already subtracts them, so
+      // without this clamp the stream path double counts reasoning and breaks
+      // prompt + candidates + thoughts === total.
+      response.usageMetadata.candidatesTokenCount = Math.max(0,
+        response.usageMetadata.candidatesTokenCount - response.usageMetadata.thoughtsTokenCount);
     }
     if (usage.prompt_tokens_details?.cached_tokens) {
       response.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;

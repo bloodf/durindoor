@@ -673,6 +673,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;
+  // Preserve explicit false: Responses otherwise permits parallel tool calls.
+  if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) {
     const reasoning = result.reasoning && isObject(result.reasoning) && !Array.isArray(result.reasoning) ? result.reasoning : {};

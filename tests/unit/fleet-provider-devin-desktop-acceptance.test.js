@@ -7,6 +7,13 @@
  * Desktop request/tool/stream fixtures below require rejection without dispatch.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Hoisted before registry/executor imports: never load the real refresh or timer.
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: vi.fn(() => "kimchi/offline-fixture"),
+  updateKimchiUserAgent: vi.fn(async () => "kimchi/offline-fixture"),
+}));
+
 import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "../../open-sse/config/providerModels.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
@@ -49,6 +56,43 @@ describe("#1175 devin-desktop is not installed devin", () => {
     expect(hasSpecializedExecutor("devin-desktop")).toBe(false);
   });
 
+  it.each([401, 403])("preserves native sessions auth rejection (status=%s)", async (status) => {
+    const fetcher = vi.fn(async () => new Response("unauthorized", { status }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(probeRegistryProvider("devin", "offline-cloud-token", fetcher))
+      .resolves.toMatchObject({ valid: false, status, error: "Invalid API key" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toBe("https://api.devin.ai/v1/sessions?limit=1");
+  });
+
+  it("preserves native network failure without leaking upstream details", async () => {
+    const fetcher = vi.fn(async () => { throw new Error("offline-private-host"); });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(probeRegistryProvider("devin", "offline-cloud-token", fetcher))
+      .resolves.toEqual({ valid: false, status: null, error: "Provider unavailable - network request failed" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])("keeps native cloud-agent chat blocked without dispatch (stream=%s)", async (stream) => {
+    const fetcher = vi.fn(() => { throw new Error("Unexpected native chat fetch"); });
+    vi.stubGlobal("fetch", fetcher);
+    const executor = getExecutor("devin");
+    const credentials = { apiKey: "offline-cloud-token" };
+    expect(hasSpecializedExecutor("devin")).toBe(true);
+    expect(() => executor.buildUrl("devin", stream, 0, credentials)).toThrow(/no chat transport/);
+    expect(() => executor.buildHeaders(credentials, stream)).toThrow(/no chat transport/);
+    const result = await executor.execute({
+      model: "devin", stream, credentials,
+      body: { model: "devin", stream, messages: [{ role: "user", content: "offline fixture" }] },
+    });
+    expect(result.response.status).toBe(501);
+    expect(await result.response.json()).toMatchObject({
+      error: { type: "provider_port_pending", provider: "devin" },
+    });
+    expect(result.headers).toEqual({});
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("does not discover desktop models or promote either active connection into the LLM catalog", async () => {
     const fetcher = vi.fn(async () => { throw new Error("Unexpected offline discovery fetch"); });
     vi.stubGlobal("fetch", fetcher);
@@ -65,11 +109,12 @@ describe("#1175 devin-desktop is not installed devin", () => {
   it("refuses desktop URL/header construction when callers bypass execute", () => {
     const fetcher = vi.fn(() => { throw new Error("Unexpected offline fetch"); });
     vi.stubGlobal("fetch", fetcher);
-    const executor = getExecutor("devin-desktop");
     const credentials = { accessToken: "offline-desktop-token" };
     // Translator routes can return these values without calling execute().
-    expect.soft(() => executor.buildUrl("devin", true, 0, credentials)).toThrow();
-    expect.soft(() => executor.buildHeaders(credentials, true)).toThrow();
+    // Rejection at executor resolution also protects both construction paths.
+    const unsupported = expect.objectContaining({ status: 400 });
+    expect.soft(() => getExecutor("devin-desktop").buildUrl("devin", true, 0, credentials)).toThrow(unsupported);
+    expect.soft(() => getExecutor("devin-desktop").buildHeaders(credentials, true)).toThrow(unsupported);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -78,7 +123,7 @@ describe("#1175 devin-desktop is not installed devin", () => {
       error: { message: "Offline unauthorized fixture", type: "authentication_error" },
     }), { status: 401, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetcher);
-    const result = await getExecutor("devin-desktop").execute({
+    const dispatch = async () => getExecutor("devin-desktop").execute({
       model: "devin",
       stream,
       credentials: { accessToken: "offline-desktop-token" },
@@ -94,11 +139,7 @@ describe("#1175 devin-desktop is not installed devin", () => {
         tools: [{ type: "function", function: { name: "read_fixture", parameters: { type: "object", properties: {} } } }],
       },
     });
+    await expect.soft(dispatch()).rejects.toMatchObject({ status: 400 });
     expect(fetcher, "Unregistered desktop credentials must never reach OpenAI or another substitute").not.toHaveBeenCalled();
-    expect(result.response.status).toBe(501);
-    expect(await result.response.json()).toMatchObject({
-      error: { type: "provider_port_pending", provider: "devin-desktop" },
-    });
-    expect(result.headers).toEqual({});
   });
 });

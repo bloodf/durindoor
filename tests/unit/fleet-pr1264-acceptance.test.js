@@ -76,6 +76,17 @@ beforeEach(() => {
   }
 });
 
+describe("translator console internal errors", () => {
+  it.each([undefined, "400", 401, 500])("keeps non-validation statusCode=%j failures as 500", async (statusCode) => {
+    const response = await POST({
+      json: async () => { throw Object.assign(new Error("internal failure"), { statusCode }); },
+    });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ success: false, error: "internal failure" });
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+});
+
 function chat(body) {
   return handleChatCore({
     body: { model: "cu/default", messages: [{ role: "user", content: "hi" }], ...body },
@@ -120,20 +131,25 @@ for (const stream of [true, false]) {
       expect(stream ? mocks.nonStreaming : mocks.streaming).not.toHaveBeenCalled();
     });
 
-    it("returns 400 from the translator console for an unenforceable cap", async () => {
+    it.each([
+      ["max_tokens", 200, "Cursor transport does not support max_tokens; explicit output-token limits cannot be enforced"],
+      ["max_completion_tokens", 200, "Cursor transport does not support max_completion_tokens; explicit output-token limits cannot be enforced"],
+      ["max_tokens", 0, "max_tokens must be a positive integer"],
+      ["max_completion_tokens", "200", "max_completion_tokens must be a positive integer"],
+    ])("returns 400 from the translator console for %s=%j", async (field, cap, message) => {
       const response = await POST({
         json: async () => ({
           step: 3,
           body: {
             provider: "cursor", model: "default",
-            body: { stream, max_tokens: 200, messages: [{ role: "user", content: "hi" }] },
+            body: { stream, [field]: cap, messages: [{ role: "user", content: "hi" }] },
           },
         }),
       });
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({
         success: false,
-        error: "Cursor transport does not support max_tokens; explicit output-token limits cannot be enforced",
+        error: message,
       });
       expect(mocks.execute).not.toHaveBeenCalled();
     });

@@ -4,6 +4,7 @@ import { detectFormat, getTargetFormat, resolveTransport } from "open-sse/servic
 import { translateRequest } from "open-sse/translator/index.js";
 import { stripInternalKeys } from "open-sse/translator/validate.js";
 import { FORMATS } from "open-sse/translator/formats.js";
+import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { parseSuffix } from "open-sse/translator/concerns/thinkingUnified.js";
 import {
   getCanonicalModelId,
@@ -172,6 +173,8 @@ export async function POST(request) {
     }
   } catch (error) {
     console.error("Error in translator:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    // Match chatCore: only explicit translator validation failures are client errors.
+    const status = error?.statusCode === HTTP_STATUS.BAD_REQUEST ? HTTP_STATUS.BAD_REQUEST : HTTP_STATUS.SERVER_ERROR;
+    return NextResponse.json({ success: false, error: error.message }, { status });
   }
 }

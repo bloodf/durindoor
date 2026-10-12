@@ -10,6 +10,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Keep offline collection independent of the import-time release updater.
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: () => "kimchi/offline-fixture",
+  updateKimchiUserAgent: vi.fn().mockResolvedValue("kimchi/offline-fixture"),
+}));
+
 vi.mock("@/models", () => ({
   getProviderConnectionById: vi.fn(),
   getProviderNodeById: vi.fn(),

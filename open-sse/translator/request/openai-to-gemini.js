@@ -72,6 +72,24 @@ function normalizeGeminiContents(contents) {
   return out;
 }
 
+// Reserve caller-supplied ids, including future ones, in both Gemini converters (#4532).
+function createGeminiCallIdAllocator(rawIds) {
+  const reservedIds = new Set(rawIds);
+  const allocatedIds = new Set();
+  const nextSuffix = new Map();
+  return (rawId) => {
+    if (!rawId) return rawId;
+    let suffix = nextSuffix.get(rawId) || 0;
+    let uniqueId = suffix === 0 ? rawId : `${rawId}_${suffix}`;
+    while (allocatedIds.has(uniqueId) || (suffix > 0 && reservedIds.has(uniqueId))) {
+      uniqueId = `${rawId}_${++suffix}`;
+    }
+    allocatedIds.add(uniqueId);
+    nextSuffix.set(rawId, suffix + 1);
+    return uniqueId;
+  };
+}
+
 /**
  * Core OpenAI→Gemini request translator (base for all Gemini variants).
  *
@@ -124,13 +142,11 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   // an earlier turn's function name.
   const tcID2Name = {};
   const callIds = new Map();
-  // Reserve even future caller-supplied ids before allocating suffixes (#4532).
-  const reservedIds = new Set((Array.isArray(body.messages) ? body.messages : []).flatMap((msg) =>
+  const allocateCallId = createGeminiCallIdAllocator((Array.isArray(body.messages) ? body.messages : []).flatMap((msg) =>
     msg.role === ROLE.ASSISTANT && Array.isArray(msg.tool_calls) ?
     msg.tool_calls.filter((tc) => tc.type === OPENAI_BLOCK.FUNCTION && tc.id)
       .map((tc) => decodeToolCallId(tc.id).id) : []
   ));
-  const allocatedIds = new Set();
   if (body.messages && Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
@@ -140,12 +156,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             // on the raw upstream id; plain ids decode to themselves.
             const rawId = decodeToolCallId(tc.id).id;
             const ids = callIds.get(rawId) || [];
-            let suffix = ids.length;
-            let uniqueId = suffix === 0 ? rawId : `${rawId}_${suffix}`;
-            while (allocatedIds.has(uniqueId) || (suffix > 0 && reservedIds.has(uniqueId))) {
-              uniqueId = `${rawId}_${++suffix}`;
-            }
-            allocatedIds.add(uniqueId);
+            const uniqueId = allocateCallId(rawId);
             ids.push(uniqueId);
             callIds.set(rawId, ids);
             if (tc.function?.name) tcID2Name[uniqueId] = tc.function.name;
@@ -458,7 +469,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
       if (Array.isArray(msg.content)) {
         for (const block of msg.content) {
           if (block.type === CLAUDE_BLOCK.TOOL_USE && block.id && block.name) {
-            toolUseIdToName[block.id] = block.name;
+            toolUseIdToName[decodeToolCallId(block.id).id] = block.name;
           }
         }
       }
@@ -469,7 +480,11 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
   // give each occurrence a unique id and pair each tool_result to the oldest
   // unmatched tool_use with that raw id (FIFO), so cross-turn collisions
   // can't mismatch a functionResponse's id/name to the wrong functionCall.
-  const toolUseOccurrences = new Map();
+  const allocateCallId = createGeminiCallIdAllocator((Array.isArray(claudeRequest.messages) ? claudeRequest.messages : []).flatMap((msg) =>
+    Array.isArray(msg.content) ? msg.content
+      .filter((block) => block.type === CLAUDE_BLOCK.TOOL_USE && block.id)
+      .map((block) => decodeToolCallId(block.id).id) : []
+  ));
   const pendingToolUses = new Map();
 
   // Convert Claude messages to Gemini contents
@@ -490,16 +505,14 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
               }
             });
           } else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
-            const cachedSig = block.id ? getGeminiThoughtSignatureSync(block.id, credentials?._clientSessionId, model) : null;
-            const callSig = cachedSig || (!firstToolUseSeen ? signature : undefined);
+            const decoded = decodeToolCallId(block.id);
+            const rawId = decoded.id;
+            const cachedSig = rawId ? getGeminiThoughtSignatureSync(rawId, credentials?._clientSessionId, model) : null;
+            const callSig = decoded.signature || cachedSig || (!firstToolUseSeen ? signature : undefined);
             firstToolUseSeen = true;
 
-            const rawId = block.id;
-            let uniqueId = rawId;
+            const uniqueId = allocateCallId(rawId);
             if (rawId) {
-              const count = toolUseOccurrences.get(rawId) || 0;
-              toolUseOccurrences.set(rawId, count + 1);
-              uniqueId = count === 0 ? rawId : `${rawId}_${count}`;
               if (!pendingToolUses.has(rawId)) pendingToolUses.set(rawId, []);
               pendingToolUses.get(rawId).push({ uniqueId, name: block.name });
             }
@@ -547,7 +560,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
             // Resolve the original tool name from the id — Gemini requires it to match the functionCall name.
             // Pair FIFO against the oldest unmatched tool_use with this raw id so a
             // reused id across turns doesn't resolve to a later turn's name/id.
-            const rawId = block.tool_use_id;
+            const rawId = decodeToolCallId(block.tool_use_id).id;
             const queue = rawId ? pendingToolUses.get(rawId) : null;
             const matched = queue && queue.length > 0 ? queue.shift() : null;
             const responseId = matched ? matched.uniqueId : rawId || "";

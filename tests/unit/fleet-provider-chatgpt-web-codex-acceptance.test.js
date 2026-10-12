@@ -7,6 +7,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// The registry imports Kimchi's updater, whose native import bypasses fetch mocks.
+// Replace the whole module before any runtime imports; loader failure is not isolation.
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: () => "kimchi/offline-test",
+  updateKimchiUserAgent: vi.fn(async () => "kimchi/offline-test"),
+}));
+
 const mocks = vi.hoisted(() => ({ proxyAwareFetch: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", async (orig) => ({
   ...(await orig()),
@@ -92,10 +99,12 @@ describe("#1162 auth/validator", () => {
     expect(calls.some((c) => c.url.includes("/codex"))).toBe(false);
   });
 
-  it("negative: an OAuth-style Bearer token without a session answer is not a valid web session", async () => {
-    const fetcher = async () => json({}); // expired session answers 200 {}
-    const bad = await probeRegistryProvider("chatgpt-web", "sk-oauth-bearer-token", fetcher);
-    expect(bad.valid).toBe(false);
+  it("rejects an empty 200 session response as expired or incomplete, not a credential-type check", async () => {
+    const fetcher = vi.fn(async () => json({}));
+    const bad = await probeRegistryProvider("chatgpt-web", "__Secure-next-auth.session-token=expired", fetcher);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(bad).toMatchObject({ valid: false, status: 200 });
+    expect(bad.error).toContain("Session expired or incomplete");
   });
 });
 
@@ -103,6 +112,45 @@ describe("#1162 executor transports (mocked)", () => {
   beforeEach(() => {
     mocks.proxyAwareFetch.mockReset();
     __resetChatGptWebCachesForTesting();
+  });
+
+  it("chatgpt-web http rejects missing messages with 400 before any fetch", async () => {
+    const tlsFetch = vi.fn(() => { throw new Error("Unexpected TLS fetch"); });
+    __setTlsFetchOverrideForTesting(tlsFetch);
+    try {
+      const r = await new ChatGptWebHttpExecutor().execute({
+        model: "gpt-5-6",
+        body: {},
+        stream: false,
+        credentials: { apiKey: "cookie-val" },
+      });
+      expect(r.response.status).toBe(400);
+      expect((await r.response.json()).error.message).toBe("Missing or empty messages array");
+      expect(tlsFetch).not.toHaveBeenCalled();
+      expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
+    } finally {
+      __setTlsFetchOverrideForTesting(null);
+    }
+  });
+
+  it.each([{}, undefined, null])("chatgpt-web http rejects missing cookie credentials %j with 401 before any fetch", async (credentials) => {
+    const tlsFetch = vi.fn(() => { throw new Error("Unexpected TLS fetch"); });
+    __setTlsFetchOverrideForTesting(tlsFetch);
+    try {
+      // Keep absent credentials as ordinary assertions: the shared #1283 guard is not in this branch.
+      const r = await new ChatGptWebHttpExecutor().execute({
+        model: "gpt-5-6",
+        body: { messages: [{ role: "user", content: "ping" }] },
+        stream: false,
+        credentials,
+      });
+      expect(r.response.status).toBe(401);
+      expect((await r.response.json()).error.message).toContain("session-token cookie value");
+      expect(tlsFetch).not.toHaveBeenCalled();
+      expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
+    } finally {
+      __setTlsFetchOverrideForTesting(null);
+    }
   });
 
   it("chatgpt-web http: cookie → session → sentinel → backend-api conversation, no codex endpoint, no Responses body", async () => {

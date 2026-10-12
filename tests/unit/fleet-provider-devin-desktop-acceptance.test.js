@@ -62,6 +62,17 @@ describe("#1175 devin-desktop is not installed devin", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("refuses desktop URL/header construction when callers bypass execute", () => {
+    const fetcher = vi.fn(() => { throw new Error("Unexpected offline fetch"); });
+    vi.stubGlobal("fetch", fetcher);
+    const executor = getExecutor("devin-desktop");
+    const credentials = { accessToken: "offline-desktop-token" };
+    // Translator routes can return these values without calling execute().
+    expect.soft(() => executor.buildUrl("devin", true, 0, credentials)).toThrow();
+    expect.soft(() => executor.buildHeaders(credentials, true)).toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])("rejects unsupported desktop tool requests before any upstream dispatch (stream=%s)", async (stream) => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       error: { message: "Offline unauthorized fixture", type: "authentication_error" },

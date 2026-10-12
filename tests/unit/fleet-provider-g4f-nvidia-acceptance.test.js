@@ -5,7 +5,8 @@
  * SSE bytes and errors prove local dispatch only, never live capabilities.
  * Keep candidate capabilities hidden until authorized account-backed evidence
  * verifies endpoint, authentication, models, tools, streaming and failures.
- * Production is read-only; the unsupported executor guard is a RED regression.
+ * Authorized shared executor isolation preserves explicit custom transports.
+ * HTTP dispatch evidence uses only a mocked active connection and fake key.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,9 +15,17 @@ vi.mock("@/models", () => ({
   getProviderNodeById: vi.fn(),
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({
-  resolveConnectionProxyConfig: vi.fn().mockResolvedValue(null),
+  resolveConnectionProxyConfig: vi.fn().mockResolvedValue({}),
 }));
 
+vi.mock("@/lib/localDb.js", () => ({
+  getProviderConnections: vi.fn(),
+  updateProviderConnection: vi.fn(),
+}));
+
+import { getProviderConnections } from "@/lib/localDb.js";
+import { POST as send } from "../../src/app/api/translator/send/route.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { POST } from "../../src/app/api/providers/validate/route.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { normalizeProviderId } from "../../src/lib/providerNormalization.js";
@@ -145,6 +154,52 @@ describe("#1187 g4f-nvidia versus installed native NVIDIA", () => {
     await expect(result.response.json()).resolves.toEqual(error);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe(chatUrl);
+  });
+
+  it.each([
+    ["openai-compatible-chat-offline", { providerSpecificData: { baseUrl: "http://localhost:8080/v1" } }, "http://localhost:8080/v1/chat/completions"],
+    ["openai-compatible-responses-offline", { providerSpecificData: { baseUrl: "http://localhost:8080/v1" } }, "http://localhost:8080/v1/responses"],
+    ["anthropic-compatible-offline", { providerSpecificData: { baseUrl: "http://localhost:8080/v1" } }, "http://localhost:8080/v1/messages"],
+    ["offline-direct-proxy", { runtimeTransport: { format: "openai", baseUrl: "http://localhost:8080/v1/chat/completions" } }, "http://localhost:8080/v1/chat/completions"],
+    ["offline-direct-claude", { runtimeTransport: { format: "claude", baseUrl: "http://localhost:8080/v1/messages", auth: { combined: true, header: "x-api-key", scheme: "raw" } } }, "http://localhost:8080/v1/messages"],
+  ])("preserves explicit custom transport %s without borrowing OpenAI vendor config", async (provider, config, url) => {
+    fetchMock.mockResolvedValueOnce(Response.json({ choices: [] }));
+    const result = await execute(provider, { model, messages: [{ role: "user", content: "fixture" }] }, false, { ...credentials, ...config });
+    expect(result.response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(url);
+    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+    if (provider.includes("claude") || provider.startsWith("anthropic-compatible-")) {
+      expect(headers.get("x-api-key")).toBe(credentials.apiKey);
+    } else {
+      expect(headers.get("authorization")).toBe(`Bearer ${credentials.apiKey}`);
+    }
+  });
+
+  it("resolves native registry alias without selecting OpenAI fallback", () => {
+    expect(getExecutor("cc")).toBe(getExecutor("claude"));
+    expect(new DefaultExecutor("cc").buildUrl(model, false)).toBe(`${PROVIDERS.claude.baseUrl}${PROVIDERS.claude.urlSuffix || ""}`);
+  });
+
+  it("blocks direct DefaultExecutor construction from restoring implicit vendor dispatch", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ choices: [] }));
+    await expect(new DefaultExecutor(candidate).execute({ model, body: { model, messages: [] }, stream: false, credentials })).rejects.toThrow(/unsupported|not supported|unknown provider/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch unknown stored connection credentials through translator send HTTP handler", async () => {
+    getProviderConnections.mockResolvedValueOnce([{ ...connection, provider: candidate, isActive: true }]);
+    fetchMock.mockResolvedValueOnce(Response.json({ choices: [] }));
+    const response = await send(new Request("http://localhost:20127/api/translator/send", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: candidate, model, body: { model, stream: false, messages: [{ role: "user", content: "fixture" }] } }),
+    }));
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false, error: 'Unknown provider "g4f-nvidia": no supported transport endpoint',
+      request_id: expect.any(String),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported candidate transport before credentials can dispatch to an unrelated vendor", async () => {

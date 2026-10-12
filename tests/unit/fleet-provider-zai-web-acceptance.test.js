@@ -41,6 +41,19 @@ describe("zai-web acceptance (offline)", () => {
     expect(JSON.stringify(init.headers)).toContain(KEY);
   });
 
+  it("installed zai: static catalog only, no live discovery, raw x-api-key auth", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "m", type: "message", content: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const discovery = await fetchConnectionModels({ provider: "zai", apiKey: KEY });
+    expect(discovery).toMatchObject({ status: 400, error: expect.stringMatching(/does not support models listing/) });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await getExecutor("zai").execute({ model: "glm-4.7", body: { model: "glm-4.7", max_tokens: 8, messages: [{ role: "user", content: "hi" }] }, stream: false, credentials: { apiKey: KEY }, log: null });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.z.ai/api/anthropic/v1/messages?beta=true");
+    expect(init.headers["x-api-key"]).toBe(KEY);
+    expect(init.headers.Authorization).toBeUndefined();
+  });
+
   it("zai-web has no registration, probe, or model discovery", async () => {
     expect(PROVIDERS["zai-web"]).toBeUndefined();
     expect(hasSpecializedExecutor("zai-web")).toBe(false);

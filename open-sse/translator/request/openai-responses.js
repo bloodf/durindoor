@@ -454,7 +454,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
 
 
   if (result.tool_choice && isObject(result.tool_choice)) {
-    result.tool_choice = qualifyNamespacedChoice(result.tool_choice);
+    const choice = qualifyNamespacedChoice(result.tool_choice);
+    // Responses names forced functions at the top level; Chat uses function.name.
+    // Qualify before lowering so second-hop choice aliasing matches declarations.
+    if (choice.type === OPENAI_BLOCK.FUNCTION && isString(choice.name) && choice.name.trim()) {
+      const { name, ...rest } = choice;
+      result.tool_choice = { ...rest, function: { name } };
+    } else {
+      result.tool_choice = choice;
+    }
   }
 
   delete result.input;

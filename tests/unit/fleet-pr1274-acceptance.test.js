@@ -36,6 +36,33 @@ describe("#1274 registered Responses namespace forced choice", () => {
     }
   });
 
+  it.each([
+    { type: OPENAI_BLOCK.FUNCTION, name: "search" },
+    { type: OPENAI_BLOCK.FUNCTION, function: { name: "search" } },
+  ])("Chat receives nested function choice from $type input", (tool_choice) => {
+    const original = structuredClone(tool_choice);
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", {
+      input: "search", tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "search", parameters: schema }], tool_choice,
+    }, false);
+    expect(out.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: "search" } });
+    expect(tool_choice).toEqual(original);
+  });
+
+  it.each(["auto", "none", "required"])("keeps string choice %s unchanged", (tool_choice) => {
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", { input: "search", tool_choice }, false);
+    expect(out.tool_choice).toBe(tool_choice);
+  });
+
+  it("keeps allowed_tools namespace qualification unchanged", () => {
+    const body = namespaceRequest();
+    const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", {
+      ...body, tool_choice: { type: "allowed_tools", mode: "auto", tools: [body.tool_choice] },
+    }, false);
+    expect(out.tool_choice).toEqual({
+      type: "allowed_tools", mode: "auto", tools: [{ type: OPENAI_BLOCK.FUNCTION, name: out.tools[0].function.name }],
+    });
+  });
+
   it("Claude keeps forced selection on the same alias as declaration and history", () => {
     const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE, "claude-haiku-4-5", namespaceRequest(), false);
     const name = out.tools[0].name;

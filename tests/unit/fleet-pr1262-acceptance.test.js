@@ -109,7 +109,46 @@ describe.each([false, true])("PR #1262 registered acceptance (stream=%s)", (stre
 });
 
 describe.each([false, true])("PR #1262 Responses runtime (stream=%s)", (stream) => {
-  it("rejects typed tool-output images before Responses conversion erases their shape", async () => {
+  it.each(["cursor", "cu"])("allows %s ordinary tool-output JSON mentioning images to reach dispatch", async (provider) => {
+    const output = { type: "image", image_url: "https://example.invalid/photo.png" };
+    const body = {
+      model: "cursor/default", stream,
+      input: [
+        { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: "inspect" },
+        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "call_1", name: "inspect", arguments: "{}" },
+        { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "call_1", output },
+      ],
+    };
+    const original = structuredClone(body);
+    const result = await handleResponsesCore({
+      body, modelInfo: { provider, model: "default" }, credentials: null,
+    });
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(mocks.execute.mock.calls[0][0].body)).toContain("photo.png");
+    // The offline sentinel proves the request passed validation, not provider success.
+    expect(result.status).toBe(502);
+    expect(body).toEqual(original);
+  });
+
+  it("does not apply Cursor image restrictions to a vision-capable provider", async () => {
+    const body = { model: "gpt-4o", stream, input: [
+      { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [
+        { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: "data:image/png;base64,AAAA" },
+      ] },
+    ] };
+    const original = structuredClone(body);
+    const result = await handleResponsesCore({
+      body, modelInfo: { provider: "openai", model: "gpt-4o" }, credentials: null,
+    });
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    expect(mocks.execute.mock.calls[0][0].body.messages[0].content).toEqual([
+      { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: "data:image/png;base64,AAAA", detail: "auto" } },
+    ]);
+    expect(result.status).toBe(502);
+    expect(body).toEqual(original);
+  });
+
+  it.each(["cursor", "cu"])("rejects %s typed tool-output images before Responses conversion erases their shape", async (provider) => {
     const body = {
       model: "cursor/default", stream,
       input: [
@@ -122,7 +161,7 @@ describe.each([false, true])("PR #1262 Responses runtime (stream=%s)", (stream) 
     };
     const original = structuredClone(body);
     const result = await handleResponsesCore({
-      body, modelInfo: { provider: "cursor", model: "default" }, credentials: null,
+      body, modelInfo: { provider, model: "default" }, credentials: null,
     });
     expect({ status: result.status, dispatched: mocks.execute.mock.calls.length })
       .toEqual({ status: 400, dispatched: 0 });

@@ -189,10 +189,7 @@ describe("fleet PR1270 registered MCP entry points", () => {
     const response = await probePost(request({}, null), { params: Promise.resolve({ id: INSTANCES[0].id }) });
     expect(response.status).toBe(400);
     const body = await response.json();
-    expect(body).toEqual({ ok: false, error: expect.stringContaining("unknown transport:") });
-    expect(body.error).toContain("for alpha");
-    expect(body.error).toContain("api_key=[redacted]");
-    expect(body.error).toContain("<path>");
+    expect(body).toEqual({ ok: false, error: "Invalid MCP transport configuration" });
     assertPrivate(body);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -207,6 +204,23 @@ describe("fleet PR1270 registered MCP entry points", () => {
     expect(trace.map((row) => row.frame.method)).toEqual(["initialize", "notifications/initialized", "tools/list"]);
   });
 
+  it("instance probe hides nested escaped JSON token diagnostics", async () => {
+    const secret = "SYNTHETIC_SECRET_1270";
+    upstream({ listError: { detail: JSON.stringify({ token: secret }) } });
+    const response = await probePost(request({}, null), {
+      params: Promise.resolve({ id: INSTANCES[0].id }),
+    });
+    expect(response.status).toBe(502);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    const body = await response.json();
+    expect(body).toEqual({ ok: false, error: "MCP upstream tool probe failed" });
+    expect(trace.map((row) => row.frame.method)).toEqual(["initialize", "notifications/initialized", "tools/list"]);
+    expect(trace.map((row) => row.frame.id)).toEqual([1, undefined, 2]);
+    expect(trace.map((row) => row.session)).toEqual([null, "session-alpha", "session-alpha"]);
+    expect(trace.every((row) => row.protocol === PROTOCOL)).toBe(true);
+    expect(JSON.stringify({ headers: [...response.headers], body })).not.toContain(secret);
+  });
+
   it("instance probe hides upstream JSON-RPC list-error credentials and paths", async () => {
     upstream({ listError: `List unavailable: api_key=${SECRET} at ${PRIVATE_PATH}` });
     const response = await probePost(request({}, null, `/api/mcp-gateway/instances/${INSTANCES[0].id}/test`), {
@@ -216,7 +230,7 @@ describe("fleet PR1270 registered MCP entry points", () => {
     expect(response.status).toBe(502);
     expect(response.headers.get("content-type")).toContain("application/json");
     const body = await response.json();
-    expect(body).toEqual({ ok: false, error: expect.stringContaining("tools/list failed for alpha") });
+    expect(body).toEqual({ ok: false, error: "MCP upstream tool probe failed" });
     expect(trace.map((row) => row.frame.method)).toEqual(["initialize", "notifications/initialized", "tools/list"]);
     expect(trace.map((row) => row.frame.id)).toEqual([1, undefined, 2]);
     expect(trace.map((row) => row.session)).toEqual([null, "session-alpha", "session-alpha"]);

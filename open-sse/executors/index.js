@@ -53,6 +53,7 @@ import {
   BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
 } from "./unsupported-websession.js";
 import REGISTRY from "../providers/registry/index.js";
+import { resolveProviderAlias } from "../services/model.js";
 
 const chatGptWebExecutor = new ChatGptWebExecutor();
 
@@ -157,7 +158,9 @@ const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(
 );
 
 export function getExecutor(provider) {
-  if (executors[provider]) return executors[provider];
+  if (Object.hasOwn(executors, provider)) return executors[provider];
+  provider = resolveProviderAlias(provider);
+  if (Object.hasOwn(executors, provider)) return executors[provider];
   if (CHAT_UNSUPPORTED_SEARCH_PROVIDERS.has(provider)) {
     const err = new Error(
       `Provider "${provider}" is a search provider and does not support chat completions; use the /v1/search endpoint instead.`,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import babel from "@babel/parser";
 
@@ -334,7 +334,10 @@ function importTarget(mod, source) {
   const base = resolve(dirname(mod.file), source);
   for (const suffix of IMPORT_SUFFIXES) {
     const candidate = base + suffix;
-    if (existsSync(candidate) && statSync(candidate).isFile()) return loadModule(candidate, mod.ctx);
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      const target = loadModule(candidate, mod.ctx);
+      return target.blocked ? null : target;
+    }
   }
   return null;
 }
@@ -344,7 +347,15 @@ function loadModule(file, ctx) {
   if (ctx.cache.has(file)) return ctx.cache.get(file);
   const mod = { file, ctx, clean: "", bindings: new Map(), exports: new Map(), stars: [] };
   ctx.cache.set(file, mod);
-  const text = readFileSync(file, "utf8");
+  // Check every source load, including registry entrypoints, before reading bytes.
+  const realFile = realpathSync(file);
+  const fromRoot = relative(ctx.realRoot, realFile);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) {
+    mod.blocked = true;
+    note(ctx, mod, "source target outside audited root; unsupported dependency, include it inside the audited checkout");
+    return mod;
+  }
+  const text = readFileSync(realFile, "utf8");
   mod.clean = text;
   let ast;
   try {
@@ -698,7 +709,7 @@ function buildEntry(entry, providerSelection) {
  * Anything not statically resolvable is reported in `unresolved`, never guessed.
  */
 function scanProviders(files, providerSelection, root) {
-  const ctx = { cache: new Map(), unresolved: new Map(), root };
+  const ctx = { cache: new Map(), unresolved: new Map(), root, realRoot: realpathSync(root) };
   const byId = new Map();
   const duplicateIds = new Set();
   const seen = new Set();

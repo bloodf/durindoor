@@ -1,7 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { describe, expect, it, vi } from "vitest";
 import { buildAudit } from "../../scripts/audit-omniroute-providers.mjs";
 
 function withRegistryFixture(localFiles, check, source = 'export const upstream = { id: "upstream", executor: "default" };') {
@@ -29,6 +31,59 @@ function withRegistryFixture(localFiles, check, source = 'export const upstream 
 }
 
 describe("provider audit reexport identities", () => {
+  it.each(["traversal", "file symlink", "directory symlink", "entry symlink"])("never reads external bytes through %s", (kind) => {
+    const root = mkdtempSync(join(tmpdir(), "fleet-pr1266-containment-"));
+    const durinRoot = join(root, "durin");
+    const omniRoot = join(root, "omni");
+    const registry = join(durinRoot, "open-sse/providers/registry");
+    // Prefix sibling catches string-prefix containment checks too.
+    const external = join(root, "durin-external");
+    let spy;
+    try {
+      mkdirSync(registry, { recursive: true });
+      mkdirSync(join(omniRoot, "open-sse/config/providers/registry"), { recursive: true });
+      mkdirSync(external);
+      const secret = join(external, "secret.js");
+      writeFileSync(secret, 'throw new Error("Never execute"); export const provider = { id: "external-secret", alias: "upstream" };');
+      writeFileSync(join(omniRoot, "open-sse/config/providers/registry/index.ts"), 'export default { id: "upstream", executor: "default" };');
+      let source = "../../../../durin-external/secret.js";
+      if (kind === "file symlink") {
+        symlinkSync(secret, join(registry, "linked.js"));
+        source = "./linked.js";
+      } else if (kind === "directory symlink") {
+        symlinkSync(external, join(registry, "linked"));
+        source = "./linked/secret.js";
+      }
+      if (kind === "entry symlink") symlinkSync(secret, join(registry, "index.js"));
+      else writeFileSync(join(registry, "index.js"), `export { provider } from ${JSON.stringify(source)};`);
+      spy = vi.spyOn(fs, "readFileSync").mockImplementation(readFileSync);
+      syncBuiltinESMExports();
+      const audit = buildAudit({ durinRoot, omniRoot });
+      const reads = spy.mock.calls.map(([path]) => fs.realpathSync(path));
+      expect(reads).not.toContain(fs.realpathSync(secret));
+      expect(audit.evidence.localProviders).toEqual([]);
+      expect(audit.evidence.unresolved).toContainEqual({
+        side: "durindoor", path: expect.any(String),
+        reason: expect.stringMatching(/outside audited root.*(unsupported|include)/i),
+      });
+    } finally {
+      spy?.mockRestore();
+      syncBuiltinESMExports();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("allows parent-relative shared modules within the real audited root", () => {
+    withRegistryFixture({
+      "index.js": 'export { provider } from "../shared.js";',
+      "../shared.js": 'throw new Error("Never execute"); export const provider = { id: "local", alias: "upstream" };',
+    }, (audit) => {
+      expect(audit.evidence.localProviders.map(({ id }) => id)).toEqual(["local"]);
+      expect(audit.evidence.unresolved).toEqual([]);
+      expect(audit.rows[0]).toMatchObject({ status: "present", match: { localIds: ["local"] } });
+    });
+  });
+
   it("reports opaque computed metadata without guessing executor classification", () => {
     withRegistryFixture({ "index.js": 'export default [{ id: "upstream" }];' }, (audit) => {
       expect(audit.rows[0]).toMatchObject({

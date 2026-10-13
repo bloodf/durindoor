@@ -1,7 +1,7 @@
 /**
  * Scope note (issue #1247, "xai-oauth"): offline acceptance for the installed
  * native `xai` provider (api.x.ai, authModes oauth + apikey). Exercises the
- * existing validator route, model-discovery config and XaiExecutor with mocked
+ * existing validator, connection model discovery and chatCore with mocked
  * fetch only. It does NOT prove account-backed behaviour: live OAuth, billing
  * and model availability are unverified. A separate `xai-oauth` provider id is
  * NOT registered in this tree, so it must stay hidden; `grok-cli` (Grok Build
@@ -28,7 +28,29 @@ import { getExecutor } from "../../open-sse/executors/index.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { POST as validate } from "../../src/app/api/providers/validate/route.js";
 import { normalizeProviderId } from "../../src/lib/providerNormalization.js";
-import { PROVIDER_MODELS_CONFIG } from "../../src/app/api/providers/[id]/models/providerModelsConfig.js";
+import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
+import "../../open-sse/translator/registerAll.js";
+import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
+
+// Keep persistence and request logging outside this transport acceptance scope.
+vi.mock("@/lib/usageDb.js", () => ({
+  trackPendingRequest: vi.fn(),
+  finishActiveSession: vi.fn(),
+  appendRequestLog: vi.fn(async () => {}),
+  saveRequestDetail: vi.fn(async () => {}),
+  saveRequestUsage: vi.fn(async () => {}),
+}));
+vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
+  startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn(),
+}));
+vi.mock("../../open-sse/utils/requestLogger.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  createRequestLogger: vi.fn(async () => ({
+    logClientRawRequest: vi.fn(), logRawRequest: vi.fn(),
+    logTargetRequest: vi.fn(), logProviderResponse: vi.fn(),
+    logConvertedResponse: vi.fn(), logError: vi.fn(),
+  })),
+}));
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
@@ -61,15 +83,18 @@ describe("xai native: validator (mocked fetch)", () => {
 
 describe("xai native: model discovery (mocked fetch)", () => {
   it("lists /v1/models with bearer auth and parses OpenAI-style data", async () => {
-    const cfg = PROVIDER_MODELS_CONFIG.xai;
-    expect(cfg.url).toBe("https://api.x.ai/v1/models");
-    expect(cfg.authHeader).toBe("Authorization");
-    expect(cfg.authPrefix).toBe("Bearer ");
-    expect(cfg.parseResponse({ data: [{ id: "grok-4.5" }, { id: "grok-4.3" }] }).map((m) => m.id)).toEqual([
-      "grok-4.5",
-      "grok-4.3",
-    ]);
-    expect(cfg.parseResponse({ error: "x" })).toEqual([]);
+    proxyAwareFetch.mockResolvedValueOnce(Response.json({ data: [{ id: "grok-4.5" }, { id: "grok-4.3" }] }));
+    const connection = { id: "fixture-xai", provider: "xai", accessToken: "fixture-model-token" };
+    const result = await fetchConnectionModels(connection);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = proxyAwareFetch.mock.calls[0];
+    expect(url).toBe("https://api.x.ai/v1/models");
+    expect(init.method).toBe("GET");
+    expect(init.headers.Authorization).toBe("Bearer fixture-model-token");
+    expect(result.models.map((model) => model.id)).toEqual(["grok-4.5", "grok-4.3"]);
+    proxyAwareFetch.mockResolvedValueOnce(Response.json({ error: "x" }));
+    expect(await fetchConnectionModels(connection)).toEqual({ models: [] });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -118,6 +143,49 @@ describe("xai native: executor request/tool/stream/error fixtures (mocked fetch)
   });
 });
 
+describe("xai native: real chatCore transport selection (mocked fetch)", () => {
+  it.each(["oauth", "apikey"])("selects %s transport without injected runtimeTransport", async (authType) => {
+    const oauth = authType === "oauth";
+    const credentials = oauth
+      ? { authType, accessToken: "fixture-oauth-token" }
+      : { authType, apiKey: "fixture-api-key" };
+    const body = { model: "grok-4.5", messages: [{ role: "user", content: "hi" }], stream: false };
+    const upstream = oauth
+      ? { id: "resp-fixture", object: "response", status: "completed", output: [{
+          type: "message", role: "assistant", content: [{ type: "output_text", text: "hi" }],
+        }], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }
+      : { id: "chat-fixture", object: "chat.completion", choices: [{
+          index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop",
+        }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
+    proxyAwareFetch.mockResolvedValueOnce(Response.json(upstream));
+    const result = await handleChatCore({
+      body,
+      modelInfo: { provider: "xai", model: "grok-4.5" },
+      credentials,
+      clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} },
+      connectionId: "fixture-xai",
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      rtkEnabled: false, headroomEnabled: false, compressionEnabled: false,
+    });
+    expect(result.success).toBe(true);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = proxyAwareFetch.mock.calls[0];
+    const wire = JSON.parse(init.body);
+    expect(url).toBe(`https://api.x.ai/v1/${oauth ? "responses" : "chat/completions"}`);
+    expect(init.headers.Authorization).toBe(`Bearer ${oauth ? "fixture-oauth-token" : "fixture-api-key"}`);
+    expect(wire.model).toBe("grok-4.5");
+    if (oauth) {
+      expect(wire.input).toBeDefined();
+      expect(wire.messages).toBeUndefined();
+    } else {
+      expect(wire.messages).toEqual(body.messages);
+      expect(wire.input).toBeUndefined();
+    }
+    expect(credentials.runtimeTransport).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("candidate identity: xai-oauth is not installed; grok-cli/grok-web are distinct", () => {
   it("native xai declares oauth + apikey on api.x.ai/auth.x.ai (metadata only)", () => {
     expect(PROVIDERS.xai.baseUrl ?? PROVIDERS.xai.transport?.baseUrl).toMatch(/^https:\/\/api\.x\.ai\//);
@@ -135,19 +203,28 @@ describe("candidate identity: xai-oauth is not installed; grok-cli/grok-web are 
   });
 
   it("rejects unsupported xai-oauth execution with status 400 and ZERO fetches", async () => {
-    // Genuine regression: DefaultExecutor currently falls back to OpenAI.
-    // Keep this test RED until shared1283 supplies the shared unsupported guard.
-    proxyAwareFetch.mockResolvedValue(new Response("{}", { status: 200 }));
-    fetch.mockResolvedValue(new Response("{}", { status: 200 }));
-    const result = await getExecutor("xai-oauth").execute({
-      model: "grok-4.5",
-      body: { model: "grok-4.5", messages: [{ role: "user", content: "hi" }] },
-      stream: false,
-      credentials: { accessToken: "fixture-xai-oauth-token" },
-    });
-    expect.soft(result.response.status).toBe(400);
-    expect.soft(proxyAwareFetch).not.toHaveBeenCalled();
-    expect.soft(fetch).not.toHaveBeenCalled();
+    const onProviderAttempt = vi.fn();
+    const executor = getExecutor("xai-oauth");
+    const buildHeaders = vi.spyOn(executor, "buildHeaders");
+    try {
+      await expect(executor.execute({
+        model: "grok-4.5",
+        body: { model: "grok-4.5", messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: { accessToken: "fixture-xai-oauth-token" },
+        onProviderAttempt,
+      })).rejects.toMatchObject({
+        name: "Error",
+        message: 'Unknown provider "xai-oauth": no supported transport endpoint',
+        status: 400,
+      });
+      expect(buildHeaders).not.toHaveBeenCalled();
+      expect(onProviderAttempt).not.toHaveBeenCalled();
+      expect(proxyAwareFetch).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      buildHeaders.mockRestore();
+    }
   });
 
   it("grok-cli and grok-web are separate identities and transports from native xai", () => {

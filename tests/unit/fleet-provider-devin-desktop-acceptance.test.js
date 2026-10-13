@@ -106,15 +106,13 @@ describe("#1175 devin-desktop is not installed devin", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("refuses desktop URL/header construction when callers bypass execute", () => {
+  it("refuses desktop URL construction when callers bypass execute", () => {
     const fetcher = vi.fn(() => { throw new Error("Unexpected offline fetch"); });
     vi.stubGlobal("fetch", fetcher);
     const credentials = { accessToken: "offline-desktop-token" };
-    // Translator routes can return these values without calling execute().
-    // Rejection at executor resolution also protects both construction paths.
+    // The translator route builds the URL before headers; rejection stops both paths.
     const unsupported = expect.objectContaining({ status: 400 });
-    expect.soft(() => getExecutor("devin-desktop").buildUrl("devin", true, 0, credentials)).toThrow(unsupported);
-    expect.soft(() => getExecutor("devin-desktop").buildHeaders(credentials, true)).toThrow(unsupported);
+    expect(() => getExecutor("devin-desktop").buildUrl("devin", true, 0, credentials)).toThrow(unsupported);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -123,23 +121,43 @@ describe("#1175 devin-desktop is not installed devin", () => {
       error: { message: "Offline unauthorized fixture", type: "authentication_error" },
     }), { status: 401, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetcher);
-    const dispatch = async () => getExecutor("devin-desktop").execute({
-      model: "devin",
-      stream,
-      credentials: { accessToken: "offline-desktop-token" },
-      body: {
-        model: "devin", stream,
-        messages: [
-          { role: "user", content: "Read the offline fixture." },
-          { role: "assistant", content: null, tool_calls: [
-            { id: "call_fixture", type: "function", function: { name: "read_fixture", arguments: "{}" } },
-          ] },
-          { role: "tool", tool_call_id: "call_fixture", content: "offline fixture" },
-        ],
-        tools: [{ type: "function", function: { name: "read_fixture", parameters: { type: "object", properties: {} } } }],
-      },
-    });
-    await expect.soft(dispatch()).rejects.toMatchObject({ status: 400 });
-    expect(fetcher, "Unregistered desktop credentials must never reach OpenAI or another substitute").not.toHaveBeenCalled();
+    const executor = getExecutor("devin-desktop");
+    const buildHeaders = vi.spyOn(executor, "buildHeaders");
+    const configHeaders = vi.fn(() => ({}));
+    const apiKey = vi.fn(() => "offline-desktop-key");
+    const accessToken = vi.fn(() => "offline-desktop-token");
+    const credentials = {
+      // Reading runtimeTransport to resolve the URL is allowed; reading secrets is not.
+      get apiKey() { return apiKey(); },
+      get accessToken() { return accessToken(); },
+    };
+    const originalConfig = executor.config;
+    executor.config = { ...originalConfig, get headers() { return configHeaders(); } };
+    try {
+      await expect.soft(executor.execute({
+        model: "devin",
+        stream,
+        credentials,
+        body: {
+          model: "devin", stream,
+          messages: [
+            { role: "user", content: "Read the offline fixture." },
+            { role: "assistant", content: null, tool_calls: [
+              { id: "call_fixture", type: "function", function: { name: "read_fixture", arguments: "{}" } },
+            ] },
+            { role: "tool", tool_call_id: "call_fixture", content: "offline fixture" },
+          ],
+          tools: [{ type: "function", function: { name: "read_fixture", parameters: { type: "object", properties: {} } } }],
+        },
+      })).rejects.toMatchObject({ status: 400 });
+      expect.soft(buildHeaders).not.toHaveBeenCalled();
+      expect.soft(configHeaders).not.toHaveBeenCalled();
+      expect.soft(apiKey).not.toHaveBeenCalled();
+      expect.soft(accessToken).not.toHaveBeenCalled();
+      expect.soft(fetcher, "Unregistered desktop credentials must never reach OpenAI or another substitute").not.toHaveBeenCalled();
+    } finally {
+      executor.config = originalConfig;
+      buildHeaders.mockRestore();
+    }
   });
 });

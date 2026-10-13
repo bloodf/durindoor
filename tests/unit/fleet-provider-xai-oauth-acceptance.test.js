@@ -175,7 +175,12 @@ describe("xai native: real chatCore transport selection (mocked fetch)", () => {
     expect(init.headers.Authorization).toBe(`Bearer ${oauth ? "fixture-oauth-token" : "fixture-api-key"}`);
     expect(wire.model).toBe("grok-4.5");
     if (oauth) {
-      expect(wire.input).toBeDefined();
+      expect(wire.input).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: expect.arrayContaining([expect.objectContaining({ type: "input_text", text: "hi" })]),
+        }),
+      ]));
       expect(wire.messages).toBeUndefined();
     } else {
       expect(wire.messages).toEqual(body.messages);

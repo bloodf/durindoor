@@ -57,6 +57,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 function offlineFetch() {
@@ -143,16 +144,19 @@ describe("#1174 Devin CLI agentic acceptance boundary (offline partial)", () => 
 
   it("rejects unsupported agentic identity rather than dispatching credentials to OpenAI (security regression)", async () => {
     const fetcher = offlineFetch();
-    const dispatch = async () => getExecutor("devin-cli-agentic").execute({
+    const executor = getExecutor("devin-cli-agentic");
+    const buildHeaders = vi.spyOn(executor, "buildHeaders");
+    const dispatch = async () => executor.execute({
       model: "fixture-model", body: { messages: [{ role: "user", content: "Hello" }] },
       stream: false, credentials: { apiKey: "fixture-only-candidate-token" },
     });
     // Require a caller-facing unsupported-provider error, not an unrelated TypeError.
     await expect.soft(dispatch()).rejects.toMatchObject({
       name: "Error",
-      message: 'Unsupported provider: devin-cli-agentic',
+      message: 'Unknown provider "devin-cli-agentic": no supported transport endpoint',
       status: 400,
     });
+    expect(buildHeaders, "Unsupported Devin candidate must reject before credential headers are built").not.toHaveBeenCalled();
     expect(fetcher, "Unsupported Devin candidate must not dispatch to any HTTP provider").not.toHaveBeenCalled();
   });
 });

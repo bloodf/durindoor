@@ -36,10 +36,12 @@ const json = (body, status = 200) => ({ ok: status < 300, status, json: async ()
 function installChatGptTls(handlers = {}) {
   const urls = [];
   const bodies = [];
+  const headers = [];
   __setTlsFetchOverrideForTesting(async (url, opts = {}) => {
     const u = String(url);
     urls.push(u);
     bodies.push(opts.body);
+    headers.push(new Headers(opts.headers));
     const h = new Headers({ "Content-Type": "application/json" });
     if (u.includes("/api/auth/session")) {
       return { status: 200, headers: h, body: null, text: JSON.stringify({ accessToken: "jwt", user: { id: "u1" } }) };
@@ -59,7 +61,7 @@ function installChatGptTls(handlers = {}) {
     }
     return { status: 200, headers: h, body: null, text: "<html></html>" };
   });
-  return { urls, bodies };
+  return { urls, bodies, headers };
 }
 
 describe("#1162 identity: chatgpt-web is not codex", () => {
@@ -168,7 +170,13 @@ describe("#1162 executor transports (mocked)", () => {
       expect((await r.response.json()).choices[0].message.content).toBe("pong");
       expect(m.urls.some((u) => u.includes("/backend-api/f/conversation"))).toBe(true);
       expect(m.urls.some((u) => u.includes("/backend-api/codex"))).toBe(false);
-      const conv = JSON.parse(m.bodies[m.urls.findIndex((u) => u.includes("/backend-api/f/conversation"))]);
+      const sessionIndex = m.urls.indexOf("https://chatgpt.com/api/auth/session");
+      expect(sessionIndex).toBeGreaterThanOrEqual(0);
+      expect(m.headers[sessionIndex].get("Cookie")).toBe("__Secure-next-auth.session-token=cookie-val");
+      const conversationIndex = m.urls.findIndex((u) => u.includes("/backend-api/f/conversation"));
+      expect(m.headers[conversationIndex].get("Cookie")).toBe("__Secure-next-auth.session-token=cookie-val");
+      expect(m.headers[conversationIndex].get("Authorization")).toBe("Bearer jwt");
+      const conv = JSON.parse(m.bodies[conversationIndex]);
       expect(conv).toHaveProperty("messages");
       expect(conv).not.toHaveProperty("input");
     } finally {
@@ -248,7 +256,12 @@ describe("#1162 model discovery", () => {
   it("codex discovers its live catalog with a token; empty without one", async () => {
     mocks.proxyAwareFetch.mockResolvedValue(json({ models: [{ slug: "gpt-5.5", priority: 1 }] }));
     expect((await getCodexModels("at", null, {})).map((x) => x.slug)).toEqual(["gpt-5.5"]);
-    expect(String(mocks.proxyAwareFetch.mock.calls[0][0])).toContain("/models");
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce();
+    const [url, init] = mocks.proxyAwareFetch.mock.calls[0];
+    const modelsUrl = new URL(url);
+    expect(`${modelsUrl.origin}${modelsUrl.pathname}`).toBe("https://chatgpt.com/backend-api/codex/models");
+    expect(init.method).toBe("GET");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer at");
     mocks.proxyAwareFetch.mockClear();
     expect(await getCodexModels("", null, {})).toEqual([]);
     expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();

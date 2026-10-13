@@ -31,7 +31,8 @@ vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => 
 vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External fetch forbidden in ownership fixture"); }));
 if (!process.env.DATA_DIR || process.env.NODE_ENV !== "test") throw new Error("Run through the isolated scoped-test wrapper");
 const route = await import("@/app/api/v1/native/[provider]/[...operation]/route.js");
-const { readNativeResourceOwner } = await import("@/sse/services/nativeResourceOwners.js");
+const { readNativeResourceOwner, createNativeResourceOwner } = await import("@/sse/services/nativeResourceOwners.js");
+const { observeNativeResponse } = await import("@/sse/services/nativeUsage.js");
 
 const model = "claude-haiku-4-5";
 const connectionId = "fixture-account";
@@ -122,6 +123,53 @@ function creationFixture(id, holdEof) {
 
 function owner(id) { return readNativeResourceOwner("anthropic", connectionId, id); }
 function expectedOwner(id) { return { ownerId: "creator", provider: "anthropic", model, connectionId, resourceId: id }; }
+
+describe("shared JSON ownership byte boundary", () => {
+  it("waits for persistence before releasing a split ID and completes exactly once without reframing bytes", async () => {
+    const id = `resource-${randomUUID()}`;
+    const chunks = [Buffer.from('{"id":"'), Buffer.from(`${id}","type":"fixture"}`)];
+    let release;
+    const persisted = new Promise((resolve) => { release = resolve; });
+    const onValue = vi.fn(async (value) => {
+      if (value.id) {
+        await persisted;
+        await createNativeResourceOwner(expectedOwner(value.id));
+      }
+    });
+    const onComplete = vi.fn();
+    const source = new Response(new ReadableStream({
+      start(controller) { for (const chunk of chunks) controller.enqueue(chunk); controller.close(); },
+    }), { headers: { "content-type": "application/json" } });
+    const reader = observeNativeResponse(source, { onValue, onComplete }).body.getReader();
+    expect(Buffer.from((await reader.read()).value).equals(chunks[0])).toBe(true);
+    let delivered = false;
+    const next = reader.read().then((value) => { delivered = true; return value; });
+    try {
+      await vi.waitFor(() => expect(onValue).toHaveBeenCalledWith(expect.objectContaining({ id })));
+      expect(delivered).toBe(false);
+      expect(await owner(id)).toBeNull();
+      expect(onComplete).not.toHaveBeenCalled();
+    } finally {
+      release();
+    }
+    expect(Buffer.from((await next).value).equals(chunks[1])).toBe(true);
+    expect(await owner(id)).toEqual(expectedOwner(id));
+    expect((await reader.read()).done).toBe(true);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not release an ID-bearing chunk when ownership persistence fails", async () => {
+    const id = `resource-${randomUUID()}`;
+    const source = Response.json({ id });
+    const onComplete = vi.fn();
+    const reader = observeNativeResponse(source, {
+      onValue: async () => { throw new Error("fixture ownership persistence failed"); }, onComplete,
+    }).body.getReader();
+    await expect(reader.read()).rejects.toThrow("fixture ownership persistence failed");
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(await owner(id)).toBeNull();
+  });
+});
 
 const lifecycles = [
   { collection: "/v1/files", createBody: { purpose: "fixture" }, mutateMethod: "DELETE", suffix: "" },

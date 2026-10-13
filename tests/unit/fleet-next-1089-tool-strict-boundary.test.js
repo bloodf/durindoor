@@ -63,6 +63,18 @@ const toolRequest = (output) => ({ input: [
   { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "call_fixture", output },
 ] });
 
+it.each([FORMATS.OPENAI, FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES])("preserves matched empty tool output for %s", (target) => {
+  const out = translateRequest(FORMATS.OPENAI_RESPONSES, target, "m", toolRequest([]), false);
+  if (target === FORMATS.OPENAI_RESPONSES) {
+    expect(out.input[1].output).toEqual([]);
+  } else if (target === FORMATS.OPENAI) {
+    expect(out.messages.find((message) => message.role === ROLE.TOOL)).toMatchObject({ tool_call_id: "call_fixture", content: "[]" });
+  } else {
+    const result = out.messages.flatMap((message) => message.content).find((block) => block.type === CLAUDE_BLOCK.TOOL_RESULT);
+    expect(result).toMatchObject({ tool_use_id: "call_fixture", content: "[]" });
+  }
+});
+
 describe.each([FORMATS.CLAUDE, FORMATS.GEMINI, FORMATS.CURSOR])("#1089 registered tool-output validation for %s", (target) => {
   it("preserves text-only arrays through the second hop", () => {
     const out = translateRequest(FORMATS.OPENAI_RESPONSES, target, "m", toolRequest([

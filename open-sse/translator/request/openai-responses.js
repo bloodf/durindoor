@@ -101,7 +101,7 @@ function splitToolOutputImages(output) {
     }
   }
   if (images.length > 0) parts.push({ type: OPENAI_BLOCK.TEXT, text: "[tool returned an image; see attached]" });
-  return { content: collapseTextParts(parts), images };
+  return { content: parts.length === 0 ? "[]" : collapseTextParts(parts), images };
 }
 
 function responsesContentToOpenAI(c) {

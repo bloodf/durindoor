@@ -107,7 +107,13 @@ function splitToolOutputImages(output) {
 function responsesContentToOpenAI(c) {
   if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
   if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
-    const url = c.image_url || c.file_id || "";
+    // File IDs are provider-scoped; only native Responses can preserve them.
+    if (!c.image_url && c.file_id) {
+      const error = new Error("input_image.file_id is not supported for this provider; send image_url (URL or data: base64) instead");
+      error.statusCode = HTTP_STATUS.BAD_REQUEST;
+      throw error;
+    }
+    const url = c.image_url || "";
     return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
   }
   return c;

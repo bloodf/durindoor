@@ -29,7 +29,7 @@ import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { POST as validate } from "../../src/app/api/providers/validate/route.js";
 import { normalizeProviderId } from "../../src/lib/providerNormalization.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
-import "../../open-sse/translator/registerAll.js";
+import "../translator/registerAll.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 
 // Keep persistence and request logging outside this transport acceptance scope.

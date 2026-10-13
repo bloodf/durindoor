@@ -24,6 +24,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { validateKiroOutputLimit } from "./openai-to-kiro.js";
 import { resolveSessionId } from "../../utils/sessionManager.js";
 import {
   resolveKiroModel,
@@ -402,12 +403,15 @@ function reconcileOrphanedToolResults(history, currentMessage) {
 
 /**
  * Build a Kiro payload directly from a Claude Messages API request body.
+ * Explicit output ceilings share the OpenAI route's rejection policy; native
+ * Kiro passthrough does not enter this adapter. The uncapped default is not a guarantee.
  */
 export function claudeToKiroRequest(model, body, stream, credentials, translationContext = null) {
+  validateKiroOutputLimit(body);
   let messages = Array.isArray(body.messages) ? body.messages : [];
   const tools = Array.isArray(body.tools) ? body.tools : [];
   const clientProvidedTools = tools.length > 0;
-  const maxTokens = body.max_tokens || 32000;
+  const maxTokens = 32000;
   const temperature = body.temperature;
   const topP = body.top_p;
 

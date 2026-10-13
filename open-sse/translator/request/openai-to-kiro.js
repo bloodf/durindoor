@@ -6,6 +6,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { v4 as uuidv4 } from "uuid";
 import { resolveSessionId } from "../../utils/sessionManager.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
   resolveKiroModel,
   resolveKiroThinkingBudget,
@@ -527,8 +528,29 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   return { history: mergedHistory, currentMessage };
 }
 
+/** Reject explicit output ceilings on either translated Kiro request route. */
+export function validateKiroOutputLimit(body) {
+  const requestedMaxTokens = body.max_tokens ?? body.max_completion_tokens;
+  if (requestedMaxTokens != null) {
+    const field = body.max_tokens != null ? "max_tokens" : "max_completion_tokens";
+    const valid = Number.isFinite(requestedMaxTokens) &&
+      Number.isInteger(requestedMaxTokens) && requestedMaxTokens > 0;
+    const error = new Error(valid
+      ? `Kiro cannot enforce ${field} output ceilings; omit the limit or choose a provider that supports it.`
+      : `${field} must be a finite positive integer.`);
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
+}
+
 /**
  * Build Kiro payload from OpenAI format
+ *
+ * Explicit output ceilings are rejected: Kiro enforcement of inferenceConfig
+ * maxTokens is not verified. max_tokens takes precedence over
+ * max_completion_tokens via nullish fallback, matching the OpenAI gateway.
+ * The legacy 32000 value remains only for requests without a ceiling; it is
+ * not a guaranteed output limit. Native same-format requests bypass this adapter.
  *
  * Two 9router-specific behaviours implemented here:
  *
@@ -545,6 +567,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
  *    name hints.
  */
 export function openaiToKiroRequest(model, body, stream, credentials, translationContext = null) {
+  validateKiroOutputLimit(body);
   const messages = body.messages || [];
   const tools = body.tools || [];
   const maxTokens = 32000;

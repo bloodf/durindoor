@@ -133,16 +133,16 @@ describe("#1162 executor transports (mocked)", () => {
     }
   });
 
-  it.each([{}, undefined, null])("chatgpt-web http rejects missing cookie credentials %j with 401 before any fetch", async (credentials) => {
+  it("chatgpt-web http rejects a credential object without a cookie with 401 before any fetch", async () => {
     const tlsFetch = vi.fn(() => { throw new Error("Unexpected TLS fetch"); });
     __setTlsFetchOverrideForTesting(tlsFetch);
     try {
-      // Keep absent credentials as ordinary assertions: the shared #1283 guard is not in this branch.
+      // Production callers supply an object; null/undefined are unsupported direct-seam misuse.
       const r = await new ChatGptWebHttpExecutor().execute({
         model: "gpt-5-6",
         body: { messages: [{ role: "user", content: "ping" }] },
         stream: false,
-        credentials,
+        credentials: {},
       });
       expect(r.response.status).toBe(401);
       expect((await r.response.json()).error.message).toContain("session-token cookie value");

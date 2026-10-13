@@ -142,17 +142,23 @@ describe("#1168 native HTTP comparison does not prove local app-server support",
 
   it("rejects unsupported local app-server execution before dispatching credentials to an unrelated HTTP vendor", async () => {
     proxyAwareFetch.mockResolvedValueOnce(json({ choices: [] }));
-    let result;
-    let error;
+    const executor = getExecutor("codex-app-server");
+    const buildHeaders = vi.spyOn(executor, "buildHeaders");
     try {
-      result = await getExecutor("codex-app-server").execute({
+      const execution = executor.execute({
         model, stream: false, credentials,
         body: { model, messages: [{ role: "user", content: "Offline local transport boundary" }] },
       });
-    } catch (caught) {
-      error = caught;
+      await expect(execution).rejects.toBeInstanceOf(Error);
+      await expect(execution).rejects.toMatchObject({
+        status: 400,
+        message: 'Unknown provider "codex-app-server": no supported transport endpoint',
+      });
+      expect(buildHeaders).not.toHaveBeenCalled();
+      expect(proxyAwareFetch, "Unsupported local transport must not leak credentials to OpenAI HTTP fallback").not.toHaveBeenCalled();
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    } finally {
+      buildHeaders.mockRestore();
     }
-    expect(proxyAwareFetch, "Unsupported local transport must not leak credentials to OpenAI HTTP fallback").not.toHaveBeenCalled();
-    expect(error || result?.response?.status >= 400).toBeTruthy();
   });
 });

@@ -6,7 +6,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { describe, expect, it, vi } from "vitest";
 import { buildAudit } from "../../scripts/audit-omniroute-providers.mjs";
 
-function withRegistryFixture(localFiles, check, source = 'export const upstream = { id: "upstream", executor: "default" };') {
+function withRegistryFixture(localFiles, check, source = 'export const upstream = { id: "upstream", executor: "default" };', prepare) {
   const root = mkdtempSync(join(tmpdir(), "fleet-pr1266-reexports-"));
   const durinRoot = join(root, "durin");
   const omniRoot = join(root, "omni");
@@ -24,6 +24,7 @@ function withRegistryFixture(localFiles, check, source = 'export const upstream 
       throw new Error("Audited registries must never execute");
       ${source}
     `);
+    prepare?.({ durinRoot, omniRoot, localRegistry, sourceRegistry });
     check(buildAudit({ durinRoot, omniRoot }));
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -131,6 +132,75 @@ describe("provider audit reexport identities", () => {
         side: "durindoor", path: "open-sse/providers/registry/index.js",
         reason: expect.stringContaining("unresolved star export ./missing.js"),
       });
+    });
+  });
+
+  it("treats a malformed star dependency as unknown despite a valid sibling", () => {
+    withRegistryFixture({
+      "index.js": 'export * from "./entries.js"; export * from "./malformed.js";',
+      "entries.js": 'export const provider = { id: "local", alias: "upstream" };',
+      "malformed.js": "export const provider = ;",
+    }, (audit) => {
+      expect(audit.evidence.localProviders).toEqual([]);
+      expect(audit.rows[0]).toMatchObject({ status: "missing", match: { kind: "none", localIds: [] } });
+      expect(audit.evidence.unresolved).toContainEqual({
+        side: "durindoor", path: "open-sse/providers/registry/malformed.js",
+        reason: expect.stringContaining("parse error"),
+      });
+      expect(audit.evidence.unresolved).toContainEqual({
+        side: "durindoor", path: "open-sse/providers/registry/index.js",
+        reason: expect.stringMatching(/unresolved|ambiguous/i),
+      });
+    });
+  });
+
+  it("reports unsupported namespace exports instead of silently dropping them", () => {
+    withRegistryFixture({
+      "index.js": 'export * as providers from "./entries.js";',
+      "entries.js": 'export const provider = { id: "local", alias: "upstream" };',
+    }, (audit) => {
+      expect(audit.evidence.localProviders).toEqual([]);
+      expect(audit.evidence.unresolved).toContainEqual({
+        side: "durindoor", path: "open-sse/providers/registry/index.js",
+        reason: expect.stringMatching(/namespace|ExportNamespaceSpecifier/i),
+      });
+    });
+  });
+
+  it.each(["entry", "subdirectory"])("reports an upstream symlinked %s explicitly", (kind) => {
+    withRegistryFixture({ "index.js": "export default [];" }, (audit) => {
+      expect(audit.rows.map(({ id }) => id)).toEqual(kind === "entry" ? [] : ["upstream"]);
+      expect(audit.evidence.unresolved).toContainEqual({
+        side: "omniroute",
+        path: kind === "entry"
+          ? "open-sse/config/providers/registry/index.ts"
+          : "open-sse/config/providers/registry/linked",
+        reason: expect.stringMatching(/symlink|symbolic link|outside audited root/i),
+      });
+    }, undefined, ({ omniRoot, sourceRegistry }) => {
+      const external = join(dirname(omniRoot), "omni-external");
+      mkdirSync(external);
+      const entry = join(external, "index.ts");
+      writeFileSync(entry, 'throw new Error("Never execute"); export const provider = { id: "external-secret", executor: "default" };');
+      if (kind === "entry") {
+        rmSync(join(sourceRegistry, "index.ts"));
+        symlinkSync(entry, join(sourceRegistry, "index.ts"));
+      } else {
+        symlinkSync(external, join(sourceRegistry, "linked"));
+      }
+    });
+  });
+
+  it("reports a dangling local non-index fallback entry without throwing", () => {
+    withRegistryFixture({}, (audit) => {
+      expect(audit.evidence.localProviders).toEqual([]);
+      expect(audit.rows[0]).toMatchObject({ status: "missing", match: { kind: "none", localIds: [] } });
+      expect(audit.evidence.unresolved).toContainEqual({
+        side: "durindoor", path: "open-sse/providers/registry/dangling.js",
+        reason: expect.stringMatching(/dangling|missing|ENOENT/i),
+      });
+    }, undefined, ({ localRegistry }) => {
+      symlinkSync(join(localRegistry, "missing.js"), join(localRegistry, "dangling.js"));
     });
   });
 

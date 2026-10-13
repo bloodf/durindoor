@@ -348,7 +348,15 @@ function loadModule(file, ctx) {
   const mod = { file, ctx, clean: "", bindings: new Map(), exports: new Map(), stars: [] };
   ctx.cache.set(file, mod);
   // Check every source load, including registry entrypoints, before reading bytes.
-  const realFile = realpathSync(file);
+  let realFile;
+  try {
+    realFile = realpathSync(file);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    mod.blocked = true;
+    note(ctx, mod, `missing or dangling source target: ${error.message}`);
+    return mod;
+  }
   const fromRoot = relative(ctx.realRoot, realFile);
   if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) {
     mod.blocked = true;
@@ -361,6 +369,7 @@ function loadModule(file, ctx) {
   try {
     ast = babel.parse(text, { sourceType: "module", plugins: ["typescript"] });
   } catch (error) {
+    mod.blocked = true;
     note(ctx, mod, `parse error: ${error.message}`);
     return mod;
   }
@@ -425,6 +434,12 @@ function loadModule(file, ctx) {
         bindUnknownPattern(stmt.declaration.id);
       }
       for (const spec of stmt.specifiers || []) {
+        if (spec.type === "ExportNamespaceSpecifier") {
+          const exported = spec.exported.name ?? spec.exported.value;
+          mod.exports.set(exported, { kind: "value", node: null, mod });
+          note(ctx, mod, "namespace export not statically resolvable", spec);
+          continue;
+        }
         if (spec.type !== "ExportSpecifier") continue;
         const exported = spec.exported.name ?? spec.exported.value;
         const local = spec.local.name ?? spec.local.value;
@@ -435,7 +450,11 @@ function loadModule(file, ctx) {
       const binding = { kind: "value", node: stmt.declaration, mod };
       mod.exports.set("default", binding);
     } else if (stmt.type === "ExportAllDeclaration") {
-      mod.stars.push(stmt.source.value);
+      if (stmt.exported) {
+        const exported = stmt.exported.name ?? stmt.exported.value;
+        mod.exports.set(exported, { kind: "value", node: null, mod });
+        note(ctx, mod, "namespace export not statically resolvable", stmt);
+      } else mod.stars.push(stmt.source.value);
     }
   }
   for (const [exported, local] of pending) {
@@ -708,8 +727,8 @@ function buildEntry(entry, providerSelection) {
  * strings can never be mistaken for providers. Duplicate ids merge aliases.
  * Anything not statically resolvable is reported in `unresolved`, never guessed.
  */
-function scanProviders(files, providerSelection, root) {
-  const ctx = { cache: new Map(), unresolved: new Map(), root, realRoot: realpathSync(root) };
+function scanProviders(files, providerSelection, root, unresolved = []) {
+  const ctx = { cache: new Map(), unresolved: new Map(unresolved.map((item) => [`${item.path}\0${item.reason}`, item])), root, realRoot: realpathSync(root) };
   const byId = new Map();
   const duplicateIds = new Set();
   const seen = new Set();
@@ -765,15 +784,21 @@ function scanDurinDoor(root) {
 
 function scanOmniRoute(sourceRoot) {
   const registryDir = join(sourceRoot, "open-sse", "config", "providers", "registry");
-  return scanProviders(findRegistryEntryFiles(registryDir), "registry", sourceRoot);
+  const unresolved = [];
+  return scanProviders(findRegistryEntryFiles(registryDir, sourceRoot, unresolved), "registry", sourceRoot, unresolved);
 }
 
-function findRegistryEntryFiles(registryDir) {
+function findRegistryEntryFiles(registryDir, root, unresolved) {
   const files = [];
   const visit = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
       const path = join(dir, entry.name);
-      if (entry.isDirectory()) {
+      if (entry.isSymbolicLink()) {
+        unresolved.push({
+          path: relative(root, path),
+          reason: "symbolic link registry entry unsupported; inspect registry membership",
+        });
+      } else if (entry.isDirectory()) {
         visit(path);
       } else if (entry.isFile() && entry.name === "index.ts") {
         files.push(path);

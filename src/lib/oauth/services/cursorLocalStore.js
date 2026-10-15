@@ -4,6 +4,10 @@ import { join } from "path";
 import { createRequire } from "module";
 import { isString } from "../../../shared/utils/typeChecks.js";
 
+// These paths belong to the user's machine, not the standalone package.
+// Bound join preserves runtime lookup without NFT globbing the project tree.
+const runtimeJoin = join.bind(null);
+
 // better-sqlite3 is optional; lazy-load via createRequire so this module
 // can be imported on hosts where the native binding fails to build.
 const require = createRequire(import.meta.url);
@@ -48,10 +52,10 @@ export function getCursorDbCandidatePaths(platform = process.platform) {
     const appData = process.env.APPDATA || join(home, "AppData", "Roaming");
     const localAppData = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
     return [
-    join(appData, "Cursor", "User", "globalStorage", "state.vscdb"),
-    join(appData, "Cursor - Insiders", "User", "globalStorage", "state.vscdb"),
-    join(localAppData, "Cursor", "User", "globalStorage", "state.vscdb"),
-    join(localAppData, "Programs", "Cursor", "User", "globalStorage", "state.vscdb")];
+    runtimeJoin(appData, "Cursor", "User", "globalStorage", "state.vscdb"),
+    runtimeJoin(appData, "Cursor - Insiders", "User", "globalStorage", "state.vscdb"),
+    runtimeJoin(localAppData, "Cursor", "User", "globalStorage", "state.vscdb"),
+    runtimeJoin(localAppData, "Programs", "Cursor", "User", "globalStorage", "state.vscdb")];
 
   }
 

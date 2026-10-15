@@ -19,7 +19,7 @@ Use those heads as the lower-bound anchors for the next sync review.
 Ported work is recorded by `scripts/upstream-ported-ids.sh`:
 
 1. Commit subjects `port(upstream): #N - ...` or `port(upstream): #A+#B - ...`. Every number in the leading `#A+#B` group counts; a trailing `(#123)` is this repository's squash number.
-2. `.github/upstream-ported.json` `ported[].pr`, for PRs with no `port(upstream)` subject of their own.
+2. `.github/upstream-ported.json` `ported[].pr`, for PRs with no `port(upstream)` subject of their own. Membership is source-qualified: only `source: "decolua/9router"` or legacy rows without a `source` field count in the 9router scan. Explicit other sources (including OmniRoute), unknown sources, null, and empty source values do not count; equal PR numbers in different repositories are not shared evidence.
 3. Direct-commit ports use `port(upstream): <sha7> - ...`; `scripts/upstream-ported-ids.sh --commits .` lists those SHA identifiers separately. Default output remains a numeric PR array for the open-PR scan.
 
 `CHANGELOG.md` is not parsed for membership.

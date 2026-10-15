@@ -322,7 +322,7 @@ function finish(code, status) {
 const readLog = (s) => (s.stdoutStderrLog && existsSync(s.stdoutStderrLog) ? readFileSync(s.stdoutStderrLog, "utf8").trim() : "");
 const gitq = async (id, args, cwd, o = {}) => {
   const s = await run(id, "setup", "git", args, { cwd, ...o });
-  return { s, text: readLog(s) };
+  return { s, text: args.includes("-z") && s.stdoutStderrLog ? readFileSync(s.stdoutStderrLog, "utf8") : readLog(s) };
 };
 const bail = (code) => finish(interrupted ? 130 : code, interrupted ? "interrupted" : code === 2 ? "prerequisite-error" : "failed");
 for (const [label, sha] of [["base", BASE], ["head", HEAD]]) {

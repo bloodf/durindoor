@@ -57,6 +57,7 @@
 - perf(models): Reuse bounded compiled model glob expressions instead of recompiling each pattern for every catalog row; preserve case-insensitive matching and literal punctuation.
 - perf(build): Keep runtime-only Cursor, Kiro, Cowork, and compression-root discovery out of recursive package tracing while preserving lookup order and packaged compression assets.
 - perf(translator): Remove the unused Antigravity executor import and disabled cloaking block so translator initialization does not load executor-only dependencies.
+- test: Anchor the dashboard JSX transform to the actual application source directory, not any ancestor named `src`; preserve full test inventory, isolation, and worker limits.
 
 # 4.10.1
 

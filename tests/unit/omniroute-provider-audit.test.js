@@ -670,6 +670,7 @@ describe("OmniRoute provider audit", () => {
     expect(markdown).toContain("Source commit: `abc123`");
     expect(markdown).toContain("| `simple` | simple-default | default | openai | apikey | bearer | Bearer");
     expect(markdown).toContain("`simple.svg`");
+    expect(markdown).toContain("Generated with `node scripts/audit-omniroute-providers.mjs");
     expect(markdown).not.toContain("| `present` | simple-default |");
     expect(audit.rows.find(({ id }) => id === "present")).toMatchObject({ status: "present", dynamicFields: ["baseUrl"] });
     expect(markdown).toContain("| `present` | baseUrl |");

@@ -13,7 +13,10 @@ const creds = { apiKey: "k" };
 
 // Tiny retry delays so the suite stays fast; attempts come from the merged
 // DEFAULT_RETRY_CONFIG + this config, capped by maxTransportAttempts.
-const fastRetry = { 502: { attempts: 5, delayMs: 1 } };
+const fastRetry = {
+  500: { attempts: 0, delayMs: 1 },
+  502: { attempts: 5, delayMs: 1 },
+};
 
 // Upstream that never returns headers: settles ONLY when the merged abort signal
 // fires (our connect timer). undici rejects with the abort REASON object, so

@@ -916,11 +916,14 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }
       case "ollama":{
           const res = await fetchWithConnectionProxy("https://ollama.com/api/tags", { headers: { Authorization: `Bearer ${connection.apiKey}` } }, effectiveProxy);
-          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+          // Public tags proves reachability, not account-key validity.
+          if (res.ok) return { valid: false, skipped: true, error: "Model endpoint reachable; credentials not verified" };
+          return { valid: false, error: "Invalid API key" };
         }
       case "ollama-local":{
           const host = resolveOllamaLocalHost(connection);
           const res = await fetchWithConnectionProxy(`${host}/api/tags`, {}, effectiveProxy);
+          if (res.ok && connection.apiKey) return { valid: false, skipped: true, error: "Model endpoint reachable; credentials not verified" };
           return { valid: res.ok, error: res.ok ? null : `Ollama not reachable at ${host}` };
         }
       case "deepgram":{
@@ -1158,7 +1161,7 @@ export async function testSingleConnection(id) {
   sanitizeErrorMessage(result.error || "Connection validation failed");
 
   const updateData = {
-    testStatus: result.valid ? "active" : "error",
+    testStatus: result.skipped ? "unknown" : result.valid ? "active" : "error",
     lastError: resultError,
     lastErrorAt: result.valid ? null : new Date().toISOString()
   };
@@ -1184,5 +1187,5 @@ export async function testSingleConnection(id) {
 
   await updateProviderConnection(id, updateData);
 
-  return { valid: result.valid, error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
+  return { valid: result.valid, ...(result.skipped ? { skipped: true } : null), error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
 }

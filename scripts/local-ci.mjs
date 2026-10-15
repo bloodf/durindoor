@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, writeFileSync,
+  closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, writeFileSync, rmSync, lstatSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -163,6 +163,11 @@ const out = path.resolve(
   opts.out ?? path.join(os.homedir(), ".cache", "durindoor-local-ci", `${HEAD.slice(0, 12)}-${stamp}`),
 );
 if (existsSync(out)) usageDie(`--out already exists, refusing to reuse: ${out}`);
+if (typeof process.geteuid !== "function" || process.geteuid() === 0) usageDie("unprivileged POSIX execution required");
+mkdirSync(out, { recursive: true, mode: 0o700 });
+const privateRoot = lstatSync(out);
+if (!privateRoot.isDirectory() || privateRoot.isSymbolicLink() || privateRoot.uid !== process.geteuid()
+  || (privateRoot.mode & 0o077)) usageDie("output root must be owned by execution identity and private (0700)");
 const dirs = {
   logs: path.join(out, "logs"), src: path.join(out, "src"), home: path.join(out, "home"),
   testHome: path.join(out, "durindoor-home"), data: path.join(out, "durindoor-data-build"),
@@ -222,6 +227,13 @@ async function run(id, job, cmd, args, { cwd = dirs.src, env = {}, input, expect
   };
   evidence.steps.push(step);
   if (interrupted) { step.status = "not-run"; step.reason = `interrupted by ${interrupted}`; save(); return step; }
+  for (const directory of [out, cwd, ...Object.values(dirs).filter(d => existsSync(d))]) {
+    const state = lstatSync(directory);
+    if (!state.isDirectory() || state.isSymbolicLink() || state.uid !== process.geteuid()) {
+      step.spawnError = "command state ownership mismatch";
+      step.status = "failed"; anyFail = true; save(); return step;
+    }
+  }
   const log = path.join(dirs.logs, `${String(++seq).padStart(2, "0")}-${id}.log`);
   step.stdoutStderrLog = log;
   step.startedAt = now();
@@ -472,6 +484,7 @@ await job("vitest", [
 // Discover with the same configuration as execution; never substitute tracked-file globs.
 const testEnv = { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE };
 const discoveryFile = path.join(tests, ".full-inventory.json");
+rmSync(discoveryFile, { force: true });
 const discovery = await run("vitest-inventory", "vitest", "node", [
   path.join(tests, "node_modules/vitest/vitest.mjs"), "list", "--filesOnly", `--json=${discoveryFile}`,
 ], { cwd: tests, env: testEnv });
@@ -490,6 +503,7 @@ if (ok(discovery)) {
     const reports = [];
     for (let i = 0; i < batches.length; i++) {
       const reportFile = path.join(tests, `.full-batch-${i + 1}.json`);
+      rmSync(reportFile, { force: true });
       const step = await run(`vitest-full-batch-${i + 1}`, "vitest", "node", [
         path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...batches[i],
         "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=json", `--outputFile=${reportFile}`,
@@ -532,6 +546,7 @@ if (ok(discovery)) {
     await run("check-upstream-watch-shell", "scoped-checks", "bash", ["-n", "scripts/upstream-ported-ids.sh"]);
   }
   if (selected.length) {
+    rmSync(path.join(tests, ".scoped-results.json"), { force: true });
     const step = await run("vitest-scoped", "vitest", "node", scopedTestArgs(tests, selected), {
       cwd: tests, env: { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE },
     });

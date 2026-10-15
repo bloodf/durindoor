@@ -7,7 +7,6 @@ import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
-import { AntigravityExecutor } from "../executors/antigravity.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
@@ -295,14 +294,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     result._toolNameMap = composeToolNameMaps(responsesToolAliases, result._toolNameMap);
   }
 
-  // Antigravity cloaking disabled
-  // if (provider === FORMATS.ANTIGRAVITY && body.userAgent !== FORMATS.ANTIGRAVITY) {
-  //   const { cloakedBody, toolNameMap } = AntigravityExecutor.cloakTools(result);
-  //   result = cloakedBody;
-  //   if (toolNameMap?.size > 0) {
-  //     result._toolNameMap = toolNameMap;
-  //   }
-  // }
 
   // Provider envelopes may replace the body outright (commandcode, kiro, ...).
   // Keep response-conversion metadata outside those envelopes so chatCore can

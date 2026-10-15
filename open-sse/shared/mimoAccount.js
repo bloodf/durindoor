@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isNumber } from "../../src/shared/utils/typeChecks.js";
+import { logDiagnostic } from "../../src/lib/mimoLoginSession.js";
 
 /**
  * Xiaomi MiMo account-session helpers (used for weekly quota).
@@ -154,18 +155,19 @@ export function resolveMimoServerBase(providerSpecificData = null) {
  * sid is per-cluster (SID_BY_REGION): cn=mimopc, sgp=mimosgp, ams=mimoams, ru=mimoru, in=mimoin.
  * @returns {Promise<string|null>} Cookie header value, or null on failure.
  */
-async function acquireServiceCookie(passJar, proxyOptions, apiBase = DEFAULT_API_BASE, region = "sgp") {
+async function acquireServiceCookie(passJar, proxyOptions, apiBase = DEFAULT_API_BASE, region = "sgp", log) {
   const r = String(region || "").toLowerCase();
   // Hard constraint: CN is ALWAYS direct (ignores proxy even if set)
   const effectiveProxy = r === "cn" ? null : proxyOptions;
   const sid = sidForRegion(r);
-  const viaDesktop = await acquireViaDesktopPhases(passJar, effectiveProxy, apiBase, sid);
-  if (viaDesktop) console.log(`[mimoAccount] desktop 2-phase OK (sid=${sid})`);
+  const viaDesktop = await acquireViaDesktopPhases(passJar, effectiveProxy, apiBase, sid, log);
+  if (viaDesktop) log("desktop_two_phase_ok");
   return viaDesktop;
 }
 
-async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid) {
-  const failLog = (reason) => console.log(`[mimoAccount] desktopPhase fail: ${reason}`);
+async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid, log) {
+  // Content-free: never log response bodies, URLs, cookie names or values.
+  const failLog = log;
   const jar = { ...passJar };
 
   // PHASE 1 — single serviceLogin call with the TARGET sid (no passportapi
@@ -191,11 +193,7 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid) {
   if (rawNonce && j) j.nonce = rawNonce;
 
   if (!j || !isNumber(j.code) || j.code !== 0 || !j.location || !j.nonce || !j.ssecurity) {
-    failLog(
-      `phase1 sid=${sid} http=${p1.status} code=${j?.code ?? "?"} hasLoc=${!!j?.location}`
-      + ` secondValidation=${j?.bSecondValidation ?? "?"} notificationUrl=${j?.notificationUrl ? "present" : "no"}`
-      + ` body=${JSON.stringify(raw.slice(0, 200))}`,
-    );
+    failLog("desktop_phase1_failed", { status: p1.status, upstreamCode: j?.code });
     return null;
   }
   absorbSetCookie(jar, p1);
@@ -227,7 +225,7 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid) {
   }
 
   if (!jar.serviceToken) {
-    failLog(`phase2 no serviceToken sid=${sid} jar=[${Object.keys(jar).join(",")}]`);
+    failLog("desktop_phase2_no_service_token");
     return null;
   }
   const out = {};
@@ -242,7 +240,11 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid) {
  * Get (and cache) the mimo-server account cookie.
  * @param {object|null} providerSpecificData - may carry `mimoPassToken` override
  */
-async function getServiceCookie(providerSpecificData, proxyOptions) {
+async function getServiceCookie(providerSpecificData, proxyOptions, log = null) {
+  if (!log) {
+    const context = {};
+    log = (event, details) => logDiagnostic(context, event, details);
+  }
   const apiBase = resolveMimoServerBase(providerSpecificData);
   const passJar = providerSpecificData?.mimoPassToken
     ? { passToken: providerSpecificData.mimoPassToken, userId: providerSpecificData.mimoUserId, cUserId: providerSpecificData.mimoCUserId }
@@ -262,21 +264,33 @@ async function getServiceCookie(providerSpecificData, proxyOptions) {
   // not each run the full 5-step SSO chain.
   const inflight = _inflight.get(key);
   if (inflight) {
-    const cookie = await inflight;
-    return cookie ? { cookie } : { cookie: null, reason: "sso-failed" };
+    inflight.logs.add(log);
+    try {
+      const cookie = await inflight.promise;
+      return cookie ? { cookie } : { cookie: null, reason: "sso-failed" };
+    } finally {
+      inflight.logs.delete(log);
+    }
   }
 
+  // One handshake still serves each account/cluster. Fan out only safe events
+  // to its waiting operations so each retains its own random correlation ID.
+  const logs = new Set([log]);
+  const emit = (event, details) => {
+    for (const listener of logs) listener(event, details);
+  };
   const promise = (async () => {
     try {
-      return await acquireServiceCookie(passJar, proxyOptions, apiBase, providerSpecificData?.region);
+      return await acquireServiceCookie(passJar, proxyOptions, apiBase, providerSpecificData?.region, emit);
     } catch (e) {
-      console.log(`[mimoAccount] acquire threw: ${e?.message || e} | ${String(e?.stack || "").split("\n").slice(1, 4).join(" <- ")}`);
+      emit("acquire_error", { error: e });
       return null; // network/parse failure — callers degrade, never throw
     } finally {
       _inflight.delete(key);
+      logs.clear();
     }
   })();
-  _inflight.set(key, promise);
+  _inflight.set(key, { promise, logs });
 
   const cookie = await promise;
   if (!cookie) return { cookie: null, reason: "sso-failed" };
@@ -295,14 +309,19 @@ export const MIMO_API_UA = API_UA;
 
 /**
  * Resolve the mimo-server account-session cookie, for upstream /api/route/* calls.
+ * A private diagnostic callback may correlate nested events with the initiating
+ * login operation. Concurrent waiters receive the same safe events under their
+ * own IDs; no credential, state or credential-derived identifier is used.
  * @returns {Promise<string|null>} Cookie header value, or null when unavailable.
  */
-export async function getMimoAccountCookie(providerSpecificData = null, proxyOptions = null) {
+export async function getMimoAccountCookie(providerSpecificData = null, proxyOptions = null, diagnosticLog = null) {
+  const context = {};
+  const log = diagnosticLog || ((event, details) => logDiagnostic(context, event, details));
   try {
-    const { cookie } = await getServiceCookie(providerSpecificData, proxyOptions);
+    const { cookie } = await getServiceCookie(providerSpecificData, proxyOptions, log);
     return cookie;
   } catch (e) {
-    console.log(`[mimoAccount] getMimoAccountCookie threw: ${e?.message || e} | ${String(e?.stack || "").split("\n").slice(1, 4).join(" <- ")}`);
+    log("account_cookie_error", { error: e });
     return null;
   }
 }

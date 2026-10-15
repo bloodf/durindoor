@@ -45,17 +45,20 @@ describe("OpenAI → Kiro", () => {
     },
   );
 
-  // Historical #1079 expectation remains unsupported for synchronous translation:
-  // remote URLs require guarded prefetch, otherwise translation must return 400.
-  it.fails("remote image url is preserved as an image, not text", () => {
-    const out = O2K({
+  it("remote image url is preserved as an image, not text", async () => {
+    const base64 = "aW1hZ2U=";
+    fetchImageAsBase64.mockResolvedValueOnce({ url: `data:image/png;base64,${base64}`, mimeType: "image/png" });
+    const body = {
       messages: [{ role: "user", content: [
         { type: "text", text: "see" },
-        { type: "image_url", image_url: { url: "https://x.com/p.png" } },
+        { type: "image_url", image_url: { url: "https://example.com/p.png" } },
       ] }],
-    });
-    const content = out.conversationState?.currentMessage?.userInputMessage?.content || "";
-    expect(content, "remote image flattened to text").not.toContain("[Image:");
+    };
+    await prefetchRemoteImages(body, FORMATS.OPENAI, FORMATS.KIRO);
+    const current = O2K(body).conversationState.currentMessage.userInputMessage;
+    expect(current.images).toEqual([{ format: "png", source: { bytes: base64 } }]);
+    expect(current.content).toContain("see");
+    expect(current.content).not.toContain("[Image:");
   });
 
   it.each([

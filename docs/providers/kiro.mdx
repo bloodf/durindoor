@@ -55,6 +55,14 @@ Send `kr/<model>`, for example `kr/claude-opus-4.8`. The catalog includes thinki
 
 The [Quota Tracker](../features/quota-tracking.mdx) reads Kiro's usage limits, for OAuth and API key connections alike. Kiro uses the `any-sufficient` preflight gate: an account stays eligible while any of its pools has room.
 
+## Images
+
+Kiro requires inline image bytes. For vision-capable models, the chat gateway resolves top-level OpenAI `image_url` HTTP(S) URLs and Claude URL image sources before translation, then sends native Kiro image blocks. Both streaming and non-streaming requests use this path; a URL rendered as text is not image support.
+
+The resolver rejects private or blocked hosts, redirects, oversized responses, and unrecognized image signatures. If a remote image cannot be resolved, the request returns a client error rather than silently dropping the image. Supply an OpenAI base64 data URI (`data:image/png;base64,...`) or a Claude `source: { type: "base64", media_type: "image/png", data: "..." }` instead. Nested remote images inside tool results are not resolved by this path.
+
+Synchronous translation and the dashboard translator do not fetch remote images. Supply inline data there; unresolved images return HTTP 400. Same-format OpenAI passthrough preserves image URLs without this Kiro conversion.
+
 ## Errors
 
 | You see | Cause | Fix |

@@ -19,7 +19,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 }));
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(),
-  appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(),
+  appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}),
 }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
   startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn(),
@@ -66,5 +66,34 @@ describe("Kiro guarded image dispatch (#1079)", () => {
     expect(error.error.message).toContain("Supply a base64 data URI");
     expect(mocks.execute).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("dispatches native image bytes and returns content (stream: %s)", async (stream) => {
+    const bytes = "aW1hZ2U=";
+    mocks.fetchImageAsBase64.mockResolvedValueOnce({ url: `data:image/png;base64,${bytes}`, mimeType: "image/png" });
+    const chunk = { id: "image-proof", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "fixture image reply" }, finish_reason: null }] };
+    const stop = { ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
+    mocks.execute.mockResolvedValueOnce({
+      response: new Response(`data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify(stop)}\n\ndata: [DONE]\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      }),
+      url: "https://kiro.example/fixture", headers: {}, transformedBody: null,
+    });
+    const body = { model: "claude-sonnet-4.5", stream, messages: [{ role: "user", content: [
+      { type: "text", text: "describe" },
+      { type: "image_url", image_url: { url: "https://example.com/p.png" } },
+    ] }] };
+    const result = await handleChatCore({
+      body, modelInfo: { provider: "kiro", model: body.model }, credentials: {},
+      sourceFormatOverride: FORMATS.OPENAI, modelCapabilities: { vision: true },
+      clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} },
+      rtkEnabled: false, headroomEnabled: false, cavemanEnabled: false,
+      ponytailEnabled: false, pxpipeEnabled: false,
+    });
+    expect(mocks.execute.mock.calls[0][0].body.conversationState.currentMessage.userInputMessage.images)
+      .toEqual([{ format: "png", source: { bytes } }]);
+    expect(result.success).toBe(true);
+    expect(result.response.status).toBe(200);
+    expect(await result.response.text()).toContain("fixture image reply");
   });
 });

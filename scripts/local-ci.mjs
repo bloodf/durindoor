@@ -276,6 +276,10 @@ async function run(id, job, cmd, args, { cwd = dirs.src, env = {}, input, expect
   }
   child = null;
   closeSync(fd);
+  const after = lstatSync(out);
+  if (!after.isDirectory() || after.isSymbolicLink() || after.uid !== process.geteuid() || (after.mode & 0o077)) {
+    step.spawnError = "private output root changed during command";
+  }
   step.endedAt = now();
   step.logSha256 = sha256(log);
   step.status = interrupted ? "interrupted"
@@ -558,6 +562,10 @@ if (ok(discovery)) {
   await run("baseline-diff", "vitest", "node", ["__baseline__/verify-baseline-diff.mjs"], {
     cwd: tests, env: { BASELINE_BASE_REF: BASE },
   });
+}
+if (readFileSync(path.join(tests, "__baseline__/known-fails.txt"), "utf8").trim()) {
+  anyFail = true;
+  skip("empty-baseline", "vitest", "nonempty failure baseline", "failed");
 }
 
 // commitlint over exactly base..head (private tool install; config copied beside it

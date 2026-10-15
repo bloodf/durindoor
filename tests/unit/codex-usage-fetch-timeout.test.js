@@ -42,7 +42,19 @@ describe("durindoor#951: Codex usage fetch is bounded", () => {
     });
 
     const { getCodexUsage } = await import("../../open-sse/services/usage/codex.js");
-
-    await expect(getCodexUsage("token")).rejects.toThrow(/Failed to fetch Codex usage/);
-  }, 20000);
+    vi.useFakeTimers();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), milliseconds);
+      return controller.signal;
+    });
+    try {
+      const rejection = expect(getCodexUsage("token")).rejects.toThrow(/Failed to fetch Codex usage/);
+      await vi.runAllTimersAsync();
+      await rejection;
+    } finally {
+      timeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });

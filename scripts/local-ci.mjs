@@ -6,14 +6,16 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, writeFileSync,
+  closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, writeFileSync, rmSync, lstatSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { readFreshReport, validateVitestExecution } from "../tests/__baseline__/run-ci.mjs";
-import { isString } from "../src/shared/utils/typeChecks.js";
+import { isString, isFunction } from "../src/shared/utils/typeChecks.js";
+import { partitionInventory, mergeBatchReports } from "../tests/__baseline__/full-batches.mjs";
+import { writeJunitReport } from "../tests/__baseline__/junit.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Unknown or shared-risk paths deliberately require the existing full gate.
@@ -161,6 +163,11 @@ const out = path.resolve(
   opts.out ?? path.join(os.homedir(), ".cache", "durindoor-local-ci", `${HEAD.slice(0, 12)}-${stamp}`),
 );
 if (existsSync(out)) usageDie(`--out already exists, refusing to reuse: ${out}`);
+if (!isFunction(process.geteuid) || process.geteuid() === 0) usageDie("unprivileged POSIX execution required");
+mkdirSync(out, { recursive: true, mode: 0o700 });
+const privateRoot = lstatSync(out);
+if (!privateRoot.isDirectory() || privateRoot.isSymbolicLink() || privateRoot.uid !== process.geteuid()
+  || (privateRoot.mode & 0o077)) usageDie("output root must be owned by execution identity and private (0700)");
 const dirs = {
   logs: path.join(out, "logs"), src: path.join(out, "src"), home: path.join(out, "home"),
   testHome: path.join(out, "durindoor-home"), data: path.join(out, "durindoor-data-build"),
@@ -220,6 +227,13 @@ async function run(id, job, cmd, args, { cwd = dirs.src, env = {}, input, expect
   };
   evidence.steps.push(step);
   if (interrupted) { step.status = "not-run"; step.reason = `interrupted by ${interrupted}`; save(); return step; }
+  for (const directory of [out, cwd, ...Object.values(dirs).filter(d => existsSync(d))]) {
+    const state = lstatSync(directory);
+    if (!state.isDirectory() || state.isSymbolicLink() || state.uid !== process.geteuid()) {
+      step.spawnError = "command state ownership mismatch";
+      step.status = "failed"; anyFail = true; save(); return step;
+    }
+  }
   const log = path.join(dirs.logs, `${String(++seq).padStart(2, "0")}-${id}.log`);
   step.stdoutStderrLog = log;
   step.startedAt = now();
@@ -262,6 +276,10 @@ async function run(id, job, cmd, args, { cwd = dirs.src, env = {}, input, expect
   }
   child = null;
   closeSync(fd);
+  const after = lstatSync(out);
+  if (!after.isDirectory() || after.isSymbolicLink() || after.uid !== process.geteuid() || (after.mode & 0o077)) {
+    step.spawnError = "private output root changed during command";
+  }
   step.endedAt = now();
   step.logSha256 = sha256(log);
   step.status = interrupted ? "interrupted"
@@ -304,7 +322,7 @@ function finish(code, status) {
 const readLog = (s) => (s.stdoutStderrLog && existsSync(s.stdoutStderrLog) ? readFileSync(s.stdoutStderrLog, "utf8").trim() : "");
 const gitq = async (id, args, cwd, o = {}) => {
   const s = await run(id, "setup", "git", args, { cwd, ...o });
-  return { s, text: readLog(s) };
+  return { s, text: args.includes("-z") && s.stdoutStderrLog ? readFileSync(s.stdoutStderrLog, "utf8") : readLog(s) };
 };
 const bail = (code) => finish(interrupted ? 130 : code, interrupted ? "interrupted" : code === 2 ? "prerequisite-error" : "failed");
 for (const [label, sha] of [["base", BASE], ["head", HEAD]]) {
@@ -466,25 +484,59 @@ await job("vitest", [
   ["npm-ci-root", "npm", npmCi],
   ["npm-ci-website", "npm", npmCi, { cwd: web }],
   ["npm-ci-tests", "npm", npmCi, { cwd: tests }],
-  ["vitest-test-ci", "npm", ["run", "test:ci"], {
-    cwd: tests, env: { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE },
-  }],
 ]);
-// "Verify test reports" ran with if: always() in test.yml.
-{
-  const reports = ["tests/.test-results.json", "tests/.test-results.junit.xml"].map((f) => {
-    const p = path.join(dirs.src, f);
-    return { file: f, bytes: existsSync(p) ? statSync(p).size : 0, sha256: existsSync(p) ? sha256(p) : null };
-  });
-  let good = reports.every((r) => r.bytes > 0);
-  const step = evidence.steps.find(s => s.id === "vitest-test-ci");
+// Discover with the same configuration as execution; never substitute tracked-file globs.
+const testEnv = { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE };
+const discoveryFile = path.join(tests, ".full-inventory.json");
+rmSync(discoveryFile, { force: true });
+const discovery = await run("vitest-inventory", "vitest", "node", [
+  path.join(tests, "node_modules/vitest/vitest.mjs"), "list", "--filesOnly", `--json=${discoveryFile}`,
+], { cwd: tests, env: testEnv });
+if (ok(discovery)) {
   try {
-    evidence.reports.push(validateTestReport(path.join(tests, ".test-results.json"),
-      Date.parse(step.startedAt), step.exitCode, step.signal, tests));
-  } catch (error) { good = false; skip("full-report", "vitest", error.message, "failed"); }
-  evidence.steps.push({ id: "verify-test-reports", job: "vitest", kind: "check", reports, status: good ? "passed" : "failed", at: now() });
-  if (!good) anyFail = true;
-  save();
+    const batches = partitionInventory(JSON.parse(readFileSync(discoveryFile, "utf8")), tests);
+    const discovered = new Set(batches.flat());
+    const mandatory = headInventoryResult.text.split("\n").filter(p => p.startsWith("tests/") && p.endsWith(".test.js")
+      && !p.endsWith(".live.test.js") && !p.includes("/node_modules/") && !p.includes("/.omc/")
+      && !p.includes("/.claude/") && !p.includes("/omp-extension/") && !p.includes("/dist/")
+      && !(p.endsWith("/embeddings.cloud.test.js") && !existsSync(path.join(dirs.src, "cloud")))).map(p => p.slice(6));
+    if (JSON.stringify([...discovered].sort()) !== JSON.stringify(mandatory.sort())) throw new Error("configured discovery differs from tracked test inventory");
+    evidence.fullTestInventory = batches.flat().sort();
+    evidence.fullTestBatches = batches;
+    save();
+    const reports = [];
+    for (let i = 0; i < batches.length; i++) {
+      const reportFile = path.join(tests, `.full-batch-${i + 1}.json`);
+      rmSync(reportFile, { force: true });
+      const step = await run(`vitest-full-batch-${i + 1}`, "vitest", "node", [
+        path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...batches[i],
+        "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=json", `--outputFile=${reportFile}`,
+      ], { cwd: tests, env: testEnv });
+      if (!ok(step)) throw new Error(`full batch ${i + 1} failed`);
+      const report = readFreshReport(reportFile, Date.parse(step.startedAt));
+      validateVitestExecution(report, step.exitCode, step.signal);
+      validateTestReport(reportFile, Date.parse(step.startedAt), step.exitCode, step.signal, tests);
+      reports.push(report);
+      evidence.reports.push({ file: reportFile, sha256: sha256(reportFile),
+        tests: report.testResults.flatMap(s => s.assertionResults || []).filter(a => a.status === "passed").length });
+    }
+    if (readFileSync(path.join(tests, "__baseline__/known-fails.txt"), "utf8").trim()) throw new Error("nonempty failure baseline");
+    const merged = mergeBatchReports(batches, reports, tests);
+    writeFileSync(path.join(tests, ".test-results.json"), JSON.stringify(merged));
+    writeJunitReport(merged, path.join(tests, ".test-results.junit.xml"));
+    validateTestReport(path.join(tests, ".test-results.json"), Date.parse(discovery.startedAt), 0, null, tests);
+    if (!statSync(path.join(tests, ".test-results.junit.xml")).size) throw new Error("empty JUnit report");
+    evidence.reports.push({ file: path.join(tests, ".test-results.json"), sha256: sha256(path.join(tests, ".test-results.json")),
+      tests: merged.testResults.flatMap(s => s.assertionResults || []).filter(a => a.status === "passed").length });
+    evidence.aggregateReports = [".test-results.json", ".test-results.junit.xml"].map(file => ({
+      file: path.join(tests, file), bytes: statSync(path.join(tests, file)).size, sha256: sha256(path.join(tests, file)),
+    }));
+    evidence.steps.push({ id: "verify-test-reports", job: "vitest", kind: "check", status: "passed", at: now() });
+    save();
+  } catch (error) {
+    anyFail = true;
+    skip("verify-test-reports", "vitest", error.message, "failed");
+  }
 }
 
 } else {
@@ -498,6 +550,7 @@ await job("vitest", [
     await run("check-upstream-watch-shell", "scoped-checks", "bash", ["-n", "scripts/upstream-ported-ids.sh"]);
   }
   if (selected.length) {
+    rmSync(path.join(tests, ".scoped-results.json"), { force: true });
     const step = await run("vitest-scoped", "vitest", "node", scopedTestArgs(tests, selected), {
       cwd: tests, env: { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE },
     });
@@ -509,6 +562,10 @@ await job("vitest", [
   await run("baseline-diff", "vitest", "node", ["__baseline__/verify-baseline-diff.mjs"], {
     cwd: tests, env: { BASELINE_BASE_REF: BASE },
   });
+}
+if (readFileSync(path.join(tests, "__baseline__/known-fails.txt"), "utf8").trim()) {
+  anyFail = true;
+  skip("empty-baseline", "vitest", "nonempty failure baseline", "failed");
 }
 
 // commitlint over exactly base..head (private tool install; config copied beside it

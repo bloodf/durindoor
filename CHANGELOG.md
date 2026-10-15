@@ -51,6 +51,12 @@
 - port(upstream): Adopt 9router non-messages prefill preservation, real-usage Responses completion, and the three-second post-finish watchdog; skip already-covered trailing-user cleanup and release-only changes, and defer unverified catalog/provider/header residuals as recorded in the upstream sync review.
 - port(omniroute): Preview the actual injected Caveman instruction in Token Saver settings (#15589); defer four changes whose runtime/schema/UI seams are absent in this fork, and skip dependency/CI/i18n-only bumps without marking them ported.
 
+## Maintenance
+
+- test: Exercise Codex stalled-request aborts with controlled timers and bound the HTTP 500 retry-policy fixture delay without changing production deadlines, retry counts, or full-suite selection.
+- perf(models): Reuse bounded compiled model glob expressions instead of recompiling each pattern for every catalog row; preserve case-insensitive matching and literal punctuation.
+- perf(build): Keep runtime-only Cursor, Kiro, Cowork, and compression-root discovery out of recursive package tracing while preserving lookup order and packaged compression assets.
+
 # 4.10.1
 
 ## Fixes

@@ -56,6 +56,7 @@
 - test: Exercise Codex stalled-request aborts with controlled timers and bound the HTTP 500 retry-policy fixture delay without changing production deadlines, retry counts, or full-suite selection.
 - perf(models): Reuse bounded compiled model glob expressions instead of recompiling each pattern for every catalog row; preserve case-insensitive matching and literal punctuation.
 - perf(build): Keep runtime-only Cursor, Kiro, Cowork, and compression-root discovery out of recursive package tracing while preserving lookup order and packaged compression assets.
+- perf(translator): Remove the unused Antigravity executor import and disabled cloaking block so translator initialization does not load executor-only dependencies.
 
 # 4.10.1
 

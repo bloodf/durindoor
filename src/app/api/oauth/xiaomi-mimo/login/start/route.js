@@ -14,6 +14,8 @@ import { beginSession, encodeSessionCookie, rewriteMimoBases, absorbSetCookies a
  * Egress resolution: MIMO_LOGIN_PROXY env > (non-CN cluster: probe common LOCAL
  * HTTP proxy ports — v2rayN/clash defaults) > direct. CN is always direct. The resolved URL rides
  * the session cookie so every hop/XHR uses the same exit.
+ * Diagnostics contain only a local event, random correlation ID and HTTP status.
+ * Never log request origins, redirect paths, proxy URLs or authentication data.
  */
 
 const API_UA =
@@ -85,16 +87,13 @@ export async function POST(request) {
     // Egress — non-CN clusters may need an overseas exit for the login page's
     // geo-decided features (e.g. Google sign-in); CN is always direct.
     let egress = null;
-    let egressSource = "direct";
     const envProxy = process.env.MIMO_LOGIN_PROXY?.trim();
     if (region !== "cn" && envProxy) {
       egress = envProxy;
-      egressSource = "env";
     } else if (region !== "cn") {
       const found = await probeLocalHttpProxy();
       if (found) {
         egress = found;
-        egressSource = "local-probe";
       }
     }
     sess.proxyUrl = egress;
@@ -128,8 +127,7 @@ export async function POST(request) {
     // logs, Referer). /login/status re-arms the cookie on every poll, so a
     // dropped-cookie browser still recovers on the next poll cycle.
     const proxiedPath = rewriteMimoBases(pageUrl.pathname + pageUrl.search, "toProxy", origin);
-    const egressLog = egress ? egress.replace(/\/\/[^@/]+@/, "//***@") : "";
-    console.log(`${new Date().toISOString().slice(11,23)} [mimo-login] start region=${sess.region} origin=${origin} egress=${egressSource}${egressLog ? ` (${egressLog})` : ""} page=${pageUrl.pathname}`);
+    logDiagnostic(sess, "start_ready", { status: 200 });
 
     const res = NextResponse.json({ success: true, state: sess.state, pageUrl: proxiedPath, region });
     res.cookies.set(SESSION_COOKIE, encodeSessionCookie(sess), {

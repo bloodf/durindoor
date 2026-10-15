@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 function expectNoSecrets() {
-  const captured = JSON.stringify(logs.map((a) => a.map(String)));
+  const captured = JSON.stringify(logs);
   for (const s of Object.values(SECRET)) expect(captured).not.toContain(s);
 }
 
@@ -82,6 +82,28 @@ describe("MiMo login credential redaction acceptance (#1088)", () => {
 });
 
 describe("MiMo login start route error redaction (#1088)", () => {
+  it("does not log credential-bearing redirect paths or request origins on success", async () => {
+    const { POST } = await import("../../src/app/api/oauth/xiaomi-mimo/login/start/route.js");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: `https://account.xiaomi.com/pass/serviceLogin?code=${SECRET.code}` },
+      }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: `/fe/service/login/${SECRET.token}?cookie=${SECRET.cookie}` },
+      })));
+    const res = await POST(new Request(`https://${SECRET.cookie}.example.test/api/oauth/xiaomi-mimo/login/start`, {
+      method: "POST", body: JSON.stringify({ region: "cn" }),
+    }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.pageUrl).toContain(SECRET.token);
+    expect(logs).toContainEqual(["[mimo-login]", expect.objectContaining({
+      event: "start_ready", status: 200, correlation: expect.any(String),
+    })]);
+    const captured = JSON.stringify(logs);
+    for (const value of [...Object.values(SECRET), body.state]) expect(captured).not.toContain(value);
+  });
+
   it("returns and logs a fixed message when the upstream hop throws credential-bearing errors", async () => {
     const { POST } = await import("../../src/app/api/oauth/xiaomi-mimo/login/start/route.js");
     vi.stubGlobal("fetch", vi.fn(async () => {

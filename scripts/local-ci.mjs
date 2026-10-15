@@ -14,6 +14,8 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { readFreshReport, validateVitestExecution } from "../tests/__baseline__/run-ci.mjs";
 import { isString } from "../src/shared/utils/typeChecks.js";
+import { partitionInventory, mergeBatchReports } from "../tests/__baseline__/full-batches.mjs";
+import { writeJunitReport } from "../tests/__baseline__/junit.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Unknown or shared-risk paths deliberately require the existing full gate.
@@ -466,25 +468,57 @@ await job("vitest", [
   ["npm-ci-root", "npm", npmCi],
   ["npm-ci-website", "npm", npmCi, { cwd: web }],
   ["npm-ci-tests", "npm", npmCi, { cwd: tests }],
-  ["vitest-test-ci", "npm", ["run", "test:ci"], {
-    cwd: tests, env: { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE },
-  }],
 ]);
-// "Verify test reports" ran with if: always() in test.yml.
-{
-  const reports = ["tests/.test-results.json", "tests/.test-results.junit.xml"].map((f) => {
-    const p = path.join(dirs.src, f);
-    return { file: f, bytes: existsSync(p) ? statSync(p).size : 0, sha256: existsSync(p) ? sha256(p) : null };
-  });
-  let good = reports.every((r) => r.bytes > 0);
-  const step = evidence.steps.find(s => s.id === "vitest-test-ci");
+// Discover with the same configuration as execution; never substitute tracked-file globs.
+const testEnv = { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE };
+const discoveryFile = path.join(tests, ".full-inventory.json");
+const discovery = await run("vitest-inventory", "vitest", "node", [
+  path.join(tests, "node_modules/vitest/vitest.mjs"), "list", "--filesOnly", `--json=${discoveryFile}`,
+], { cwd: tests, env: testEnv });
+if (ok(discovery)) {
   try {
-    evidence.reports.push(validateTestReport(path.join(tests, ".test-results.json"),
-      Date.parse(step.startedAt), step.exitCode, step.signal, tests));
-  } catch (error) { good = false; skip("full-report", "vitest", error.message, "failed"); }
-  evidence.steps.push({ id: "verify-test-reports", job: "vitest", kind: "check", reports, status: good ? "passed" : "failed", at: now() });
-  if (!good) anyFail = true;
-  save();
+    const batches = partitionInventory(JSON.parse(readFileSync(discoveryFile, "utf8")), tests);
+    const discovered = new Set(batches.flat());
+    const mandatory = headInventoryResult.text.split("\n").filter(p => p.startsWith("tests/") && p.endsWith(".test.js")
+      && !p.endsWith(".live.test.js") && !p.includes("/node_modules/") && !p.includes("/.omc/")
+      && !p.includes("/.claude/") && !p.includes("/omp-extension/") && !p.includes("/dist/")
+      && !(p.endsWith("/embeddings.cloud.test.js") && !existsSync(path.join(dirs.src, "cloud")))).map(p => p.slice(6));
+    if (JSON.stringify([...discovered].sort()) !== JSON.stringify(mandatory.sort())) throw new Error("configured discovery differs from tracked test inventory");
+    evidence.fullTestInventory = batches.flat().sort();
+    evidence.fullTestBatches = batches;
+    save();
+    const reports = [];
+    for (let i = 0; i < batches.length; i++) {
+      const reportFile = path.join(tests, `.full-batch-${i + 1}.json`);
+      const step = await run(`vitest-full-batch-${i + 1}`, "vitest", "node", [
+        path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...batches[i],
+        "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=json", `--outputFile=${reportFile}`,
+      ], { cwd: tests, env: testEnv });
+      if (!ok(step)) throw new Error(`full batch ${i + 1} failed`);
+      const report = readFreshReport(reportFile, Date.parse(step.startedAt));
+      validateVitestExecution(report, step.exitCode, step.signal);
+      validateTestReport(reportFile, Date.parse(step.startedAt), step.exitCode, step.signal, tests);
+      reports.push(report);
+      evidence.reports.push({ file: reportFile, sha256: sha256(reportFile),
+        tests: report.testResults.flatMap(s => s.assertionResults || []).filter(a => a.status === "passed").length });
+    }
+    if (readFileSync(path.join(tests, "__baseline__/known-fails.txt"), "utf8").trim()) throw new Error("nonempty failure baseline");
+    const merged = mergeBatchReports(batches, reports, tests);
+    writeFileSync(path.join(tests, ".test-results.json"), JSON.stringify(merged));
+    writeJunitReport(merged, path.join(tests, ".test-results.junit.xml"));
+    validateTestReport(path.join(tests, ".test-results.json"), Date.parse(discovery.startedAt), 0, null, tests);
+    if (!statSync(path.join(tests, ".test-results.junit.xml")).size) throw new Error("empty JUnit report");
+    evidence.reports.push({ file: path.join(tests, ".test-results.json"), sha256: sha256(path.join(tests, ".test-results.json")),
+      tests: merged.testResults.flatMap(s => s.assertionResults || []).filter(a => a.status === "passed").length });
+    evidence.aggregateReports = [".test-results.json", ".test-results.junit.xml"].map(file => ({
+      file: path.join(tests, file), bytes: statSync(path.join(tests, file)).size, sha256: sha256(path.join(tests, file)),
+    }));
+    evidence.steps.push({ id: "verify-test-reports", job: "vitest", kind: "check", status: "passed", at: now() });
+    save();
+  } catch (error) {
+    anyFail = true;
+    skip("verify-test-reports", "vitest", error.message, "failed");
+  }
 }
 
 } else {

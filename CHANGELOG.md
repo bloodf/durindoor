@@ -18,6 +18,8 @@
 
 # Unreleased
 
+- ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
+
 ## Features
 
 - feat(settings): Edit database startup credentials in Settings → Database and save a protected managed-file override applied after restart; startup selection does not migrate data or replace live cutover.

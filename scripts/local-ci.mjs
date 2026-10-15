@@ -13,7 +13,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { readFreshReport, validateVitestExecution } from "../tests/__baseline__/run-ci.mjs";
-import { isString } from "../src/shared/utils/typeChecks.js";
+import { isString, isFunction } from "../src/shared/utils/typeChecks.js";
 import { partitionInventory, mergeBatchReports } from "../tests/__baseline__/full-batches.mjs";
 import { writeJunitReport } from "../tests/__baseline__/junit.mjs";
 
@@ -163,7 +163,7 @@ const out = path.resolve(
   opts.out ?? path.join(os.homedir(), ".cache", "durindoor-local-ci", `${HEAD.slice(0, 12)}-${stamp}`),
 );
 if (existsSync(out)) usageDie(`--out already exists, refusing to reuse: ${out}`);
-if (typeof process.geteuid !== "function" || process.geteuid() === 0) usageDie("unprivileged POSIX execution required");
+if (!isFunction(process.geteuid) || process.geteuid() === 0) usageDie("unprivileged POSIX execution required");
 mkdirSync(out, { recursive: true, mode: 0o700 });
 const privateRoot = lstatSync(out);
 if (!privateRoot.isDirectory() || privateRoot.isSymbolicLink() || privateRoot.uid !== process.geteuid()

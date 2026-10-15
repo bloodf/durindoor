@@ -5,7 +5,7 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
 import { extractTextContent } from "../formats/gemini.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
@@ -309,18 +309,6 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       }
     }
   } else if (msg.role === ROLE.ASSISTANT) {
-    // Restore redacted_thinking blocks stashed by claude->openai during the
-    // first pivot (only in-process code sharing the symbol can set it; JSON
-    // round-trips drop it). Restore the { type, data } contract only —
-    // redacted blocks reject extra fields like cache_control upstream.
-    const stashedRedacted = msg[CLAUDE_REDACTED_THINKING_BLOCKS];
-    if (Array.isArray(stashedRedacted)) {
-      for (const block of stashedRedacted) {
-        if (block?.type === CLAUDE_BLOCK.REDACTED_THINKING && isString(block.data)) {
-          blocks.push({ type: CLAUDE_BLOCK.REDACTED_THINKING, data: block.data });
-        }
-      }
-    }
     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
     // precedes the text/tool_use blocks (Claude requires thinking first).
     const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some((part) => part.type === CLAUDE_BLOCK.THINKING);

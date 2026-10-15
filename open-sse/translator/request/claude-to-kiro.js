@@ -235,6 +235,10 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
                   const mediaType = c.source.media_type || DEFAULT_IMAGE_MIME;
                   const format = mediaType.split("/")[1] || mediaType;
                   pendingImages.push({ format, source: { bytes: c.source.data } });
+                } else if (c?.type === CLAUDE_BLOCK.IMAGE) {
+                  const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 image source.");
+                  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+                  throw error;
                 }
               }
               resultContent =

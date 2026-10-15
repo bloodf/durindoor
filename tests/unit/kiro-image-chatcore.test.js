@@ -27,6 +27,7 @@ vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
+const { translateRequest } = await import("../../open-sse/translator/index.js");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -64,6 +65,33 @@ describe("Kiro guarded image dispatch (#1079)", () => {
     const error = await result.response.json();
     expect(error.error.message).toContain("Kiro requires inline image data");
     expect(error.error.message).toContain("Supply a base64 data URI");
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("rejects nested Claude URL images before upstream dispatch (stream: %s)", async (stream) => {
+    const body = {
+      model: "claude-sonnet-4.5", stream, max_tokens: 100,
+      tools: [{ name: "screenshot", description: "Capture screen", input_schema: { type: "object", properties: {} } }],
+      messages: [
+        { role: "user", content: "capture" },
+        { role: "assistant", content: [{ type: "tool_use", id: "capture-1", name: "screenshot", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "capture-1", content: [
+          { type: "image", source: { type: "url", url: "https://example.com/screenshot.png" } },
+        ] }] },
+      ],
+    };
+    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, body.model, structuredClone(body), stream, null, "kiro"))
+      .toThrow(expect.objectContaining({ statusCode: 400 }));
+    const result = await handleChatCore({
+      body, modelInfo: { provider: "kiro", model: body.model }, credentials: {},
+      sourceFormatOverride: FORMATS.CLAUDE, modelCapabilities: { vision: true },
+      clientRawRequest: { endpoint: "/v1/messages", body, headers: {} },
+      rtkEnabled: false, headroomEnabled: false, cavemanEnabled: false,
+      ponytailEnabled: false, pxpipeEnabled: false,
+    });
+    expect(result.response.status).toBe(400);
+    expect((await result.response.json()).error.message).toContain("Supply a base64 image source");
     expect(mocks.execute).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });

@@ -59,7 +59,7 @@ The [Quota Tracker](../features/quota-tracking.mdx) reads Kiro's usage limits, f
 
 Kiro requires inline image bytes. For vision-capable models, the chat gateway resolves top-level OpenAI `image_url` HTTP(S) URLs and Claude URL image sources before translation, then sends native Kiro image blocks. Both streaming and non-streaming requests use this path; a URL rendered as text is not image support.
 
-The resolver rejects private or blocked hosts, redirects, oversized responses, and unrecognized image signatures. If a remote image cannot be resolved, the request returns a client error rather than silently dropping the image. Supply an OpenAI base64 data URI (`data:image/png;base64,...`) or a Claude `source: { type: "base64", media_type: "image/png", data: "..." }` instead. Nested remote images inside tool results are not resolved by this path.
+The resolver rejects private or blocked hosts, redirects, oversized responses, and unrecognized image signatures. If a remote image cannot be resolved, the request returns a client error rather than silently dropping the image. Supply an OpenAI base64 data URI (`data:image/png;base64,...`) or a Claude `source: { type: "base64", media_type: "image/png", data: "..." }` instead. Nested remote images inside Claude tool results are not resolved by this path and return HTTP 400, rather than being serialized as tool-result text. Nested base64 images remain supported.
 
 Synchronous translation and the dashboard translator do not fetch remote images. Supply inline data there; unresolved images return HTTP 400. Same-format OpenAI passthrough preserves image URLs without this Kiro conversion.
 

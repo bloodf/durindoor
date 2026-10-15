@@ -43,6 +43,8 @@ Send a short prompt and find the account on **Usage**. Import validates token an
 
 The current Cursor protobuf transport supports text and tool history, not images. Cursor models (`cursor` / `cu`) advertise `vision: false`, even when the underlying model family supports vision elsewhere.
 
+Custom-model capability overrides cannot enable Cursor vision. The published model list, combo member capabilities, and request routing keep `vision: false` after operator overrides; other capability overrides and other providers retain their existing precedence.
+
 Image input returns HTTP 400 with `invalid_request_error` before Cursor dispatch, for both streaming and non-streaming requests. This includes typed image blocks, image attachments, inline image data URLs in message strings, and images inside tool-result block arrays. Same-format Cursor requests are checked too; stripping images or enabling compression does not bypass validation. Ordinary tool JSON and text references to image filenames are not image input.
 
 Remove the image or select a vision-capable provider. Explicit rejection is not image support.

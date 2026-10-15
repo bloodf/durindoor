@@ -16,7 +16,7 @@ it("rejects Cursor images through real handlers without provider access", async 
         const image = { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } };
         const body = { model: `${provider}/default`, stream, messages: [{ role: "user", content: [image] }] };
         const original = structuredClone(body);
-        const chat = await handleChatCore({ body, modelInfo: { provider, model: "default" }, credentials: null });
+        const chat = await handleChatCore({ body, modelInfo: { provider, model: "default" }, modelCapabilities: { vision: true }, credentials: null });
         expect(chat.response.status).toBe(400);
         expect(await chat.response.json()).toMatchObject({ error: { type: "invalid_request_error", message: expect.stringContaining("Cursor image input is not supported") } });
         expect(body).toEqual(original);

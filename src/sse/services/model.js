@@ -1,4 +1,4 @@
-import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
 import { getOpenRouterModelCapabilities } from "open-sse/services/openrouterCatalog.js";
 import { effectiveSyncedModels, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
@@ -32,7 +32,7 @@ export function resolveCustomCapabilities(provider, model, requestPrefix, custom
       const staticCaps = inheritedCaps || materializeRequestModel(provider, { id: cleanModelId, kind }).capabilities;
       const caps = m.capabilities;
       const hasCaps = caps && isObject(caps) && !Array.isArray(caps) && Object.keys(caps).length > 0;
-      const merged = hasCaps ? { ...staticCaps, ...caps } : { ...staticCaps };
+      const merged = enforceCursorCapabilities(provider, hasCaps ? { ...staticCaps, ...caps } : { ...staticCaps });
       // Only persisted operator keys override inherited/live metadata.
       // The resolved capacities themselves remain usable without this marker.
       Object.defineProperty(merged, "customKeys", {
@@ -99,7 +99,7 @@ export function materializeRequestModel(provider, model, requestPrefix = null, s
   };
   const custom = resolveCustomCapabilities(provider, model.id, requestPrefix, snapshot.customModels, caps, kind);
   if (!custom) Object.defineProperty(caps, "customKeys", { value: new Set(), enumerable: false });
-  return { ...enriched, kind, capabilities: custom || caps };
+  return { ...enriched, kind, capabilities: enforceCursorCapabilities(provider, custom || caps) };
 }
 
 // Cache-only metadata is enrichment, not a new model-access/routability check.
@@ -140,7 +140,7 @@ export async function loadCustomCapabilities(provider, model, requestPrefix) {
     Object.defineProperty(merged, "customKeys", { value: new Set(keys), enumerable: false });
     custom = merged;
   }
-  return resolveOpenRouterCapabilities(providerId, modelId, custom);
+  return enforceCursorCapabilities(providerId, resolveOpenRouterCapabilities(providerId, modelId, custom));
 }
 
 /** Cached OpenRouter flags/limits participate without starting chat-path I/O. */

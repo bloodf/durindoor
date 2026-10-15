@@ -51,7 +51,7 @@ import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
-import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
+import { enforceCursorCapabilities, getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
 import { getOllamaCatalogModel } from "../services/ollamaCatalog.js";
 import { resolveOllamaLocalHost } from "../config/providers.js";
@@ -412,7 +412,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel) ||
   getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel) :
   null;
-  const effectiveModelCapabilities = { ...getCapabilitiesForModel(provider, cleanModel), ...(ollamaCatalogModel?.capabilities || {}), ...(modelCapabilities || {}) };
+  const effectiveModelCapabilities = enforceCursorCapabilities(provider, { ...getCapabilitiesForModel(provider, cleanModel), ...(ollamaCatalogModel?.capabilities || {}), ...(modelCapabilities || {}) });
   Object.defineProperty(effectiveModelCapabilities, "customKeys", {
     value: modelCapabilities?.customKeys instanceof Set
       ? modelCapabilities.customKeys : new Set(Object.keys(modelCapabilities || {})),

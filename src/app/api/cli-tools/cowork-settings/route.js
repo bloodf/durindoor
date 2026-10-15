@@ -11,6 +11,9 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
+// User-installed settings remain runtime paths, never bundled project assets.
+const runtimeJoin = path.join.bind(path);
+
 const APP_PORT = UPDATER_CONFIG.appPort;
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -61,10 +64,10 @@ const getCandidateRoots = () => {
     const localApp = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
     const roaming = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
     return [
-    path.join(localApp, "Claude-3p"),
-    path.join(roaming, "Claude-3p"),
-    path.join(localApp, "Claude"),
-    path.join(roaming, "Claude")];
+    runtimeJoin(localApp, "Claude-3p"),
+    runtimeJoin(roaming, "Claude-3p"),
+    runtimeJoin(localApp, "Claude"),
+    runtimeJoin(roaming, "Claude")];
 
   }
   return [

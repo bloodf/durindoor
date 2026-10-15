@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 
 /**
  * POST /api/mcp/control
@@ -10,7 +11,7 @@ import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 export const dynamic = "force-dynamic";
 
 function jsonRpcError(id, code, message) {
-  return NextResponse.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
+  return NextResponse.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message: sanitizeErrorMessage(message) } });
 }
 
 export async function POST(request) {

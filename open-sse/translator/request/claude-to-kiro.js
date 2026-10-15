@@ -35,6 +35,7 @@ import {
 "../../config/kiroConstants.js";
 import { DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { ROLE, CLAUDE_BLOCK } from "../schema/index.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 
 /** Stringify a tool_use input as a readable line. */
 import { isString } from "../../../src/shared/utils/typeChecks.js";
@@ -214,6 +215,11 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
             const mediaType = block.source.media_type || DEFAULT_IMAGE_MIME;
             const format = mediaType.split("/")[1] || mediaType;
             pendingImages.push({ format, source: { bytes: block.source.data } });
+          } else if (block.type === CLAUDE_BLOCK.IMAGE) {
+            // Failed guarded resolution must not silently remove vision input.
+            const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 image source.");
+            error.statusCode = HTTP_STATUS.BAD_REQUEST;
+            throw error;
           } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
             let resultContent = "";
             let hasImage = false;
@@ -229,6 +235,10 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
                   const mediaType = c.source.media_type || DEFAULT_IMAGE_MIME;
                   const format = mediaType.split("/")[1] || mediaType;
                   pendingImages.push({ format, source: { bytes: c.source.data } });
+                } else if (c?.type === CLAUDE_BLOCK.IMAGE) {
+                  const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 image source.");
+                  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+                  throw error;
                 }
               }
               resultContent =

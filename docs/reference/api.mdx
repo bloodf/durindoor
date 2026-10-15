@@ -86,6 +86,8 @@ Every media endpoint on this page, plus web search, web fetch, and embeddings be
 
 Image generation accepts JSON `{ model, prompt }`, optional `Accept: text/event-stream`, and `?response_format=binary`. Image edits accept multipart or provider-native JSON on supported models. xAI accepts `image: { url }` or `image: { file_id }`, or up to five sources in `images`; the adapter preserves `storage_options` and converts multipart `n` to a number. `sdwebui` and `comfyui` need no stored key.
 
+Responses `input_image` accepts `image_url` (URL or `data:` base64). A bare `file_id` is not resolved when the request is translated to Chat Completions; it returns HTTP 400 instead of being sent as an image URL. The file reference is preserved on native-compatible, same-format Responses transports, while gateway normalizations still apply.
+
 TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
 
 STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path. Only OpenAI-format STT providers (OpenAI, Groq, Local Whisper) have one; the others return 400. The transcription and translation handlers declare a maximum route duration of 300 seconds. This is a server execution setting, not a 300-second audio-file limit.

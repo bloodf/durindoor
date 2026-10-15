@@ -16,6 +16,7 @@
     "build:bun": "bun scripts/build-app.mjs",
     "start:bun": "bun ./.next/standalone/custom-server.js",
     "verify:static": "node scripts/verify-static-assets.mjs",
+    "verify:installed": "node scripts/smoke-installed-artifact.mjs",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli",
     "lint": "eslint src && npm run lint:anti-slop",

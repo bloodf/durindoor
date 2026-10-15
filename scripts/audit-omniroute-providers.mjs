@@ -33,8 +33,8 @@ export function readOmniRouteProviders(sourceRoot) {
  * registries; no audited module is imported or executed.
  *
  * Evidence limits: results are only valid for the OmniRoute checkout at
- * `omniCommit`. No pinned upstream matrix is bundled in this repo, so a run
- * without a real checkout proves nothing; `evidence.commitVerified` is true only
+ * `omniCommit`. A recorded matrix lives in internal/docs/omniroute-provider-matrix.json;
+ * a run without a real checkout proves nothing. `evidence.commitVerified` is true only
  * when the caller asserted the commit via `--commit`. Dynamic ids/fields are
  * listed in `evidence.unresolved` / `row.dynamicFields` instead of being guessed.
  * Local exported ids/aliases are recorded in `evidence.localProviders`. Exact
@@ -165,7 +165,7 @@ export function renderMarkdown(audit) {
   lines.push("");
   lines.push(`- Method: ${audit.evidence.method}`);
   lines.push(`- Commit asserted via --commit: ${audit.evidence.commitVerified ? "yes" : "no (HEAD of checkout recorded)"}`);
-  lines.push("- Valid only for the recorded source commit; no pinned upstream matrix is bundled.");
+  lines.push("- Valid only for the recorded source commit; review unresolved membership and metadata before using counts.");
   lines.push(`- Statically unresolved items: ${audit.evidence.unresolved.length}`);
   for (const item of audit.evidence.unresolved) {
     lines.push(`  - ${item.side} \`${item.path}\`: ${item.reason}`);
@@ -189,6 +189,16 @@ export function renderMarkdown(audit) {
   lines.push("| --- | --- | --- | --- | --- |");
   for (const row of audit.rows) {
     lines.push(`| \`${row.id}\` | ${row.status} | ${row.match.kind} | ${row.match.localIds.join(", ") || "-"} | ${row.match.tokens.join(", ") || "-"} |`);
+  }
+  lines.push("");
+  lines.push("## Unsupported Metadata");
+  lines.push("");
+  lines.push("Static identity membership is independent of metadata completeness; neither proves runtime support.");
+  lines.push("");
+  lines.push("| Provider | Unresolved fields |");
+  lines.push("| --- | --- |");
+  for (const row of audit.rows.filter((item) => item.dynamicFields.length)) {
+    lines.push(`| \`${row.id}\` | ${row.dynamicFields.join(", ")} |`);
   }
   lines.push("");
   lines.push("## Missing Provider Classes");

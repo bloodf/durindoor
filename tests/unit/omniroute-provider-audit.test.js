@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   buildAudit,
+  readDurinDoorProviders,
   classifyProvider,
   renderMarkdown,
   verifyCleanSourceCheckout,
@@ -141,6 +142,16 @@ function writeProvider(root, id, source) {
 }
 
 describe("OmniRoute provider audit", () => {
+  it("reads every provider from the real grouped registry export", () => {
+    const ids = readDurinDoorProviders(repoRoot);
+    for (const id of ["360ai", "arcee-ai", "azure-ai", "azure-openai", "cablyai",
+      "clarifai", "cliproxyapi", "datarobot", "empower", "fenayai", "getgoapi",
+      "laozhang", "nomic", "oci", "piapi", "poe", "sap", "thebai", "watsonx"]) {
+      expect(ids.has(id), id).toBe(true);
+    }
+    expect(ids.has("omniroute-api-cloud")).toBe(false);
+  });
+
   it("classifies provider port work and icon parity", () => {
     const { durin, omni } = makeFixture();
     const audit = buildAudit({ durinRoot: durin, omniRoot: omni, omniCommit: "abc123" });
@@ -652,13 +663,16 @@ describe("OmniRoute provider audit", () => {
 
   it("renders a Markdown handoff document", () => {
     const { durin, omni } = makeFixture();
+    writeProvider(omni, "present", `export default { id: "present", executor: "default", baseUrl: chooseEndpoint() };`);
     const audit = buildAudit({ durinRoot: durin, omniRoot: omni, omniCommit: "abc123" });
     const markdown = renderMarkdown(audit);
 
     expect(markdown).toContain("Source commit: `abc123`");
     expect(markdown).toContain("| `simple` | simple-default | default | openai | apikey | bearer | Bearer");
     expect(markdown).toContain("`simple.svg`");
-    expect(markdown).toContain("Generated with `node scripts/audit-omniroute-providers.mjs");
+    expect(markdown).not.toContain("| `present` | simple-default |");
+    expect(audit.rows.find(({ id }) => id === "present")).toMatchObject({ status: "present", dynamicFields: ["baseUrl"] });
+    expect(markdown).toContain("| `present` | baseUrl |");
   });
 
   it("verifies a labeled source commit before CLI rendering", () => {

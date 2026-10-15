@@ -91,37 +91,13 @@ exports[`GOLDEN request: OpenAI → Claude > full body (system/image/tool/tool_r
 
 exports[`GOLDEN request: OpenAI → Claude > reasoning_effort → adaptive output_config (claude 4.6+) 1`] = `
 {
-  "max_tokens": 64000,
-  "messages": [
-    {
-      "content": [
-        {
-          "text": "hi",
-          "type": "text",
-        },
-      ],
-      "role": "user",
-    },
-  ],
-  "model": "claude-opus-4-6",
   "output_config": {
     "effort": "high",
   },
-  "stream": true,
   "system": [
-    {
-      "cache_control": {
-        "ttl": "1h",
-        "type": "ephemeral",
-      },
-      "text": "You are Claude Code, Anthropic's official CLI for Claude.",
-      "type": "text",
-    },
+    "Explain the result in two sentences.",
   ],
-  "thinking": {
-    "display": "summarized",
-    "type": "adaptive",
-  },
+  "thinking": "adaptive",
 }
 `;
 

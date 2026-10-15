@@ -344,6 +344,7 @@ export async function ensureServiceSession(sess) {
         mimoCUserId: id.cUserId,
       },
       proxyOptions,
+      log,
     );
     if (!serviceCookie) {
       log("exchange_no_service_cookie");

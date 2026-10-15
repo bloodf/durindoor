@@ -7,9 +7,13 @@ const canAccessManagementApi = vi.hoisted(() => vi.fn(async () => true));
 const proxyAccountRequest = vi.hoisted(() => vi.fn());
 vi.mock("../../src/dashboardGuard", () => ({ proxy: dashboardProxy, canAccessManagementApi }));
 vi.mock("../../src/lib/mimoLoginSession", async (importOriginal) => ({ ...(await importOriginal()), proxyAccountRequest }));
+// Keep the real account/session helpers, but never dispatch a real transport.
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: (...args) => globalThis.fetch(...args),
+}));
 
 import proxy from "../../src/proxy.js";
-import { SESSION_COOKIE, beginSession, encodeSessionCookie } from "../../src/lib/mimoLoginSession.js";
+import { SESSION_COOKIE, beginSession, encodeSessionCookie, ensureServiceSession } from "../../src/lib/mimoLoginSession.js";
 import { getMimoAccountCookie } from "../../open-sse/shared/mimoAccount.js";
 
 const SECRET = {
@@ -118,5 +122,52 @@ describe("MiMo login start route error redaction (#1088)", () => {
     for (const s of Object.values(SECRET)) expect(JSON.stringify(body)).not.toContain(s);
     expect(logs).not.toEqual([]);
     expectNoSecrets();
+  });
+});
+
+describe("real exchange diagnostic correlation (#1088 R2)", () => {
+  it.each(["upstream", "transport"])("correlates concurrent %s failures while sharing only same-account/cluster handshakes", async (failure) => {
+    const token = `${crypto.randomUUID()}-${SECRET.token}`;
+    const makeSession = (region, passToken) => {
+      const sess = beginSession(region);
+      sess.jar.set("passToken|account.xiaomi.com|/", {
+        name: "passToken", value: passToken, domain: "account.xiaomi.com", path: "/",
+      });
+      return sess;
+    };
+    const sessions = [makeSession("sgp", token), makeSession("sgp", token),
+      makeSession("ams", token), makeSession("sgp", `${crypto.randomUUID()}-${SECRET.token}`)];
+    const pending = [];
+    const fetchMock = vi.fn(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+    vi.stubGlobal("fetch", fetchMock);
+    const operations = sessions.map((sess) => ensureServiceSession(sess));
+    // Real helper's dynamic import must finish before releasing the transports.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    for (const request of pending) {
+      if (failure === "upstream") request.resolve(new Response(JSON.stringify({
+        code: 70016, passToken: SECRET.token, cookie: SECRET.cookie,
+        location: `https://account.xiaomi.com/?code=${SECRET.code}`,
+      }), { status: 401 }));
+      else request.reject(Object.assign(new Error(`Cookie: ${SECRET.cookie}; code=${SECRET.code}`), { code: "ECONNRESET" }));
+    }
+    expect(await Promise.all(operations)).toEqual([false, false, false, false]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const diagnostics = logs.map(([, details]) => details).filter((d) => d?.correlation);
+    const starts = diagnostics.filter((d) => d.event === "exchange_start");
+    expect(starts).toHaveLength(4);
+    expect(new Set(starts.map((d) => d.correlation)).size).toBe(4);
+    for (const start of starts) {
+      const events = diagnostics.filter((d) => d.correlation === start.correlation);
+      expect(events.map((d) => d.event)).toEqual([
+        "exchange_start", failure === "upstream" ? "desktop_phase1_failed" : "acquire_error", "exchange_no_service_cookie",
+      ]);
+      expect(events[1]).toEqual(expect.objectContaining(failure === "upstream"
+        ? { status: 401, upstreamCode: 70016 } : { transportCode: "ECONNRESET" }));
+    }
+    expectNoSecrets();
+    for (const sess of sessions) {
+      expect(JSON.stringify(logs)).not.toContain(sess.state);
+      for (const cookie of sess.jar.values()) expect(JSON.stringify(logs)).not.toContain(cookie.value);
+    }
   });
 });

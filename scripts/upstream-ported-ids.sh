@@ -11,7 +11,8 @@
 #      Every number in the leading `#A+#B+...` group counts (one commit often
 #      lands several upstream PRs); a trailing `(#123)` is our own squash number.
 #
-#   2. .github/upstream-ported.json `ported[].pr`
+#   2. .github/upstream-ported.json `ported[].pr` for source decolua/9router
+#      Missing source is legacy 9router evidence; other explicit sources do not count.
 #      Reviewed ledger for PRs with no `port(upstream)` subject of their own:
 #      ported inside a commit naming a different number, or implemented
 #      independently rather than cherry-picked. Both count as ported — the scan
@@ -40,6 +41,6 @@ LEDGER="$ROOT/.github/upstream-ported.json"
     | tr '+' '\n' | tr -d '#'
 
   if [ -f "$LEDGER" ]; then
-    jq -r '.ported[].pr' "$LEDGER"
+    jq -r '.ported[] | select((has("source") | not) or .source == "decolua/9router") | .pr' "$LEDGER"
   fi
 } | sort -un | jq -Rn '[inputs | tonumber]'

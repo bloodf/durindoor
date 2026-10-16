@@ -11,6 +11,7 @@ export const runtime = "nodejs";
  * Probe a registered upstream MCP instance by listing its tools. Failure
  * responses use the `{ error: string, ok: false }` shape (same convention as
  * `src/app/api/settings/route.js:60`) so the dashboard can render the error.
+ * Return fixed operation errors; arbitrary upstream diagnostics may contain secrets.
  *
  * Status codes:
  * - 200 success → `{ ok: true, toolCount, sample }` (existing shape preserved)
@@ -27,9 +28,8 @@ export async function POST(_request, context) {
   let mcpClient;
   try {
     mcpClient = clientFor(inst);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: message, ok: false }, { status: 400 });
+  } catch {
+    return NextResponse.json({ error: "Invalid MCP transport configuration", ok: false }, { status: 400 });
   }
   try {
     const tools = await mcpClient.listTools(inst);
@@ -38,8 +38,12 @@ export async function POST(_request, context) {
       toolCount: tools.length,
       sample: tools.slice(0, 5).map((t) => ({ name: t.name, description: t.description || "" })),
     });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: message, ok: false }, { status: 502 });
+  } catch (error) {
+    const refused = error instanceof Error &&
+      (error.code === "ECONNREFUSED" || /^(?:connect )?ECONNREFUSED\b/.test(error.message));
+    return NextResponse.json({
+      error: refused ? "MCP upstream tool probe failed (ECONNREFUSED)" : "MCP upstream tool probe failed",
+      ok: false,
+    }, { status: 502 });
   }
 }

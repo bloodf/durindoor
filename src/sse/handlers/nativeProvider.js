@@ -9,7 +9,7 @@ import { getModelInfo } from "../services/model.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { findNativeOperation, nativeOrigin } from "./nativeProviderConfig.js";
 import nativeModelSlots from "open-sse/handlers/nativeModelSlots.cjs";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../shared/utils/typeChecks.js";
 import { createNativeResourceOwner, readNativeResourceOwner } from "../services/nativeResourceOwners.js";
 import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredentialManager.js";
 import { resolveResourceOwner } from "../services/resourceOwnership.js";
@@ -17,6 +17,7 @@ import { applyEdits, findNodeAtLocation, modify, parseTree } from "jsonc-parser"
 const { collectNativeModelSlots } = nativeModelSlots;
 
 const MAX_ERROR_BYTES = 8192;
+const MAX_RESOURCE_LIST_REQUESTS = 10;
 const FORWARD_HEADERS = new Set(["accept", "content-type", "anthropic-version", "anthropic-beta", "anthropic-workspace-id", "idempotency-key", "openai-beta", "x-client-request-id"]);
 function fail(status, message) {
   return errorResponse(status, message);
@@ -41,7 +42,11 @@ async function forwardError(response, credentials) {
     [credentials.apiKey, credentials.accessToken, credentials.refreshToken, credentials.providerSpecificData?.connectionProxyUrl]));
 }
 
-/** Native vendor operation proxy. Only configured methods and paths can reach fixed vendor origins. */
+/**
+ * Native vendor proxy. Account pins select credentials, never resource owners.
+ * Anthropic files and batches require recorded ownership, including list entries;
+ * only the existing operator authorization may cross owners, not unknown records.
+ */
 export async function handleNativeProvider(request, provider, path) {
   const operation = findNativeOperation(provider, request.method, path);
   if (!operation) return fail(HTTP_STATUS.NOT_FOUND, "Unknown native operation");
@@ -141,8 +146,8 @@ export async function handleNativeProvider(request, provider, path) {
     return fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot mint direct native sessions");
   }
   const trackedResource = operation.resourceParam || operation.resourceQuery || operation.resourceBodyField;
-  const requestOwner = operation.createsResource || trackedResource ? await resolveResourceOwner(request) : null;
-  if (operation.createsResource && (!requestOwner?.authorized || !requestOwner.ownerId)) return fail(HTTP_STATUS.FORBIDDEN, "Native resource ownership requires an API key");
+  const requestOwner = operation.createsResource || trackedResource || operation.listsResources ? await resolveResourceOwner(request, auth) : null;
+  if ((operation.createsResource || trackedResource || operation.listsResources) && (!requestOwner?.authorized || !requestOwner.ownerId)) return fail(HTTP_STATUS.FORBIDDEN, "Native resource ownership requires an API key");
   if (multipart) {
     if (parsed?.model) multipart.set("model", parsed.model);
     if (provider === "xai" && model === "stt") multipart.delete("model");
@@ -179,7 +184,7 @@ export async function handleNativeProvider(request, provider, path) {
   const pollResourceId = operation.resourceParam ? pathParts[resourceIndex] : operation.resourceQuery ? url.searchParams.get(operation.resourceQuery) : bodyResourceId;
   if (trackedResource && (!isString(pollResourceId) || !pollResourceId)) return fail(HTTP_STATUS.BAD_REQUEST, "Missing native resource ID");
   const resourceOwner = trackedResource ? await readNativeResourceOwner(provider, credentials.connectionId, pollResourceId) : null;
-  if (trackedResource && !resourceOwner) return fail(HTTP_STATUS.FORBIDDEN, "Unknown native resource owner");
+  if (trackedResource && !resourceOwner?.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Unknown native resource owner");
   if (resourceOwner && !requestOwner.allowAllOwners && resourceOwner.ownerId !== requestOwner.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Forbidden");
   if (resourceOwner?.model && resourceOwner.model !== model) return fail(HTTP_STATUS.BAD_REQUEST, "Native resource model does not match its creation model");
   const keyedCreator = resourceOwner && !["local", "operator"].includes(resourceOwner.ownerId);
@@ -195,6 +200,10 @@ export async function handleNativeProvider(request, provider, path) {
   headers.set("accept-encoding", "identity");
   const upstream = new URL(path, origin);
   for (const [name, value] of url.searchParams) upstream.searchParams.append(name, value);
+  const listLimit = operation.listsResources ? Number(url.searchParams.get("limit") ?? 20) : null;
+  if (operation.listsResources && (!Number.isInteger(listLimit) || listLimit < 1 || listLimit > 1000)) {
+    return fail(HTTP_STATUS.BAD_REQUEST, "Native resource list limit must be an integer between 1 and 1000");
+  }
   let response;
   try {
     response = await proxyAwareFetch(upstream, { method: request.method, headers, body: rawBody, signal: request.signal, redirect: "error", duplex: rawBody ? "half" : undefined }, resolveCredentialProxyOptions(credentials));
@@ -202,6 +211,49 @@ export async function handleNativeProvider(request, provider, path) {
     return fail(HTTP_STATUS.BAD_GATEWAY, "Native provider request failed");
   }
   if (!response.ok) return forwardError(response, credentials);
+  if (operation.listsResources) {
+    // Collect limit + 1 visible entries; only the extra entry proves has_more.
+    // Raw has_more and other upstream metadata can reveal foreign resources.
+    // Cap the entire scan; fail without a partial page if visibility is unresolved.
+    // Hidden cursors stay internal, never client tokens. No cursor state is consumed.
+    const cursorField = url.searchParams.has("before_id") ? "first_id" : "last_id";
+    const cursorParam = cursorField === "first_id" ? "before_id" : "after_id";
+    const seenCursors = new Set([url.searchParams.get(cursorParam)]);
+    const result = [];
+    let requests = 1;
+    while (true) {
+      let page;
+      try { page = await response.json(); } catch { return fail(HTTP_STATUS.BAD_GATEWAY, "Invalid native resource list"); }
+      if (!Array.isArray(page?.data) || !isBoolean(page.has_more)) return fail(HTTP_STATUS.BAD_GATEWAY, "Invalid native resource list");
+      const entries = cursorParam === "before_id" ? page.data.slice().reverse() : page.data;
+      for (const entry of entries) {
+        if (!isString(entry?.id) || !entry.id) continue;
+        const owner = await readNativeResourceOwner(provider, credentials.connectionId, entry.id);
+        if (owner?.ownerId && (requestOwner.allowAllOwners || owner.ownerId === requestOwner.ownerId)) result.push(entry);
+        if (result.length > listLimit) break;
+      }
+      const hasMoreVisible = result.length > listLimit;
+      if (hasMoreVisible || !page.has_more) {
+        const data = result.slice(0, listLimit);
+        if (cursorParam === "before_id") data.reverse();
+        response = Response.json({ data, first_id: data[0]?.id ?? null, last_id: data.at(-1)?.id ?? null, has_more: hasMoreVisible });
+        break;
+      }
+      if (requests >= MAX_RESOURCE_LIST_REQUESTS) return fail(HTTP_STATUS.BAD_GATEWAY, "Native resource list scan limit exceeded; pagination could not be resolved safely");
+      const cursor = page[cursorField];
+      if (!isString(cursor) || !cursor || seenCursors.has(cursor)) return fail(HTTP_STATUS.BAD_GATEWAY, "Invalid native resource list cursor");
+      seenCursors.add(cursor);
+      upstream.searchParams.set(cursorParam, cursor);
+      requests++;
+      try {
+        response = await proxyAwareFetch(upstream, { method: request.method, headers, signal: request.signal, redirect: "error" }, resolveCredentialProxyOptions(credentials));
+      } catch { return fail(HTTP_STATUS.BAD_GATEWAY, "Native provider request failed"); }
+      if (!response.ok) {
+        await response.body?.cancel();
+        return fail(HTTP_STATUS.BAD_GATEWAY, "Native resource list continuation failed");
+      }
+    }
+  }
   let createdResourceId = null;
   const responseHeaders = new Headers();
   for (const name of ["content-type", "content-disposition", "x-request-id"]) {

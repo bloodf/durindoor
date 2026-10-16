@@ -132,6 +132,7 @@ function createJsonCollector() {
       if (error) throw error;
       await new Promise((resolve, reject) => parser.write(chunk, (cause) => cause ? reject(cause) : resolve()));
       if (error) throw error;
+      return result;
     },
     async finish() {
       if (error) throw error;
@@ -241,7 +242,11 @@ export function observeNativeResponse(response, details) {
   const stream = new TransformStream({
     async transform(chunk, controller) {
       if (sse) await collector.write(decoder.decode(chunk, { stream: true }));
-      else if (json) await collector.write(chunk);
+      else if (json) {
+        const value = await collector.write(chunk);
+        // Persist captured creation IDs before releasing their bytes, not at EOF.
+        await details.onValue?.(value);
+      }
       controller.enqueue(chunk);
     },
     async flush() {

@@ -14,6 +14,7 @@ import {
   repairMissingResponsesCallIds,
   buildDeclaredToolTypes,
   resolveDeclaredCustom,
+  responsesImageUrl,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
@@ -74,21 +75,6 @@ function stripOrphanedToolOutputs(input) {
   return stripped.length === 0 ? input : deduped;
 }
 const MAX_TOOL_NAME_LEN = 128;
-
-/**
- * Chat Completions has no file-ID image reference and DurinDoor cannot resolve
- * a client's scoped file ID here, so a bare `file_id` is rejected (chatCore
- * maps statusCode 400 to a client error) instead of shipped as an image URL.
- */
-function responsesImageUrl(part) {
-  if (part.image_url) return part.image_url;
-  if (part.file_id) {
-    const error = new Error("input_image.file_id is not supported for this provider; send image_url (URL or data: base64) instead");
-    error.statusCode = 400;
-    throw error;
-  }
-  return "";
-}
 
 /**
  * Split a `function_call_output.output` value into the tool message text and

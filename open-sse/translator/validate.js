@@ -17,6 +17,22 @@ import {
   CLAUDE_BLOCK } from
 "./schema/index.js";
 
+/** Match the Claude conversion used by direct and Antigravity request routes. */
+export function usesClaudeRequestFormat(targetFormat, model) {
+  return targetFormat === FORMATS.CLAUDE ||
+    (targetFormat === FORMATS.ANTIGRAVITY && typeof model === "string" && model.toLowerCase().includes("claude"));
+}
+
+/** Validate original input before modality preprocessing can erase unsupported audio. */
+export function validateInputAudio(body, sourceFormat, targetFormat, model) {
+  if (sourceFormat !== FORMATS.OPENAI || !usesClaudeRequestFormat(targetFormat, model)) return null;
+  if (!Array.isArray(body?.messages)) return null;
+  return body.messages.some((message) => Array.isArray(message?.content) &&
+    message.content.some((part) => part?.type === OPENAI_BLOCK.INPUT_AUDIO))
+    ? "OpenAI input_audio is not supported by the Claude request format. Use text or an image instead."
+    : null;
+}
+
 // Internal-only keys that must NEVER be sent to an upstream provider.
 // Detection of these fails validation; stripping always removes them.
 import { isNumber, isObject, isString, runtimeTypeName } from "../../src/shared/utils/typeChecks.js";

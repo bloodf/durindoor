@@ -2,6 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../../config/defaultThinkingSignature.js";
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
+import { usesClaudeRequestFormat } from "../validate.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { getGeminiThoughtSignatureSync } from "../../services/thoughtSignatureStore.js";
 function generateUUID() {
@@ -642,15 +643,9 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
   return envelope;
 }
 
-// Detect if model should use Claude backend in Antigravity
-// Claude models have specific ID patterns — more reliable than caps at routing level
-function isClaudeModel(model) {
-  return model.toLowerCase().includes("claude");
-}
-
 // OpenAI -> Antigravity (Sandbox Cloud Code with wrapper)
 export function openaiToAntigravityRequest(model, body, stream, credentials = null) {
-  if (isClaudeModel(model)) {
+  if (usesClaudeRequestFormat(FORMATS.ANTIGRAVITY, model)) {
     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
     return wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
   }

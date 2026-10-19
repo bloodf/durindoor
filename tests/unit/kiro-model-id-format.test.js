@@ -34,9 +34,10 @@ describe("Kiro wire model IDs", () => {
   });
 
   it("preserves dotted Claude IDs in direct Claude-to-Kiro payloads", () => {
+    // Model-ID formatting is independent of unsupported client output ceilings.
     const result = claudeToKiroRequest(
       "claude-sonnet-4.5-agentic",
-      { messages: [{ role: "user", content: "hello" }], max_tokens: 128 },
+      { messages: [{ role: "user", content: "hello" }] },
       false,
       {},
     );
@@ -45,5 +46,17 @@ describe("Kiro wire model IDs", () => {
       "claude-sonnet-4.5",
     );
     expect(Reflect.ownKeys(result).filter((key) => String(key).startsWith("_"))).toEqual([]);
+  });
+
+  it.each([false, true])("rejects an explicit ceiling for the same dotted Claude ID (stream=%s)", (stream) => {
+    expect(() => claudeToKiroRequest(
+      "claude-sonnet-4.5-agentic",
+      { messages: [{ role: "user", content: "hello" }], max_tokens: 128 },
+      stream,
+      {},
+    )).toThrowError(expect.objectContaining({
+      statusCode: 400,
+      message: "Kiro cannot enforce max_tokens output ceilings; omit the limit or choose a provider that supports it.",
+    }));
   });
 });

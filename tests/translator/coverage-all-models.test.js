@@ -36,6 +36,8 @@ describe("coverage: every model translates without throwing", () => {
     for (const m of models) {
       const target = resolveTargetFormat(alias, m.id);
       const body = baseBody(m.id, target);
+      // Cursor cannot enforce output-token caps; explicit caps have focused 400 coverage.
+      if (target === FORMATS.CURSOR) delete body.max_tokens;
       // source = openai (lingua franca); exercise openai → target path
       const out = translateRequest(FORMATS.OPENAI, target, m.id, body, true, null, alias);
       expect(out, `${alias}/${m.id} → ${target} returned falsy`).toBeTruthy();
@@ -44,6 +46,14 @@ describe("coverage: every model translates without throwing", () => {
         expect(current.content).toContain("Hello");
         expect(current.userInputMessageContext.tools[0].toolSpecification.name).toBe("get_time");
         expect(current.images).toEqual([{ format: "png", source: { bytes: "AAAA" } }]);
+      } else if (target === FORMATS.CURSOR) {
+        expect(out.messages).toEqual([
+          { role: "user", content: "[System Instructions]\nYou are a helper." },
+          { role: "user", content: "Hello" },
+        ]);
+        expect(out.max_tokens).toBeUndefined();
+        expect(out.max_completion_tokens).toBeUndefined();
+
       }
     }
   });

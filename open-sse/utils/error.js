@@ -815,7 +815,9 @@ function maskQuotedPaths(line) {
  *   scheme (`https://cdn/app.js`) are NOT source-path-masked.
  * - Secrets: URL userinfo, Bearer tokens, JSON credential fields, `key: value`
  *   pairs, and query-param credentials become `[redacted]`.
- * - Safe messages (no stack/path/secret) pass through UNCHANGED.
+ * - Encoded JSON diagnostics with escaped quotes, slashes, or Unicode use a
+ *   fixed fallback; decoding arbitrary nesting is not a safe diagnostic contract.
+ * - Other safe messages (no stack/path/secret) pass through UNCHANGED.
  * - Output is capped at 4096 chars (pathological-input guard).
  * @param {string} message
  * @returns {string}
@@ -834,6 +836,9 @@ export function sanitizeErrorMessage(message) {
   // lives in later stack lines, the first line ended normally and its
   // delimiters are intact — tail redaction would be a false positive.
   const raw = full.slice(0, 4096);
+  // Encoded JSON can hide credential keys or terminate a regex match inside a
+  // secret. Fail closed on the bounded diagnostic instead of recursively decoding.
+  if (/\\(?:"|\/|u[0-9a-fA-F]{4})/.test(raw)) return "Upstream provider error";
   const firstLineCut = full.length > 4096 && !raw.includes("\n") && !raw.includes("\r");
   const firstLine = raw.split(/\r?\n/)[0].trim();
   let out = maskQuotedPaths(maskSourcePaths(firstLine)).

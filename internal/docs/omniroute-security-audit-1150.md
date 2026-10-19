@@ -14,13 +14,76 @@ The linked-issue supplement contains 12 separate claims: 11 source-bounded absen
 
 ## Status and evidence boundary
 
-This is the complete **row inventory and 90-row relevant-source mapping**, with scoped MCP consumer-error and rendered-logger runtime evidence overlays, not #1150 completion, whole-surface source/runtime green, or a vulnerability certification. Independent reviewers mapped all 78 catalog IDs and 12 supplement claims to pinned relevant upstream spans and inspected local counterparts or bounded absence. They did not audit every line of every retained blob or prove every attributed census, negative assertion, or dynamic property. Historical dispositions remain unchanged; no local severity is assigned. The four earlier documentation corrections were independently accepted as documentation deltas only. Consumer-error checks and the two rendered logger sinks below now have before/after evidence; adjacent usage-save sinks, global logging, broader scenarios and full delivery CI remain unproved. This logger documentation delta requires independent DOCDELTAONLY review after freeze. Issue acceptance remains **PARTIAL and unaccepted**.
+This is the complete **row inventory and 90-row relevant-source mapping**, with scoped MCP consumer-error, rendered-logger, and Codex public-terminal-error runtime evidence overlays, not #1150 completion, whole-surface source/runtime green, or a vulnerability certification. Independent reviewers mapped all 78 catalog IDs and 12 supplement claims to pinned relevant upstream spans and inspected local counterparts or bounded absence. They did not audit every line of every retained blob or prove every attributed census, negative assertion, or dynamic property. Historical dispositions remain unchanged; no local severity is assigned. The four earlier documentation corrections were independently accepted as documentation deltas only. Consumer-error checks, the two rendered logger sinks, and two Codex terminal-error cases below now have before/after evidence; adjacent usage-save sinks, global logging, other media slices, broader scenarios and full delivery CI remain unproved. This media documentation delta requires independent DOCDELTAONLY review after freeze. Actual wt-1085 integration and verification remain pending delivery. Issue acceptance remains **PARTIAL and unaccepted**.
 
 - Assignment: [DurinDoor #1150](https://github.com/bloodf/durindoor/issues/1150), branch `v5/1150`, worktree `/home/dev/.cache/durindoor-v5/wt-1150`.
 - Assigned local source base: `e51ab1c089800c2a70587822189997c482f53654`. Local references below are observed worktree line numbers, not an independently checked Git cleanliness claim. The ticket's older baseline `93f6de64c69b17d52f790d6f14d09a74cffc7fa5` was not substituted for this assignment.
 - Model supplied by the session: `durindoor/cx/gpt-6-astra`.
-- Historical source-mapping authorization covered this report and its link in `internal/docs/README.md`; that documentation worker performed no runtime verification. The earlier consumer-evidence update permitted only this report in `/home/dev/.cache/durindoor-v5/wt-1150-mcp`, branch `v5/1150-mcp`, supplied base `1688be70`. The current logger-evidence authorization permits **only this existing report** in `/home/dev/.cache/durindoor-v5/wt-1150-logs`, after independent verifier `w2:p75` supplied its receipt. The documentation session records `durindoor/cx/gpt-6-astra`, `resolvedModelIsFallback=false`; no nested worker is used. This update consumes existing verifier artifacts without rerunning proof or modifying code, tests, README, execution artifacts, or Git state. Historical assignments/bases remain provenance, not interchangeable candidate identities.
+- Historical source-mapping authorization covered this report and its link in `internal/docs/README.md`; that documentation worker performed no runtime verification. The earlier consumer-evidence update permitted only this report in `/home/dev/.cache/durindoor-v5/wt-1150-mcp`, branch `v5/1150-mcp`, supplied base `1688be70`. The later logger-evidence update permitted only this report in `/home/dev/.cache/durindoor-v5/wt-1150-logs`, after independent verifier `w2:p75` supplied its receipt. The current media-evidence authorization permits **only this existing report** in `/home/dev/.cache/durindoor-v5/wt-1150-media-docs`, branch `v5/1150-media-docs`, read-only verified HEAD `5bd411949ec1e748509bff4f300f66eb51d246b4`. Its starting report SHA-256 is `ed240e7ebed73e76d1e8dd4d5631744f6f824df307e798f46001e46cd313150e`, preserving the latest logger overlay rather than importing the older wt-1085 report. Persisted documentation session `01a12216-6f1a-708e-b508-087af7d976ab`, model-change `024da53e`, records `durindoor/cx/gpt-6-astra`, `resolvedModelIsFallback=false`; no nested worker is used. This update consumes existing verifier artifacts without rerunning proof or modifying code, tests, README, execution artifacts, or Git state. Historical assignments/bases remain provenance, not interchangeable candidate identities.
 - Initial scope was `src/dashboardGuard.js`, `src/lib/crypto/columnCrypto.js`, `open-sse/handlers/chatCore.js`, and the two documentation paths. Coordinator approved bounded read-only discovery and source reads. A subsequent pause was obeyed; head `w2:p2` explicitly authorized this existing worker to resume. No additional write paths were used.
+
+### Bounded runtime chronology — four runs, added by a later read-only evidence pass
+
+This section adds actual executed evidence for four bounded scenarios. It does **not** reclassify any
+row above, does not close the 25 catalog `needs-repro` rows or the 1 supplement claim, and is not
+whole-surface source or runtime green, not full-CI closure, and not a vulnerability certification.
+Everything in the row inventory, the coverage arithmetic, the dispositions, the corrections and the
+MCP/rendered-logger/media overlays above is preserved byte-for-byte from its approved state: all 78 catalog
+rows, the 12 linked-issue supplement claims (90 mapped source items in total, not 90 table rows), and
+every needs-repro disposition and unproved-remains note. Only
+`tests/unit/` evidence is cited; no live provider, credential or production data was used.
+
+This copy derives solely from the latest approved report
+(`internal/docs/omniroute-security-audit-1150.md`, sha256 `d93df541…`, lineage `1b818740…`, parent
+`5bd41194…`). The older `wt-1085` report was not used.
+
+| # | Scenario | Cases | Result | Terminal receipt |
+| --- | --- | ---: | --- | --- |
+| 1 | E12 search gate, original source and original fixture | 19 | 8 passed, 11 failed (10 real leaks + 1 fixture defect) | `1150-e12-path-review/…` E12 attempt2 evidence, `60c2fd75…` |
+| 2 | E19 search-fix v2 + F3-corrected oracle | 19 | **19 passed, 0 failed** | `e19-terminal-receipt.md` |
+| 3 | Combined translated + OpenAI-passthrough stream error boundaries, corrected source | 18 | **18 passed, 0 failed** | `a6-terminal-receipt.md`, `a6-cases.txt` |
+| 4 | E-08 concurrency gate release transitions, corrected fixture | 6 | **6 passed, 0 failed**, exit 0 | `c2-terminal-receipt.md` |
+
+**E12 → E19 chronology.** E12 ran the original search source with the original frozen test
+(`28b15f72…`): 8 of 19 passed and 11 failed, comprising 10 genuine credential leaks and one fixture
+defect in F3. E19 ran search-fix v2 (`373eac79…`) with the F3-corrected structural oracle
+(`0c3258bd…`) and passed 19 of 19, exit 0. All ten leak oracles pass under the frozen assertions; the
+public bytes, `error.message` and internal `result.error` no longer contain the fabricated
+`amberlamp42` / `violetlamp73` / `silverlamp86` sentinels (0 occurrences in `run.log`). Report
+`371ad7d9…`. The E12 report and the old fixture are preserved unchanged as failure evidence.
+
+**Combined 18-case stream chronology.** Attempt 2 through attempt 5 under the same gate each left a
+permanent claim and immutable runtime. Attempt 5 froze the combined source
+(`stream.js` `9b24b8b9…`, `streamingHandler.js` `cd10b3b8…`) and executed 18 cases with 16 passing and
+2 failing, both in `v5-openai-passthrough-error-boundaries.test.js`. An earlier claimed byte mechanism
+and a "product regression" label were **retracted** in
+`1150-translated-reproduction/translated-fix/combined/byte-rootcause.md`: the fixture's
+`filter(value => value.trim())` runs before the `startsWith` map, and the `-80` in the report is
+Vitest array-diff elision, not a length delta. A read-only A/B capture under one gate then observed
+the cause directly: with the baseline twin, normal success emitted 551 bytes with `onRequestSuccess`
+1; with the combined source it emitted 16 bytes (`\n\ndata: [DONE]\n\n`) with both semantic callbacks 0.
+`isObject(null)` is `true` in this codebase (`src/shared/utils/typeChecks.js:61-63`), so
+`sanitizePublicErrorEnvelope` read `error.message` on a `null` error and threw into the passthrough
+`catch`, dropping the frame. The correction is two null-inclusive `isObject` guards in
+`open-sse/utils/stream.js` only, `9b24b8b9…` → `2aafa772…`; `streamingHandler.js` and both oracles
+(`05eaf7ad…`, `3fff9b14…`) are unchanged and unrepinned. Attempt 6 then passed **18 of 18**: 10
+translated cases (secret, type and code redaction in Claude and OpenAI-Responses formats, single
+failure on context refusal, split final error without trailing newline, content preserved) and 8
+passthrough cases (message, type and code redaction, split-upstream content preservation, safe fields
+preserved, error plus `[DONE]` never becoming success, unsafe final error without newline at EOF,
+normal success and content bytes).
+
+**E-08 concurrency chronology.** The first 6-case run passed 5 and failed case 4 (reader cancels a
+pending stream), exit 1; that evidence is preserved. A capture run then obtained byte-level evidence
+under the same gate. The corrected 6-case run with fixture `65defbce…` passed **6 of 6**, exit 0:
+both gates release after coherent EOF, after an in-band error reaches EOF, after a mid-body transport
+error, when the reader cancels a pending stream, after external abort while a transport read is
+pending, and on executor rejection before a `Response`.
+
+All four runs used the same proven E12 child gate `0df9d59b…` as a byte-for-byte copy, a fresh
+exclusive `p62+p63` lease per run, and a permanent non-reusable claim. Rows whose evidence still
+needs reproduction — including actual cookie ingress, delegated import UI, polling consumer coverage
+and shipped sidebar reachability — remain unproved as before.
 
 ### Scoped MCP runtime overlay — consumer errors only
 
@@ -79,6 +142,30 @@ The original session/protocol flow remains asserted: initialize 200, initialized
 | `tests/unit/v5-mcp-error-boundaries.test.js` | `d6467daae8727bed6c724b6d67aacdefa2e33c2aa9fbed0a5c22009bff5956eb` |
 
 Exact commands, isolated environment, cwd, timestamps and exit codes remain in `LOG/baseline/command.json` and `LOG/candidate/command.json`; Node is `v20.20.2`. Import-time KimchiUA warnings occur outside the scoped captures; neighboring tests emit injected usage-save diagnostics. Neither is evidence of globally clean logging. **Residuals remain unproved:** adjacent usage-save sinks and global logging; `structuredContent` and nontext error content; outer HTTP/SSE/auth and broader authorization policy; full CI and issue closure. The two exercised rendered sinks no longer carry the historical open-log criterion, but broader residuals remain explicit. All 78 catalog and 12 supplement rows retain their historical dispositions unchanged.
+
+### Scoped media overlay — two Codex terminal-error cases only
+
+Let `MEDIA` be `/home/dev/.cache/durindoor-v5/worker-state/roadmap-lead`. This update reads `MEDIA/1150-media-verifier/receipt.md` and `report.json`, `MEDIA/1150-media-fix/receipt.md` and `remediation.patch`, and `MEDIA/1150-media-fix-verifier/receipt.md` and `report.json`. Execution belongs to those independent verifiers, not this documentation worker. This overlay narrows the historical V-E/media and stream proof gaps only for the two exercised Codex public SSE terminal-error paths. All 78 catalog rows and 12 supplement rows retain their exact historical dispositions; other media slices remain **needs-repro**, not certified by neighboring tests.
+
+**Before:** the dirty-source snapshot contains 4,413 regular source files, with baseline manifest SHA-256 `7bc5a727af3dd9dccc66442a2886b49876992e4f64ef985207e4d9f8e645fa2b` and test-candidate manifest `7a9c4a303b2ed748863dcb757b0cd53480892f9c8ae3fac32c3fc31de5a97d6c`. Neither is a clean `93f6de64c69b17d52f790d6f14d09a74cffc7fa5` source claim. One full `tests/unit/media-core-accounting.test.js` execution exited 1: **21 cases, 19 existing controls passed, two new cases failed, zero pending**. Both `response.failed` and completion-callback-rejection cases reached `expect.soft(text).not.toContain(sentinel)` at `247:29`; each failed all four sentinel assertions: `/home/fixture/private.ts`, `fixture-bearer`, `opaque-media-1150`, and `fixtureStackSentinel`. These eight soft failures establish public terminal-message disclosure, not collection, import, or lifecycle failure. All preceding hard lifecycle/accounting assertions passed in both cases.
+
+**Correction:** exactly two production files differ. `open-sse/handlers/imageGenerationCore.js` passes selected credentials into adapter parse context after the existing refresh flow. `open-sse/handlers/imageProviders/codex.js` forwards that context into `buildSseResponse` and reuses canonical `sanitizeErrorMessageWithSecrets` only when serializing terminal upstream and callback error messages, with `apiKey`, `accessToken`, `refreshToken`, and `idToken` values. No second sanitizer or `error.js` change is introduced. Internal raw error/outcome references and normal frame serialization remain unchanged. The opaque selected `apiKey` is **diagnostic context, not Codex authorization transmission**; Codex authorization uses `accessToken`.
+
+**Private after:** one authorized invocation exited 0 with **132 passed, zero failed, zero pending**: unchanged `media-core-accounting.test.js` 21, `image-generation.test.js` 52, and `error-sanitize.test.js` 59, all under `tests/unit/`. Both sentinel cases now pass all eight soft assertions. In both cases, final completion and final accounting remain failure; upstream cancellation occurs exactly once, the reader is unlocked, completion callback runs exactly once, one terminal error frame retains the useful reason, and no done frame is emitted. The upstream-failure case has zero account-health success calls and no native units. The callback-rejection case has one account-health success call and `{ images: 1 }`, preserving the original callback Error identity while final accounting remains failure. Account health and returned-image accounting precede persistence by design; persistence rejection is not retried. The unchanged 19 controls retain split-frame backpressure, Error/AbortError outcomes, awaited persistence, failed/unfinished streams, in-flight cancellation, callback rejection, account-health failure preventing persistence, buffered receipts, and image/embedding accounting.
+
+**Frozen provenance:** the after verifier records all 4,413 regular source files preserved by path, SHA-256, size, executable flag, and complete file set in both private and frozen owner source. Dependency symlinks are outside that inventory. These hashes are recorded verifier/remediation evidence, not newly recomputed source hashes:
+
+| Artifact / source | Recorded SHA-256 |
+| --- | --- |
+| After full-source manifest | `d99e8baf89243fcc47dac97911dd4d37f0385891a99ddb4f0eb8b32ed02bd5c6` |
+| Unchanged `tests/unit/media-core-accounting.test.js`, before and after | `1ed2a22f027303eea06f00cbbc3ffb75ca34c87d115c2ddae56bd6a0fa20dbb8` |
+| After `open-sse/handlers/imageGenerationCore.js` | `e10e513c4cdd25dd02f8bda97a5fe1142bef411f97654efbda71e9b0cae76e7f` |
+| After `open-sse/handlers/imageProviders/codex.js` | `0170c4fe3d0e756ed11febbe29c1895af05807fc119ec23274d8b23a52f3b777` |
+| `MEDIA/1150-media-fix/remediation.patch` | `8c6dcd5eedb2111a79f988b6177adcf492193126f916cad3fb90993e93b4bb1c` |
+
+Exact private cwd, isolated environment, commands, timestamps and exit codes remain in each verifier's `run.json`; full output remains in `run.log`, and assertions in `report.json`. Both used Node `v20.20.2` and Vitest `4.1.11`, read-only dependency targets, synthetic fetch responses and real media-core/Codex adapter paths. No live provider call or network listener was used. Nonfatal KimchiUA import warnings and the after-run EventEmitter `MaxListenersExceededWarning` are not failed assertions; private SQLite initialization is outside the source inventory. Each verifier ran once and released its delivery lease before analysis.
+
+**Delivery boundary:** private after-proof is not actual wt-1085 integration or integration verification; both remain pending delivery. No full CI, all-media safety, global logging safety, issue closure, or local severity follows. Historical MCP 60-pass consumer and 58-pass logger overlays remain separate and unchanged. Later historical proposal/gap wording is superseded only for these two Codex cases and the exact neighboring suites recorded here; remaining media scenarios still need their own reproduction. Independent documentation-delta review follows this report freeze.
 
 ### Source-pinned provenance
 
@@ -325,6 +412,30 @@ U0/U1 R-02 `auth.ts:2714-2729` prevents cooldown overwriting any terminal state;
 
 U1 `featureFlagDefinitions.ts:50-71` explicitly defaults two PII mutation flags false; local observability/retention flags are not equivalent. S-07's U1 `publicCreds.ts:1-25`/`resolvePublicCred` describes XOR masking as NOT encryption; sampled defaults/parameterized reads in `settings.ts:154-294` do not prove global negatives. G-01's 194 cycles/450 files and M-01's cycle claims remain unexecuted. G-05 suppression rows do not prove historical lint exit 2/unpruned status; G-07 catch logic does not reproduce EBUSY. G-10 baseline value 1437 and notes/policy 409-422 do not establish an unauthorized ratchet change without historical context. G-08's inspected foreign 60/60/60/60 prose versus 67.33/67.33/72.02/65.08 baseline is not an executed coverage result. K-04's suppression JSON and documented exceptions do not verify or disprove the distinct inline 5/4/45-in-33 census. Foreign fetch/dashboard/cast/interval totals, E-13's 54 inbound edges/53 routes, and M-04's runtime tools/scopes still require their own defined census or execution. No global negative, cycle, tool-count, CI, or runtime acceptance is inferred from completion of relevant-source mapping.
 
+### Later finite safety and cookie/resilience proof overlay
+
+This later overlay preserves the catalog, linked-issue dispositions, stream/conformance ancestry, and historical observations above. It does not close #1150. The delivery candidate is a direct child of published PR #1276 commit `b45805660bbed039ea237e49cd7f06c1a65b0342`; the new delta contains exactly two production files, four new test files, and this existing report note. No CLI fixture or cancelled repository recorder change is added.
+
+Independent isolated execution first observed cookie/classifier **29 collected, 25 passed, 4 failed**: identical-session and A/B/A iFlow reimports returned new identities; reauth-first ordinary failure changed durable `reauth_required` to `unavailable` for both models while `isActive` remained false. Subsequent success assertions were not reached in those failing cases, so that RED run did not prove revival.
+
+The separately owned repairs are bounded: `createProviderConnection` matches nonempty normalized BXAuth sessions for provider-local iFlow cookie rows inside its existing transaction and reuses the existing merge/upsert; `markAccountUnavailable` preserves already-observed reauth state after request classification by returning fallback without ordinary cooldown mutation. The initial auth guard established only the approved sequential-completion contract. A later deterministic SQLite regression paused an ordinary 503 after auth read its row, committed terminal 401 reauth, then resumed the stale cooldown. On both the same and another model it demoted `reauth_required` to `unavailable`; subsequent ordinary success changed the status to `active`, while `isActive` remained false throughout. The repository fallback recorder now rechecks `reauth_required`/`REAUTH` under its existing write transaction and rejects that ordinary mutation. This extends the bounded proof to this post-read interleaving. The same three-case barrier/control harness also passed against native PostgreSQL 18.6 using actual repository operations and per-case disposable migrated databases; the first engine attempt failed only an incorrect schema-probe table-name assumption and is retained separately. SQLite verification passed 31 cases across four focused suites. These checks do not establish live-provider behavior, every terminal-state race, or a full gate.
+
+| Independent run | Actual result | Reaped launcher / pre-exec child | Receipt |
+| --- | --- | --- | --- |
+| Finite alias/settings/crypto plus password-CAS neighbor | 28 passed, 0 failed; exit 0 | 2391259 / 2391266 | `safety-acceptance-verifier/FINITE_TERMINAL_RECEIPT.md` |
+| Corrected cookie/classifier before production repair | 25 passed, 4 failed; exit 1 | 2394140 / 2394145 | `safety-acceptance-verifier/COOKIE_TERMINAL_RECEIPT.md` |
+| Accepted production repair, six files | 53 passed, 0 failed; exit 0 | 2408843 / 2408848 | `safety-acceptance-verifier/REPAIR_TERMINAL_RECEIPT.md` |
+| Explicit later combined ten-file scope | 81 passed, 0 failed; exit 0 | 2412091 / 2412096 | `safety-acceptance-verifier/COMBINED_TEN_TERMINAL_RECEIPT.md` |
+
+The ten-file run includes all seven original files (57 cases) plus three existing repository/auth neighbors (24 cases). The four formerly failing cookie assertions pass without changed oracles, including the later success checks. Finite cases execute actual GET/PUT and NextResponse boundaries, real SQLite settings SQL with literal JSON and password-epoch CAS, explicit observability/retention choices, and unchanged direct wrong-AAD/tamper crypto assertions. Synthetic DB/cache/DNS boundaries do not prove deployed MITM authorization or DNS operations. The previous finite and six-file receipts remain distinct; their counts are not substituted for the later ten-file run.
+
+Executed source before/after: 4412 exact path/hash/size/executable rows, canonical SHA-256 `c7ece80d71ef5cda9697e83c1b24d1f160bb203d9ef723d0dd3cc83d411dee6f` unchanged. This digest describes the runtime source before this documentation-only overlay. Compared with the 4408-row PR #1276 baseline, the runtime tree has exactly the two accepted production changes and four fixture additions; every other row is preserved. Final Git commit/tree and documentation-check/commitlint receipts are delivery metadata, not inferred runtime coverage.
+
+Actual child pre-exec evidence records the same-PID shell-to-pinned-Node20 exec path, maps/namespaces, all capability masks zero, NoNewPrivs 1, and seven effectively read-only source/dependency/Node targets. Only owned private runtime state is writable; HOME/DATA_DIR/TMPDIR/cache are private and networking is unshared. Corrected cookie fixtures intercept only raw `node-machine-id` before production imports; production identity/hash/random/persistence logic stays real. No post-exec /proc sample or seccomp guarantee is claimed.
+
+The separate existing CLI five-case run (launcher 2385015, exit 0) is not a new source/test delta or a substitute for cookie proof. Its path-collision persistence observation is not EACCES, deterministic-secret certification, or a fail-closed policy verdict. Compiler, PostgreSQL, whole-census/global-negative claims, delegated import/polling/sidebar scenarios, full CI, deployment, and READY/merge safety remain unproved. Missing admin proof remains a blocker; this focused execution does not supply it. Evidence files are retained under the verifier's private worker state, not added as repository documentation. The overlay updates evidence only, not catalog dispositions.
+
+
 ## Verifier contract — scoped MCP evidence above; remaining scenarios proposed
 
 ### Ownership and isolation
@@ -355,7 +466,7 @@ Authorization work is routed to #1115; quota/accounting to #1085; streaming/prot
 
 ### Existing runnable entry points for the later verifier
 
-These exact command lines remain proposals, not a record of execution or coverage of every scenario. The MCP neighbor suites named here did execute under the separate frozen commands recorded in the runtime overlay; the other suites have no execution evidence in this report. Run additional checks only after delivery schedules an authorized isolated verifier with installed dependencies. Root configuration pins Node `20.20.2` and npm `10.8.2` (`package.json:6-9`). Do not use `npx` in a way that installs missing dependencies.
+These exact command lines remain historical proposals, not a record of execution or coverage of every scenario. The MCP neighbor suites named here did execute under the separate frozen commands recorded in the runtime overlay; later finite crypto/SQL and cookie/resilience execution is recorded in the bounded overlay above, not execution of every command below. Run additional checks only after delivery schedules an authorized isolated verifier with installed dependencies. Root configuration pins Node `20.20.2` and npm `10.8.2` (`package.json:6-9`). Do not use `npx` in a way that installs missing dependencies.
 
 ```bash
 ./tests/node_modules/.bin/vitest run --config tests/vitest.config.js tests/unit/error-sanitize.test.js tests/unit/column-crypto.test.js
@@ -380,4 +491,4 @@ Beyond the initial three source files and documentation index, bounded content r
 - DB/identity: `src/lib/db/repos/connectionsRepo.js`, `src/lib/db/repos/settingsRepo.js`, `src/lib/db/driver.js`, `src/shared/utils/machineId.js`.
 - Routes/UI: `src/app/api/providers/validate/route.js`, `src/app/api/providers/[id]/models/route.js`, `src/app/api/providers/[id]/models/fetchConnectionModels.js`, `src/app/api/v1/chat/completions/route.js`, `src/app/api/cli-tools/antigravity-mitm/alias/route.js`, `src/shared/components/index.js`, `src/shared/components/Sidebar.js`, `src/shared/ui/shell/Sidebar.jsx`, `src/shared/ui/pages/providers/ProvidersPage.jsx`, `src/shared/utils/visiblePoller.js`, `src/app/(dashboard)/dashboard/combos/page.js`, `src/app/(dashboard)/dashboard/providers/[id]/page.js`.
 
-Remaining proof limits: no every-line audit or whole-repository call graph; actual cookie ingress, delegated import UI, polling consumer coverage and shipped sidebar reachability remain unproved. Named Devin/Cursor and AWS-profile source paths are mapped, but actual operator denial and broader subprocess census are not. Other root integrations remain outside absence bounds. Beyond the scoped MCP consumer-error and two rendered-logger-sink evidence above, aggregate censuses, global SQLi/SSRF/secrets/PII negatives, cycle counts, runtime tool counts, historical lint/EBUSY results, remaining runtime scenarios and full delivery CI remain acceptance blockers. Adjacent usage-save sinks and global logging remain unproved; structured/nontext error content and outer HTTP/SSE/auth are not proved. Settings defaults `settingsRepo.js:75-80` enable observability and disable retention cleanup, not equivalent PII semantics or retention safety. Full relevant-source mapping, historical 60 consumer passes and later 58 logger/neighbor passes do not make #1150 complete or source/runtime green.
+Remaining proof limits: no every-line audit or whole-repository call graph; actual cookie ingress has only the finite synthetic-provider/SQLite proof recorded above, while delegated import UI, polling consumer coverage and shipped sidebar reachability remain unproved. Named Devin/Cursor and AWS-profile source paths are mapped, but actual operator denial and broader subprocess census are not. Other root integrations remain outside absence bounds. Beyond the scoped MCP consumer-error, rendered-logger, stream/concurrency and finite safety/cookie evidence recorded here, aggregate censuses, global SQLi/SSRF/secrets/PII negatives, cycle counts, runtime tool counts, historical lint/EBUSY results, remaining runtime scenarios and full delivery CI remain acceptance blockers. Adjacent usage-save sinks and global logging remain unproved; missing admin proof remains a blocker. This report is not vulnerability certification or #1150 closure.

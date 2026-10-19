@@ -223,6 +223,14 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     result.tool_choice = convertOpenAIToolChoice(body.tool_choice);
   }
 
+  // OpenAI's parallel_tool_calls:false is Claude's tool_choice.disable_parallel_tool_use.
+  // The shared lowering otherwise drops the caller's limit; only the GitHub executor
+  // re-added it downstream. Same guards as that executor: tools must be present and the
+  // caller must not have disabled tools outright.
+  if (body.parallel_tool_calls === false && result.tools?.length > 0 && result.tool_choice?.type !== "none") {
+    result.tool_choice = { ...(result.tool_choice || { type: "auto" }), disable_parallel_tool_use: true };
+  }
+
   // Thinking is normalized centrally by applyThinking (thinkingUnified.js) after translation.
 
   // Attach toolNameMap to result for response translation

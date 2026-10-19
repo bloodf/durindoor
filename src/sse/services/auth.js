@@ -1352,6 +1352,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     }
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
+  // Durable reauth outranks ordinary cooldowns on every model. Classify first
+  // so request-terminal 413/499 still return without account fallback. Only
+  // explicit credential replacement may revive this quarantined account.
+  if (conn?.testStatus === "reauth_required" || conn?.errorCode === "REAUTH") {
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
 
   cooldownMs = Math.max(0, Math.ceil(cooldownMs));
   const deadline = normalizedReset !== null ?

@@ -180,7 +180,7 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
   }, 60_000);
   beforeEach(async () => {
     await sql.query('TRUNCATE "usageHistory", "usageDaily", "usageLastSeen", "apiKeyUsageTotals" RESTART IDENTITY');
-    await sql.query("DELETE FROM kv WHERE scope IN ('usageEventReceipts','mediaJobs','billing')");
+    await sql.query("DELETE FROM kv WHERE scope IN ('usageEventReceipts','mediaJobs','billing','pricing')");
     await sql.query("INSERT INTO kv(scope,key,value) VALUES('billing','epoch',$1)", [JSON.stringify(epoch)]);
     await sql.query("DELETE FROM _meta WHERE key='totalRequestsLifetime'");
   });
@@ -299,6 +299,27 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     await closeWorker(a);
     await closeWorker(b);
   }, 30_000);
+  it('commits one configured native estimate per event across concurrent writers and rate changes', async () => {
+    const [a, b] = await pair();
+    expect(await a.call('pricing', { fixture: { 'receipt-priced': { native: { unit: 'image', rate: 0.25 } } } })).toMatchObject({ ok: true });
+    const batch = name => [event('native-shared', null), event(`native-${name}`, null)];
+    await holder.query('BEGIN');
+    await holder.query("SELECT value FROM _meta WHERE key='schemaVersion' FOR UPDATE");
+    const writes = [a.call('save', batch('a')), b.call('save', batch('b'))];
+    await lockedWriters(); await holder.query('COMMIT');
+    for (const result of await Promise.all(writes)) expect(result).toMatchObject({ ok: true });
+    const committed = await snapshot();
+    expect(committed.usageHistory).toHaveLength(3);
+    for (const row of committed.usageHistory) {
+      expect(Number(row.cost)).toBe(0.25);
+      expect(JSON.parse(row.meta)).toMatchObject({ costStatus: 'estimated', pricing: { source: 'override', unit: 'image', rate: 0.25, quantity: 1 } });
+    }
+    expect((await a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' })).value.totals).toMatchObject({ totalRequests: 3, totalCost: 0.75, unknownCostRequests: 0 });
+    expect(await b.call('pricing', { fixture: { 'receipt-priced': { native: { unit: 'image', rate: 99 } } } })).toMatchObject({ ok: true });
+    for (const result of await Promise.all([a.call('save', batch('a')), b.call('save', batch('b'))])) expect(result).toMatchObject({ ok: true });
+    expect(await snapshot()).toEqual(committed);
+  }, 30_000);
+
   it('rejects in-flight old epochs after cutover and deduplicates new-epoch replay after process reopen', async () => {
     const [a, b] = await pair();
     expect(await a.call('epoch')).toMatchObject({

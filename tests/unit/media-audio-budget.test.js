@@ -80,6 +80,26 @@ afterEach(async () => {
 });
 
 describe("stt priced seconds drive the next request's dollar decision", () => {
+  it("keeps reported USD ahead of builtin and operator duration estimates", async () => {
+    await database.updatePricing({ openai: { "whisper-1": { native: { unit: "audio_second", rate: 1 } } } });
+    fetch.mockResolvedValueOnce(json({ text: "hello", duration: 60, usage: { cost_usd: 0.003 } }));
+    expect((await handleStt(sttRequest())).status).toBe(200);
+    expect(rows()[0].cost).toBe(0.003);
+    expect(metadata(rows()[0])).toMatchObject({ costStatus: "known", costSource: "provider" });
+    expect(metadata(rows()[0]).pricing).toBeUndefined();
+  });
+
+  it("uses the configured per-second override on reported duration, then denies", async () => {
+    await database.updatePricing({ openai: { "whisper-1": { native: { unit: "audio_second", rate: 0.004 } } } });
+    fetch.mockResolvedValueOnce(json({ text: "hello", duration: 1.5 }));
+    expect((await handleStt(sttRequest())).status).toBe(200);
+    expect(rows()[0].cost).toBe(0.006);
+    expect(metadata(rows()[0])).toMatchObject({ costStatus: "estimated", pricing: { unit: "audio_second", rate: 0.004, quantity: 1.5 } });
+    fetch.mockClear();
+    expect((await handleStt(sttRequest())).status).toBe(429);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("commits one attributed record, then denies the next request before transport", async () => {
     fetch.mockResolvedValueOnce(json({ text: "hello", duration: 60 }));
     const response = await handleStt(sttRequest());

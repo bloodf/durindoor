@@ -698,8 +698,8 @@ export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
 
 /**
  * Commit one event to history, daily aggregates and key totals atomically.
- * Explicit cost is USD: finite nonnegative values (including zero) are never
- * repriced; null means unknown. costStatus is known (authoritative), estimated,
+ * Explicit cost is USD: known finite nonnegative values (including zero) are
+ * never repriced. Unknown/estimated native costs may use an operator tariff. costStatus is known (authoritative), estimated,
  * or unknown. Missing cost uses provider token charges, then configured pricing.
  * Metadata retains modality, nativeUnits and cost provenance. Aggregates sum
  * known numeric charges only; unknownCostRequests preserves unpriced daily and
@@ -744,6 +744,22 @@ export async function saveRequestUsage(entry) {
     if (entry.nativeUnits !== undefined && (entry.nativeUnits === null || !isObject(entry.nativeUnits) || Array.isArray(entry.nativeUnits) ||
         Object.values(entry.nativeUnits).some((value) => !isNumber(value) || !Number.isFinite(value) || value < 0))) {
       throw new TypeError("Usage nativeUnits must contain finite nonnegative numbers");
+    }
+    // A reported token-shaped USD receipt outranks a handler's provisional
+    // native estimate (for example STT's builtin per-minute fallback).
+    if (entry.modality && priced.costStatus !== "known") {
+      const field = ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"].find((name) => entry.tokens[name] != null);
+      const receipt = field ? entry.tokens[field] : undefined;
+      if (isNumber(receipt) && Number.isFinite(receipt) && receipt >= 0) {
+        priced = await calculateCost(entry.provider, entry.model, entry.tokens);
+      }
+    }
+    // Provider receipts are authoritative. An operator tariff can replace an
+    // unavailable or estimated native valuation, never a known numeric charge.
+    if (entry.modality && priced.costStatus !== "known") {
+      const { resolveNativePricing } = await import("./pricingRepo.js");
+      const nativePrice = await resolveNativePricing(entry.provider, entry.model, entry.modality, entry.nativeUnits);
+      if (nativePrice) priced = nativePrice;
     }
     entry.cost = priced.cost;
     entry.requests = 1;

@@ -4,8 +4,8 @@ import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
  * Internal core-result metadata, never part of the response body. Capture before
  * adapters normalize usage (some synthesize zero tokens). `meta.providerUsage`
  * retains the original receipt and its field path; tokens contain only reported
- * counts. Native-unit pricing is not defined by the token-only pricing contract,
- * so cost remains unknown unless the provider supplies an explicit USD receipt.
+ * counts. This decoder only recognizes provider USD receipts. The ledger may
+ * estimate unknown costs from an explicit operator native-unit tariff.
  * `state` is pending until a streaming adapter reports success, otherwise complete.
  * Consumers must not commit pending metadata or derive charges from request n.
  */

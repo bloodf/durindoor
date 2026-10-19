@@ -1,4 +1,5 @@
 // Separate OS process using the production synchronous PostgreSQL adapter.
+import { updatePricing } from '../../src/lib/db/repos/pricingRepo.js';
 import { getAdapter } from '../../src/lib/db/driver.js';
 import { saveRequestUsage, getBillingEpoch, getApiKeyWindowUsageTotals } from '../../src/lib/db/repos/usageRepo.js';
 import { getApiKeyUsageTotals } from '../../src/lib/db/repos/apiKeyUsageTotalsRepo.js';
@@ -38,7 +39,8 @@ process.on('message', async ({
 }) => {
   try {
     let value;
-    if (action === 'save') {
+    if (action === 'pricing') value = await updatePricing(args);
+    else if (action === 'save') {
       value = [];
       for (const entry of args) value.push(await saveRequestUsage({
         ...entry,

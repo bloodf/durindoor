@@ -4,6 +4,7 @@ import {
   normalizeUsage,
   canonicalizeUsage,
   enrichUsageCost,
+  addBufferToUsage,
   filterUsageForFormat,
 } from "../../open-sse/utils/usageTracking.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
@@ -85,5 +86,40 @@ describe("cost_usd survives the client-facing filter", () => {
       FORMATS.CLAUDE
     );
     expect(out.cost_usd).toBe(0.001);
+  });
+});
+
+
+describe("client cost estimate provenance", () => {
+  it("labels a synthesized builtin cost and retains the label through each usage format", () => {
+    const usage = { prompt_tokens: 1000000, completion_tokens: 1000000 };
+    const estimated = enrichUsageCost(usage, "openai", "gpt-5.4");
+    expect(estimated.cost_usd).toBe(17.5);
+    expect(estimated.cost_details).toMatchObject({ status: "estimated", source: "builtin", basis: "response_token_counts", unit: "USD_per_million_tokens", rates: { input: 2.5, output: 15 } });
+    for (const format of [FORMATS.OPENAI, FORMATS.CLAUDE, FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.ANTIGRAVITY, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE]) {
+      expect(filterUsageForFormat(estimated, format).cost_details).toEqual(estimated.cost_details);
+    }
+    expect(usage).not.toHaveProperty("cost_details");
+  });
+
+  it("describes the buffered response basis without mutating raw accounting counts", () => {
+    const raw = { prompt_tokens: 100, completion_tokens: 10 };
+    const buffered = addBufferToUsage(raw);
+    const estimated = enrichUsageCost(buffered, "openai", "gpt-5.4");
+    expect(buffered.prompt_tokens).toBeGreaterThan(raw.prompt_tokens);
+    expect(estimated.cost_usd).toBeCloseTo((buffered.prompt_tokens * 2.5 + 10 * 15) / 1e6, 12);
+    expect(estimated.cost_details.basis).toBe("response_token_counts");
+    expect(raw).toEqual({ prompt_tokens: 100, completion_tokens: 10 });
+    const ticks = { ...buffered, cost_in_usd_ticks: 250000000000 };
+    expect(enrichUsageCost(ticks, "openai", "gpt-5.4")).toBe(ticks);
+    expect(ticks).not.toHaveProperty("cost_details");
+  });
+
+  it("keeps receipts authoritative and distinguishes a configured builtin zero estimate", () => {
+    const receipt = { prompt_tokens: 1000000, cost_usd: 0 };
+    expect(enrichUsageCost(receipt, "openai", "gpt-5.4")).toBe(receipt);
+    expect(receipt).not.toHaveProperty("cost_details");
+    const free = enrichUsageCost({ prompt_tokens: 10 }, "openai", "glm-4.7-flash");
+    expect(free).toMatchObject({ cost_usd: 0, cost_details: { status: "estimated", source: "builtin" } });
   });
 });

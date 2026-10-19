@@ -1,6 +1,8 @@
+import { isNumber } from "../../../shared/utils/typeChecks.js";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { isValidNativePricing, NATIVE_PRICING_UNITS } from "../../../shared/utils/nativePricing.js";
 
 const pricingKv = makeKv("pricing");
 const CACHE_TTL_MS = 5000;
@@ -22,10 +24,19 @@ export async function getUserPricing() {
   return await pricingKv.getAll();
 }
 
-function editableRates(pricing) {
+function editableTokenRates(pricing) {
   return Object.fromEntries(
     Object.entries(pricing).filter(([key]) => EDITABLE_PRICING_FIELDS.has(key))
   );
+}
+
+function editableRates(pricing) {
+  const result = editableTokenRates(pricing);
+  if (Object.hasOwn(pricing, "native")) {
+    if (!isValidNativePricing(pricing.native)) throw new TypeError("Invalid native pricing: expected one supported unit and finite nonnegative USD rate");
+    result.native = { ...pricing.native };
+  }
+  return result;
 }
 
 function mergeCurrentPricing(defaultPricing, customPricing) {
@@ -94,9 +105,9 @@ export async function resolvePricingForModel(provider, model) {
       if (customPricing) overrideModel = canonical;
     }
   }
-  const pricing = customPricing ? mergeCurrentPricing(defaultPricing, customPricing) : defaultPricing;
+  const overrides = customPricing ? editableTokenRates(customPricing) : {};
+  const pricing = Object.keys(overrides).length ? { ...defaultPricing, ...overrides } : defaultPricing;
   if (!pricing) return null;
-  const overrides = customPricing ? editableRates(customPricing) : {};
   const provenance = {
     source: Object.keys(overrides).length ? "override" : "builtin",
     unit: "USD_per_million_tokens",
@@ -113,6 +124,29 @@ export async function resolvePricingForModel(provider, model) {
 
 export async function getPricingForModel(provider, model) {
   return (await resolvePricingForModel(provider, model))?.pricing ?? null;
+}
+
+/** Exact provider/model native tariff; no alias, prefix, token or vendor fallback. */
+export async function resolveNativePricing(provider, model, modality, nativeUnits) {
+  if (!provider || !model || !modality) return null;
+  const configured = (await getUserPricing())[provider]?.[model]?.native;
+  if (configured === undefined) return null;
+  if (!isValidNativePricing(configured)) throw new TypeError("Invalid stored native pricing");
+  const spec = NATIVE_PRICING_UNITS[configured.unit];
+  const quantity = nativeUnits?.[spec.quantity];
+  if (!spec.modalities.includes(modality)) return null;
+  if (quantity === undefined) {
+    return { cost: null, split: null, costStatus: "unknown", costSource: "unavailable" };
+  }
+  if (!isNumber(quantity) || !Number.isFinite(quantity) || quantity < 0 ||
+      (spec.integer && !Number.isInteger(quantity))) throw new TypeError("Invalid native pricing quantity");
+  const cost = quantity * configured.rate;
+  if (!Number.isFinite(cost)) throw new TypeError("Native pricing cost overflow");
+  return {
+    cost, split: null, costStatus: "estimated", costSource: "native-pricing",
+    pricing: { source: "override", currency: "USD", unit: configured.unit, rate: configured.rate,
+      quantity, quantityField: spec.quantity, provider, model, overrideModel: model },
+  };
 }
 
 // Atomic merge inside transaction (per-provider read-modify-write)

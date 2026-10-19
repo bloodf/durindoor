@@ -111,6 +111,22 @@ describe("paid modality ledger and dollar budgets", () => {
     expect(await decision()).toBeNull();
   });
 
+
+  it("native estimates drive exact monthly/window counters and clear after the month boundary", async () => {
+    await database.updatePricing({ "media-fixture": { "paid-image": { native: { unit: "image", rate: 0.625 } } } });
+    const entry = usage(modalities[0], "native-month", { cost: null, costStatus: "unknown", costSource: "unavailable" });
+    await policy.recordApiKeyUsageForResponse(secret, new Response(null), entry);
+    afterCacheTtl();
+    const { getApiKeyWindowUsageTotals } = await import("@/lib/db/repos/usageRepo.js");
+    expect(await getApiKeyWindowUsageTotals(secret, "2026-10-09T00:00:00.000Z", "2026-10-01T00:00:00.000Z")).toMatchObject({ day: { cost: 1.25, requests: 1 }, month: { cost: 1.25, requests: 1 } });
+    expect((await (await decision()).json()).error.message).toMatch(/budget limit reached/);
+    // Remove only the lifetime cap, preserving monthly enforcement.
+    adapter.run("UPDATE apiKeys SET policy = ? WHERE id = ?", [JSON.stringify({ monthlyBudget: 1.25 }), keyId]);
+    vi.setSystemTime(new Date("2026-11-01T12:00:00.000Z"));
+    expect(await decision()).toBeNull();
+    expect(await database.getApiKeyUsageTotals(keyId)).toMatchObject({ totalRequests: 1, totalCost: 1.25 });
+  });
+
   it("denies only once committed paid spend reaches the lifetime and monthly limits", async () => {
     // Unknown and zero cost never move the dollar total.
     await policy.recordApiKeyUsageForResponse(secret, new Response(null),

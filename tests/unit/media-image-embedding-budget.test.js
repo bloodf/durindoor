@@ -92,6 +92,16 @@ async function expectDeniedBeforeDispatch(send) {
 }
 
 describe("image handler paths into the dollar budget", () => {
+  it("prices returned images with an exact operator rate, then denies before the next dispatch", async () => {
+    await database.updatePricing({ openrouter: { img: { native: { unit: "image", rate: 0.25 } } } });
+    fetch.mockResolvedValueOnce(json({ created: 1, data: [{ b64_json: "aGk=" }, { url: "https://fixture.invalid/image" }, {}] }));
+    const request = new Request("http://localhost/v1/images/generations", { method: "POST", body: imageBody({ n: 99 }) });
+    expect((await handleImage(request)).status).toBe(200);
+    expect(rows()).toHaveLength(1);
+    expect(meta(rows()[0])).toMatchObject({ nativeUnits: { images: 2 }, costStatus: "estimated", costSource: "native-pricing", pricing: { unit: "image", rate: 0.25, quantity: 2 } });
+    await expectDeniedBeforeDispatch(() => handleImage(imageRequest()));
+  });
+
   it("direct: one attributed record, then denial before dispatch", async () => {
     fetch.mockResolvedValueOnce(paidImage());
     const response = await handleImage(imageRequest());

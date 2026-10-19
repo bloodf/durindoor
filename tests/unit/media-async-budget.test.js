@@ -91,6 +91,25 @@ afterEach(async () => {
 });
 
 describe("async video completion and the dollar budget", () => {
+  it.each([["video_job", 0.6], ["video_second", 0.12]])("freezes the configured %s estimate once across duplicate polls and restart", async (unit, rate) => {
+    const { updatePricing } = await import("@/lib/db/repos/pricingRepo.js");
+    await updatePricing({ xai: { "grok-imagine-video": { native: { unit, rate } } } });
+    await submit();
+    expect(rows()).toEqual([]);
+    fetch.mockImplementation(async () => json({ status: "done", video: { duration: 5 } }));
+    await Promise.all([poll(pollRequest(), "job-1"), poll(pollRequest(), "job-1")]);
+    expect(rows()).toHaveLength(1); expect(rows()[0].cost).toBe(0.6);
+    const before = rows();
+    expect(JSON.parse(before[0].meta)).toMatchObject({ costStatus: "estimated", nativeUnits: { videoJobs: 1, videoSeconds: 5 }, pricing: { unit, rate, quantity: unit === "video_job" ? 1 : 5 } });
+    await updatePricing({ xai: { "grok-imagine-video": { native: { unit, rate: 99 } } } });
+    await restart(); await poll(pollRequest(), "job-1");
+    await (await import("@/lib/db/repos/pricingRepo.js")).resetPricing("xai", "grok-imagine-video"); await poll(pollRequest(), "job-1");
+    expect(rows()).toEqual(before);
+    const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0.6 });
+    expect((await decision()).status).toBe(429);
+  });
+
   it("charges authoritative cost once across concurrent, repeated and restarted polls, then denies", async () => {
     await submit();
     expect(await decision()).toBeNull();

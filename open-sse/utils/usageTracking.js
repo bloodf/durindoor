@@ -80,24 +80,24 @@ export function filterUsageForFormat(usage, targetFormat) {
     [FORMATS.CLAUDE]: [
     'input_tokens', 'output_tokens',
     'cache_read_input_tokens', 'cache_creation_input_tokens',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second'],
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.GEMINI]: [
     'promptTokenCount', 'candidatesTokenCount', 'totalTokenCount',
     'cachedContentTokenCount', 'thoughtsTokenCount',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second'],
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.OPENAI_RESPONSES]: [
     'input_tokens', 'output_tokens',
     'input_tokens_details', 'output_tokens_details',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second'],
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     // OpenAI format (default for OPENAI, CODEX, KIRO, etc.)
     default: [
     'prompt_tokens', 'completion_tokens', 'total_tokens',
     'cached_tokens', 'reasoning_tokens',
     'prompt_tokens_details', 'completion_tokens_details', 'output_tokens_details',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second']
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second']
 
   };
 
@@ -277,9 +277,14 @@ export function enrichUsageCost(usage, provider, model) {
   if (!pricing) return usage;
 
   const cost = calculateCostFromTokens(canonicalizeUsage(usage) || usage, pricing);
-  if (!Number.isFinite(cost) || cost <= 0) return usage;
+  if (!Number.isFinite(cost) || cost < 0) return usage;
 
-  return { ...usage, cost_usd: cost };
+  // Client-format token counts may include a buffer. This public builtin
+  // estimate is not the ledger's operator-configured/raw-token valuation.
+  return { ...usage, cost_usd: cost, cost_details: {
+    status: "estimated", source: "builtin", basis: "response_token_counts",
+    unit: "USD_per_million_tokens", rates: { ...pricing },
+  } };
 }
 
 /**

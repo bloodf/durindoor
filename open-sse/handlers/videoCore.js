@@ -86,6 +86,7 @@ function videoJobEvidence(responseBody, bodyText) {
   const succeeded = !failed && ["done", "completed", "succeeded", "success"].includes(status);
   const evidence = raw?.task || raw;
   const nativeUnits = {};
+  if (succeeded) nativeUnits.videoJobs = 1;
   const seconds = value?.video?.duration ?? evidence?.video?.duration ?? evidence?.duration ?? evidence?.seconds;
   if (seconds !== undefined) {
     const numeric = isString(seconds) && /^\d+(?:\.\d+)?$/.test(seconds) ? Number(seconds) : seconds;

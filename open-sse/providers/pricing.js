@@ -505,12 +505,20 @@ export const PATTERN_PRICING = [
 { pattern: "*muse*", pricing: { input: 1.25, output: 4.25, cached: 0.15, reasoning: 6.375, cache_creation: 1.25 } }];
 
 
+const compiledPatterns = new Map();
+
 /**
  * Match a model ID against a glob pattern (* = wildcard). Case-insensitive:
- * registry ids mix casing (e.g. "MiniMax-M2.5" vs "minimax-m2.5").
+ * registry ids mix casing (e.g. "MiniMax-M2.5" vs "minimax-m2.5"). Reuse compiled
+ * expressions across catalog rows; cap retained patterns for arbitrary callers.
  */
 export function matchPattern(pattern, model) {
-  const regex = new RegExp("^" + pattern.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
+  let regex = compiledPatterns.get(pattern);
+  if (!regex) {
+    regex = new RegExp("^" + pattern.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
+    if (compiledPatterns.size >= 512) compiledPatterns.clear();
+    compiledPatterns.set(pattern, regex);
+  }
   return regex.test(model);
 }
 function priceForCanonicalModel(model) {

@@ -48,5 +48,8 @@
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "tailwindcss": "^4.3.3"
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
   }
 }

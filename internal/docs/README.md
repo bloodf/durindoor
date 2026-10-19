@@ -17,6 +17,7 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [Postgres schema migrations](./postgres-migrations.mdx)
 - [Brand guide](./brand-guide.mdx), [dashboard design system](./design-system.mdx), and [provider asset policy](./provider-brand-assets.mdx)
 - [Brand image prompts](./brand-prompts.md) and [provider audit evidence](./provider-expansion-audit.json)
+- [OmniRoute security-audit applicability (#1150)](./omniroute-security-audit-1150.md)
 
 Keep implementation details, source ownership, compatibility constraints, porting decisions, evidence limits, and validation procedures here. Keep public pages concise, with complete setup steps, supported behavior, limits, and recovery instructions. When behavior changes, update both audiences where relevant.
 

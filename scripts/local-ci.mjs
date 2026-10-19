@@ -182,7 +182,12 @@ const dirs = {
   testData: path.join(out, "durindoor-data-test"), tmp: path.join(out, "tmp"),
   cache: path.join(out, "npm-cache"), tool: path.join(out, "commitlint-tool"),
 };
-for (const d of Object.values(dirs)) if (d !== dirs.src) mkdirSync(d, { recursive: true, ...(d === dirs.tmp ? { mode: 0o700 } : {}) });
+for (const d of Object.values(dirs)) {
+  if (d === dirs.src) continue;
+  const mkdirOptions = { recursive: true };
+  if (d === dirs.tmp) mkdirOptions.mode = 0o700;
+  mkdirSync(d, mkdirOptions);
+}
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 const now = () => new Date().toISOString();

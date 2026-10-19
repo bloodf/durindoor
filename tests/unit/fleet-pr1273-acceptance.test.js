@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import path from "node:path";
+import os from "node:os";
 import { getExecutor } from "../../open-sse/executors/index.js";
 import { shutdownPool, getBrowserPoolMetrics } from "../../open-sse/services/browserPool.js";
 import { isolatedEnv } from "../../scripts/smoke-installed-artifact.mjs";
@@ -104,8 +105,8 @@ describe("installed artifact environment boundary", () => {
     for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DATABASE_URL", "HTTP_PROXY", "HTTPS_PROXY", "NODE_OPTIONS", "NODE_PATH", "PLAYWRIGHT_BROWSERS_PATH"]) {
       vi.stubEnv(key, "synthetic-parent-value");
     }
-    const home = path.join(process.env.HOME, "artifact-home");
-    const data = path.join(process.env.DATA_DIR, "artifact-data");
+    const home = path.join(os.tmpdir(), "artifact-home");
+    const data = path.join(os.tmpdir(), "artifact-data");
     const env = isolatedEnv(home, data, 20128);
 
     for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DATABASE_URL", "HTTP_PROXY", "HTTPS_PROXY"]) {

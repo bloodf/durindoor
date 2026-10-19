@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -66,9 +66,17 @@ async function dashboardServer(handler, { bypass, ignoreLoginSetting = false } =
 }
 
 const script = fileURLToPath(new URL("../../scripts/smoke-installed-artifact.mjs", import.meta.url));
-function run(entry) {
+function run(entry, { aliasedTemp = false } = {}) {
+  const env = { ...process.env };
+  if (aliasedTemp) {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-temp-alias-"));
+    cleanup.push(() => fs.rmSync(temp, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(temp, "target"));
+    fs.symlinkSync("target", path.join(temp, "alias"), "dir");
+    env.TMPDIR = path.join(temp, "alias");
+  }
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [script, entry], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [script, entry], { env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (data) => { output += data; });
     child.stderr.on("data", (data) => { output += data; });
@@ -134,7 +142,7 @@ describe("installed artifact smoke failures", () => {
     ["export const chromium = { launch() {} };", "worker reached after ESM import"],
     ["export const chromium = {};", "Invalid playwright runtime"],
     ["import 'missing-playwright-runtime';", "Cannot find package 'missing-playwright-runtime'"],
-  ])("uses packaged ESM exports and validates Chromium: %s", async (esm, expected) => {
+  ])("uses packaged ESM exports through an aliased temp directory and validates Chromium: %s", async (esm, expected) => {
     const { root, entry } = artifact();
     const adapters = path.join(root, "src/lib/db/adapters");
     fs.mkdirSync(adapters, { recursive: true });
@@ -154,7 +162,7 @@ describe("installed artifact smoke failures", () => {
       name: "playwright", exports: { import: "./index.mjs", require: "./index.js" },
     }));
     fs.writeFileSync(path.join(playwright, "index.mjs"), esm);
-    const result = await run(entry);
+    const result = await run(entry, { aliasedTemp: true });
     expect(result.code).toBe(1);
     expect(result.signal).toBeNull();
     expect(result.output).toContain(expected);
@@ -177,6 +185,18 @@ describe("installed artifact smoke failures", () => {
 
   it("rejects a login page without application assets", async () => {
     await expect(verifyStaticAssets("http://127.0.0.1", "<html>login</html>")).rejects.toThrow("No local .js/.css");
+  });
+
+  it("rejects backslash authority URLs before sending dashboard credentials", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("external request attempted"));
+    try {
+      await expect(verifyStaticAssets("http://127.0.0.1:20128",
+        '<script src="/\\example.invalid/chunk.js"></script>', { Cookie: "auth_token=session" }))
+        .rejects.toThrow("Asset URL must stay on the artifact origin");
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      fetch.mockRestore();
+    }
   });
 
   it("fails when wrong credentials receive success", async () => {

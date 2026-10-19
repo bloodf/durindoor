@@ -26,7 +26,7 @@ function snapshot(root) {
 
 describe("standalone dependency closure", () => {
   it.each(["root", "package"])("materializes external %s links without changing the source pool", (topology) => {
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "standalone-closure-"));
+    const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "standalone-closure-")));
     try {
       const pool = path.join(temp, "pool", "node_modules");
       const source = path.join(temp, "source");

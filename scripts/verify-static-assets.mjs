@@ -15,7 +15,13 @@ export async function verifyStaticAssets(baseUrl, pageHtml, headers = {}) {
     throw new Error("No local .js/.css assets found in page HTML");
   }
   for (const url of urls) {
-    const response = await fetch(new URL(url, baseUrl), {
+    // WHATWG URLs treat backslashes as slashes: a root-relative-looking path
+    // can become an authority URL. Never send the smoke session off-origin.
+    const target = new URL(url, baseUrl);
+    if (target.origin !== new URL(baseUrl).origin || target.username || target.password) {
+      throw new Error(`Asset URL must stay on the artifact origin: ${url}`);
+    }
+    const response = await fetch(target, {
       headers, redirect: "manual", signal: AbortSignal.timeout(10000),
     });
     const body = Buffer.from(await response.arrayBuffer());

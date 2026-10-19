@@ -205,7 +205,9 @@ console.log('Optional runtime loading OK: pgSyncWorker, pg, pg-query-stream/pg-c
 
 export async function smokeInstalledArtifact(entry) {
   const source = validateArtifact(entry);
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-installed-smoke-"));
+  // Canonicalize the temporary parent (macOS /var aliases /private/var) before
+  // comparing resolved dependency paths against the relocated artifact root.
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-installed-smoke-")));
   const root = path.join(temp, "artifact");
   const home = path.join(temp, "home");
   let child;

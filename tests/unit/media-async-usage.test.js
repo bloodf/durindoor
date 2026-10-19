@@ -242,7 +242,7 @@ describe("durable video jobs use the existing ledger", () => {
     await poll(pollRequest("account-b"), "shared-id");
     expect(rows().map((row) => row.connectionId).sort()).toEqual(["account-a", "account-b"]);
     expect(new Set(rows().map((row) => row.usageEventId)).size).toBe(2);
-    expect(rows().map((row) => JSON.parse(row.meta).nativeUnits)).toEqual([{}, {}]);
+    expect(rows().map((row) => JSON.parse(row.meta).nativeUnits)).toEqual([{ videoJobs: 1 }, { videoJobs: 1 }]);
   });
 
   it.each(["failed", "cancelled", "expired"])("never records successful use for %s jobs", async (status) => {

@@ -44,6 +44,8 @@ Use [Testing](./testing.mdx) for the separate test package and [Local developmen
 
 PR checks follow the scoped-PR/full-checkpoint contract in `AGENTS.md`: root lint, deterministic changed-path risk floor, independent reviewer additions, and exact-head receipts. Unknown/shared-risk changes require full mode. Bootstrap must pass the original full gate before scoped policy merges; full checkpoints run every five merges and at upstream/stage/final boundaries. Never let a candidate approve its own runner, test map or receipts. Freeze the independently reviewed runner plus imported baseline helpers outside the candidate. The trusted integration owner validates live base/head, policy/toolchain/selection hashes, command logs and reports before publishing the unchanged `V5 Local CI` status. This runner never publishes statuses. Run documentation checks after moving or editing references. Website rendering/build inputs require a full website build. No workflow or branch-protection edits are part of this local policy.
 
+The operator-authorized sequential-command amendment in `AGENTS.md` replaces the original gate's monolithic test command without reducing full-suite coverage. Bootstrap passes the independently reviewed and frozen amended full gate; it need not first pass the superseded command. Four sequential batches retain the five-minute per-command limit, four fork workers, isolation and fail-closed inventory/report validation.
+
 Describe resulting behavior, source scope, tests, public documentation, internal references, and baseline impact. Distinguish offline assertions, browser behavior, credential-backed checks, and production evidence. A registry entry is not proof that a real provider account works.
 
 ## Keep the publication boundary

@@ -28,7 +28,7 @@ import {
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
-import { sanitizeErrorMessageWithSecrets } from "./error.js";
+import { sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -74,14 +74,14 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
   if (!isObject(parsed) || parsed === null) return false;
   const error = parsed.type === "response.failed" ? parsed.response?.error :
   parsed.error ?? (parsed.type === "error" ? parsed : null);
-  // isObject(null) is true here, so exclude null explicitly: a non-error frame yields
-  // error === null and reading error.message would throw into the caller's catch, which
-  // drops the whole frame instead of forwarding it.
-  if (!isObject(error) || error === null) return false;
-  const safe = (value) => sanitizeErrorMessageWithSecrets(String(value), secrets);
-  if (error.message !== undefined) error.message = safe(error.message);
-  if (isString(error.type)) error.type = safe(error.type);
-  if (isString(error.code)) error.code = safe(error.code);
+  if (error === null || (!isObject(error) && !isString(error))) return false;
+  // Error extensions and string errors are public diagnostics too. Reuse the
+  // JSON error boundary so nested secrets are redacted while safe metadata and
+  // non-error content frames retain their existing shape.
+  const safe = sanitizeStructuredErrorBody(isString(error) ? { message: error } : error, secrets);
+  if (parsed.type === "response.failed") parsed.response.error = safe;
+  else if (parsed.error != null) parsed.error = safe;
+  else Object.assign(parsed, safe);
   return true;
 }
 

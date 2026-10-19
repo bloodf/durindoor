@@ -564,7 +564,8 @@ function collectCredentialSecrets(value, key = "", inheritedSensitive = false, s
   return secrets;
 }
 
-function sanitizeStructuredErrorBody(value, secrets = []) {
+/** Sanitize public JSON error metadata without changing caller-owned objects. */
+export function sanitizeStructuredErrorBody(value, secrets = []) {
   if (isString(value)) return sanitizeErrorMessageWithSecrets(value, secrets);
   if (Array.isArray(value)) return value.map((nested) => sanitizeStructuredErrorBody(nested, secrets));
   if (!value || !isObject(value)) return value;

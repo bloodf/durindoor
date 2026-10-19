@@ -250,6 +250,24 @@ describe("OpenAI same-format passthrough error boundaries", () => {
     expect.soft(result.errors[0]?.code).toBe(safeError.code);
   }, 5000);
 
+  it.each(["\n\n", ""])("redacts structured extension fields before public passthrough with tail %j", async (tail) => {
+    const error = { ...safeError, param: credentials.apiKey,
+      details: { token: "synthetic-unselected-token", causes: [{ detail: unsafe }] }, retryable: false };
+    const result = await send(`data: ${JSON.stringify({ error })}${tail}`);
+    expectFailure(result);
+    expectRedacted(result.errors[0], "message");
+    expect(result.errors[0].details.token).toBe("[redacted]");
+    expect(result.errors[0].retryable).toBe(false);
+    expect(result.errors[0].message).toBe(safeError.message);
+  }, 5000);
+
+  it.each(["\n\n", ""])("redacts a string error before public passthrough with tail %j", async (tail) => {
+    const result = await send(`data: ${JSON.stringify({ error: unsafe })}${tail}`);
+    expectFailure(result);
+    expectRedacted(result.errors[0], "message");
+    expect(result.errors[0].message).toContain("denied");
+  }, 5000);
+
   it("retains normal OpenAI success and content bytes", async () => {
     const finish = { ...contentChunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
     const result = await send(contentFrame + frame(finish) + doneFrame);

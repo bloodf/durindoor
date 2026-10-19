@@ -139,6 +139,24 @@ describe("PR #1276 UTF-8 public stream error boundaries", () => {
     expect(result.events.some((event) => event.type === "message_stop")).toBe(false);
   });
 
+  it.each([
+    [FORMATS.CLAUDE, "\n\n"], [FORMATS.CLAUDE, ""],
+    [FORMATS.OPENAI_RESPONSES, "\n\n"], [FORMATS.OPENAI_RESPONSES, ""],
+  ])("redacts nested %s passthrough error metadata with tail %j", async (format, tail) => {
+    const error = { ...upstreamError, param: credentials.apiKey,
+      details: [{ token: "unselected-native-token", diagnostic: credentials.providerSpecificData.sessionToken }] };
+    const event = format === FORMATS.CLAUDE ? { type: "error", error } :
+      { type: "response.failed", response: { id: "nested-failure", status: "failed", error } };
+    const result = await consume(format, `event: ${event.type}\ndata: ${JSON.stringify(event)}${tail}`, format);
+    const delivered = result.events.find((value) => value.error || value.response?.error);
+    const safe = delivered.error || delivered.response.error;
+    expectSafeError(safe);
+    expect(safe.details[0].token).toBe("[redacted]");
+    expect(result.onStreamComplete).toHaveBeenCalledTimes(1);
+    expect(result.onStreamComplete.mock.calls[0][0].upstreamError).toEqual(upstreamError);
+    expect(result.onCoherentTerminal).not.toHaveBeenCalled();
+  });
+
   it.each([FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES])("preserves ordinary %s passthrough EOF frame bytes", async (format) => {
     const terminal = format === FORMATS.CLAUDE ? { type: "message_stop" } :
       { type: "response.completed", response: { id: "resp-byte-control", status: "completed" } };

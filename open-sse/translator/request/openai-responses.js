@@ -6,6 +6,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
   normalizeResponsesInput,
   clampResponsesCallId,
@@ -14,6 +15,7 @@ import {
   repairMissingResponsesCallIds,
   buildDeclaredToolTypes,
   resolveDeclaredCustom,
+  responsesImageUrl,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
@@ -76,22 +78,40 @@ function stripOrphanedToolOutputs(input) {
 const MAX_TOOL_NAME_LEN = 128;
 
 /**
- * Split a `function_call_output.output` value into the tool message text and
- * the images it carries. Chat Completions `tool` messages cannot hold images,
- * so `input_image` parts become `image_url` parts for a following user message
- * and the tool text notes they were attached there. Returns no images for a
- * string output or one without `input_image` parts, keeping the old content.
+ * Lower tool-output content parts without serializing away typed media. Native
+ * Responses `input_image` parts become `image_url` parts in a following user
+ * message. Other non-text blocks have no shared Chat tool-result representation
+ * and fail closed with HTTP 400 before the second hop or upstream dispatch.
+ * Missing/non-string text also fails closed. Text-only arrays collapse to text;
+ * scalar output keeps its old encoding. Native same-format Responses bypasses
+ * this lowering and retains its legal media output.
  */
 function splitToolOutputImages(output) {
-  if (!Array.isArray(output) || !output.some((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE)) {
+  if (!Array.isArray(output)) {
     return { content: isString(output) ? output : JSON.stringify(output), images: [] };
   }
   const images = output.
   filter((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE).
-  map((c) => ({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: c.image_url || c.file_id || "", detail: c.detail || "auto" } }));
-  const text = coerceResponsesOutput(output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE));
-  const note = "[tool returned an image; see attached]";
-  return { content: text ? `${text}\n${note}` : note, images };
+  map(responsesContentToOpenAI);
+  const parts = output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE).map(responsesContentToOpenAI);
+  for (const part of parts) {
+    if (part?.type !== OPENAI_BLOCK.TEXT || !isString(part.text)) {
+      const error = new Error(`UNSUPPORTED_TOOL_OUTPUT: Responses tool-output block "${part?.type ?? "unknown"}" cannot be lowered to Chat; use a native Responses transport`);
+      error.statusCode = HTTP_STATUS.BAD_REQUEST;
+      throw error;
+    }
+  }
+  if (images.length > 0) parts.push({ type: OPENAI_BLOCK.TEXT, text: "[tool returned an image; see attached]" });
+  return { content: parts.length === 0 ? "[]" : collapseTextParts(parts), images };
+}
+
+function responsesContentToOpenAI(c) {
+  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+  if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
+    const url = responsesImageUrl(c);
+    return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
+  }
+  return c;
 }
 
 /**
@@ -256,15 +276,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (itemType === RESPONSES_ITEM.MESSAGE) {
       // Convert content: input_text → text, output_text → text, input_image → image_url
       const content = Array.isArray(item.content) ?
-      item.content.map((c) => {
-        if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-        if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
-        if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-          const url = c.image_url || c.file_id || "";
-          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
-        }
-        return c;
-      }) :
+      item.content.map(responsesContentToOpenAI) :
       item.content;
 
       // Assistant content joins the pending turn instead of starting a second
@@ -454,7 +466,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
 
 
   if (result.tool_choice && isObject(result.tool_choice)) {
-    result.tool_choice = qualifyNamespacedChoice(result.tool_choice);
+    const choice = qualifyNamespacedChoice(result.tool_choice);
+    // Responses names forced functions at the top level; Chat uses function.name.
+    // Qualify before lowering so second-hop choice aliasing matches declarations.
+    if (choice.type === OPENAI_BLOCK.FUNCTION && isString(choice.name) && choice.name.trim()) {
+      const { name, ...rest } = choice;
+      result.tool_choice = { ...rest, function: { name } };
+    } else {
+      result.tool_choice = choice;
+    }
   }
 
   delete result.input;
@@ -673,6 +693,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;
+  // Preserve explicit false: Responses otherwise permits parallel tool calls.
+  if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) {
     const reasoning = result.reasoning && isObject(result.reasoning) && !Array.isArray(result.reasoning) ? result.reasoning : {};

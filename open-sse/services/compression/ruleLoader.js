@@ -46,6 +46,9 @@ const VALID_CATEGORIES = new Set(["filler", "context", "structural", "dedup", "t
 const VALID_INTENSITIES = new Set(["lite", "full", "ultra"]);
 const cache = new Map();
 let rulesDirCache = null;
+// build-app and Docker copy the complete open-sse tree. Resolve its runtime
+// location without asking NFT to glob every possible ancestor of cwd/argv.
+const runtimeJoin = path.join.bind(path);
 
 function normalizeReplacementKey(value) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
@@ -90,8 +93,8 @@ function getRulesDir() {
   if (rulesDirCache) return rulesDirCache;
   const root = getModuleDir();
   const candidates = [
-  path.join(root, "open-sse", "services", "compression", "rules"),
-  path.join(root, "app", "open-sse", "services", "compression", "rules")];
+  runtimeJoin(root, "open-sse", "services", "compression", "rules"),
+  runtimeJoin(root, "app", "open-sse", "services", "compression", "rules")];
 
   rulesDirCache =
   candidates.find((candidate, index) => {

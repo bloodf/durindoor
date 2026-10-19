@@ -24,6 +24,8 @@ import { createHash } from "crypto";
 import { readFile, readdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
+// Runtime user profiles are not standalone assets; avoid recursive NFT globs.
+const runtimeJoin = join.bind(null);
 import { refreshKiroToken } from "./tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
@@ -165,7 +167,7 @@ export async function resolveKiroCredentialsFromSsoCache(targetRefreshToken = nu
   // carries the correct region for the account.
   let profileArn = null;
   const kiroProfilePaths = [
-  join(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
+  runtimeJoin(process.env.APPDATA || join(homedir(), "AppData", "Roaming"), "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
   join(homedir(), ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json")];
 
   for (const profilePath of kiroProfilePaths) {

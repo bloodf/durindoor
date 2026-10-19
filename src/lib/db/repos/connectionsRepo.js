@@ -501,6 +501,13 @@ export async function recordProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
+    // Auth may have read this account before a concurrent terminal failure.
+    // Recheck under the write transaction: ordinary cooldowns cannot demote
+    // durable reauth or erase the marker that guards later success clearing.
+    if (existing.testStatus === "reauth_required" || existing.errorCode === "REAUTH") {
+      result = { applied: false, connection: existing };
+      return;
+    }
     const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch, videoPoll });
     const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
     const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;

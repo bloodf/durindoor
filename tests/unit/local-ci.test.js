@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, realpathSync, chmodSync, symlinkSync, rmSync } from "node:fs";
 import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   selectRiskFloor, validateSelection, testEnvironment, scopedTestArgs,
-  validateTestReport, validateReceipt, terminateCommandGroup,
+  validateTestReport, validateReceipt, terminateCommandGroup, assertPrivateTemporaryRoot,
 } from "../../scripts/local-ci.mjs";
 
 const base = "a".repeat(40);
@@ -91,6 +91,27 @@ describe("local CI frozen policy", () => {
       LD_PRELOAD: "evil", npm_config_registry: "evil", HTTP_PROXY: "evil" }, { HOME: "/private/home", DATA_DIR: "/private/data" });
     expect(env).toEqual({ PATH: "/bin", LANG: "C", HOME: "/private/home", DATA_DIR: "/private/data", CI: "true" });
   });
+  it("requires an owned private temporary root and rejects replacement or permission drift", () => {
+    const directory = realpathSync(mkdtempSync(path.join(os.tmpdir(), "gate-tmp-")));
+    const link = `${directory}-link`;
+    try {
+      chmodSync(directory, 0o700);
+      expect(() => assertPrivateTemporaryRoot(directory)).not.toThrow();
+      expect(() => assertPrivateTemporaryRoot("relative/tmp")).toThrow(/absolute/);
+      expect(() => assertPrivateTemporaryRoot(path.join(directory, "missing"))).toThrow();
+      chmodSync(directory, 0o755);
+      expect(() => assertPrivateTemporaryRoot(directory)).toThrow(/private/);
+      chmodSync(directory, 0o700);
+      symlinkSync(directory, link);
+      expect(() => assertPrivateTemporaryRoot(link)).toThrow(/private/);
+      const file = path.join(directory, "not-a-directory");
+      writeFileSync(file, "fixture");
+      expect(() => assertPrivateTemporaryRoot(file)).toThrow(/private/);
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it("forwards explicit selectors directly to Vitest, never the full-suite npm wrapper", () => {
     const args = scopedTestArgs("/private/tests", translatorTests);
     expect(args.slice(0, 4)).toEqual(["/private/tests/node_modules/vitest/vitest.mjs", "run", ...translatorTests]);
@@ -115,14 +136,16 @@ describe("local CI frozen policy", () => {
     const tests = realpathSync(mkdtempSync(path.join(os.tmpdir(), "gate-child-")));
     mkdirSync(path.join(tests, "node_modules/vitest"), { recursive: true });
     const bin = path.join(tests, "node_modules/vitest/vitest.mjs");
-    writeFileSync(bin, `import fs from 'node:fs'; import path from 'node:path';
+    writeFileSync(bin, `import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os';
       const selected = process.argv.slice(3).filter(x => !x.startsWith('--'));
       const forbidden = ['GH_TOKEN','GITHUB_TOKEN','OPENAI_API_KEY','TYPESAFE_API_KEY','RUN_REAL','NODE_OPTIONS'];
       if (forbidden.some(k => process.env[k])) process.exit(3);
+      if (process.env.TMPDIR !== process.cwd() || os.tmpdir() !== process.cwd()) process.exit(4);
+      if ((fs.statSync(process.env.TMPDIR).mode & 0o777) !== 0o700) process.exit(5);
       fs.writeFileSync('.scoped-results.json', JSON.stringify({success:true,testResults:selected.map(name => ({
         name:path.resolve(name),status:'passed',assertionResults:[{status:'passed'}]}))}));`);
-    const env = testEnvironment({ ...process.env, GH_TOKEN: "publisher", OPENAI_API_KEY: "provider", RUN_REAL: "1" },
-      { HOME: tests, DATA_DIR: path.join(tests, "data") });
+    const env = testEnvironment({ ...process.env, TMPDIR: "/ambient-must-not-leak", GH_TOKEN: "publisher", OPENAI_API_KEY: "provider", RUN_REAL: "1" },
+      { HOME: tests, DATA_DIR: path.join(tests, "data"), TMPDIR: tests });
     const started = Date.now();
     const child = spawnSync(process.execPath, scopedTestArgs(tests, translatorTests), { cwd: tests, env, timeout: 10000 });
     expect(child.status).toBe(0);

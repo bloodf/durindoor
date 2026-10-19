@@ -15,6 +15,7 @@ import {
   repairMissingResponsesCallIds,
   buildDeclaredToolTypes,
   resolveDeclaredCustom,
+  responsesImageUrl,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
@@ -107,13 +108,7 @@ function splitToolOutputImages(output) {
 function responsesContentToOpenAI(c) {
   if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
   if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
-    // File IDs are provider-scoped; only native Responses can preserve them.
-    if (!c.image_url && c.file_id) {
-      const error = new Error("input_image.file_id is not supported for this provider; send image_url (URL or data: base64) instead");
-      error.statusCode = HTTP_STATUS.BAD_REQUEST;
-      throw error;
-    }
-    const url = c.image_url || "";
+    const url = responsesImageUrl(c);
     return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
   }
   return c;

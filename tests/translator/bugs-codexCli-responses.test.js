@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { convertResponsesApiFormat } from "../../open-sse/translator/formats/responsesApi.js";
 
 const R2O = (body) => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", body, true, null, null);
 const O2R = (body) => translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "m", body, true, null, null);
@@ -75,6 +76,39 @@ describe("Codex CLI Responses → OpenAI", () => {
       const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", body, stream, null, null);
       const img = out.messages.find((m) => m.role === "user").content.find((c) => c.type === "image_url");
       expect(img.image_url.url).toBe(url);
+    }
+  });
+
+  it.each([true, false])("converter rejects bare file IDs and preserves URL priority (stream=%s)", (stream) => {
+    const body = (reference) => ({ stream, input: [{ type: "message", role: "user", content: [
+      { type: "input_image", ...reference },
+    ] }] });
+    expect(() => convertResponsesApiFormat(body({ file_id: "file-abc" })))
+      .toThrowError(expect.objectContaining({ statusCode: 400, message: expect.stringContaining("send image_url") }));
+    for (const url of ["https://example.com/a.png", "data:image/png;base64,AAAA"]) {
+      expect(convertResponsesApiFormat(body({ image_url: url, file_id: "file-abc" })).messages[0].content)
+        .toEqual([{ type: "image_url", image_url: { url, detail: "auto" } }]);
+    }
+  });
+
+  it.each([true, false])("preserves tool-output text and image URLs without splitting parallel results (stream=%s)", (stream) => {
+    for (const url of ["https://example.com/a.png", "data:image/png;base64,AAAA"]) {
+      const body = { stream, input: [
+        { type: "function_call", call_id: "c1", name: "capture", arguments: "{}" },
+        { type: "function_call", call_id: "c2", name: "inspect", arguments: "{}" },
+        { type: "function_call_output", call_id: "c1", output: [
+          { type: "input_text", text: "captured" },
+          { type: "input_image", image_url: url, file_id: "file-abc", detail: "high" },
+        ] },
+        { type: "function_call_output", call_id: "c2", output: "inspected" },
+      ] };
+      const out = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "m", body, stream, null, null);
+      expect(out.messages.map((message) => message.role)).toEqual(["assistant", "tool", "tool", "user"]);
+      expect(out.messages[1]).toMatchObject({ tool_call_id: "c1", content: "captured\n[tool returned an image; see attached]" });
+      expect(out.messages[2]).toMatchObject({ tool_call_id: "c2", content: "inspected" });
+      expect(out.messages[3].content).toEqual([
+        { type: "image_url", image_url: { url, detail: "high" } },
+      ]);
     }
   });
 

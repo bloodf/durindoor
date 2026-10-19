@@ -127,3 +127,15 @@ Parent verified the repaired assertions and the added identity/usage case. Unit 
 3. `open-sse/translator/request/claude-to-openai.js`: in the nested `tool_result` loop, a nested `document` with a `http(s)` source contributes a bounded label carrying its URI verbatim; any other source, including a non-`http(s)` URI scheme, throws an `UNSUPPORTED_DOCUMENT` error with `statusCode` 400 rather than being silently dropped or labelled as if it had content. Message-level documents and the `toolResultImages` lifting are unchanged.
 
 No `stream.js`, no `nonStreamingHandler.js`, no test file and no other production file was touched. Verification: 12 files, 69 tests, 69 passed, 0 failed, one invocation, network denied, read-only writer source and dependency pools. Claims: full CI false, UI false, live provider false. U1–U3 stay upstream-pending and no issue closure is claimed.
+
+
+## Current integration review — 2026-10-19
+
+The integration now includes the current #1256 file-reference residual: the secondary
+Responses converter shares image-reference validation with the registered translator,
+and its worker handler returns an HTTP 400 result before chat dispatch. Native
+same-format Responses references and URL precedence remain covered separately.
+Tool-output lowering retains this integration's strict non-text validation.
+`tests/unit/responses-file-id-handler.test.js` covers both stream settings at the
+worker boundary; `responses-file-id-chatcore.test.js` retains the public POST cases.
+These changes do not establish a full checkpoint or complete #1089 acceptance.

@@ -349,6 +349,13 @@ export function convertResponsesApiFormat(body) {
       // a genuine orphan (no call to answer) and is dropped rather than emitting
       // an unpairable tool message.
       if (item.call_id) {
+        // This worker converter keeps its existing tool-output serialization,
+        // but scoped image IDs must fail before their block type becomes text.
+        if (Array.isArray(item.output)) {
+          for (const part of item.output) {
+            if (part?.type === RESPONSES_ITEM.INPUT_IMAGE) responsesImageUrl(part);
+          }
+        }
         pendingToolResults.push({
           role: ROLE.TOOL,
           tool_call_id: item.call_id,

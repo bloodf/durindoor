@@ -15,6 +15,11 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
 }));
 vi.mock("@/lib/network/proxyTest", () => ({ testProxyUrl: mocks.testProxyUrl }));
+// Registry imports must not start the unrelated Kimchi release updater offline.
+vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({
+  getKimchiUserAgent: () => "kimchi/offline-fixture",
+  updateKimchiUserAgent: vi.fn(async () => "kimchi/offline-fixture"),
+}));
 
 const originalFetch = globalThis.fetch;
 
@@ -210,7 +215,8 @@ describe("provider probe deadlines", () => {
 
     try {
       const result = await testSingleConnection("conn-ollama");
-      expect(result.valid).toBe(true);
+      expect(result.valid).toBe(false);
+      expect(result.skipped).toBe(true);
       expect(transport).toHaveBeenCalledWith(
         "https://ollama.com/api/tags",
         expect.objectContaining({

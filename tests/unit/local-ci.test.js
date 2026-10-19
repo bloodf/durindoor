@@ -33,6 +33,9 @@ describe("local CI frozen policy", () => {
       expect(selectRiskFloor(changed, inventory).mode).toBe("full");
     }
   });
+  it("does not classify leading-whitespace paths as documentation", () => {
+    expect(selectRiskFloor([" docs/example.md"], inventory).mode).toBe("full");
+  });
   it("keeps translator callers and all translator tests mandatory, independent of reviewer selection", () => {
     const floor = selectRiskFloor(["open-sse/translator/request/claude-to-openai.js"], trustedInventory);
     expect(floor.mode).toBe("scoped");

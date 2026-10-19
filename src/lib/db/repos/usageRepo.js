@@ -348,16 +348,17 @@ async function calculateCost(provider, model, tokens) {
     return { cost: field === "cost_in_usd_ticks" ? cost / 1e12 : cost, split: null, costStatus: "known", costSource: "provider" };
   }
   const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");
-  const { getPricingForModel } = await import("./pricingRepo.js");
-  const pricing = provider && model ? await getPricingForModel(provider, model) : null;
-  if (!pricing) return unknown;
+  const { resolvePricingForModel } = await import("./pricingRepo.js");
+  const resolved = provider && model ? await resolvePricingForModel(provider, model) : null;
+  if (!resolved) return unknown;
+  const { pricing, provenance } = resolved;
 
   // Delegate to the shared cache-inclusive token pricing calculation.
   const breakdown = calculateCostBreakdown(tokens, pricing);
   const componentSum = USAGE_COST_FIELDS.reduce((sum, field) => sum + breakdown[field], 0);
   const split = componentSum === breakdown.totalCost ?
   Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, breakdown[field]])) : null;
-  return { cost: breakdown.totalCost, split, costStatus: "estimated", costSource: "pricing" };
+  return { cost: breakdown.totalCost, split, costStatus: "estimated", costSource: "pricing", pricing: provenance };
 }
 
 function evictActiveSession(requestId) {
@@ -748,6 +749,9 @@ export async function saveRequestUsage(entry) {
     entry.requests = 1;
     entry.unknownCostRequests = entry.cost === null ? 1 : 0;
     entry.meta = { ...entry.meta, costStatus: priced.costStatus, costSource: priced.costSource };
+    // Reserved ledger evidence must describe this valuation, not caller metadata.
+    if (priced.pricing) entry.meta.pricing = priced.pricing;
+    else delete entry.meta.pricing;
     if (entry.modality !== undefined) entry.meta.modality = entry.modality;
     if (entry.nativeUnits !== undefined) entry.meta.nativeUnits = entry.nativeUnits;
     const costSplit = priced.split || Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, null]));

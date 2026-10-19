@@ -254,7 +254,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     let entered;
     const blocked = new Promise((resolve) => { release = resolve; });
     const started = new Promise((resolve) => { entered = resolve; });
-    const lookup = vi.spyOn(pricing, "getPricingForModel").mockImplementation(async () => {
+    const lookup = vi.spyOn(pricing, "resolvePricingForModel").mockImplementation(async () => {
       entered();
       await blocked;
       return null;

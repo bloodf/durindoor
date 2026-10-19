@@ -14,6 +14,7 @@ import {
   repairMissingResponsesCallIds,
   buildDeclaredToolTypes,
   resolveDeclaredCustom,
+  responsesImageUrl,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
@@ -88,7 +89,7 @@ function splitToolOutputImages(output) {
   }
   const images = output.
   filter((c) => c?.type === RESPONSES_ITEM.INPUT_IMAGE).
-  map((c) => ({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: c.image_url || c.file_id || "", detail: c.detail || "auto" } }));
+  map((c) => ({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: responsesImageUrl(c), detail: c.detail || "auto" } }));
   const text = coerceResponsesOutput(output.filter((c) => c?.type !== RESPONSES_ITEM.INPUT_IMAGE));
   const note = "[tool returned an image; see attached]";
   return { content: text ? `${text}\n${note}` : note, images };
@@ -260,8 +261,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
         if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
         if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-          const url = c.image_url || c.file_id || "";
-          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
+          return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: responsesImageUrl(c), detail: c.detail || "auto" } };
         }
         return c;
       }) :

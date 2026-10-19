@@ -65,7 +65,7 @@ export default defineConfig({
     name: "dashboard-jsx",
     enforce: "pre",
     transform(code, id) {
-      if (!/\/src\/.*\.js$/.test(id)) return null;
+      if (!id.startsWith(resolve(__dirname, "../src") + "/") || !id.endsWith(".js")) return null;
       return transformWithOxc(code, id, { lang: "jsx", jsx: { runtime: "automatic" } });
     },
   }],

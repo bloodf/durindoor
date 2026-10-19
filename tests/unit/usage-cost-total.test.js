@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   extractUsage,
+  normalizeUsage,
+  canonicalizeUsage,
   enrichUsageCost,
   filterUsageForFormat,
 } from "../../open-sse/utils/usageTracking.js";
@@ -19,6 +21,23 @@ describe("extractUsage - provider-reported cost (upstream #4074)", () => {
       usage: { prompt_tokens: 100, completion_tokens: 20 },
     });
     expect(usage.cost_usd).toBeUndefined();
+  });
+});
+
+describe("USD receipt normalization", () => {
+  it.each([null, false, true, "", "0.25", [], {}, -1, Infinity].map((receipt) => ({ receipt })))("does not invent provider USD from $receipt", ({ receipt }) => {
+    for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
+      const usage = { prompt_tokens: 10, completion_tokens: 2, [field]: receipt };
+      expect(normalizeUsage(usage)[field]).toBeUndefined();
+      expect(canonicalizeUsage(usage)[field]).toBeUndefined();
+    }
+    expect(extractUsage({ usage: { prompt_tokens: 10, completion_tokens: 2, cost: receipt } }).cost_usd).toBeUndefined();
+  });
+
+  it("preserves authoritative numeric zero and tick receipts through normalization", () => {
+    const usage = { prompt_tokens: 10, completion_tokens: 2, cost_usd: 0, cost_in_usd_ticks: 250000000000 };
+    expect(canonicalizeUsage(normalizeUsage(usage))).toMatchObject({ cost_usd: 0, cost_in_usd_ticks: 250000000000 });
+    expect(enrichUsageCost({ prompt_tokens: 1000000, cost_in_usd_ticks: 250000000000 }, "openrouter", "glm-4.7-flashx").cost_usd).toBeUndefined();
   });
 });
 

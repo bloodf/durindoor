@@ -342,8 +342,9 @@ async function calculateCost(provider, model, tokens) {
   if (!tokens) return unknown;
   for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
     if (tokens[field] == null) continue;
-    const cost = Number(tokens[field]);
-    if (!Number.isFinite(cost) || cost < 0) throw new TypeError(`Invalid usage ${field}`);
+    // Receipts are numeric USD, never JavaScript-coerced booleans/strings/arrays.
+    const cost = tokens[field];
+    if (!isNumber(cost) || !Number.isFinite(cost) || cost < 0) throw new TypeError(`Invalid usage ${field}`);
     return { cost: field === "cost_in_usd_ticks" ? cost / 1e12 : cost, split: null, costStatus: "known", costSource: "provider" };
   }
   const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");

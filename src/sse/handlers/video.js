@@ -33,12 +33,12 @@ async function enforceVideoPolicy(request, provider, model, apiKey) {
 
 async function recordVideoJobUsage(job, apiKey) {
   if (job?.terminal?.status !== "succeeded") return;
-  const { timestamp, tokens, nativeUnits, cost, costStatus, costSource } = job.terminal;
+  const { timestamp, tokens, nativeUnits, cost, costStatus, costSource, meta } = job.terminal;
   await recordApiKeyUsage(apiKey, {
     billingEpoch: job.billingEpoch,
     usageEventId: job.usageEventId, provider: job.provider, model: job.model,
     connectionId: job.connectionId, endpoint: job.endpoint, modality: "video",
-    timestamp, tokens, nativeUnits, cost, costStatus, costSource,
+    timestamp, tokens, nativeUnits, cost, costStatus, costSource, meta,
   });
 }
 

@@ -313,6 +313,14 @@ describe("media usage in the existing usageHistory ledger", () => {
     await expectCounters(1, 0, 11, 12, 1);
   });
 
+  it.each([false, true, "", "0.25", [], {}].map((receipt) => ({ receipt })))("rejects nonnumeric provider USD receipt $receipt without committing usage", async ({ receipt }) => {
+    const usage = event({ cost: undefined, costStatus: undefined, costSource: undefined,
+      tokens: { input_tokens: 7, cost_usd: receipt }, apiKey: secret, strict: true });
+    await expect(database.saveRequestUsage(usage)).rejects.toThrow("Invalid usage cost_usd");
+    expect(rows()).toEqual([]);
+    await expectCounters(0, 0);
+  });
+
   it("stores unknown cost explicitly, not as a free request, while counting successful use", async () => {
     const usage = event({ cost: null, costStatus: "unknown", costSource: "unavailable" });
     await policy.recordApiKeyUsageForResponse(secret, new Response(null), usage);

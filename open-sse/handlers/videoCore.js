@@ -92,12 +92,16 @@ function videoJobEvidence(responseBody, bodyText) {
     if (isNumber(numeric) && Number.isFinite(numeric) && numeric >= 0) nativeUnits.videoSeconds = numeric;
   }
   const usageValue = evidence?.usage ? { usage: evidence.usage } : value;
-  const reportedCost = usageValue?.usage?.cost_usd ?? usageValue?.usage?.cost_in_usd;
+  const costField = usageValue?.usage?.cost_usd != null ? "cost_usd" : "cost_in_usd";
+  const reportedCost = usageValue?.usage?.[costField];
+  const usagePath = raw?.task?.usage ? "task.usage" : "usage";
+  const meta = usageValue?.usage ? { providerUsage: { path: usagePath, value: usageValue.usage } } : {};
+  if (reportedCost != null) meta.providerCost = { path: `${usagePath}.${costField}`, value: reportedCost };
   const knownCost = isNumber(reportedCost) && Number.isFinite(reportedCost) && reportedCost >= 0;
   return {
     resourceId: isString(resourceId) && resourceId ? resourceId : null,
     terminal: failed ? { status: "failed" } : succeeded ? {
-      status: "succeeded", usageValue, nativeUnits,
+      status: "succeeded", usageValue, nativeUnits, meta,
       cost: knownCost ? reportedCost : null,
       costStatus: knownCost ? "known" : "unknown",
       costSource: knownCost ? "provider" : "unavailable",

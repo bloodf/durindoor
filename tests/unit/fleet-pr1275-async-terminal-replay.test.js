@@ -183,6 +183,12 @@ it.each(cases)("$modality: first terminal wins double poll, durable replay spend
   expect(receipts()).toEqual([{ scope: "usageEventReceipts", key: createHash("sha256").update(storedId).digest("hex"), value: "1" }]);
   expect(await database.getApiKeyUsageTotals("caller-id")).toMatchObject({ totalRequests: 1, totalTokens: 10, totalCost: 0.5, unknownCostRequests: 0 });
   expect(await database.getApiKeyUsageTotals("other-id")).toMatchObject({ totalRequests: 0, totalCost: 0 });
+  if (fixture.modality === "video") {
+    const provenance = { providerUsage: { path: "usage", value: raw(fixture, id, complete(fixture)).usage },
+      providerCost: { path: "usage.cost_usd", value: 0.5 } };
+    expect(winningJob.terminal.meta).toEqual(provenance);
+    expect(JSON.parse(rows()[0].meta)).toMatchObject(provenance);
+  }
   const committed = snapshot();
   const calls = transport.fetch.mock.calls.length;
   transport.fetch.mockImplementation(async () => { throw new Error("Terminal replay must not dispatch"); });

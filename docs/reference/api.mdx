@@ -133,6 +133,8 @@ For account-bound operations, send `x-connection-id` with the account returned i
 
 Native Anthropic file and Message Batch lists include only resources with a recorded gateway owner on the pinned account. API keys see their own resources; authenticated operators may see resources recorded for other owners. Resources without a recorded owner are omitted even for operators, and individual requests for them return HTTP 403 before dispatching the vendor operation. List boundary IDs and `has_more` reflect only visible resources.
 
+Native Anthropic file and batch list cursors (`after_id` and `before_id`) must reference a recorded resource owned by the accepted API key. Operators may use recorded resources across owners; unknown cursors are rejected. Repeated or empty cursor parameters return 400.
+
 MiniMax and MiniMax CN voice-category lists retain account-wide semantics. Share those accounts only with clients you trust with their voices. MiniMax `POST /v1/get_voice` takes `voice_type`, not an individual `voice_id`; see the [vendor schema](https://platform.minimax.io/docs/api-reference/voice-management-get.md).
 
 Native background and batch inference require keys without usage/rate caps: the gateway cannot meter work after a client leaves. Direct ephemeral sessions have the same restriction. Gateway-relayed native WebSockets remain available to scoped keys; see [Realtime](../features/realtime.mdx).

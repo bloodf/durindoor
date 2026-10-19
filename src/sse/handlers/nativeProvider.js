@@ -204,6 +204,22 @@ export async function handleNativeProvider(request, provider, path) {
   if (operation.listsResources && (!Number.isInteger(listLimit) || listLimit < 1 || listLimit > 1000)) {
     return fail(HTTP_STATUS.BAD_REQUEST, "Native resource list limit must be an integer between 1 and 1000");
   }
+  if (operation.listsResources) {
+    // Client cursors are resource IDs too: reject foreign/unknown IDs before
+    // upstream responses can expose whether they exist. Internal continuation
+    // cursors below are never returned to clients and stay account-local.
+    for (const name of ["after_id", "before_id"]) {
+      const values = url.searchParams.getAll(name);
+      if (values.length > 1 || (values.length && !values[0])) {
+        return fail(HTTP_STATUS.BAD_REQUEST, "Invalid native resource list cursor");
+      }
+      if (!values.length) continue;
+      const owner = await readNativeResourceOwner(provider, credentials.connectionId, values[0]);
+      if (!owner?.ownerId || (!requestOwner.allowAllOwners && owner.ownerId !== requestOwner.ownerId)) {
+        return fail(HTTP_STATUS.FORBIDDEN, "Forbidden");
+      }
+    }
+  }
   let response;
   try {
     response = await proxyAwareFetch(upstream, { method: request.method, headers, body: rawBody, signal: request.signal, redirect: "error", duplex: rawBody ? "half" : undefined }, resolveCredentialProxyOptions(credentials));

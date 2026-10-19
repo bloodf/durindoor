@@ -151,6 +151,32 @@ describe("native provider facade", () => {
       expect(mocks.fetch).not.toHaveBeenCalled();
     });
 
+    it.each(["after_id", "before_id"])("rejects foreign and unknown client %s before upstream dispatch", async (cursorParam) => {
+      for (const owner of [{ ownerId: "foreign-key" }, null]) {
+        mocks.readOwner.mockResolvedValueOnce(owner);
+        const response = await call("GET", collection, `&${cursorParam}=unowned`);
+        expect(response.status).toBe(403);
+        expect(await response.text()).not.toContain("unowned");
+      }
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
+    it.each(["after_id", "before_id"])("rejects repeated %s before upstream dispatch", async (cursorParam) => {
+      expect((await call("GET", collection, `&${cursorParam}=start&${cursorParam}=other`)).status).toBe(400);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
+    it("allows operator cursors only for recorded owners", async () => {
+      mocks.resolveOwner.mockResolvedValue({ authorized: true, ownerId: "operator", allowAllOwners: true });
+      mocks.readOwner.mockResolvedValueOnce({ ownerId: "foreign-key" });
+      mocks.fetch.mockResolvedValueOnce(Response.json({ data: [], has_more: false }));
+      expect((await call("GET", collection, "&after_id=known")).status).toBe(200);
+      mocks.fetch.mockClear();
+      mocks.readOwner.mockResolvedValueOnce(null);
+      expect((await call("GET", collection, "&before_id=unknown")).status).toBe(403);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
     it("filters list entries and boundary IDs without leaking foreign or unknown resources", async () => {
       mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) =>
         resourceId === id ? { ownerId: "key" } : resourceId === "foreign" ? { ownerId: "foreign-key" } : null);
@@ -162,7 +188,7 @@ describe("native provider facade", () => {
     });
 
     it.each(["after_id", "before_id"])("skips hidden pages using %s without exposing their cursors", async (cursorParam) => {
-      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => resourceId === id ? { ownerId: "key" } : null);
+      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => (resourceId === id || resourceId === "start") ? { ownerId: "key" } : null);
       const urls = [];
       mocks.fetch.mockImplementationOnce(async (url) => {
         urls.push(String(url));
@@ -177,7 +203,7 @@ describe("native provider facade", () => {
     });
 
     it.each(["after_id", "before_id"])("does not report a foreign-only tail via %s", async (cursorParam) => {
-      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => resourceId === id ? { ownerId: "key" } : { ownerId: "foreign-key" });
+      mocks.readOwner.mockImplementation(async (_provider, _connection, resourceId) => (resourceId === id || resourceId === "start") ? { ownerId: "key" } : { ownerId: "foreign-key" });
       mocks.fetch.mockResolvedValueOnce(Response.json({ data: [{ id }], first_id: id, last_id: id, has_more: true, total: 2 }))
         .mockResolvedValueOnce(Response.json({ data: [{ id: "foreign" }], first_id: "foreign", last_id: "foreign", has_more: false, total: 2 }));
       expect(await (await call("GET", collection, `&${cursorParam}=start&limit=1`)).json()).toEqual({ data: [{ id }], first_id: id, last_id: id, has_more: false });

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { validateArtifact, verifyEndpoints } from "../../scripts/smoke-installed-artifact.mjs";
@@ -66,15 +66,30 @@ async function dashboardServer(handler, { bypass, ignoreLoginSetting = false } =
 }
 
 const script = fileURLToPath(new URL("../../scripts/smoke-installed-artifact.mjs", import.meta.url));
-function run(entry, { aliasedTemp = false } = {}) {
-  const env = { ...process.env };
+// The full gate's private TMPDIR can be below the checkout's node_modules.
+// Resolve the platform default in a child without changing this worker's env,
+// then give each smoke subprocess its own owned temporary relocation parent.
+function smokeTemp() {
+  const env = Object.fromEntries(Object.entries(process.env)
+    .filter(([key]) => !["TMPDIR", "TMP", "TEMP"].includes(key.toUpperCase())));
+  const parent = execFileSync(process.execPath, ["-e", "process.stdout.write(require('node:os').tmpdir())"], {
+    env, encoding: "utf8", timeout: 5000,
+  });
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(parent, "installed-smoke-runtime-test-")));
+  cleanup.push(() => fs.rmSync(temp, { recursive: true, force: true }));
+  return temp;
+}
+
+function run(entry, { aliasedTemp = false, contaminatedTemp = false } = {}) {
+  const temp = smokeTemp();
+  let childTemp = temp;
+  if (contaminatedTemp) fs.mkdirSync(path.join(temp, "node_modules"));
   if (aliasedTemp) {
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "smoke-temp-alias-"));
-    cleanup.push(() => fs.rmSync(temp, { recursive: true, force: true }));
     fs.mkdirSync(path.join(temp, "target"));
     fs.symlinkSync("target", path.join(temp, "alias"), "dir");
-    env.TMPDIR = path.join(temp, "alias");
+    childTemp = path.join(temp, "alias");
   }
+  const env = { ...process.env, TMPDIR: childTemp, TMP: childTemp, TEMP: childTemp };
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, entry], { env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
@@ -82,11 +97,22 @@ function run(entry, { aliasedTemp = false } = {}) {
     child.stderr.on("data", (data) => { output += data; });
     const timer = setTimeout(() => child.kill("SIGKILL"), 15000);
     child.once("error", reject);
-    child.once("exit", (code, signal) => { clearTimeout(timer); resolve({ code, signal, output }); });
+    child.once("exit", (code, signal) => { clearTimeout(timer); resolve({ code, signal, output, temp }); });
   });
 }
 
 describe("installed artifact smoke failures", () => {
+  it.each([false, true])("rejects ancestor dependencies before runtime probing and cleans relocation state (aliased: %s)", async (aliasedTemp) => {
+    const { entry } = artifact();
+    const result = await run(entry, { aliasedTemp, contaminatedTemp: true });
+    expect(result.code).toBe(1);
+    expect(result.signal).toBeNull();
+    expect(result.output).toContain(`Isolation requires no ancestor node_modules: ${result.temp}`);
+    expect(result.output).not.toContain("Optional runtime probe failed");
+    expect(result.output).not.toContain("server must not run");
+    expect(fs.readdirSync(result.temp).sort()).toEqual(aliasedTemp ? ["alias", "node_modules", "target"] : ["node_modules"]);
+    if (aliasedTemp) expect(fs.readdirSync(path.join(result.temp, "target"))).toEqual([]);
+  });
   it.each([false, true])("exits nonzero for a missing packaged worker without source fallback (parent exists: %s)", async (parentExists) => {
     const { root, entry } = artifact();
     if (parentExists) fs.mkdirSync(path.join(root, "src/lib/db/adapters"), { recursive: true });

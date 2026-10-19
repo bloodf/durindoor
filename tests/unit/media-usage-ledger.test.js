@@ -297,6 +297,22 @@ describe("media usage in the existing usageHistory ledger", () => {
     await expectCounters(1, cost, 1000, 500);
   });
 
+  it("persists Gemini media reasoning and cache subsets without losing or double-counting tokens", async () => {
+    const { mediaAccounting } = await import("../../open-sse/handlers/mediaAccounting.js");
+    const usageMetadata = {
+      promptTokenCount: 11, candidatesTokenCount: 7, thoughtsTokenCount: 5,
+      cachedContentTokenCount: 3, totalTokenCount: 23,
+    };
+    const accounting = mediaAccounting({ usageMetadata }, "gemini", "image");
+    await policy.recordApiKeyUsageForResponse(secret, new Response(null), event({
+      ...accounting, provider: "gemini", model: "gemini-image-fixture",
+    }));
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ promptTokens: 11, completionTokens: 12, cachedTokens: 3, reasoningTokens: 5, cost: null });
+    expect(JSON.parse(rows()[0].meta).providerUsage.value).toEqual(usageMetadata);
+    await expectCounters(1, 0, 11, 12, 1);
+  });
+
   it("stores unknown cost explicitly, not as a free request, while counting successful use", async () => {
     const usage = event({ cost: null, costStatus: "unknown", costSource: "unavailable" });
     await policy.recordApiKeyUsageForResponse(secret, new Response(null), usage);

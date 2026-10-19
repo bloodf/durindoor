@@ -21,14 +21,14 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("internal media core accounting", () => {
   it("retains Gemini usage before image normalization and binary conversion", async () => {
-    const usageMetadata = { promptTokenCount: 11, candidatesTokenCount: 7, totalTokenCount: 18 };
+    const usageMetadata = { promptTokenCount: 11, candidatesTokenCount: 7, thoughtsTokenCount: 5, cachedContentTokenCount: 3, totalTokenCount: 23 };
     vi.stubGlobal("fetch", vi.fn(async () => json({
       usageMetadata, candidates: [{ content: { parts: [{ inlineData: { data: "aGk=" } }] } }],
     })));
     const result = await image("gemini", { binaryOutput: true });
     expect(await result.response.text()).toBe("hi");
     expect(result.accounting).toMatchObject({
-      state: "complete", tokens: { input_tokens: 11, output_tokens: 7, total_tokens: 18 },
+      state: "complete", tokens: { input_tokens: 11, output_tokens: 12, total_tokens: 23, cached_tokens: 3, reasoning_tokens: 5 },
       nativeUnits: { images: 1 }, cost: null, costStatus: "unknown",
       meta: { providerUsage: { path: "usageMetadata", value: usageMetadata } },
     });

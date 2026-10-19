@@ -77,3 +77,9 @@ The three new cases exercise the real embedding handler, core, OpenRouter adapte
 This supplies scoped offline embedding attribution, provider-USD interpretation, spend/allowance and database-reopen evidence only. No production RED or repair occurred. It does not invent native units or prices, prove arbitrary-sized tick precision, PostgreSQL runtime, the full modality/asynchronous matrix, full C3/full CI/whole #1085, or #1133 pricing acceptance. The unverified async variant is excluded. This run does not test the subsequent proof-note publication delta.
 
 Independent terminal receipt: `worker-state/delivery-lead/rerank-provenance-review/EMBEDDING_COMPOSITION_TERMINAL.md` in the private delivery evidence store. Accepted test SHA256: `7e6ed8fd8d1936fc332dcb1697f991a24a4577e0a9e41a0db8ecc4823c7c5f32`.
+
+## Accounting integration review — 2026-10-19
+
+The current-main reconciliation retains both MCP billing-epoch admission and sanitized diagnostics. Gemini media normalization now includes reported thoughts once in output totals and preserves cached input as a subset; the raw provider usage remains attached unchanged. The regression follows this metadata through the shared SQLite ledger, request totals and unknown-cost counters, alongside binary core coverage.
+
+The canonical #1085 also preserves #1133. Native image/audio/video rate schedules, per-rate provenance beyond the existing provider/pricing status, explicit unpriced/subscription budget policy, PostgreSQL concurrent runtime acceptance and the full checkpoint remain separate acceptance obligations. Token pricing overrides are not native-unit prices. Dollar admission currently observes numeric committed spend; unknown-cost counters do not block requests. No whole-issue acceptance is inferred from this repair.

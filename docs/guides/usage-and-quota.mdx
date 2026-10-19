@@ -73,3 +73,7 @@ There is no CSV export for usage. **Download Backup** under **Profile → Data &
 ## Prices
 
 Estimated cost uses the built-in model prices. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep their original estimate. Compare estimates with provider billing before using them for financial decisions.
+
+Successful media operations preserve provider USD receipts when available, including explicit zero. Without a receipt, native image, audio, and video costs remain unknown; token price overrides do not define per-image, per-second, or per-job prices. An unpriced or subscription-backed model is not automatically free. Chat token pricing is an estimate, and its configured rates may differ from subscription billing.
+
+Dollar budgets currently compare recorded numeric spend only. Unknown-cost requests count toward successful request and token allowances when reported, but add no amount to dollar totals; a zero total therefore does not prove free usage or enforce a hard spending cap for unpriced work. Failed or denied requests do not consume successful-use allowances. Keep these limits in mind when granting access to models without authoritative prices.

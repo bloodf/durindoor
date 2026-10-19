@@ -38,6 +38,16 @@ export function mediaAccounting(value, provider, modality) {
       const name = names.find((key) => usage[key] !== undefined);
       if (name) accounting.tokens[target] = usage[name];
     }
+    // Gemini candidates exclude thoughts, while ledger output includes them.
+    // Cache counts remain a subset of input; retain the raw receipt above.
+    if (usage.candidatesTokenCount !== undefined && usage.output_tokens === undefined && usage.completion_tokens === undefined) {
+      const candidates = usage.candidatesTokenCount;
+      const thoughts = usage.thoughtsTokenCount ?? 0;
+      accounting.tokens.output_tokens = isNumber(candidates) && isNumber(thoughts) && candidates >= 0 && thoughts >= 0
+        ? candidates + thoughts : !isNumber(candidates) || candidates < 0 ? candidates : thoughts;
+    }
+    if (usage.cachedContentTokenCount !== undefined) accounting.tokens.cached_tokens = usage.cachedContentTokenCount;
+    if (usage.thoughtsTokenCount !== undefined) accounting.tokens.reasoning_tokens = usage.thoughtsTokenCount;
     // These USD fields are the existing usage-ledger contract. OpenRouter's
     // usage.cost mapping is established in utils/usageTracking.js.
     const fields = provider === "openrouter" ? ["cost", "cost_usd", "cost_in_usd", "cost_in_usd_ticks"] :

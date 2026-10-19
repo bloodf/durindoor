@@ -20,7 +20,7 @@ import {
 /** Match the Claude conversion used by direct and Antigravity request routes. */
 export function usesClaudeRequestFormat(targetFormat, model) {
   return targetFormat === FORMATS.CLAUDE ||
-    (targetFormat === FORMATS.ANTIGRAVITY && typeof model === "string" && model.toLowerCase().includes("claude"));
+    (targetFormat === FORMATS.ANTIGRAVITY && isString(model) && model.toLowerCase().includes("claude"));
 }
 
 /** Validate original input before modality preprocessing can erase unsupported audio. */

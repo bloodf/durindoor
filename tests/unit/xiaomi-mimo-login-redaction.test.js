@@ -223,3 +223,151 @@ describe("MiMo login diagnostics privacy (#1088)", () => {
     );
   });
 });
+
+describe("real shared transport diagnostics (#1088)", () => {
+  it("classifies quota failures without invoking hostile error accessors outside its guard", async () => {
+    const { isQuotaDispatchUnavailable, QuotaDispatchUnavailableError } = await import("../../open-sse/services/quota/dispatch.js");
+    const error = new Error(SECRET.cookie);
+    Object.defineProperty(error, "code", { get() { throw new Error(SECRET.passToken); } });
+    expect(isQuotaDispatchUnavailable(error)).toBe(false);
+    expect(isQuotaDispatchUnavailable({ code: "ECONNRESET" })).toBe(false);
+    expect(isQuotaDispatchUnavailable(null)).toBe(false);
+    expect(isQuotaDispatchUnavailable(new QuotaDispatchUnavailableError())).toBe(true);
+    expect(isQuotaDispatchUnavailable({ code: "QUOTA_DISPATCH_UNAVAILABLE" })).toBe(true);
+  });
+
+  it("propagates local quota failures without retrying the direct transport", async () => {
+    const realProxy = await vi.importActual("../../open-sse/utils/proxyFetch.js");
+    const { QuotaDispatchUnavailableError } = await import("../../open-sse/services/quota/dispatch.js");
+    const error = new QuotaDispatchUnavailableError();
+    const transport = vi.fn().mockRejectedValue(error);
+    const restore = realProxy.__setOriginalFetchForTesting(transport);
+    vi.stubGlobal("fetch", transport);
+    try {
+      await expect(realProxy.proxyAwareFetch("https://account.xiaomi.com/pass", {}, {
+        connectionProxyEnabled: true, connectionProxyUrl: PROXY, disableEnvProxy: true,
+      })).rejects.toBe(error);
+      expect(transport).toHaveBeenCalledTimes(1);
+      expect(logs).toEqual([]);
+    } finally {
+      restore();
+      realProxy.__clearProxyDispatchersForTesting();
+    }
+  });
+
+  it.each(["ECONNRESET", "credential string", "throwing getter"])(
+    "preserves direct fallback without serializing %s errors",
+    async (kind) => {
+      const realProxy = await vi.importActual("../../open-sse/utils/proxyFetch.js");
+      const payload = `${PROXY}/${SECRET.passToken}/${SECRET.serviceToken}?code=${SECRET.code}; ${SECRET.cookie}`;
+      const error = new Error(payload);
+      Object.defineProperty(error, "code", kind === "throwing getter"
+        ? { get() { throw new Error(payload); } }
+        : { value: kind === "ECONNRESET" ? kind : payload });
+      const transport = vi.fn()
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce(new Response("direct fallback", { status: 200 }));
+      const restore = realProxy.__setOriginalFetchForTesting(transport);
+      vi.stubGlobal("fetch", transport);
+      try {
+        const url = `https://account.xiaomi.com/${SECRET.code}`;
+        const response = await realProxy.proxyAwareFetch(url, { redirect: "manual" }, {
+          connectionProxyEnabled: true, connectionProxyUrl: PROXY, disableEnvProxy: true,
+        });
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("direct fallback");
+        expect(transport).toHaveBeenCalledTimes(2);
+        expect(transport.mock.calls.map(([target]) => target)).toEqual([url, url]);
+        expect(transport.mock.calls[0][1].dispatcher).not.toBe(transport.mock.calls[1][1].dispatcher);
+        const details = logs.map(([, value]) => value);
+        expect(details).toEqual([kind === "ECONNRESET"
+          ? { event: "proxy_direct_fallback", transportCode: "ECONNRESET" }
+          : { event: "proxy_direct_fallback" }]);
+        expect(logs[0][0]).toBe("[ProxyFetch]");
+        for (const secret of [...Object.values(SECRET), "account.xiaomi.com", "proxy.example.test"]) {
+          expect(JSON.stringify(logs)).not.toContain(secret);
+        }
+      } finally {
+        restore();
+        realProxy.__clearProxyDispatchersForTesting();
+      }
+    },
+  );
+
+  it.each(["DNS", "MITM transport"])("redacts %s failure diagnostics before direct fallback", async (failure) => {
+    const realProxy = await vi.importActual("../../open-sse/utils/proxyFetch.js");
+    const payload = `${PROXY}/${SECRET.passToken}/${SECRET.serviceToken}/${SECRET.code}/${SECRET.cookie}`;
+    const error = Object.assign(new Error(payload), { code: "ECONNREFUSED" });
+    // Only transport boundaries are replaced; real proxy/DNS fallback logic runs.
+    const restoreResolver = realProxy.__setRealIpResolverForTesting(async () => {
+      if (failure === "DNS") throw error;
+      return ["203.0.113.10"];
+    });
+    const restoreBypass = realProxy.__setBypassTransportForTesting({
+      https: { request() { throw error; } },
+      tls: { checkServerIdentity: vi.fn() },
+    });
+    const transport = vi.fn().mockResolvedValue(new Response("direct fallback", { status: 200 }));
+    if (failure === "MITM transport") transport.mockRejectedValueOnce(error).mockRejectedValueOnce(error);
+    const restore = realProxy.__setOriginalFetchForTesting(transport);
+    vi.stubGlobal("fetch", transport);
+    const host = `${crypto.randomUUID()}.api2.cursor.sh`;
+    try {
+      const response = await realProxy.proxyAwareFetch(`https://${host}/${SECRET.code}`, {}, {
+        disableEnvProxy: true,
+        ...(failure === "MITM transport" ? { connectionProxyEnabled: true, connectionProxyUrl: PROXY } : {}),
+      });
+      expect(await response.text()).toBe("direct fallback");
+      expect(transport).toHaveBeenCalledTimes(failure === "DNS" ? 1 : 3);
+      if (failure === "MITM transport") {
+        expect(transport.mock.calls[0][1].dispatcher).toBe(transport.mock.calls[1][1].dispatcher);
+        expect(transport.mock.calls[2][1].dispatcher).not.toBe(transport.mock.calls[1][1].dispatcher);
+      }
+      expect(logs.map(([, value]) => value)).toEqual(failure === "DNS"
+        ? [{ event: "dns_resolve_failed", transportCode: "ECONNREFUSED" }]
+        : [
+          { event: "proxy_direct_bypass_fallback", transportCode: "ECONNREFUSED" },
+          { event: "mitm_bypass_failed", transportCode: "ECONNREFUSED" },
+          { event: "proxy_direct_fallback", transportCode: "ECONNREFUSED" },
+        ]);
+      for (const secret of [...Object.values(SECRET), host, "proxy.example.test"]) {
+        expect(JSON.stringify(logs)).not.toContain(secret);
+      }
+    } finally {
+      restore();
+      restoreBypass();
+      restoreResolver();
+    }
+  });
+
+  it("retains final phase-two status without logging redirect, cookie or response credentials", async () => {
+    const realProxy = await vi.importActual("../../open-sse/utils/proxyFetch.js");
+    const realAccount = await vi.importActual("../../open-sse/shared/mimoAccount.js");
+    mocks.proxyFetch.mockImplementation(realProxy.proxyAwareFetch);
+    const transport = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0, nonce: 123, ssecurity: "synthetic-signing-key",
+        location: `https://sts.example.test/${SECRET.code}`,
+      })))
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: {
+        location: `/${SECRET.serviceToken}`, "set-cookie": `other=${SECRET.cookie}; Path=/`,
+      } }))
+      .mockResolvedValueOnce(new Response(SECRET.passToken, { status: 403 }));
+    const restore = realProxy.__setOriginalFetchForTesting(transport);
+    vi.stubGlobal("fetch", transport);
+    try {
+      const cookie = await realAccount.getMimoAccountCookie({
+        region: "sgp", mimoPassToken: `${crypto.randomUUID()}-${SECRET.passToken}`,
+      }, { disableEnvProxy: true });
+      expect(cookie).toBeNull();
+      expect(transport).toHaveBeenCalledTimes(3);
+      expect(logs.map(([, value]) => value)).toEqual([{
+        event: "desktop_phase2_no_service_token", status: 403, correlation: expect.any(String),
+      }]);
+      for (const secret of Object.values(SECRET)) expect(JSON.stringify(logs)).not.toContain(secret);
+    } finally {
+      restore();
+      realAccount.invalidateMimoAccountCookieCache();
+    }
+  });
+});

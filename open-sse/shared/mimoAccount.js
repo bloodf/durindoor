@@ -203,6 +203,8 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid, log)
   // Phase 2 MUST NOT send ANY Cookie header! The server returns 200 OK with Set-Cookie: serviceToken!
   const sep = j.location.includes("?") ? "&" : "?";
   let current = `${j.location}${sep}clientSign=${signatureClientSign(rawNonce || j.nonce, j.ssecurity)}`;
+  // Retain only the final hop status, never its credential-bearing URL or body.
+  let phase2Status;
 
   for (let hop = 0; hop < 8; hop++) {
     const res = await proxyAwareFetch(
@@ -210,6 +212,7 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid, log)
       { redirect: "manual", headers: { "User-Agent": SSO_UA } },
       proxyOptions,
     );
+    phase2Status = res.status;
     absorbSetCookie(jar, res);
     const loc = res.headers.get("location");
     if (res.status >= 300 && res.status < 400 && loc) {
@@ -225,7 +228,7 @@ async function acquireViaDesktopPhases(passJar, proxyOptions, apiBase, sid, log)
   }
 
   if (!jar.serviceToken) {
-    failLog("desktop_phase2_no_service_token");
+    failLog("desktop_phase2_no_service_token", { status: phase2Status });
     return null;
   }
   const out = {};

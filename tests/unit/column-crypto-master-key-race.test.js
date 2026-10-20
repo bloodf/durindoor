@@ -12,6 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 const srcDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../src");
 let workDir;
 let bundle;
+let dbBundle;
 let preload;
 
 // Preload: after a process's first ENOENT read of master-key, announce it and
@@ -53,10 +54,31 @@ if (mode === "encrypt") {
 }
 `;
 
-function run(args, env) {
+const DB_ENTRY = `
+import { createProviderConnection, getProviderConnectionById } from "@/lib/db/repos/connectionsRepo.js";
+import { getAdapter } from "@/lib/db/driver.js";
+console.log = (...args) => console.error(...args);
+(async () => {
+  const [mode, arg] = process.argv.slice(2);
+  const db = await getAdapter();
+  try {
+    const connection = mode === "create"
+      ? await createProviderConnection({
+          provider: "openai", authType: "apikey", name: "restart-proof", apiKey: arg
+        })
+      : await getProviderConnectionById(arg);
+    const row = db.get("SELECT data FROM providerConnections WHERE id = ?", [connection.id]);
+    process.stdout.write(JSON.stringify({ id: connection.id, apiKey: connection.apiKey, stored: JSON.parse(row.data).apiKey }));
+  } finally {
+    await db.close();
+  }
+})().catch((error) => { console.error(error); process.exitCode = 1; });
+`;
+
+function run(args, env, childBundle = bundle) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, ["-r", preload, bundle, ...args], {
-      env: { ...process.env, ...env },
+    const child = spawn(process.execPath, ["-r", preload, childBundle, ...args], {
+      env: childBundle === bundle ? { ...process.env, ...env } : env,
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";
@@ -121,6 +143,56 @@ describe("columnCrypto first-start master key race", () => {
     expect(stat.size).toBe(32);
     if (process.platform !== "win32") {
       expect(stat.mode & 0o777).toBe(0o600);
+    }
+  }, 60_000);
+
+  it("decrypts a persisted connection row after process restart without changing the master key", async () => {
+    const dataDir = path.join(workDir, "row-restart-data");
+    fs.mkdirSync(dataDir);
+    dbBundle = path.join(workDir, "db-child.cjs");
+    // Bundle ESM dependencies; keep SQLite drivers and their assets installed.
+    await build({
+      stdin: { contents: DB_ENTRY, resolveDir: srcDir, loader: "js" },
+      outfile: dbBundle,
+      bundle: true,
+      platform: "node",
+      format: "cjs",
+      external: ["better-sqlite3", "sql.js", "bun:sqlite", "node:sqlite", "pg"],
+      alias: { "@": srcDir, "open-sse": path.resolve(srcDir, "../open-sse") },
+      banner: { js: `require = require("node:module").createRequire(${JSON.stringify(path.resolve(srcDir, "../package.json"))});` },
+      logLevel: "silent"
+    });
+    const env = { PATH: process.env.PATH, HOME: dataDir, DATA_DIR: dataDir, DURINDOOR_DATABASE_ENGINE: "sqlite" };
+    const secret = "sk-isolated-row-restart-proof";
+    const created = await run(["create", secret], env, dbBundle);
+    expect(created.code, created.stderr).toBe(0);
+    const original = JSON.parse(created.stdout);
+    expect(original.apiKey).toBe(secret);
+    expect(original.stored).toEqual({ v: 1, iv: expect.any(String), ct: expect.any(String) });
+    expect(JSON.stringify(original.stored)).not.toContain(secret);
+
+    const keyPath = path.join(dataDir, "master-key");
+    const key = fs.readFileSync(keyPath);
+    expect(key.length).toBe(32);
+    // An old timestamp makes even a same-bytes rewrite observable on coarse filesystems.
+    const past = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(keyPath, past, past);
+    const before = fs.statSync(keyPath);
+    if (process.platform !== "win32") {
+      expect(before.mode & 0o777).toBe(0o600);
+      expect(fs.statSync(dataDir).mode & 0o777).toBe(0o700);
+    }
+
+    const reopened = await run(["read", original.id], env, dbBundle);
+    expect(reopened.code, reopened.stderr).toBe(0);
+    expect(JSON.parse(reopened.stdout)).toEqual(original);
+    const after = fs.statSync(keyPath);
+    expect(after.size).toBe(32);
+    expect(fs.readFileSync(keyPath)).toEqual(key);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+    if (process.platform !== "win32") {
+      expect(after.mode & 0o777).toBe(0o600);
+      expect(fs.statSync(dataDir).mode & 0o777).toBe(0o700);
     }
   }, 60_000);
 

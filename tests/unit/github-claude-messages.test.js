@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ANTHROPIC_API_VERSION } from "../../open-sse/providers/shared.js";
+import { CLAUDE_SYSTEM_PROMPT } from "../../open-sse/config/appConstants.js";
 import { GithubExecutor } from "../../open-sse/executors/github.js";
 
 const { proxyAwareFetch } = vi.hoisted(() => ({ proxyAwareFetch: vi.fn() }));
@@ -470,43 +471,29 @@ describe("GithubExecutor native Claude /v1/messages routing (upstream #2608)", (
     }
   });
 
-  it("omits the Claude Code persona for a non-Claude-Code Copilot client (Codex P2)", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
-    const exec = new GithubExecutor();
+  describe.each([
+    ["Copilot", { "user-agent": "GitHubCopilotChat/0.1", "openai-intent": "conversation-panel" }],
+    ["Claude Code", { "user-agent": "claude-cli/1.2.3" }],
+  ])("caller system instructions for %s", (_client, clientHeaders) => {
+    it.each([false, true])("preserves caller persona text only when supplied (%s)", async (supplied) => {
+      proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
+      const exec = new GithubExecutor();
+      const messages = [{ role: "user", content: "hi" }];
+      if (supplied) messages.unshift({ role: "system", content: CLAUDE_SYSTEM_PROMPT });
 
-    await exec.execute({
-      model: "claude-sonnet-4.6",
-      body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
-      stream: true,
-      credentials,
-      signal: null,
-      log: null,
-      // A generic Copilot VS Code chat client — NOT Claude Code.
-      requestContext: { clientHeaders: { "user-agent": "GitHubCopilotChat/0.1", "openai-intent": "conversation-panel" } },
+      await exec.execute({
+        model: "claude-sonnet-4.6",
+        body: { model: "claude-sonnet-4.6", messages },
+        stream: true,
+        credentials,
+        signal: null,
+        log: null,
+        requestContext: { clientHeaders },
+      });
+
+      const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
+      expect((sent.system ?? []).map((block) => block.text)).toEqual(supplied ? [CLAUDE_SYSTEM_PROMPT] : []);
     });
-
-    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
-    const systemBlocks = Array.isArray(sent.system) ? sent.system : [];
-    expect(systemBlocks.some((b) => b?.text === "You are Claude Code, Anthropic's official CLI for Claude.")).toBe(false);
-  });
-
-  it("keeps the Claude Code persona when the caller IS Claude Code (Codex P2)", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(claudeSSE([MSG_START, TEXT_START, TEXT_DELTA("hi"), TEXT_STOP, MSG_DELTA, MSG_STOP]));
-    const exec = new GithubExecutor();
-
-    await exec.execute({
-      model: "claude-sonnet-4.6",
-      body: { model: "claude-sonnet-4.6", messages: [{ role: "user", content: "hi" }] },
-      stream: true,
-      credentials,
-      signal: null,
-      log: null,
-      requestContext: { clientHeaders: { "user-agent": "claude-cli/1.2.3" } },
-    });
-
-    const sent = JSON.parse(proxyAwareFetch.mock.calls[0][1].body);
-    expect(Array.isArray(sent.system)).toBe(true);
-    expect(sent.system[0]?.text).toBe("You are Claude Code, Anthropic's official CLI for Claude.");
   });
 
   it("strips unsigned thinking from assistant history before /v1/messages dispatch (Codex P2)", async () => {

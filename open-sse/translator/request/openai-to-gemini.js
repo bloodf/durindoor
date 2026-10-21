@@ -2,6 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../../config/defaultThinkingSignature.js";
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
+import { usesClaudeRequestFormat } from "../validate.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { getGeminiThoughtSignatureSync } from "../../services/thoughtSignatureStore.js";
 function generateUUID() {
@@ -176,7 +177,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
         const count = responseOccurrences.get(rawId) || 0;
         responseOccurrences.set(rawId, count + 1);
         const uniqueId = callIds.get(rawId)?.[count];
-        if (uniqueId !== undefined) toolResponses[uniqueId] = msg.content;
+        if (uniqueId !== undefined) {
+          // Gemini consumes result text rather than the internal bridge error flag.
+          toolResponses[uniqueId] = msg.is_error === true
+            ? `[Tool error]\n${isString(msg.content) ? msg.content : Array.isArray(msg.content) ? extractTextContent(msg.content) : JSON.stringify(msg.content) ?? ""}`
+            : msg.content;
+        }
       }
     }
   }
@@ -557,6 +563,8 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
               }
               content = textItems.join("\n");
             }
+            // Preserve the restored Claude error flag in the existing result text.
+            if (block.is_error === true) content = `[Tool error]\n${content ?? ""}`;
             // Resolve the original tool name from the id — Gemini requires it to match the functionCall name.
             // Pair FIFO against the oldest unmatched tool_use with this raw id so a
             // reused id across turns doesn't resolve to a later turn's name/id.
@@ -642,15 +650,9 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
   return envelope;
 }
 
-// Detect if model should use Claude backend in Antigravity
-// Claude models have specific ID patterns — more reliable than caps at routing level
-function isClaudeModel(model) {
-  return model.toLowerCase().includes("claude");
-}
-
 // OpenAI -> Antigravity (Sandbox Cloud Code with wrapper)
 export function openaiToAntigravityRequest(model, body, stream, credentials = null) {
-  if (isClaudeModel(model)) {
+  if (usesClaudeRequestFormat(FORMATS.ANTIGRAVITY, model)) {
     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
     return wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
   }

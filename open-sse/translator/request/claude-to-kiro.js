@@ -24,6 +24,7 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { validateKiroOutputLimit } from "./openai-to-kiro.js";
 import { resolveSessionId } from "../../utils/sessionManager.js";
 import {
   resolveKiroModel,
@@ -60,8 +61,8 @@ function sanitizeKiroToolName(name) {
   return isString(name) ? name.replace(/[^a-zA-Z0-9_-]/g, "_") : name;
 }
 
-/** Render a Claude tool_result block's content as a readable line. */
-function toolResultBlockToText(content) {
+/** Preserve error meaning when Claude tool results must become plain text. */
+function toolResultBlockToText(content, isError = false) {
   let text = "";
   if (isString(content)) {
     text = content;
@@ -77,7 +78,7 @@ function toolResultBlockToText(content) {
       text = "";
     }
   }
-  return `[Tool result: ${text}]`;
+  return `[Tool ${isError ? "error" : "result"}: ${text}]`;
 }
 
 /**
@@ -106,7 +107,7 @@ function flattenClaudeToolInteractions(messages) {
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
       const newContent = msg.content.map((block) =>
       block.type === CLAUDE_BLOCK.TOOL_RESULT ?
-      { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content) } :
+      { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content, block.is_error === true) } :
       block
       );
       out.push({ ...msg, content: newContent });
@@ -251,7 +252,7 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
             }
             pendingToolResults.push({
               toolUseId: block.tool_use_id,
-              status: "success",
+              status: block.is_error === true ? "error" : "success",
               content: [{ text: resultContent }]
             });
           }
@@ -392,10 +393,7 @@ function reconcileOrphanedToolResults(history, currentMessage) {
       if (validIds.has(tr.toolUseId)) {
         kept.push(tr);
       } else {
-        const text = Array.isArray(tr.content) ?
-        tr.content.map((c) => c?.text || "").join("\n") :
-        "";
-        salvaged.push(`[Tool result: ${text}]`);
+        salvaged.push(toolResultBlockToText(tr.content, tr.status === "error"));
       }
     }
 
@@ -412,12 +410,24 @@ function reconcileOrphanedToolResults(history, currentMessage) {
 
 /**
  * Build a Kiro payload directly from a Claude Messages API request body.
+ * Explicit output ceilings share the OpenAI route's rejection policy; native
+ * Kiro passthrough does not enter this adapter. The uncapped default is not a guarantee.
  */
 export function claudeToKiroRequest(model, body, stream, credentials, translationContext = null) {
+  validateKiroOutputLimit(body);
   let messages = Array.isArray(body.messages) ? body.messages : [];
+  // CodeWhisperer has no opaque thinking field. Reject before tool flattening can erase it.
+  for (const message of messages) {
+    if (!Array.isArray(message?.content)) continue;
+    if (message.content.some((block) => block?.type === CLAUDE_BLOCK.REDACTED_THINKING)) {
+      const error = new Error("Cannot translate redacted_thinking to Kiro without losing continuity; use a compatible Claude Messages route.");
+      error.statusCode = HTTP_STATUS.BAD_REQUEST;
+      throw error;
+    }
+  }
   const tools = Array.isArray(body.tools) ? body.tools : [];
   const clientProvidedTools = tools.length > 0;
-  const maxTokens = body.max_tokens || 32000;
+  const maxTokens = 32000;
   const temperature = body.temperature;
   const topP = body.top_p;
 

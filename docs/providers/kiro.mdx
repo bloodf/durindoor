@@ -55,6 +55,14 @@ Send `kr/<model>`, for example `kr/claude-opus-4.8`. The catalog includes thinki
 
 The [Quota Tracker](../features/quota-tracking.mdx) reads Kiro's usage limits, for OAuth and API key connections alike. Kiro uses the `any-sufficient` preflight gate: an account stays eligible while any of its pools has room.
 
+## Output limits
+
+Translated OpenAI and Claude requests with an explicit `max_tokens` or
+`max_completion_tokens` return HTTP 400 because this Kiro transport cannot verify
+that the provider enforces the requested ceiling. Omit the ceiling or select a
+provider that supports it. The uncapped request's legacy `32000` default is not
+an enforcement guarantee. Native Kiro requests retain their existing settings.
+
 ## Images
 
 Kiro requires inline image bytes. For vision-capable models, the chat gateway resolves top-level OpenAI `image_url` HTTP(S) URLs and Claude URL image sources before translation, then sends native Kiro image blocks. Both streaming and non-streaming requests use this path; a URL rendered as text is not image support.

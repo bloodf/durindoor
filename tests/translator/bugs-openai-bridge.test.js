@@ -515,3 +515,101 @@ describe("bug: empty content message handling", () => {
     expect(asst, "assistant tool_calls message dropped").toBeTruthy();
   });
 });
+
+// Final text-only tool-result carriers must retain the established error marker.
+// The same result text with false, missing, or nonliteral flags stays unchanged.
+describe("registered tool-error text destination semantics", () => {
+  const text = "command failed <tag> & detail";
+  const routes = [
+    [FORMATS.CLAUDE, FORMATS.CURSOR, "default", "cursor", false],
+    [FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES, "gpt-4.1", "openai", false],
+    [FORMATS.CLAUDE, FORMATS.GEMINI, "gemini-2.5-flash", "gemini", true],
+    [FORMATS.CLAUDE, FORMATS.GEMINI, "gemini-2.5-flash", "gemini", false],
+    [FORMATS.OPENAI, FORMATS.GEMINI, "gemini-2.5-flash", "gemini", false],
+    [FORMATS.CLAUDE, FORMATS.GEMINI_CLI, "gemini-2.5-flash", "gemini-cli", false],
+    [FORMATS.CLAUDE, FORMATS.ANTIGRAVITY, "gemini-2.5-flash", "antigravity", false],
+    [FORMATS.CLAUDE, FORMATS.ANTIGRAVITY, "claude-sonnet-4-6", "antigravity", false],
+  ];
+
+  function request(source, flag, signed, content = text) {
+    const marker = flag === undefined ? {} : { is_error: flag };
+    return { messages: source === FORMATS.CLAUDE ? [
+      { role: "assistant", content: [{ type: "tool_use", id: "error_call", name: "run", input: {},
+        ...(signed ? { thoughtSignature: "fixture-signature" } : {}) }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "error_call", content, ...marker }] },
+    ] : [
+      { role: "assistant", tool_calls: [{ id: "error_call", type: "function", function: { name: "run", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "error_call", content, ...marker },
+    ] };
+  }
+
+  describe.each([false, true])("stream=%s", (stream) => {
+    it.each(routes)("distinguishes literal errors on %s -> %s (%s, %s, signed=%s)", (source, target, model, provider, signed) => {
+      const convert = (flag, array) => {
+        const body = request(source, flag, signed, array ? [{ type: "text", text }] : text);
+        const original = structuredClone(body);
+        const out = translateRequest(source, target, model, body, stream, {}, provider);
+        expect(body).toEqual(original);
+        return out;
+      };
+      // Compare only consumer-visible conversation fields; envelope IDs are random.
+      const conversation = (out) => out.input ?? out.messages ?? out.contents ?? out.request.contents;
+      for (const array of [false, true]) {
+        const success = conversation(convert(undefined, array));
+        for (const flag of [false, "true", 1]) {
+          expect(conversation(convert(flag, array))).toEqual(success);
+        }
+        const failed = conversation(convert(true, array));
+        const wire = JSON.stringify(failed);
+        expect(wire).toContain("[Tool error]\\n");
+        expect(wire).toContain("error_call");
+        expect(wire).toContain("run");
+        expect(wire).not.toContain('"is_error"');
+        expect(JSON.stringify(success)).not.toContain("[Tool error]");
+        if (target === FORMATS.CURSOR) {
+          expect(wire).toContain("<result>[Tool error]\\ncommand failed &lt;tag&gt; &amp; detail</result>");
+        } else {
+          expect(wire).toContain(text);
+        }
+      }
+    });
+
+    it.each([
+      [FORMATS.GEMINI, "gemini"],
+      [FORMATS.GEMINI_CLI, "gemini-cli"],
+      [FORMATS.ANTIGRAVITY, "antigravity"],
+    ].flatMap(([target, provider]) => [
+      { detail: "failed", code: 17, nested: { retryable: false } }, 17, 0, true, false,
+    ].map((content) => [target, provider, content])))("preserves structured error payloads through the OpenAI -> %s pivot (%s, content=%j)", (target, provider, content) => {
+      const convert = (flag) => {
+        const body = request(FORMATS.OPENAI, flag, false, structuredClone(content));
+        const original = structuredClone(body);
+        const out = translateRequest(FORMATS.OPENAI, target, "gemini-2.5-flash", body, stream, {}, provider);
+        expect(body).toEqual(original);
+        const contents = out.contents ?? out.request.contents;
+        const response = contents.flatMap((message) => message.parts)
+          .find((part) => part.functionResponse)?.functionResponse;
+        expect(response).toMatchObject({ id: "error_call", name: "run" });
+        return response.response;
+      };
+      const success = convert(undefined);
+      for (const flag of [false, "true", 1]) expect(convert(flag)).toEqual(success);
+      expect(convert(true)).toEqual({ result: { result: `[Tool error]\n${JSON.stringify(content)}` } });
+    });
+  });
+
+  it.each([false, true])("preserves direct Gemini tool-result images while marking errors (stream=%s)", (stream) => {
+    const url = "https://fixture.invalid/error-screenshot.png";
+    const content = [{ type: "text", text }, { type: "image", source: { type: "url", url } }];
+    for (const signed of [false, true]) {
+      const body = request(FORMATS.CLAUDE, true, signed, structuredClone(content));
+      const original = structuredClone(body);
+      const out = translateRequest(FORMATS.CLAUDE, FORMATS.GEMINI, "gemini-2.5-flash",
+        body, stream, {}, "gemini");
+      expect(body).toEqual(original);
+      const parts = out.contents.flatMap((message) => message.parts);
+      expect(parts.filter((part) => part.fileData)).toEqual([{ fileData: { fileUri: url, mimeType: "image/*" } }]);
+      expect(JSON.stringify(parts)).toContain("[Tool error]\\n");
+    }
+  });
+});

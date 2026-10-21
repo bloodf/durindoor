@@ -35,8 +35,9 @@ function escapeXml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function buildToolResultBlock(toolName, toolCallId, resultText) {
-  const cleanResult = sanitizeToolResultText(resultText || "");
+function buildToolResultBlock(toolName, toolCallId, resultText, isError = false) {
+  // Cursor carries tool failures as text, using the shared OpenAI wire convention.
+  const cleanResult = sanitizeToolResultText(`${isError ? "[Tool error]\n" : ""}${resultText || ""}`);
   return [
   "<tool_result>",
   `<tool_name>${escapeXml(toolName || "tool")}</tool_name>`,
@@ -97,7 +98,7 @@ function convertMessages(messages) {
       const toolName = msg.name || toolMeta.name || "tool";
       result.push({
         role: ROLE.USER,
-        content: buildToolResultBlock(toolName, toolCallId, toolContent)
+        content: buildToolResultBlock(toolName, toolCallId, toolContent, msg.is_error === true)
       });
       continue;
     }
@@ -120,7 +121,7 @@ function convertMessages(messages) {
             toolCallMetaMap.get(normalizeToolCallId(toolCallId));
             const toolName = toolMeta?.name || "tool";
             const toolContent = extractContent(block.content);
-            parts.push(buildToolResultBlock(toolName, toolCallId, toolContent));
+            parts.push(buildToolResultBlock(toolName, toolCallId, toolContent, block.is_error === true));
           }
         }
         const joined = parts.filter(Boolean).join("\n");

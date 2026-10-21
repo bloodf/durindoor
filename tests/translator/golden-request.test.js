@@ -43,9 +43,20 @@ describe("GOLDEN request: OpenAI → Claude", () => {
   });
 
   it("reasoning_effort → adaptive output_config (claude 4.6+)", () => {
-    const body = { messages: [{ role: "user", content: "hi" }], reasoning_effort: "high" };
+    const body = {
+      messages: [
+        { role: "system", content: "Explain the result in two sentences." },
+        { role: "user", content: "hi" },
+      ],
+      reasoning_effort: "high",
+    };
     const out = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "claude-opus-4-6", body, true, { apiKey: "sk-x" }, "anthropic");
-    expect(clean(out)).toMatchSnapshot();
+    // Lock reasoning and caller instructions, not unrelated token/cache/display defaults.
+    expect({
+      thinking: out.thinking?.type,
+      output_config: out.output_config,
+      system: out.system?.map((block) => block.text),
+    }).toMatchSnapshot();
   });
 });
 

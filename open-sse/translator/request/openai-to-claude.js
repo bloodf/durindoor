@@ -1,6 +1,8 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { validateInputAudio } from "../validate.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -13,8 +15,22 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
-// Convert OpenAI request to Claude format
+/**
+ * Convert OpenAI requests while preserving client system instructions.
+ * Only the routed `claude` provider receives official-client branding; model
+ * names and client payload fields do not establish provider identity.
+ * Missing provider context and compatible providers receive no added persona.
+ * OpenAI input_audio has no supported Claude mapping. Reject it before content
+ * extraction can discard it, for both streaming and non-streaming requests.
+ * @throws {Error} With statusCode 400 so chatCore rejects the request before upstream dispatch.
+ */
 export function openaiToClaudeRequest(model, body, stream, credentials = null, translationContext = null) {
+  const audioError = validateInputAudio(body, FORMATS.OPENAI, FORMATS.CLAUDE, model);
+  if (audioError) {
+    const error = new Error(audioError);
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
   // Cap max_tokens at the model's real output ceiling (e.g. Opus 4.8 = 128000),
@@ -53,15 +69,15 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   const systemParts = [];
 
   if (body.messages && Array.isArray(body.messages)) {
-    // Extract system messages
+    // Extract system and developer instructions in their original order.
     for (const msg of body.messages) {
-      if (msg.role === ROLE.SYSTEM) {
+      if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
         systemParts.push(isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n"));
       }
     }
 
-    // Filter out system messages for separate processing
-    const nonSystemMessages = body.messages.filter((m) => m.role !== ROLE.SYSTEM);
+    // Instruction messages belong only in the top-level system field.
+    const nonSystemMessages = body.messages.filter((m) => m.role !== ROLE.SYSTEM && m.role !== ROLE.DEVELOPER);
 
     // Process messages with merging logic
     // CRITICAL: tool_result must be in separate message immediately after tool_use
@@ -160,17 +176,16 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     }
   }
 
-  // System with Claude Code prompt and cache_control
-  const claudeCodePrompt = { type: CLAUDE_BLOCK.TEXT, text: CLAUDE_SYSTEM_PROMPT };
-
+  if (translationContext?.provider === "claude") {
+    result.system = [{ type: CLAUDE_BLOCK.TEXT, text: CLAUDE_SYSTEM_PROMPT }];
+  }
   if (systemParts.length > 0) {
-    const systemText = systemParts.join("\n");
-    result.system = [
-    claudeCodePrompt,
-    { type: CLAUDE_BLOCK.TEXT, text: systemText, cache_control: { type: "ephemeral", ttl: "1h" } }];
-
-  } else {
-    result.system = [claudeCodePrompt];
+    result.system ??= [];
+    result.system.push({
+      type: CLAUDE_BLOCK.TEXT,
+      text: systemParts.join("\n"),
+      cache_control: { type: "ephemeral", ttl: "1h" }
+    });
   }
 
   // Tools - convert from OpenAI format to Claude format with prefix for OAuth
@@ -407,16 +422,6 @@ function convertOpenAIToolChoice(choice) {
 // OpenAI -> Claude format for Antigravity (without system prompt modifications)
 function openaiToClaudeRequestForAntigravity(model, body, stream) {
   const result = openaiToClaudeRequest(model, body, stream);
-
-  // Remove Claude Code system prompt, keep only user's system messages
-  if (result.system && Array.isArray(result.system)) {
-    result.system = result.system.filter((block) =>
-    !block.text || !block.text.includes("You are Claude Code")
-    );
-    if (result.system.length === 0) {
-      delete result.system;
-    }
-  }
 
   // Strip prefix from tool names for Antigravity (doesn't use Claude OAuth)
   if (result.tools && Array.isArray(result.tools)) {

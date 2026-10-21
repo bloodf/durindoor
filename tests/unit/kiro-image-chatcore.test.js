@@ -20,6 +20,7 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(),
   appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}),
+  saveRequestUsage: vi.fn(async () => {}),
 }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
   startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn(),
@@ -27,7 +28,6 @@ vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
-const { translateRequest } = await import("../../open-sse/translator/index.js");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -69,10 +69,12 @@ describe("Kiro guarded image dispatch (#1079)", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("rejects nested Claude URL images before upstream dispatch (stream: %s)", async (stream) => {
+  it.each([
+    [false, false], [false, true], [true, false], [true, true],
+  ])("rejects nested Claude URL images before upstream dispatch (stream: %s, tools: %s)", async (stream, withTools) => {
     const body = {
-      model: "claude-sonnet-4.5", stream, max_tokens: 100,
-      tools: [{ name: "screenshot", description: "Capture screen", input_schema: { type: "object", properties: {} } }],
+      model: "claude-sonnet-4.5", stream,
+      ...(withTools ? { tools: [{ name: "screenshot", description: "Capture screen", input_schema: { type: "object", properties: {} } }] } : {}),
       messages: [
         { role: "user", content: "capture" },
         { role: "assistant", content: [{ type: "tool_use", id: "capture-1", name: "screenshot", input: {} }] },
@@ -81,8 +83,6 @@ describe("Kiro guarded image dispatch (#1079)", () => {
         ] }] },
       ],
     };
-    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, body.model, structuredClone(body), stream, null, "kiro"))
-      .toThrow(expect.objectContaining({ statusCode: 400 }));
     const result = await handleChatCore({
       body, modelInfo: { provider: "kiro", model: body.model }, credentials: {},
       sourceFormatOverride: FORMATS.CLAUDE, modelCapabilities: { vision: true },
@@ -96,7 +96,10 @@ describe("Kiro guarded image dispatch (#1079)", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("dispatches native image bytes and returns content (stream: %s)", async (stream) => {
+  it.each([
+    [FORMATS.OPENAI, false], [FORMATS.OPENAI, true],
+    [FORMATS.CLAUDE, false], [FORMATS.CLAUDE, true],
+  ])("dispatches native image bytes and returns content (source: %s, stream: %s)", async (format, stream) => {
     const bytes = "aW1hZ2U=";
     mocks.fetchImageAsBase64.mockResolvedValueOnce({ url: `data:image/png;base64,${bytes}`, mimeType: "image/png" });
     const chunk = { id: "image-proof", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "fixture image reply" }, finish_reason: null }] };
@@ -109,12 +112,14 @@ describe("Kiro guarded image dispatch (#1079)", () => {
     });
     const body = { model: "claude-sonnet-4.5", stream, messages: [{ role: "user", content: [
       { type: "text", text: "describe" },
-      { type: "image_url", image_url: { url: "https://example.com/p.png" } },
+      format === FORMATS.CLAUDE
+        ? { type: "image", source: { type: "url", url: "https://example.com/p.png" } }
+        : { type: "image_url", image_url: { url: "https://example.com/p.png" } },
     ] }] };
     const result = await handleChatCore({
       body, modelInfo: { provider: "kiro", model: body.model }, credentials: {},
-      sourceFormatOverride: FORMATS.OPENAI, modelCapabilities: { vision: true },
-      clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} },
+      sourceFormatOverride: format, modelCapabilities: { vision: true },
+      clientRawRequest: { endpoint: format === FORMATS.CLAUDE ? "/v1/messages" : "/v1/chat/completions", body, headers: {} },
       rtkEnabled: false, headroomEnabled: false, cavemanEnabled: false,
       ponytailEnabled: false, pxpipeEnabled: false,
     });
@@ -122,6 +127,22 @@ describe("Kiro guarded image dispatch (#1079)", () => {
       .toEqual([{ format: "png", source: { bytes } }]);
     expect(result.success).toBe(true);
     expect(result.response.status).toBe(200);
-    expect(await result.response.text()).toContain("fixture image reply");
+    const responseText = await result.response.text();
+    expect(responseText).toContain("fixture image reply");
+    if (stream) {
+      const events = responseText.split("\n").filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice(6)).filter((data) => data !== "[DONE]").map((data) => JSON.parse(data));
+      expect(events.some((event) => event.error || event.type === "error")).toBe(false);
+      if (format === FORMATS.CLAUDE) {
+        expect(events.some((event) => event.type === "message_stop")).toBe(true);
+      } else {
+        expect(events.some((event) => event.choices?.some((choice) => choice.finish_reason === "stop"))).toBe(true);
+      }
+    } else {
+      const response = JSON.parse(responseText);
+      expect(response.error).toBeUndefined();
+      if (format === FORMATS.CLAUDE) expect(response.stop_reason).toBe("end_turn");
+      else expect(response.choices[0].finish_reason).toBe("stop");
+    }
   });
 });

@@ -69,6 +69,8 @@ Kiro requires inline image bytes. For vision-capable models, the chat gateway re
 
 The resolver rejects private or blocked hosts, redirects, oversized responses, and unrecognized image signatures. If a remote image cannot be resolved, the request returns a client error rather than silently dropping the image. Supply an OpenAI base64 data URI (`data:image/png;base64,...`) or a Claude `source: { type: "base64", media_type: "image/png", data: "..." }` instead. Nested remote images inside Claude tool results are not resolved by this path and return HTTP 400, rather than being serialized as tool-result text. Nested base64 images remain supported.
 
+For paired Claude tool history, inline tool-result images remain native user images even when the client omits tool declarations. Tool calls and result text are flattened in that case, retaining failure markers; unresolved remote images still return HTTP 400 before they can be lost during flattening. This applies to both completed history and the active turn.
+
 Synchronous translation and the dashboard translator do not fetch remote images. Supply inline data there; unresolved images return HTTP 400. Same-format OpenAI passthrough preserves image URLs without this Kiro conversion.
 
 ## Errors

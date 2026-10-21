@@ -105,10 +105,13 @@ function flattenClaudeToolInteractions(messages) {
     }
 
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
-      const newContent = msg.content.map((block) =>
+      const newContent = msg.content.flatMap((block) =>
       block.type === CLAUDE_BLOCK.TOOL_RESULT ?
-      { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content, block.is_error === true) } :
-      block
+      [
+        { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content, block.is_error === true) },
+        ...(Array.isArray(block.content) ? block.content.filter((part) => part?.type === CLAUDE_BLOCK.IMAGE) : [])
+      ] :
+      [block]
       );
       out.push({ ...msg, content: newContent });
       continue;

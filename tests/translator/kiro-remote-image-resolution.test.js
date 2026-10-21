@@ -52,4 +52,53 @@ describe("Kiro remote images through guarded resolution (#1079)", () => {
     expect(() => translateRequest(format, FORMATS.KIRO, "claude-sonnet-4.5", body, true, null, "kiro"))
       .toThrow(expect.objectContaining({ statusCode: 400 }));
   });
+
+  describe.each([false, true])("paired Claude tool-result images (stream: %s)", (stream) => {
+    const nestedRequest = (source, withTools, completed) => ({
+      ...(withTools ? { tools: [{ name: "screenshot", input_schema: { type: "object", properties: {} } }] } : {}),
+      messages: [
+        { role: "user", content: "capture" },
+        { role: "assistant", content: [{ type: "tool_use", id: "capture-1", name: "screenshot", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "capture-1", is_error: true, content: [
+          { type: "text", text: "capture failed; inspect screenshot" },
+          { type: "image", source },
+        ] }] },
+        ...(completed ? [{ role: "assistant", content: "Captured." }, { role: "user", content: "Continue." }] : []),
+      ],
+    });
+
+    it.each([
+      [false, false], [false, true], [true, false], [true, true],
+    ])("retains inline bytes without losing failure meaning (tools: %s, completed: %s)", (withTools, completed) => {
+      const bytes = png.toString("base64");
+      const body = nestedRequest({ type: "base64", media_type: "image/png", data: bytes }, withTools, completed);
+      const original = structuredClone(body);
+      const out = translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, "claude-sonnet-4.5", body, stream, null, "kiro");
+      expect(body).toEqual(original);
+      const carriers = [...out.conversationState.history, out.conversationState.currentMessage];
+      const imageTurn = carriers.find((item) => item.userInputMessage?.images?.length)?.userInputMessage;
+      expect(imageTurn?.images).toEqual([{ format: "png", source: { bytes } }]);
+      if (withTools) {
+        expect(imageTurn.userInputMessageContext.toolResults).toEqual([
+          { toolUseId: "capture-1", status: "error", content: [{ text: "capture failed; inspect screenshot" }] },
+        ]);
+      } else {
+        expect(imageTurn.content).toContain("[Tool error: capture failed; inspect screenshot]");
+        expect(carriers.flatMap((item) => item.userInputMessage?.userInputMessageContext?.toolResults || [])).toEqual([]);
+      }
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [false, false], [false, true], [true, false], [true, true],
+    ])("rejects unresolved remote bytes before flattening (tools: %s, completed: %s)", async (withTools, completed) => {
+      const body = nestedRequest({ type: "url", url }, withTools, completed);
+      const original = structuredClone(body);
+      await prefetchRemoteImages(body, FORMATS.CLAUDE, FORMATS.KIRO);
+      expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.KIRO, "claude-sonnet-4.5", body, stream, null, "kiro"))
+        .toThrow(expect.objectContaining({ statusCode: 400, message: expect.stringContaining("Supply a base64 image source") }));
+      expect(body).toEqual(original);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -105,10 +105,13 @@ function flattenClaudeToolInteractions(messages) {
     }
 
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
-      const newContent = msg.content.map((block) =>
+      const newContent = msg.content.flatMap((block) =>
       block.type === CLAUDE_BLOCK.TOOL_RESULT ?
-      { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content, block.is_error === true) } :
-      block
+      [
+        { type: CLAUDE_BLOCK.TEXT, text: toolResultBlockToText(block.content, block.is_error === true) },
+        ...(Array.isArray(block.content) ? block.content.filter((part) => part?.type === CLAUDE_BLOCK.IMAGE) : [])
+      ] :
+      [block]
       );
       out.push({ ...msg, content: newContent });
       continue;
@@ -216,6 +219,11 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
             const mediaType = block.source.media_type || DEFAULT_IMAGE_MIME;
             const format = mediaType.split("/")[1] || mediaType;
             pendingImages.push({ format, source: { bytes: block.source.data } });
+          } else if (block.type === CLAUDE_BLOCK.IMAGE) {
+            // Failed guarded resolution must not silently remove vision input.
+            const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 image source.");
+            error.statusCode = HTTP_STATUS.BAD_REQUEST;
+            throw error;
           } else if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
             let resultContent = "";
             let hasImage = false;
@@ -231,6 +239,10 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
                   const mediaType = c.source.media_type || DEFAULT_IMAGE_MIME;
                   const format = mediaType.split("/")[1] || mediaType;
                   pendingImages.push({ format, source: { bytes: c.source.data } });
+                } else if (c?.type === CLAUDE_BLOCK.IMAGE) {
+                  const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 image source.");
+                  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+                  throw error;
                 }
               }
               resultContent =

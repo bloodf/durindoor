@@ -118,6 +118,10 @@ Covered route families and exclusions: [Management API](../reference/management-
 
 Create separate keys, short expiry when you can, revoke unused ones. The create response is the one body that always includes the full secret. Scope a key to named provider accounts: [API key scoping](./api-key-scoping.mdx).
 
+## Transport diagnostics
+
+Proxy fallback, DNS resolution failure, and MITM-bypass failure logs contain only local event names and optional bounded, allowlisted transport codes. They never include exception text, URLs, hostnames, or credentials. These diagnostics do not establish that live provider login works.
+
 ## If a secret leaks
 
 DurinDoor API key: revoke it in the dashboard, mint a replacement, update the client, read usage.

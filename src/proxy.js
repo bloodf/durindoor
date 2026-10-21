@@ -10,6 +10,7 @@ import {
   attachSessionCookie,
   clearedSessionCookie,
   originOf,
+  logDiagnostic,
 } from "./lib/mimoLoginSession";
 import {
   isolatedOrigin, requestOrigin, isIsolatedLoginRequest, consumeBootstrap, proxySessionFromRequest,
@@ -68,7 +69,7 @@ async function mimoLoginProxy(request) {
       return attachSessionCookie(await proxyAccountRequest(sess, request, origin), sess);
     }
   } catch (e) {
-    console.log("[mimo-login] proxy error:", e?.message || e);
+    logDiagnostic(sess, "proxy_error", { status: 502, error: e });
     return new Response("mimo login proxy error", { status: 502 });
   }
   return dashboardProxy(request);

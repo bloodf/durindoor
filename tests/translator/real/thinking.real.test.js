@@ -6,6 +6,7 @@
 //   RUN_REAL=1 npx vitest run -c tests/vitest.config.js "tests/translator/real/thinking"
 //   RUN_REAL=1 REAL_PROVIDERS=claude,glm,deepseek npx vitest run -c tests/vitest.config.js "tests/translator/real/thinking"
 //
+import { positiveProviderBody } from "./positive-provider-body.js";
 import { describe, it, expect } from "vitest";
 import { getProviderCredentials } from "../../../src/sse/services/auth.js";
 import { checkAndRefreshToken } from "../../../src/sse/services/tokenRefresh.js";
@@ -67,13 +68,13 @@ describe.skipIf(!RUN_REAL).concurrent("REAL thinking normalization", () => {
 
         const refreshed = await checkAndRefreshToken(providerId, credentials);
         const result = await handleChatCore({
-          body: {
+          body: positiveProviderBody(providerId, {
             model: `${providerId}/${model}`,
             stream: true,
             max_tokens: MAX_TOKENS,
             reasoning_effort: EFFORT,
             messages: [{ role: "user", content: "Think step by step, then answer: what is 17 * 23?" }],
-          },
+          }),
           modelInfo: { provider: providerId, model },
           credentials: refreshed,
           connectionId: credentials.connectionId,

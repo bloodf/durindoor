@@ -7,11 +7,12 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { buildProviderGroups, buildModelMatrix, resolveTargetFormat } from "./matrix.js";
 
 // Base OpenAI-format request with text + tool + image (exercises strip + tool paths)
-function baseBody(modelId) {
+function baseBody(modelId, targetFormat) {
   return {
     model: modelId,
     stream: true,
-    max_tokens: 64,
+    // Kiro cannot guarantee client output ceilings; exercise its supported uncapped path.
+    ...(targetFormat !== FORMATS.KIRO && { max_tokens: 64 }),
     messages: [
       { role: "system", content: "You are a helper." },
       {
@@ -34,7 +35,7 @@ describe("coverage: every model translates without throwing", () => {
   it.each(groups)("$alias: all models OpenAI→target", ({ alias, models }) => {
     for (const m of models) {
       const target = resolveTargetFormat(alias, m.id);
-      const body = baseBody(m.id);
+      const body = baseBody(m.id, target);
       // Cursor supports text and tools, but not images or output-token caps.
       // Unsupported inputs have focused 400 coverage.
       if (target === FORMATS.CURSOR) {
@@ -43,7 +44,13 @@ describe("coverage: every model translates without throwing", () => {
       }
       // source = openai (lingua franca); exercise openai → target path
       const out = translateRequest(FORMATS.OPENAI, target, m.id, body, true, null, alias);
-      if (target === FORMATS.CURSOR) {
+      expect(out, `${alias}/${m.id} → ${target} returned falsy`).toBeTruthy();
+      if (target === FORMATS.KIRO) {
+        const current = out.conversationState.currentMessage.userInputMessage;
+        expect(current.content).toContain("Hello");
+        expect(current.userInputMessageContext.tools[0].toolSpecification.name).toBe("get_time");
+        expect(current.images).toEqual([{ format: "png", source: { bytes: "AAAA" } }]);
+      } else if (target === FORMATS.CURSOR) {
         expect(out.messages).toEqual([
           { role: "user", content: "[System Instructions]\nYou are a helper." },
           { role: "user", content: "Hello" },
@@ -51,8 +58,7 @@ describe("coverage: every model translates without throwing", () => {
         expect(out.tools).toEqual(body.tools);
         expect(out.max_tokens).toBeUndefined();
         expect(out.max_completion_tokens).toBeUndefined();
-      } else {
-        expect(out, `${alias}/${m.id} → ${target} returned falsy`).toBeTruthy();
+
       }
     }
   });
@@ -61,7 +67,7 @@ describe("coverage: every model translates without throwing", () => {
 const stripModels = buildModelMatrix().filter((r) => r.strip.includes("image"));
 describe.skipIf(stripModels.length === 0)("coverage: image-strip models drop image content", () => {
   it.each(stripModels)("$alias/$modelId strips image when strip=[image]", (row) => {
-    const body = baseBody(row.modelId);
+    const body = baseBody(row.modelId, row.targetFormat);
     const out = translateRequest(FORMATS.OPENAI, row.targetFormat, row.modelId, body, true, null, row.alias, null, row.strip);
     const json = JSON.stringify(out);
     expect(json).not.toContain("data:image/png");

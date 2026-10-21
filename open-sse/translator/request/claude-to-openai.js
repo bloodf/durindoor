@@ -328,10 +328,15 @@ function convertClaudeMessage(msg) {
             resultContent = JSON.stringify(block.content);
           }
 
+          // Enumerable bridge metadata survives filtering/cloning until RTK and
+          // native target conversion. BaseExecutor consumes it only at the final
+          // OpenAI wire boundary, preserving failure meaning as text there.
+          // Only a literal `true` is carried; absent/false stays absent.
           toolResults.push({
             role: ROLE.TOOL,
             tool_call_id: block.tool_use_id,
-            content: resultContent
+            content: resultContent,
+            ...(block.is_error === true && { is_error: true })
           });
           break;
 

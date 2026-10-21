@@ -74,6 +74,8 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
           // being stringified into the result text.
           const imageParts = Array.isArray(content) ? content.map(urlImagePart).filter(Boolean) : [];
           if (Array.isArray(content)) content = content.filter((entry) => !urlImagePart(entry)).map((entry) => entry.type === CLAUDE_BLOCK.TEXT ? entry.text : JSON.stringify(entry)).join("\n");
+          // Keep failures explicit in both native responses and historical text.
+          if (block.is_error === true) content = `[Tool error]\n${content ?? ""}`;
           const name = toolUseNames[block.tool_use_id] || "unknown";
           if (!signatures.has(block.tool_use_id)) {
             parts.push({ text: historicalToolResult(name, content) }, ...imageParts);

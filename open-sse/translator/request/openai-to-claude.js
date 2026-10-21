@@ -1,6 +1,8 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { validateInputAudio } from "../validate.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -18,8 +20,17 @@ const CLAUDE_OAUTH_TOOL_PREFIX = "";
  * Only the routed `claude` provider receives official-client branding; model
  * names and client payload fields do not establish provider identity.
  * Missing provider context and compatible providers receive no added persona.
+ * OpenAI input_audio has no supported Claude mapping. Reject it before content
+ * extraction can discard it, for both streaming and non-streaming requests.
+ * @throws {Error} With statusCode 400 so chatCore rejects the request before upstream dispatch.
  */
 export function openaiToClaudeRequest(model, body, stream, credentials = null, translationContext = null) {
+  const audioError = validateInputAudio(body, FORMATS.OPENAI, FORMATS.CLAUDE, model);
+  if (audioError) {
+    const error = new Error(audioError);
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
   // Cap max_tokens at the model's real output ceiling (e.g. Opus 4.8 = 128000),

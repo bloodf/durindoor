@@ -15,6 +15,12 @@ Do not publish the dashboard on a public address with the built-in password `123
 
 `DATA_DIR` (default `~/.9router`, or the configured path) is created owner-only (`0700`), and the columnCrypto master key (`DATA_DIR/master-key`) is written `0600`. Both are also repaired on next use if an older install left them group- or world-readable, so a permissive process `umask` cannot make credentials readable to other local users. Repair is best-effort and skipped on Windows, which has no POSIX mode bits.
 
+### Master-key storage and recovery
+
+First-use creation of `DATA_DIR/master-key` requires storage that supports same-directory atomic hardlink publication without replacing an existing destination. DurinDoor writes and syncs a complete temporary key before linking it into place; concurrent processes use the winning key. A valid existing 32-byte key is reused, never rotated by this process. Hardlink or other storage errors fail closed rather than falling back to an unsafe write.
+
+An empty, short, or otherwise invalid-length master key fails closed and is not replaced. Stop all DurinDoor processes and preserve the data before recovery. Restore only a trusted backup of the master key that matches the encrypted database; see [Data management](./data-management.mdx). Never delete or blindly regenerate the key when encrypted data already exists: a new key cannot decrypt those credentials.
+
 ### JWT_SECRET
 
 Signs dashboard session cookies (HS256, 24-hour `exp` and cookie `Max-Age`). Resolution order:

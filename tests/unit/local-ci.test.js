@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, realpathSync } from "node:fs";
 import os from "node:os";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -111,7 +111,8 @@ describe("local CI frozen policy", () => {
     expect(existsSync(marker)).toBe(false);
   });
   it("executes selector argv and allowlisted environment in a real child; failed child never passes", () => {
-    const tests = mkdtempSync(path.join(os.tmpdir(), "gate-child-"));
+    // Child cwd resolves macOS /var aliases; keep the fixture identity canonical too.
+    const tests = realpathSync(mkdtempSync(path.join(os.tmpdir(), "gate-child-")));
     mkdirSync(path.join(tests, "node_modules/vitest"), { recursive: true });
     const bin = path.join(tests, "node_modules/vitest/vitest.mjs");
     writeFileSync(bin, `import fs from 'node:fs'; import path from 'node:path';

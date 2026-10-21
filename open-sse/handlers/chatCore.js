@@ -3,7 +3,7 @@ import { translateRequest } from "../translator/index.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
-import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
+import { validateInputAudio, validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
@@ -527,6 +527,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Skip all translation/normalization — only model and Bearer are swapped
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
+
+  // Reject unsupported original audio before modality stripping replaces it with text.
+  const inputAudioError = validateInputAudio(body, sourceFormat, targetFormat, cleanUpstreamModel);
+  if (inputAudioError) {
+    finishTimeline("error", "error", inputAudioError);
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, inputAudioError);
+  }
 
   // Expose raw client headers to translators/executors for session-id resolution
   if (credentials) credentials.rawHeaders = clientRawRequest?.headers || {};

@@ -969,7 +969,7 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     // prefix; both normalize through aliasToProviderId above.
     const custom = customCapsById?.get?.(`${providerId}/${model}`);
     const staticCaps = getCapabilitiesForModel(providerId, model);
-    const merged = custom ? { ...staticCaps, ...custom } : staticCaps;
+    const merged = enforceCursorCapabilities(providerId, custom ? { ...staticCaps, ...custom } : staticCaps);
     // getCapabilitiesForModel merges generic defaults into unknown models for
     // feature detection. Those floors are not provider guarantees, so exclude
     // them from combo limits exactly as individual /v1/models rows do.
@@ -1153,9 +1153,17 @@ function isCommandCodeTextOnly(model) {
   return false;
 }
 
+/** Apply Cursor's hard transport limit to an owned, fully overlaid capability object. */
+export function enforceCursorCapabilities(provider, capabilities) {
+  if (capabilities && (provider === "cursor" || provider === "cu")) capabilities.vision = false;
+  return capabilities;
+}
+
 /**
  * Resolve capabilities for a model using the 4-step fallback chain,
  * merged over DEFAULT_CAPABILITIES so the result is always complete.
+ * Cursor (`cursor`/`cu`) cannot encode image input in its current protobuf
+ * transport, so final resolution forces vision off without changing other capabilities.
  *
  * @param {string} provider
  * @param {string} model
@@ -1163,7 +1171,7 @@ function isCommandCodeTextOnly(model) {
  */
 export function getCapabilitiesForModel(provider, model) {
   const finalize = (caps) => {
-    let result = provider === "huggingchat" ? { ...caps, vision: false } : caps;
+    let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
     // Workers AI pages publish max_tokens defaults, never enforceable ceilings.
     if ((provider === "cloudflare-ai" || provider === "cf") && model?.startsWith("@cf/")) {
       result = { ...result, maxOutput: undefined };

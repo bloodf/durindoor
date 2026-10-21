@@ -5,6 +5,7 @@ import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/i
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 
 function historicalToolResult(name, content) {
   return `[Historical tool result for ${name}]: ${content}`;
@@ -61,6 +62,12 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     const parts = [];
     if (Array.isArray(message.content)) {
       for (const block of message.content) {
+        // Gemini cannot carry Claude's opaque redacted history without losing continuity.
+        if (block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
+          const error = new Error("Cannot translate redacted_thinking to Gemini without losing continuity; use a compatible Claude Messages route.");
+          error.statusCode = HTTP_STATUS.BAD_REQUEST;
+          throw error;
+        }
         if (block.type === CLAUDE_BLOCK.TEXT && block.text) parts.push({ text: block.text });else
         if (block.type === CLAUDE_BLOCK.THINKING && block.thinking) parts.push({ thought: true, text: block.thinking });else
         if (block.type === CLAUDE_BLOCK.IMAGE && block.source?.type === "base64") parts.push({ inlineData: { mimeType: block.source.media_type || DEFAULT_IMAGE_MIME, data: block.source.data } });else

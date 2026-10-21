@@ -508,14 +508,34 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
 
     // Claude shape: translate → OpenAI → compress → translate back.
     if (format === "claude") {
-      const oai = claudeToOpenAIRequest(model, body, false);
+      const oai = claudeToOpenAIRequest(model, structuredClone(body), false);
       if (!Array.isArray(oai?.messages)) {
         setDiagnostic(diagnostics, "Claude request did not translate to messages[]", "translation-failed");
+        return null;
+      }
+      // Only plain user text can survive this lossy wire pivot. Keep native
+      // assistant blocks (including signatures) and system instructions intact.
+      if (body.messages.some((message) => message.role !== "assistant" &&
+          (message.role !== "user" || !isString(message.content) &&
+            (!Array.isArray(message.content) || message.content.some((block) =>
+              block?.type !== "text" || Object.keys(block).some((key) => key !== "type" && key !== "text")))))) {
+        setDiagnostic(diagnostics, "Claude user content cannot be compressed losslessly", "translation-failed");
         return null;
       }
       const data = await callCompress(url, oai.messages, model, timeoutMs, compressUserMessages, diagnostics || {});
       if (!data) return null;
       if (!preservesOpenAIConversationContract(oai.messages, data.messages, diagnostics)) return null;
+      if (oai.messages.some((message, index) => message.role !== "user" &&
+          JSON.stringify(message) !== JSON.stringify(data.messages[index]))) {
+        setDiagnostic(diagnostics, "proxy response changed Claude assistant or system content", "translation-failed");
+        return null;
+      }
+      if (data.messages.some((message) => message.role === "user" &&
+          (!isString(message.content) && (!Array.isArray(message.content) ||
+            message.content.some((block) => block?.type !== "text" || !isString(block.text)))))) {
+        setDiagnostic(diagnostics, "proxy response changed Claude user content shape", "translation-failed");
+        return null;
+      }
       const claudeBody = openaiToClaudeRequest(model, { ...oai, messages: data.messages }, false);
       if (!Array.isArray(claudeBody?.messages) || claudeBody.messages.length !== body.messages.length ||
           claudeBody.messages.some((message, index) => message?.role !== body.messages[index]?.role ||
@@ -523,14 +543,19 @@ export async function compressWithHeadroom(body, { enabled, url, model, format, 
         setDiagnostic(diagnostics, "proxy response did not preserve Claude message shape");
         return null;
       }
-      const candidate = { ...body, messages: claudeBody.messages };
-      if (claudeBody.system !== undefined) candidate.system = claudeBody.system;
+      if (claudeBody.messages.some((message) => message.role === "user" &&
+          (!Array.isArray(message.content) || message.content.some((block) => block?.type !== "text")))) {
+        setDiagnostic(diagnostics, "proxy response changed Claude user content shape", "translation-failed");
+        return null;
+      }
+      const messages = claudeBody.messages.map((message, index) => body.messages[index].role === "assistant"
+        ? body.messages[index] : { ...body.messages[index], content: message.content });
+      const candidate = { ...body, messages };
       if (!hasMeaningfulByteShrink(sizeSnapshot.bodyBytes, candidate)) {
         setDiagnostic(diagnostics, "phantom savings — keeping original (>95% size)");
         return null;
       }
-      body.messages = claudeBody.messages;
-      if (claudeBody.system !== undefined) body.system = claudeBody.system;
+      body.messages = messages;
       if (diagnostics) diagnostics.after = captureSizeSnapshot(body);
       return data;
     }

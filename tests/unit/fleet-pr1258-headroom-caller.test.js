@@ -299,6 +299,19 @@ describe("PR #1258 real chatCore Headroom caller continuity", () => {
     expect(local.fetch).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])("rejects capped Kiro opaque history before dispatch without mutating input (stream=%s)", async (stream) => {
+    const body = { ...fixture([readable, ...opaque], true, stream), max_tokens: 100 };
+    const original = structuredClone(body);
+    const { result } = await callCore(body, {}, "kiro", MODEL);
+    expect(result.response.status).toBe(400);
+    const error = await result.response.json();
+    expect(error.error.message).toContain("Kiro cannot enforce max_tokens output ceilings");
+    expect(local.execute).not.toHaveBeenCalled();
+    expect(local.dispatches).toEqual([]);
+    expect(local.fetch).not.toHaveBeenCalled();
+    expect(body).toEqual(original);
+  });
+
   it.each(incompatibleCases)("rejects registered $provider $shape route before dispatch under $policy prefill, stream=$stream", async ({ provider, model, route, blocks, headers, stream }) => {
     const body = fixture(blocks, true, stream);
     // Exercise opaque-history rejection independently of Kiro's output-ceiling policy.

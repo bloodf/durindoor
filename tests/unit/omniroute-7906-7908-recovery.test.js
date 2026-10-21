@@ -84,6 +84,22 @@ describe("OmniRoute #7906 — historical thinking strip preserves the active too
     expect(out.messages[1].content.some((b) => b.type === "thinking")).toBe(true);
   });
 
+  it.each(["completed", "active"])("does not retry when %s history contains opaque thinking", (location) => {
+    const opaque = { type: "redacted_thinking", data: "opaque-continuity" };
+    const body = {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "q" }] },
+        { role: "assistant", content: [thinking, ...(location === "completed" ? [opaque] : []), text] },
+        { role: "user", content: [{ type: "text", text: "q2" }] },
+        { role: "assistant", content: [...(location === "active" ? [opaque] : []), toolUse] },
+        { role: "user", content: [toolResult] },
+      ],
+    };
+    const original = structuredClone(body);
+    expect(stripHistoricalThinkingForSignatureRecovery(body)).toBe(body);
+    expect(body).toEqual(original);
+  });
+
   it("returns the same body reference when nothing changed", () => {
     const body = { messages: [{ role: "user", content: [{ type: "text", text: "q" }] }] };
     expect(stripHistoricalThinkingForSignatureRecovery(body)).toBe(body);

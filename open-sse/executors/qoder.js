@@ -767,7 +767,9 @@ export class QoderExecutor extends BaseExecutor {
       return { response: fakeResp, url, headers: {}, transformedBody: body };
     }
 
-    const plainBody = Buffer.from(JSON.stringify(payload), "utf8");
+    // normalizeMessages spreads tool fields into payload.messages. Consume the
+    // bridge flag before encoding/signing, without changing the internal payload.
+    const plainBody = Buffer.from(JSON.stringify(this.prepareOpenAIToolMessagesForWire(payload)), "utf8");
     const encodedBodyStr = qoderEncodeBody(plainBody);
     const encodedBodyBuf = Buffer.from(encodedBodyStr, "latin1");
 

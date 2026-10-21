@@ -300,7 +300,10 @@ describe("PR #1258 real chatCore Headroom caller continuity", () => {
   });
 
   it.each(incompatibleCases)("rejects registered $provider $shape route before dispatch under $policy prefill, stream=$stream", async ({ provider, model, route, blocks, headers, stream }) => {
-    const { result } = await callCore(fixture(blocks, true, stream), headers, provider, model);
+    const body = fixture(blocks, true, stream);
+    // Exercise opaque-history rejection independently of Kiro's output-ceiling policy.
+    if (provider === "kiro") delete body.max_tokens;
+    const { result } = await callCore(body, headers, provider, model);
     expect(result.response.status).toBe(400);
     const error = await result.response.json();
     expect(JSON.stringify(error)).toContain(`Cannot translate redacted_thinking ${route}`);

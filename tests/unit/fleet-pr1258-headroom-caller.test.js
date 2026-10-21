@@ -62,16 +62,18 @@ const policies = [
   ["preserve", { "x-9router-assistant-prefill": "preserve" }],
 ];
 const nativeCases = histories.flatMap(([shape, blocks]) => policies.flatMap(([policy, headers]) =>
-  [false, true].map((userEnded) => ({ shape, blocks, policy, headers, userEnded }))));
+  [false, true].flatMap((userEnded) => [false, true].map((stream) => ({ shape, blocks, policy, headers, userEnded, stream })))));
 const incompatibleCases = [
   ["gemini", "gemini-2.5-flash", "to Gemini"],
   ["kiro", MODEL, "to Kiro"],
+  ["openai", "gpt-4o-mini", "through OpenAI"],
+  ["openai-compatible-responses-fixture", "gpt-4o-mini", "through OpenAI"],
 ].flatMap(([provider, model, route]) => histories.flatMap(([shape, blocks]) =>
-  policies.map(([policy, headers]) => ({ provider, model, route, shape, blocks, policy, headers }))));
+  policies.flatMap(([policy, headers]) => [false, true].map((stream) => ({ provider, model, route, shape, blocks, policy, headers, stream })))));
 
-function fixture(blocks, userEnded = false) {
+function fixture(blocks, userEnded = false, stream = false) {
   return {
-    model: MODEL, stream: false, max_tokens: 4096,
+    model: MODEL, stream, max_tokens: 4096,
     thinking: { type: "enabled", budget_tokens: 1024 }, system: PERSONA,
     messages: [
       { role: "user", content: [{ type: "text", text: "Archive fixture context. ".repeat(256) }] },
@@ -139,13 +141,24 @@ describe("PR #1258 real chatCore Headroom caller continuity", () => {
     });
     local.execute.mockImplementation(async (args) => {
       local.dispatches.push(structuredClone(args.body));
+      const message = {
+        id: "msg_local_fixture", type: "message", role: "assistant", model: MODEL,
+        content: [{ type: "text", text: "Local fixture response." }],
+        stop_reason: "end_turn", stop_sequence: null,
+        usage: { input_tokens: 32, output_tokens: 8 },
+      };
+      const frames = [
+        { type: "message_start", message: { ...message, content: [], stop_reason: null, usage: { input_tokens: 32, output_tokens: 0 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Local fixture response." } },
+        { type: "content_block_stop", index: 0 },
+        { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 8 } },
+        { type: "message_stop" },
+      ];
       return {
-        response: new Response(JSON.stringify({
-          id: "msg_local_fixture", type: "message", role: "assistant", model: MODEL,
-          content: [{ type: "text", text: "Local fixture response." }],
-          stop_reason: "end_turn", stop_sequence: null,
-          usage: { input_tokens: 32, output_tokens: 8 },
-        }), { headers: { "content-type": "application/json" } }),
+        response: args.stream
+          ? new Response(frames.map((frame) => `event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } })
+          : Response.json(message),
         url: "http://localhost/provider-fixture", headers: {}, transformedBody: args.body,
       };
     });
@@ -157,15 +170,62 @@ describe("PR #1258 real chatCore Headroom caller continuity", () => {
     else globalThis.__kimchi_ua_state = local.originalKimchi;
   });
 
-  it.each(nativeCases)("preserves $shape bytes/signatures/persona under $policy prefill, user-ended=$userEnded", async ({ blocks, policy, headers, userEnded }) => {
-    const { result, snapshot, onHeadroomEvent, log } = await callCore(fixture(blocks, userEnded), headers);
+  it.each([false, true].flatMap((stream) => ["completed", "active"].map((location) => [stream, location])))(
+    "returns the original signature error without retry (stream=%s, opaque=%s)",
+    async (stream, location) => {
+      const errorMessage = "Invalid signature in thinking block";
+      local.execute.mockImplementation(async (args) => {
+        local.dispatches.push(structuredClone(args.body));
+        return {
+          response: Response.json({ error: { type: "invalid_request_error", message: errorMessage } }, { status: 400 }),
+          url: "http://localhost/provider-fixture", headers: {}, transformedBody: args.body,
+        };
+      });
+      const body = {
+        model: MODEL, stream, max_tokens: 4096,
+        messages: [
+          { role: "user", content: "Start" },
+          { role: "assistant", content: [readable, ...(location === "completed" ? [opaque[0]] : []), { type: "text", text: "Prior answer" }] },
+          { role: "user", content: "Use the tool" },
+          { role: "assistant", content: [
+            ...(location === "active" ? [opaque[0]] : []),
+            { type: "tool_use", id: "call_1", name: "Read", input: {} },
+          ] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "ok" }] },
+        ],
+      };
+      const { result } = await callCore(body);
+      expect(result.response.status).toBe(400);
+      expect(JSON.stringify(await result.response.json())).toContain(errorMessage);
+      expect(local.execute).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(local.dispatches[0])).toContain(opaque[0].data);
+    },
+  );
+
+  it.each(nativeCases)("preserves $shape bytes/signatures/persona under $policy prefill, user-ended=$userEnded, stream=$stream", async ({ blocks, policy, headers, userEnded, stream }) => {
+    const { result, snapshot, onHeadroomEvent, log } = await callCore(fixture(blocks, userEnded, stream), headers);
     expect(result.response.status).toBe(200);
+    if (stream) {
+      const response = await result.response.text();
+      expect(response).toContain('"text":"Local fixture response."');
+      expect(response).toContain('"stop_reason":"end_turn"');
+      expect(response).toContain('"type":"message_stop"');
+      expect(response).not.toContain('"type":"error"');
+      expect(response).not.toContain("stream_error");
+    } else {
+      const response = await result.response.json();
+      expect(response.content).toEqual([{ type: "text", text: "Local fixture response." }]);
+      expect(response.stop_reason).toBe("end_turn");
+      expect(response.error).toBeUndefined();
+    }
+    expect(local.execute.mock.calls[0][0].stream).toBe(stream);
     expect(local.execute).toHaveBeenCalledTimes(1);
     expect(local.fetch).not.toHaveBeenCalled();
     expect(local.compressions).toEqual([]);
     expect(onHeadroomEvent).toHaveBeenCalledWith(expect.objectContaining({ applied: false, reason: "translation-failed" }));
     expect(log.warn).toHaveBeenCalledWith("HEADROOM", expect.stringContaining("redacted_thinking"));
     const outbound = local.dispatches[0];
+    expect(outbound.stream).toBe(stream);
     const assistant = outbound.messages.find((message) => message.role === "assistant");
     expect(withoutCache(assistant.content)).toEqual(snapshot.messages[1].content);
     const thinkingBlocks = (content) => content.filter((block) => block.type === "thinking" || block.type === "redacted_thinking");
@@ -239,8 +299,8 @@ describe("PR #1258 real chatCore Headroom caller continuity", () => {
     expect(local.fetch).not.toHaveBeenCalled();
   });
 
-  it.each(incompatibleCases)("rejects registered $provider $shape route before dispatch under $policy prefill", async ({ provider, model, route, blocks, headers }) => {
-    const { result } = await callCore(fixture(blocks, true), headers, provider, model);
+  it.each(incompatibleCases)("rejects registered $provider $shape route before dispatch under $policy prefill, stream=$stream", async ({ provider, model, route, blocks, headers, stream }) => {
+    const { result } = await callCore(fixture(blocks, true, stream), headers, provider, model);
     expect(result.response.status).toBe(400);
     const error = await result.response.json();
     expect(JSON.stringify(error)).toContain(`Cannot translate redacted_thinking ${route}`);

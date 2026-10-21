@@ -96,7 +96,7 @@ export function validateCursorImages(body) {
   visitMessages(body.messages, true);
   if (Array.isArray(body.input)) {
     for (const item of body.input) {
-      if (item?.type === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) visitBlocks(item.output);
+      if (item?.type === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) visitBlocks(item.output);
       else if (item?.type === RESPONSES_ITEM.MESSAGE || item?.role) visitMessages([item]);
     }
   }

@@ -101,3 +101,60 @@ describe.each([false, true])("Cursor nested Responses output (stream=%s)", (stre
     expect(body).toEqual(original);
   });
 });
+
+describe.each([false, true])("Cursor custom Responses output (stream=%s)", (stream) => {
+  const imageBody = (provider) => ({
+      model: `${provider}/default`, stream,
+      input: [
+        { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: "inspect" },
+        { type: RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT, call_id: "call_1", output: [
+          { type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: "nested", content: [
+            { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: "https://example.invalid/download/123" },
+          ] },
+        ] },
+      ],
+  });
+
+  it.each(["cursor", "cu"])("rejects %s typed images through registration", (provider) => {
+    const body = imageBody(provider);
+    const original = structuredClone(body);
+    expect(() => translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.CURSOR, "default", body, stream, null, provider))
+      .toThrow(expect.objectContaining({ statusCode: 400, message: expect.stringContaining("Cursor image input is not supported") }));
+    expect(body).toEqual(original);
+  });
+
+  it.each(["cursor", "cu"])("rejects %s typed images through the Responses handler before dispatch", async (provider) => {
+    const body = imageBody(provider);
+    const original = structuredClone(body);
+
+    const result = await handleResponsesCore({ body, modelInfo: { provider, model: "default" }, credentials: null });
+    expect(result).toMatchObject({ success: false, status: 400 });
+    expect(result.response.status).toBe(400);
+    expect(await result.response.json()).toMatchObject({ error: {
+      type: "invalid_request_error", message: expect.stringContaining("Cursor image input is not supported"),
+    } });
+    expect(execute).not.toHaveBeenCalled();
+    expect(body).toEqual(original);
+  });
+
+  it.each(["cursor", "cu"])("allows %s ordinary custom tool JSON mentioning images", async (provider) => {
+    const body = {
+      model: `${provider}/default`, stream,
+      input: [
+        { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: "inspect" },
+        { type: RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT, call_id: "call_1", output: {
+          type: "image", image_url: "https://example.invalid/photo.png",
+        } },
+      ],
+    };
+    const original = structuredClone(body);
+    const translated = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.CURSOR, "default", structuredClone(body), stream, null, provider);
+    expect(translated.messages).toEqual([{ role: ROLE.USER, content: "inspect" }]);
+    expect(body).toEqual(original);
+
+    const result = await handleResponsesCore({ body, modelInfo: { provider, model: "default" }, credentials: null });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe(502);
+    expect(body).toEqual(original);
+  });
+});

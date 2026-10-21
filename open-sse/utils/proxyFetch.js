@@ -182,13 +182,13 @@ const TRANSPORT_CODES = new Set([
 ]);
 
 /** Emit only local events and exact allowlisted codes; never text, URLs or hosts. */
-function logTransportDiagnostic(event, error) {
+function logTransportDiagnostic(log, event, error) {
   const details = { event };
   try {
     const code = error?.code;
     if (isString(code) && TRANSPORT_CODES.has(code)) details.transportCode = code;
   } catch { /* Untrusted code getters must not interrupt direct fallback. */ }
-  console.log("[ProxyFetch]", details);
+  log("[ProxyFetch]", details);
 }
 
 function signalAbortError(signal) {
@@ -238,7 +238,7 @@ async function resolveRealIPs(hostname) {
     DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
     return addresses;
   } catch (error) {
-    logTransportDiagnostic("dns_resolve_failed", error);
+    logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
     return [];
   }
 }
@@ -840,7 +840,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         if (proxyOptions?.strictProxy === true) {
           throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
         }
-        logTransportDiagnostic("proxy_direct_bypass_fallback", proxyError);
+        logTransportDiagnostic(console.debug, "proxy_direct_bypass_fallback", proxyError);
       }
     }
     // No proxy — manually resolve real IP to bypass DNS spoof. A guarded probe
@@ -866,7 +866,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (error instanceof OutboundUrlGuardError) throw error;
       if (isQuotaDispatchUnavailable(error)) throw error;
       rethrowTransportAbort(error, options.signal);
-      logTransportDiagnostic("mitm_bypass_failed", error);
+      logTransportDiagnostic(console.warn, "mitm_bypass_failed", error);
     }
   }
 
@@ -881,7 +881,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
       }
-      logTransportDiagnostic("proxy_direct_fallback", proxyError);
+      logTransportDiagnostic(console.debug, "proxy_direct_fallback", proxyError);
       return directFetch(url, options);
     }
   }

@@ -2,7 +2,10 @@
  * Every media endpoint accepts a request without a model: the handler runs the
  * endpoint's default route (settings.mediaRoutes or the connected catalog),
  * falls through to the next model on a retryable failure, and answers
- * no_provider_for_kind when nothing connected can serve the endpoint.
+ * no_provider_for_kind when nothing connected can serve the endpoint. Async
+ * music and video creation require a stored caller key; pending music jobs do
+ * not bill usage. Video never retries submission, and polling routes through
+ * durable ownership, not the current default route.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,6 +22,12 @@ const mocks = vi.hoisted(() => ({
   handleVideoProxyCore: vi.fn(),
   handleSearchCore: vi.fn(),
   getProviderCredentialsWithQuotaPreflight: vi.fn(),
+  resolveClientApiKey: vi.fn(),
+  getProviderConnectionById: vi.fn(),
+  createMediaJob: vi.fn(async (job) => job),
+  getMediaJob: vi.fn(),
+  recordApiKeyUsage: vi.fn(),
+  recordApiKeyUsageForResponse: vi.fn(async (_key, response) => response),
   getNoAuthProviderCredentials: vi.fn()
 }));
 
@@ -29,10 +38,11 @@ vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mock
 vi.mock("../../src/sse/services/keylessAvailability.js", () => ({ isKeylessProviderWorking: vi.fn(async () => true) }));
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
+  getPricingForModel: vi.fn(async () => null),
   getApiKeyByKey: vi.fn(async () => null),
   getComboForModel: vi.fn(async () => null),
   getCombos: vi.fn(async () => []),
-  getProviderConnectionById: vi.fn(async () => null),
+  getProviderConnectionById: mocks.getProviderConnectionById,
   getApiKeyProviderConnectionIds: vi.fn(async () => [])
 }));
 vi.mock("../../src/sse/services/model.js", async () => {
@@ -52,18 +62,21 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   getNoAuthProviderCredentials: mocks.getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight: mocks.getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable: vi.fn(async () => ({ shouldFallback: false })),
-  resolveClientApiKey: vi.fn(async () => ({ apiKey: null, auth: { ok: true } }))
+  resolveClientApiKey: mocks.resolveClientApiKey
+}));
+vi.mock("@/lib/db/repos/mediaJobsRepo.js", () => ({
+  createMediaJob: mocks.createMediaJob,
+  getMediaJob: mocks.getMediaJob,
+  finishMediaJob: vi.fn()
 }));
 vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
   enforceApiKeyModelPolicy: vi.fn(async () => null),
-  recordApiKeyUsageForResponse: vi.fn(async (_key, response) => response)
+  recordApiKeyUsage: mocks.recordApiKeyUsage,
+  recordApiKeyUsageForResponse: mocks.recordApiKeyUsageForResponse
 }));
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
   checkAndRefreshToken: vi.fn(async (_provider, credentials) => credentials),
   updateProviderCredentials: vi.fn()
-}));
-vi.mock("../../src/sse/utils/requestCorrelation.js", () => ({
-  withRequestCorrelation: (fn) => (...args) => fn(...args)
 }));
 vi.mock("../../open-sse/handlers/ttsCore.js", () => ({ handleTtsCore: mocks.handleTtsCore }));
 vi.mock("../../open-sse/handlers/rerankCore.js", () => ({ handleRerankCore: mocks.handleRerankCore }));
@@ -85,8 +98,23 @@ const { handleVideoGeneration, handleVideoCreate, handleVideoGet } = await impor
 const { handleSearch } = await import("../../src/sse/handlers/search.js");
 
 const entry = (id, extra = {}) => ({ id, object: "model", owned_by: id.split("/")[0], ...extra });
-const ok = (body = { ok: true }) => ({ success: true, response: Response.json(body) });
+const ok = (body = { ok: true }, modality) => ({
+  success: true, response: Response.json(body),
+  ...(modality ? { accounting: { state: "complete", modality, tokens: {}, nativeUnits: {},
+    cost: null, costStatus: "unknown", costSource: "unavailable", meta: {} } } : {}),
+});
 const rateLimited = () => ({ success: false, status: 429, error: "rate limited", response: Response.json({ error: { message: "rate limited" } }, { status: 429 }) });
+const searchOk = () => {
+  const data = {
+    provider: "tavily", query: "durin", results: [], answer: null,
+    usage: { queries_used: 1, search_cost_usd: 0 },
+    metrics: { response_time_ms: 1, upstream_latency_ms: 1, total_results_available: 0 },
+    errors: []
+  };
+  const result = { ...ok(data, "search"), data };
+  result.accounting.nativeUnits.operations = 1;
+  return result;
+};
 const post = (path, body) => new Request(`http://localhost${path}`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -97,6 +125,9 @@ const calledModels = (core) => core.mock.calls.map(([args]) => `${args.provider 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.resolveClientApiKey.mockResolvedValue({ apiKey: null, auth: { ok: true } });
+  mocks.getProviderConnectionById.mockResolvedValue(null);
+  mocks.getMediaJob.mockResolvedValue(null);
   mocks.getSettings.mockResolvedValue({ requireApiKey: false });
   mocks.getProviderCredentialsWithQuotaPreflight.mockResolvedValue({ connectionId: "c1", connectionName: "c1", apiKey: "k" });
   mocks.getNoAuthProviderCredentials.mockResolvedValue({});
@@ -122,7 +153,7 @@ describe("model test connection pins", () => {
       const connectionId = options.strictConnectionId === "conn-2" ? "conn-2" : "conn-1";
       return { connectionId, connectionName: connectionId, apiKey: connectionId };
     });
-    core.mockImplementation(async ({ credentials }) => ok({ account: credentials.connectionId }));
+    core.mockImplementation(async ({ credentials }) => ok({ account: credentials.connectionId }, _kind));
     const request = makeRequest();
     request.headers.set("x-connection-id", "conn-2");
     const response = await handler(request);
@@ -179,7 +210,7 @@ describe("media endpoints without a model", () => {
 
   it("image generation falls through the route", async () => {
     catalog({ image: [entry("openai/dall-e-3"), entry("xai/grok-imagine-image")] });
-    mocks.handleImageGenerationCore.mockResolvedValueOnce(rateLimited()).mockResolvedValueOnce(ok({ data: [] }));
+    mocks.handleImageGenerationCore.mockResolvedValueOnce(rateLimited()).mockResolvedValueOnce(ok({ data: [] }, "image"));
 
     const res = await handleImageGeneration(post("/v1/images/generations", { prompt: "a cat" }));
 
@@ -188,13 +219,31 @@ describe("media endpoints without a model", () => {
   });
 
   it("music falls through the route", async () => {
+    mocks.resolveClientApiKey.mockResolvedValue({
+      apiKey: "music-route-secret", auth: { ok: true, stored: true, apiKeyId: "music-route-owner" }
+    });
     catalog({ music: [entry("suno/chirp-v4"), entry("udio/udio-default")] });
-    mocks.handleMusicGenerationCore.mockResolvedValueOnce(rateLimited()).mockResolvedValueOnce(ok());
+    const pending = ok({
+      object: "music.generation", provider: "udio", model: "udio-default",
+      status: "submitted", data: [], raw: { track_ids: ["music-job-1"] }, request_id: "music-job-1"
+    }, "music");
+    pending.accounting.state = "pending";
+    pending.job = { resourceId: "music-job-1", terminal: null };
+    mocks.handleMusicGenerationCore.mockResolvedValueOnce(rateLimited()).mockResolvedValueOnce(pending);
 
     const res = await handleMusicGeneration(post("/v1/music/generations", { prompt: "lofi" }));
 
     expect(res.status).toBe(200);
     expect(calledModels(mocks.handleMusicGenerationCore)).toEqual(["suno/chirp-v4", "udio/udio-default"]);
+    expect(await res.json()).toMatchObject({ provider: "udio", status: "submitted", request_id: "music-job-1" });
+    expect(res.headers.get("x-9router-connection-id")).toBe("c1");
+    expect(mocks.createMediaJob).toHaveBeenCalledExactlyOnceWith({
+      modality: "music", provider: "udio", model: "udio-default", connectionId: "c1",
+      resourceId: "music-job-1", apiKeyId: "music-route-owner",
+      usageEventId: `${res.headers.get("x-request-id")}:music`, endpoint: "/v1/music/generations"
+    });
+    expect(mocks.recordApiKeyUsage).not.toHaveBeenCalled();
+    expect(mocks.recordApiKeyUsageForResponse).not.toHaveBeenCalled();
   });
 
   it("STT translations skip providers without a translations endpoint", async () => {
@@ -225,28 +274,47 @@ describe("media endpoints without a model", () => {
 
   it("web search routes to provider search entries", async () => {
     catalog({ webSearch: [entry("tavily/search", { kind: "webSearch" })] });
-    mocks.handleSearchCore.mockResolvedValue(ok({ results: [] }));
+    mocks.resolveClientApiKey.mockResolvedValue({
+      apiKey: "search-route-secret", auth: { ok: true, stored: true, apiKeyId: "search-route-owner" }
+    });
+    mocks.handleSearchCore.mockResolvedValue(searchOk());
 
     const res = await handleSearch(post("/v1/search", { query: "durin" }));
 
     expect(res.status).toBe(200);
     expect(mocks.handleSearchCore.mock.calls[0][0].provider.name).toBe("Tavily");
+    expect(mocks.recordApiKeyUsageForResponse).toHaveBeenCalledExactlyOnceWith(
+      "search-route-secret", expect.any(Response), expect.objectContaining({
+        provider: "tavily", model: "search", connectionId: "c1", modality: "webSearch",
+        endpoint: "/v1/search", nativeUnits: { operations: 1 },
+        cost: 0.008, costStatus: "estimated", costSource: "pricing"
+      })
+    );
   });
   it("scopes search failures and success to a search-only lock, not chat", async () => {
     const auth = await import("../../src/sse/services/auth.js");
+    mocks.resolveClientApiKey.mockResolvedValue({
+      apiKey: "search-route-secret", auth: { ok: true, stored: true, apiKeyId: "search-route-owner" }
+    });
     mocks.handleSearchCore.mockResolvedValueOnce(rateLimited()).mockImplementationOnce(async ({ onRequestSuccess }) => {
       await onRequestSuccess();
-      return ok({ results: [] });
+      return searchOk();
     });
 
     const failed = await handleSearch(post("/v1/search", { provider: "tavily", query: "durin" }));
+    expect(mocks.recordApiKeyUsageForResponse).not.toHaveBeenCalled();
     const succeeded = await handleSearch(post("/v1/search", { provider: "tavily", query: "durin" }));
 
     expect(failed.status).toBe(429);
     expect(succeeded.status).toBe(200);
-    expect(mocks.getProviderCredentialsWithQuotaPreflight).toHaveBeenCalledWith("tavily", expect.any(Set), "websearch:tavily", expect.objectContaining({ webSearch: true }));
+    expect(mocks.getProviderCredentialsWithQuotaPreflight).toHaveBeenCalledWith("tavily", expect.any(Set), "websearch:tavily", expect.objectContaining({ apiKeyId: "search-route-owner", webSearch: true }));
     expect(auth.markAccountUnavailable).toHaveBeenCalledWith("c1", 429, "rate limited", "tavily", "websearch:tavily", null, expect.objectContaining({ webSearch: true }));
     expect(auth.clearAccountError).toHaveBeenCalledWith("c1", expect.objectContaining({ connectionId: "c1" }), "websearch:tavily", expect.objectContaining({ provider: "tavily", webSearch: true }));
+    expect(mocks.recordApiKeyUsageForResponse).toHaveBeenCalledExactlyOnceWith(
+      "search-route-secret", expect.any(Response), expect.objectContaining({
+        provider: "tavily", model: "search", connectionId: "c1", modality: "webSearch"
+      })
+    );
   });
 
 
@@ -260,9 +328,17 @@ describe("media endpoints without a model", () => {
     expect(calledModels(mocks.handleVideoGenerationCore)).toEqual(["veoaifree-web/veo"]);
   });
 
+  describe("async video routes for a stored caller key", () => {
+    beforeEach(() => {
+      mocks.resolveClientApiKey.mockResolvedValue({
+        apiKey: "video-route-secret", auth: { ok: true, stored: true, apiKeyId: "video-route-owner" }
+      });
+    });
+    const accepted = (resourceId) => ({ ...ok({ request_id: resourceId }), job: { resourceId } });
+
   it("async video jobs take the first async-capable route model and put it in the body", async () => {
     catalog({ video: [entry("veoaifree-web/veo"), entry("xai/grok-imagine-video")] });
-    mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r1" }));
+    mocks.handleVideoProxyCore.mockResolvedValue(accepted("r1"));
 
     const res = await handleVideoCreate(post("/v1/videos/generations", { prompt: "waves" }), "generations");
 
@@ -280,7 +356,7 @@ describe("media endpoints without a model", () => {
 
   it("a multipart job goes to the provider its model field names, prefix stripped", async () => {
     catalog({ video: [entry("minimax/MiniMax-H3"), entry("xai/grok-imagine-video")] });
-    mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r2" }));
+    mocks.handleVideoProxyCore.mockResolvedValue(accepted("r2"));
     const res = await handleVideoCreate(multipart({ model: "xai/grok-imagine-video", prompt: "x", image: new File(["img"], "a.png") }), "edits");
     expect(res.status).toBe(200);
     const call = mocks.handleVideoProxyCore.mock.calls[0][0];
@@ -292,8 +368,9 @@ describe("media endpoints without a model", () => {
 
   it("a multipart job without a model gets the route's model written in", async () => {
     catalog({ video: [entry("veoaifree-web/veo"), entry("xai/grok-imagine-video-1.5")] });
-    mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r4" }));
-    await handleVideoCreate(multipart({ prompt: "x", image: new File(["img"], "a.png") }), "edits");
+    mocks.handleVideoProxyCore.mockResolvedValue(accepted("r4"));
+    const res = await handleVideoCreate(multipart({ prompt: "x", image: new File(["img"], "a.png") }), "edits");
+    expect(res.status).toBe(200);
     const call = mocks.handleVideoProxyCore.mock.calls[0][0];
     expect(call.provider).toBe("xai");
     const form = await new Response(call.rawBody, { headers: { "content-type": call.contentType } }).formData();
@@ -303,13 +380,16 @@ describe("media endpoints without a model", () => {
 
   it("a multipart job with a bare model forwards the original bytes", async () => {
     catalog({ video: [entry("minimax/MiniMax-H3"), entry("xai/grok-imagine-video")] });
-    mocks.handleVideoProxyCore.mockResolvedValue(ok({ request_id: "r3" }));
+    mocks.handleVideoProxyCore.mockResolvedValue(accepted("r3"));
     const req = multipart({ model: "grok-imagine-video", prompt: "x" });
     const contentType = req.headers.get("content-type");
-    await handleVideoCreate(req, "edits");
+    const raw = await req.clone().arrayBuffer();
+    const res = await handleVideoCreate(req, "edits");
+    expect(res.status).toBe(200);
     const call = mocks.handleVideoProxyCore.mock.calls[0][0];
     expect(call.provider).toBe("xai");
     expect(call.contentType).toBe(contentType);
+    expect(Buffer.from(call.rawBody)).toEqual(Buffer.from(raw));
   });
 
   it("a bare video id must match exactly and name one provider", async () => {
@@ -322,20 +402,32 @@ describe("media endpoints without a model", () => {
     expect(mocks.handleVideoProxyCore).not.toHaveBeenCalled();
   });
 
-  it("an unpinned poll asks for x-connection-id when more than one job provider is connected", async () => {
-    catalog({ video: [entry("xai/grok-imagine-video"), entry("minimax/MiniMax-H3")] });
-    const res = await handleVideoGet(new Request("http://localhost/v1/videos/r1"), "r1");
-    expect(res.status).toBe(400);
-    expect((await res.json()).error.message).toContain("x-connection-id");
-    expect(mocks.handleVideoProxyCore).not.toHaveBeenCalled();
-  });
-
-  it("an unpinned poll goes to the only connected job provider", async () => {
-    catalog({ video: [entry("veoaifree-web/veo"), entry("xai/grok-imagine-video")] });
-    mocks.handleVideoProxyCore.mockResolvedValue(ok({ status: "done" }));
-    const res = await handleVideoGet(new Request("http://localhost/v1/videos/r1"), "r1");
+  it.each([
+    ["xai", "grok-imagine-video"],
+    ["minimax", "MiniMax-H3"]
+  ])("an owned poll stays on its original %s provider and account regardless of current routes", async (provider, model) => {
+    mocks.getSettings.mockResolvedValue({ mediaRoutes: { video: ["veoaifree-web/veo"] } });
+    mocks.getProviderConnectionById.mockResolvedValue({ id: "c1", provider });
+    mocks.getMediaJob.mockResolvedValue({
+      provider, model, connectionId: "c1", resourceId: "r1", apiKeyId: "video-route-owner",
+      usageEventId: "video:route-test", endpoint: "/v1/videos/generations"
+    });
+    mocks.handleVideoProxyCore.mockResolvedValue(ok({ status: "pending" }));
+    const res = await handleVideoGet(new Request("http://localhost/v1/videos/r1", {
+      headers: { "x-9router-connection-id": "c1" }
+    }), "r1");
     expect(res.status).toBe(200);
-    expect(mocks.handleVideoProxyCore.mock.calls[0][0].provider).toBe("xai");
+    expect(await res.json()).toEqual({ status: "pending" });
+    expect(res.headers.get("x-9router-connection-id")).toBe("c1");
+    expect(mocks.getMediaJob).toHaveBeenCalledWith({ provider, connectionId: "c1", resourceId: "r1" }, "video-route-owner");
+    expect(mocks.getProviderCredentialsWithQuotaPreflight).toHaveBeenCalledWith(provider, null, null, {
+      preferredConnectionId: "c1", strictConnectionId: "c1", apiKeyId: "video-route-owner", videoPoll: true
+    });
+    expect(mocks.handleVideoProxyCore).toHaveBeenCalledTimes(1);
+    expect(mocks.handleVideoProxyCore.mock.calls[0][0]).toMatchObject({
+      provider, requestId: "r1", credentials: { connectionId: "c1" }
+    });
+    expect(mocks.buildModelsList).not.toHaveBeenCalled();
   });
 
   it("async video jobs without a connected video provider fail with no_provider_for_kind", async () => {
@@ -344,5 +436,6 @@ describe("media endpoints without a model", () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error.code).toBe("no_provider_for_kind");
     expect(mocks.handleVideoProxyCore).not.toHaveBeenCalled();
+  });
   });
 });

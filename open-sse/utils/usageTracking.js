@@ -8,6 +8,9 @@ import { getPricingForModel, calculateCostFromTokens } from "../providers/pricin
 // Legacy per-chunk usage console line; off by default (superseded by "📊 done")
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const DEBUG_USAGE = process.env.LOG_USAGE_VERBOSE === "1";
+// USD receipts are JSON numbers. Missing/malformed values may use estimated
+// pricing later, but must never be coerced into authoritative zero-dollar usage.
+const isUsdReceipt = (value) => isNumber(value) && Number.isFinite(value) && value >= 0;
 
 // ANSI color codes
 export const COLORS = {
@@ -77,24 +80,24 @@ export function filterUsageForFormat(usage, targetFormat) {
     [FORMATS.CLAUDE]: [
     'input_tokens', 'output_tokens',
     'cache_read_input_tokens', 'cache_creation_input_tokens',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second'],
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.GEMINI]: [
     'promptTokenCount', 'candidatesTokenCount', 'totalTokenCount',
     'cachedContentTokenCount', 'thoughtsTokenCount',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second'],
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.OPENAI_RESPONSES]: [
     'input_tokens', 'output_tokens',
     'input_tokens_details', 'output_tokens_details',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second'],
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     // OpenAI format (default for OPENAI, CODEX, KIRO, etc.)
     default: [
     'prompt_tokens', 'completion_tokens', 'total_tokens',
     'cached_tokens', 'reasoning_tokens',
     'prompt_tokens_details', 'completion_tokens_details', 'output_tokens_details',
-    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'tokens_per_second']
+    'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second']
 
   };
 
@@ -151,9 +154,9 @@ export function normalizeUsage(usage) {
   assignNumber("cache_creation_input_tokens", usage?.cache_creation_input_tokens);
   assignNumber("cached_tokens", usage?.cached_tokens);
   assignNumber("reasoning_tokens", usage?.reasoning_tokens);
-  assignNumber("cost_usd", usage?.cost_usd);
-  assignNumber("cost_in_usd", usage?.cost_in_usd);
-  assignNumber("cost_in_usd_ticks", usage?.cost_in_usd_ticks);
+  for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
+    if (isUsdReceipt(usage[field])) normalized[field] = usage[field];
+  }
   // Kiro meters in credits, not tokens — preserve through normalization
   // (consumption is never negative; drop malformed null/negative values)
   const kiroCredits = usage?.kiro_credits !== null && usage?.kiro_credits !== undefined ?
@@ -240,13 +243,10 @@ export function canonicalizeUsage(usage) {
     cached_tokens: cached,
     cache_creation_input_tokens: cacheCreation
   };
-  if (Number.isFinite(Number(usage.cost_usd))) result.cost_usd = Number(usage.cost_usd);
-  if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
-  if (Number.isFinite(Number(usage.cost_in_usd_ticks))) result.cost_in_usd_ticks = Number(usage.cost_in_usd_ticks);
+  if (isUsdReceipt(usage.cost_usd)) result.cost_usd = usage.cost_usd;
+  if (isUsdReceipt(usage.cost_in_usd)) result.cost_in_usd = usage.cost_in_usd;
+  if (isUsdReceipt(usage.cost_in_usd_ticks)) result.cost_in_usd_ticks = usage.cost_in_usd_ticks;
   if (reasoning > 0) result.reasoning_tokens = reasoning;
-  if (Number.isFinite(Number(usage.cost_usd))) result.cost_usd = Number(usage.cost_usd);
-  if (Number.isFinite(Number(usage.cost_in_usd))) result.cost_in_usd = Number(usage.cost_in_usd);
-  if (Number.isFinite(Number(usage.cost_in_usd_ticks))) result.cost_in_usd_ticks = Number(usage.cost_in_usd_ticks);
   const kiroCredits = usage.kiro_credits !== null && usage.kiro_credits !== undefined ?
   Number(usage.kiro_credits) : NaN;
   if (Number.isFinite(kiroCredits) && kiroCredits >= 0) {
@@ -271,15 +271,20 @@ export function canonicalizeUsage(usage) {
  */
 export function enrichUsageCost(usage, provider, model) {
   if (!usage || !isObject(usage)) return usage;
-  if (Number.isFinite(Number(usage.cost_usd)) || Number.isFinite(Number(usage.cost_in_usd))) return usage;
+  if ([usage.cost_usd, usage.cost_in_usd, usage.cost_in_usd_ticks].some(isUsdReceipt)) return usage;
 
   const pricing = getPricingForModel(provider, model);
   if (!pricing) return usage;
 
   const cost = calculateCostFromTokens(canonicalizeUsage(usage) || usage, pricing);
-  if (!Number.isFinite(cost) || cost <= 0) return usage;
+  if (!Number.isFinite(cost) || cost < 0) return usage;
 
-  return { ...usage, cost_usd: cost };
+  // Client-format token counts may include a buffer. This public builtin
+  // estimate is not the ledger's operator-configured/raw-token valuation.
+  return { ...usage, cost_usd: cost, cost_details: {
+    status: "estimated", source: "builtin", basis: "response_token_counts",
+    unit: "USD_per_million_tokens", rates: { ...pricing },
+  } };
 }
 
 /**
@@ -408,7 +413,7 @@ export function extractUsage(chunk) {
       cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
       // OpenRouter reports cost as a bare USD number on usage; same unit as cost_usd.
-      cost_usd: Number.isFinite(Number(chunk.usage.cost)) ? Number(chunk.usage.cost) : chunk.usage.cost_usd,
+      cost_usd: isUsdReceipt(chunk.usage.cost) ? chunk.usage.cost : chunk.usage.cost_usd,
       cost_in_usd: chunk.usage.cost_in_usd,
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
       prompt_tokens_details: chunk.usage.prompt_tokens_details,

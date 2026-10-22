@@ -37,6 +37,8 @@ import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
 import { isOverLimit as isRpdOverLimit, recordRequest as recordRpdRequest, retryAfterMs as rpdRetryAfterMs } from "./rpdLimiter.js";
 import { evaluatePeakHourProtection } from "@/lib/providers/peakHourProtection";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
+import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
+import { captureRequestBillingEpoch } from "../utils/requestCorrelation.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
@@ -1596,22 +1598,26 @@ export function extractApiKeyCandidates(request) {
  * Resolve all credentials presented by one request and return the credential
  * that authenticated. Unknown placeholder keys remain allowed only in local
  * mode, after every candidate has been checked for a valid stored identity.
+ * auth.billingEpoch is captured before credential reads and remains bound to
+ * this Request across retries. Pass it unchanged into every usage event and
+ * durable job; completion must never look up the current billing generation.
  *
  * @param {Request} request
  * @param {{ required?: boolean, now?: number }} options
- * @returns {Promise<{apiKey: string | null, auth: { apiKeyId?: string, ok: boolean }}>}
+ * @returns {Promise<{apiKey: string | null, auth: { apiKeyId?: string, ok: boolean, billingEpoch: string | null }}>}
  */
 export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
+  const billingEpoch = await captureRequestBillingEpoch(request);
   const candidates = extractApiKeyCandidates(request);
   if (await hasValidCliToken(request)) {
-    return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true } };
+    return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true, billingEpoch } };
   }
   for (const apiKey of candidates) {
     const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
-    if (auth.ok) return { apiKey, auth };
+    if (auth.ok) return { apiKey, auth: { ...auth, billingEpoch } };
   }
   const apiKey = candidates[0] || null;
-  return { apiKey, auth: await evaluateApiKeyCredential(apiKey, { required, now }) };
+  return { apiKey, auth: { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch } };
 }
 
 /**
@@ -1645,5 +1651,7 @@ async function evaluateApiKeyCredential(apiKey, { required, now }) {
 
 export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now(), request = null } = {}) {
   if (request) return (await resolveClientApiKey(request, { required, now })).auth;
-  return evaluateApiKeyCredential(apiKey, { required, now });
+  // Without a Request, this call is admission; callers must retain its result.
+  const billingEpoch = await getBillingEpoch();
+  return { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch };
 }

@@ -73,3 +73,37 @@ There is no CSV export for usage. **Download Backup** under **Profile → Data &
 ## Prices
 
 Estimated cost uses the built-in model prices. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep their original estimate. Compare estimates with provider billing before using them for financial decisions.
+
+Successful media operations preserve provider USD receipts when available, including explicit zero. Without a receipt, supported builtin audio rates or explicitly configured native tariffs can produce an estimate; otherwise native costs remain unknown. Token price overrides alone do not define per-image, per-second, or per-job prices. An unpriced or subscription-backed model is not automatically free. Chat token pricing is an estimate, and its configured rates may differ from subscription billing.
+
+Dollar budgets currently compare recorded numeric spend only. Unknown-cost requests count toward successful request and token allowances when reported, but add no amount to dollar totals; a zero total therefore does not prove free usage or enforce a hard spending cap for unpriced work. Failed or denied requests do not consume successful-use allowances. Keep these limits in mind when granting access to models without authoritative prices.
+
+
+## Native-unit rate overrides
+
+Operators can configure one flat native rate for an exact provider/model through authenticated `PATCH /api/pricing`. Rates are USD per unit, separate from the existing token rates in USD per million tokens. For example, the following **illustrative operator tariff** estimates $0.25 for each returned image; it is not a vendor price recommendation:
+
+```json
+{ "openrouter": { "your-exact-image-model": { "native": { "unit": "image", "rate": 0.25 } } } }
+```
+
+| Unit | Measured quantity | Supported usage |
+| --- | --- | --- |
+| `image` | `nativeUnits.images` | Returned image artifacts, including edits |
+| `audio_second` | `nativeUnits.audioSeconds` | Reported transcription, speech or music duration |
+| `video_second` | `nativeUnits.videoSeconds` | Reported completed video duration |
+| `video_job` | `nativeUnits.videoJobs` | One successfully completed asynchronous video job |
+| `character` | `nativeUnits.characters` | Characters measured by the speech handler |
+
+Rates and quantities must be finite nonnegative numbers. Image, character and job quantities must be integers; durations may be fractional seconds. Requested image counts, requested duration, prompts and unfinished polls are not substituted for missing output measurements. A zero rate with a measured quantity is an estimated zero; a missing quantity remains unknown even when the configured rate is zero.
+
+There is one native tariff per exact provider/model, without alias or pattern inheritance. It replaces an unknown or estimated native valuation. An authoritative numeric provider USD receipt, including zero, takes precedence. Native tariffs never become token rates or add a second charge to the same event. Without a native tariff, existing receipt/builtin behavior is preserved. Configure a flat tariff only when it applies to every measured unit for that model. Per-size, quality, resolution and tiered native tariffs are not supported: extra tariff fields are rejected, and no such dimensions or prices are guessed.
+
+`GET /api/pricing` returns saved native tariffs alongside token pricing; token edits preserve native fields in the returned document. `PATCH` replaces the supplied model's override object, so include its native field when retaining it. The existing model/provider/all reset endpoints remove the relevant native overrides too. The dashboard's token-rate editor is not a native-tariff editor.
+
+The first successful ledger commit snapshots the selected native rate, unit, measured quantity, provider/model and override origin in `meta.pricing`, with `costStatus: "estimated"` and `costSource: "native-pricing"`. Later edits, resets, duplicate polls and process reopen do not reprice committed events. Numeric estimates feed the same lifetime and monthly dollar-budget counters as provider charges; unknown costs remain separately counted. Subscription-equivalent token prices and configured native prices are estimates, not proof of a provider invoice.
+
+Media response bodies and any provider usage fields remain provider evidence. DurinDoor does not add a native-cost response header or rewrite binary/streaming bodies with ledger estimates. The ledger and usage analytics identify the operator estimate through the provenance above.
+
+
+For chat responses, a generated `usage.cost_usd` carries `cost_details.status: "estimated"`, `source: "builtin"`, the builtin rate snapshot and `basis: "response_token_counts"`. Those client token counts may include the existing response buffer. The accounting ledger uses recorded counts and applicable operator overrides, so its estimate can differ. A provider USD receipt is retained without replacing it with this builtin estimate. Do not treat a generated response estimate as a provider invoice or as proof of the ledger's exact committed amount.

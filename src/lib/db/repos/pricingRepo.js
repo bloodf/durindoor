@@ -1,6 +1,8 @@
+import { isNumber } from "../../../shared/utils/typeChecks.js";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { makeKv } from "../helpers/kvStore.js";
+import { isValidNativePricing, NATIVE_PRICING_UNITS } from "../../../shared/utils/nativePricing.js";
 
 const pricingKv = makeKv("pricing");
 const CACHE_TTL_MS = 5000;
@@ -22,10 +24,19 @@ export async function getUserPricing() {
   return await pricingKv.getAll();
 }
 
-function editableRates(pricing) {
+function editableTokenRates(pricing) {
   return Object.fromEntries(
     Object.entries(pricing).filter(([key]) => EDITABLE_PRICING_FIELDS.has(key))
   );
+}
+
+function editableRates(pricing) {
+  const result = editableTokenRates(pricing);
+  if (Object.hasOwn(pricing, "native")) {
+    if (!isValidNativePricing(pricing.native)) throw new TypeError("Invalid native pricing: expected one supported unit and finite nonnegative USD rate");
+    result.native = { ...pricing.native };
+  }
+  return result;
 }
 
 function mergeCurrentPricing(defaultPricing, customPricing) {
@@ -66,9 +77,12 @@ export async function getPricing() {
   return merged;
 }
 
-export async function getPricingForModel(provider, model) {
+// Resolve rates and their origin together so the ledger never pairs a price
+// with a later override read. Existing callers still receive only the rates.
+export async function resolvePricingForModel(provider, model) {
   if (!model) return null;
   const userPricing = await getUserPricing();
+  let overrideModel = model;
   let customPricing = provider ? userPricing[provider]?.[model] : null;
   // Kiro GPT-5.6 synthetic variants (#2596): a user override saved on the bare
   // tier (e.g. kiro["gpt-5.6-sol"]) must also cover its `-thinking`/`-agentic`
@@ -77,17 +91,62 @@ export async function getPricingForModel(provider, model) {
   if (!customPricing && kiroVariants.isKiroFamilyProvider(provider)) {
     const { stripKiroSyntheticSuffixes } = kiroVariants;
     const canonical = stripKiroSyntheticSuffixes(model);
-    if (canonical !== model) customPricing = userPricing[provider]?.[canonical];
+    if (canonical !== model) {
+      customPricing = userPricing[provider]?.[canonical];
+      if (customPricing) overrideModel = canonical;
+    }
   }
   const { canonicalModelId, getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
   const defaultPricing = resolveConst(provider, model);
   if (!customPricing) {
     const canonical = canonicalModelId(provider, model);
-    if (canonical !== model) customPricing = userPricing[provider]?.[canonical];
+    if (canonical !== model) {
+      customPricing = userPricing[provider]?.[canonical];
+      if (customPricing) overrideModel = canonical;
+    }
   }
-  return customPricing
-    ? mergeCurrentPricing(defaultPricing, customPricing)
-    : defaultPricing;
+  const overrides = customPricing ? editableTokenRates(customPricing) : {};
+  const pricing = Object.keys(overrides).length ? { ...defaultPricing, ...overrides } : defaultPricing;
+  if (!pricing) return null;
+  const provenance = {
+    source: Object.keys(overrides).length ? "override" : "builtin",
+    unit: "USD_per_million_tokens",
+    provider,
+    model,
+    rates: { ...pricing },
+  };
+  if (Object.keys(overrides).length) {
+    provenance.overrideModel = overrideModel;
+    provenance.overrides = overrides;
+  }
+  return { pricing, provenance };
+}
+
+export async function getPricingForModel(provider, model) {
+  return (await resolvePricingForModel(provider, model))?.pricing ?? null;
+}
+
+/** Exact provider/model native tariff; no alias, prefix, token or vendor fallback. */
+export async function resolveNativePricing(provider, model, modality, nativeUnits) {
+  if (!provider || !model || !modality) return null;
+  const configured = (await getUserPricing())[provider]?.[model]?.native;
+  if (configured === undefined) return null;
+  if (!isValidNativePricing(configured)) throw new TypeError("Invalid stored native pricing");
+  const spec = NATIVE_PRICING_UNITS[configured.unit];
+  const quantity = nativeUnits?.[spec.quantity];
+  if (!spec.modalities.includes(modality)) return null;
+  if (quantity === undefined) {
+    return { cost: null, split: null, costStatus: "unknown", costSource: "unavailable" };
+  }
+  if (!isNumber(quantity) || !Number.isFinite(quantity) || quantity < 0 ||
+      (spec.integer && !Number.isInteger(quantity))) throw new TypeError("Invalid native pricing quantity");
+  const cost = quantity * configured.rate;
+  if (!Number.isFinite(cost)) throw new TypeError("Native pricing cost overflow");
+  return {
+    cost, split: null, costStatus: "estimated", costSource: "native-pricing",
+    pricing: { source: "override", currency: "USD", unit: configured.unit, rate: configured.rate,
+      quantity, quantityField: spec.quantity, provider, model, overrideModel: model },
+  };
 }
 
 // Atomic merge inside transaction (per-provider read-modify-write)

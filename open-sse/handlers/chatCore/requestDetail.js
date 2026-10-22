@@ -103,8 +103,10 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
 /**
  * Persist normalized usage. A non-success status keeps billable accounting
  * without allowing persistence to complete an errored live session.
+ * billingEpoch is the original admission stamp, including pre-cutover null.
+ * Never read the current epoch here: the ledger rejects stale in-flight usage.
  */
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, billingEpoch, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
   if (!tokens || !isObject(tokens)) return;
 
   const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
@@ -142,6 +144,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     ttftMs: latency?.ttft || 0,
     status: status || undefined,
     usageEventId: usageEventId || undefined,
+    billingEpoch,
     // #747: set only for requests dispatched through a combo. Historic rows
     // (and requests with no combo) stay NULL; never inferred/backfilled.
     comboId: comboId || undefined,

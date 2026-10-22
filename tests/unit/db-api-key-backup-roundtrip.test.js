@@ -46,8 +46,8 @@ describe("API-key database backup", () => {
       ],
     );
     db.run(
-      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
-      ["key-1", 44, 1.25, 3, "2026-01-02T00:00:00.000Z"],
+      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
+      ["key-1", 44, 1.25, 3, 2, "2026-01-02T00:00:00.000Z"],
     );
 
     const snapshot = await database.exportDb();
@@ -62,7 +62,7 @@ describe("API-key database backup", () => {
       expiresAt: "2030-01-01T00:00:00.000Z",
       createdAt: "2026-01-01T00:00:00.000Z",
     });
-    expect(snapshot.apiKeyUsageTotals[0]).toMatchObject({ totalTokens: 44, totalCost: 1.25, totalRequests: 3 });
+    expect(snapshot.apiKeyUsageTotals[0]).toMatchObject({ totalTokens: 44, totalCost: 1.25, totalRequests: 3, unknownCostRequests: 2 });
 
     db.run(`UPDATE apiKeys SET key = 'sk-feedface', name = 'changed', machineId = 'changed', isActive = 1,
       allowedCombos = '[]', dailyLimitTokens = NULL, policy = NULL, expiresAt = NULL,
@@ -81,10 +81,11 @@ describe("API-key database backup", () => {
       expiresAt: "2030-01-01T00:00:00.000Z",
       createdAt: "2026-01-01T00:00:00.000Z",
     });
-    expect(db.get(`SELECT totalTokens, totalCost, totalRequests FROM apiKeyUsageTotals WHERE apiKeyId = 'key-1'`)).toEqual({
+    expect(db.get(`SELECT totalTokens, totalCost, totalRequests, unknownCostRequests FROM apiKeyUsageTotals WHERE apiKeyId = 'key-1'`)).toEqual({
       totalTokens: 44,
       totalCost: 1.25,
       totalRequests: 3,
+      unknownCostRequests: 2,
     });
   });
 
@@ -120,6 +121,7 @@ describe("API-key database backup", () => {
       totalTokens: 0,
       totalCost: 0,
       totalRequests: 0,
+      unknownCostRequests: 0,
     });
     expect(db.get(`SELECT key FROM apiKeys WHERE id = 'key-legacy'`).key).toBe(secret);
     await expect(database.getApiKeyUsageLimitStatus(secret, new Date("2026-01-02T12:00:00.000Z"))).resolves.toMatchObject({
@@ -145,6 +147,17 @@ describe("API-key database backup", () => {
     expect(snapshot.apiKeyUsageTotals[0]).toMatchObject({ totalTokens: 2, totalCost: 0.01, totalRequests: 1 });
     await expect(database.importDb(snapshot)).resolves.toBeDefined();
     expect(await database.getApiKeyUsageTotals("fractional")).toMatchObject({ totalTokens: 2, totalCost: 0.01, totalRequests: 1 });
+  });
+
+  it("imports older totals without an unknown-cost counter as zero", async () => {
+    const database = await import("@/lib/db/index.js");
+    await database.importDb({
+      apiKeys: [{ id: "legacy-total", key: "sk-deadbeef" }],
+      apiKeyUsageTotals: [{ apiKeyId: "legacy-total", totalTokens: 9, totalCost: 0.5, totalRequests: 3 }],
+    });
+    expect(await database.getApiKeyUsageTotals("legacy-total")).toMatchObject({
+      totalTokens: 9, totalCost: 0.5, totalRequests: 3, unknownCostRequests: 0,
+    });
   });
 
   it("rejects duplicate secrets and malformed policies without changing the database", async () => {
@@ -181,6 +194,10 @@ describe("API-key database backup", () => {
 
   it.each([
     [{ totalTokens: "1", totalCost: 0, totalRequests: 1 }, "totalTokens"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: -1 }, "unknownCostRequests"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: 0.5 }, "unknownCostRequests"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: "1" }, "unknownCostRequests"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: null }, "unknownCostRequests"],
     [{ totalTokens: 1, totalCost: Number.NaN, totalRequests: 1 }, "totalCost"],
     [{ totalTokens: 1, totalCost: 0, totalRequests: 1.5 }, "totalRequests"],
     [{ totalTokens: 1, totalCost: 0, totalRequests: 1, updatedAt: "2030-01-01T00:00:00" }, "updatedAt"],
@@ -232,6 +249,7 @@ describe("API-key database backup", () => {
         { apiKeyId: "offset", totalTokens: 9, totalCost: 0.25, totalRequests: 2, updatedAt: "2026-01-02T00:00:00.000Z" },
         { apiKeyId: "historical", totalTokens: 0, totalCost: 0, totalRequests: 0 },
       ],
+      usageEventReceipts: [],
     });
 
     expect(db.get(`SELECT key, expiresAt FROM apiKeys WHERE id = 'offset'`)).toEqual({
@@ -285,5 +303,137 @@ describe("API-key database backup", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toBe("API key corrupt-expiry has invalid expiresAt storage");
     expect(error.message).not.toContain(secret);
+  });
+  it.each([undefined, []])("cuts over unproven charged backups without inventing receipts (%j)", async (receipts) => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const { getBillingEpoch, saveRequestUsage } = await import("@/lib/db/repos/usageRepo.js");
+    const { createMediaJob, getMediaJob, finishMediaJob } = await import("@/lib/db/repos/mediaJobsRepo.js");
+    const { createNativeResourceOwner, readNativeResourceOwner } = await import("../../src/sse/services/nativeResourceOwners.js");
+    const db = await getAdapter();
+    const billingEpoch = await getBillingEpoch();
+    const identity = { provider: "openai", connectionId: "connection", resourceId: "resource" };
+    const job = await createMediaJob({ ...identity, apiKeyId: "legacy", model: "model", endpoint: "/v1/videos", usageEventId: "terminal", billingEpoch });
+    const owner = { ...identity, ownerId: "legacy", usageEventId: "native-terminal", billingEpoch };
+    await createNativeResourceOwner(owner);
+    const totals = { apiKeyId: "legacy", totalTokens: 9, totalCost: 0.5, totalRequests: 3, unknownCostRequests: 2 };
+    const snapshot = await database.importDb({
+      apiKeys: [{ id: "legacy", key: "sk-cutover" }],
+      apiKeyUsageTotals: [totals],
+      ...(receipts === undefined ? {} : { usageEventReceipts: receipts }),
+    });
+    expect(await database.getApiKeyUsageTotals("legacy")).toMatchObject(totals);
+    expect(snapshot.usageEventReceipts).toEqual([]);
+    expect(snapshot.usageEventReceiptsVersion).toBeNull();
+    expect(snapshot.billingCutoverVersion).toBe(1);
+    expect(snapshot.billingEpoch).not.toBe(billingEpoch);
+    expect(await getMediaJob(identity, "legacy")).toBeNull();
+    await expect(finishMediaJob(job, "legacy", { status: "succeeded" })).rejects.toThrow("billing epoch");
+    await expect(createMediaJob(job)).rejects.toThrow("billing epoch");
+    expect(await readNativeResourceOwner(identity.provider, identity.connectionId, identity.resourceId)).toBeNull();
+    await expect(createNativeResourceOwner(owner)).rejects.toThrow("billing epoch");
+    const event = { apiKey: "sk-cutover", usageEventId: "terminal", tokens: { prompt_tokens: 2, completion_tokens: 1 }, cost: 0.25, strict: true };
+    await expect(saveRequestUsage({ ...event, billingEpoch })).rejects.toThrow("billing epoch");
+    await expect(saveRequestUsage(event)).rejects.toThrow("billing epoch");
+    expect(await database.getApiKeyUsageTotals("legacy")).toMatchObject(totals);
+    const current = await getBillingEpoch();
+    await createMediaJob({ ...job, billingEpoch: current });
+    await createNativeResourceOwner({ ...owner, billingEpoch: current });
+    expect(await readNativeResourceOwner(identity.provider, identity.connectionId, identity.resourceId)).toMatchObject({ billingEpoch: current });
+    await saveRequestUsage({ ...event, billingEpoch: current });
+    await saveRequestUsage({ ...event, billingEpoch: current });
+    expect(await database.getApiKeyUsageTotals("legacy")).toMatchObject({ totalTokens: 12, totalCost: 0.75, totalRequests: 4, unknownCostRequests: 2 });
+    expect(db.get("SELECT usageEventId FROM usageHistory").usageEventId).toBe(JSON.stringify(["billing", current, "terminal"]));
+    const backup = await database.exportDb();
+    const restored = await database.importDb(backup);
+    expect(restored.billingEpoch).not.toBe(current);
+    expect(restored.usageEventReceipts).toEqual(backup.usageEventReceipts);
+    expect(restored.usageEventReceiptsVersion).toBeNull();
+    expect(await getMediaJob(identity, "legacy")).toBeNull();
+    await expect(saveRequestUsage({ ...event, billingEpoch: current })).rejects.toThrow("billing epoch");
+    expect(await database.getApiKeyUsageTotals("legacy")).toMatchObject({ totalTokens: 12, totalCost: 0.75, totalRequests: 4 });
+  });
+
+  it("does not infer receipt completeness from an empty key ledger", async () => {
+    // An existing legacy file has no exclusive-creation provenance, even when
+    // its key ledger is empty. Do not model it by creating a new installation.
+    const dbDir = path.join(tempDir, "db");
+    fs.mkdirSync(dbDir, { recursive: true });
+    fs.writeFileSync(path.join(dbDir, "data.sqlite"), "");
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const db = await getAdapter();
+    db.run("INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', '7') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+    expect((await database.exportDb()).usageEventReceiptsVersion).toBeNull();
+  });
+
+  it.each([null, "modern-generation"])("restores snapshot A without B receipts and fences old replay for epoch %j", async (billingEpoch) => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const { saveRequestUsage, getBillingEpoch } = await import("@/lib/db/repos/usageRepo.js");
+    const { createMediaJob, getMediaJob, finishMediaJob } = await import("@/lib/db/repos/mediaJobsRepo.js");
+    const db = await getAdapter();
+    db.run("INSERT INTO apiKeys(id, key, createdAt) VALUES('modern', 'sk-modern', ?)", [new Date().toISOString()]);
+    if (billingEpoch !== null) db.run("INSERT INTO kv(scope, key, value) VALUES('billing', 'epoch', ?)", [JSON.stringify(billingEpoch)]);
+    const eventA = { apiKey: "sk-modern", usageEventId: "event-a", billingEpoch, cost: 0.5, tokens: { prompt_tokens: 3 }, strict: true };
+    await saveRequestUsage(eventA);
+    const snapshotA = await database.exportDb();
+    expect(snapshotA.usageEventReceiptsVersion).toBe(1);
+    const eventB = { ...eventA, usageEventId: "event-b", cost: 0.25 };
+    await saveRequestUsage(eventB);
+    const job = await createMediaJob({ provider: "openai", connectionId: "connection", resourceId: "modern", apiKeyId: "modern", model: "model", endpoint: "/v1/videos", usageEventId: "event-b", billingEpoch });
+    expect(await database.getApiKeyUsageTotals("modern")).toMatchObject({ totalTokens: 6, totalCost: 0.75, totalRequests: 2 });
+    const restored = await database.importDb(snapshotA);
+    expect(restored.usageEventReceipts).toEqual(snapshotA.usageEventReceipts);
+    expect(restored.billingEpoch).not.toBe(billingEpoch);
+    expect(await getMediaJob(job, "modern")).toBeNull();
+    await expect(finishMediaJob(job, "modern", { status: "succeeded" })).rejects.toThrow("billing epoch");
+    for (const event of [eventA, eventB]) await expect(saveRequestUsage(event)).rejects.toThrow("billing epoch");
+    expect(await database.getApiKeyUsageTotals("modern")).toMatchObject({ totalTokens: 3, totalCost: 0.5, totalRequests: 1 });
+    // Export and pruning must not backfill B from retained analytics.
+    expect((await database.exportDb()).usageEventReceipts).toEqual(snapshotA.usageEventReceipts);
+    await database.resetUsageHistory("all");
+    expect((await database.exportDb()).usageEventReceipts).toEqual(snapshotA.usageEventReceipts);
+    const fresh = { ...eventB, billingEpoch: await getBillingEpoch() };
+    await saveRequestUsage(fresh);
+    await saveRequestUsage(fresh);
+    expect(await database.getApiKeyUsageTotals("modern")).toMatchObject({ totalTokens: 6, totalCost: 0.75, totalRequests: 2 });
+  });
+
+  it("rejects sql.js restore before mutation while ordinary fallback accounting still works", async () => {
+    const database = await import("@/lib/db/index.js");
+    const { getAdapter } = await import("@/lib/db/driver.js");
+    const native = await getAdapter();
+    native.checkpoint();
+    const { createSqlJsAdapter } = await import("@/lib/db/adapters/sqljsAdapter.js");
+    const signals = ["beforeExit", "SIGINT", "SIGTERM"];
+    const listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+    const fallback = await createSqlJsAdapter(path.join(tempDir, "db", "data.sqlite"));
+    global._dbAdapter.instance = fallback;
+    try {
+      fallback.run("INSERT INTO apiKeys(id, key, createdAt) VALUES('fallback', 'sk-fallback', ?)", [new Date().toISOString()]);
+      const usage = { apiKey: "sk-fallback", usageEventId: "fallback-a", cost: 0.25, strict: true };
+      await database.saveRequestUsage(usage);
+      const snapshot = await database.exportDb();
+      const before = Buffer.from(fallback.raw.export());
+      const run = vi.spyOn(fallback, "run");
+      const transaction = vi.spyOn(fallback, "transaction");
+      await expect(database.importDb(snapshot)).rejects.toThrow("transactional engine");
+      expect(run).not.toHaveBeenCalled();
+      expect(transaction).not.toHaveBeenCalled();
+      expect(Buffer.from(fallback.raw.export())).toEqual(before);
+      run.mockRestore();
+      transaction.mockRestore();
+      await database.saveRequestUsage({ ...usage, usageEventId: "fallback-b" });
+      expect(await database.getApiKeyUsageTotals("fallback")).toMatchObject({ totalRequests: 2, totalCost: 0.5 });
+    } finally {
+      fallback.close();
+      for (const signal of signals) {
+        for (const listener of process.listeners(signal)) {
+          if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);
+        }
+      }
+      global._dbAdapter.instance = native;
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   resolveClientApiKey,
   getNoAuthProviderCredentials,
@@ -25,6 +25,7 @@ const CREDENTIALED_PROVIDERS = new Set(
 );
 
 async function handleTtsHandler(request) {
+  await captureRequestBillingEpoch(request);
   let body;
   try {
     body = await request.json();
@@ -42,6 +43,8 @@ async function handleTtsHandler(request) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
+  // Capture once for combo retries and delayed stream EOF, preserving null.
+  const { billingEpoch } = apiKeyAuth;
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -67,7 +70,7 @@ async function handleTtsHandler(request) {
     return handleComboChat({
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId),
+      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),
       log,
       ...defaultRouteComboOptions("tts")
     });
@@ -93,7 +96,7 @@ async function handleTtsHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, comboRouting),
+      handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, comboRouting),
       log,
       comboName,
       comboStrategy,
@@ -101,17 +104,69 @@ async function handleTtsHandler(request) {
       comboMembers: combo?.members || []
     });
   }
-  return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId);
+  return handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch);
 }
 
-async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyId, comboRouting = null) {
+async function handleSingleModelTts(body, modelStr, responseFormat, language, request, apiKey, apiKeyId, billingEpoch, comboRouting = null) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
-  const estimatedTokens = String(body.input).length / 4;
+  /** Reuse request identity across retries; never parse or buffer audio for usage.
+   * Streaming EOF waits for completed accounting and a durable ledger write.
+   * Failed billing errors the response stream instead of reporting clean EOF.
+   */
+  const recordSuccess = (result, credentials) => {
+    const record = (accounting) => recordApiKeyUsageForResponse(apiKey, result.response, {
+      ...accounting,
+      billingEpoch,
+      usageEventId: `${getRequestId(request)}:tts`, provider, model,
+      connectionId: credentials.connectionId || null,
+      endpoint: "/v1/audio/speech", modality: "tts",
+    });
+    if (!result.accountingCompletion && (result.audioBuffered || !result.response.body)) return record(result.accounting);
+
+    // Observe rejection immediately, but persist only from the awaited EOF path.
+    const completion = result.accountingCompletion?.then(
+      (outcome) => ({ outcome }),
+      (error) => ({ error }),
+    );
+    const reader = result.response.body.getReader();
+    let cancelled = false;
+    const stream = new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (cancelled) return;
+          if (!done) {
+            controller.enqueue(value);
+            return;
+          }
+          const { outcome, error } = completion
+            ? await completion
+            : { outcome: { status: "completed", accounting: result.accounting } };
+          if (cancelled) return;
+          if (error) throw error;
+          if (outcome.status === "completed") await record(outcome.accounting);
+          if (cancelled) return;
+          controller.close();
+        } catch (error) {
+          if (!cancelled) controller.error(error);
+        }
+      },
+      cancel(reason) {
+        cancelled = true;
+        return reader.cancel(reason);
+      },
+    }, { highWaterMark: 0 });
+    return new Response(stream, {
+      status: result.response.status,
+      statusText: result.response.statusText,
+      headers: result.response.headers,
+    });
+  };
   log.info("ROUTING", `Provider: ${provider}, Voice: ${model}`);
 
   // Local/no-auth execution remains unrestricted only for keys with zero
@@ -131,9 +186,9 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const coreOptions = { ...body, provider, model, input: body.input, credentials, responseFormat, language };
+    const coreOptions = { ...body, provider, model, input: body.input, credentials, responseFormat, language, signal: request.signal };
     const result = await handleTtsCore(coreOptions);
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) return recordSuccess(result, credentials);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "TTS failed");
   }
 
@@ -165,9 +220,9 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleTtsCore({ ...body, provider, model, input: body.input, credentials, responseFormat, language });
+    const result = await handleTtsCore({ ...body, provider, model, input: body.input, credentials, responseFormat, language, signal: request.signal });
 
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) return recordSuccess(result, credentials);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key

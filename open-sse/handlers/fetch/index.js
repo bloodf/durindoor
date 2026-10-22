@@ -7,6 +7,7 @@ import {
   guardedProbeFetch
 } from "../../utils/outboundUrlGuard.js";
 import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
+import { mediaAccounting } from "../mediaAccounting.js";
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
 
@@ -27,6 +28,7 @@ function getDefaultFormat() {
  * @property {number} [status]
  * @property {string} [error]
  * @property {Object} [data]
+ * @property {Object} [accounting] Internal raw-receipt accounting, outside normalized data.
  */
 
 /**
@@ -238,11 +240,13 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Firecrawl error: ${r.res.status}` };
   }
+  const accounting = mediaAccounting(json, provider, "fetch");
   const d = json?.data || {};
   const text = truncate(d.markdown || d.html || d.text || "", maxCharacters);
   const title = d.metadata?.title || null;
   return {
     success: true,
+    accounting,
     data: buildData({
       provider, url, title, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -303,9 +307,13 @@ async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuer
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: body?.slice(0, 500) || `Jina error: ${r.res.status}` };
   }
+  let raw;
+  try { raw = JSON.parse(body); } catch { /* Plain text has no usage receipt. */ }
+  const accounting = mediaAccounting(raw, "jina-reader", "fetch");
   const text = truncate(body, maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "jina-reader", url, title: parseJinaTitle(body), format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -332,10 +340,12 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Tavily error: ${r.res.status}` };
   }
+  const accounting = mediaAccounting(json, "tavily", "fetch");
   const first = json?.results?.[0] || {};
   const text = truncate(first.raw_content || "", maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "tavily", url, title: null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -362,10 +372,12 @@ async function runExa({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Exa error: ${r.res.status}` };
   }
+  const accounting = mediaAccounting(json, "exa", "fetch");
   const first = json?.results?.[0] || {};
   const text = truncate(first.text || "", maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "exa", url, title: first.title || null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -404,10 +416,12 @@ async function runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
     return { success: false, status: 502, error: "Ollama response normalization failed: links must be an array" };
   }
 
+  const accounting = mediaAccounting(json, "ollama", "fetch");
   const byteLimited = truncateUtf8(json.content, providerConfig.truncateBytes);
   const text = truncate(byteLimited, maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "ollama", url, title: isString(json.title) ? json.title : null, format: fmt, text,
       links: json.links, costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -455,9 +469,13 @@ async function runContext7({ url, timeoutMs, apiKey, maxCharacters, costPerQuery
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: body?.slice(0, 500) || `Context7 error: ${r.res.status}` };
   }
+  let raw;
+  try { raw = JSON.parse(body); } catch { /* Plain text has no usage receipt. */ }
+  const accounting = mediaAccounting(raw, "context7", "fetch");
   const text = truncate(body, maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "context7", url: `https://context7.com${libraryId}`, title: `Context7 docs: ${libraryId}`, format: "markdown", text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -484,9 +502,11 @@ async function runNimble({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `Nimble error: ${r.res.status}` };
   }
+  const accounting = mediaAccounting(json, "nimble", "fetch");
   const text = truncate(json?.data?.markdown || json?.data?.html || "", maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "nimble", url, title: null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -510,9 +530,11 @@ async function runAnysearch({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
   if (!r.res.ok || (isNumber(json?.code) && json.code !== 0)) {
     return { success: false, status: r.res.ok ? 502 : r.res.status, error: json?.message || json?.error || `AnySearch error: ${r.res.status}` };
   }
+  const accounting = mediaAccounting(json, "anysearch", "fetch");
   const text = truncate(json?.data?.content || json?.data?.markdown || json?.content || "", maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "anysearch", url, title: json?.data?.title || null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
@@ -547,6 +569,7 @@ async function runTinyfish({ url, fmt, timeoutMs, apiKey, maxCharacters, costPer
   if (!r.res.ok) {
     return { success: false, status: r.res.status, error: json?.error || `TinyFish error: ${r.res.status}` };
   }
+  const accounting = mediaAccounting(json, "tinyfish", "fetch");
   const first = json?.results?.[0];
   if (!first) {
     const err = json?.errors?.[0];
@@ -555,6 +578,7 @@ async function runTinyfish({ url, fmt, timeoutMs, apiKey, maxCharacters, costPer
   const text = truncate(first.text || "", maxCharacters);
   return {
     success: true,
+    accounting,
     data: buildData({
       provider: "tinyfish", url, title: first.title || null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs

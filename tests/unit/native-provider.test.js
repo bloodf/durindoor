@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings, getApiKeyById: mocks.getApiKeyById, getApiKeyByKey: mocks.getApiKeyByKey, getApiKeyUsageLimitStatus: mocks.getApiKeyUsageLimitStatus, saveRequestUsage: mocks.saveRequestUsage }));
 vi.mock("@/sse/services/auth", () => ({ resolveClientApiKey: mocks.resolveClientApiKey, getProviderCredentialsWithQuotaPreflight: mocks.credentials }));
-vi.mock("@/sse/services/apiKeyPolicy", () => ({ enforceApiKeyModelPolicy: mocks.policy }));
+vi.mock("@/sse/services/apiKeyPolicy", async (importOriginal) => ({ ...await importOriginal(), enforceApiKeyModelPolicy: mocks.policy }));
 vi.mock("@/sse/services/model", () => ({ getModelInfo: mocks.model }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.fetch }));
 vi.mock("@/sse/services/nativeResourceOwners", () => ({ readNativeResourceOwner: mocks.readOwner, createNativeResourceOwner: mocks.createOwner }));
@@ -35,7 +35,7 @@ beforeEach(() => {
   mocks.getApiKeyByKey.mockResolvedValue(null);
   mocks.getApiKeyById.mockResolvedValue({ id: "key", key: "gateway" });
   mocks.getApiKeyUsageLimitStatus.mockResolvedValue({ exceeded: false });
-  mocks.readOwner.mockResolvedValue({ ownerId: "key" });
+  mocks.readOwner.mockResolvedValue({ ownerId: "key", usageEventId: "native-creation-operation" });
   mocks.resolveOwner.mockResolvedValue({ authorized: true, ownerId: "key", allowAllOwners: false });
   mocks.saveRequestUsage.mockResolvedValue(true);
   mocks.proxyOptions.mockImplementation((credentials) => credentials.providerSpecificData);
@@ -81,7 +81,7 @@ describe("native provider facade", () => {
     mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ status: "completed", usage: { input_tokens: 3, output_tokens: 5 } }), { headers: { "content-type": "application/json" } }));
     const result = await handleNativeProvider(new Request("http://local/v1/native/minimax/v2/query/video_generation?model=minimax/H3&task_id=job-a", { headers: { authorization: "Bearer gateway", "x-connection-id": "conn-a" } }), "minimax", "/v2/query/video_generation");
     await result.text();
-    await vi.waitFor(() => expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "creator-secret", usageEventId: "minimax:conn-a:job-a:terminal" })));
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "creator-secret", usageEventId: "native-creation-operation", tokens: { input_tokens: 3, output_tokens: 5 }, cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable" }));
   });
 
   it("rejects missing account pin before selection", async () => {
@@ -117,6 +117,7 @@ describe("native provider facade", () => {
     const result = await handleNativeProvider(request("http://local/v1/native/minimax/v1/files/upload?model=minimax/H3", {}), "minimax", "/v1/files/upload");
     await result.text();
     expect(mocks.createOwner).toHaveBeenCalledWith(expect.objectContaining({ resourceId: "9223372036854775807" }));
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
   });
 
   it("rejects a successful native create body lacking its ownership ID", async () => {
@@ -124,6 +125,18 @@ describe("native provider facade", () => {
     const result = await handleNativeProvider(request("http://local/v1/native/openai/v1/responses?model=openai/gpt-4.1", { input: "x" }), "openai", "/v1/responses");
     await expect(result.text()).rejects.toThrow("Native resource response omitted its ownership ID");
     expect(mocks.createOwner).not.toHaveBeenCalled();
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
+  });
+
+  it("records queued creation ownership without charging terminal usage", async () => {
+    const body = '{"id":"resp-queued","status":"queued","usage":{"input_tokens":3,"output_tokens":5}}';
+    mocks.fetch.mockResolvedValueOnce(new Response(body, { headers: { "content-type": "application/json" } }));
+    const result = await handleNativeProvider(request("http://local/v1/native/openai/v1/responses?model=openai/gpt-4.1", { input: "x" }), "openai", "/v1/responses");
+    expect(await result.text()).toBe(body);
+    expect(mocks.createOwner).toHaveBeenCalledWith(expect.objectContaining({
+      ownerId: "key", provider: "openai", model: "gpt-4.1", connectionId: "conn-a", resourceId: "resp-queued", usageEventId: expect.any(String),
+    }));
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
   });
   it("rejects completion polling after the creator key is deleted without charging an operator", async () => {
     mocks.resolveOwner.mockResolvedValueOnce({ authorized: true, ownerId: "operator", allowAllOwners: true });
@@ -146,7 +159,7 @@ describe("native provider facade", () => {
   });
   it("permits authorized local-owned completion without billing the polling key", async () => {
     mocks.resolveOwner.mockResolvedValueOnce({ authorized: true, ownerId: "local", allowAllOwners: false });
-    mocks.readOwner.mockResolvedValueOnce({ ownerId: "local", model: "gpt-4.1" });
+    mocks.readOwner.mockResolvedValueOnce({ ownerId: "local", model: "gpt-4.1", usageEventId: "local-creation-operation" });
     mocks.fetch.mockResolvedValueOnce(new Response('{"id":"local-response","status":"completed","usage":{"input_tokens":3,"output_tokens":5}}', { headers: { "content-type": "application/json" } }));
     const result = await handleNativeProvider(new Request("http://local/v1/native/openai/v1/responses/local-response?model=openai/gpt-4.1", {
       headers: { "authorization": "Bearer gateway", "x-connection-id": "conn-a" },
@@ -154,7 +167,7 @@ describe("native provider facade", () => {
     expect(result.status).toBe(200);
     await result.text();
     expect(mocks.getApiKeyById).not.toHaveBeenCalled();
-    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ apiKey: undefined, usageEventId: "local-creation-operation", tokens: { input_tokens: 3, output_tokens: 5 } }));
   });
 
 
@@ -193,18 +206,25 @@ describe("native provider facade", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it("records native image inference without inventing output tokens", async () => {
+  it("records native image inference without fabricating token usage or free cost", async () => {
     mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ base_resp: { status_code: 0 } }), { headers: { "content-type": "application/json" } }));
     const result = await handleNativeProvider(request("http://local/v1/native/minimax/v1/image_generation?model=minimax/H3", { model: "minimax/H3", prompt: "draw" }), "minimax", "/v1/image_generation");
     await result.text();
-    await vi.waitFor(() => expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ tokens: { input_tokens: 1 }, strict: true })));
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ tokens: {}, cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable", nativeUnits: {} }));
   });
 
-  it("records native TTS text input without fabricated output tokens", async () => {
-    mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ base_resp: { status_code: 0 } }), { headers: { "content-type": "application/json" } }));
+  it("preserves provider TTS token components without estimating from input text", async () => {
+    mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ base_resp: { status_code: 0 }, data: { status: 2 }, usage: { input_tokens: 3, output_tokens: 5, output_tokens_details: { audio_tokens: 4, text_tokens: 1 } } }), { headers: { "content-type": "application/json" } }));
     const result = await handleNativeProvider(request("http://local/v1/native/minimax/v1/t2a_v2?model=minimax/H3", { model: "minimax/H3", text: "speak" }), "minimax", "/v1/t2a_v2");
     await result.text();
-    await vi.waitFor(() => expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ tokens: { input_tokens: 2 }, strict: true })));
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ tokens: { input_tokens: 3, output_tokens: 5, output_tokens_details: { audio_tokens: 4, text_tokens: 1 } }, cost: null, costStatus: "unknown" }));
+  });
+
+  it("does not charge a native provider failure envelope returned with HTTP 200", async () => {
+    mocks.fetch.mockResolvedValueOnce(Response.json({ base_resp: { status_code: 1000 }, usage: { input_tokens: 3, output_tokens: 5 } }));
+    const result = await handleNativeProvider(request("http://local/v1/native/minimax/v1/t2a_v2?model=minimax/H3", { model: "minimax/H3", text: "speak" }), "minimax", "/v1/t2a_v2");
+    await result.text();
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
   });
 
   it("rejects malformed native model field arrays before upstream dispatch", async () => {

@@ -4,6 +4,7 @@ import { getExecutor } from "../executors/index.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { mediaAccounting } from "./mediaAccounting.js";
 
 function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);
@@ -25,6 +26,7 @@ export function deriveModerationsUrl(baseUrl) {
  * Core moderations handler — generic OpenAI-compatible passthrough.
  * Resolves the provider's /moderations URL, applies provider auth via the
  * executor's buildHeaders, and forwards { input, model } verbatim.
+ * Raw receipt accounting is returned separately from the unchanged response body.
  *
  * @param {object} options
  * @param {object} options.body - Request body { input, model, ... }
@@ -73,9 +75,13 @@ export async function handleModerationsCore({
   if (onRequestSuccess) await onRequestSuccess();
 
   const text = await res.text();
+  let raw;
+  try { raw = JSON.parse(text); } catch { /* Preserve opaque successful responses. */ }
+  const accounting = mediaAccounting(raw, provider, "moderation");
   return {
     success: true,
     status: res.status,
+    accounting,
     response: new Response(text, {
       status: 200,
       headers: {

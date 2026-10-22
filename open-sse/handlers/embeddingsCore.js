@@ -5,6 +5,7 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { mediaAccounting } from "./mediaAccounting.js";
 
 /**
  * Core embeddings handler — orchestrator only. Provider-specific URL/headers/body/normalize
@@ -134,6 +135,8 @@ export async function handleEmbeddingsCore({
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
   }
 
+  // Read the original provider receipt, never adapter-generated zero usage.
+  const accounting = mediaAccounting(responseBody, provider, "embedding");
   let normalized;
   try { normalized = adapter.normalize(responseBody, model); } catch {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid embeddings response from ${provider}`);
@@ -143,6 +146,7 @@ export async function handleEmbeddingsCore({
 
   return {
     success: true,
+    accounting,
     response: new Response(JSON.stringify(normalized), {
       headers: {
         "Content-Type": "application/json",

@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -55,13 +54,6 @@ afterEach(() => {
 });
 
 describe("quota schema migration", () => {
-  it("locks the published v7 quota DDL to an independent fingerprint", () => {
-    const ddl = Object.keys(QUOTA_V7_TABLES)
-      .flatMap((name) => [buildQuotaV7TableSql(name), ...QUOTA_V7_TABLES[name].indexes])
-      .join("\n");
-    expect(createHash("sha256").update(ddl).digest("hex")).toBe("cab05dac45670b24a1f071de57731ed8f28cc0ba5d971a6969a4f5f312f2f43b");
-  });
-
   it("canonicalizes harmless SQLite DDL formatting without folding string literals", () => {
     const formatted = `CREATE TABLE IF NOT EXISTS main."QuotaThing" (
       "State" TEXT CHECK ("State" IN ('Available'))

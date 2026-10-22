@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
@@ -12,7 +12,7 @@ import { runWithModelFallback } from "open-sse/services/modelFallback.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
+import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 // Allow large image uploads (mask + image can be several MB).
@@ -22,10 +22,13 @@ export const maxDuration = 300;
 
 /**
  * Handle image-edit request — OpenAI /v1/images/edits multipart passthrough.
+ * Records complete core accounting, including provider receipts and provenance.
+ * Response bodies remain untouched; pending accounting is never committed.
  * @param {Request} request
  * @returns {Promise<Response>}
  */
 async function handleImageEditHandler(request) {
+  await captureRequestBillingEpoch(request);
   let formData;
   let jsonBody = null;
   try {
@@ -53,6 +56,8 @@ async function handleImageEditHandler(request) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true
   });
+  // Model and account fallbacks retain the admission epoch, including null.
+  const { billingEpoch } = apiKeyAuth;
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key"
@@ -65,20 +70,18 @@ async function handleImageEditHandler(request) {
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelImageEdit(m, formData, jsonBody, request, apiKey, apiKeyAuth.apiKeyId),
+    (m) => handleSingleModelImageEdit(m, formData, jsonBody, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),
     log
   );
 }
 
-async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request, apiKey, apiKeyId) {
+async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request, apiKey, apiKeyId, billingEpoch) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
-  const prompt = formData.get("prompt");
-  const estimatedTokens = prompt ? String(prompt).length / 4 : 0;
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   const excludeConnectionIds = new Set();
@@ -105,21 +108,27 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = toCoreResult(
-      await handleImageEditCore({
-        formData,
-        jsonBody,
-        modelInfo: { provider, model },
-        credentials: toExecutorCredentials({ ...credentials }),
-        log,
-        onRequestSuccess: async () => {
-          await clearAccountError(credentials.connectionId, credentials, model);
-        }
-      }),
-      "Image edit failed"
-    );
+    const result = await handleImageEditCore({
+      formData,
+      jsonBody,
+      modelInfo: { provider, model },
+      credentials: toExecutorCredentials({ ...credentials }),
+      log,
+      onRequestSuccess: async () => {
+        await clearAccountError(credentials.connectionId, credentials, model);
+      }
+    });
 
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) {
+      if (result.accounting?.state !== "complete") return result.response;
+      const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = result.accounting;
+      return recordApiKeyUsageForResponse(apiKey, result.response, {
+        billingEpoch,
+        usageEventId: JSON.stringify([getRequestId(request), "image-edit", provider, model, credentials.connectionId ?? null]), provider, model,
+        connectionId: credentials.connectionId ?? null, endpoint: "/v1/images/edits",
+        modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+      });
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key

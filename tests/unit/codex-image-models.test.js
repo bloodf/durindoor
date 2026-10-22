@@ -26,6 +26,8 @@ describe("Codex GPT-5.6 image models", () => {
     const events = [
       ["response.image_generation_call.partial_image", { partial_image_b64: "cGFydGlhbA==", partial_image_index: 0 }],
       ["response.output_item.done", { item: { type: "image_generation_call", result: "ZmluYWw=" } }],
+      // An output item is not terminal; Codex confirms the whole response separately.
+      ["response.completed", { response: { status: "completed", output: [{ type: "image_generation_call", result: "ZmluYWw=" }] } }],
     ];
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""),
@@ -72,5 +74,6 @@ describe("Codex GPT-5.6 image models", () => {
     expect(stream).toContain("event: done\n");
     expect(stream).toContain('"data":[{"b64_json":"ZmluYWw="}]');
     expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+    expect(await result.completion).toMatchObject({ status: "success", accounting: { state: "complete", nativeUnits: { images: 1 } } });
   });
 });

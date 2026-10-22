@@ -510,8 +510,12 @@ describe("handleImageGenerationCore", () => {
     global.fetch.mockResolvedValueOnce(
       new Response(
         [
+          // Item completion alone is truncated; success requires response.completed.
           "event: response.output_item.done",
           'data: {"item":{"type":"image_generation_call","result":"base64codeximage"}}',
+          "",
+          "event: response.completed",
+          'data: {"type":"response.completed","response":{"status":"completed"}}',
           "",
           "",
         ].join("\n"),
@@ -731,5 +735,225 @@ describe("handleImageGenerationCore", () => {
 
     expect(result.success).toBe(true);
     expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("image and embedding handler usage accounting", () => {
+  let writes;
+  let handlers;
+  let auth;
+  let pricing;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    writes = vi.fn(async () => true);
+    pricing = vi.fn(async () => ({ input: 2, output: 0 }));
+    auth = {
+      resolveClientApiKey: vi.fn(async () => ({ apiKey: "caller-key", auth: { ok: true, apiKeyId: "key-id" } })),
+      getProviderCredentialsWithQuotaPreflight: vi.fn(async () => ({ connectionId: "account-1", apiKey: "provider-key" })),
+      getNoAuthProviderCredentials: vi.fn(async () => ({})),
+      markAccountUnavailable: vi.fn(async () => ({ shouldFallback: false })),
+      clearAccountError: vi.fn(),
+      extractApiKey: vi.fn(() => "caller-key"),
+      hasValidCliToken: vi.fn(() => false),
+    };
+    vi.doMock("@/lib/localDb", () => ({
+      getSettings: vi.fn(async () => ({})), getApiKeyByKey: vi.fn(async () => null),
+      getApiKeyById: vi.fn(async () => null), getApiKeyUsageTotals: vi.fn(async () => ({})),
+      getApiKeyUsageLimitStatus: vi.fn(async () => ({ exceeded: false })),
+      getComboForModel: vi.fn(async () => null), getPricingForModel: pricing,
+      saveRequestUsage: writes,
+    }));
+    vi.doMock("../../src/sse/services/auth.js", () => auth);
+    vi.doMock("../../src/sse/services/model.js", () => ({
+      getModelInfo: vi.fn(async (id) => { const [provider, ...model] = id.split("/"); return { provider, model: model.join("/") }; }),
+      getComboModels: vi.fn(async () => null), getComboCanonicalName: vi.fn(async () => null),
+    }));
+    vi.doMock("../../src/sse/services/tokenRefresh.js", () => ({
+      checkAndRefreshToken: vi.fn(async (_provider, credentials) => credentials), updateProviderCredentials: vi.fn(),
+    }));
+    vi.doMock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => global.fetch(...args) }));
+    handlers = {
+      image: (await import("../../src/sse/handlers/imageGeneration.js")).handleImageGeneration,
+      edit: (await import("../../src/sse/handlers/imageEdit.js")).handleImageEdit,
+      embedding: (await import("../../src/sse/handlers/embeddings.js")).handleEmbeddings,
+    };
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    for (const module of ["@/lib/localDb", "../../src/sse/services/auth.js", "../../src/sse/services/model.js", "../../src/sse/services/tokenRefresh.js", "../../open-sse/utils/proxyFetch.js"]) vi.doUnmock(module);
+    vi.resetModules();
+  });
+
+  function request(kind, query = "") {
+    const endpoint = kind === "embedding" ? "/v1/embeddings" : kind === "edit" ? "/v1/images/edits" : "/v1/images/generations";
+    if (kind === "edit") {
+      const body = new FormData();
+      body.set("model", "openai/gpt-image-1"); body.set("prompt", "cat");
+      body.set("image", new Blob(["image"]), "image.png");
+      return new Request(`http://localhost${endpoint}${query}`, { method: "POST", body });
+    }
+    return new Request(`http://localhost${endpoint}${query}`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(kind === "embedding" ? { model: "openai/text-embedding-3-small", input: "not a token count" } : { model: "openai/gpt-image-1", prompt: "cat", n: 8 }) });
+  }
+
+  it.each(["image", "edit"])("%s counts returned images without inventing token spend or free cost", async (kind) => {
+    global.fetch.mockResolvedValue(Response.json({ created: 1, data: [{ b64_json: "Y2F0" }, { url: "https://example.com/cat" }] }));
+    const response = await handlers[kind](request(kind));
+    expect(response.status).toBe(200);
+    expect((await response.json()).data).toHaveLength(2);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ apiKey: "caller-key", connectionId: "account-1", provider: "openai",
+      tokens: {}, nativeUnits: { images: 2 }, cost: null, costStatus: "unknown", costSource: "unavailable", modality: "image",
+      usageEventId: JSON.stringify([response.headers.get("x-request-id"), kind === "edit" ? "image-edit" : "image-generation", "openai", "gpt-image-1", "account-1"]) });
+  });
+
+  it.each(["image", "edit", "embedding"])("%s preserves an authoritative zero-cost receipt", async (kind) => {
+    const usage = { prompt_tokens: 0, total_tokens: 0, cost_usd: 0 };
+    global.fetch.mockResolvedValue(Response.json({ created: 1, data: [{ b64_json: "Y2F0", embedding: [0.1] }], usage }));
+    expect((await handlers[kind](request(kind))).status).toBe(200);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({
+      apiKey: "caller-key", connectionId: "account-1", cost: 0, costStatus: "known", costSource: "provider",
+      tokens: { prompt_tokens: 0, input_tokens: 0, total_tokens: 0 },
+      meta: { providerUsage: { path: "usage", value: usage }, providerCost: { path: "usage.cost_usd", value: 0 } },
+    });
+    expect(pricing).not.toHaveBeenCalled();
+  });
+
+  it("returns binary bytes without reading them for accounting", async () => {
+    global.fetch.mockResolvedValue(Response.json({ created: 1, data: [{ b64_json: "Y2F0" }] }));
+    const response = await handlers.image(request("image", "?response_format=binary"));
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(await response.text()).toBe("cat");
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ tokens: {}, nativeUnits: { images: 1 }, cost: null, costStatus: "unknown" });
+  });
+
+  it("preserves reported embedding input tokens without inventing a price", async () => {
+    global.fetch.mockResolvedValue(Response.json({ data: [{ embedding: [0.1] }], usage: { prompt_tokens: 1000, total_tokens: 1000 } }));
+    const response = await handlers.embedding(request("embedding"));
+    expect(response.status).toBe(200);
+    expect((await response.json()).usage.prompt_tokens).toBe(1000);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ endpoint: "/v1/embeddings", modality: "embedding", cost: null,
+      costStatus: "unknown", costSource: "unavailable", tokens: { prompt_tokens: 1000, input_tokens: 1000, total_tokens: 1000 },
+      meta: { providerUsage: { path: "usage", value: { prompt_tokens: 1000, total_tokens: 1000 } } } });
+    expect(pricing).not.toHaveBeenCalled();
+  });
+
+  it("keeps missing embedding usage unknown", async () => {
+    global.fetch.mockResolvedValue(Response.json({ data: [{ embedding: [0.1] }] }));
+    expect((await handlers.embedding(request("embedding"))).status).toBe(200);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ tokens: {}, cost: null, costStatus: "unknown" });
+    expect(pricing).not.toHaveBeenCalled();
+  });
+
+  it.each(["image", "edit", "embedding"])("%s does not spend allowance on an upstream failure", async (kind) => {
+    global.fetch.mockResolvedValue(Response.json({ error: { message: "Unavailable" } }, { status: 503 }));
+    expect((await handlers[kind](request(kind))).status).toBe(503);
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it("charges only the winning account after retry", async () => {
+    auth.markAccountUnavailable.mockResolvedValue({ shouldFallback: true });
+    auth.getProviderCredentialsWithQuotaPreflight.mockResolvedValueOnce({ connectionId: "failed", apiKey: "bad" })
+      .mockResolvedValueOnce({ connectionId: "winner", apiKey: "good" });
+    global.fetch.mockResolvedValueOnce(Response.json({ error: { message: "Unavailable" } }, { status: 503 }))
+      .mockResolvedValueOnce(Response.json({ created: 1, data: [{ b64_json: "Y2F0" }] }));
+    expect((await handlers.image(request("image"))).status).toBe(200);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ connectionId: "winner", nativeUnits: { images: 1 } });
+  });
+
+  function codexRequest() {
+    return new Request("http://localhost/v1/images/generations", { method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ model: "codex/gpt-image-1", prompt: "cat", n: 8 }) });
+  }
+
+  const codexItem = 'event: response.output_item.done\ndata: {"item":{"type":"image_generation_call","result":"Y2F0"}}\n\n';
+  const codexDone = 'event: response.completed\ndata: {"response":{"status":"completed","usage":{"input_tokens":3,"cost_usd":0}}}\n\n';
+
+  it("commits once after real Codex completion and awaits persistence before done", async () => {
+    let entered;
+    let release;
+    const writing = new Promise((resolve) => { entered = resolve; });
+    const persisted = new Promise((resolve) => { release = resolve; });
+    writes.mockImplementation(async () => { entered(); await persisted; return true; });
+    global.fetch.mockResolvedValue(new Response(codexItem + codexDone + codexDone));
+    const response = await handlers.image(codexRequest());
+    expect(writes).not.toHaveBeenCalled();
+    expect(auth.clearAccountError).not.toHaveBeenCalled();
+    let delivered = false;
+    const text = response.text().then((value) => { delivered = true; return value; });
+    await writing;
+    expect(delivered).toBe(false);
+    expect(writes).toHaveBeenCalledOnce();
+    expect(writes.mock.calls[0][0]).toMatchObject({
+      nativeUnits: { images: 1 }, tokens: { input_tokens: 3 }, cost: 0, costStatus: "known",
+      meta: { providerUsage: { path: "response.usage", value: { input_tokens: 3, cost_usd: 0 } } },
+      usageEventId: JSON.stringify([response.headers.get("x-request-id"), "image-generation", "codex", "gpt-image-1", "account-1"]),
+    });
+    release();
+    expect(await text).toContain('event: done\ndata: {"created":');
+    expect(await text).toContain('"b64_json":"Y2F0"');
+    expect(writes).toHaveBeenCalledOnce();
+    expect(auth.clearAccountError).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    codexItem,
+    codexItem + 'event: response.failed\ndata: {"response":{"error":{"message":"failed"}}}\n\n',
+    codexItem + 'event: response.incomplete\ndata: {"response":{}}\n\n',
+  ])("does not spend allowance after a failed real Codex stream", async (upstream) => {
+    global.fetch.mockResolvedValue(new Response(upstream));
+    const response = await handlers.image(codexRequest());
+    expect(await response.text()).toContain("event: error");
+    expect(writes).not.toHaveBeenCalled();
+    expect(auth.clearAccountError).not.toHaveBeenCalled();
+  });
+
+  it("does not read ahead or spend allowance when client cancels before completion", async () => {
+    const pull = vi.fn();
+    const cancel = vi.fn();
+    global.fetch.mockResolvedValue(new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 })));
+    const response = await handlers.image(codexRequest());
+    expect(pull).not.toHaveBeenCalled();
+    await response.body.cancel("disconnected");
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(writes).not.toHaveBeenCalled();
+    expect(auth.clearAccountError).not.toHaveBeenCalled();
+  });
+
+  it("keeps reported embedding usage unpriced when no canonical rate exists", async () => {
+    pricing.mockResolvedValue(null);
+    global.fetch.mockResolvedValue(Response.json({ data: [], usage: { prompt_tokens: 9, total_tokens: 9 } }));
+    expect((await handlers.embedding(request("embedding"))).status).toBe(200);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ tokens: { prompt_tokens: 9 }, cost: null, costStatus: "unknown" });
+  });
+
+  it.each([
+    { prompt_tokens: 9 },
+    { prompt_tokens: 9, total_tokens: 9, prompt_tokens_details: { cached_tokens: 4 } },
+  ])("does not price incomplete or unsupported embedding units: %j", async (usage) => {
+    global.fetch.mockResolvedValue(Response.json({ data: [], usage }));
+    expect((await handlers.embedding(request("embedding"))).status).toBe(200);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ cost: null, costStatus: "unknown" });
+    expect(pricing).not.toHaveBeenCalled();
+  });
+
+  it.each(["not-json", "null"])("preserves successful image edit passthrough without usable JSON: %s", async (text) => {
+    global.fetch.mockResolvedValue(new Response(text, { headers: { "content-type": "application/json" } }));
+    const response = await handlers.edit(request("edit"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(text);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes.mock.calls[0][0]).toMatchObject({ tokens: {}, nativeUnits: {}, cost: null });
   });
 });

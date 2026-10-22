@@ -12,9 +12,10 @@ import { normalizeSearchResponse } from "./normalizers.js";
 import { handleChatSearch } from "./chatSearch.js";
 import { resolveCredentialProxyOptions } from "../../services/oauthCredentialManager.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { sanitizeErrorMessage } from "../../utils/error.js";
+import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { fetchPublic } from "../../../src/shared/utils/ssrfGuard.js";
+import { mediaAccounting } from "../mediaAccounting.js";
 
 const GLOBAL_TIMEOUT_MS = 15000;
 const NON_RETRIABLE = new Set([400, 401, 403, 404]);
@@ -57,9 +58,9 @@ function errorResult(status, error) {
   };
 }
 
-/** Wrap a success payload. */
-function successResult(data) {
-  return { success: true, data, response: jsonResponse(data, 200) };
+/** Wrap a success payload with internal accounting outside the wire response. */
+function successResult(data, accounting) {
+  return { success: true, data, accounting, response: jsonResponse(data, 200) };
 }
 
 /**
@@ -134,7 +135,7 @@ async function tryDedicatedProvider({
     clearTimeout(timer);
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
-      const safeError = sanitizeErrorMessage(errText).slice(0, 200);
+      const safeError = sanitizeErrorMessageWithSecrets(errText, [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken]).slice(0, 200);
       log?.error?.("SEARCH", `${provider.id} ${resp.status}: ${safeError}`);
       return {
         success: false,
@@ -143,12 +144,14 @@ async function tryDedicatedProvider({
       };
     }
     const data = await resp.json();
+    const accounting = mediaAccounting(data, provider.id, "search");
     const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType);
     const results = normalized.results.slice(0, params.maxResults);
     const duration = Date.now() - startTime;
 
     return {
       success: true,
+      accounting,
       data: {
         provider: provider.id,
         query: params.query,
@@ -163,7 +166,7 @@ async function tryDedicatedProvider({
     clearTimeout(timer);
     const isTimeout = err.name === "AbortError";
     const status = isTimeout ? 504 : 502;
-    const safeError = sanitizeErrorMessage(err?.message);
+    const safeError = sanitizeErrorMessageWithSecrets(err?.message, [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken]);
     log?.error?.("SEARCH", `${provider.id} ${isTimeout ? "timeout" : "error"}: ${safeError}`);
     return {
       success: false,
@@ -221,7 +224,7 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
 
   if (result.success) {
     await onRequestSuccess?.();
-    return successResult(result.data);
+    return successResult(result.data, result.accounting);
   }
 
   // 3. Failover within global timeout for retriable errors
@@ -243,7 +246,7 @@ export async function handleSearchCore({ body, provider, providerConfig, credent
     });
     if (fallback.success) {
       await onRequestSuccess?.();
-      return successResult(fallback.data);
+      return successResult(fallback.data, fallback.accounting);
     }
   }
 

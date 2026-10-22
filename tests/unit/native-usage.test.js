@@ -53,15 +53,17 @@ function responseFrom(source, contentType = "application/json", chunkSize = 8191
   }), { headers: { "content-type": contentType } });
 }
 
-function observe(response) {
+function observe(response, details = {}) {
   return usage.observeNativeResponse(response, {
     apiKey: key.key, provider: "openai", model: "gpt-4.1", connectionId: "fixture-account", endpoint: "/v1/responses",
+    usageEventId: "native-operation-1", modality: "chat", nativeUnits: {},
+    cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable", ...details,
   });
 }
 
-async function assertCommitted(eventId, tokens = 8) {
+async function assertCommitted(tokens = 8) {
   expect(await database.getApiKeyUsageTotals(key.id)).toMatchObject({ totalTokens: tokens, totalRequests: 1 });
-  expect(adapter.get("SELECT usageEventId FROM usageHistory").usageEventId).toBe(`openai:fixture-account:${eventId}:terminal`);
+  expect(adapter.get("SELECT usageEventId FROM usageHistory").usageEventId).toBe("native-operation-1");
   expect((await usage.nativeUsageAdmission(key.key))?.status).toBe(429);
 }
 
@@ -72,26 +74,26 @@ describe("Gemini Live usage normalization", () => {
 });
 
 describe("native usage framing and quota transitions", () => {
-  it("normalizes total-only and partial native metrics without losing committed input", () => {
-    expect(usage.nativeUsageFromValue({ usage: { total_tokens: 9 } })).toMatchObject({ input_tokens: 9, total_tokens: 9 });
-    expect(usage.nativeUsageFromValue({ usage: { total_tokens: 10, output_tokens: 4 } })).toMatchObject({ input_tokens: 6, output_tokens: 4 });
+  it("preserves total-only and partial metrics without inventing token components", () => {
+    expect(usage.nativeUsageFromValue({ usage: { total_tokens: 9 } })).toEqual({ total_tokens: 9 });
+    expect(usage.nativeUsageFromValue({ usage: { total_tokens: 10, output_tokens: 4 } })).toEqual({ total_tokens: 10, output_tokens: 4 });
     expect(usage.nativeUsageFromValue({ usage: null })).toBeNull();
   });
 
   it.each(["root", "response", "data"])("charges only %s usage and retains the envelope id across output arrays", async (wrapper) => {
-    const envelope = { id: "response-owner", output: [{ id: "tool-output", status: "completed", usage: { input_tokens: 999 }, content: [{ text: "x".repeat(1024 * 1024 + 9) }] }], usage: { input_tokens: 3, output_tokens: 5 } };
+    const envelope = { id: "response-owner", status: "completed", output: [{ id: "tool-output", status: "completed", usage: { input_tokens: 999 }, content: [{ text: "x".repeat(1024 * 1024 + 9) }] }], usage: { input_tokens: 3, output_tokens: 5 } };
     const body = wrapper === "root" ? envelope : { type: "response.completed", [wrapper]: envelope };
     const delivered = await observe(responseFrom(JSON.stringify(body), "application/json", 113)).json();
     expect((wrapper === "root" ? delivered : delivered[wrapper]).id).toBe("response-owner");
-    await assertCommitted("response-owner");
+    await assertCommitted();
   });
 
   it("accepts successful output spending the final allowance and denies the next request", async () => {
-    const delivered = await observe(responseFrom(JSON.stringify({ id: "last-allowance", usage: { input_tokens: 3, output_tokens: 5 } }), "application/json", 1)).json();
+    const delivered = await observe(responseFrom(JSON.stringify({ id: "last-allowance", status: "completed", usage: { input_tokens: 3, output_tokens: 5 } }), "application/json", 1)).json();
     expect(delivered.id).toBe("last-allowance");
-    await assertCommitted("last-allowance");
+    await assertCommitted();
   });
-  it("commits a complete terminal SSE event even when the consumer cancels before transport EOF", async () => {
+  it("does not charge a terminal SSE event when the consumer cancels before clean EOF", async () => {
     const event = 'data: {"type":"response.completed","response":{"id":"cancel-before-eof","usage":{"input_tokens":3,"output_tokens":5}}}\n\n';
     const source = new Response(new ReadableStream({
       start(controller) { controller.enqueue(new TextEncoder().encode(event)); },
@@ -100,9 +102,9 @@ describe("native usage framing and quota transitions", () => {
     const chunk = await reader.read();
     expect(new TextDecoder().decode(chunk.value)).toBe(event);
     await reader.cancel();
-    await assertCommitted("cancel-before-eof");
+    expect(await database.getApiKeyUsageTotals(key.id)).toMatchObject({ totalTokens: 0, totalRequests: 0 });
   });
-  it.each(["chat.completion.chunk", "chat.completion"])("commits the final %s usage chunk before a consumer cancels", async (object) => {
+  it.each(["chat.completion.chunk", "chat.completion"])("does not charge %s usage before a consumer cancels", async (object) => {
     const event = `data: ${JSON.stringify({ id: "chat-cancel", object, choices: [], usage: { prompt_tokens: 3, completion_tokens: 5 } })}\n\n`;
     const source = new Response(new ReadableStream({
       start(controller) { controller.enqueue(new TextEncoder().encode(event)); },
@@ -110,7 +112,7 @@ describe("native usage framing and quota transitions", () => {
     const reader = observe(source).body.getReader();
     expect(new TextDecoder().decode((await reader.read()).value)).toBe(event);
     await reader.cancel();
-    await assertCommitted("chat-cancel");
+    expect(await database.getApiKeyUsageTotals(key.id)).toMatchObject({ totalTokens: 0, totalRequests: 0 });
   });
 
   it("accounts a large image-bearing terminal SSE event without assembling or dropping it", async () => {
@@ -118,15 +120,31 @@ describe("native usage framing and quota transitions", () => {
     const source = `data: ${JSON.stringify(event)}\r\n\r\ndata: [DONE]\r\n\r\n`;
     const delivered = await observe(responseFrom(source, "text/event-stream", 257)).text();
     expect(delivered.endsWith("data: [DONE]\r\n\r\n")).toBe(true);
-    await assertCommitted("sse-owner");
+    await assertCommitted();
   });
 
   it("merges Anthropic input and output usage across separate SSE messages", async () => {
     const source = 'event: message_start\ndata: {"type":"message_start","message":{"id":"anthropic-owner","usage":{"input_tokens":3}}}\n\n' +
       'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":5}}\n\n' +
       'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    await observe(responseFrom(source, "text/event-stream", 7), { provider: "anthropic", model: "claude-haiku-4-5", endpoint: "/v1/messages" }).text();
+    await assertCommitted();
+  });
+
+  it.each([
+    ["clean EOF without a terminal", ""],
+    ["failed response", 'data: {"type":"response.failed"}\n\n'],
+    ["error after completion", 'data: {"type":"response.completed"}\n\ndata: {"type":"error","error":{"message":"failed"}}\n\n'],
+  ])("does not charge %s", async (_name, ending) => {
+    const source = 'data: {"id":"partial","usage":{"input_tokens":3,"output_tokens":5}}\n\n' + ending;
     await observe(responseFrom(source, "text/event-stream", 7)).text();
-    await assertCommitted("anthropic-owner");
+    expect(await database.getApiKeyUsageTotals(key.id)).toMatchObject({ totalTokens: 0, totalRequests: 0 });
+  });
+
+  it("charges chat usage only after DONE and clean EOF", async () => {
+    const source = 'data: {"id":"chat-owner","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":5}}\n\ndata: [DONE]\n\n';
+    await observe(responseFrom(source, "text/event-stream", 7), { endpoint: "/v1/chat/completions" }).text();
+    await assertCommitted();
   });
 
   it("does not turn malformed provider JSON into a successful unaccounted response", async () => {

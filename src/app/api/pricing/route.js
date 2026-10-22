@@ -6,6 +6,7 @@ import { getDefaultPricing, getPricingForModel } from "open-sse/providers/pricin
  * GET /api/pricing
  * Get current pricing configuration (merged user + defaults)
  */
+import { isValidNativePricing } from "../../../shared/utils/nativePricing.js";
 import { isNumber, isObject } from "../../../shared/utils/typeChecks.js";
 const PRICING_FIELDS = new Set(["input", "output", "cached", "reasoning", "cache_creation"]);
 const READ_ONLY_TIER_FIELDS = new Set([
@@ -54,6 +55,9 @@ function validatedPricingUpdate(body) {
             return { error: `Invalid pricing value for ${key} in ${provider}/${model}: must be finite non-negative number` };
           }
           priceUpdate[key] = value;
+        } else if (key === "native") {
+          if (!isValidNativePricing(value)) return { error: `Invalid native pricing for ${provider}/${model}: expected supported unit and finite non-negative USD rate` };
+          priceUpdate.native = { ...value };
         } else if (!isDefaultTierMetadata(provider, model, key, value)) {
           return { error: `Invalid pricing field: ${key} for ${provider}/${model}` };
         }
@@ -81,7 +85,7 @@ export async function GET() {
 /**
  * PATCH /api/pricing
  * Update pricing configuration
- * Body: { provider: { model: { input: number, output: number, cached: number, ... } } }
+ * Body: { provider: { model: { input: number, output: number, ..., native: { unit, rate } } } }
  */
 export async function PATCH(request) {
   try {

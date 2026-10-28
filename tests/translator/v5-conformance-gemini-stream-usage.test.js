@@ -5,10 +5,8 @@ import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { OPENAI_FINISH, ROLE } from "../../open-sse/translator/schema/index.js";
 
-// Issue #1089 row N5 (UNCERTAIN edge). Static trace: the stream adapter copies completion_tokens
-// into candidatesTokenCount, while the JSON handler subtracts reasoning tokens. Neither side has
-// been run; these are ordinary assertions so an independent verifier can reproduce RED or GREEN.
-// Which count clients expect is not established; Gemini's own total is prompt + candidates + thoughts.
+// Issue #1089 row N5: Gemini client usage parity between stream and JSON paths
+// (candidatesTokenCount, thoughtsTokenCount, and prompt+candidates+thoughts vs total).
 const usage = {
   prompt_tokens: 10, completion_tokens: 5, total_tokens: 15,
   completion_tokens_details: { reasoning_tokens: 2 },

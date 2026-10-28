@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import Database from "better-sqlite3";
 import { PRAGMA_SQL } from "../schema.js";
 import { assertCheckpointComplete } from "../helpers/checkpoint.js";
@@ -7,6 +8,16 @@ import { isFunction } from "../../../shared/utils/typeChecks.js";
 const CHECKPOINT_INTERVAL_MS = 60 * 1000;
 
 export function createBetterSqliteAdapter(filePath) {
+  let created = filePath === ":memory:" || filePath === "";
+  if (!created) {
+    try {
+      const fd = fs.openSync(filePath, "wx", 0o600);
+      fs.closeSync(fd);
+      created = true;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+  }
   const db = new Database(filePath);
   db.exec(PRAGMA_SQL);
   // Schema is created/synced by migrate.js after adapter init
@@ -47,6 +58,12 @@ export function createBetterSqliteAdapter(filePath) {
   return {
     driver: "better-sqlite3",
     capabilities: Object.freeze({ sharedFileTransactions: true }),
+    // One-shot creation evidence, never reconstructed from database contents.
+    takeFreshDatabase() {
+      const result = created;
+      created = false;
+      return result;
+    },
     run(sql, params = []) {return prepare(sql).run(...params);},
     get(sql, params = []) {return prepare(sql).get(...params);},
     all(sql, params = []) {return prepare(sql).all(...params);},

@@ -131,6 +131,7 @@ describe("Schema migrations", () => {
         totalTokens: 38,
         totalCost: 0.55,
         totalRequests: 3,
+        unknownCostRequests: 0,
       });
 
       const backupDirs = fs.readdirSync(path.join(tempDir, "db", "backups"));

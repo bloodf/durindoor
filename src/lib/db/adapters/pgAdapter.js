@@ -245,6 +245,11 @@ async function readServerVersion(queryFn) {
  * @param {{ url: string, sslmode?: string, clientFactory?: () => any }} options
  *   `clientFactory` is the unit-test seam (async `pg.Client` mock).
  *   Production omits it and uses the sync worker bridge.
+ * Opening an existing database/schema does not prove fresh installation, even
+ * when _meta or billing counters are empty. This adapter does not create either
+ * namespace, so it deliberately supplies no takeFreshDatabase claim. A future
+ * provisioning path must own exclusive CREATE DATABASE/SCHEMA and initialize
+ * completeness before exposing that namespace to writers.
  */
 export async function createPostgresAdapter({ url, sslmode, clientFactory } = {}) {
   if (!url) throw new Error("[DB][pg] url is required");

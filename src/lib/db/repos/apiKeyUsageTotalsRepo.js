@@ -8,7 +8,7 @@ function isMissingApiKeyUsageTotalsTable(err) {
 /**
  * Get lifetime usage totals for a single API key.
  * @param {string} apiKeyId
- * @returns {Promise<{ totalTokens: number, totalCost: number, totalRequests: number, updatedAt: string | null } | null>}
+ * @returns {Promise<{ totalTokens: number, totalCost: number, totalRequests: number, unknownCostRequests: number, updatedAt: string | null } | null>}
  */
 export async function getApiKeyUsageTotals(apiKeyId) {
   const db = await getAdapter();
@@ -16,22 +16,23 @@ export async function getApiKeyUsageTotals(apiKeyId) {
   try {
     row = db.get(`SELECT * FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [apiKeyId]);
   } catch (err) {
-    if (isMissingApiKeyUsageTotalsTable(err)) return { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null };
+    if (isMissingApiKeyUsageTotalsTable(err)) return { totalTokens: 0, totalCost: 0, totalRequests: 0, unknownCostRequests: 0, updatedAt: null };
     throw err;
   }
-  if (!row) return { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null };
+  if (!row) return { totalTokens: 0, totalCost: 0, totalRequests: 0, unknownCostRequests: 0, updatedAt: null };
   return {
     apiKeyId: row.apiKeyId,
     totalTokens: row.totalTokens || 0,
     totalCost: row.totalCost || 0,
     totalRequests: row.totalRequests || 0,
+    unknownCostRequests: Number(row.unknownCostRequests) || 0,
     updatedAt: row.updatedAt || null,
   };
 }
 
 /**
  * Get lifetime usage totals for all API keys.
- * @returns {Promise<Array<{ apiKeyId: string, totalTokens: number, totalCost: number, totalRequests: number, updatedAt: string | null }>>}
+ * @returns {Promise<Array<{ apiKeyId: string, totalTokens: number, totalCost: number, totalRequests: number, unknownCostRequests: number, updatedAt: string | null }>>}
  */
 export async function getAllApiKeyUsageTotals() {
   const db = await getAdapter();
@@ -47,6 +48,7 @@ export async function getAllApiKeyUsageTotals() {
     totalTokens: row.totalTokens || 0,
     totalCost: row.totalCost || 0,
     totalRequests: row.totalRequests || 0,
+    unknownCostRequests: Number(row.unknownCostRequests) || 0,
     updatedAt: row.updatedAt || null,
   }));
 }

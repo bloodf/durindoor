@@ -6,7 +6,6 @@ import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 
 function stripAnthropicBillingHeader(text) {
   if (!isString(text)) return "";

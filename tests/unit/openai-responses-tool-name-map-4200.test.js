@@ -327,14 +327,18 @@ describe("Responses tool-name aliasing + restoration (#4200)", () => {
     it("re-qualifies and aliases tool_choice, including allowed_tools entries", () => {
       const ref = { type: "function", name: "spawn_agent", namespace: "collaboration" };
       const forced = translateForOpenAIProvider({ tools: [COLLAB_NAMESPACE], tool_choice: ref }).translated;
-      expect(forced.tool_choice.name).toBe(forced.tools[0].function.name);
-      expect(forced.tool_choice.namespace).toBeUndefined();
+      // Responses forced choices lower to Chat's nested function reference before aliasing.
+      expect(forced.tool_choice).toEqual({ type: "function", function: { name: forced.tools[0].function.name } });
+      expect(ref).toEqual({ type: "function", name: "spawn_agent", namespace: "collaboration" });
 
       const allowed = translateForOpenAIProvider({
         tools: [COLLAB_NAMESPACE],
         tool_choice: { type: "allowed_tools", mode: "auto", tools: [ref] },
       }).translated;
-      expect(allowed.tool_choice.tools[0].name).toBe(allowed.tools[0].function.name);
+      expect(allowed.tool_choice).toEqual({
+        type: "allowed_tools", mode: "auto",
+        tools: [{ type: "function", name: allowed.tools[0].function.name }],
+      });
     });
 
     it("composes a later alias pass back to the client name", () => {

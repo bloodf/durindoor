@@ -1,61 +1,78 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  extractApiKey: vi.fn(),
-  getApiKeyByKey: vi.fn(),
+  keys: new Map(),
   getSettings: vi.fn(),
-  hasValidCliToken: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
-  getApiKeyByKey: mocks.getApiKeyByKey,
+  getApiKeyByKey: async (key) => mocks.keys.get(key) ?? null,
   getSettings: mocks.getSettings,
+  getProviderConnections: vi.fn(),
+  getProxyPools: vi.fn(),
+  updateProviderConnection: vi.fn(),
+  validateApiKey: vi.fn(),
 }));
-vi.mock("@/sse/services/auth.js", () => ({
-  extractApiKey: mocks.extractApiKey,
-  hasValidCliToken: mocks.hasValidCliToken,
-}));
+vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: async () => "owner-cli-token" }));
 
+const { resolveClientApiKey } = await import("@/sse/services/auth.js");
 const { resolveResourceOwner } = await import("@/sse/services/resourceOwnership.js");
+const request = (headers = {}) => new Request("http://localhost/v1/files", { headers });
 
-describe("Files/Batches resource ownership", () => {
+describe.each([false, true])("Files/Batches ownership (accepted auth supplied=%s)", (supplied) => {
+  async function owner(req) {
+    if (!supplied) return resolveResourceOwner(req);
+    const settings = await mocks.getSettings();
+    const { auth } = await resolveClientApiKey(req, { required: settings.requireApiKey === true });
+    return resolveResourceOwner(req, auth);
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.hasValidCliToken.mockResolvedValue(false);
+    mocks.keys.clear();
+    mocks.keys.set("sk-bearer", { id: "bearer-owner", isActive: true, expiresAt: null });
+    mocks.keys.set("sk-header", { id: "header-owner", isActive: true, expiresAt: null });
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
-    mocks.extractApiKey.mockReturnValue(null);
   });
 
-  it("uses a distinct global operator identity for a valid CLI token", async () => {
-    mocks.hasValidCliToken.mockResolvedValueOnce(true);
-    await expect(resolveResourceOwner({})).resolves.toEqual({
-      authorized: true,
-      ownerId: "operator",
-      allowAllOwners: true,
+  it("uses a distinct global operator identity only for a valid CLI token", async () => {
+    await expect(owner(request({ "x-9r-cli-token": "owner-cli-token", authorization: "Bearer sk-bearer" }))).resolves.toEqual({
+      authorized: true, ownerId: "operator", allowAllOwners: true,
     });
-    expect(mocks.getApiKeyByKey).not.toHaveBeenCalled();
+    await expect(owner(request({ "x-9r-cli-token": "wrong", authorization: "Bearer sk-bearer" }))).resolves.toEqual({
+      authorized: true, ownerId: "bearer-owner", allowAllOwners: false,
+    });
   });
 
-  it("allows local and placeholder callers only while key enforcement is disabled", async () => {
-    await expect(resolveResourceOwner({})).resolves.toMatchObject({ authorized: true, ownerId: "local" });
-
-    mocks.extractApiKey.mockReturnValue("sk_durindoor");
-    mocks.getApiKeyByKey.mockResolvedValue(null);
-    await expect(resolveResourceOwner({})).resolves.toMatchObject({ authorized: true, ownerId: "local" });
-
+  it.each([{}, { authorization: "Bearer sk_durindoor" }])("permits local fallback only with enforcement off: %j", async (headers) => {
+    await expect(owner(request(headers))).resolves.toEqual({ authorized: true, ownerId: "local", allowAllOwners: false });
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
-    await expect(resolveResourceOwner({})).resolves.toMatchObject({ authorized: false });
+    await expect(owner(request(headers))).resolves.toEqual({ authorized: false, ownerId: null, allowAllOwners: false });
   });
 
-  it("uses stable stored-key IDs and rejects inactive or expired records", async () => {
-    mocks.extractApiKey.mockReturnValue("sk-stored");
-    mocks.getApiKeyByKey.mockResolvedValueOnce({ id: "key-a", isActive: true, expiresAt: null });
-    await expect(resolveResourceOwner({})).resolves.toMatchObject({ authorized: true, ownerId: "key-a", allowAllOwners: false });
+  it.each([false, true])("uses the valid x-api-key owner despite stale Bearer (required=%s)", async (required) => {
+    mocks.getSettings.mockResolvedValue({ requireApiKey: required });
+    await expect(owner(request({ authorization: "Bearer stale-placeholder", "x-api-key": "sk-header" }))).resolves.toEqual({
+      authorized: true, ownerId: "header-owner", allowAllOwners: false,
+    });
+  });
 
-    mocks.getApiKeyByKey.mockResolvedValueOnce({ id: "key-a", isActive: false, expiresAt: null });
-    await expect(resolveResourceOwner({})).resolves.toMatchObject({ authorized: false });
+  it("keeps the Bearer owner when both presented keys are valid", async () => {
+    await expect(owner(request({ authorization: "Bearer sk-bearer", "x-api-key": "sk-header" }))).resolves.toEqual({
+      authorized: true, ownerId: "bearer-owner", allowAllOwners: false,
+    });
+  });
 
-    mocks.getApiKeyByKey.mockResolvedValueOnce({ id: "key-a", isActive: true, expiresAt: "2000-01-01T00:00:00.000Z" });
-    await expect(resolveResourceOwner({})).resolves.toMatchObject({ authorized: false });
+  it.each([
+    ["inactive", { isActive: false, expiresAt: null }],
+    ["expired", { isActive: true, expiresAt: "2000-01-01T00:00:00.000Z" }],
+  ])("rejects a stored %s key without another valid credential", async (_label, record) => {
+    mocks.keys.set("sk-bearer", { id: "bearer-owner", ...record });
+    await expect(owner(request({ authorization: "Bearer sk-bearer" }))).resolves.toEqual({
+      authorized: false, ownerId: null, allowAllOwners: false,
+    });
+    await expect(owner(request({ authorization: "Bearer sk-bearer", "x-api-key": "sk-header" }))).resolves.toEqual({
+      authorized: true, ownerId: "header-owner", allowAllOwners: false,
+    });
   });
 });

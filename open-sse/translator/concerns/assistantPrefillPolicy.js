@@ -25,6 +25,8 @@ function hasText(content) {
 /**
  * Make Claude-format conversations end on a user turn unless a client explicitly
  * requests native assistant-prefill semantics through the compatibility header.
+ * Opaque redacted-thinking turns must survive, even with empty data; append a
+ * user continuation instead of treating them as empty assistant prefill.
  * Mutates and returns `body` to match existing translator normalization helpers.
  */
 export function applyAssistantPrefillPolicy(body, rawHeaders = null) {
@@ -50,7 +52,9 @@ export function applyAssistantPrefillPolicy(body, rawHeaders = null) {
     return body;
   }
 
-  if (!hasText(trailingAssistant.content)) {
+  const hasOpaqueThinking = Array.isArray(trailingAssistant.content) &&
+    trailingAssistant.content.some((block) => block?.type === CLAUDE_BLOCK.REDACTED_THINKING);
+  if (!hasText(trailingAssistant.content) && !hasOpaqueThinking) {
     body.messages.pop();
     return body;
   }

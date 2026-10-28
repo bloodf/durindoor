@@ -636,10 +636,11 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
     // Convert tool results - output must be a string for Responses API
     if (msg.role === ROLE.TOOL) {
+      // Responses has no tool-error flag; retain failure meaning in its output text.
       result.input.push({
         type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
         call_id: clampResponsesCallId(msg.tool_call_id),
-        output: coerceResponsesOutput(msg.content)
+        output: `${msg.is_error === true ? "[Tool error]\n" : ""}${coerceResponsesOutput(msg.content)}`
       });
     }
   }

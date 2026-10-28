@@ -61,21 +61,49 @@ function loadMasterKey() {
   } catch (err) {
     if (err && err.code !== "ENOENT") throw err;
   }
-  if (raw && raw.length === MASTER_KEY_BYTES) {
-    chmodQuiet(keyPath, MASTER_KEY_MODE);
-    cachedKey = raw;
+  if (raw) {
+    cachedKey = validateKey(raw, keyPath);
     return cachedKey;
   }
-  if (raw && raw.length > 0) {
+  // Absent: write a complete temp file, then hardlink it into place. link()
+  // fails with EEXIST instead of overwriting, so concurrent minters converge
+  // on the winner and no reader ever sees a partial key.
+  const generated = crypto.randomBytes(MASTER_KEY_BYTES);
+  const tmpPath = path.join(
+    dataDir,
+    `.${MASTER_KEY_BASENAME}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`
+  );
+  try {
+    const fd = fs.openSync(tmpPath, "wx", MASTER_KEY_MODE);
+    try {
+      fs.writeFileSync(fd, generated);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    try {
+      fs.linkSync(tmpPath, keyPath);
+    } catch (err) {
+      if (!err || err.code !== "EEXIST") throw err;
+      cachedKey = validateKey(fs.readFileSync(keyPath), keyPath);
+      return cachedKey;
+    }
+    chmodQuiet(keyPath, MASTER_KEY_MODE);
+    cachedKey = generated;
+    return cachedKey;
+  } finally {
+    fs.rmSync(tmpPath, { force: true });
+  }
+}
+
+function validateKey(raw, keyPath) {
+  if (raw.length !== MASTER_KEY_BYTES) {
     throw new Error(
       `columnCrypto: ${MASTER_KEY_BASENAME} must be exactly ${MASTER_KEY_BYTES} bytes`
     );
   }
-  const generated = crypto.randomBytes(MASTER_KEY_BYTES);
-  fs.writeFileSync(keyPath, generated, { mode: MASTER_KEY_MODE });
   chmodQuiet(keyPath, MASTER_KEY_MODE);
-  cachedKey = generated;
-  return cachedKey;
+  return raw;
 }
 
 function encodeAad(aad) {

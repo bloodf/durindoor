@@ -33,6 +33,7 @@
 - Support explicit PostgreSQL-only startup without SQLite configuration reads or outage fallback, including PostgreSQL proxy timeline storage and an atomic sidecar migration helper.
 - Preserve large PostgreSQL query results and original error status with bounded shared-memory transfer instead of truncating timeline reads at 8 MiB.
 - Refresh Codex discovery with the supported client version so GPT-6.1 Sol appears in live catalogs; preserve its provider-specific reasoning efforts without inventing a review variant.
+- Provider model discovery now uses `${base}/models`, the same base as chat, so root-configured base URLs no longer get `/v1` added implicitly during discovery.
 - Add MCP server presets for vetted hosted and local servers, with credential/path guards and operator-only activation.
 - fix(keys): Treat empty lifetime token/cost drafts as unlimited in committed usage instead of showing a false zero limit; retain explicit zero limits.
 - fix(quota): Show omitted Claude model-scoped weekly windows as unknown, non-hideable “not reported” rows when sibling accounts report them; bypass fresh cache on account refresh without bypassing 429 cooldowns.

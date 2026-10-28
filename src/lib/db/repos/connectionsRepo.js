@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
+import { extractCookieValue } from "../../providers/webCookieAuth.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
@@ -244,6 +245,10 @@ function reorderInTx(db, providerId) {
   });
 }
 
+/**
+ * iFlow cookie reimports reuse the row for the same normalized BXAuth session,
+ * not its display name or refreshed API key. Distinct sessions stay separate.
+ */
 export async function createProviderConnection(data, { shouldCommit, requireNewName, createOnly = false } = {}) {
   const db = await getAdapter();
   // OAuth flows can be cancelled while an upstream exchange is in flight.
@@ -304,6 +309,13 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
         if (incomingUsername || existingUsername) return false;
         return true;
       });
+    }
+    if (data.provider === "iflow" && data.authType === "cookie") {
+      const session = extractCookieValue(data.providerSpecificData?.cookie, "BXAuth");
+      if (session) {
+        existing = all.find((c) => c.authType === "cookie" &&
+          extractCookieValue(c.providerSpecificData?.cookie, "BXAuth") === session);
+      }
     }
     if (!existing && data.provider === "cursor" && data.providerSpecificData?.userId) {
       existing = all.find(

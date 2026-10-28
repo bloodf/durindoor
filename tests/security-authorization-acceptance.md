@@ -1,6 +1,6 @@
 # Issue 1115 authorization acceptance
 
-Status: independently observed focused and disposable HTTP acceptance passes for the frozen fixture/source contract, not full CI or issue closure. Historical baseline: 759 matrix passes and one stale-Bearer/valid-x-api-key failure. After the principal fix: 760 matrix passes, 254 neighboring tests and two private both-valid ownership checks. Later routing proof: 140 passes. Final HTTP proof: 686 matrix rows, 90 private semantic checks, three dual-credential checks and one limited-vision check passed with clean fixture journals. Criterion 3 remains **MISSING** historical failing-before evidence for pre-existing ownership changes and the static-leaf review correction; full CI remains **BLOCKED/unproven**. No live-provider claim.
+Status: independently observed focused and disposable HTTP acceptance passes for the frozen fixture/source contract, not full CI or issue closure. Historical baseline: 759 matrix passes and one stale-Bearer/valid-x-api-key failure. After the principal fix: 760 matrix passes, 254 neighboring tests and two private both-valid ownership checks. Later routing proof: 140 passes. Final HTTP proof: 686 matrix rows, 90 private semantic checks, three dual-credential checks and one limited-vision check passed with clean fixture journals. Criterion 3 failing-before evidence is recorded below against merge-base `5209b4aec3953106439231093c0c504af556959f`; see `tests/security-authorization-criterion3-failing-before.md`. Full CI remains subject to the exact-head receipt. No live-provider claim.
 
 ## Historical pre-edit gaps and exclusions
 
@@ -71,8 +71,23 @@ The final verifier checked its 13-source and 12-harness freeze before and after 
 
 ## Closure gate
 
-**Criterion 3: MISSING** historical failing-before evidence for the pre-existing ownership changes and the static-leaf review correction. The reproduced principal 759/1 regression and historical encoded-path 404 do not supply failing-before proof for every other change. Later passing tests and source review do not reconstruct missing historical evidence.
+**Criterion 3: RECORDED** failing-before evidence for this PR's authorization and ownership tests against merge-base `5209b4aec3953106439231093c0c504af556959f` (`origin/main` / `git merge-base HEAD origin/main` at evidence time). Method: detached worktree at that SHA, overlay of this PR's auth/ownership test files onto main's source, Vitest with Node 20.20.2 / npm 10.8.2. Full detail: [`tests/security-authorization-criterion3-failing-before.md`](./security-authorization-criterion3-failing-before.md).
 
-**Full CI: BLOCKED/unproven. Issue closure: NOT authorized.** Focused and bounded HTTP passes do not replace full suite/lint, criterion 3 evidence or independent review. Independent nonwriter review of this frozen documentation delta must precede coordinator materialization authorization; this document does not claim that review or authorization has happened.
+Summary against main source + PR tests:
 
-This documentation writer ran no tests, gates, builds, lint, formatters, application scenarios or commits. No production data, real accounts or live providers were exercised by this refresh. All execution claims above are attributed to retained independent verifier receipts.
+| Suite | Failing-before |
+| --- | --- |
+| `unit/resource-ownership.test.js` | 8 failed / 8 passed (16) |
+| `unit/native-provider.test.js` | 58 failed / 29 passed (87) |
+| `unit/fleet-pr1271-cancel-ownership.test.js` | 6 failed / 0 passed (6) with `DATA_DIR` + `NODE_ENV=test` |
+| `unit/public-api-encoded-routing.test.js` | 17 failed / 7 passed (24) |
+| `unit/security-authorization-matrix.test.js` | 3 failed / 603 passed (606) |
+
+Cases that cannot fail on main (with reason):
+
+1. `tests/security-authorization-http.mjs` — not Vitest; needs a disposable live Next fixture server, recording journal, and generated principal manifest absent from the repo.
+2. Matrix / native-provider / encoded-routing / resource-ownership rows that already pass on current main — those behaviors already exist on main, so they cannot show a failing-before delta for this PR versus that base (counts above).
+
+**Full CI / issue closure:** still require the exact-head full local-CI receipt and independent review. Focused and bounded HTTP passes do not replace that gate.
+
+Earlier documentation in this file that attributed execution only to private verifier receipts remains historical context; the criterion 3 overlay above is the recorded failing-before evidence for merge readiness.

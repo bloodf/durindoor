@@ -1405,7 +1405,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   try {
     const db = await import("@/lib/localDb");
     if (isFunction(db.recordProviderConnectionFallbackState)) {
-      await db.recordProviderConnectionFallbackState(connectionId, {
+      const recorded = await db.recordProviderConnectionFallbackState(connectionId, {
         model: fallbackModel,
         status,
         reasonCode,
@@ -1417,7 +1417,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         webSearch: isolatedSearch,
         videoPoll: context?.videoPoll === true
       }, { signal });
+      // The atomic path ran; never fall through to the compatibility writer,
+      // even when applied is false (stale watermark or reauth guard).
       atomicApplied = true;
+      // A transactional reauth conflict refused the ordinary cooldown write.
+      // Match the pre-write reauth early-return: fallback without a cooldown.
+      if (recorded?.applied === false &&
+        (recorded.connection?.testStatus === "reauth_required" || recorded.connection?.errorCode === "REAUTH")) {
+        return { shouldFallback: true, cooldownMs: 0 };
+      }
     }
   } catch (error) {
     if (error?.name === "AbortError") throw error;

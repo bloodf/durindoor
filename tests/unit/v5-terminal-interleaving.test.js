@@ -129,6 +129,31 @@ describe("R-02 post-auth-read terminal interleaving", () => {
     expect(afterSuccess).toMatchObject({ testStatus: "reauth_required", isActive: false, errorCode: 401 });
   });
 
+  it("two concurrent reauth and cooldown writes keep durable reauth on the same connection", async () => {
+    // Deterministic interleaving: cooldown has already read an active snapshot
+    // (paused after getSettings) while reauth commits; releasing the cooldown
+    // must not demote the quarantine via recordProviderConnectionFallbackState.
+    const barrier = { entered: deferred(), release: deferred() };
+    control.barrier = barrier;
+    const cooldownWrite = fail(T - 2000, M1, 503, "provider overloaded");
+    await barrier.entered.promise;
+    expect((await db.getProviderConnectionById(a.id)).testStatus).toBe("active");
+    await fail(T - 1000, M1, 401, "refresh_token_invalidated");
+    await assertQuarantined();
+    barrier.release.resolve();
+    const cooldownResult = await cooldownWrite;
+    expect(cooldownResult).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    const afterBoth = await assertCredentialsAndSibling();
+    expect(afterBoth).toMatchObject({
+      testStatus: "reauth_required",
+      isActive: false,
+      errorCode: 401,
+    });
+    expect(afterBoth[`modelLock_${M1}`]).toBeFalsy();
+    expect(afterBoth.testStatus).not.toBe("unavailable");
+    expect(afterBoth.testStatus).not.toBe("active");
+  });
+
   it("negative control: ordinary success reads committed terminal state transactionally", async () => {
     await fail(T - 1000, M1, 401, "refresh_token_invalidated");
     await success(T - 500, M1);

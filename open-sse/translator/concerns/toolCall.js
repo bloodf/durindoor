@@ -646,6 +646,8 @@ function mergeConsecutiveUserMessages(messages) {
  *
  * Unlike stripOrphanedToolResults (which deletes orphans), this folds the
  * orphan's text content into a user-text block: `[Tool result: <text>]`.
+ * OpenAI/Claude results with literal `is_error: true` use `[Tool error: <text>]`
+ * so the failure survives after the structured result and its flag are removed.
  * Non-lossy across all formats and preserves Kiro's
  * reconcileOrphanedToolResults salvage semantics (orphan text is kept as user
  * text rather than dropped). Image-only results (no text) are still dropped.
@@ -704,7 +706,8 @@ export function salvageOrphanedToolResults(body) {
             salvagedMessages.push(msg);
           } else {
             const text = extractToolResultText(msg.content);
-            if (text) salvagedMessages.push({ role: "user", content: `[Tool result: ${text}]` });
+            const label = msg.is_error === true ? "error" : "result";
+            if (text) salvagedMessages.push({ role: "user", content: `[Tool ${label}: ${text}]` });
             changed = true;
           }
           continue;
@@ -725,7 +728,8 @@ export function salvageOrphanedToolResults(body) {
             }
             orphanCount++;
             const text = extractToolResultText(block.content);
-            if (text) rebuiltContent.push({ type: "text", text: `[Tool result: ${text}]` });
+            const label = block.is_error === true ? "error" : "result";
+            if (text) rebuiltContent.push({ type: "text", text: `[Tool ${label}: ${text}]` });
           }
           if (orphanCount > 0) {
             changed = true;

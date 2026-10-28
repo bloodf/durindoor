@@ -6,6 +6,7 @@
 //
 // Each provider becomes its own test; providers without an llm model or without an
 // active credential are skipped automatically.
+import { positiveProviderBody } from "./positive-provider-body.js";
 import { describe, it, expect, beforeAll } from "vitest";
 import { getProviderConnections } from "../../../src/lib/localDb.js";
 import { getProviderCredentials } from "../../../src/sse/services/auth.js";
@@ -69,12 +70,12 @@ describe.skipIf(!RUN_REAL).concurrent("REAL provider smoke", () => {
 
         const refreshed = await checkAndRefreshToken(providerId, credentials);
         const result = await handleChatCore({
-          body: {
+          body: positiveProviderBody(providerId, {
             model: `${providerId}/${model}`,
             stream: true,
             max_tokens: MAX_TOKENS,
             messages: [{ role: "user", content: "Reply with the single word: hi" }],
-          },
+          }),
           modelInfo: { provider: providerId, model },
           credentials: refreshed,
           connectionId: credentials.connectionId,

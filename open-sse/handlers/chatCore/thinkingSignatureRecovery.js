@@ -45,14 +45,16 @@ export function isAnthropicThinkingSignatureError({ provider, status, message } 
  * is preserved verbatim: when the request ends in one or more `user[tool_result]`
  * turns, every paired assistant `tool_use` turn in that still-open cycle keeps
  * its thinking blocks. A trailing unresolved assistant `tool_use` turn is
- * protected as well. Returns the original body reference when no safe change is
- * possible.
+ * protected as well. Any assistant redacted_thinking disables recovery so the
+ * original error and opaque continuity are preserved. Returns the original body
+ * reference when no safe change is possible.
  */
 export function stripHistoricalThinkingForSignatureRecovery(body) {
   if (!body || !isObject(body) || Array.isArray(body)) return body;
   if (!Array.isArray(body.messages)) return body;
 
   const messages = body.messages;
+  if (messages.some((message) => message?.role === "assistant" && hasBlock(message, "redacted_thinking"))) return body;
   const protectedAssistantIndexes = new Set();
   let cursor = messages.length - 1;
 

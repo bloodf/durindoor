@@ -36,7 +36,10 @@ vi.mock("../../open-sse/services/tokenRefresh.js", () => ({
   refreshWithRetry: vi.fn(),
 }));
 
-vi.mock("../../open-sse/providers/capabilities.js", () => ({
+// Spread the real module so main's enforceCursorCapabilities (and future
+// exports) remain available after chatCore starts importing them.
+vi.mock("../../open-sse/providers/capabilities.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getCapabilitiesForModel: vi.fn(() => ({})),
   resolveModelLimits: vi.fn(() => ({ contextWindow: 0, maxOutput: 0, known: false, source: "default" })),
 }));

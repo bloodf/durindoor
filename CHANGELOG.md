@@ -19,6 +19,7 @@
 # Unreleased
 
 - ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
+- fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so after the upgrade they return 403 to all callers, including operators.
 
 ## Features
 
@@ -33,6 +34,7 @@
 - Support explicit PostgreSQL-only startup without SQLite configuration reads or outage fallback, including PostgreSQL proxy timeline storage and an atomic sidecar migration helper.
 - Preserve large PostgreSQL query results and original error status with bounded shared-memory transfer instead of truncating timeline reads at 8 MiB.
 - Refresh Codex discovery with the supported client version so GPT-6.1 Sol appears in live catalogs; preserve its provider-specific reasoning efforts without inventing a review variant.
+- Provider model discovery now uses `${base}/models`, the same base as chat, so root-configured base URLs no longer get `/v1` added implicitly during discovery.
 - Add MCP server presets for vetted hosted and local servers, with credential/path guards and operator-only activation.
 - fix(keys): Treat empty lifetime token/cost drafts as unlimited in committed usage instead of showing a false zero limit; retain explicit zero limits.
 - fix(quota): Show omitted Claude model-scoped weekly windows as unknown, non-hideable “not reported” rows when sibling accounts report them; bypass fresh cache on account refresh without bypassing 429 cooldowns.
@@ -60,6 +62,10 @@
 - perf(build): Keep runtime-only Cursor, Kiro, Cowork, and compression-root discovery out of recursive package tracing while preserving lookup order and packaged compression assets.
 - perf(translator): Remove the unused Antigravity executor import and disabled cloaking block so translator initialization does not load executor-only dependencies.
 - test: Anchor the dashboard JSX transform to the actual application source directory, not any ancestor named `src`; preserve full test inventory, isolation, and worker limits.
+
+## Notes
+
+- Anthropic native files and message batches created before this upgrade have no recorded owner. After the upgrade they return 403 to all callers, including operators; there is no operator bypass for unowned resources.
 
 # 4.10.1
 

@@ -19,6 +19,7 @@
 # Unreleased
 
 - ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
+- fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so after the upgrade they return 403 to all callers, including operators.
 
 ## Features
 
@@ -61,6 +62,10 @@
 - perf(build): Keep runtime-only Cursor, Kiro, Cowork, and compression-root discovery out of recursive package tracing while preserving lookup order and packaged compression assets.
 - perf(translator): Remove the unused Antigravity executor import and disabled cloaking block so translator initialization does not load executor-only dependencies.
 - test: Anchor the dashboard JSX transform to the actual application source directory, not any ancestor named `src`; preserve full test inventory, isolation, and worker limits.
+
+## Notes
+
+- Anthropic native files and message batches created before this upgrade have no recorded owner. After the upgrade they return 403 to all callers, including operators; there is no operator bypass for unowned resources.
 
 # 4.10.1
 

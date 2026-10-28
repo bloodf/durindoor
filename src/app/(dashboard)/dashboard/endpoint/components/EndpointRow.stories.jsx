@@ -43,10 +43,10 @@ export const CopyInteraction = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const copyButton = await canvas.findByRole("button", { name: "Copy Local endpoint" });
-    const iconBefore = copyButton.querySelector(".material-symbols-outlined");
-    await expect(iconBefore?.textContent).toBe("content_copy");
+    const iconName = () => copyButton.querySelector("[data-icon-name]")?.dataset.iconName
+      || copyButton.querySelector(".material-symbols-outlined")?.textContent;
+    await expect(iconName()).toBe("content_copy");
     await userEvent.click(copyButton);
-    const iconAfter = copyButton.querySelector(".material-symbols-outlined");
-    await expect(iconAfter?.textContent).toBe("check");
+    await expect(iconName()).toBe("check");
   },
 };

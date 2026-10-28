@@ -15,9 +15,8 @@ export const Playground = {
   args: { caps: { vision: true, reasoning: true, tools: true } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("visibility")).toBeInTheDocument();
-    await expect(canvas.getByText("neurology")).toBeInTheDocument();
-    await expect(canvas.getByText("build")).toBeInTheDocument();
+    for (const icon of ["visibility", "neurology", "build"])
+      await expect(canvasElement.querySelector(`[data-icon-name="${icon}"]`) || canvas.getByText(icon)).toBeInTheDocument();
   },
 };
 

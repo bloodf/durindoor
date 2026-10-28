@@ -33,7 +33,7 @@ export const OnIconButton = {
 export const OnFocusableIcon = {
   render: () => (
     <Tooltip text="Tooltip top" position="top">
-      <span className="flex min-h-11 min-w-11 items-center justify-center rounded-dd text-base focus:outline-none focus-visible:shadow-dd-focus material-symbols-outlined">info</span>
+      <span tabIndex={0} className="flex min-h-11 min-w-11 items-center justify-center rounded-dd text-base focus:outline-none focus-visible:shadow-dd-focus material-symbols-outlined">info</span>
     </Tooltip>
   ),
   play: async () => {

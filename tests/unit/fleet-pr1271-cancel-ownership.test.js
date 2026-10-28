@@ -1,6 +1,9 @@
 import { createServer, request as httpRequest } from "node:http";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ transport: vi.fn(), credentials: vi.fn() }));
@@ -29,7 +32,9 @@ vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => 
 // Block accidental fetch/refresh traffic before importing any application module.
 // Loopback HTTP below uses node:http; provider transport and quota admission are fake.
 vi.stubGlobal("fetch", vi.fn(() => { throw new Error("External fetch forbidden in ownership fixture"); }));
-if (!process.env.DATA_DIR || process.env.NODE_ENV !== "test") throw new Error("Run through the isolated scoped-test wrapper");
+const dataRoot = mkdtempSync(path.join(tmpdir(), "durindoor-1271-"));
+vi.stubEnv("DATA_DIR", dataRoot);
+vi.stubEnv("NODE_ENV", "test");
 const route = await import("@/app/api/v1/native/[provider]/[...operation]/route.js");
 const { readNativeResourceOwner, createNativeResourceOwner } = await import("@/sse/services/nativeResourceOwners.js");
 const { observeNativeResponse } = await import("@/sse/services/nativeUsage.js");
@@ -83,6 +88,8 @@ afterAll(async () => {
   expect(bridgeErrors).toEqual([]);
   expect(globalThis.fetch).not.toHaveBeenCalled();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  rmSync(dataRoot, { recursive: true, force: true });
 });
 
 function send(method, path, principal = "creator", body) {

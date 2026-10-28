@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, open, link, rename, unlink } from "node:fs/promises";
+import { mkdir, readFile, open, link, unlink } from "node:fs/promises";
 import path from "node:path";
 import { getDataDir } from "@/lib/dataDir.js";
 
@@ -23,8 +23,9 @@ export async function readNativeResourceOwner(provider, connectionId, resourceId
  * and an upstream retry must not let another gateway key claim the same ID.
  *
  * Writes through a same-directory temp file, fsyncs the payload, then publishes
- * with link (create-once) or rename fallback so readers never see a partial
- * record and the first writer wins.
+ * with link (create-once). When link is unavailable (ENOTSUP/EPERM), fall back
+ * to an exclusive create on the target so an existing owner raises EEXIST and
+ * is never replaced. Never rename over the target.
  */
 export async function createNativeResourceOwner(owner) {
   if (!owner?.resourceId || !owner?.ownerId) return;
@@ -43,17 +44,25 @@ export async function createNativeResourceOwner(owner) {
     await handle.close();
     handle = undefined;
     try {
-      // link is the create-once publish on POSIX; rename would replace an
-      // existing owner on Linux and break first-writer-wins.
       await link(tmp, target);
     } catch (error) {
       if (error?.code === "EEXIST") return;
-      if (error?.code === "ENOTSUP" || error?.code === "EPERM" || error?.code === "EXDEV") {
+      if (error?.code === "ENOTSUP" || error?.code === "EPERM") {
+        // Fail closed: exclusive create never replaces an existing owner.
+        // A concurrent reader of a partial claim hits non-ENOENT JSON parse.
+        let claim;
         try {
-          await rename(tmp, target);
-        } catch (renameError) {
-          if (renameError?.code === "EEXIST") return;
-          throw renameError;
+          claim = await open(target, "wx", 0o600);
+          await claim.writeFile(JSON.stringify(owner), "utf8");
+          await claim.sync();
+          await claim.close();
+          claim = undefined;
+        } catch (fallbackError) {
+          if (claim !== undefined) {
+            try { await claim.close(); } catch { /* ignore close during cleanup */ }
+            try { await unlink(target); } catch { /* ignore partial claim cleanup */ }
+          }
+          throw fallbackError;
         }
         return;
       }

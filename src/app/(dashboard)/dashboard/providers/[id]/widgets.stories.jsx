@@ -45,7 +45,7 @@ const modelRoutes = {
   "POST /api/models/test": { body: { ok: true } },
   "POST /api/models/custom": { body: { model: { id: "gpt-custom", providerAlias: "oc-prod", type: "llm" } } },
   "DELETE /api/models/custom": { body: { ok: true } },
-  "POST /api/models/test/batch": { body: "data: {\"model\":\"oc-prod/gpt-custom\",\"ok\":true}\n\ndata: {\"done\":true}\n\n", events: true },
+  "POST /api/models/test/batch": { events: [{ model: "oc-prod/gpt-custom", ok: true }, { done: true }] },
 };
 
 const meta = {

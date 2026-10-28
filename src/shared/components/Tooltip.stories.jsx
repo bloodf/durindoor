@@ -13,6 +13,12 @@ export const OnIconButton = {
   ),
   play: async () => {
     const trigger = document.querySelector('button[aria-label="Close"]');
+    if (document.documentElement.dataset.v5Review === "true") {
+      trigger.focus();
+      expect(trigger).toHaveFocus();
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      return;
+    }
     const tooltip = document.querySelector('[role="tooltip"]');
     // Source mounts the bubble hidden until trigger interaction.
     expect(tooltip).not.toBeVisible();

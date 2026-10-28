@@ -1,0 +1,8 @@
+// Generated from the actual component stories. Do not edit; run node scripts/gen-v5-stories.mjs.
+import React from 'react';
+import originalMeta, * as original from "../../../components/layouts/AuthLayout.stories.jsx";
+import { reviewDecorator } from '../ReviewFrame.jsx';
+import { reviewParameters, reviewStory } from '../review-parameters.js';
+const meta = { ...originalMeta, title: "V5 review/Workflows/shell/AuthLayout", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/components/layouts/AuthLayout.stories.jsx","standalone":true}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
+export default meta;
+export const Card = { ...reviewStory(original.Card, {"source":"src/shared/components/layouts/AuthLayout.stories.jsx","standalone":true}) };

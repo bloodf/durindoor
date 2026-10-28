@@ -82,7 +82,7 @@ export const Default = {
   render: () => <McpGatewayPage />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText("MCP Gateway")).toBeVisible();
+    await expect(await canvas.findByRole("heading", { name: "MCP Gateway", exact: true })).toBeVisible();
     const granolaRow = (await canvas.findByText("granola")).closest("article");
     await userEvent.click(within(granolaRow).getByRole("button", { name: "Test" }));
     const result = await within(granolaRow).findByRole("status");

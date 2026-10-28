@@ -1,0 +1,28 @@
+// Generated from the actual component stories. Do not edit; run node scripts/gen-v5-stories.mjs.
+import React from 'react';
+import originalMeta, * as original from "../usage/Usage.stories.jsx";
+import { reviewDecorator } from '../ReviewFrame.jsx';
+import { reviewParameters, reviewStory } from '../review-parameters.js';
+const meta = { ...originalMeta, title: "V5 review/Scenarios/V5 preservation/Usage/Complete usage workspace", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
+export default meta;
+export const AllWidgets = { ...reviewStory(original.AllWidgets, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const LayoutDraftSaveAndReopen = { ...reviewStory(original.LayoutDraftSaveAndReopen, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const GroupedPendingAndSessions = { ...reviewStory(original.GroupedPendingAndSessions, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const CustomRangeKeepsLiveSessions = { ...reviewStory(original.CustomRangeKeepsLiveSessions, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const RequestDetails = { ...reviewStory(original.RequestDetails, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const ResetUsageData = { ...reviewStory(original.ResetUsageData, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const StatsFailureKeepsIndependentReports = { ...reviewStory(original.StatsFailureKeepsIndependentReports, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const RequestLogs = { ...reviewStory(original.RequestLogs, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const LoadingStatistics = { ...reviewStory(original.LoadingStatistics, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const ComboReportError = { ...reviewStory(original.ComboReportError, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const RequestLogsError = { ...reviewStory(original.RequestLogsError, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const ResetPending = { ...reviewStory(original.ResetPending, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const ResetFailure = { ...reviewStory(original.ResetFailure, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const LoadingReports = { ...reviewStory(original.LoadingReports, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const LoadingRequestDetails = { ...reviewStory(original.LoadingRequestDetails, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const LoadingRequestLogs = { ...reviewStory(original.LoadingRequestLogs, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const EmptyStatistics = { ...reviewStory(original.EmptyStatistics, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const StreamOfflineRetainsSnapshot = { ...reviewStory(original.StreamOfflineRetainsSnapshot, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const ChartUnavailable = { ...reviewStory(original.ChartUnavailable, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const KeyLimitsUnavailable = { ...reviewStory(original.KeyLimitsUnavailable, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const LoadingKeyLimits = { ...reviewStory(original.LoadingKeyLimits, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };

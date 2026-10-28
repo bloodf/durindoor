@@ -57,6 +57,7 @@ export const Default = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: "Database Settings" })).toBeVisible();
-    await expect(canvas.getByText("sqlite")).toBeVisible();
+    const engineStatus = await canvas.findByRole("region", { name: "Engine status" });
+    await expect(within(engineStatus).getByText("sqlite")).toBeVisible();
   },
 };

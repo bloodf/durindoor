@@ -28,20 +28,21 @@ export const StatusPreview = {
     await expect(await canvas.findByRole("heading", { name: "Auto-configure", level: 1 })).toBeVisible();
     const statusCard = await canvas.findByRole("heading", { name: "Status", level: 2 });
     await expect(statusCard).toBeVisible();
-    await expect(canvas.getByText("Headroom")).toBeVisible();
-    await expect(canvas.getByText("PxPipe")).toBeVisible();
-    await expect(canvas.getByText("Firecrawl")).toBeVisible();
-    await expect(canvas.getByText("Toggles")).toBeVisible();
-    await expect((await canvas.findAllByText("Up to date")).length).toBeGreaterThanOrEqual(2);
-    await expect((await canvas.findAllByText("Unavailable")).length).toBeGreaterThanOrEqual(2);
-    const previewBadge = await canvas.findByText("Preview — would apply changes");
+    const summary = within(statusCard.parentElement.parentElement);
+    await expect(summary.getByText("Headroom")).toBeVisible();
+    await expect(summary.getByText("PxPipe")).toBeVisible();
+    await expect(summary.getByText("Firecrawl")).toBeVisible();
+    await expect(summary.getByText("Toggles")).toBeVisible();
+    await expect((await summary.findAllByText("Up to date")).length).toBeGreaterThanOrEqual(2);
+    await expect((await summary.findAllByText("Unavailable")).length).toBeGreaterThanOrEqual(2);
+    const previewBadge = await summary.findByText("Preview — would apply changes");
     await expect(previewBadge).toBeVisible();
-    const details = canvas.getByText("Action log (2)");
+    const details = summary.getByText("Action log (2)");
     await userEvent.click(details);
-    const firecrawl = canvas.getByText("Firecrawl");
+    const firecrawl = summary.getByText("Firecrawl");
     const firecrawlRow = firecrawl.closest("[class~='flex'][class~='flex-col'][class~='gap-2']");
     await expect(within(firecrawlRow).getByText("$ npm install firecrawl")).toBeVisible();
-    const pxpipe = canvas.getByText("PxPipe");
+    const pxpipe = summary.getByText("PxPipe");
     const pxpipeRow = pxpipe.closest("[class~='flex'][class~='flex-col'][class~='gap-2']");
     await expect(within(pxpipeRow).getByText("$ headroomUrl=http://localhost:8080 pip install pxpipe")).toBeVisible();
   },
@@ -55,8 +56,9 @@ export const RunSuccess = {
     await userEvent.click(run);
     const resultHeading = await canvas.findByRole("heading", { name: "Dry run result", level: 2 });
     await expect(resultHeading).toBeVisible();
-    await expect(canvas.getByText("Headroom")).toBeVisible();
-    await expect(canvas.getByText("Firecrawl")).toBeVisible();
+    const summary = within(resultHeading.parentElement.parentElement);
+    await expect(summary.getByText("Headroom")).toBeVisible();
+    await expect(summary.getByText("Firecrawl")).toBeVisible();
   },
 };
 

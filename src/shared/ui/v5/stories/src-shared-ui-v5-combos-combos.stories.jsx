@@ -1,0 +1,24 @@
+// Generated from the actual component stories. Do not edit; run node scripts/gen-v5-stories.mjs.
+import React from 'react';
+import originalMeta, * as original from "../combos/Combos.stories.jsx";
+import { reviewDecorator } from '../ReviewFrame.jsx';
+import { reviewParameters, reviewStory } from '../review-parameters.js';
+const meta = { ...originalMeta, title: "V5 review/Workflows/V5 redesign/Combos", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
+export default meta;
+export const Inventory = { ...reviewStory(original.Inventory, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const Empty = { ...reviewStory(original.Empty, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const LoadError = { ...reviewStory(original.LoadError, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const Loading = { ...reviewStory(original.Loading, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const CreateFailure = { ...reviewStory(original.CreateFailure, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const CreatePending = { ...reviewStory(original.CreatePending, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const EditAndReadBack = { ...reviewStory(original.EditAndReadBack, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const DeleteAndReadBack = { ...reviewStory(original.DeleteAndReadBack, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const StrategyFailure = { ...reviewStory(original.StrategyFailure, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const ModelPicker = { ...reviewStory(original.ModelPicker, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const CapabilityCeiling = { ...reviewStory(original.CapabilityCeiling, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const FusionStrategy = { ...reviewStory(original.FusionStrategy, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const SmartStrategy = { ...reviewStory(original.SmartStrategy, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const RoundRobinStrategy = { ...reviewStory(original.RoundRobinStrategy, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const CreateAndReadBack = { ...reviewStory(original.CreateAndReadBack, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const InvalidName = { ...reviewStory(original.InvalidName, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const SearchWithoutResults = { ...reviewStory(original.SearchWithoutResults, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };

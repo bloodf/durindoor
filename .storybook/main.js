@@ -1,5 +1,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { reviewIconStyles } from "./review-style-boundary.mjs";
+import { reviewNativeButtons } from "./review-button-boundary.mjs";
+import { reviewGlyphs } from "./review-glyph-boundary.mjs";
 
 const storybookDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(storybookDir, "..");
@@ -32,7 +35,99 @@ const config = {
     const { createProviderMetadataPlugin } = await import("./provider-metadata.mjs");
     const providerMetadata = await createProviderMetadataPlugin(projectRoot);
     return mergeConfig(viteConfig, {
+      define: { "process.env.NEXT_PUBLIC_CLOUD_URL": JSON.stringify("https://cloud.example.test") },
       plugins: [{
+        name: "v5-review-control-boundary",
+        enforce: "pre",
+        transform(source, id) {
+          if (id === path.join(projectRoot, "src/app/globals.css")) return { code: reviewIconStyles(source), map: null };
+          if (!id.startsWith(`${projectRoot}/src/`) || !/\.(?:js|jsx)$/.test(id) || id.endsWith("/NativeSelect.jsx")) return null;
+          let code = source;
+          if (id.endsWith("/dashboard/skills/page.js")) {
+            code = code.replace('className="min-w-0 flex-1 whitespace-pre-wrap break-all', 'className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "min-w-0 flex-1 basis-full sm:basis-0 whitespace-pre-wrap break-all rounded-dd bg-dd-surface-2 p-3 text-xs text-dd-text" : "min-w-0 flex-1 whitespace-pre-wrap break-all');
+            code = code.replace('p-3 text-xs text-dd-text">{buildSkillInstruction', 'p-3 text-xs text-dd-text"}>{buildSkillInstruction');
+          }
+          if (id.endsWith("/dashboard/timeline/page.js")) {
+            code = code.replace('<span className="inline-flex items-center gap-2"><ProviderLogo', '<span className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "inline-flex items-center gap-2 whitespace-nowrap" : "inline-flex items-center gap-2"}><ProviderLogo');
+          }
+          if (id.endsWith("/shared/ui/components/Pagination.jsx")) {
+            code = code.replace("rowsPerPageOptions.map(", '(globalThis.document?.documentElement.dataset.v5Review === "true" && !rowsPerPageOptions.includes(rowsPerPage) ? [...rowsPerPageOptions, rowsPerPage] : rowsPerPageOptions).map(');
+          }
+          if (id.endsWith("/shared/ui/components/Button.jsx")) {
+            code = code.replace("export default function Button(", "function OriginalButton(");
+            code = `import ReviewButton from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/motion/ReviewButton.jsx"))};\n` + code
+              + '\nexport default function Button(props) { return globalThis.document?.documentElement.dataset.v5Review === "true" ? <ReviewButton {...props} /> : <OriginalButton {...props} />; }\n';
+          }
+          const replacements = [
+            ["/shared/components/ComboFormModal.js", "ComboFormModal", "combos/ReviewSharedComboFormModal.jsx", false],
+            ["/shared/components/ModelSelectModal.js", "ModelSelectModal", "combos/ReviewModelSelectModal.jsx", false],
+            ["/dashboard/combos/page.js", "CombosPage", "combos/ReviewCombosPage.jsx", false],
+            ["/providers/[id]/ModelAutoSyncPanel.js", "ModelAutoSyncPanel", "providers/ReviewAutoSyncCard.jsx", false],
+            ["/login/LoginView.js", "LoginView", "login/ReviewLoginView.jsx", true],
+          ];
+          for (const [suffix, name, replacement, named] of replacements) {
+            if (!id.endsWith(suffix)) continue;
+            const signature = `${named ? "export" : "export default"} function ${name}(`;
+            if (!code.includes(signature)) throw new Error(`Review replacement signature changed: ${id}`);
+            code = code.replace(signature, `function Incumbent${name}(`);
+            code = `import ${named ? "{ ReviewLoginView as Replacement }" : "Replacement"} from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5", replacement))};\n` + code
+              + `\n${named ? "export" : "export default"} function ${name}(props) { return globalThis.document?.documentElement.dataset.v5Review === "true" ? <Replacement {...props} /> : <Incumbent${name} {...props} />; }\n`;
+          }
+          if (id.endsWith("/providers/[id]/page.js")) {
+            for (const handler of ["handleRoundRobinToggle", "handleCacheAffinityToggle"]) {
+              const label = handler === "handleRoundRobinToggle" ? "Round Robin" : "Cache Affinity";
+              const pair = new RegExp(`(<span[^>]*>${label}</span>\\s*<Toggle[\\s\\S]*?onChange=\\{${handler}\\} />)`);
+              code = code.replace(pair, '<div className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "inline-flex items-center gap-2 whitespace-nowrap" : "contents"}>$1</div>');
+            }
+            code = code.replace('className="hidden text-xs text-dd-muted sm:inline">RPM / account', 'className={globalThis.document?.documentElement.dataset.v5Review === "true" ? "text-xs text-dd-muted" : "hidden text-xs text-dd-muted sm:inline"}>RPM / account');
+            const panel = code.match(/\{!isCompatible &&\s*<ModelAutoSyncPanel[\s\S]*?\/>\s*\}/)?.[0];
+            if (!panel) throw new Error("Provider auto-sync placement changed");
+            code = code.replace(panel, `{globalThis.document?.documentElement.dataset.v5Review !== "true" && (${panel.slice(1, -1)})}`)
+              .replace("{/* Models */}", `{globalThis.document?.documentElement.dataset.v5Review === "true" && (${panel.slice(1, -1)})}\n      {/* Models */}`);
+          }
+          if (id.endsWith("/token-saver/TokenSaverClient.jsx")) {
+            code = code.replace("export default function TokenSaverClient(", "function IncumbentTokenSaverClient(");
+            code = `import TokenSaverDashboard from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/dashboards/TokenSaverDashboard.jsx"))};\n` + code
+              + '\nexport default function TokenSaverClient(props) { return globalThis.document?.documentElement.dataset.v5Review === "true" && props.view !== "settings" ? <TokenSaverDashboard /> : <IncumbentTokenSaverClient {...props} />; }\n';
+          }
+          if (id.endsWith("/shared/components/Sidebar.js")) {
+            // Evaluate at render time, after the review fixture is installed.
+            code = `import { reviewSidebarSections } from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/review-navigation.js"))};\n` + code.replace('NAV_SECTIONS.map(', 'reviewSidebarSections(NAV_SECTIONS).map(');
+          }
+          if (id.endsWith("/shared/components/SidebarNavIcons.js")) {
+            code = `import MotionIcon from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/motion/MotionIcon.jsx"))};\n` + code.replace('export function NavIcon({ icon, isActive, size = "18" }) {', 'export function NavIcon({ icon, isActive, size = "18" }) {\n  if (globalThis.document?.documentElement.dataset.v5Review === "true") return createElement(MotionIcon, { name: icon, size: Number(size), className: isActive ? "text-dd-accent" : "" });');
+          }
+          if (id.endsWith("/shared/components/Header.js")) {
+            code = code.replace('const getPageInfo = (pathname) => {', 'const getPageInfo = (pathname) => {\n  if (pathname === "/dashboard/workspaces") return { title: "My dashboards", description: "Build a dashboard from Usage, Token Saver, Quota and Monitoring", icon: "dashboard", breadcrumbs: [] };');
+          }
+          if (/\/shared\/constants\/(?:mitmToolHosts|coworkPlugins)\.js$/.test(id)) {
+            code = code.replace(/module\.exports = \{([^}]+)\};?/, "export { $1 };");
+          }
+          // The limits table has no interactive cells. Its local scroll region
+          // must be keyboard reachable in the narrow review layout.
+          if (id.endsWith("/usage/components/ApiKeyLimitsCard.js")) {
+            code = code.replace('<div className="overflow-x-auto rounded-dd border border-dd-border">', '<div tabIndex={globalThis.document?.documentElement.dataset.v5Review === "true" ? 0 : undefined} role={globalThis.document?.documentElement.dataset.v5Review === "true" ? "region" : undefined} aria-label={globalThis.document?.documentElement.dataset.v5Review === "true" ? "API key rate and budget limits" : undefined} className="overflow-x-auto rounded-dd border border-dd-border">');
+          }
+          if (/<\/?select\b/.test(code)) {
+            code = `import { V5NativeSelect } from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/NativeSelect.jsx"))};\n` + code.replace(/(<\/?)select\b/g, "$1V5NativeSelect");
+          }
+          if (!id.endsWith("/motion/ReviewNativeButton.jsx")) code = reviewNativeButtons(code, path.join(projectRoot, "src/shared/ui/v5/motion/ReviewNativeButton.jsx"));
+          if (id.endsWith("/shared/components/HeaderLanguage.js") || id.endsWith("/shared/components/LanguageSwitcher.js")) {
+            code = code.replace(/(<span)([^>]*className="text-(?:lg|2xl)[^"]*"[^>]*>)(\{(?:LOCALE_FLAGS|getLocaleInfo|info\.flag))/g, '$1 data-icon-name="language"$2$3');
+          }
+          if (!id.includes("/ui/v5/motion/")) code = reviewGlyphs(code, path.join(projectRoot, "src/shared/ui/v5/motion/ReviewGlyph.jsx"));
+          if (id.endsWith("/shared/ui/components/Tooltip.jsx")) {
+            code = `import { allowsIconTooltip } from ${JSON.stringify(path.join(projectRoot, "src/shared/ui/v5/motion/ReviewNativeButton.jsx"))};\n` + code.replace("export default function Tooltip(", "function OriginalTooltip(")
+              + '\nexport default function Tooltip(props) { return globalThis.document?.documentElement.dataset.v5Review === "true" && !allowsIconTooltip(props.children) ? cloneElement(props.children, { title: undefined }) : <OriginalTooltip {...props} />; }\n';
+          }
+          if (/\/(?:Header\.js|login\/page\.js|profile\/page\.js)$/.test(id)) {
+            code = code.replace(/window\.location\.assign\(([^;\n]+)\)/g, "reviewAssign($1)")
+              .replace(/window\.location\.href\s*=\s*([^;\n]+)/g, "reviewAssign($1)");
+            if (code.includes("reviewAssign(")) code = `import { reviewAssign } from ${JSON.stringify(path.join(storybookDir, "review-runtime.js"))};\n` + code;
+          }
+          return code === source ? null : { code, map: null };
+        },
+      }, {
         name: "production-jsx",
         enforce: "pre",
         async transform(source, id) {

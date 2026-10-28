@@ -1,0 +1,26 @@
+// Generated from the actual component stories. Do not edit; run node scripts/gen-v5-stories.mjs.
+import React from 'react';
+import originalMeta, * as original from "../../../../app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx";
+import { reviewDecorator } from '../ReviewFrame.jsx';
+import { reviewParameters, reviewStory } from '../review-parameters.js';
+const meta = { ...originalMeta, title: "V5 review/Pages/usage/Usage surfaces", parameters: reviewParameters(originalMeta.parameters, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
+export default meta;
+export const Overview = { ...reviewStory(original.Overview, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const RecentAndSessions = { ...reviewStory(original.RecentAndSessions, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const UsageTrend = { ...reviewStory(original.UsageTrend, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const UsageTrendEmpty = { ...reviewStory(original.UsageTrendEmpty, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const UsageTableCollapsed = { ...reviewStory(original.UsageTableCollapsed, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const UsageTablePending = { ...reviewStory(original.UsageTablePending, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const UsageTableCostView = { ...reviewStory(original.UsageTableCostView, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const ComboReportLoaded = { ...reviewStory(original.ComboReportLoaded, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const ComboReportError = { ...reviewStory(original.ComboReportError, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const QuotaProgressHealthy = { ...reviewStory(original.QuotaProgressHealthy, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const QuotaProgressDepleted = { ...reviewStory(original.QuotaProgressDepleted, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const QuotaTablePaged = { ...reviewStory(original.QuotaTablePaged, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const ProviderLimitCardHealthy = { ...reviewStory(original.ProviderLimitCardHealthy, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const ProviderLimitCardMessage = { ...reviewStory(original.ProviderLimitCardMessage, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const ProviderLimitCardError = { ...reviewStory(original.ProviderLimitCardError, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const RequestDetailsDefault = { ...reviewStory(original.RequestDetailsDefault, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const RequestDetailsError = { ...reviewStory(original.RequestDetailsError, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const ProviderTopologyConnected = { ...reviewStory(original.ProviderTopologyConnected, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };
+export const ProviderTopologyEmpty = { ...reviewStory(original.ProviderTopologyEmpty, {"source":"src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx","standalone":false}) };

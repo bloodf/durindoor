@@ -25,6 +25,9 @@ export const Default = {
     await expect(within(table).getByText("142ms")).toBeVisible();
     await expect(within(table).getByText("920ms")).toBeVisible();
     await expect(within(table).getByText("Upstream timeout")).toBeVisible();
+    if (document.documentElement.dataset.v5Review === "true") {
+      await expect(canvas.getByRole("combobox", { name: "Rows per page" })).toHaveTextContent("20");
+    }
     const refresh = canvas.getByRole("button", { name: "Refresh" });
     await userEvent.click(refresh);
     await expect(within(table).getByText("OpenAI primary")).toBeVisible();

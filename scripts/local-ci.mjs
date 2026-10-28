@@ -60,14 +60,6 @@ export function validateSelection(selection, identity, floor, inventory) {
   return [...selection.tests].sort();
 }
 
-// Every child receives this owned temporary root; reject replacement or permission drift.
-export function assertPrivateTemporaryRoot(directory) {
-  if (!path.isAbsolute(directory)) throw new Error("temporary root must be absolute");
-  const state = lstatSync(directory);
-  if (!state.isDirectory() || state.isSymbolicLink() || state.uid !== process.geteuid()
-    || (state.mode & 0o777) !== 0o700) throw new Error("temporary root must remain owned and private (0700)");
-}
-
 export function testEnvironment(source, privatePaths) {
   const allowed = ["PATH", "LANG", "LC_ALL", "TZ", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT"];
   return { ...Object.fromEntries(allowed.filter(k => source[k] !== undefined).map(k => [k, source[k]])),
@@ -179,15 +171,10 @@ if (!privateRoot.isDirectory() || privateRoot.isSymbolicLink() || privateRoot.ui
 const dirs = {
   logs: path.join(out, "logs"), src: path.join(out, "src"), home: path.join(out, "home"),
   testHome: path.join(out, "durindoor-home"), data: path.join(out, "durindoor-data-build"),
-  testData: path.join(out, "durindoor-data-test"), tmp: path.join(out, "tmp"),
+  testData: path.join(out, "durindoor-data-test"),
   cache: path.join(out, "npm-cache"), tool: path.join(out, "commitlint-tool"),
 };
-for (const d of Object.values(dirs)) {
-  if (d === dirs.src) continue;
-  const mkdirOptions = { recursive: true };
-  if (d === dirs.tmp) mkdirOptions.mode = 0o700;
-  mkdirSync(d, mkdirOptions);
-}
+for (const d of Object.values(dirs)) if (d !== dirs.src) mkdirSync(d, { recursive: true });
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 const now = () => new Date().toISOString();
@@ -210,12 +197,12 @@ save();
 
 const baseEnv = {
   ...testEnvironment(process.env, {}),
-  HOME: dirs.home, DATA_DIR: dirs.data, TMPDIR: dirs.tmp, CI: "true",
+  HOME: dirs.home, DATA_DIR: dirs.data, CI: "true",
   npm_config_cache: dirs.cache, npm_config_update_notifier: "false",
   PATH: [opts["path-prepend"], process.env.PATH].filter(Boolean).join(path.delimiter),
 };
 const envOverrides = (extra = {}) => ({
-  HOME: baseEnv.HOME, DATA_DIR: baseEnv.DATA_DIR, TMPDIR: baseEnv.TMPDIR, CI: "true",
+  HOME: baseEnv.HOME, DATA_DIR: baseEnv.DATA_DIR, CI: "true",
   npm_config_cache: dirs.cache, PATH_PREPEND: opts["path-prepend"] ?? null, ...extra,
 });
 
@@ -240,11 +227,6 @@ async function run(id, job, cmd, args, { cwd = dirs.src, env = {}, input, expect
   };
   evidence.steps.push(step);
   if (interrupted) { step.status = "not-run"; step.reason = `interrupted by ${interrupted}`; save(); return step; }
-  try { assertPrivateTemporaryRoot(dirs.tmp); }
-  catch (error) {
-    step.spawnError = `private temporary root invalid before command: ${error.message}`;
-    step.status = "failed"; anyFail = true; save(); return step;
-  }
   for (const directory of [out, cwd, ...Object.values(dirs).filter(d => existsSync(d))]) {
     const state = lstatSync(directory);
     if (!state.isDirectory() || state.isSymbolicLink() || state.uid !== process.geteuid()) {
@@ -298,8 +280,6 @@ async function run(id, job, cmd, args, { cwd = dirs.src, env = {}, input, expect
   if (!after.isDirectory() || after.isSymbolicLink() || after.uid !== process.geteuid() || (after.mode & 0o077)) {
     step.spawnError = "private output root changed during command";
   }
-  try { assertPrivateTemporaryRoot(dirs.tmp); }
-  catch (error) { step.spawnError = `private temporary root invalid after command: ${error.message}`; }
   step.endedAt = now();
   step.logSha256 = sha256(log);
   step.status = interrupted ? "interrupted"

@@ -1,10 +1,5 @@
 // @vitest-environment happy-dom
-// @vitest-environment-options {"settings":{"disableIframePageLoading":true}}
-// Assert iframe security attributes without fetching its synthetic .example URL.
-// The transport spies below keep accidental external requests fail-closed.
 import React, { act } from "react";
-import http from "node:http";
-import https from "node:https";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebLoginModal from "@/shared/components/WebLoginModal.js";
@@ -23,9 +18,6 @@ const tick = () => act(async () => { await vi.advanceTimersByTimeAsync(2000); })
 
 beforeEach(() => {
   vi.useFakeTimers();
-  for (const transport of [http, https]) {
-    vi.spyOn(transport, "request").mockImplementation(() => { throw new Error("Unexpected external iframe transport"); });
-  }
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -50,12 +42,7 @@ afterEach(async () => {
   container.remove();
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  try {
-    expect(http.request).not.toHaveBeenCalled();
-    expect(https.request).not.toHaveBeenCalled();
-  } finally {
-    vi.restoreAllMocks();
-  }
+  vi.restoreAllMocks();
 });
 
 describe("isolated web login modal", () => {

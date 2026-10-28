@@ -92,9 +92,9 @@ afterAll(async () => {
   rmSync(dataRoot, { recursive: true, force: true });
 });
 
-function send(method, path, principal = "creator", body) {
+function send(method, routePath, principal = "creator", body) {
   return new Promise((resolve, reject) => {
-    const url = new URL(`/api/v1/native/anthropic${path}`, baseUrl);
+    const url = new URL(`/api/v1/native/anthropic${routePath}`, baseUrl);
     url.searchParams.set("model", `anthropic/${model}`);
     const request = httpRequest(url, {
       method, agent: false,
@@ -105,8 +105,8 @@ function send(method, path, principal = "creator", body) {
   });
 }
 
-async function consume(method, path, principal = "creator", body) {
-  const response = await send(method, path, principal, body);
+async function consume(method, routePath, principal = "creator", body) {
+  const response = await send(method, routePath, principal, body);
   const chunks = [];
   for await (const chunk of response) chunks.push(chunk);
   return { status: response.statusCode, headers: response.headers, text: Buffer.concat(chunks).toString("utf8") };

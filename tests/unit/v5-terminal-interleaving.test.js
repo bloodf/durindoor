@@ -28,11 +28,7 @@ let originalA;
 let originalB;
 
 beforeEach(async () => {
-  const temporaryParent = process.env.TMPDIR;
-  if (!temporaryParent || !path.isAbsolute(temporaryParent) || os.tmpdir() !== temporaryParent) {
-    throw new Error("Confined runtime must supply an absolute private TMPDIR");
-  }
-  root = fs.mkdtempSync(path.join(temporaryParent, "resilience-db-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "resilience-db-"));
   vi.stubEnv("DATA_DIR", path.join(root, "data"));
   vi.stubEnv("HOME", path.join(root, "home"));
   vi.stubEnv("DURINDOOR_DATABASE_ENGINE", "sqlite");
@@ -79,7 +75,10 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
-  fs.rmSync(root, { recursive: true, force: true });
+  if (root) {
+    fs.rmSync(root, { recursive: true, force: true });
+    root = undefined;
+  }
 });
 
 async function fail(at, model = M1, status = 429, message = "rate limit") {

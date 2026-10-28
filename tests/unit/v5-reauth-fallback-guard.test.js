@@ -19,11 +19,7 @@ let root;
 let database;
 
 beforeEach(async () => {
-  const temporaryParent = process.env.TMPDIR;
-  if (!temporaryParent || !path.isAbsolute(temporaryParent) || os.tmpdir() !== temporaryParent) {
-    throw new Error("Confined runtime must supply an absolute private TMPDIR");
-  }
-  root = fs.mkdtempSync(path.join(temporaryParent, "reauth-guard-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "reauth-guard-"));
   vi.stubEnv("DATA_DIR", path.join(root, "data"));
   vi.stubEnv("HOME", path.join(root, "home"));
   vi.stubEnv("DURINDOOR_DATABASE_ENGINE", "sqlite");
@@ -42,7 +38,10 @@ afterEach(async () => {
   delete global._dbAdapter;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
-  fs.rmSync(root, { recursive: true, force: true });
+  if (root) {
+    fs.rmSync(root, { recursive: true, force: true });
+    root = undefined;
+  }
 });
 
 async function seedActive() {

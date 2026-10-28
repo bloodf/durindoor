@@ -49,6 +49,7 @@ export async function createNativeResourceOwner(owner) {
       if (error?.code === "EEXIST") return;
       if (error?.code === "ENOTSUP" || error?.code === "EPERM") {
         // Fail closed: exclusive create never replaces an existing owner.
+        // EEXIST matches the link path: first writer wins; return quietly.
         // A concurrent reader of a partial claim hits non-ENOENT JSON parse.
         let claim;
         try {
@@ -58,6 +59,7 @@ export async function createNativeResourceOwner(owner) {
           await claim.close();
           claim = undefined;
         } catch (fallbackError) {
+          if (fallbackError?.code === "EEXIST") return;
           if (claim !== undefined) {
             try { await claim.close(); } catch { /* ignore close during cleanup */ }
             try { await unlink(target); } catch { /* ignore partial claim cleanup */ }

@@ -19,7 +19,7 @@
 # Unreleased
 
 - ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
-- fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so they become operator-only after the upgrade, and API keys get 403 on them.
+- fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so after the upgrade they return 403 to all callers, including operators.
 
 ## Features
 
@@ -64,7 +64,7 @@
 
 ## Notes
 
-- Anthropic native files and message batches created before this upgrade have no recorded owner and become operator-only. API keys get 403 on them; operator/admin access is unchanged.
+- Anthropic native files and message batches created before this upgrade have no recorded owner. After the upgrade they return 403 to all callers, including operators; there is no operator bypass for unowned resources.
 
 # 4.10.1
 

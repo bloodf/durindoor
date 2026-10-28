@@ -1,9 +1,10 @@
 import { detectFormat, getTargetFormat, resolveTransport } from "../services/provider.js";
 import { translateRequest } from "../translator/index.js";
+import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
 import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough, anchorClaudeCache } from "../translator/formats/claude.js";
-import { validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
+import { validateInputAudio, validateOutboundPayload, stripInternalKeys, normalizeToolSchemaRoots } from "../translator/validate.js";
 import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
@@ -50,7 +51,7 @@ import { injectPonytail } from "../rtk/ponytail.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
-import { getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
+import { enforceCursorCapabilities, getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
 import { getOllamaCatalogModel } from "../services/ollamaCatalog.js";
 import { resolveOllamaLocalHost } from "../config/providers.js";
@@ -314,6 +315,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   rawCredentials;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
+  if (provider === "cursor" || provider === "cu") {
+    try {
+      validateCursorImages(body);
+    } catch (error) {
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
+  }
   const requestedCatalogModel = parseSuffix(requestedModel).cleanModel;
   const unavailableModel = getProviderModels(provider).find((entry) =>
     entry.id === requestedCatalogModel || entry.aliases?.includes(requestedCatalogModel));
@@ -403,7 +412,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel) ||
   getOllamaCatalogModel(resolveOllamaLocalHost(credentials), connectionId || credentials?.id || credentials?.connectionId || "", cleanModel.includes("/") ? cleanModel.split("/").pop() : cleanModel) :
   null;
-  const effectiveModelCapabilities = { ...getCapabilitiesForModel(provider, cleanModel), ...(ollamaCatalogModel?.capabilities || {}), ...(modelCapabilities || {}) };
+  const effectiveModelCapabilities = enforceCursorCapabilities(provider, { ...getCapabilitiesForModel(provider, cleanModel), ...(ollamaCatalogModel?.capabilities || {}), ...(modelCapabilities || {}) });
   Object.defineProperty(effectiveModelCapabilities, "customKeys", {
     value: modelCapabilities?.customKeys instanceof Set
       ? modelCapabilities.customKeys : new Set(Object.keys(modelCapabilities || {})),
@@ -527,6 +536,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Skip all translation/normalization — only model and Bearer are swapped
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
+
+  // Reject unsupported original audio before modality stripping replaces it with text.
+  const inputAudioError = validateInputAudio(body, sourceFormat, targetFormat, cleanUpstreamModel);
+  if (inputAudioError) {
+    finishTimeline("error", "error", inputAudioError);
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, inputAudioError);
+  }
 
   // Expose raw client headers to translators/executors for session-id resolution
   if (credentials) credentials.rawHeaders = clientRawRequest?.headers || {};

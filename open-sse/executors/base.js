@@ -15,6 +15,8 @@ import {
   transferProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
+import { FORMATS } from "../translator/formats.js";
 
 
 // Format byte count to human-readable string for debug logs
@@ -51,6 +53,7 @@ function cancelDiscardedResponse(response) {
   } catch {/* body may already be locked or closed */}
 }
 
+
 /** Abort-aware retry delay with deterministic listener/timer cleanup. */
 export function waitForRetryDelay(delayMs, signal = null) {
   if (signal?.aborted) return Promise.reject(requestAbortError(signal.reason));
@@ -73,6 +76,29 @@ export function waitForRetryDelay(delayMs, signal = null) {
  * BaseExecutor - Base class for provider executors
  */
 export class BaseExecutor {
+  /**
+   * Consume bridge-only error metadata at final OpenAI serialization, including
+   * custom execute() paths. Keep failure text on a wire-only copy so internal
+   * bodies, retries, and native Claude block flags remain unchanged.
+   */
+  prepareOpenAIToolMessagesForWire(body) {
+    if (!Array.isArray(body?.messages) || !body.messages.some((message) =>
+      message?.role === ROLE.TOOL && Object.hasOwn(message, "is_error"))) return body;
+    return {
+      ...body,
+      messages: body.messages.map((message) => {
+        if (message?.role !== ROLE.TOOL || !Object.hasOwn(message, "is_error")) return message;
+        const { is_error, ...wireMessage } = message;
+        if (is_error === true) {
+          wireMessage.content = Array.isArray(message.content)
+            ? [{ type: OPENAI_BLOCK.TEXT, text: "[Tool error]" }, ...message.content]
+            : `[Tool error]\n${message.content ?? ""}`;
+        }
+        return wireMessage;
+      })
+    };
+  }
+
   /**
    * Clamp token-limit fields to the resolved published/operator maxOutput.
    * Runs centrally in execute() after transformRequest, covering every
@@ -383,7 +409,13 @@ export class BaseExecutor {
       let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
-        let requestBody = transformedBody;
+        // Native executors may advertise OpenAI input without using its wire API.
+        // Require a selected wire format or the resolved Chat Completions endpoint;
+        // provider defaults (including unknown-provider fallbacks) are not evidence.
+        const wireFormat = credentials?.runtimeTransport?.format?.replace(/-(apikey|oauth)$/, "") ||
+          (/\/chat\/completions\/?$/.test(new URL(url).pathname) ? FORMATS.OPENAI : null);
+        const openAIChatWire = wireFormat === FORMATS.OPENAI;
+        let requestBody = openAIChatWire ? this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody;
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);

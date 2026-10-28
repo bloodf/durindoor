@@ -38,6 +38,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
+            website/package-lock.json
             tests/package-lock.json
 
       - name: Pin npm
@@ -46,6 +47,10 @@ jobs:
           test "$(npm --version)" = "10.8.2"
 
       - name: Install app dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install website dependencies
+        working-directory: website
         run: npm ci --no-audit --no-fund
 
       - name: Install test dependencies

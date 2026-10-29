@@ -7,12 +7,13 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import {
   getClaudeUsage,
+  consumeClaudeResetGrant,
   __clearOAuthQuotaCacheForTesting,
 } from "../../open-sse/services/usage/claude.js";
 import { getUsageForProvider } from "../../open-sse/services/usage.js";
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
-import { CLAUDE_CLI_SPOOF_HEADERS } from "../../open-sse/providers/shared.js";
+import { CLAUDE_CLI_SPOOF_HEADERS, buildClaudeOAuthAnthropicBeta } from "../../open-sse/providers/shared.js";
 import { USAGE_APIKEY_PROVIDERS } from "../../src/shared/constants/providers.js";
 
 function jsonResponse(body, status = 200) {
@@ -65,11 +66,22 @@ describe("Claude usage", () => {
     });
 
     const headers = proxyAwareFetch.mock.calls[0][1].headers;
-    expect(headers["X-App"]).toBe("cli");
-    expect(headers["Anthropic-Beta"]).toBe(
-      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01,oauth-2025-04-20"
-    );
+    expect(headers).toMatchObject({
+      "X-App": "cli",
+      "Anthropic-Version": "2023-06-01",
+      "Anthropic-Beta":
+        "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,thinking-binding-controls-2026-08-01,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07,oauth-2025-04-20",
+      // cedar_ember grant eligibility requires `(external, cli)`, not sdk-cli.
+      "User-Agent": "claude-cli/2.1.312 (external, cli)",
+      "X-Stainless-Retry-Count": "0",
+      "X-Stainless-Runtime-Version": "v26.12.1",
+      "X-Stainless-Package-Version": "0.128.0",
+      "X-Stainless-Runtime": "node",
+      "X-Stainless-Lang": "js",
+      "X-Stainless-Timeout": "600",
+    });
     expect(CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]).not.toContain("oauth-2025-04-20");
+    expect(CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]).not.toContain("extended-cache-ttl-2025-04-11");
     expect(headers).not.toHaveProperty("X-Stainless-Helper-Method");
     expect(Object.keys(headers)).not.toContain("anthropic-beta");
   });
@@ -242,6 +254,29 @@ describe("Claude usage", () => {
     expect(parsed).toHaveLength(2);
     expect(parsed[0]).toMatchObject({ name: "session (5h)", used: 15, total: 100 });
     expect(parsed[1]).toMatchObject({ name: "weekly (7d)", used: 42, total: 100 });
+  });
+
+  it("sends first-party OAuth betas from consumeClaudeResetGrant on profile and reset", async () => {
+    proxyAwareFetch
+      .mockResolvedValueOnce(jsonResponse({ organization: { uuid: "org-reset-1" } }))
+      .mockResolvedValueOnce(jsonResponse({ result: "reset", resets_left: 2 }));
+
+    const result = await consumeClaudeResetGrant("oauth-token-reset", "grant_abc");
+    expect(result).toMatchObject({ ok: true, result: "reset", resetsLeft: 2 });
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+
+    const oauthBeta = buildClaudeOAuthAnthropicBeta();
+    for (const call of proxyAwareFetch.mock.calls) {
+      expect(call[1].headers).toMatchObject({
+        Authorization: "Bearer oauth-token-reset",
+        "Anthropic-Beta": oauthBeta,
+        "Anthropic-Version": "2023-06-01",
+        "User-Agent": "claude-cli/2.1.312 (external, cli)",
+      });
+      expect(call[1].headers["Anthropic-Beta"]).toContain("extended-cache-ttl-2025-04-11");
+      expect(call[1].headers["Anthropic-Beta"]).toContain("oauth-2025-04-20");
+      expect(call[1].headers["Anthropic-Beta"]).toContain("thinking-binding-controls-2026-08-01");
+    }
   });
 
   it("registers Claude for both OAuth and API-key usage via registry features", () => {

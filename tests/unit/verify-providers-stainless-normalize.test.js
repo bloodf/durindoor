@@ -13,7 +13,7 @@ describe("provider baseline Stainless host-key normalization", () => {
         headers: {
           "X-Stainless-Os": STAINLESS_OS_LITERAL,
           "X-Stainless-Arch": STAINLESS_ARCH_LITERAL,
-          "User-Agent": "claude-cli/2.1.282 (external, sdk-cli)",
+          "User-Agent": "claude-cli/2.1.312 (external, sdk-cli)",
         },
       },
       nested: [
@@ -23,7 +23,7 @@ describe("provider baseline Stainless host-key normalization", () => {
             headers: {
               "X-Stainless-Os": "Linux",
               "X-Stainless-Arch": "x64",
-              "X-Stainless-Package-Version": "0.112.1",
+              "X-Stainless-Package-Version": "0.128.0",
             },
           },
         },
@@ -33,10 +33,10 @@ describe("provider baseline Stainless host-key normalization", () => {
     const normalized = normalizeProviderStainless(fixture);
     expect(normalized.primary.headers["X-Stainless-Os"]).toBe("<OS>");
     expect(normalized.primary.headers["X-Stainless-Arch"]).toBe("<ARCH>");
-    expect(normalized.primary.headers["User-Agent"]).toBe("claude-cli/2.1.282 (external, sdk-cli)");
+    expect(normalized.primary.headers["User-Agent"]).toBe("claude-cli/2.1.312 (external, sdk-cli)");
     expect(normalized.nested[0].transport.headers["X-Stainless-Os"]).toBe("<OS>");
     expect(normalized.nested[0].transport.headers["X-Stainless-Arch"]).toBe("<ARCH>");
-    expect(normalized.nested[0].transport.headers["X-Stainless-Package-Version"]).toBe("0.112.1");
+    expect(normalized.nested[0].transport.headers["X-Stainless-Package-Version"]).toBe("0.128.0");
   });
 
   it("leaves providers without those headers untouched", () => {
@@ -55,6 +55,6 @@ describe("provider baseline Stainless host-key normalization", () => {
       expect(target["X-Stainless-Os"]).toBe("<OS>");
       expect(target["X-Stainless-Arch"]).toBe("<ARCH>");
     }
-    expect(claudePrimary["User-Agent"]).toBe("claude-cli/2.1.282 (external, sdk-cli)");
+    expect(claudePrimary["User-Agent"]).toBe("claude-cli/2.1.312 (external, sdk-cli)");
   });
 });

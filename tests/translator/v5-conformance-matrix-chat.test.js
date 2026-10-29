@@ -685,12 +685,17 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
   });
 
   it("preserves free-form object schemas on Claude", () => {
+    // #1351/#1352 normalizer adds properties:{} when an object schema omits it.
     const schema = { type: "object", additionalProperties: true };
     const out = request(CLAUDE, chatBody({
       tools: [namespacedTool(false, schema)],
       tool_choice: "auto",
     }));
-    expect(out.tools[0].input_schema).toEqual(schema);
+    expect(out.tools[0].input_schema).toEqual({
+      type: "object",
+      additionalProperties: true,
+      properties: {},
+    });
   });
 
   it("fills empty schemas for Gemini with a reason placeholder", () => {

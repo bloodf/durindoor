@@ -19,6 +19,15 @@ const RESPONSES = FORMATS.OPENAI_RESPONSES;
 
 /** Credential-like upstream text — must be redacted via sanitizeErrorMessage. (#1331) */
 const CREDENTIAL_SENTINEL = "sk-test-SENTINEL-1331";
+const CREDENTIAL_UPSTREAM = `upstream aborted with ${CREDENTIAL_SENTINEL}`;
+const CREDENTIAL_REDACTED = "upstream aborted with [redacted]";
+/** Matches `RESPONSES_FAILED_FALLBACK_MESSAGE` in finishReason.js */
+const FAILED_FALLBACK_MESSAGE = "Upstream aborted the response (finish_reason error)";
+const FAILED_ERROR = {
+  type: "server_error",
+  code: "server_error",
+  message: FAILED_FALLBACK_MESSAGE,
+};
 
 const TERMINALS = new Set([
   "response.completed",
@@ -33,6 +42,8 @@ const streamTo = (chunks) => {
 
 const terminalEvents = (events) =>
   events.filter((event) => TERMINALS.has(event.event) || TERMINALS.has(event.data?.type));
+
+const terminalSequence = (events) => terminalEvents(events).map((event) => event.event);
 
 const textChunk = (content, finish_reason, extra = {}) => ({
   id: "chat-1331",
@@ -53,11 +64,13 @@ const completion = (finish_reason, message = { role: ROLE.ASSISTANT, content: "p
 const project = (finish_reason, message, extra) =>
   translateNonStreamingResponse(completion(finish_reason, message, extra), CHAT, RESPONSES);
 
-const assertFailedErrorShape = (error, serialized) => {
-  expect(typeof error?.code).toBe("string");
-  expect(error.code.length).toBeGreaterThan(0);
-  expect(typeof error?.message).toBe("string");
-  expect(error.message.length).toBeGreaterThan(0);
+/** Exact failed.error shape; optional message override for sanitized upstream text. */
+const assertFailedErrorExact = (error, serialized, message = FAILED_FALLBACK_MESSAGE) => {
+  expect(error).toEqual({
+    type: "server_error",
+    code: "server_error",
+    message,
+  });
   expect(serialized).not.toContain(CREDENTIAL_SENTINEL);
 };
 
@@ -67,18 +80,14 @@ describe("#1331 Chat→Responses stream termination", () => {
       textChunk("partial", OPENAI_FINISH.LENGTH),
       null,
     ]);
-    const terminals = terminalEvents(events);
-    expect(terminals).toHaveLength(1);
-    expect(terminals[0].event).toBe("response.incomplete");
-    expect(terminals[0].data).toMatchObject({
+    expect(terminalSequence(events)).toEqual(["response.incomplete"]);
+    expect(terminalEvents(events)[0].data).toMatchObject({
       type: "response.incomplete",
       response: {
         status: "incomplete",
         incomplete_details: { reason: "max_output_tokens" },
       },
     });
-    expect(events.some((event) => event.event === "response.completed")).toBe(false);
-    expect(events.some((event) => event.event === "response.failed")).toBe(false);
   });
 
   it("emits Responses stream incomplete for Chat content_filter finish", () => {
@@ -86,40 +95,34 @@ describe("#1331 Chat→Responses stream termination", () => {
       textChunk("blocked", OPENAI_FINISH.CONTENT_FILTER),
       null,
     ]);
-    const terminals = terminalEvents(events);
-    expect(terminals).toHaveLength(1);
-    expect(terminals[0].event).toBe("response.incomplete");
-    expect(terminals[0].data).toMatchObject({
+    expect(terminalSequence(events)).toEqual(["response.incomplete"]);
+    expect(terminalEvents(events)[0].data).toMatchObject({
       type: "response.incomplete",
       response: {
         status: "incomplete",
         incomplete_details: { reason: "content_filter" },
       },
     });
-    expect(events.some((event) => event.event === "response.completed")).toBe(false);
-    expect(events.some((event) => event.event === "response.failed")).toBe(false);
   });
 
   it("emits Responses stream failed for Chat error finish", () => {
     const events = streamTo([
       textChunk("boom", OPENAI_FINISH.ERROR, {
-        error: { message: `upstream aborted with ${CREDENTIAL_SENTINEL}` },
+        error: { message: CREDENTIAL_UPSTREAM },
       }),
       null,
     ]);
-    const terminals = terminalEvents(events);
-    expect(terminals).toHaveLength(1);
-    expect(terminals[0].event).toBe("response.failed");
-    expect(terminals[0].data).toMatchObject({
+    expect(terminalSequence(events)).toEqual(["response.failed"]);
+    const [terminal] = terminalEvents(events);
+    expect(terminal.data).toMatchObject({
       type: "response.failed",
       response: { status: "failed" },
     });
-    assertFailedErrorShape(
-      terminals[0].data.response.error,
-      JSON.stringify(terminals[0].data.response),
+    assertFailedErrorExact(
+      terminal.data.response.error,
+      JSON.stringify(terminal.data.response),
+      CREDENTIAL_REDACTED,
     );
-    expect(events.some((event) => event.event === "response.completed")).toBe(false);
-    expect(events.some((event) => event.event === "response.incomplete")).toBe(false);
   });
 
   it("emits Responses stream completed for Chat stop finish", () => {
@@ -129,18 +132,14 @@ describe("#1331 Chat→Responses stream termination", () => {
       }),
       null,
     ]);
-    const terminals = terminalEvents(events);
-    expect(terminals).toHaveLength(1);
-    expect(terminals[0].event).toBe("response.completed");
-    expect(terminals[0].data).toMatchObject({
+    expect(terminalSequence(events)).toEqual(["response.completed"]);
+    expect(terminalEvents(events)[0].data).toMatchObject({
       type: "response.completed",
       response: {
         status: "completed",
         usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
       },
     });
-    expect(events.some((event) => event.event === "response.incomplete")).toBe(false);
-    expect(events.some((event) => event.event === "response.failed")).toBe(false);
   });
 
   it("emits Responses stream completed for Chat tool_calls finish", () => {
@@ -164,17 +163,13 @@ describe("#1331 Chat→Responses stream termination", () => {
       },
       null,
     ]);
-    const terminals = terminalEvents(events);
-    expect(terminals).toHaveLength(1);
-    expect(terminals[0].event).toBe("response.completed");
-    expect(terminals[0].data.response.status).toBe("completed");
-    expect(terminals[0].data.response.usage).toMatchObject({
+    expect(terminalSequence(events)).toEqual(["response.completed"]);
+    expect(terminalEvents(events)[0].data.response.status).toBe("completed");
+    expect(terminalEvents(events)[0].data.response.usage).toMatchObject({
       input_tokens: 2,
       output_tokens: 3,
       total_tokens: 5,
     });
-    expect(events.some((event) => event.event === "response.incomplete")).toBe(false);
-    expect(events.some((event) => event.event === "response.failed")).toBe(false);
   });
 
   it("keeps usage on incomplete when finish and usage share a chunk", () => {
@@ -216,12 +211,12 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
     const out = project(
       OPENAI_FINISH.ERROR,
       { role: ROLE.ASSISTANT, content: "partial" },
-      { error: { message: `upstream aborted with ${CREDENTIAL_SENTINEL}` } },
+      { error: { message: CREDENTIAL_UPSTREAM } },
     );
     expect(out.status).toBe("failed");
     expect(out).not.toHaveProperty("incomplete_details");
     expect(out.status).not.toBe(OPENAI_FINISH.ERROR);
-    assertFailedErrorShape(out.error, JSON.stringify(out));
+    assertFailedErrorExact(out.error, JSON.stringify(out), CREDENTIAL_REDACTED);
   });
 
   it("maps non-stream stop and tool_calls to completed", () => {
@@ -260,26 +255,29 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       expect(Object.keys(out).sort()).toEqual([...mainCompletedKeys].sort());
       expect(out).not.toHaveProperty("error");
       expect(out).not.toHaveProperty("incomplete_details");
+      expect(out.output[0].content[0].text).toBe("ok");
     }
 
     let events;
     expect(() => {
       events = streamTo([textChunk("ok", null), textChunk("!", undefined), null]);
     }).not.toThrow();
-    expect(events.some((event) => event.event === "response.failed")).toBe(false);
-    expect(events.some((event) => event.event === "response.incomplete")).toBe(false);
+    expect(terminalSequence(events)).toEqual(["response.completed"]);
+    expect(terminalEvents(events)[0].data.response.status).toBe("completed");
+    expect(terminalEvents(events)[0].data.response.error).toBeNull();
+    expect(terminalEvents(events)[0].data.response).not.toHaveProperty("incomplete_details");
   });
 
   it("tolerates null, string, and incomplete upstream error objects without throwing", () => {
     const cases = [
-      null,
-      "plain-string-error",
-      {},
-      { code: "x" },
-      { message: null },
-      { message: 12 },
+      { error: null, message: FAILED_FALLBACK_MESSAGE },
+      { error: "plain-string-error", message: "plain-string-error" },
+      { error: {}, message: FAILED_FALLBACK_MESSAGE },
+      { error: { code: "x" }, message: FAILED_FALLBACK_MESSAGE },
+      { error: { message: null }, message: FAILED_FALLBACK_MESSAGE },
+      { error: { message: 12 }, message: FAILED_FALLBACK_MESSAGE },
     ];
-    for (const error of cases) {
+    for (const { error, message } of cases) {
       let out;
       expect(() => {
         out = project(
@@ -289,15 +287,16 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
         );
       }).not.toThrow();
       expect(out.status).toBe("failed");
-      assertFailedErrorShape(out.error, JSON.stringify(out));
+      assertFailedErrorExact(out.error, JSON.stringify(out), message);
 
       let events;
       expect(() => {
         events = streamTo([textChunk("boom", OPENAI_FINISH.ERROR, { error }), null]);
       }).not.toThrow();
-      const failed = terminalEvents(events).find((event) => event.event === "response.failed");
-      expect(failed).toBeTruthy();
-      assertFailedErrorShape(failed.data.response.error, JSON.stringify(failed.data.response));
+      expect(terminalSequence(events)).toEqual(["response.failed"]);
+      const failed = terminalEvents(events)[0];
+      expect(failed.data.response.status).toBe("failed");
+      assertFailedErrorExact(failed.data.response.error, JSON.stringify(failed.data.response), message);
     }
   });
 
@@ -312,6 +311,7 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       ];
     }).not.toThrow();
     expect(events).toEqual([]);
+    expect(terminalSequence(events)).toEqual([]);
   });
 
   it("tolerates primitive status (5) without inventing fields", () => {
@@ -331,6 +331,7 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       }, "m");
     }).not.toThrow();
     expect(chat.choices[0].finish_reason).toBe(5);
+    expect(chat.choices[0].message.content).toBe("hi");
     expect(chat).not.toHaveProperty("incomplete_details");
 
     // Chat→Responses non-stream: main used `status: finishReason` for unknown truthy values.
@@ -342,18 +343,17 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
     expect(Object.keys(resp).sort()).toEqual([...mainCompletedKeys].sort());
     expect(resp).not.toHaveProperty("error");
     expect(resp).not.toHaveProperty("incomplete_details");
+    expect(resp.output[0].content[0].text).toBe("ok");
 
     // Stream always uses canonical completed status (main's sendCompleted).
     let events;
     expect(() => {
       events = streamTo([textChunk("ok", 5), null]);
     }).not.toThrow();
-    const terminals = terminalEvents(events);
-    expect(terminals).toHaveLength(1);
-    expect(terminals[0].event).toBe("response.completed");
-    expect(terminals[0].data.response.status).toBe("completed");
-    expect(terminals[0].data.response.status).not.toBe(5);
-    expect(terminals[0].data.response).not.toHaveProperty("incomplete_details");
+    expect(terminalSequence(events)).toEqual(["response.completed"]);
+    expect(terminalEvents(events)[0].data.response.status).toBe("completed");
+    expect(terminalEvents(events)[0].data.response.error).toBeNull();
+    expect(terminalEvents(events)[0].data.response).not.toHaveProperty("incomplete_details");
   });
 
   it("surfaces primitive error (5) without throwing or forwarding it as an object", () => {
@@ -371,10 +371,11 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
         state,
       );
     }).not.toThrow();
-    expect(chunks?.[0]?.choices?.[0]?.delta?.content).toBe("[Error] 5");
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].choices[0].delta.content).toBe("[Error] 5");
+    expect(chunks[0].choices[0].finish_reason).toBe(OPENAI_FINISH.STOP);
 
-    // Chat→Responses failed path: primitive upstream error is not forwarded as-is;
-    // the failed terminal still gets a real error object (fallback message).
+    // Chat→Responses failed path: primitive upstream error is not forwarded as-is.
     let failed;
     expect(() => {
       failed = project(
@@ -384,8 +385,8 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       );
     }).not.toThrow();
     expect(failed.status).toBe("failed");
-    expect(failed.error).not.toBe(5);
-    assertFailedErrorShape(failed.error, JSON.stringify(failed));
+    expect(failed.error).toEqual(FAILED_ERROR);
+    assertFailedErrorExact(failed.error, JSON.stringify(failed));
   });
 
   it("drops primitive incomplete_details (true) instead of forwarding it", () => {
@@ -410,10 +411,13 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       }, "m");
     }).not.toThrow();
     expect(chat.choices[0].finish_reason).toBe("stop");
+    expect(chat.choices[0].message.content).toBe("ok");
     expect(chat).not.toHaveProperty("incomplete_details");
 
     // Chat→Responses completed path never grows an incomplete_details key.
     const completed = project(OPENAI_FINISH.STOP, { role: ROLE.ASSISTANT, content: "ok" });
+    expect(completed.status).toBe("completed");
+    expect(Object.keys(completed).sort()).toEqual([...mainCompletedKeys].sort());
     expect(completed).not.toHaveProperty("incomplete_details");
   });
 
@@ -449,6 +453,125 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       }, "m");
     }).not.toThrow();
     expect(mixed.choices[0].message.content).toBe("hi");
+    expect(mixed.choices[0].finish_reason).toBe("stop");
     expect(mixed).not.toHaveProperty("incomplete_details");
+  });
+
+  it("treats empty and unknown status like main (only known statuses change behavior)", () => {
+    // Responses→Chat: empty status falls through to "stop"; unknown passthrough.
+    expect(
+      responsesApiToOpenAICompletion({
+        id: "r-1331",
+        model: "m",
+        status: "",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "hi" }],
+        }],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }, "m").choices[0].finish_reason,
+    ).toBe("stop");
+    expect(
+      responsesApiToOpenAICompletion({
+        id: "r-1331",
+        model: "m",
+        status: "foo",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "hi" }],
+        }],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }, "m").choices[0].finish_reason,
+    ).toBe("foo");
+
+    // Chat→Responses non-stream: falsy → completed; unknown truthy → passthrough status.
+    const empty = project("", { role: ROLE.ASSISTANT, content: "ok" });
+    expect(empty.status).toBe("completed");
+    expect(Object.keys(empty).sort()).toEqual([...mainCompletedKeys].sort());
+    expect(empty).not.toHaveProperty("error");
+    expect(empty).not.toHaveProperty("incomplete_details");
+
+    const unknown = project("foo", { role: ROLE.ASSISTANT, content: "ok" });
+    expect(unknown.status).toBe("foo");
+    expect(Object.keys(unknown).sort()).toEqual([...mainCompletedKeys].sort());
+    expect(unknown).not.toHaveProperty("error");
+    expect(unknown).not.toHaveProperty("incomplete_details");
+
+    // Stream: empty/unknown never invent incomplete/failed — canonical completed only.
+    for (const finish_reason of ["", "foo"]) {
+      const events = streamTo([textChunk("ok", finish_reason), null]);
+      expect(terminalSequence(events)).toEqual(["response.completed"]);
+      expect(terminalEvents(events)[0].data.response.status).toBe("completed");
+      expect(terminalEvents(events)[0].data.response.error).toBeNull();
+      expect(terminalEvents(events)[0].data.response).not.toHaveProperty("incomplete_details");
+    }
+  });
+
+  it("uses fallback failed.error for empty upstream error message/code shapes", () => {
+    const cases = [
+      { error: {}, content: "[Error] {}" },
+      { error: { message: "" }, content: '[Error] {"message":""}' },
+      { error: { code: "" }, content: '[Error] {"code":""}' },
+    ];
+    for (const { error, content } of cases) {
+      // Responses→Chat stream matches main: message || JSON.stringify(error).
+      const state = initState(CHAT);
+      const chunks = translateResponse(
+        RESPONSES,
+        CHAT,
+        {
+          event: "response.failed",
+          data: { type: "response.failed", response: { status: "failed", error } },
+        },
+        state,
+      );
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0].choices[0].delta.content).toBe(content);
+      expect(chunks[0].choices[0].finish_reason).toBe(OPENAI_FINISH.STOP);
+
+      // Chat→Responses failed path never forwards empty shapes; exact fallback object.
+      const failed = project(
+        OPENAI_FINISH.ERROR,
+        { role: ROLE.ASSISTANT, content: "partial" },
+        { error },
+      );
+      expect(failed.status).toBe("failed");
+      expect(failed).not.toHaveProperty("incomplete_details");
+      expect(failed.error).toEqual(FAILED_ERROR);
+    }
+  });
+
+  it("drops empty incomplete_details objects instead of forwarding them", () => {
+    expect(responsesIncompleteDetailsOrOmit({})).toBeNull();
+    expect(responsesIncompleteDetailsOrOmit({ reason: "" })).toBeNull();
+    expect(responsesIncompleteDetailsOrOmit({ reason: "  " })).toBeNull();
+    expect(responsesIncompleteDetailsOrOmit({ reason: "max_output_tokens" })).toEqual({
+      reason: "max_output_tokens",
+    });
+
+    // Empty details on a completed Responses body are ignored (no throw / no new fields).
+    const chat = responsesApiToOpenAICompletion({
+      id: "r-1331",
+      model: "m",
+      status: "completed",
+      incomplete_details: {},
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "ok" }],
+      }],
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    }, "m");
+    expect(chat.choices[0].finish_reason).toBe("stop");
+    expect(chat.choices[0].message.content).toBe("ok");
+    expect(chat).not.toHaveProperty("incomplete_details");
+
+    // Known incomplete still emits the exact reason object — empty shapes never do.
+    const incomplete = project(OPENAI_FINISH.LENGTH);
+    expect(incomplete.status).toBe("incomplete");
+    expect(incomplete.incomplete_details).toEqual({ reason: "max_output_tokens" });
+    expect(incomplete).not.toHaveProperty("error");
   });
 });

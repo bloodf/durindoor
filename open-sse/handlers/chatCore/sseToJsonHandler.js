@@ -87,7 +87,18 @@ function aggregateParsedChunks(chunks, fallbackModel, {
     for (const chunk of chunks) terminal.observe({ chunk });
   }
   if (synthesizedRawDone) terminal.observe({ rawDone: true });
-  if (chunks.length === 0 || terminal.outcome !== "success") return null;
+  if (chunks.length === 0) return null;
+  // Upstream finish_reason "error" makes the terminal tracker fail. Still
+  // aggregate so handleForcedSSEToJson can return the same incoherent-response
+  // 502 as the non-stream coherence gate (#1330 / #1089) instead of the
+  // generic "Invalid SSE" envelope — and never markSuccess on that path.
+  if (terminal.outcome !== "success") {
+    const hasErrorFinish = chunks.some((chunk) =>
+      Array.isArray(chunk?.choices) &&
+      chunk.choices.some((choice) => choice?.finish_reason === "error")
+    );
+    if (!hasErrorFinish) return null;
+  }
 
   const first = chunks[0];
   const choicesByIndex = new Map();
@@ -361,6 +372,18 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       if (maskedGatewayError) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Upstream provider error: ${maskedGatewayError}`);
+      }
+
+      // Match non-stream isCoherentOpenAICompletion: allowlist only the exact
+      // hub finish_reason "error". Do not project to Claude/Gemini or markSuccess.
+      const hasErrorFinish = Array.isArray(parsed.choices) &&
+        parsed.choices.some((choice) => choice?.finish_reason === "error");
+      if (hasErrorFinish) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+        return createErrorResult(
+          HTTP_STATUS.BAD_GATEWAY,
+          "Provider returned an incoherent non-streaming response"
+        );
       }
 
       const usage = parsed.usage || {};

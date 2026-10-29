@@ -113,19 +113,22 @@ function convertChatAllowedToolEntry(entry) {
  * Strings pass through. Named function / custom nestings flatten to top-level
  * `name`. Chat `{type:"allowed_tools", allowed_tools:{mode, tools}}` becomes
  * Responses `{type:"allowed_tools", mode, tools}` with flattened entries.
+ * Returns `undefined` when the choice would be invalid on Responses: a blank
+ * function/custom name, or an allowed_tools list that is empty after normalize
+ * (main never forwarded these; OpenAI rejects an empty forced-choice list).
  */
 function convertChatToolChoiceToResponses(choice) {
   if (!isObject(choice)) return choice;
 
   if (choice.type === OPENAI_BLOCK.FUNCTION) {
     const name = normalizeResponsesToolName(choice.function?.name ?? choice.name);
-    if (!name) return choice;
+    if (!name) return undefined;
     return { type: OPENAI_BLOCK.FUNCTION, name };
   }
 
   if (choice.type === "custom") {
     const name = normalizeResponsesToolName(choice.custom?.name ?? choice.name);
-    if (!name) return choice;
+    if (!name) return undefined;
     return { type: "custom", name };
   }
 
@@ -136,11 +139,10 @@ function convertChatToolChoiceToResponses(choice) {
     const toolsSrc = Array.isArray(nested?.tools) ?
       nested.tools :
       Array.isArray(choice.tools) ? choice.tools : [];
-    return {
-      type: "allowed_tools",
-      mode,
-      tools: toolsSrc.map(convertChatAllowedToolEntry).filter(Boolean)
-    };
+    const tools = toolsSrc.map(convertChatAllowedToolEntry).filter(Boolean);
+    // Never emit allowed_tools with tools:[]; strict upstreams reject that.
+    if (tools.length === 0) return undefined;
+    return { type: "allowed_tools", mode, tools };
   }
 
   return choice;
@@ -765,10 +767,17 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.top_p !== undefined) result.top_p = body.top_p;
   // Preserve explicit false: Responses otherwise permits parallel tool calls.
   if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
-  // Chat strings (auto/none/required) pass through; object forms lower to the
-  // Responses request shape (named function/custom flatten; allowed_tools unwraps).
-  if (body.tool_choice !== undefined) {
-    result.tool_choice = convertChatToolChoiceToResponses(body.tool_choice);
+  // Forward tool_choice only when at least one declaration survived filtering —
+  // main never wrote the field, and OpenAI rejects required/named/allowed_tools
+  // with no tools. Blank function/custom names and empty allowed_tools lists
+  // also drop (convertChatToolChoiceToResponses returns undefined).
+  if (
+    body.tool_choice !== undefined &&
+    Array.isArray(result.tools) &&
+    result.tools.length > 0
+  ) {
+    const converted = convertChatToolChoiceToResponses(body.tool_choice);
+    if (converted !== undefined) result.tool_choice = converted;
   }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) {

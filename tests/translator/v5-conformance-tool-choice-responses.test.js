@@ -114,4 +114,65 @@ describe("#1329 Chat tool_choice to Responses", () => {
     }));
     expect(out.tool_choice).toEqual({ type: "custom", name: "code_exec" });
   });
+
+  it("drops tool_choice required when no tools are declared", () => {
+    const out = toResponses({
+      messages: [{ role: ROLE.USER, content: "Search" }],
+      tool_choice: "required",
+    });
+    expect(out.tools).toBeUndefined();
+    expect(out.tool_choice).toBeUndefined();
+  });
+
+  it("drops tool_choice required when tools is an empty array", () => {
+    const out = toResponses({
+      messages: [{ role: ROLE.USER, content: "Search" }],
+      tools: [],
+      tool_choice: "required",
+    });
+    expect(out.tools).toEqual([]);
+    expect(out.tool_choice).toBeUndefined();
+  });
+
+  it("drops tool_choice auto when every tool declaration is filtered out", () => {
+    const out = toResponses(chat({
+      tools: [{ type: OPENAI_BLOCK.FUNCTION, function: { name: "   ", parameters: { type: "object" } } }],
+      tool_choice: "auto",
+    }));
+    expect(out.tools).toEqual([]);
+    expect(out.tool_choice).toBeUndefined();
+  });
+
+  it("drops allowed_tools when every entry is nameless after normalize", () => {
+    const out = toResponses(chat({
+      tool_choice: {
+        type: "allowed_tools",
+        allowed_tools: {
+          mode: "required",
+          tools: [
+            { type: OPENAI_BLOCK.FUNCTION, function: { name: "  " } },
+            { type: OPENAI_BLOCK.FUNCTION, function: { name: "" } },
+          ],
+        },
+      },
+    }));
+    expect(out.tools.length).toBeGreaterThan(0);
+    expect(out.tool_choice).toBeUndefined();
+  });
+
+  it("drops a function tool_choice whose name is blank after normalize", () => {
+    const out = toResponses(chat({
+      tool_choice: { type: OPENAI_BLOCK.FUNCTION, function: { name: "   " } },
+    }));
+    expect(out.tools.length).toBeGreaterThan(0);
+    expect(out.tool_choice).toBeUndefined();
+  });
+
+  it("drops a custom tool_choice whose name is blank after normalize", () => {
+    const out = toResponses(chat({
+      tool_choice: { type: "custom", custom: { name: " " } },
+    }));
+    expect(out.tools.length).toBeGreaterThan(0);
+    expect(out.tool_choice).toBeUndefined();
+  });
 });

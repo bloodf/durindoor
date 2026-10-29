@@ -483,14 +483,15 @@ function openaiResultForId(id, sourceMsg) {
 }
 
 function claudeResultForId(id, block) {
+  const toolResult = {
+    type: CLAUDE_BLOCK.TOOL_RESULT,
+    tool_use_id: id,
+    content: block.content
+  };
+  if ("is_error" in block) toolResult.is_error = block.is_error;
   return {
     role: ROLE.USER,
-    content: [{
-      type: CLAUDE_BLOCK.TOOL_RESULT,
-      tool_use_id: id,
-      content: block.content,
-      ...("is_error" in block ? { is_error: block.is_error } : {})
-    }]
+    content: [toolResult]
   };
 }
 

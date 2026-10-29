@@ -552,8 +552,7 @@ describe("#1089 Responses client conformance", () => {
     });
   });
 
-  // #1089 failing: non-stream Responses upstream bodies are not projected into Gemini client shape. Refs #1346
-  it.skip("projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call", () => {
+  it("projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call", () => {
     const out = nonstreamTo({
       id: "r",
       status: "incomplete",

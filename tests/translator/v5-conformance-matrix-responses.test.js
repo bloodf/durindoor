@@ -231,7 +231,7 @@ describe("#1089 Responses client conformance", () => {
     });
   });
 
-  // #1089 failing: translator pairs historical function outputs by call ID across assistant turns.
+  // #1089 failing: translator pairs historical function outputs by call ID across assistant turns. Refs #TBD
   it.skip("does not pair function_call_output across assistant turns", () => {
     const out = request({
       input: [

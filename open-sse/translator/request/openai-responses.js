@@ -696,6 +696,22 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.top_p !== undefined) result.top_p = body.top_p;
   // Preserve explicit false: Responses otherwise permits parallel tool calls.
   if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
+  // Chat strings (auto/none/required) pass through; named Chat
+  // `{type:"function",function:{name}}` becomes Responses `{type:"function",name}`.
+  if (body.tool_choice !== undefined) {
+    const choice = body.tool_choice;
+    if (
+      isObject(choice) &&
+      choice.type === OPENAI_BLOCK.FUNCTION &&
+      isObject(choice.function) &&
+      isString(choice.function.name) &&
+      choice.function.name.trim()
+    ) {
+      result.tool_choice = { type: OPENAI_BLOCK.FUNCTION, name: choice.function.name };
+    } else {
+      result.tool_choice = choice;
+    }
+  }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) {
     const reasoning = result.reasoning && isObject(result.reasoning) && !Array.isArray(result.reasoning) ? result.reasoning : {};

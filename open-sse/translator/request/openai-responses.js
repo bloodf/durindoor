@@ -87,80 +87,79 @@ function normalizeResponsesToolName(name) {
   return name.trim().slice(0, MAX_TOOL_NAME_LEN);
 }
 
+/** Responses string tool_choice modes (exact match only). */
+const RESPONSES_STRING_TOOL_CHOICES = new Set(["auto", "none", "required"]);
+/** Responses `allowed_tools.mode` values. */
+const RESPONSES_ALLOWED_TOOLS_MODES = new Set(["auto", "required"]);
+
 /**
- * Plain object guard for tool_choice conversion. The shared `isObject` helper
- * treats `null` as an object (`typeof null === "object"`), so every converter
- * path that would read `.type` / nested fields must use this instead.
+ * Plain object check that excludes `null` and arrays. Shared `isObject` treats
+ * `null` as an object in this codebase, so converters must not use it bare.
  */
 function isPlainToolChoiceObject(value) {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
- * Lower one Chat Completions tool_choice entry (function / custom / hosted) to
- * the Responses list shape. Chat nests names under `function` / `custom`;
- * Responses puts `name` on the entry itself (OpenAI Chat Completions and
- * Responses request schemas). Returns `null` for null / array / non-object
- * entries so the caller can `.filter(Boolean)` them out (main dropped them).
+ * Lower one allowed_tools list entry. Null / array / non-objects drop; Chat
+ * function/custom nestings flatten and normalize; other plain entries with a
+ * non-empty string type (hosted Responses shapes) pass through.
  */
 function convertChatAllowedToolEntry(entry) {
   if (!isPlainToolChoiceObject(entry)) return null;
   if (entry.type === OPENAI_BLOCK.FUNCTION) {
     const name = normalizeResponsesToolName(entry.function?.name ?? entry.name);
-    if (!name) return null;
-    return { type: OPENAI_BLOCK.FUNCTION, name };
+    return name ? { type: OPENAI_BLOCK.FUNCTION, name } : null;
   }
   if (entry.type === "custom") {
     const name = normalizeResponsesToolName(entry.custom?.name ?? entry.name);
-    if (!name) return null;
-    return { type: "custom", name };
+    return name ? { type: "custom", name } : null;
   }
-  return entry;
+  return isString(entry.type) && entry.type ? entry : null;
 }
 
 /**
- * Convert Chat Completions `tool_choice` to the Responses request shape.
- * Only strings (auto/none/required) and plain objects are accepted; null,
- * arrays, and non-string primitives drop to `undefined` as main did.
- * Named function / custom nestings flatten to top-level `name`. Chat
- * `{type:"allowed_tools", allowed_tools:{mode, tools}}` becomes Responses
- * `{type:"allowed_tools", mode, tools}` with flattened entries.
- * Returns `undefined` when the choice would be invalid on Responses: a blank
- * function/custom name, or an allowed_tools list that is empty after normalize
- * (main never forwarded these; OpenAI rejects an empty forced-choice list).
+ * Allowlist Chat Completions `tool_choice` into a Responses request value.
+ * Returns a valid Responses `tool_choice`, or `undefined` for anything main
+ * would have dropped / Responses would reject:
+ * - strings exactly `"auto"` | `"none"` | `"required"`
+ * - `{type:"function", name}` (Chat `{function:{name}}` still accepted) with a
+ *   non-blank name after `normalizeResponsesToolName`
+ * - `{type:"custom", name}` with a non-blank normalized name
+ * - `{type:"allowed_tools", mode:"auto"|"required", tools:[...]}` with at least
+ *   one valid entry after skipping null/invalid entries
+ * Everything else → `undefined`. Callers must still omit the field when the
+ * filtered `tools` declaration list is empty.
  */
 function convertChatToolChoiceToResponses(choice) {
-  if (isString(choice)) return choice;
-  // Drop null, arrays, numbers, booleans, etc. — main never forwarded them.
+  if (isString(choice)) {
+    return RESPONSES_STRING_TOOL_CHOICES.has(choice) ? choice : undefined;
+  }
   if (!isPlainToolChoiceObject(choice)) return undefined;
 
   if (choice.type === OPENAI_BLOCK.FUNCTION) {
     const name = normalizeResponsesToolName(choice.function?.name ?? choice.name);
-    if (!name) return undefined;
-    return { type: OPENAI_BLOCK.FUNCTION, name };
+    return name ? { type: OPENAI_BLOCK.FUNCTION, name } : undefined;
   }
 
   if (choice.type === "custom") {
     const name = normalizeResponsesToolName(choice.custom?.name ?? choice.name);
-    if (!name) return undefined;
-    return { type: "custom", name };
+    return name ? { type: "custom", name } : undefined;
   }
 
   if (choice.type === "allowed_tools") {
-    // Chat nests mode/tools under `allowed_tools`; Responses keeps them flat.
-    // isObject(null) is true here, so use the plain-object guard for the nest.
     const nested = isPlainToolChoiceObject(choice.allowed_tools) ? choice.allowed_tools : null;
     const mode = nested?.mode ?? choice.mode;
+    if (!RESPONSES_ALLOWED_TOOLS_MODES.has(mode)) return undefined;
     const toolsSrc = Array.isArray(nested?.tools) ?
       nested.tools :
       Array.isArray(choice.tools) ? choice.tools : [];
     const tools = toolsSrc.map(convertChatAllowedToolEntry).filter(Boolean);
-    // Never emit allowed_tools with tools:[]; strict upstreams reject that.
     if (tools.length === 0) return undefined;
     return { type: "allowed_tools", mode, tools };
   }
 
-  return choice;
+  return undefined;
 }
 
 /**
@@ -782,15 +781,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.top_p !== undefined) result.top_p = body.top_p;
   // Preserve explicit false: Responses otherwise permits parallel tool calls.
   if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
-  // Forward tool_choice only when at least one declaration survived filtering —
-  // main never wrote the field, and OpenAI rejects required/named/allowed_tools
-  // with no tools. Blank function/custom names and empty allowed_tools lists
-  // also drop (convertChatToolChoiceToResponses returns undefined).
-  if (
-    body.tool_choice != null &&
-    Array.isArray(result.tools) &&
-    result.tools.length > 0
-  ) {
+  // Allowlist converter drops invalid shapes; also omit when no declarations
+  // survived filtering (OpenAI rejects a forced choice with no tools).
+  if (Array.isArray(result.tools) && result.tools.length > 0) {
     const converted = convertChatToolChoiceToResponses(body.tool_choice);
     if (converted !== undefined) result.tool_choice = converted;
   }

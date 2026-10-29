@@ -167,6 +167,12 @@ describe("client beta forwarding", () => {
     expect(tokens).toContain("effort-2025-11-24");
     expect(tokens.filter((token) => token === "inline-tools-2026-09-15")).toHaveLength(1);
     expect(tokens.filter((token) => token === "timing-2026-09-09")).toHaveLength(1);
+    // anthropic-compatible-* uses the third-party (pre-PR) pin, not first-party-gated flags.
+    expect(headers["Anthropic-Beta"]).toBe(
+      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01,effort-2025-11-24,inline-tools-2026-09-15,timing-2026-09-09",
+    );
+    expect(headers["Anthropic-Beta"]).not.toContain("thinking-binding-controls-2026-08-01");
+    expect(headers["Anthropic-Beta"]).not.toContain("cache-diagnosis-2026-04-07");
     const otherModel = executor.buildHeaders({ apiKey: "key" }, true, {
       clientHeaders: { "Anthropic-Beta": "inline-tools-2026-09-15" },
     }, "kimi-k3");

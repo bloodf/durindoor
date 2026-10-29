@@ -55,6 +55,7 @@ describe("GitHub monthly usage exhaustion", () => {
           errorCode: 402,
           backoffLevel: 0,
         }),
+        expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
       );
       expect(dbMocks.updateProviderConnection.mock.calls[0][1])
         .not.toHaveProperty("modelLock_claude-fable-5");
@@ -75,6 +76,7 @@ describe("GitHub monthly usage exhaustion", () => {
         expect.objectContaining({
           "modelLock_claude-fable-5": "2026-08-04T19:32:00.000Z",
         }),
+        expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
       );
       expect(dbMocks.updateProviderConnection.mock.calls[0][1])
         .not.toHaveProperty("modelLock___all");
@@ -122,6 +124,7 @@ describe("Codex invalidated OAuth credentials", () => {
         testStatus: "unavailable",
         errorCode: 401,
       }),
+      expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );
     expect(dbMocks.updateProviderConnection.mock.calls[0][1])
       .not.toHaveProperty("isActive");

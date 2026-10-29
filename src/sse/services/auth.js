@@ -1434,14 +1434,25 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!atomicApplied) {
     const lockUpdate = buildModelLockUpdate(fallbackModel, legacyCooldownMs);
     if (isolatedSearch) lockUpdate[`modelError_${fallbackModel}`] = Number(status) || 503;
-    await updateProviderConnection(connectionId, context?.webFetch === true || isolatedSearch ? lockUpdate : {
-      ...lockUpdate,
-      testStatus: "unavailable",
-      lastError: reason,
-      errorCode: status,
-      lastErrorAt: new Date(observedAt).toISOString(),
-      backoffLevel: newBackoffLevel ?? backoffLevel
-    });
+    // Same reauth guard as recordProviderConnectionFallbackState: re-read inside
+    // the write transaction so a concurrent durable reauth is never demoted when
+    // the atomic path threw and this compatibility writer runs (#1324/#1311).
+    const recorded = await updateProviderConnection(
+      connectionId,
+      context?.webFetch === true || isolatedSearch ? lockUpdate : {
+        ...lockUpdate,
+        testStatus: "unavailable",
+        lastError: reason,
+        errorCode: status,
+        lastErrorAt: new Date(observedAt).toISOString(),
+        backoffLevel: newBackoffLevel ?? backoffLevel
+      },
+      { refuseIfReauth: true, returnCommitResult: true }
+    );
+    if (recorded?.applied === false &&
+      (recorded.connection?.testStatus === "reauth_required" || recorded.connection?.errorCode === "REAUTH")) {
+      return { shouldFallback: true, cooldownMs: 0 };
+    }
   }
 
   if (Number(status) === 429) {

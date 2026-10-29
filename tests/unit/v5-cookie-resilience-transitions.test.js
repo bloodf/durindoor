@@ -154,12 +154,47 @@ describe("R-02 fixed-clock account/model completion ordering", () => {
   ])("ordinary failure cannot demote reauth: %s / %s", async (order, model) => {
     const terminal = () => fail(T - 1000, M1, 401, "refresh_token_invalidated");
     const ordinary = () => fail(T - 2000, model, 503, "provider overloaded");
-    if (order === "reauth-first") { await terminal(); await ordinary(); }
-    else { await ordinary(); await terminal(); }
+    if (order === "reauth-first") {
+      await terminal();
+      expect(await ordinary()).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    } else {
+      await ordinary();
+      await terminal();
+    }
     await assertQuarantined();
     // A demoted row must not become active after a later ordinary success either.
     await success(T - 500, model);
     await assertQuarantined();
+  });
+
+  it("legacy errorCode REAUTH marker early-returns without ordinary cooldown", async () => {
+    await db.updateProviderConnection(a.id, {
+      testStatus: "unavailable",
+      isActive: false,
+      errorCode: "REAUTH",
+      lastError: "legacy reauth marker",
+      lastErrorAt: new Date(T - 1000).toISOString(),
+      backoffLevel: 0,
+    });
+    const result = await fail(T - 500, M1, 503, "provider overloaded");
+    expect(result).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    const stored = await assertCredentialsAndSibling();
+    expect(stored).toMatchObject({
+      testStatus: "unavailable",
+      isActive: false,
+      errorCode: "REAUTH",
+      lastError: "legacy reauth marker",
+    });
+    expect(stored[`modelLock_${M1}`]).toBeFalsy();
+  });
+
+  it("ordinary non-reauth failure returns a positive cooldownMs", async () => {
+    const result = await fail(T - 2000, M1, 503, "provider overloaded");
+    expect(result.shouldFallback).toBe(true);
+    expect(result.cooldownMs).toBeGreaterThan(0);
+    const stored = await assertCredentialsAndSibling();
+    expect(stored.testStatus).toBe("unavailable");
+    expect(Date.parse(stored[`modelLock_${M1}`])).toBeGreaterThan(T);
   });
 
   it.each([413, 499])("terminal client status %s never changes accounts despite transient-looking text", async (status) => {

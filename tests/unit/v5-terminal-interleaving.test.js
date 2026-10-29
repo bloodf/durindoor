@@ -113,14 +113,16 @@ describe("R-02 post-auth-read terminal interleaving", () => {
     control.barrier = barrier;
     const ordinary = fail(T - 2000, model, 503, "provider overloaded");
     await barrier.entered.promise;
+    let cooldownResult;
     try {
       expect((await db.getProviderConnectionById(a.id)).testStatus).toBe("active");
       await fail(T - 1000, M1, 401, "refresh_token_invalidated");
       await assertQuarantined();
     } finally {
       barrier.release.resolve();
-      await ordinary;
+      cooldownResult = await ordinary;
     }
+    expect(cooldownResult).toEqual({ shouldFallback: true, cooldownMs: 0 });
     const afterCooldown = await assertCredentialsAndSibling();
     await success(T - 500, model);
     const afterSuccess = await assertCredentialsAndSibling();
@@ -151,6 +153,78 @@ describe("R-02 post-auth-read terminal interleaving", () => {
     expect(afterBoth[`modelLock_${M1}`]).toBeFalsy();
     expect(afterBoth.testStatus).not.toBe("unavailable");
     expect(afterBoth.testStatus).not.toBe("active");
+  });
+
+  it.each([
+    ["reauth_required", { testStatus: "reauth_required", isActive: false, errorCode: 401, lastError: "refresh_token_invalidated" }],
+    ["REAUTH", { testStatus: "unavailable", isActive: false, errorCode: "REAUTH", lastError: "legacy reauth marker" }],
+  ])("throw-path compatibility write keeps durable reauth (%s marker)", async (_label, reauthPatch) => {
+    // Pause a stale cooldown after its pre-read, commit reauth, force the atomic
+    // write to throw, then resume so the compatibility writer must re-check.
+    const barrier = { entered: deferred(), release: deferred() };
+    control.barrier = barrier;
+    const localDb = await import("@/lib/localDb");
+    const atomic = vi.spyOn(localDb, "recordProviderConnectionFallbackState").mockRejectedValue(
+      new Error("synthetic atomic fallback write failure")
+    );
+    const ordinary = fail(T - 2000, M1, 503, "provider overloaded");
+    await barrier.entered.promise;
+    let cooldownResult;
+    try {
+      expect((await db.getProviderConnectionById(a.id)).testStatus).toBe("active");
+      await db.updateProviderConnection(a.id, {
+        ...reauthPatch,
+        lastErrorAt: new Date(T - 1000).toISOString(),
+        backoffLevel: 0,
+      });
+      const mid = await db.getProviderConnectionById(a.id);
+      expect(mid).toMatchObject({
+        testStatus: reauthPatch.testStatus,
+        errorCode: reauthPatch.errorCode,
+        isActive: false,
+      });
+    } finally {
+      barrier.release.resolve();
+      cooldownResult = await ordinary;
+      atomic.mockRestore();
+    }
+    expect(cooldownResult).toEqual({ shouldFallback: true, cooldownMs: 0 });
+    const stored = await assertCredentialsAndSibling();
+    expect(stored).toMatchObject({
+      testStatus: reauthPatch.testStatus,
+      isActive: false,
+      errorCode: reauthPatch.errorCode,
+      lastError: reauthPatch.lastError,
+    });
+    expect(stored[`modelLock_${M1}`]).toBeFalsy();
+    expect(stored.testStatus).not.toBe("active");
+    if (reauthPatch.errorCode === "REAUTH") {
+      expect(stored.testStatus).toBe("unavailable");
+    } else {
+      expect(stored.testStatus).toBe("reauth_required");
+    }
+  });
+
+  it("throw-path ordinary failure still records cooldown via compatibility write", async () => {
+    const localDb = await import("@/lib/localDb");
+    const atomic = vi.spyOn(localDb, "recordProviderConnectionFallbackState").mockRejectedValue(
+      new Error("synthetic atomic fallback write failure")
+    );
+    let result;
+    try {
+      result = await fail(T - 2000, M1, 503, "provider overloaded");
+    } finally {
+      atomic.mockRestore();
+    }
+    expect(result.shouldFallback).toBe(true);
+    expect(result.cooldownMs).toBeGreaterThan(0);
+    const stored = await assertCredentialsAndSibling();
+    expect(stored).toMatchObject({
+      testStatus: "unavailable",
+      isActive: true,
+      errorCode: 503,
+    });
+    expect(Date.parse(stored[`modelLock_${M1}`])).toBeGreaterThan(T);
   });
 
   it("negative control: ordinary success reads committed terminal state transactionally", async () => {

@@ -64,6 +64,9 @@ const completion = (finish_reason, message = { role: ROLE.ASSISTANT, content: "p
 const project = (finish_reason, message, extra) =>
   translateNonStreamingResponse(completion(finish_reason, message, extra), CHAT, RESPONSES);
 
+/** Main completed Responses field set (no synthetic `error` / `incomplete_details`). */
+const MAIN_COMPLETED_KEYS = ["id", "object", "created_at", "model", "status", "output", "usage"];
+
 /** Exact failed.error shape; optional message override for sanitized upstream text. */
 const assertFailedErrorExact = (error, serialized, message = FAILED_FALLBACK_MESSAGE) => {
   expect(error).toEqual({
@@ -81,13 +84,11 @@ describe("#1331 Chat→Responses stream termination", () => {
       null,
     ]);
     expect(terminalSequence(events)).toEqual(["response.incomplete"]);
-    expect(terminalEvents(events)[0].data).toMatchObject({
-      type: "response.incomplete",
-      response: {
-        status: "incomplete",
-        incomplete_details: { reason: "max_output_tokens" },
-      },
-    });
+    const response = terminalEvents(events)[0].data.response;
+    expect(terminalEvents(events)[0].data.type).toBe("response.incomplete");
+    expect(response.status).toBe("incomplete");
+    expect(response.error).toBeNull();
+    expect(response.incomplete_details).toEqual({ reason: "max_output_tokens" });
   });
 
   it("emits Responses stream incomplete for Chat content_filter finish", () => {
@@ -96,13 +97,11 @@ describe("#1331 Chat→Responses stream termination", () => {
       null,
     ]);
     expect(terminalSequence(events)).toEqual(["response.incomplete"]);
-    expect(terminalEvents(events)[0].data).toMatchObject({
-      type: "response.incomplete",
-      response: {
-        status: "incomplete",
-        incomplete_details: { reason: "content_filter" },
-      },
-    });
+    const response = terminalEvents(events)[0].data.response;
+    expect(terminalEvents(events)[0].data.type).toBe("response.incomplete");
+    expect(response.status).toBe("incomplete");
+    expect(response.error).toBeNull();
+    expect(response.incomplete_details).toEqual({ reason: "content_filter" });
   });
 
   it("emits Responses stream failed for Chat error finish", () => {
@@ -114,10 +113,9 @@ describe("#1331 Chat→Responses stream termination", () => {
     ]);
     expect(terminalSequence(events)).toEqual(["response.failed"]);
     const [terminal] = terminalEvents(events);
-    expect(terminal.data).toMatchObject({
-      type: "response.failed",
-      response: { status: "failed" },
-    });
+    expect(terminal.data.type).toBe("response.failed");
+    expect(terminal.data.response.status).toBe("failed");
+    expect(terminal.data.response).not.toHaveProperty("incomplete_details");
     assertFailedErrorExact(
       terminal.data.response.error,
       JSON.stringify(terminal.data.response),
@@ -133,13 +131,16 @@ describe("#1331 Chat→Responses stream termination", () => {
       null,
     ]);
     expect(terminalSequence(events)).toEqual(["response.completed"]);
-    expect(terminalEvents(events)[0].data).toMatchObject({
-      type: "response.completed",
-      response: {
-        status: "completed",
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-      },
-    });
+    const response = terminalEvents(events)[0].data.response;
+    expect(terminalEvents(events)[0].data.type).toBe("response.completed");
+    expect(response.status).toBe("completed");
+    expect(response.error).toBeNull();
+    expect(response).not.toHaveProperty("incomplete_details");
+    expect(response.usage).toEqual(expect.objectContaining({
+      input_tokens: 1,
+      output_tokens: 1,
+      total_tokens: 2,
+    }));
   });
 
   it("emits Responses stream completed for Chat tool_calls finish", () => {
@@ -164,12 +165,15 @@ describe("#1331 Chat→Responses stream termination", () => {
       null,
     ]);
     expect(terminalSequence(events)).toEqual(["response.completed"]);
-    expect(terminalEvents(events)[0].data.response.status).toBe("completed");
-    expect(terminalEvents(events)[0].data.response.usage).toMatchObject({
+    const response = terminalEvents(events)[0].data.response;
+    expect(response.status).toBe("completed");
+    expect(response.error).toBeNull();
+    expect(response).not.toHaveProperty("incomplete_details");
+    expect(response.usage).toEqual(expect.objectContaining({
       input_tokens: 2,
       output_tokens: 3,
       total_tokens: 5,
-    });
+    }));
   });
 
   it("keeps usage on incomplete when finish and usage share a chunk", () => {
@@ -179,13 +183,16 @@ describe("#1331 Chat→Responses stream termination", () => {
       }),
       null,
     ]);
-    const [terminal] = terminalEvents(events);
-    expect(terminal.event).toBe("response.incomplete");
-    expect(terminal.data.response.usage).toMatchObject({
+    expect(terminalSequence(events)).toEqual(["response.incomplete"]);
+    const response = terminalEvents(events)[0].data.response;
+    expect(response.status).toBe("incomplete");
+    expect(response.error).toBeNull();
+    expect(response.incomplete_details).toEqual({ reason: "max_output_tokens" });
+    expect(response.usage).toEqual(expect.objectContaining({
       input_tokens: 4,
       output_tokens: 5,
       total_tokens: 9,
-    });
+    }));
   });
 });
 
@@ -222,10 +229,10 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
   it("maps non-stream stop and tool_calls to completed", () => {
     const stop = project(OPENAI_FINISH.STOP, { role: ROLE.ASSISTANT, content: "ok" });
     expect(stop.status).toBe("completed");
-    expect(stop.status).not.toBe("incomplete");
-    expect(stop.status).not.toBe("failed");
+    expect(Object.keys(stop).sort()).toEqual([...MAIN_COMPLETED_KEYS].sort());
     expect(stop).not.toHaveProperty("incomplete_details");
     expect(stop).not.toHaveProperty("error");
+    expect(stop.output[0].content[0].text).toBe("ok");
 
     const tools = project(OPENAI_FINISH.TOOL_CALLS, {
       role: ROLE.ASSISTANT,
@@ -239,12 +246,17 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
     expect(tools.status).toBe("completed");
     expect(tools).not.toHaveProperty("incomplete_details");
     expect(tools).not.toHaveProperty("error");
+    expect(tools.output.map((item) => item.type)).toEqual(["function_call"]);
+    expect(tools.output[0]).toEqual(expect.objectContaining({
+      type: "function_call",
+      call_id: "c",
+      name: "search",
+      arguments: "{}",
+    }));
   });
 });
 
 describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
-  const mainCompletedKeys = ["id", "object", "created_at", "model", "status", "output", "usage"];
-
   it("does not throw and adds no new fields for null/undefined finish_reason", () => {
     for (const finish_reason of [null, undefined]) {
       let out;
@@ -252,7 +264,7 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
         out = project(finish_reason, { role: ROLE.ASSISTANT, content: "ok" });
       }).not.toThrow();
       expect(out.status).toBe("completed");
-      expect(Object.keys(out).sort()).toEqual([...mainCompletedKeys].sort());
+      expect(Object.keys(out).sort()).toEqual([...MAIN_COMPLETED_KEYS].sort());
       expect(out).not.toHaveProperty("error");
       expect(out).not.toHaveProperty("incomplete_details");
       expect(out.output[0].content[0].text).toBe("ok");
@@ -340,7 +352,7 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       resp = project(5, { role: ROLE.ASSISTANT, content: "ok" });
     }).not.toThrow();
     expect(resp.status).toBe(5);
-    expect(Object.keys(resp).sort()).toEqual([...mainCompletedKeys].sort());
+    expect(Object.keys(resp).sort()).toEqual([...MAIN_COMPLETED_KEYS].sort());
     expect(resp).not.toHaveProperty("error");
     expect(resp).not.toHaveProperty("incomplete_details");
     expect(resp.output[0].content[0].text).toBe("ok");
@@ -417,7 +429,7 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
     // Chat→Responses completed path never grows an incomplete_details key.
     const completed = project(OPENAI_FINISH.STOP, { role: ROLE.ASSISTANT, content: "ok" });
     expect(completed.status).toBe("completed");
-    expect(Object.keys(completed).sort()).toEqual([...mainCompletedKeys].sort());
+    expect(Object.keys(completed).sort()).toEqual([...MAIN_COMPLETED_KEYS].sort());
     expect(completed).not.toHaveProperty("incomplete_details");
   });
 
@@ -489,13 +501,13 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
     // Chat→Responses non-stream: falsy → completed; unknown truthy → passthrough status.
     const empty = project("", { role: ROLE.ASSISTANT, content: "ok" });
     expect(empty.status).toBe("completed");
-    expect(Object.keys(empty).sort()).toEqual([...mainCompletedKeys].sort());
+    expect(Object.keys(empty).sort()).toEqual([...MAIN_COMPLETED_KEYS].sort());
     expect(empty).not.toHaveProperty("error");
     expect(empty).not.toHaveProperty("incomplete_details");
 
     const unknown = project("foo", { role: ROLE.ASSISTANT, content: "ok" });
     expect(unknown.status).toBe("foo");
-    expect(Object.keys(unknown).sort()).toEqual([...mainCompletedKeys].sort());
+    expect(Object.keys(unknown).sort()).toEqual([...MAIN_COMPLETED_KEYS].sort());
     expect(unknown).not.toHaveProperty("error");
     expect(unknown).not.toHaveProperty("incomplete_details");
 

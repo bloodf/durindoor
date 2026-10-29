@@ -73,7 +73,7 @@
     "sql.js": "^1.14.1",
     "stream-json": "3.7.0",
     "tls-client-node": "0.2.0",
-    "undici": "^7.29.1",
+    "undici": "^7.30.1",
     "uuid": "^14.0.2",
     "ws": "^8.21.0",
     "zustand": "^5.0.14"
@@ -81,7 +81,7 @@
   "optionalDependencies": {
     "better-sqlite3": "^12.11.1"
   },
-  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
+  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "comment_pg": "added for the opt-in PostgreSQL engine (see docs/operations/postgres.md); never imported when databaseEngine === 'sqlite'",
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
@@ -113,6 +113,7 @@
     "ip-address": "^10.7.4",
     "brace-expansion@<1.1.21": "1.1.21",
     "brace-expansion@>=4.0.0 <5.0.12": "5.0.12",
-    "postcss": "^8.5.28"
+    "postcss": "^8.5.28",
+    "undici": "^7.30.1"
   }
 }

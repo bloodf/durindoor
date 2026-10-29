@@ -319,6 +319,30 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     claudeMsg = normalizeClaudeCacheUsage(claudeMsg, responseBody);
     return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
   }
+  if (sourceFormat === FORMATS.GEMINI && targetFormat === FORMATS.OPENAI && responseBody?.choices?.[0]) {
+    // The shared projector returns a wrapped Gemini-family body; native Gemini
+    // requires candidates and usageMetadata at the top level.
+    const result = projectCompletionToClientFormat(responseBody, sourceFormat, projectionOptions()).response;
+    const calls = responseBody.choices[0].message?.tool_calls || [];
+    let callIndex = 0;
+    for (const part of result.candidates[0].content.parts) {
+      if (part.functionCall) {
+        const id = calls[callIndex++]?.id;
+        if (id !== undefined) part.functionCall.id = id;
+      }
+    }
+    const usage = responseBody.usage;
+    if (usage?.prompt_tokens_details?.cached_tokens !== undefined) {
+      result.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
+    }
+    if (usage?.completion_tokens_details?.reasoning_tokens !== undefined) {
+      result.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
+      // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
+      result.usageMetadata.candidatesTokenCount = Math.max(0,
+        result.usageMetadata.candidatesTokenCount - result.usageMetadata.thoughtsTokenCount);
+    }
+    return result;
+  }
   if (targetFormat === FORMATS.OPENAI) return responseBody;
 
   // OpenAI Responses API JSON body → requested client format.

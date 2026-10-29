@@ -38,6 +38,30 @@ describe("checkFallbackError — request-scoped vs account-scoped 4xx", () => {
     expect(checkFallbackError(422, "quota exceeded").shouldFallback).toBe(true);
   });
 
+  // Port of 9router b82f5c4: credit exhaustion on HTTP 400 must backoff so
+  // account rotation / combo fallback can try the next model. Phrases are the
+  // allowlisted Anthropic + OpenRouter/reseller wordings (see errorConfig.js).
+  it.each([
+    "You have insufficient credits to make this request. Please purchase more credits to continue using the service.",
+    "INSUFFICIENT CREDITS",
+    "Insufficient credit balance",
+    "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+    "CREDIT BALANCE IS TOO LOW",
+  ])("falls back with backoff for a 400 credit error: %s", (message) => {
+    expect(checkFallbackError(400, message)).toEqual({
+      shouldFallback: true, cooldownMs: 2000, newBackoffLevel: 1, scope: null,
+    });
+    expect(checkFallbackError(400, message, 1)).toEqual({
+      shouldFallback: true, cooldownMs: 4000, newBackoffLevel: 2, scope: null,
+    });
+  });
+
+  it("does not fall back for an ordinary bad request", () => {
+    expect(checkFallbackError(400, "Bad request")).toEqual({
+      shouldFallback: false, cooldownMs: 0, scope: null,
+    });
+  });
+
   it("keeps the transient cooldown for unmatched server errors", () => {
     const result = checkFallbackError(503, "upstream exploded");
 

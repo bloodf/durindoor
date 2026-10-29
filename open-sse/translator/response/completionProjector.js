@@ -32,8 +32,11 @@ function getToolCalls(completion) {
  * Map OpenAI Chat `finish_reason` onto Gemini `finishReason` for non-stream
  * projection. Keep abort/"error" as OTHER (not STOP) so clients see a broken
  * turn — same mapping as the streaming Chat→Gemini translator (#1330 / #1089).
+ * Only known string reasons drive special mapping; null / empty / unknown /
+ * non-string values stay STOP like main (#1330 robustness).
  */
 function openAIToGeminiFinish(reason) {
+  if (!isString(reason)) return GEMINI_FINISH.STOP;
   switch (reason) {
     case OPENAI_FINISH.LENGTH:return GEMINI_FINISH.MAX_TOKENS;
     case OPENAI_FINISH.CONTENT_FILTER:return GEMINI_FINISH.SAFETY;

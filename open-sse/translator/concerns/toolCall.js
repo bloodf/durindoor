@@ -441,16 +441,6 @@ export function hasToolResults(msg, toolCallIds) {
   return false;
 }
 
-/** True when `msg` is an OpenAI `role:tool` result or a Claude user tool_result carrier. */
-function isToolResultCarrier(msg) {
-  if (!msg || !isObject(msg)) return false;
-  if (msg.role === ROLE.TOOL) return true;
-  if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
-    return msg.content.some((block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT);
-  }
-  return false;
-}
-
 function syntheticToolResult(id, isClaudeFormat) {
   return isClaudeFormat ?
   {
@@ -495,15 +485,24 @@ function claudeResultForId(id, block) {
   };
 }
 
+function hasAssistantBetween(messages, fromExclusive, toExclusive) {
+  for (let i = fromExclusive + 1; i < toExclusive; i++) {
+    if (messages[i]?.role === ROLE.ASSISTANT) return true;
+  }
+  return false;
+}
+
 /**
  * Pair tool results to assistant turns by call id (not position).
  *
  * Each real result is assigned to the most recent unanswered call with the
- * same id (so a reused id across turns keeps its own result, and a result that
- * arrives after a later assistant turn relocates back to its owning turn).
- * Extra results with no unanswered call are dropped with a log line. True
- * orphans (no live call) stay for salvageOrphanedToolResults. Unanswered calls
- * get a synthetic "[No response received]". Refs #1335.
+ * same id (so a reused id across turns keeps its own result). A result that
+ * arrives after a later assistant turn is relocated next to its owning turn;
+ * results that already sit after their turn (no intervening assistant) stay
+ * put, so leftover non-tool_result blocks and orphan carriers keep their
+ * original message positions. Extra results with no unanswered call are
+ * dropped with a log line. Unanswered calls get a synthetic
+ * "[No response received]". Refs #1335.
  */
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
@@ -518,21 +517,43 @@ export function fixMissingToolResponses(body) {
     for (const id of getToolCallIds(message)) allLiveIds.add(id);
   }
 
-  // Streaming assignment: only turns already seen can claim a result, so an
-  // interleaved call/result pair keeps its own payload; a late result still
-  // relocates to the most recent unanswered matching call.
+  // Streaming assignment via Map<id, turn stack>: O(messages + results).
   const turns = [];
-  const orphanCarriers = [];
+  /** @type {Map<string, object[]>} */
+  const unansweredById = new Map();
+  // sourceMsgIndex → list of { blockIndex|null, id } for live results claimed from that message
+  const relocatedFrom = new Map();
 
-  const assignResult = (id, resultMsg) => {
-    for (let t = turns.length - 1; t >= 0; t--) {
-      const turn = turns[t];
-      if (!turn.toolCallIds.includes(id) || turn.answered.has(id)) continue;
-      turn.assigned.push(resultMsg);
-      turn.answered.add(id);
-      return true;
+  const openTurn = (messageIndex, toolCallIds) => {
+    const turn = {
+      messageIndex,
+      toolCallIds,
+      answered: new Set(),
+      // Results that must move next to this turn (an assistant intervened).
+      relocate: []
+    };
+    turns.push(turn);
+    for (const id of toolCallIds) {
+      const stack = unansweredById.get(id);
+      if (stack) stack.push(turn);
+      else unansweredById.set(id, [turn]);
     }
-    return false;
+    return turn;
+  };
+
+  const assignResult = (id, resultMsg, sourceMsgIndex, blockIndex) => {
+    const stack = unansweredById.get(id);
+    if (!stack || stack.length === 0) return false;
+    const turn = stack.pop();
+    turn.answered.add(id);
+    const needsRelocate = hasAssistantBetween(body.messages, turn.messageIndex, sourceMsgIndex);
+    if (needsRelocate) {
+      turn.relocate.push(resultMsg);
+      const list = relocatedFrom.get(sourceMsgIndex) || [];
+      list.push({ blockIndex, id });
+      relocatedFrom.set(sourceMsgIndex, list);
+    }
+    return true;
   };
 
   for (let index = 0; index < body.messages.length; index++) {
@@ -540,67 +561,117 @@ export function fixMissingToolResponses(body) {
     if (!msg || !isObject(msg)) continue;
 
     const toolCallIds = getToolCallIds(msg);
-    if (toolCallIds.length > 0) {
-      turns.push({
-        messageIndex: index,
-        toolCallIds,
-        answered: new Set(),
-        assigned: []
-      });
-    }
+    if (toolCallIds.length > 0) openTurn(index, toolCallIds);
 
-    if (msg.role === ROLE.TOOL && msg.tool_call_id) {
+    if (msg.role === ROLE.TOOL) {
+      if (!msg.tool_call_id) continue; // kept in place during rebuild
       const id = msg.tool_call_id;
-      if (!allLiveIds.has(id)) {
-        orphanCarriers.push(msg);
-        continue;
-      }
+      if (!allLiveIds.has(id)) continue; // orphan: kept in place during rebuild
       const resultMsg = isClaudeFormat ?
-        claudeResultForId(id, { content: msg.content, is_error: msg.is_error }) :
-        openaiResultForId(id, msg);
-      if (!assignResult(id, resultMsg)) {
+      claudeResultForId(id, { content: msg.content, is_error: msg.is_error }) :
+      openaiResultForId(id, msg);
+      if (!assignResult(id, resultMsg, index, null)) {
         console.warn(`[Translator] Dropped extra tool result for call_id=${id} (no unanswered call)`);
+        const list = relocatedFrom.get(index) || [];
+        list.push({ blockIndex: null, id, dropped: true });
+        relocatedFrom.set(index, list);
       }
       continue;
     }
 
     if (msg.role === ROLE.USER && Array.isArray(msg.content) &&
     msg.content.some((block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT)) {
-      const leftover = [];
-      const orphanBlocks = [];
-      for (const block of msg.content) {
-        if (!isObject(block)) continue;
-        if (block.type !== CLAUDE_BLOCK.TOOL_RESULT) {
-          leftover.push(block);
-          continue;
-        }
+      for (let blockIndex = 0; blockIndex < msg.content.length; blockIndex++) {
+        const block = msg.content[blockIndex];
+        if (!isObject(block) || block.type !== CLAUDE_BLOCK.TOOL_RESULT) continue;
         const id = block.tool_use_id;
-        if (!allLiveIds.has(id)) {
-          orphanBlocks.push(block);
-          continue;
-        }
-        if (!assignResult(id, claudeResultForId(id, block))) {
+        if (!allLiveIds.has(id)) continue; // orphan block: kept in place
+        if (!assignResult(id, claudeResultForId(id, block), index, blockIndex)) {
           console.warn(`[Translator] Dropped extra tool_result for tool_use_id=${id} (no unanswered call)`);
+          const list = relocatedFrom.get(index) || [];
+          list.push({ blockIndex, id, dropped: true });
+          relocatedFrom.set(index, list);
         }
       }
-      if (orphanBlocks.length > 0) orphanCarriers.push({ ...msg, content: orphanBlocks });
-      if (leftover.length > 0) orphanCarriers.push({ ...msg, content: leftover });
     }
   }
 
   const turnsByMessageIndex = new Map(turns.map((turn) => [turn.messageIndex, turn]));
   const newMessages = [];
+  // Synthetics wait until the contiguous tool-result run after a turn ends, so
+  // in-place (non-relocated) real results still precede any placeholder.
+  let pendingSyntheticTurn = null;
+
+  const flushPendingSynthetics = () => {
+    if (!pendingSyntheticTurn) return;
+    for (const id of pendingSyntheticTurn.toolCallIds) {
+      if (pendingSyntheticTurn.answered.has(id)) continue;
+      newMessages.push(syntheticToolResult(id, isClaudeFormat));
+      pendingSyntheticTurn.answered.add(id);
+    }
+    pendingSyntheticTurn = null;
+  };
+
+  const isContiguousResultCarrier = (message) => {
+    if (!message || !isObject(message)) return false;
+    if (message.role === ROLE.TOOL) return true;
+    if (message.role === ROLE.USER && Array.isArray(message.content)) {
+      return message.content.some((block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT);
+    }
+    return false;
+  };
 
   for (let index = 0; index < body.messages.length; index++) {
     const msg = body.messages[index];
     if (!msg || !isObject(msg)) {
+      flushPendingSynthetics();
       newMessages.push(msg);
       continue;
     }
 
-    if (msg.role === ROLE.TOOL) continue;
+    if (!isContiguousResultCarrier(msg)) flushPendingSynthetics();
+
+    // OpenAI tool message: keep orphans and id-less tools in place; skip live
+    // results that relocated (or were dropped as extras); keep non-relocated.
+    if (msg.role === ROLE.TOOL) {
+      if (!msg.tool_call_id) {
+        newMessages.push(msg);
+        continue;
+      }
+      const id = msg.tool_call_id;
+      if (!allLiveIds.has(id)) {
+        newMessages.push(msg);
+        continue;
+      }
+      const claims = relocatedFrom.get(index);
+      if (claims?.some((claim) => claim.id === id && (claim.dropped || claim.blockIndex === null))) {
+        // Relocated or dropped — do not re-emit here.
+        continue;
+      }
+      newMessages.push(msg);
+      continue;
+    }
+
+    // Claude tool_result carrier: strip relocated/dropped live results; keep
+    // leftovers (text etc., including cache_control) and orphan tool_results
+    // at this original position.
     if (msg.role === ROLE.USER && Array.isArray(msg.content) &&
     msg.content.some((block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT)) {
+      const claims = relocatedFrom.get(index) || [];
+      const removed = new Set(claims.map((claim) => claim.blockIndex).filter((i) => i !== null && i !== undefined));
+      const keptBlocks = [];
+      for (let blockIndex = 0; blockIndex < msg.content.length; blockIndex++) {
+        const block = msg.content[blockIndex];
+        if (!isObject(block)) continue;
+        if (block.type === CLAUDE_BLOCK.TOOL_RESULT) {
+          if (removed.has(blockIndex)) continue;
+        }
+        keptBlocks.push(block);
+      }
+      if (keptBlocks.length > 0) {
+        if (keptBlocks.length === msg.content.length) newMessages.push(msg);
+        else newMessages.push({ ...msg, content: keptBlocks });
+      }
       continue;
     }
 
@@ -609,15 +680,11 @@ export function fixMissingToolResponses(body) {
     const turn = turnsByMessageIndex.get(index);
     if (!turn) continue;
 
-    for (const resultMsg of turn.assigned) newMessages.push(resultMsg);
-    for (const id of turn.toolCallIds) {
-      if (turn.answered.has(id)) continue;
-      newMessages.push(syntheticToolResult(id, isClaudeFormat));
-      turn.answered.add(id);
-    }
+    for (const resultMsg of turn.relocate) newMessages.push(resultMsg);
+    pendingSyntheticTurn = turn;
   }
 
-  for (const orphan of orphanCarriers) newMessages.push(orphan);
+  flushPendingSynthetics();
 
   body.messages = newMessages;
   return body;

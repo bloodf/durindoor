@@ -268,6 +268,53 @@ describe("#1335 turn-scoped tool-result pairing", () => {
     expect(JSON.stringify(body.messages)).not.toContain("[No response received]");
   });
 
+  it("keeps Claude tool_result leftovers (and cache_control) at their original position", () => {
+    const messages = [
+      { role: ROLE.USER, content: "hi" },
+      {
+        role: ROLE.ASSISTANT,
+        content: [{ type: CLAUDE_BLOCK.TOOL_USE, id: "c1", name: "a", input: {} }],
+      },
+      {
+        role: ROLE.USER,
+        content: [
+          { type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: "c1", content: "R1" },
+          { type: CLAUDE_BLOCK.TEXT, text: "CONTINUE", cache_control: { type: "ephemeral" } },
+        ],
+      },
+      { role: ROLE.ASSISTANT, content: "ok" },
+      { role: ROLE.USER, content: "NEXT" },
+    ];
+
+    const body = { messages: structuredClone(messages) };
+    fixMissingToolResponses(body);
+    expect(body.messages).toEqual(messages);
+  });
+
+  it("keeps orphan tool results at their original position", () => {
+    const messages = [
+      { role: ROLE.USER, content: "hi" },
+      { role: ROLE.TOOL, tool_call_id: "gone", content: "ORPH" },
+      { role: ROLE.USER, content: "NEXT" },
+    ];
+
+    const body = { messages: structuredClone(messages) };
+    fixMissingToolResponses(body);
+    expect(body.messages).toEqual(messages);
+  });
+
+  it("keeps role:tool messages without tool_call_id in place", () => {
+    const messages = [
+      { role: ROLE.USER, content: "hi" },
+      { role: ROLE.TOOL, content: "no-id" },
+      { role: ROLE.USER, content: "NEXT" },
+    ];
+
+    const body = { messages: structuredClone(messages) };
+    fixMissingToolResponses(body);
+    expect(body.messages).toEqual(messages);
+  });
+
   it("still merges same-turn trailing assistant text before tool outputs", () => {
     const out = responsesRequest({
       input: [

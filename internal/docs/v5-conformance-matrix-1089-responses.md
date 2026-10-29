@@ -1,6 +1,6 @@
 # #1089 OpenAI Responses client conformance matrix
 
-Counts: already-present 22; failing 5; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 23; failing 4; unsupported-by-contract 0; upstream-pending 0.
 
 Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-responses.test.js`.
 
@@ -25,7 +25,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Stream | `response.failed` terminal | OpenAI Chat, Claude, Gemini | already-present | `translates stream response.failed error text for Chat, Claude, and Gemini` |
 | Non-stream | Incomplete status with tool call | OpenAI Chat, Claude | already-present | `projects non-stream incomplete status with a tool call to Chat and Claude` |
 | Non-stream | Failed status | OpenAI Chat, Claude | already-present | `projects non-stream failed status to Chat and Claude error text` |
-| Non-stream | Incomplete status with tool call | Gemini | failing | `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` |
+| Non-stream | Incomplete status with tool call | Gemini | already-present | `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` |
 | Request | Non-string tool description (#1091) | Kiro | already-present | `translates non-string tool descriptions to a string for Kiro without TypeError` |
 | Request | Keyword-named schema properties (#1091) | OpenAI Chat, Claude, Gemini | already-present | `preserves keyword-named schema properties through Chat, Claude, and Gemini` |
 | Request | Tuple `prefixItems` / items (#1091) | OpenAI Chat, Claude, Gemini | already-present | `converts tuple prefixItems to Gemini items while Chat and Claude keep the tuple` |
@@ -38,8 +38,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 
 | Test | Reason |
 |---|---|
-| `does not pair function_call_output across assistant turns` | Translator pairs historical function outputs by call ID across assistant turns (product bug; Refs #1335). |
-| `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` | Non-stream Responses upstream bodies are not projected into Gemini client shape (Refs #1346). |
+| `relocates function_call_output after an intervening assistant message by call id` | Repaired (#1335): a tool-only turn is flushed as its own assistant message; late real outputs relocate next to it by call id. |
 | `normalizes Claude free-form parameters {} to a typed empty object schema` | Responses→Claude leaves free-form `parameters:{}` as `input_schema:{}`; Anthropic requires `type:"object"` (Refs #1350). |
 | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` | String numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers (Refs #1334). |
 | `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` | Malformed tool schemas are forwarded instead of rejected with a predictable 400 (Refs #1334). |

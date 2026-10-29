@@ -446,13 +446,40 @@ function flattenAnyOfOneOf(obj) {
   }
 }
 
-// Flatten type arrays
+// Flatten type arrays. Gemini Schema accepts a single type string; when a JSON
+// Schema union lists several non-null types, prefer structural clues (object /
+// array) then string over boolean/number so leftover `items` on a collapsed
+// non-array node can be stripped by enforceTypeConstraints.
 function flattenTypeArrays(obj) {
   if (!obj || !isObject(obj)) return;
 
   if (obj.type && Array.isArray(obj.type)) {
     const nonNullTypes = obj.type.filter((t) => t !== "null");
-    obj.type = nonNullTypes.length > 0 ? nonNullTypes[0] : "string";
+    if (nonNullTypes.length === 0) {
+      obj.type = "string";
+    } else if (nonNullTypes.length === 1) {
+      obj.type = nonNullTypes[0];
+    } else if (obj.properties && nonNullTypes.includes("object")) {
+      obj.type = "object";
+    } else if (
+      obj.items &&
+      isObject(obj.items) &&
+      Object.keys(obj.items).length > 0 &&
+      obj.items.type &&
+      nonNullTypes.includes("array")
+    ) {
+      obj.type = "array";
+    } else if (nonNullTypes.includes("string")) {
+      obj.type = "string";
+    } else if (nonNullTypes.includes("number")) {
+      obj.type = "number";
+    } else if (nonNullTypes.includes("integer")) {
+      obj.type = "integer";
+    } else if (nonNullTypes.includes("boolean")) {
+      obj.type = "boolean";
+    } else {
+      obj.type = nonNullTypes[0];
+    }
   }
 
   for (const value of Object.values(obj)) {
@@ -555,13 +582,71 @@ function convertPrefixItems(obj) {
   }
 }
 
+/**
+ * Gemini requires every `type:"array"` schema to carry a typed `items` node.
+ * Empty `items: {}` and untyped items objects are filled before placeholders
+ * can turn them into object schemas with a `reason` property.
+ *
+ * @param {object} obj - Schema node that may be `type:"array"` (mutated in place).
+ * @returns {void}
+ */
+function fillArrayItemsPredicate(obj) {
+  if (!obj.items || !isObject(obj.items) || Object.keys(obj.items).length === 0) {
+    obj.items = { type: "string" };
+    return;
+  }
+  if (obj.items.type) return;
+  if (obj.items.properties) {
+    obj.items.type = "object";
+  } else if (obj.items.items) {
+    obj.items.type = "array";
+  } else {
+    obj.items.type = "string";
+  }
+}
+
 // Gemini requires items on every type:"array" schema — fill a permissive placeholder
 function ensureArrayItems(obj) {
   if (!obj || !isObject(obj)) return;
-  if (obj.type === "array" && !obj.items) {
-    obj.items = { type: "string" };
-  }
+  if (obj.type === "array") fillArrayItemsPredicate(obj);
   for (const v of Object.values(obj)) if (v && isObject(v)) ensureArrayItems(v);
+}
+
+/**
+ * Enforce Gemini protobuf Schema field predicates after placeholders run:
+ * - `items` only when `type === "array"` (and then items must be typed)
+ * - `properties` / `required` only when `type === "object"`
+ *
+ * Recurses only into real schema nodes (property-map values and `items`), never
+ * into the properties name-map itself, so a parameter literally named
+ * `properties` or `required` is preserved (#4620 / #2884).
+ *
+ * @param {object} obj - JSON Schema node to normalize (mutated in place).
+ * @returns {void}
+ */
+function enforceTypeConstraints(obj) {
+  if (!obj || !isObject(obj)) return;
+
+  if (obj.properties && isObject(obj.properties)) {
+    for (const v of Object.values(obj.properties)) {
+      if (v && isObject(v)) enforceTypeConstraints(v);
+    }
+  }
+  if (obj.items && isObject(obj.items)) enforceTypeConstraints(obj.items);
+
+  if (obj.type === "array") {
+    delete obj.properties;
+    delete obj.required;
+    fillArrayItemsPredicate(obj);
+  } else {
+    // Non-array schemas MUST NOT carry items
+    delete obj.items;
+  }
+
+  if (obj.type !== "object") {
+    delete obj.properties;
+    delete obj.required;
+  }
 }
 
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
@@ -663,6 +748,12 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   }
 
   addPlaceholders(cleaned);
+
+  // Phase 6: Enforce Gemini protobuf type predicates (items only on array,
+  // properties/required only on object). Runs after placeholders so empty
+  // `items: {}` is already replaced by ensureArrayItems, and stray items on
+  // non-array nodes left by multi-type flattening are stripped.
+  enforceTypeConstraints(cleaned);
 
   return cleaned;
 }

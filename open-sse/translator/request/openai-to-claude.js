@@ -15,7 +15,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
-const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const isPlainObject = (value) => value !== null && isObject(value) && !Array.isArray(value);
 
 function toClaudeInputSchema(parameters, inputSchema) {
   const schema = [parameters, inputSchema].find(isPlainObject);

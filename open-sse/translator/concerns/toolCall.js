@@ -469,13 +469,17 @@ function syntheticToolResult(id, isClaudeFormat) {
 }
 
 function openaiResultForId(id, sourceMsg) {
-  return {
+  // Keep the original tool message object when it already matches — callers
+  // assert translateRequest does not rewrite an already-paired body.
+  if (sourceMsg?.role === ROLE.TOOL && sourceMsg.tool_call_id === id) return sourceMsg;
+  const out = {
     role: ROLE.TOOL,
     tool_call_id: id,
-    content: sourceMsg.content,
-    ...(sourceMsg.is_error === true && { is_error: true }),
-    ...(isString(sourceMsg.name) && sourceMsg.name && { name: sourceMsg.name })
+    content: sourceMsg.content
   };
+  if ("is_error" in sourceMsg) out.is_error = sourceMsg.is_error;
+  if (isString(sourceMsg.name) && sourceMsg.name) out.name = sourceMsg.name;
+  return out;
 }
 
 function claudeResultForId(id, block) {
@@ -485,17 +489,20 @@ function claudeResultForId(id, block) {
       type: CLAUDE_BLOCK.TOOL_RESULT,
       tool_use_id: id,
       content: block.content,
-      ...(block.is_error && { is_error: block.is_error })
+      ...("is_error" in block ? { is_error: block.is_error } : {})
     }]
   };
 }
 
 /**
- * Pair tool results to their owning assistant turn by call id (not position).
- * Real results that appear after a later assistant turn are relocated back to
- * their turn. Duplicate results for an already-claimed id are dropped (logged).
- * True orphans (no live call) stay for salvageOrphanedToolResults. Only ids with
- * no real result anywhere get a synthetic "[No response received]". Refs #1335.
+ * Pair tool results to assistant turns by call id (not position).
+ *
+ * Each real result is assigned to the most recent unanswered call with the
+ * same id (so a reused id across turns keeps its own result, and a result that
+ * arrives after a later assistant turn relocates back to its owning turn).
+ * Extra results with no unanswered call are dropped with a log line. True
+ * orphans (no live call) stay for salvageOrphanedToolResults. Unanswered calls
+ * get a synthetic "[No response received]". Refs #1335.
  */
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
@@ -504,17 +511,42 @@ export function fixMissingToolResponses(body) {
   Array.isArray(message?.content) &&
   message.content.some((block) => block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.TOOL_RESULT)
   );
+
   const allLiveIds = new Set();
   for (const message of body.messages) {
     for (const id of getToolCallIds(message)) allLiveIds.add(id);
   }
 
-  // First real result per live call id (insertion order = first seen).
-  const resultsById = new Map();
+  // Streaming assignment: only turns already seen can claim a result, so an
+  // interleaved call/result pair keeps its own payload; a late result still
+  // relocates to the most recent unanswered matching call.
+  const turns = [];
   const orphanCarriers = [];
 
-  for (const msg of body.messages) {
+  const assignResult = (id, resultMsg) => {
+    for (let t = turns.length - 1; t >= 0; t--) {
+      const turn = turns[t];
+      if (!turn.toolCallIds.includes(id) || turn.answered.has(id)) continue;
+      turn.assigned.push(resultMsg);
+      turn.answered.add(id);
+      return true;
+    }
+    return false;
+  };
+
+  for (let index = 0; index < body.messages.length; index++) {
+    const msg = body.messages[index];
     if (!msg || !isObject(msg)) continue;
+
+    const toolCallIds = getToolCallIds(msg);
+    if (toolCallIds.length > 0) {
+      turns.push({
+        messageIndex: index,
+        toolCallIds,
+        answered: new Set(),
+        assigned: []
+      });
+    }
 
     if (msg.role === ROLE.TOOL && msg.tool_call_id) {
       const id = msg.tool_call_id;
@@ -522,13 +554,12 @@ export function fixMissingToolResponses(body) {
         orphanCarriers.push(msg);
         continue;
       }
-      if (resultsById.has(id)) {
-        console.warn(
-          `[Translator] Dropped duplicate tool result for call_id=${id} (already paired)`
-        );
-        continue;
+      const resultMsg = isClaudeFormat ?
+        claudeResultForId(id, { content: msg.content, is_error: msg.is_error }) :
+        openaiResultForId(id, msg);
+      if (!assignResult(id, resultMsg)) {
+        console.warn(`[Translator] Dropped extra tool result for call_id=${id} (no unanswered call)`);
       }
-      resultsById.set(id, isClaudeFormat ? claudeResultForId(id, { content: msg.content, is_error: msg.is_error }) : openaiResultForId(id, msg));
       continue;
     }
 
@@ -547,27 +578,20 @@ export function fixMissingToolResponses(body) {
           orphanBlocks.push(block);
           continue;
         }
-        if (resultsById.has(id)) {
-          console.warn(
-            `[Translator] Dropped duplicate tool_result for tool_use_id=${id} (already paired)`
-          );
-          continue;
+        if (!assignResult(id, claudeResultForId(id, block))) {
+          console.warn(`[Translator] Dropped extra tool_result for tool_use_id=${id} (no unanswered call)`);
         }
-        resultsById.set(id, claudeResultForId(id, block));
       }
-      if (orphanBlocks.length > 0) {
-        orphanCarriers.push({ ...msg, content: orphanBlocks });
-      }
-      if (leftover.length > 0) {
-        orphanCarriers.push({ ...msg, content: leftover });
-      }
+      if (orphanBlocks.length > 0) orphanCarriers.push({ ...msg, content: orphanBlocks });
+      if (leftover.length > 0) orphanCarriers.push({ ...msg, content: leftover });
     }
   }
 
-  const usedIds = new Set();
+  const turnsByMessageIndex = new Map(turns.map((turn) => [turn.messageIndex, turn]));
   const newMessages = [];
 
-  for (const msg of body.messages) {
+  for (let index = 0; index < body.messages.length; index++) {
+    const msg = body.messages[index];
     if (!msg || !isObject(msg)) {
       newMessages.push(msg);
       continue;
@@ -581,36 +605,18 @@ export function fixMissingToolResponses(body) {
 
     newMessages.push(msg);
 
-    const toolCallIds = getToolCallIds(msg);
-    if (toolCallIds.length === 0) continue;
+    const turn = turnsByMessageIndex.get(index);
+    if (!turn) continue;
 
-    const answered = new Set();
-    // Preserve first-seen order among this turn's ids.
-    for (const [id, resultMsg] of resultsById) {
-      if (!toolCallIds.includes(id) || usedIds.has(id)) continue;
-      newMessages.push(resultMsg);
-      usedIds.add(id);
-      answered.add(id);
-    }
-    for (const id of toolCallIds) {
-      if (answered.has(id)) continue;
+    for (const resultMsg of turn.assigned) newMessages.push(resultMsg);
+    for (const id of turn.toolCallIds) {
+      if (turn.answered.has(id)) continue;
       newMessages.push(syntheticToolResult(id, isClaudeFormat));
-      usedIds.add(id);
+      turn.answered.add(id);
     }
   }
 
-  // True orphans (and leftover non-result blocks from Claude carriers) stay for salvage.
   for (const orphan of orphanCarriers) newMessages.push(orphan);
-
-  // Any live-id result that never found its assistant was unexpected; never
-  // silently discard a real payload — append and log.
-  for (const [id, resultMsg] of resultsById) {
-    if (usedIds.has(id)) continue;
-    console.warn(
-      `[Translator] Relocated unpaired tool result for call_id=${id} to end of messages (no owning turn emitted)`
-    );
-    newMessages.push(resultMsg);
-  }
 
   body.messages = newMessages;
   return body;

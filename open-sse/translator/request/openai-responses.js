@@ -88,13 +88,23 @@ function normalizeResponsesToolName(name) {
 }
 
 /**
+ * Plain object guard for tool_choice conversion. The shared `isObject` helper
+ * treats `null` as an object (`typeof null === "object"`), so every converter
+ * path that would read `.type` / nested fields must use this instead.
+ */
+function isPlainToolChoiceObject(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
  * Lower one Chat Completions tool_choice entry (function / custom / hosted) to
  * the Responses list shape. Chat nests names under `function` / `custom`;
  * Responses puts `name` on the entry itself (OpenAI Chat Completions and
- * Responses request schemas).
+ * Responses request schemas). Returns `null` for null / array / non-object
+ * entries so the caller can `.filter(Boolean)` them out (main dropped them).
  */
 function convertChatAllowedToolEntry(entry) {
-  if (!isObject(entry)) return entry;
+  if (!isPlainToolChoiceObject(entry)) return null;
   if (entry.type === OPENAI_BLOCK.FUNCTION) {
     const name = normalizeResponsesToolName(entry.function?.name ?? entry.name);
     if (!name) return null;
@@ -110,18 +120,19 @@ function convertChatAllowedToolEntry(entry) {
 
 /**
  * Convert Chat Completions `tool_choice` to the Responses request shape.
- * Strings pass through. Named function / custom nestings flatten to top-level
- * `name`. Chat `{type:"allowed_tools", allowed_tools:{mode, tools}}` becomes
- * Responses `{type:"allowed_tools", mode, tools}` with flattened entries.
+ * Only strings (auto/none/required) and plain objects are accepted; null,
+ * arrays, and non-string primitives drop to `undefined` as main did.
+ * Named function / custom nestings flatten to top-level `name`. Chat
+ * `{type:"allowed_tools", allowed_tools:{mode, tools}}` becomes Responses
+ * `{type:"allowed_tools", mode, tools}` with flattened entries.
  * Returns `undefined` when the choice would be invalid on Responses: a blank
  * function/custom name, or an allowed_tools list that is empty after normalize
  * (main never forwarded these; OpenAI rejects an empty forced-choice list).
  */
 function convertChatToolChoiceToResponses(choice) {
-  // isObject(null) is true in this codebase; null must drop like main, not throw
-  // on choice.type. Arrays are not a Chat tool_choice shape either.
-  if (choice == null || Array.isArray(choice)) return undefined;
-  if (!isObject(choice)) return choice;
+  if (isString(choice)) return choice;
+  // Drop null, arrays, numbers, booleans, etc. — main never forwarded them.
+  if (!isPlainToolChoiceObject(choice)) return undefined;
 
   if (choice.type === OPENAI_BLOCK.FUNCTION) {
     const name = normalizeResponsesToolName(choice.function?.name ?? choice.name);
@@ -137,7 +148,8 @@ function convertChatToolChoiceToResponses(choice) {
 
   if (choice.type === "allowed_tools") {
     // Chat nests mode/tools under `allowed_tools`; Responses keeps them flat.
-    const nested = isObject(choice.allowed_tools) ? choice.allowed_tools : null;
+    // isObject(null) is true here, so use the plain-object guard for the nest.
+    const nested = isPlainToolChoiceObject(choice.allowed_tools) ? choice.allowed_tools : null;
     const mode = nested?.mode ?? choice.mode;
     const toolsSrc = Array.isArray(nested?.tools) ?
       nested.tools :

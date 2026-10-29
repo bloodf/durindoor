@@ -209,4 +209,47 @@ describe("#1329 Chat tool_choice to Responses", () => {
     expect(out.tools).toEqual([customTool]);
     expect(out.tool_choice).toBe("auto");
   });
+
+  it("skips null allowed_tools entries without throwing and keeps valid siblings", () => {
+    expect(() => {
+      const out = toResponses(chat({
+        tool_choice: {
+          type: "allowed_tools",
+          allowed_tools: {
+            mode: "auto",
+            tools: [
+              null,
+              { type: OPENAI_BLOCK.FUNCTION, function: { name: "ns.search" } },
+            ],
+          },
+        },
+      }));
+      expect(out.tool_choice).toEqual({
+        type: "allowed_tools",
+        mode: "auto",
+        tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "ns.search" }],
+      });
+    }).not.toThrow();
+  });
+
+  it("drops allowed_tools when every entry is null", () => {
+    expect(() => {
+      const out = toResponses(chat({
+        tool_choice: {
+          type: "allowed_tools",
+          allowed_tools: {
+            mode: "required",
+            tools: [null, null],
+          },
+        },
+      }));
+      expect(out.tool_choice).toBeUndefined();
+    }).not.toThrow();
+  });
+
+  it.each([5, true])("drops non-string primitive tool_choice %j when tools are present", (choice) => {
+    const out = toResponses(chat({ tool_choice: choice }));
+    expect(out.tools.length).toBeGreaterThan(0);
+    expect(out.tool_choice).toBeUndefined();
+  });
 });

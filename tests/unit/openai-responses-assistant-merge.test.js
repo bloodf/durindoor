@@ -84,7 +84,9 @@ describe("responses→openai assistant turn merging", () => {
     expect(out.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
   });
 
-  it("merges when the tool calls precede the assistant message", () => {
+  // #1335: a tool-only turn closed by a later assistant message is a new turn.
+  // Do not fold the message onto the unanswered calls, and drop the late output.
+  it("does not fold a later assistant message into a preceding tool-only turn", () => {
     const out = openaiResponsesToOpenAIRequest(
       "deepseek-v4.1-flash",
       {
@@ -100,9 +102,10 @@ describe("responses→openai assistant turn merging", () => {
       null
     );
 
-    const assistants = out.messages.filter((m) => m.role === "assistant");
-    expect(assistants).toHaveLength(1);
-    expect(assistants[0].content).toBe("done");
-    expect(assistants[0].tool_calls).toHaveLength(1);
+    expect(out.messages).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "assistant", content: "done" },
+    ]);
+    expect(out.messages.filter((m) => m.tool_call_id === "call_1")).toHaveLength(0);
   });
 });

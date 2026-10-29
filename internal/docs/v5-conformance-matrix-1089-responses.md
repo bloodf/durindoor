@@ -1,6 +1,6 @@
 # #1089 OpenAI Responses client conformance matrix
 
-Counts: already-present 21; failing 5; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 21; failing 6; unsupported-by-contract 0; upstream-pending 0.
 
 Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-responses.test.js`.
 
@@ -29,7 +29,8 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Request | Non-string tool description (#1091) | Kiro | already-present | `translates non-string tool descriptions to a string for Kiro without TypeError` |
 | Request | Keyword-named schema properties (#1091) | OpenAI Chat, Claude, Gemini | already-present | `preserves keyword-named schema properties through Chat, Claude, and Gemini` |
 | Request | Tuple `prefixItems` / items (#1091) | OpenAI Chat, Claude, Gemini | already-present | `converts tuple prefixItems to Gemini items while Chat and Claude keep the tuple` |
-| Request | Free-form / empty schemas (#1091) | OpenAI Chat, Claude, Gemini | already-present | `coerces free-form and empty object schemas for Gemini and leaves Chat/Claude empty` |
+| Request | Free-form / empty schemas (#1091) | OpenAI Chat, Claude (`type:"object"`), Gemini | already-present | `coerces free-form and empty object schemas for Gemini and leaves Chat/Claude empty` |
+| Request | Free-form `parameters:{}` → typed empty object schema | Claude | failing | `normalizes Claude free-form parameters {} to a typed empty object schema` |
 | Request | String numeric schema constraints (#1091) | OpenAI Chat, Claude, Gemini | failing | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` |
 | Request | Malformed tool schemas (#1091) | OpenAI Chat, Claude, Gemini | failing | `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` |
 
@@ -40,5 +41,6 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | `does not pair function_call_output across assistant turns` | Translator pairs historical function outputs by call ID across assistant turns (product bug; Refs #1335). |
 | `clamps overlong tool names to 64 chars for Chat with round-trip map` | Responses→Chat direct route skips `normalizeOpenAIToolNames`, so names stay longer than 64 (Refs #1345). |
 | `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` | Non-stream Responses upstream bodies are not projected into Gemini client shape (Refs #1346). |
+| `normalizes Claude free-form parameters {} to a typed empty object schema` | Responses→Claude leaves free-form `parameters:{}` as `input_schema:{}`; Anthropic requires `type:"object"` (Refs #1350). |
 | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` | String numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers (Refs #1334). |
 | `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` | Malformed tool schemas are forwarded instead of rejected with a predictable 400 (Refs #1334). |

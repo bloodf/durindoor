@@ -638,11 +638,15 @@ describe("#1089 Responses client conformance", () => {
     }, chat), chat)).toEqual({ type: "object", properties: {} });
     expect(toolParams(request({
       input: "hi",
-      tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: {} }],
-    }, claude), claude)).toEqual({});
+      tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: { type: "object" } }],
+    }, claude), claude)).toEqual({ type: "object", properties: {} });
+  });
+
+  // #1089 failing: Responses→Claude leaves free-form parameters:{} as input_schema:{} (Anthropic requires type:object). Refs #1350
+  it.skip("normalizes Claude free-form parameters {} to a typed empty object schema", () => {
     expect(toolParams(request({
       input: "hi",
-      tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: { type: "object" } }],
+      tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: {} }],
     }, claude), claude)).toEqual({ type: "object", properties: {} });
   });
 

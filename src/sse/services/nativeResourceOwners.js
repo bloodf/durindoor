@@ -24,8 +24,9 @@ export async function readNativeResourceOwner(provider, connectionId, resourceId
  *
  * Writes through a same-directory temp file, fsyncs the payload, then publishes
  * with link (create-once). When link is unavailable (ENOTSUP/EPERM), fall back
- * to an exclusive create on the target so an existing owner raises EEXIST and
- * is never replaced. Never rename over the target.
+ * to an exclusive create on the target. An existing owner is kept and the call
+ * returns quietly (first writer wins); other errors are rethrown. Never rename
+ * over the target.
  */
 export async function createNativeResourceOwner(owner) {
   if (!owner?.resourceId || !owner?.ownerId) return;

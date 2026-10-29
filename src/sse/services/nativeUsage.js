@@ -1,4 +1,4 @@
-import streamJson from "stream-json";
+import { parserStream } from "stream-json";
 import { getApiKeyByKey, getApiKeyUsageLimitStatus, saveRequestUsage } from "@/lib/localDb";
 import { API_KEY_LIMIT_FIELDS } from "@/lib/db/helpers/apiKeyPolicy.js";
 import { enforceApiKeyModelPolicy } from "./apiKeyPolicy.js";
@@ -75,7 +75,8 @@ export async function recordNativeUsage({ apiKey, provider, model, connectionId,
 // Select only declared envelope metadata and usage. Output/tool objects must not
 // replace the response id or inject usage, and large strings are never retained.
 function createJsonCollector() {
-  const parser = streamJson.parser({ packKeys: true, packStrings: false, streamStrings: true, packNumbers: true, streamNumbers: false });
+  // stream-json v3 exposes the Node Duplex adapter separately from its generator.
+  const parser = parserStream({ packKeys: true, packStrings: false, streamStrings: true, packNumbers: true, streamNumbers: false });
   const frames = [];
   const result = {};
   let capture = null;

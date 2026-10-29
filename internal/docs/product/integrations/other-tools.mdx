@@ -154,3 +154,9 @@ These references describe repository behavior. They do not establish that a vend
 ### Current behavior and implementation boundaries
 
 Install commands come from the shipped card declarations. Copilot and other writers have their own reset and malformed-file handling. Amp configures its service URL rather than an inference URL and remains unsupported. No installer was run in this task.
+
+### Skills endpoint selection
+
+The campaign keeps skill copy targets aligned with the Endpoint page's reachability sources. `useSkillTargets` consumes the shared `useEndpointTargets` hook rather than maintaining a second endpoint roster. Sources include local, enabled composite/additional tunnel URLs, external tunnel, enabled Tailscale, external Tailscale, and remote browser origin when not already represented. Targets are deduplicated and normalized with `/v1`; inference credentials remain separate from endpoint selection.
+
+The public [Agent skills instructions](../../../../docs/integrations/other-tools.mdx#agent-skills) describe which target to choose. Source owners are `src/app/(dashboard)/dashboard/endpoint/useEndpointTargets.js` and `src/app/(dashboard)/dashboard/skills/useSkillTargets.js`. Endpoint fixture coverage and real remote reachability are separate verification requirements; a listed address is not proof that a particular agent can reach it.

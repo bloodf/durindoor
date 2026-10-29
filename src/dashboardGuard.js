@@ -3,6 +3,7 @@ import { getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
+import { hasExactRequestOrigin as hasTrustedRequestOrigin } from "@/lib/auth/requestOrigin";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
 import {
@@ -35,7 +36,6 @@ const PUBLIC_API_PATHS = [
   "/api/auth/login",
   "/api/auth/logout",
   "/api/auth/status",
-  "/api/auth/oidc",
   "/api/version",
   "/api/settings/require-login",
 ];
@@ -44,6 +44,8 @@ const PUBLIC_API_PATHS = [
 // A prefix match here would let an attacker reach an unrelated route by
 // nesting it under a trusted public prefix.
 const PUBLIC_API_EXACT_PATHS = [
+  "/api/auth/oidc/start",
+  "/api/auth/oidc/callback",
   // One-time password-change proof recipient. Only valid proofs can drive
   // a write here; the route does not fall through to a session check.
   "/api/auth/change-password",
@@ -102,10 +104,10 @@ const MANAGEMENT_API_PATHS = [
 ];
 
 /**
- * Exact Headroom reads expose configured URLs, process/circuit state, and usage
- * data. Keep only these existing leaves on the management auth policy.
+ * Exact management leaves expose operational state or exercise stored secrets.
+ * OIDC start/callback remain public; testing issuer credentials does not.
  */
-const MANAGEMENT_API_EXACT_PATHS = ["/api/headroom/status", "/api/headroom/stats"];
+const MANAGEMENT_API_EXACT_PATHS = ["/api/headroom/status", "/api/headroom/stats", "/api/auth/oidc/test"];
 
 // Routes that spawn child processes or read host secrets — restrict to localhost.
 const LOCAL_ONLY_PATHS = [
@@ -160,20 +162,20 @@ function isLoopbackPeer(request) {
   return true;
 }
 
-// Restored strict origin check: expected origin = URL protocol + raw Host, exact
-// normalized origin compare. Prevents a malicious loopback Origin from sliding past
-// the same-origin guard under a benign Host (e.g. `localhost:20128.evil`).
-function hasExactRequestOrigin(request) {
+// Share the login/auth routes' explicit public-origin convention for TLS
+// terminators, while retaining an explicit Origin requirement for local proofs.
+export function hasExactRequestOrigin(request) {
   const rawOrigin = request.headers.get("origin");
-  const rawHost = request.headers.get("host");
-  if (!rawOrigin || !rawHost) return false;
+  if (!rawOrigin || !request.headers.get("host")) return false;
   try {
-    const protocol = new URL(request.url).protocol;
-    const expected = new URL(`${protocol}//${rawHost}`).origin;
-    return new URL(rawOrigin).origin === expected;
+    const loginOrigin = process.env.DURINDOOR_WEB_LOGIN_ORIGIN;
+    if (loginOrigin && new URL(rawOrigin).hostname.toLowerCase().replace(/\.$/, "") ===
+        new URL(loginOrigin).hostname.toLowerCase().replace(/\.$/, "")) return false;
   } catch {
-    return false;
+    // Invalid login configuration cannot establish a trusted login origin.
+    // The shared helper still rejects malformed request Origins below.
   }
+  return hasTrustedRequestOrigin(request);
 }
 
 /**
@@ -422,6 +424,7 @@ export async function isOperatorRequest(request) {
   if (!request || !isFunction(request.headers?.get)) return false;
   try {
     if (await hasValidCliToken(request)) return true;
+    if (hasForeignRequestOrigin(request)) return false;
     if (await hasValidToken(request)) return true;
     // A presented API key is decisive, and it is checked before the
     // open-dashboard fallback: a programmatic client running on the host would
@@ -443,6 +446,9 @@ export async function isOperatorRequest(request) {
  */
 export async function canAccessManagementApi(request) {
   if (await hasValidCliToken(request)) return true;
+  if (hasForeignRequestOrigin(request)) {
+    return !isSecretRevealRequest(request) && (await hasValidApiKey(request));
+  }
   if (await hasValidToken(request)) return true;
   // Full programmatic control with the application API key — except raw secret
   // reveal, which stays JWT/CLI-only so a leaked LLM key cannot dump every
@@ -495,6 +501,16 @@ export async function proxy(request) {
   const routePath = decodePathname(pathname);
   if (routePath === null) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // A same-site sibling login host can carry dashboard cookies. Origin, not
+  // SameSite, is the boundary for management writes and credential-bearing
+  // reads. Explicit programmatic credentials retain their existing policy;
+  // downstream gates still restrict raw secret reveals and local-only tools.
+  if (routePath.startsWith("/api/") && !isPublicApi(routePath) &&
+      hasForeignRequestOrigin(request) &&
+      !(await hasValidCliToken(request)) && !(await hasValidApiKey(request))) {
+    return NextResponse.json({ error: "Cross-origin management request denied" }, { status: 403 });
   }
 
   // /api/mcp/control is a management MCP endpoint: a remote caller must always

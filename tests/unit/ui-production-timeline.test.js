@@ -36,7 +36,7 @@ describe("TimelinePage 'all' rows-per-page batching", () => {
   let root;
 
   beforeEach(() => {
-    currentSearchParams = new URLSearchParams();
+    currentSearchParams = new URLSearchParams("view=table");
     replace.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -51,7 +51,7 @@ describe("TimelinePage 'all' rows-per-page batching", () => {
   });
 
   it("accumulates every bounded 100-row page into one rendered table when pageSize=all", async () => {
-    currentSearchParams = new URLSearchParams("pageSize=all&page=1");
+    currentSearchParams = new URLSearchParams("view=table&pageSize=all&page=1");
     const calls = [];
     globalThis.EventSource = class {
       close() {}
@@ -88,7 +88,7 @@ describe("TimelinePage 'all' rows-per-page batching", () => {
   });
 
   it("terminates the batching loop on an empty page even if reported totalItems overcounts", async () => {
-    currentSearchParams = new URLSearchParams("pageSize=all&page=1");
+    currentSearchParams = new URLSearchParams("view=table&pageSize=all&page=1");
     const timelineCalls = [];
     globalThis.EventSource = class {
       close() {}
@@ -124,7 +124,7 @@ describe("TimelinePage 'all' rows-per-page batching", () => {
   });
 
   it("does not commit a stale in-flight response after a newer request supersedes it", async () => {
-    currentSearchParams = new URLSearchParams("page=1");
+    currentSearchParams = new URLSearchParams("view=table&page=1");
     globalThis.EventSource = class {
       close() {}
     };
@@ -150,7 +150,7 @@ describe("TimelinePage 'all' rows-per-page batching", () => {
     });
 
     // Trigger a second, distinct request before the first resolves.
-    currentSearchParams = new URLSearchParams("page=2");
+    currentSearchParams = new URLSearchParams("view=table&page=2");
     await act(async () => {
       rerender();
       await Promise.resolve();

@@ -34,6 +34,238 @@ export function contrastRatio(foreground, background) {
   const [hi, lo] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
   return (hi + 0.05) / (lo + 0.05);
 }
+/** Resolve the solid token/paint forms used by the guarded chart sources. */
+function proofRgb(value) {
+  const text = String(value).trim();
+  // Both opaque CSS hex forms are source tokens; alpha-bearing forms must
+  // remain unresolved rather than silently dropping their alpha channel.
+  if (/^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(text)) {
+    const width = (text.length - 1) / 3;
+    return [0, 1, 2].map((channel) => Number.parseInt(
+      text.slice(1 + channel * width, 1 + (channel + 1) * width), 16,
+    ) * (width === 1 ? 17 : 1));
+  }
+  if (!/^rgba?\([\d.,\s]+\)$/.test(text)) return null;
+  const rgb = solidRgb(text);
+  return rgb?.every((channel) => Number.isFinite(channel) && channel >= 0 && channel <= 255) ? rgb : null;
+}
+/** Mask paint is outside this proof, including SVG presentation attributes. */
+function unmasked(element, style) {
+  const mask = element.getAttribute("mask");
+  return style.maskImage === "none"
+    && (!style.webkitMaskImage || style.webkitMaskImage === "none")
+    && (mask === null || mask.trim() === "none");
+}
+
+
+/** Composite CSS background layers, without inventing an opaque backdrop. */
+function paintedBackground(element, computeStyle, inspectOuterAncestors = false) {
+  const stack = [];
+  let background = null;
+  for (let node = element; node instanceof Element; node = node.parentElement) {
+    const style = computeStyle(node);
+    if (style.backgroundImage !== "none" || style.visibility !== "visible" || style.opacity !== "1") return null;
+    if (inspectOuterAncestors && (
+      style.display === "none" || style.filter !== "none" || style.mixBlendMode !== "normal"
+      || !unmasked(node, style)
+    )) return null;
+    if (background) continue;
+    if (inspectOuterAncestors && !/^rgba?\([\d.,\s]+\)$/.test(String(style.backgroundColor))) return null;
+    const parts = String(style.backgroundColor).match(/-?[\d.]+/g);
+    if (!parts || parts.length < 3) return null;
+    const alpha = parts.length > 3 ? Number(parts[3]) : 1;
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
+    const rgb = parts.slice(0, 3).map(Number);
+    if (!rgb.every((channel) => Number.isFinite(channel) && channel >= 0 && channel <= 255)) return null;
+    if (alpha === 0) continue;
+    if (alpha === 1) {
+      background = rgb;
+      if (!inspectOuterAncestors) break;
+    } else stack.push({ rgb, alpha });
+  }
+  if (!background) return null;
+  for (let i = stack.length - 1; i >= 0; i -= 1) {
+    const { rgb, alpha } = stack[i];
+    background = background.map((channel, c) => rgb[c] * alpha + channel * (1 - alpha));
+  }
+  return background;
+}
+// Paint tokens from the seven sources covered by the chart contrast proof.
+// The story allowlist is still required; these families do not add stories.
+const CHART_FILL_TOKENS = [
+  ["durin-ds-pages-console-log--", ["--dd-info"]],
+  ["production-usage-usage-surfaces--", ["--dd-accent", "--dd-accent-2"]],
+  ["durin-ds-pages-headroom--", ["--dd-accent"]],
+  ["durin-ds-pages-timeline--", ["--dd-accent"]],
+  ["durin-ds-pages-token-saver-statistics--", ["--dd-accent"]],
+  ["production-pxpipe-pxpipeclient--", ["--dd-accent"]],
+  ["production-pxpipe-pxpipepage--", ["--dd-accent"]],
+  ["production-savers-tokensaveroverview--", ["--dd-accent"]],
+  ["production-savers-tokensaverclient--", ["--dd-accent"]],
+];
+
+/** Prove separation using live vector bounds, including caps/joins/transform. */
+function strokeMissesGlyph(paint, glyph, style, computeStyle) {
+  const width = String(style.strokeWidth).match(/^([\d.]+)px$/);
+  if (!width || !["butt", "round", "square"].includes(style.strokeLinecap)
+    || !["miter", "round", "bevel"].includes(style.strokeLinejoin)) return false;
+  const strokeWidth = Number(width[1]);
+  const miterLimit = Number(style.strokeMiterlimit);
+  if (!Number.isFinite(strokeWidth) || strokeWidth < 0
+    || !Number.isFinite(miterLimit) || miterLimit < 1) return false;
+  for (let ancestor = paint; ancestor; ancestor = ancestor.parentElement) {
+    const ancestorStyle = computeStyle(ancestor);
+    if (ancestorStyle.perspective !== "none" || String(ancestorStyle.transform).startsWith("matrix3d(")) return false;
+  }
+  // Non-scaling stroke geometry is unsupported by this proof. The total CTM
+  // cannot separate external CSS scale from a cancelling viewBox transform.
+  if (style.vectorEffect !== "none") return false;
+  const matrix = paint.getScreenCTM?.();
+  if (!matrix || ![matrix.a, matrix.b, matrix.c, matrix.d].every(Number.isFinite)) return false;
+  const scaleX = Math.hypot(matrix.a, matrix.c);
+  const scaleY = Math.hypot(matrix.b, matrix.d);
+  const rect = paint.getBoundingClientRect();
+  const tick = glyph.getBoundingClientRect();
+  if (![rect.left, rect.right, rect.top, rect.bottom, tick.left, tick.right, tick.top, tick.bottom].every(Number.isFinite)
+    || tick.right <= tick.left || tick.bottom <= tick.top) return false;
+  const extent = strokeWidth / 2 * Math.max(
+    !paint.matches("line, circle, ellipse") && style.strokeLinejoin === "miter" ? miterLimit : 1,
+    style.strokeLinecap === "square" ? Math.SQRT2 : 1,
+  );
+  // Keep touching bounds unresolved; include a conservative fringe, not a
+  // claim about raster pixels or the glyph's exact outline.
+  const x = extent * scaleX + 1;
+  const y = extent * scaleY + 1;
+  return rect.right + x < tick.left || rect.left - x > tick.right
+    || rect.bottom + y < tick.top || rect.top - y > tick.bottom;
+}
+
+/** Conservative SVG text fill bounds; unknown/touching bounds cannot clear. */
+function textMissesGlyph(paint, glyph) {
+  const rect = paint.getBoundingClientRect();
+  const tick = glyph.getBoundingClientRect();
+  if (![rect.left, rect.right, rect.top, rect.bottom, tick.left, tick.right, tick.top, tick.bottom].every(Number.isFinite)
+    || rect.right <= rect.left || rect.bottom <= rect.top
+    || tick.right <= tick.left || tick.bottom <= tick.top) return false;
+  return rect.right + 1 < tick.left || rect.left - 1 > tick.right
+    || rect.bottom + 1 < tick.top || rect.top - 1 > tick.bottom;
+}
+
+
+/**
+ * Re-prove the source guard against this SVG's live paint, not an old capture.
+ * Guarded sources use muted/subtle glyphs, an opaque surface and source-specific
+ * area gradients capped at 0.14. Unrecognised paints remain unresolved. Bound
+ * possible fill/stroke overlaps; exclude a stroke only with live conservative
+ * nonintersection proof. Historical captures establish no passing pair.
+ */
+function chartPaintProved(element, storyId, computeStyle) {
+  if (!(element instanceof SVGElement) || !element.matches("text, tspan")) return false;
+  const svg = element.closest("svg");
+  if (!svg) return false;
+  const style = computeStyle(element);
+  const same = (a, b) => a && b && a.every((channel, c) => channel === b[c]);
+  const token = (name) => proofRgb(style.getPropertyValue?.(name));
+  const foreground = proofRgb(style.fill);
+  const surface = token("--dd-surface");
+  if (!foreground || !surface || style.fillOpacity !== "1" || style.stroke !== "none") return false;
+  if (![token("--dd-text-muted"), token("--dd-text-subtle")].some((rgb) => same(foreground, rgb))) return false;
+  const background = paintedBackground(element, computeStyle, true);
+  if (!same(background, surface)) return false;
+  const paintTokens = CHART_FILL_TOKENS.find(([prefix]) => storyId.startsWith(prefix))?.[1];
+  if (!paintTokens) return false;
+  const fills = paintTokens.map(token).filter(Boolean);
+  let darkest = [...background];
+  let lightest = [...background];
+  const bound = (rgb, alpha) => {
+    darkest = darkest.map((channel, c) => Math.min(channel, rgb[c] * alpha + channel * (1 - alpha)));
+    lightest = lightest.map((channel, c) => Math.max(channel, rgb[c] * alpha + channel * (1 - alpha)));
+  };
+  // Visit every descendant of SVG text, not just text/tspan tags: links and
+  // other containers can own rendered runs even when their wrapper owns none.
+  for (const paint of svg.querySelectorAll("*")) {
+    if (paint.closest("defs")) continue;
+    const graphic = paint.matches("path, line, rect, circle, ellipse, polygon, polyline, image, foreignObject, use, textPath");
+    const textContainer = !graphic && paint.closest("text");
+    if (!graphic && !textContainer) continue;
+    if (paint.matches("image, foreignObject, use, textPath")) return false;
+    // A faded/filter/blended area is outside the guarded source paint model.
+    for (let ancestor = paint; ancestor && ancestor !== svg.parentElement; ancestor = ancestor.parentElement) {
+      const ancestorStyle = computeStyle(ancestor);
+      if (ancestorStyle.opacity !== "1" || ancestorStyle.visibility !== "visible"
+        || ancestorStyle.display === "none" || ancestorStyle.filter !== "none"
+        || ancestorStyle.mixBlendMode !== "normal" || ancestorStyle.backgroundImage !== "none"
+        || !unmasked(ancestor, ancestorStyle)) return false;
+    }
+    const paintStyle = computeStyle(paint);
+    if ([paintStyle.markerStart, paintStyle.markerMid, paintStyle.markerEnd].some((marker) => marker !== "none")) return false;
+    if (textContainer) {
+      // Shadow/decoration ink is not bounded by the text rectangle here.
+      for (let ancestor = paint; ancestor && ancestor !== svg.parentElement; ancestor = ancestor.parentElement) {
+        const ancestorStyle = computeStyle(ancestor);
+        if (ancestorStyle.textShadow !== "none" || ancestorStyle.textDecorationLine !== "none") return false;
+      }
+      // Nonpainting wrappers are skipped only after all their descendants
+      // have been included in the traversal, including linked direct runs.
+      const ownsText = [...paint.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent.trim());
+      if (!ownsText) continue;
+      if (paint === element || element.contains(paint)) {
+        // Runs inside the reported glyph share its proof only if their actual
+        // foreground still matches; differing descendants are not duplicates.
+        if (!same(proofRgb(paintStyle.fill), foreground) || paintStyle.fillOpacity !== "1"
+          || paintStyle.stroke !== "none") return false;
+        continue;
+      }
+      // An ancestor with its own direct run also paints beside the target.
+      // Its union rectangle cannot isolate that run, so keep it unresolved.
+      if (paint.contains(element) || !textMissesGlyph(paint, element)) return false;
+      if (paintStyle.stroke !== "none" && !strokeMissesGlyph(paint, element, paintStyle, computeStyle)) return false;
+      continue;
+    }
+    // No fill does not mean no paint. Only proved separation can remove a
+    // stroke from this audit. Potential intersection/unknown bounds remain
+    // incomplete; do not assume paint order or an unchanged glyph foreground.
+    if (paintStyle.stroke !== "none" && !strokeMissesGlyph(paint, element, paintStyle, computeStyle)) return false;
+    // SVG lines have no fillable interior; their stroke was audited above.
+    if (paint.matches("line") || paintStyle.fill === "none") continue;
+    // Some guarded charts explicitly paint the same opaque surface in SVG.
+    if (paint.matches("rect") && same(proofRgb(paintStyle.fill), surface) && paintStyle.fillOpacity === "1") continue;
+    const reference = String(paintStyle.fill).match(/^url\(["']?([^"')]+)["']?\)$/)?.[1];
+    if (!reference) return false;
+    let url;
+    try { url = new URL(reference, svg.ownerDocument.baseURI); } catch { return false; }
+    if (url.href.split("#")[0] !== new URL(svg.ownerDocument.baseURI).href.split("#")[0] || !url.hash) return false;
+    const gradient = svg.ownerDocument.getElementById(url.hash.slice(1));
+    if (!gradient || !svg.contains(gradient) || gradient.localName !== "linearGradient"
+      || gradient.hasAttribute("href") || gradient.hasAttribute("xlink:href")) return false;
+    const stops = [...gradient.children];
+    if (stops.length < 2 || stops.some((stop) => stop.localName !== "stop")) return false;
+    let fill = null;
+    let alpha = 0;
+    for (const stop of stops) {
+      const stopStyle = computeStyle(stop);
+      if (typeof stopStyle.stopOpacity !== "string" || !stopStyle.stopOpacity.trim()
+        || stopStyle.opacity !== "1" || stopStyle.filter !== "none"
+        || stopStyle.mixBlendMode !== "normal") return false;
+      const rgb = proofRgb(stopStyle.stopColor);
+      const opacity = Number(stopStyle.stopOpacity);
+      if (!rgb || !fills.some((fillToken) => same(rgb, fillToken)) || (fill && !same(fill, rgb))
+        || !Number.isFinite(opacity) || opacity < 0 || opacity > 0.14) return false;
+      fill = rgb;
+      alpha = Math.max(alpha, opacity);
+    }
+    if (typeof paintStyle.fillOpacity !== "string" || !paintStyle.fillOpacity.trim()) return false;
+    const fillOpacity = Number(paintStyle.fillOpacity);
+    if (!Number.isFinite(fillOpacity) || fillOpacity < 0 || fillOpacity > 1) return false;
+    alpha *= fillOpacity;
+    bound(fill, alpha);
+  }
+  return [darkest, lightest].every((backdrop) => {
+    const ratio = contrastRatio(foreground, backdrop);
+    return Number.isFinite(ratio) && ratio >= 7;
+  });
+}
+
 
 /**
  * Why this node cannot be measured, or null when it must keep failing.
@@ -48,11 +280,10 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
   // `-tick-label`; axe reports the `tspan`, whose nearest labelled ancestor
   // can be either. Match both so nesting cannot silently defeat the policy.
   if (element.closest(".recharts-cartesian-axis-tick, .recharts-cartesian-axis-tick-label")) {
-    // A DOM walk cannot see the area fill drawn between the surface and the
-    // glyph, so the ratio is proved out of band, per chart source, by
-    // tests/unit/durin-ds-contrast.test.js. Honour that proof only for the
-    // stories it covers; any other chart keeps failing.
-    return chartStories.includes(storyId) ? "chart-axis-aaa-v1" : null;
+    // The allowlist identifies guarded sources, not an exemption by itself.
+    // Live glyphs, ancestor paint and SVG fills must still match that proof.
+    return chartStories.includes(storyId) && chartPaintProved(element, storyId, computeStyle)
+      ? "chart-axis-aaa-v1" : null;
   }
   // Monaco names its input proxy `inputarea` or `ime-text-area` depending on
   // version; both are declared `color: transparent; background-color:
@@ -80,27 +311,8 @@ export function exemptionFor(element, storyId, chartStories, computeStyle) {
     const style = computeStyle(element);
     const foreground = solidRgb(style.color);
     if (!foreground) return null;
-    // Layers above the first opaque surface, nearest first.
-    const stack = [];
-    let background = null;
-    for (let node = element; node instanceof Element; node = node.parentElement) {
-      const nodeStyle = computeStyle(node);
-      if (nodeStyle.backgroundImage !== "none" || nodeStyle.visibility !== "visible" || nodeStyle.opacity !== "1") return null;
-      const parts = String(nodeStyle.backgroundColor).match(/-?[\d.]+/g);
-      if (!parts || parts.length < 3) return null;
-      const alpha = parts.length > 3 ? Number(parts[3]) : 1;
-      if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
-      if (alpha === 0) continue;
-      if (alpha === 1) { background = parts.slice(0, 3).map(Number); break; }
-      stack.push({ rgb: parts.slice(0, 3).map(Number), alpha });
-    }
-    // Without an opaque backdrop the tints have nothing to composite onto.
+    const background = paintedBackground(element, computeStyle);
     if (!background) return null;
-    // Composite outermost-inward: each tint paints over what is behind it.
-    for (let i = stack.length - 1; i >= 0; i -= 1) {
-      const { rgb, alpha } = stack[i];
-      background = background.map((channel, c) => rgb[c] * alpha + channel * (1 - alpha));
-    }
     const size = Number.parseFloat(style.fontSize);
     const large = size >= 24 || (size >= 18.66 && Number(style.fontWeight) >= 700);
     const ratio = contrastRatio(foreground, background);

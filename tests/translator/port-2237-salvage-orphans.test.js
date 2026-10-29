@@ -6,9 +6,36 @@ import { describe, it, expect } from "vitest";
 import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { ROLE, CLAUDE_BLOCK } from "../../open-sse/translator/schema/index.js";
 import { salvageOrphanedToolResults } from "../../open-sse/translator/concerns/toolCall.js";
 
 describe("port #2237: salvage orphaned tool results across formats", () => {
+  it.each([FORMATS.OPENAI, FORMATS.CLAUDE].flatMap((source) =>
+    [FORMATS.OPENAI, FORMATS.CLAUDE, FORMATS.KIRO, FORMATS.GEMINI].map((target) => [source, target]),
+  ))("preserves orphan failure meaning through registered %s -> %s", (source, target) => {
+    const results = [
+      { id: "missing_error", content: "boom", is_error: true },
+      { id: "missing_success", content: "ok", is_error: false },
+      { id: "missing_unspecified", content: "done" },
+      { id: "missing_string", content: "string flag", is_error: "true" },
+      { id: "missing_number", content: "numeric flag", is_error: 1 },
+    ];
+    const messages = source === FORMATS.OPENAI ?
+      results.map(({ id, ...result }) => ({ role: ROLE.TOOL, tool_call_id: id, ...result })) :
+      [{ role: ROLE.USER, content: results.map(({ id, ...result }) => ({
+        type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: id, ...result,
+      })) }];
+    const out = translateRequest(source, target, "claude-sonnet-4.6", { messages }, false, {});
+    const json = JSON.stringify(out);
+    expect(json.match(/\[Tool error: boom\]/g)).toHaveLength(1);
+    expect(json).not.toContain("[Tool result: boom]");
+    for (const text of ["ok", "done", "string flag", "numeric flag"]) {
+      expect(json).toContain(`[Tool result: ${text}]`);
+      expect(json).not.toContain(`[Tool error: ${text}]`);
+    }
+    for (const { id } of results) expect(json).not.toContain(id);
+  });
+
   it("OpenAI messages[]: orphaned role:tool folds into user text, not dropped", () => {
     const body = {
       messages: [

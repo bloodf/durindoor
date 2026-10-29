@@ -6,6 +6,18 @@ export default {
   title: "Durin DS/Production Pages/cli-tools/BaseUrlSelect",
   component: BaseUrlSelect,
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools/claude" } },
+  // Isolate both endpoint stores; navigation must not overwrite remembered URLs.
+  beforeEach: () => {
+    const keys = ["durindoor.cliToolEndpointCustom", "durindoor.cliToolEndpointPresets"];
+    const previous = keys.map((key) => [key, localStorage.getItem(key)]);
+    for (const key of keys) localStorage.removeItem(key);
+    return () => {
+      for (const [key, value] of previous) {
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      }
+    };
+  },
 };
 
 function Controlled(props) {
@@ -21,6 +33,16 @@ export const Local = {
 };
 export const Tunnel = { render: (args) => <Controlled {...args} />, args: { requiresExternalUrl: true, tunnelEnabled: true, tunnelPublicUrl: "https://tunnel.example.com" } };
 export const Cloud = { render: (args) => <Controlled {...args} />, args: { requiresExternalUrl: true, cloudEnabled: true, cloudUrl: "https://cloud.example.com" } };
+
+export const Tailscale = {
+  render: (args) => <Controlled {...args} />,
+  args: { requiresExternalUrl: true, tailscaleEnabled: true, tailscaleUrl: "https://durindoor.tailnet.example.test" },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("combobox", { name: /endpoint/i });
+    await userEvent.click(trigger);
+    expect(await within(canvasElement.ownerDocument.body).findByRole("option", { name: "Tailscale" })).toBeInTheDocument();
+  },
+};
 export const SwitchToCustom = {
   render: (args) => <Controlled {...args} />,
   play: async ({ canvasElement }) => {

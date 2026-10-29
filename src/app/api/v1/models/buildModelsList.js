@@ -33,7 +33,7 @@ import {
 "open-sse/services/liveModelLimits.js";
 import { extractApiCapabilities, extractLiveModelLimits } from "open-sse/services/modelMetadata.js";
 import { getCodexModels } from "open-sse/services/usage/codex.js";
-import { aggregateComboCapabilities, capabilitiesFromServiceKind, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
+import { aggregateComboCapabilities, capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
@@ -1286,6 +1286,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       const provider = model.id.slice(0, slash);
       const modelId = model.id.slice(slash + 1);
       if (!isModelExposureAllowed(provider, modelId, settings)) continue;
+      enforceCursorCapabilities(aliasToProviderId[provider] ?? provider, model.capabilities);
     }
     dedupedModels.push(model);
   }

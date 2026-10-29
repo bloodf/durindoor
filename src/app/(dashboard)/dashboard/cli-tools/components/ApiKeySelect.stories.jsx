@@ -6,6 +6,15 @@ export default {
   title: "Durin DS/Production Pages/cli-tools/ApiKeySelect",
   component: ApiKeySelect,
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools/claude" } },
+  beforeEach: () => {
+    const key = "durindoor.cliToolApiKeyPresets";
+    const previous = localStorage.getItem(key);
+    localStorage.removeItem(key);
+    return () => {
+      if (previous === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, previous);
+    };
+  },
 };
 
 function Controlled(props) {
@@ -13,7 +22,14 @@ function Controlled(props) {
   return <ApiKeySelect {...props} value={value} onChange={setValue} />;
 }
 
-export const Empty = { render: (args) => <Controlled {...args} /> };
+export const Empty = {
+  render: (args) => <Controlled {...args} />,
+  play: ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(canvas.getByLabelText("API key")).toBeVisible();
+    expect(canvas.getByText("API key", { exact: true })).toBeVisible();
+  },
+};
 export const WithManagedKeys = {
   render: (args) => <Controlled {...args} />,
   args: { apiKeys: [{ name: "Primary", maskedKey: "sk_••••1234" }] },
@@ -25,15 +41,22 @@ export const CloudEnabled = {
   render: (args) => <Controlled {...args} />,
   args: { cloudEnabled: true },
   play: ({ canvasElement }) => {
-    const input = within(canvasElement).getByPlaceholderText(/paste the api key secret/i);
-    expect(input).toBeInTheDocument();
+    const canvas = within(canvasElement);
+    const input = canvas.getByLabelText("API key");
+    expect(input).toBeVisible();
+    expect(input).toHaveAttribute("placeholder", "Paste the API key secret");
+    expect(canvas.getByText("API key", { exact: true })).toBeVisible();
   },
 };
 export const TypeInput = {
   render: (args) => <Controlled {...args} />,
   play: async ({ canvasElement }) => {
-    const input = within(canvasElement).getByPlaceholderText(/sk_durindoor/i);
+    const canvas = within(canvasElement);
+    const input = canvas.getByLabelText("API key");
+    await expect(input).toBeVisible();
+    await expect(input).toHaveAttribute("type", "password");
     await userEvent.type(input, "sk_test_1234");
-    expect(input).toHaveValue("sk_test_1234");
+    await expect(input).toHaveValue("sk_test_1234");
+    await expect(canvas.getByText("API key", { exact: true })).toBeVisible();
   },
 };

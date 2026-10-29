@@ -125,10 +125,12 @@ export function Sidebar({
   collapsed = false,
   onNavigate,
   onToggleCollapse,
+  onClose,
   className = "",
 }) {
   const [groupOverrides, setGroupOverrides] = useState({});
   function navigate(event, href) {
+    onClose?.();
     if (!onNavigate) return;
     event.preventDefault();
     onNavigate(href);
@@ -230,7 +232,7 @@ export function Sidebar({
                         href={item.href}
                         title={collapsed ? item.label : undefined}
                         aria-current={!expandable && activePath === item.href ? "page" : undefined}
-                        onClick={item.external ? undefined : (event) => navigate(event, item.href)}
+                        onClick={item.external ? onClose : (event) => navigate(event, item.href)}
                         target={item.external ? "_blank" : undefined}
                         rel={item.external ? "noopener noreferrer" : undefined}
                         className={

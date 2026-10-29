@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Emit the set of upstream (decolua/9router) PR numbers already ported into this
-# fork, as a sorted JSON array.
+# Emit upstream (decolua/9router) port identifiers as a sorted JSON array.
+# Default output remains PR numbers for the open-PR scan.
 #
 #   upstream-ported-ids.sh [repo-root] > ported.json
+#   upstream-ported-ids.sh --commits [repo-root] # direct-commit SHA identifiers
 #
 # Two evidence sources, unioned:
 #
@@ -10,7 +11,8 @@
 #      Every number in the leading `#A+#B+...` group counts (one commit often
 #      lands several upstream PRs); a trailing `(#123)` is our own squash number.
 #
-#   2. .github/upstream-ported.json `ported[].pr`
+#   2. .github/upstream-ported.json `ported[].pr` for source decolua/9router
+#      Missing source is legacy 9router evidence; other explicit sources do not count.
 #      Reviewed ledger for PRs with no `port(upstream)` subject of their own:
 #      ported inside a commit naming a different number, or implemented
 #      independently rather than cherry-picked. Both count as ported — the scan
@@ -22,6 +24,14 @@
 # reviewed evidence in the ledger.
 set -euo pipefail
 
+if [ "${1:-}" = "--commits" ]; then
+  ROOT=${2:-.}
+  git -C "$ROOT" log --format='%s' \
+    | sed -nE 's/^port\(upstream\): ([0-9a-f]{7,40}) - .*/\1/p' \
+    | sort -u | jq -Rn '[inputs]'
+  exit 0
+fi
+
 ROOT=${1:-.}
 LEDGER="$ROOT/.github/upstream-ported.json"
 
@@ -31,6 +41,6 @@ LEDGER="$ROOT/.github/upstream-ported.json"
     | tr '+' '\n' | tr -d '#'
 
   if [ -f "$LEDGER" ]; then
-    jq -r '.ported[].pr' "$LEDGER"
+    jq -r '.ported[] | select((has("source") | not) or .source == "decolua/9router") | .pr' "$LEDGER"
   fi
 } | sort -un | jq -Rn '[inputs | tonumber]'

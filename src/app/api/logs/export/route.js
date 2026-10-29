@@ -1,5 +1,6 @@
 import { countRequestDetailsSince, iterateRequestDetailsSince } from "@/lib/db/index.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { runtimeTypeName } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,27 @@ export const dynamic = "force-dynamic";
  */
 const MAX_ROWS = 50_000;
 const DEFAULT_ROWS = 10_000;
+const PAYLOAD_FIELDS = ["request", "providerRequest", "providerResponse", "response"];
+const PAYLOAD_TYPES = new Set(["none", "string", "object", "array", "bytes", "buffer", "stream", "boolean", "number"]);
+
+// Match the request-details API's content-free projection for retained legacy rows.
+function safePayloadMetadata(value) {
+  const storedMetadata = value?.redacted === true && value?.version === 1;
+  const present = storedMetadata ? value.present === true : value != null;
+  const inferredType = value == null ? "none" : runtimeTypeName(value);
+  const type = storedMetadata && PAYLOAD_TYPES.has(value.type) ? value.type : inferredType;
+  const metadata = { redacted: true, version: 1, present, type };
+  if (storedMetadata && Number.isSafeInteger(value.bytes) && value.bytes >= 0) metadata.bytes = value.bytes;
+  return metadata;
+}
+
+function redactPayloads(row) {
+  return {
+    ...row,
+    ...Object.fromEntries(PAYLOAD_FIELDS.filter((field) => Object.hasOwn(row, field))
+      .map((field) => [field, safePayloadMetadata(row[field])]))
+  };
+}
 
 function buildLogExportStream({ rows, header }) {
   const encoder = new TextEncoder();
@@ -32,7 +54,7 @@ function buildLogExportStream({ rows, header }) {
       try {
         for await (const row of rows) {
           if (index > 0) controller.enqueue(encoder.encode(","));
-          controller.enqueue(encoder.encode(JSON.stringify(row)));
+          controller.enqueue(encoder.encode(JSON.stringify(redactPayloads(row))));
           index++;
         }
       } catch (err) {

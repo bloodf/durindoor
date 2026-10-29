@@ -1,8 +1,9 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -15,6 +16,11 @@ function stripAnthropicBillingHeader(text) {
  * Translate an Anthropic `/v1/messages` request body into the OpenAI
  * Chat Completions shape consumed by the upstream executor.
  *
+ * Opaque redacted thinking has no OpenAI wire representation. Reject it with
+ * HTTP 400 rather than lose conversation continuity or invent a signature.
+ * Native Claude requests skip this translator; direct routes (such as Kiro)
+ * own their compatibility policy and do not pass through this bridge.
+ *
  * @param {string} model Resolved upstream model id.
  * @param {object} body Anthropic request body.
  * @param {object} [body.metadata] Anthropic request metadata.
@@ -22,6 +28,7 @@ function stripAnthropicBillingHeader(text) {
  *   OpenAI `user` field (abuse detection / caching) only when a non-empty string.
  * @param {boolean} stream Whether the caller requested a streaming response.
  * @returns {object} OpenAI-shaped request body.
+ * @throws {Error} With statusCode 400 when history contains redacted thinking.
  */
 export function claudeToOpenAIRequest(model, body, stream) {
   const result = {
@@ -173,21 +180,6 @@ function systemReminderText(content) {
   return `<instructions>\n${text}\n</instructions>`;
 }
 
-// Attach stashed redacted_thinking blocks to an intermediate OpenAI assistant
-// message as a non-enumerable symbol property: visible to the in-process
-// openai->claude pivot, invisible to JSON.stringify and to key-spread copies
-// (`{ ...msg }`) that would forward it onto the wire.
-function attachRedactedThinking(message, redactedThinking) {
-  if (redactedThinking.length === 0) return message;
-  Object.defineProperty(message, CLAUDE_REDACTED_THINKING_BLOCKS, {
-    value: redactedThinking,
-    enumerable: false,
-    writable: false,
-    configurable: false
-  });
-  return message;
-}
-
 function attachNativeBlocks(message, nativeBlocks) {
   if (!message || nativeBlocks.length === 0) return message;
   Object.defineProperty(message, CLAUDE_NATIVE_BLOCKS, {
@@ -204,6 +196,18 @@ function attachNativeBlocks(message, nativeBlocks) {
 function describeOmittedMedia(mediaType) {
   const label = isString(mediaType) && mediaType ? mediaType.slice(0, 100) : "image";
   return `[tool result omitted image: ${label}]`;
+}
+
+/**
+ * A nested tool_result document we cannot represent as a URI is the caller's fault:
+ * chatCore answers a `statusCode` 400 with this message, not a silent omission.
+ */
+function unsupportedDocument(sourceType) {
+  const error = new Error(
+    `UNSUPPORTED_DOCUMENT: nested Claude tool_result document source "${sourceType ?? "unknown"}" is not supported for OpenAI; only a http(s) document URL can be forwarded`
+  );
+  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+  return error;
 }
 
 // A Claude image whose source is a URL (`{ type: "url", url }`) maps straight
@@ -241,7 +245,6 @@ function convertClaudeMessage(msg) {
     // that follows the tool messages (OpenAI tool messages can't hold images).
     const toolResultImages = [];
     let reasoningContent = "";
-    const redactedThinking = [];
     const nativeBlocks = msg.content.some((block) =>
     block?.type === CLAUDE_BLOCK.DOCUMENT ||
     block?.type === CLAUDE_BLOCK.SERVER_TOOL_USE ||
@@ -260,13 +263,13 @@ function convertClaudeMessage(msg) {
           if (block.thinking) reasoningContent += block.thinking;
           break;
 
-        // Stash under a non-enumerable symbol: the OpenAI wire format cannot
-        // carry opaque redacted payloads, and flattening into reasoning_content
-        // would leak encrypted bytes as plain text. Only well-formed blocks
-        // (type + string data) survive the bridge.
-        case CLAUDE_BLOCK.REDACTED_THINKING:
-          if (isString(block.data)) redactedThinking.push({ ...block });
-          break;
+        case CLAUDE_BLOCK.REDACTED_THINKING: {
+          const error = new Error(
+            "Cannot translate redacted_thinking through OpenAI without losing continuity; use a compatible Claude Messages route."
+          );
+          error.statusCode = HTTP_STATUS.BAD_REQUEST;
+          throw error;
+        }
 
         case CLAUDE_BLOCK.IMAGE:
           if (block.source?.type === "base64") {
@@ -314,6 +317,16 @@ function convertClaudeMessage(msg) {
             for (const c of block.content) {
               if (c.type === CLAUDE_BLOCK.TEXT) {
                 textParts.push(c.text);
+              } else if (c.type === CLAUDE_BLOCK.DOCUMENT) {
+                // A nested document is never forwarded as bytes: OpenAI tool messages
+                // cannot carry it. A URL document keeps its URI verbatim so the upstream
+                // can fetch the reference; every other source is an explicit rejection
+                // rather than a silent drop.
+                if (isString(c.source?.url) && /^https?:\/\//i.test(c.source.url)) {
+                  textParts.push(`[tool result contained a document: ${c.source.url}]`);
+                } else {
+                  throw unsupportedDocument(c.source?.type);
+                }
               } else if (c.type === CLAUDE_BLOCK.IMAGE && c.source?.type === "base64") {
                 textParts.push(describeOmittedMedia(c.source.media_type));
                 hasOmittedMedia = true;
@@ -328,10 +341,15 @@ function convertClaudeMessage(msg) {
             resultContent = JSON.stringify(block.content);
           }
 
+          // Enumerable bridge metadata survives filtering/cloning until RTK and
+          // native target conversion. BaseExecutor consumes it only at the final
+          // OpenAI wire boundary, preserving failure meaning as text there.
+          // Only a literal `true` is carried; absent/false stays absent.
           toolResults.push({
             role: ROLE.TOOL,
             tool_call_id: block.tool_use_id,
-            content: resultContent
+            content: resultContent,
+            ...(block.is_error === true && { is_error: true })
           });
           break;
 
@@ -364,17 +382,16 @@ function convertClaudeMessage(msg) {
         result.reasoning_content = reasoningContent;
       }
       result.tool_calls = toolCalls;
-      return attachNativeBlocks(attachRedactedThinking(result, redactedThinking), nativeBlocks || []);
+      return attachNativeBlocks(result, nativeBlocks || []);
     }
 
     // Native-only blocks can be restored by a subsequent OpenAI → Claude pivot.
-    if (nativeBlocks && parts.length === 0 && !reasoningContent && redactedThinking.length === 0) {
+    if (nativeBlocks && parts.length === 0 && !reasoningContent) {
       return attachNativeBlocks({ role, content: "" }, nativeBlocks);
     }
 
-    // Return content (redactedThinking alone must also keep the message
-    // alive — otherwise a redacted-only assistant turn would return null).
-    if (parts.length > 0 || reasoningContent || redactedThinking.length > 0) {
+    // Return content or ordinary thinking.
+    if (parts.length > 0 || reasoningContent) {
       const result2 = { role };
       if (parts.length > 0) {
         result2.content = collapseTextParts(parts);
@@ -382,12 +399,12 @@ function convertClaudeMessage(msg) {
       if (reasoningContent) {
         result2.reasoning_content = reasoningContent;
       }
-      return attachNativeBlocks(attachRedactedThinking(result2, redactedThinking), nativeBlocks || []);
+      return attachNativeBlocks(result2, nativeBlocks || []);
     }
 
     // Empty content array
     if (msg.content.length === 0) {
-      return attachRedactedThinking({ role, content: "" }, redactedThinking);
+      return { role, content: "" };
     }
   }
 

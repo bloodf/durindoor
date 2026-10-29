@@ -104,7 +104,7 @@ function PreviewCard({ initialEndpoint, initialApiKey, initialCustomEndpoint }) 
             className="font-mono"
           />
         ) : null}
-        <pre className="dd-tnum overflow-x-auto rounded-dd bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text">
+        <pre tabIndex={0} role="region" aria-label="Request preview snippet" className="dd-tnum min-w-0 overflow-x-auto rounded-dd bg-dd-surface-2 p-4 font-mono text-xs leading-5 text-dd-text outline-none focus-visible:shadow-dd-focus">
           <code>{snippet}</code>
         </pre>
         <div className="flex flex-wrap items-center justify-between gap-3">

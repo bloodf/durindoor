@@ -41,5 +41,43 @@ export const ModelsList = {
     await userEvent.type(modelId, "gpt-custom");
     await userEvent.click(within(dialog).getByRole("button", { name: /^add$/i }));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    await expect(firstModel).toBeVisible();
+  },
+};
+
+/** Retains the real custom-model form rather than capturing its completed submit. */
+export const AddCustomModelOpen = {
+  args: { providerId: "openai" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: /add model/i }));
+    const dialog = await within(document.body).findByRole("dialog", { name: /add custom model/i });
+    await waitFor(() => expect(dialog).toBeVisible());
+    const form = within(dialog);
+    const input = form.getByLabelText("Model ID");
+    await expect(input).toBeVisible();
+    await expect(form.getByRole("button", { name: /^add$/i })).toBeDisabled();
+    await userEvent.type(input, "gpt-example");
+    await expect(form.getByRole("button", { name: /^add$/i })).toBeEnabled();
+  },
+};
+
+/** Custom-model selection drives ModelsCard's private bulk test result state through SSE. */
+export const BulkTestResults = {
+  parameters: {
+    storyFixture: { scenario: "default", pathname: "/dashboard/media-providers/embedding/openai", params: {}, routes: {
+      ...routes,
+      "GET /api/models/custom": { body: { models: [{ id: "gpt-custom", providerAlias: "openai", type: "llm", name: "Custom model" }] } },
+      "POST /api/models/test/batch": { events: [{ model: "openai/gpt-custom", ok: true }, { done: true }] },
+    } },
+  },
+  args: { providerId: "openai" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const model = await canvas.findByText("openai/gpt-custom");
+    const row = model.closest("div.group");
+    await userEvent.click(within(row).getByRole("checkbox"));
+    await userEvent.click(await canvas.findByRole("button", { name: /test selected/i }));
+    await expect(await within(row).findByText("check_circle")).toBeVisible();
   },
 };

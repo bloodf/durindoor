@@ -18,6 +18,8 @@ const STATUS_ICON = {
   info: "progress_activity",
   danger: "error",
 };
+// Keep status text opaque: opacity pulses drop its contrast below AA.
+// Pending activity animates only the decorative icon.
 const STATUS_TONE_CLASS = {
   success: "bg-dd-success/10 text-dd-success border-dd-success/20",
   info: "bg-dd-info/10 text-dd-info border-dd-info/20",
@@ -120,7 +122,7 @@ export default function RequestLogger({ resetNonce = 0 } = {}) {
       if (column.key === "datetime") return <span className="text-dd-muted">{row.datetime}</span>;
       if (column.key === "model") return <span className="font-medium text-dd-text">{row.model}</span>;
       if (column.key === "account") return <span className="block max-w-[150px] truncate" title={row.account}>{row.account}</span>;
-      if (column.key === "status") return <span className={["inline-flex items-center gap-1 rounded-dd border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", STATUS_TONE_CLASS[row.tone] || "border-dd-border bg-dd-surface-2 text-dd-muted", row.tone === "info" ? "animate-pulse" : ""].join(" ")}><span aria-hidden="true" className="material-symbols-outlined text-[12px] leading-none">{STATUS_ICON[row.tone] || "circle"}</span><span className="sr-only">Status: </span>{row.status}</span>;
+      if (column.key === "status") return <span className={["inline-flex items-center gap-1 rounded-dd border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", STATUS_TONE_CLASS[row.tone] || "border-dd-border bg-dd-surface-2 text-dd-muted"].join(" ")}><span aria-hidden="true" className={`material-symbols-outlined text-[12px] leading-none${row.tone === "info" ? " animate-spin motion-reduce:animate-none" : ""}`}>{STATUS_ICON[row.tone] || "circle"}</span><span className="sr-only">Status: </span>{row.status}</span>;
       return row[column.key];
     },
   }));

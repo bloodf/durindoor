@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
 import { isNumber, isObject, isString } from "../src/shared/utils/typeChecks.js";
-import { validateStorybookLifecycle } from "../tests/e2e/storybook-lifecycle.mjs";
+import { artifactKey, validateStorybookLifecycle } from "../tests/e2e/storybook-lifecycle.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_EXT = /\.(?:js|jsx|mjs|ts|tsx)$/;
 const TEST_FILE = /(?:test|spec)\./;
@@ -15,7 +15,6 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const GIT_SHA = /^[a-f0-9]{40}$/;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const idFor = (sourcePath, symbol) => `${sourcePath}#${symbol}`;
-export const artifactKey = (runtimeArtifactId, browser, theme, viewport) => `${runtimeArtifactId}::${browser}::${theme}::${viewport}`;
 
 function visual(node) {
   let found = false;

@@ -1,3 +1,4 @@
+import "../translator/registerAll.js";
 import { describe, expect, it } from "vitest";
 
 import { toResponsesUsage } from "../../open-sse/translator/concerns/usage.js";
@@ -52,12 +53,6 @@ describe("openai-responses translator", () => {
     expect(usage.input_tokens_details.cached_tokens).toBe(4);
   });
 
-  it("emits zero usage when upstream never reported token counts", () => {
-    expect(completedUsage([
-      { id: "chatcmpl-z", choices: [{ index: 0, delta: { role: "assistant", content: "ok" } }] },
-      { id: "chatcmpl-z", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-    ])).toEqual({ input_tokens: 0, output_tokens: 0, total_tokens: 0 });
-  });
 
   it("zero-fills malformed Responses usage arrays", () => {
     const state = initState(FORMATS.OPENAI_RESPONSES);

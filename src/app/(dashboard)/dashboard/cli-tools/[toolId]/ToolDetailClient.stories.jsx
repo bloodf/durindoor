@@ -12,6 +12,13 @@ const routes = {
   "GET /api/cli-tools/antigravity-mitm/alias": { body: { aliases: {} } },
 };
 
+const pendingRoutes = {
+  "GET /api/providers": () => new Promise(() => {}),
+  "GET /api/settings": () => new Promise(() => {}),
+  "GET /api/tunnel/status": () => new Promise(() => {}),
+  "GET /api/keys": () => new Promise(() => {}),
+};
+
 export default {
   title: "Durin DS/Production Pages/cli-tools/ToolDetailClient",
   component: ToolDetailClient,
@@ -41,6 +48,16 @@ export const DeepSeekTui = scenario("deepseek-tui");
 export const Jcode = scenario("jcode");
 export const GrokBuild = scenario("grok-build");
 export const Cursor = scenario("cursor");
+export const Roo = scenario("roo");
+export const Continue = scenario("continue");
+export const Amp = scenario("amp");
+export const Qwen = scenario("qwen");
+export const Omp = scenario("omp");
+export const Pi = scenario("pi");
+export const Crush = scenario("crush");
+export const Forge = scenario("forge");
+export const Smelt = scenario("smelt");
+export const Codewhale = scenario("codewhale");
 
 export const ClaudeLoaded = {
   ...scenario("claude"),
@@ -62,5 +79,23 @@ export const ClaudeEndpointMenu = {
     await userEvent.click(endpoint);
     const endpointMenu = body.getByRole("listbox", { name: "Endpoint" });
     expect(within(endpointMenu).getByRole("option", { name: "Local (127.0.0.1)" })).toHaveAttribute("aria-selected", "true");
+  },
+};
+
+export const UnknownTool = {
+  args: { toolId: "not-a-tool", machineId: "story-machine" },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools/not-a-tool", params: { toolId: "not-a-tool" }, routes } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(await canvas.findByText("Tool not found")).toBeInTheDocument();
+    expect(canvas.getByRole("link", { name: /back to cli tools/i })).toBeInTheDocument();
+  },
+};
+
+export const Loading = {
+  args: { toolId: "claude", machineId: "story-machine" },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/cli-tools/claude", params: { toolId: "claude" }, routes: pendingRoutes } },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("status", { name: "Loading card" })).toBeVisible();
   },
 };

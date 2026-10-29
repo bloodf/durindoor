@@ -7,7 +7,7 @@ description: Back up DATA_DIR, move to a new image or npm version, then verify h
 
 Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [current operator guide](../../../../docs/operations/upgrading.mdx) for present behavior. The preserved text below is a pre-rewrite snapshot, not current instructions. Corrections here take precedence over conflicting snapshot claims.
 
-Forward migrations cannot be undone by an older binary. Full pre-upgrade data plus matching secrets is the rollback unit. PG migration 025 owns timeline tables; SQLite retains sidecar. Built-in migration copies are bounded safety copies, not full backups. Build verify:static is artifact availability verification only.
+Forward migrations cannot be undone by an older binary. Full pre-upgrade data plus matching secrets is the rollback unit. Both engines reach migration 025; PostgreSQL 025 owns timeline tables while SQLite retains a sidecar. Preserve sidecar history through its separate PostgreSQL migration before deleting it. Built-in migration copies are bounded safety copies, not full backups. `verify:static` verifies artifact availability only.
 
 ### Execution ownership and evidence
 

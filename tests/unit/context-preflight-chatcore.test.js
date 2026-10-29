@@ -34,7 +34,8 @@ vi.mock("../../open-sse/executors/index.js", () => ({
   })),
 }));
 
-vi.mock("../../open-sse/providers/capabilities.js", () => ({
+vi.mock("../../open-sse/providers/capabilities.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getCapabilitiesForModel: vi.fn(() => ({ maxOutput: 1000 })),
   resolveModelLimits: mocks.resolveModelLimits,
 }));

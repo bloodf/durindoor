@@ -112,10 +112,13 @@ export const SubComponents = {
       </ul>
     </Card>
   ),
-  play: async ({ canvasElement, args }) => {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const removeButton = canvas.getByRole("button", { name: "Remove" });
     await userEvent.click(removeButton);
-    await expect(args.onRemove).toHaveBeenCalledTimes(1);
+    await expect(removeButton).toHaveFocus();
+    await expect(canvas.getByText(/Mouth of Sauron/)).toBeVisible();
+    await expect(canvas.getByText("Sauron", { exact: true })).toBeVisible();
+    await expect(canvas.getByRole("heading", { name: "Card.Section" })).toBeVisible();
   },
 };

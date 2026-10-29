@@ -78,10 +78,10 @@ export default function EndpointPresetControl({ baseUrl, apiKey, onBaseUrlChange
   const canSave = Boolean(baseUrl && apiKey);
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-32 shrink-0 text-sm font-semibold text-dd-text text-right">Preset</span>
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <span className="w-full shrink-0 text-left text-sm font-semibold text-dd-text sm:w-32 sm:text-right">Preset</span>
       <span className="material-symbols-outlined text-dd-muted text-[14px]" aria-hidden="true">arrow_forward</span>
-      <Select aria-label="Endpoint preset" value={selectedName} onChange={handleSelect} options={options} size="sm" className="flex-1" />
+      <Select aria-label="Endpoint preset" value={selectedName} onChange={handleSelect} options={options} size="sm" className="min-w-0 flex-1 basis-40" />
       <Button
         variant="secondary"
         size="sm"

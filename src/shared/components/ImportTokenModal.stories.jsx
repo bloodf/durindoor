@@ -31,6 +31,15 @@ export const Default = {
     const dialog = await within(document.body).findByRole("dialog", { name: "Connect GitHub" });
     expect(within(dialog).getByLabelText("Access token")).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await expect(within(document.body).queryByRole("dialog", { name: "Connect GitHub" })).not.toBeInTheDocument();
+  },
+};
+
+export const Open = {
+  render: Default.render,
+  play: async () => {
+    const dialog = await within(document.body).findByRole("dialog", { name: "Connect GitHub" });
+    await expect(within(dialog).getByLabelText("Access token")).toBeVisible();
   },
 };
 

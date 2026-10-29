@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { getSettings } from "@/lib/localDb";
 import { fetchOidcDiscovery, getPublicOrigin, probeOidcClientSecret } from "@/lib/auth/oidc";
-import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import {
+  canAccessManagementApi,
+  hasExactRequestOrigin,
+  hasValidCliToken,
+  isOperatorRequest,
+} from "@/dashboardGuard";
 
 /** Map SSRF / URL-shape failures from fetchOidcDiscovery to HTTP 400. */
 function isOidcIssuerUrlError(error) {
@@ -10,18 +14,16 @@ function isOidcIssuerUrlError(error) {
   return message.startsWith("Blocked URL:") || message.includes("Invalid URL");
 }
 
-async function canAccessTestRoute() {
-  const settings = await getSettings();
-  if (settings.requireLogin === false) return true;
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get("auth_token")?.value;
-  return await verifyDashboardAuthToken(token);
-}
-
 export async function POST(request) {
   try {
-    if (!(await canAccessTestRoute())) {
+    // This probe can send the stored client secret to the selected issuer.
+    // Never let a sibling login page drive it using ambient dashboard cookies,
+    // even when invoked without middleware or with login disabled.
+    if (request.headers.get("origin") && !hasExactRequestOrigin(request) &&
+        !(await hasValidCliToken(request))) {
+      return NextResponse.json({ error: "Cross-origin management request denied" }, { status: 403 });
+    }
+    if (!(await canAccessManagementApi(request)) || !(await isOperatorRequest(request))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

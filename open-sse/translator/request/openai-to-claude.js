@@ -1,20 +1,37 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { CLAUDE_SYSTEM_PROMPT } from "../../config/appConstants.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { validateInputAudio } from "../validate.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
 import { extractTextContent } from "../formats/gemini.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_REDACTED_THINKING_BLOCKS, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
-// Convert OpenAI request to Claude format
+/**
+ * Convert OpenAI requests while preserving client system instructions.
+ * Only the routed `claude` provider receives official-client branding; model
+ * names and client payload fields do not establish provider identity.
+ * Missing provider context and compatible providers receive no added persona.
+ * OpenAI input_audio has no supported Claude mapping. Reject it before content
+ * extraction can discard it, for both streaming and non-streaming requests.
+ * @throws {Error} With statusCode 400 so chatCore rejects the request before upstream dispatch.
+ */
 export function openaiToClaudeRequest(model, body, stream, credentials = null, translationContext = null) {
+  const audioError = validateInputAudio(body, FORMATS.OPENAI, FORMATS.CLAUDE, model);
+  if (audioError) {
+    const error = new Error(audioError);
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
   const toolNameMap = new Map();
   // Cap max_tokens at the model's real output ceiling (e.g. Opus 4.8 = 128000),
@@ -53,15 +70,15 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   const systemParts = [];
 
   if (body.messages && Array.isArray(body.messages)) {
-    // Extract system messages
+    // Extract system and developer instructions in their original order.
     for (const msg of body.messages) {
-      if (msg.role === ROLE.SYSTEM) {
+      if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
         systemParts.push(isString(msg.content) ? msg.content : extractTextContent(msg.content, "\n"));
       }
     }
 
-    // Filter out system messages for separate processing
-    const nonSystemMessages = body.messages.filter((m) => m.role !== ROLE.SYSTEM);
+    // Instruction messages belong only in the top-level system field.
+    const nonSystemMessages = body.messages.filter((m) => m.role !== ROLE.SYSTEM && m.role !== ROLE.DEVELOPER);
 
     // Process messages with merging logic
     // CRITICAL: tool_result must be in separate message immediately after tool_use
@@ -160,17 +177,16 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     }
   }
 
-  // System with Claude Code prompt and cache_control
-  const claudeCodePrompt = { type: CLAUDE_BLOCK.TEXT, text: CLAUDE_SYSTEM_PROMPT };
-
+  if (translationContext?.provider === "claude") {
+    result.system = [{ type: CLAUDE_BLOCK.TEXT, text: CLAUDE_SYSTEM_PROMPT }];
+  }
   if (systemParts.length > 0) {
-    const systemText = systemParts.join("\n");
-    result.system = [
-    claudeCodePrompt,
-    { type: CLAUDE_BLOCK.TEXT, text: systemText, cache_control: { type: "ephemeral", ttl: "1h" } }];
-
-  } else {
-    result.system = [claudeCodePrompt];
+    result.system ??= [];
+    result.system.push({
+      type: CLAUDE_BLOCK.TEXT,
+      text: systemParts.join("\n"),
+      cache_control: { type: "ephemeral", ttl: "1h" }
+    });
   }
 
   // Tools - convert from OpenAI format to Claude format with prefix for OAuth
@@ -204,7 +220,7 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
       result.tools.push({
         name: toolName,
         description: toolData.description || "",
-        input_schema: toolData.parameters || toolData.input_schema || { type: "object", properties: {}, required: [] },
+        input_schema: toClaudeInputSchema(toolData.parameters, toolData.input_schema),
         ...(toolData.strict !== undefined && { strict: toolData.strict })
       });
     }
@@ -221,6 +237,14 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   // Tool choice
   if (body.tool_choice) {
     result.tool_choice = convertOpenAIToolChoice(body.tool_choice);
+  }
+
+  // OpenAI's parallel_tool_calls:false is Claude's tool_choice.disable_parallel_tool_use.
+  // The shared lowering otherwise drops the caller's limit; only the GitHub executor
+  // re-added it downstream. Same guards as that executor: tools must be present and the
+  // caller must not have disabled tools outright.
+  if (body.parallel_tool_calls === false && result.tools?.length > 0 && result.tool_choice?.type !== "none") {
+    result.tool_choice = { ...(result.tool_choice || { type: "auto" }), disable_parallel_tool_use: true };
   }
 
   // Thinking is normalized centrally by applyThinking (thinkingUnified.js) after translation.
@@ -268,7 +292,9 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     blocks.push({
       type: CLAUDE_BLOCK.TOOL_RESULT,
       tool_use_id: msg.tool_call_id,
-      content: msg.content
+      content: msg.content,
+      // Reverse of claude-to-openai: restore the Claude-native error flag carried on the tool message.
+      ...(msg.is_error === true && { is_error: true })
     });
   } else if (msg.role === ROLE.USER) {
     if (isString(msg.content)) {
@@ -309,18 +335,6 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
       }
     }
   } else if (msg.role === ROLE.ASSISTANT) {
-    // Restore redacted_thinking blocks stashed by claude->openai during the
-    // first pivot (only in-process code sharing the symbol can set it; JSON
-    // round-trips drop it). Restore the { type, data } contract only —
-    // redacted blocks reject extra fields like cache_control upstream.
-    const stashedRedacted = msg[CLAUDE_REDACTED_THINKING_BLOCKS];
-    if (Array.isArray(stashedRedacted)) {
-      for (const block of stashedRedacted) {
-        if (block?.type === CLAUDE_BLOCK.REDACTED_THINKING && isString(block.data)) {
-          blocks.push({ type: CLAUDE_BLOCK.REDACTED_THINKING, data: block.data });
-        }
-      }
-    }
     // OpenAI assistant reasoning_content → Claude thinking block. Prepend so it
     // precedes the text/tool_use blocks (Claude requires thinking first).
     const hasThinkingBlock = Array.isArray(msg.content) && msg.content.some((part) => part.type === CLAUDE_BLOCK.THINKING);
@@ -405,16 +419,6 @@ function convertOpenAIToolChoice(choice) {
 // OpenAI -> Claude format for Antigravity (without system prompt modifications)
 function openaiToClaudeRequestForAntigravity(model, body, stream) {
   const result = openaiToClaudeRequest(model, body, stream);
-
-  // Remove Claude Code system prompt, keep only user's system messages
-  if (result.system && Array.isArray(result.system)) {
-    result.system = result.system.filter((block) =>
-    !block.text || !block.text.includes("You are Claude Code")
-    );
-    if (result.system.length === 0) {
-      delete result.system;
-    }
-  }
 
   // Strip prefix from tool names for Antigravity (doesn't use Claude OAuth)
   if (result.tools && Array.isArray(result.tools)) {

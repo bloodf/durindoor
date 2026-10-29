@@ -1,4 +1,5 @@
 import { FORMATS } from "./formats.js";
+import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
@@ -6,10 +7,10 @@ import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
-import { AntigravityExecutor } from "../executors/antigravity.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
+import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
 
 // Registry for translators. Lazy-init guards against circular-import order:
 // translator modules call register() (side-effect) before this module's body runs.
@@ -50,13 +51,24 @@ function stripContentTypes(body, stripList = []) {
   }
 }
 
+// Capture the source-format tail before translation drops empty turns. Gemini
+// calls assistants "model"; Responses uses input[] rather than messages[].
+function detectClientLastRole(body) {
+  const items = Array.isArray(body?.messages) ? body.messages :
+    Array.isArray(body?.contents) ? body.contents :
+    Array.isArray(body?.input) ? body.input : null;
+  const role = items?.[items.length - 1]?.role;
+  return role === GEMINI_ROLE.MODEL ? ROLE.ASSISTANT : role;
+}
+
 // Translate request: source -> openai -> target. `translationContext` carries
 // request-scoped routing intent (never serialized into the provider body).
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
+  if (targetFormat === FORMATS.CURSOR) validateCursorImages(body);
   ensureInitialized();
   let result = body;
   // Role the client actually ended on, before any translator drops an emptied turn.
-  const clientLastRole = Array.isArray(body?.messages) ? body.messages[body.messages.length - 1]?.role : undefined;
+  const clientLastRole = detectClientLastRole(body);
   // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)
   // replace `result` wholesale, dropping any metadata OpenAI-stage translators
   // stash on it. Capture it here and reattach after the envelope translator runs.
@@ -282,14 +294,6 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     result._toolNameMap = composeToolNameMaps(responsesToolAliases, result._toolNameMap);
   }
 
-  // Antigravity cloaking disabled
-  // if (provider === FORMATS.ANTIGRAVITY && body.userAgent !== FORMATS.ANTIGRAVITY) {
-  //   const { cloakedBody, toolNameMap } = AntigravityExecutor.cloakTools(result);
-  //   result = cloakedBody;
-  //   if (toolNameMap?.size > 0) {
-  //     result._toolNameMap = toolNameMap;
-  //   }
-  // }
 
   // Provider envelopes may replace the body outright (commandcode, kiro, ...).
   // Keep response-conversion metadata outside those envelopes so chatCore can
@@ -456,6 +460,8 @@ export function initState(sourceFormat, requestBody) {
       funcCustomInput: {},
       funcCustomDeltaEmitted: {},
       awaitingTrailingUsage: false,
+      // Isolated from provider-native state.usage used by the first pivot hop.
+      responsesUsage: null,
       completedSent: false
     };
   }

@@ -86,6 +86,7 @@ The [Quota Tracker](../../../../docs/features/quota-tracking.mdx) reads Anthropi
 Preflight skips an account whose window is exhausted. Auto-ping can restart the five-hour window on a schedule; see [Quota tracking](../../../../docs/features/quota-tracking.mdx#auto-ping).
 
 
+
 ## Implementation reference for maintainers
 
 The content above is a pre-rewrite snapshot from baseline `0e7307831`, captured on 2026-10-07. It preserves the complete public page before the audience rewrite. Its setup examples and historical claims are retained as context; use the current public page and the source notes below when they disagree.
@@ -107,3 +108,7 @@ These references describe repository behavior. They do not establish that a vend
 ### Current behavior and implementation boundaries
 
 OAuth callback is Anthropic-hosted and manually pasted for this provider, not a generic dashboard callback. Version pin/override and captured incoming identity can differ; captured identity lasts until process restart. Successful OAuth/profile retrieval does not establish inference model entitlement.
+
+### Current quota behavior
+
+When one Claude account reports a model-specific weekly window and another does not, the quota view renders a non-hideable display-only `not reported` placeholder for the missing account. It is not available or exhausted quota and is excluded from merged totals and routing. **Refresh (bypass cache)** requests `?refresh=1`; it bypasses fresh cache entries but still honors Anthropic's 429 cooldown, retaining cached rows with their stale warning. `?force=1` remains supported.

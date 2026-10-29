@@ -32,33 +32,15 @@ describe("SidebarNavIcons information architecture", () => {
     ]);
   });
 
-  it("groups observability routes under Monitor, lifting Quota Tracker and Health out of Providers", () => {
+  it("makes Usage the sole monitoring home while preserving other observability destinations", () => {
     expect(itemHrefs("monitor")).toEqual([
       "/dashboard/usage",
-      "/dashboard/monitoring",
       "/dashboard/timeline",
       "/dashboard/quota",
       "/dashboard/health",
       "/dashboard/console-log",
     ]);
-    expect(itemLabels("monitor")).toEqual([
-      "Usage",
-      "Monitoring",
-      "Timeline",
-      "Quota Tracker",
-      "Health",
-      "Console Log",
-    ]);
-    const map = new Map(itemEntries("monitor").map((i) => [i.label, i.icon]));
-    expect(map.get("Usage")).toBe("bar_chart");
-    expect(map.get("Monitoring")).toBe("monitoring");
-    expect(map.get("Timeline")).toBe("timeline");
-    expect(map.get("Quota Tracker")).toBe("data_usage");
-    expect(map.get("Health")).toBe("monitor_heart");
-    expect(map.get("Console Log")).toBe("terminal");
-    // Monitoring's icon must stay distinct from Health's so the two
-    // provider-observability entries aren't visually indistinguishable.
-    expect(map.get("Monitoring")).not.toBe(map.get("Health"));
+    expect(allHrefs()).not.toContain("/dashboard/monitoring");
   });
 
   it("groups routing and credential routes under Build with Providers as a direct link", () => {
@@ -133,7 +115,6 @@ describe("SidebarNavIcons information architecture", () => {
     // Spot-check the relocated routes still exist somewhere.
     for (const href of [
       "/dashboard/quota",
-      "/dashboard/monitoring",
       "/dashboard/health",
       "/dashboard/console-log",
       "/dashboard/endpoint",

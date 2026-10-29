@@ -4,24 +4,27 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
+import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
+import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import { createLiveReloadScheduler } from "./href.js";
 import { buildConnectionNameMap, connectionDisplayName } from "@/shared/utils/connectionDisplay.js";
 import TimelineSkeleton from "./TimelineSkeleton.jsx";
+import TimelineSwimlane from "./components/TimelineSwimlane.jsx";
+import TimelineWindowControls, { DEFAULT_LANE, DEFAULT_WINDOW, resolveLane, resolveWindow } from "./components/TimelineWindowControls.jsx";
+import { statusTone } from "./timelineStatus.js";
+import { useWindowedTraces } from "./useWindowedTraces.js";
 
-const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate"];
-
-function statusTone(status) {
-  if (status === "ok") return "success";
-  if (status === "aborted") return "warning";
-  if (status === "error") return "danger";
-  if (status === "running") return "info";
-  return "neutral";
-}
+const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate", "q"];
+const WINDOW_FILTER_KEYS = FILTER_KEYS.filter((key) => key !== "startDate" && key !== "endDate");
+const VIEW_OPTIONS = [
+  { value: "timeline", label: "Timeline", icon: "view_timeline" },
+  { value: "table", label: "Table", icon: "table_rows" },
+];
 
 
 export default function TimelinePage() {
@@ -38,6 +41,18 @@ function TimelineList() {
   const [connectionNames, setConnectionNames] = useState({});
   const [live, setLive] = useState(false);
   const [error, setError] = useState("");
+  const view = searchParams.get("view") === "table" ? "table" : "timeline";
+  const windowPreset = resolveWindow(searchParams.get("window"));
+  const laneBy = resolveLane(searchParams.get("lane"));
+  const windowFilterQuery = useMemo(() => {
+    const next = new URLSearchParams();
+    for (const key of WINDOW_FILTER_KEYS) {
+      const value = searchParams.get(key);
+      if (value) next.set(key, value);
+    }
+    return next.toString();
+  }, [searchParams]);
+  const windowed = useWindowedTraces({ enabled: view === "timeline", filterQuery: windowFilterQuery, windowMs: windowPreset.ms, live });
   const query = useMemo(() => {
     const next = new URLSearchParams();
     for (const key of FILTER_KEYS) {
@@ -90,9 +105,10 @@ function TimelineList() {
   }, [query]);
   const liveReload = useMemo(() => createLiveReloadScheduler(load), [load]);
   useEffect(() => {
+    if (view !== "table") return undefined;
     load();
     return () => loadAbortRef.current?.abort();
-  }, [load]);
+  }, [load, view]);
   // Connection ids render as names; fetch the catalog once (fail-open).
   useEffect(() => {
     let cancelled = false;
@@ -102,12 +118,26 @@ function TimelineList() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+  // Timeline observes mutable filter transitions and filters fetched metadata
+  // locally. Keep its subscription stable across lane/window URL changes.
+  const liveScheduler = view === "table" ? liveReload : windowed.liveRefresh;
+  const streamQuery = view === "table" ? query.toString() : "";
   useEffect(() => {
     if (!live) return undefined;
-    const source = new EventSource(`/api/timeline/stream?${query.toString()}`);
-    source.onmessage = liveReload.schedule;
-    return () => { liveReload.cancel(); source.close(); };
-  }, [live, query, liveReload]);
+    const source = new EventSource(`/api/timeline/stream?${streamQuery}`);
+    source.onmessage = liveScheduler.schedule;
+    return () => { liveScheduler.cancel(); source.close(); };
+  }, [live, streamQuery, liveScheduler]);
+
+  const setParam = (key, value, defaultValue) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === defaultValue) next.delete(key);
+    else next.set(key, value);
+    const search = next.toString();
+    router.replace(search ? `/dashboard/timeline?${search}` : "/dashboard/timeline");
+  };
+  const openTrace = (traceId) => router.push(`/dashboard/timeline/${encodeURIComponent(traceId)}`);
+  const formatLane = (key) => (laneBy === "connection_id" ? connectionDisplayName(key, connectionNames) : key);
 
   const pagination = data.pagination || { page: 1, pageSize: 20, totalItems: 0, totalPages: 1 };
   const setPage = (page) => {
@@ -132,21 +162,76 @@ function TimelineList() {
     { key: "total_ms", label: "ms", align: "right", mono: true, render: (trace) => trace.total_ms ?? "—" },
   ], [connectionNames]);
 
+  const captureOff = (view === "table" ? captureOn : windowed.captureOn) === false;
+  const emptyState = {
+    icon: "timeline",
+    title: captureOff ? "Timeline capture is off" : "Waiting for a call",
+    message: captureOff ? <span>Enable it in <Link href="/dashboard/profile" className="text-dd-accent underline outline-none focus-visible:shadow-dd-focus">Settings</Link>.</span> : "Redacted proxy hops appear here when requests arrive.",
+  };
+  const liveStatus = <p className="text-[13px] text-dd-muted"><StatusDot tone={live ? "success" : "neutral"} pulse={live} label={live ? "Listening for updates" : "Live updates paused"} /></p>;
+  const viewError = view === "table" ? error : windowed.error;
+  const windowCount = windowed.traces.length;
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
-      <PageHeader icon="timeline" title="Timeline" subtitle="Redacted sidecar hops. Filter via URL query string." actions={<Toggle checked={live} onChange={setLive} label="Live updates" aria-label="Live timeline updates" />} />
-      {error ? <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">{error}</p> : null}
-      <DataTable
-        columns={columns}
-        rows={data.traces}
-        keyFn={(trace) => trace.id}
-        caption="Timeline traces"
-        density="compact"
-        filterBar={<p className="text-[13px] text-dd-muted"><StatusDot tone={live ? "success" : "neutral"} pulse={live} label={live ? "Listening for updates" : "Live updates paused"} /></p>}
-        loading={loading}
-        emptyState={{ icon: "timeline", title: captureOn === false ? "Timeline capture is off" : "Waiting for a call", message: captureOn === false ? <span>Enable it in <Link href="/dashboard/profile" className="text-dd-accent underline outline-none focus-visible:shadow-dd-focus">Settings</Link>.</span> : "Redacted proxy hops appear here when requests arrive." }}
-        pagination={{ page: pagination.page, pageCount: pagination.totalPages, total: pagination.totalItems, rowsLabel: pagination.totalItems > 0 ? `${pagination.totalItems.toLocaleString()} traces` : "0 traces", onPage: setPage, rowsPerPage: pagination.pageSize, rowsPerPageOptions: pagination.pageSize === 20 ? [10, 20, 25, 50, 100, "all"] : [10, 25, 50, 100, "all"], onRowsPerPageChange: setRowsPerPage }}
+      <PageHeader
+        icon="timeline"
+        title="Timeline"
+        subtitle="Redacted sidecar hops. Filter via URL query string."
+        actions={(
+          <div className="flex flex-wrap items-center gap-3">
+            <SegmentedControl aria-label="Timeline view" options={VIEW_OPTIONS} value={view} onChange={(value) => setParam("view", value, "timeline")} />
+            {view === "table" ? <Toggle checked={live} onChange={setLive} label="Live updates" aria-label="Live timeline updates" /> : null}
+          </div>
+        )}
       />
+      {viewError ? <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">{viewError}</p> : null}
+      {view === "table" ? (
+        <DataTable
+          columns={columns}
+          rows={data.traces}
+          keyFn={(trace) => trace.id}
+          caption="Timeline traces"
+          density="compact"
+          filterBar={liveStatus}
+          loading={loading}
+          emptyState={emptyState}
+          pagination={{ page: pagination.page, pageCount: pagination.totalPages, total: pagination.totalItems, rowsLabel: pagination.totalItems > 0 ? `${pagination.totalItems.toLocaleString()} traces` : "0 traces", onPage: setPage, rowsPerPage: pagination.pageSize, rowsPerPageOptions: pagination.pageSize === 20 ? [10, 20, 25, 50, 100, "all"] : [10, 25, 50, 100, "all"], onRowsPerPageChange: setRowsPerPage }}
+        />
+      ) : (
+        <Card padding={false}>
+          <CardHeader
+            icon="view_timeline"
+            title="Swimlanes"
+            subtitle={`${windowCount.toLocaleString()} trace${windowCount === 1 ? "" : "s"} in the last ${windowPreset.label}`}
+            actions={liveStatus}
+          />
+          <CardContent className="flex flex-col gap-4">
+            <TimelineWindowControls
+              windowKey={windowPreset.value}
+              onWindowChange={(value) => setParam("window", value, DEFAULT_WINDOW)}
+              laneBy={laneBy}
+              onLaneByChange={(value) => setParam("lane", value, DEFAULT_LANE)}
+              live={live}
+              onLiveChange={setLive}
+            />
+            {windowed.loading && windowCount === 0 ? (
+              <div role="status" aria-busy="true" className="h-40 animate-pulse rounded-dd bg-dd-surface-2"><span className="sr-only">Loading traces</span></div>
+            ) : (
+              <TimelineSwimlane
+                traces={windowed.traces}
+                windowStart={windowed.windowStart}
+                windowEnd={windowed.nowMs}
+                laneBy={laneBy}
+                onSelect={openTrace}
+                nowMs={windowed.nowMs}
+                formatLane={formatLane}
+                emptyState={emptyState}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

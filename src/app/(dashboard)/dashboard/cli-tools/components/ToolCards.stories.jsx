@@ -3,6 +3,8 @@ import { within, expect } from "storybook/test";
 import ClaudeToolCard from "./ClaudeToolCard";
 import AntigravityToolCard from "./AntigravityToolCard";
 import MitmServerCard from "./MitmServerCard";
+import GenericCliToolCard from "./GenericCliToolCard";
+import CopilotToolCard from "./CopilotToolCard";
 import { CLI_TOOLS, MITM_TOOLS } from "@/shared/constants/cliTools";
 
 const CLAUDE_TOOL = CLI_TOOLS.claude;
@@ -121,5 +123,80 @@ export const MitmServerRunning = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     expect(await canvas.findByText(/running/i)).toBeInTheDocument();
+  },
+};
+
+export const PiConfigured = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/cli-tools/pi",
+      routes: {
+        "GET /api/cli-tools/pi-settings": {
+          body: {
+            installed: true,
+            has9Router: true,
+            config: {
+              providers: { durindoor: { base_url: "http://127.0.0.1:20128/v1", models: ["openai/gpt-4.1"] } },
+            },
+          },
+        },
+      },
+    },
+  },
+  render: () => (
+    <GenericCliToolCard
+      tool={CLI_TOOLS.pi}
+      isExpanded
+      onToggle={() => {}}
+      baseUrl="http://127.0.0.1:20128"
+      apiKeys={[]}
+      activeProviders={[OPENAI_PROVIDER]}
+      hasActiveProviders
+      cloudEnabled={false}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(await canvas.findByRole("button", { name: /pi/i })).toHaveAttribute("aria-expanded", "true");
+    expect(await canvas.findByText("Connected")).toBeVisible();
+    expect(await canvas.findByText("openai/gpt-4.1")).toBeVisible();
+  },
+};
+
+export const CopilotConfigured = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/cli-tools/copilot",
+      routes: {
+        "GET /api/cli-tools/copilot-settings": {
+          body: {
+            installed: true,
+            has9Router: true,
+            currentUrl: "http://127.0.0.1:20128/v1",
+            config: [{ name: "9Router", models: [{ id: "openai/gpt-4.1" }] }],
+          },
+        },
+        "GET /api/models/alias": { body: { aliases: {} } },
+      },
+    },
+  },
+  render: () => (
+    <CopilotToolCard
+      tool={CLI_TOOLS.copilot}
+      isExpanded
+      onToggle={() => {}}
+      baseUrl="http://127.0.0.1:20128"
+      apiKeys={[]}
+      activeProviders={[OPENAI_PROVIDER]}
+      cloudEnabled={false}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    expect(await canvas.findByRole("button", { name: /copilot/i })).toHaveAttribute("aria-expanded", "true");
+    expect(await canvas.findByText("Connected")).toBeVisible();
+    expect(await canvas.findByText("openai/gpt-4.1")).toBeVisible();
   },
 };

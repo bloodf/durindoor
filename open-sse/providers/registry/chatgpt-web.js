@@ -13,6 +13,14 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the Cookie header from any chatgpt.com request, or the __Secure-next-auth.session-token value. Chunked .0/.1 session cookies are accepted.",
+  webLogin: {
+    startUrl: "https://chatgpt.com/",
+    origin: "https://chatgpt.com",
+    allowedHosts: ["auth.openai.com"],
+    cookieNames: ["__Secure-next-auth.session-token"],
+    cookiePrefixes: ["__Secure-next-auth.session-token."],
+    readyProbe: { url: "https://chatgpt.com/api/auth/session", method: "GET", okStatus: [200] },
+  },
   serviceKinds: ["llm"],
   hiddenKinds: ["image"],
   transport: {

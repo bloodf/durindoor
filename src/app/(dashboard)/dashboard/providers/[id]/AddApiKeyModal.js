@@ -8,6 +8,7 @@ import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Field from "@/shared/ui/components/Field.jsx";
+import WebLoginModal from "@/shared/components/WebLoginModal";
 
 import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
@@ -53,7 +54,7 @@ function ChatgptWebCookieSteps() {
   );
 }
 
-export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, credentialOptional = false, authType, authHint, authSnippet, website, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
+export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, credentialOptional = false, authType, authHint, authSnippet, website, webLogin, proxyPools, existingConnectionNames, error, onSave, onBulkDone, onClose }) {
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isLocalWhisper = provider === "local-whisper";
@@ -93,6 +94,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showWebLogin, setShowWebLogin] = useState(false);
+  useEffect(() => {
+    if (!isOpen) setShowWebLogin(false);
+  }, [isOpen]);
   const bulkPlaceholder = requiresAccountId ?
   `name1|sk-key1|acc123456\nname2|sk-key2|def789012` :
   BULK_PLACEHOLDER;
@@ -307,8 +312,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   if (!provider) return null;
 
   return (
-    <Modal open={isOpen} title={`Add ${providerName || provider} ${credentialLabel}`} onClose={onClose}>
+    <>
+    <Modal open={isOpen && !showWebLogin} title={`Add ${providerName || provider} ${credentialLabel}`} onClose={onClose}>
       <div className="flex flex-col gap-4">
+        {webLogin ? (
+          <section className="flex flex-col gap-2 rounded-dd-lg border border-dd-border p-3">
+            <Button variant="secondary" className="min-h-11" onClick={() => setShowWebLogin(true)}>Sign in in-page</Button>
+            <p className="text-xs text-dd-muted">Or paste your cookie manually below.</p>
+          </section>
+        ) : null}
         {/* Mode switcher */}
         <div className="flex gap-2">
           <Button size="sm" variant={mode === "single" ? "primary" : "ghost"} onClick={() => {setMode("single");setBulkResult(null);}}>Single</Button>
@@ -570,7 +582,19 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         </div>
         </>}
       </div>
-    </Modal>);
+    </Modal>
+    <WebLoginModal
+      isOpen={isOpen && showWebLogin}
+      provider={provider}
+      providerName={providerName}
+      initialName={formData.name}
+      onSuccess={() => {
+        onBulkDone?.();
+        onClose();
+      }}
+      onClose={() => setShowWebLogin(false)}
+    />
+    </>);
 
 }
 
@@ -585,6 +609,7 @@ AddApiKeyModal.propTypes = {
   authHint: PropTypes.string,
   authSnippet: PropTypes.string,
   website: PropTypes.string,
+  webLogin: PropTypes.object,
   proxyPools: PropTypes.arrayOf(PropTypes['shape']({
     id: PropTypes.string,
     name: PropTypes.string

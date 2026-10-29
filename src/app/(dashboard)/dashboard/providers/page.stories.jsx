@@ -64,7 +64,7 @@ export const AllStatusScenarios = {
                 provider: "anthropic",
                 authType: "apikey",
                 name: "Backup",
-                isActive: false,
+                isActive: true,
                 testStatus: "error",
                 priority: 2,
                 lastError: "Invalid API key",
@@ -97,5 +97,6 @@ export const AllStatusScenarios = {
     await expect(canvas.getByText("1 failed")).toBeVisible();
     await expect(canvas.getByText("42ms")).toBeVisible();
     await expect(canvas.getByText("AUTH")).toBeVisible();
+    await expect(canvas.getByText("1 Error (AUTH)")).toBeVisible();
   },
 };

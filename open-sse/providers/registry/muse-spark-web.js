@@ -13,6 +13,13 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste your ecto_1_sess value or the full Cookie header from meta.ai.",
+  webLogin: {
+    startUrl: "https://www.meta.ai/",
+    origin: "https://www.meta.ai",
+    allowedHosts: ["auth.meta.com"],
+    cookieNames: ["ecto_1_sess"],
+    readyProbe: { url: "https://www.meta.ai/", method: "GET", okStatus: [200] },
+  },
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://www.meta.ai/api/graphql",

@@ -1352,6 +1352,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     }
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
+  // Durable reauth outranks ordinary cooldowns on every model. Classify first
+  // so request-terminal 413/499 still return without account fallback. Only
+  // explicit credential replacement may revive this quarantined account.
+  if (conn?.testStatus === "reauth_required" || conn?.errorCode === "REAUTH") {
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
 
   cooldownMs = Math.max(0, Math.ceil(cooldownMs));
   const deadline = normalizedReset !== null ?
@@ -1399,7 +1405,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   try {
     const db = await import("@/lib/localDb");
     if (isFunction(db.recordProviderConnectionFallbackState)) {
-      await db.recordProviderConnectionFallbackState(connectionId, {
+      const recorded = await db.recordProviderConnectionFallbackState(connectionId, {
         model: fallbackModel,
         status,
         reasonCode,
@@ -1411,7 +1417,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         webSearch: isolatedSearch,
         videoPoll: context?.videoPoll === true
       }, { signal });
+      // The atomic path ran; never fall through to the compatibility writer,
+      // even when applied is false (stale watermark or reauth guard).
       atomicApplied = true;
+      // A transactional reauth conflict refused the ordinary cooldown write.
+      // Match the pre-write reauth early-return: fallback without a cooldown.
+      if (recorded?.applied === false &&
+        (recorded.connection?.testStatus === "reauth_required" || recorded.connection?.errorCode === "REAUTH")) {
+        return { shouldFallback: true, cooldownMs: 0 };
+      }
     }
   } catch (error) {
     if (error?.name === "AbortError") throw error;
@@ -1420,14 +1434,25 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!atomicApplied) {
     const lockUpdate = buildModelLockUpdate(fallbackModel, legacyCooldownMs);
     if (isolatedSearch) lockUpdate[`modelError_${fallbackModel}`] = Number(status) || 503;
-    await updateProviderConnection(connectionId, context?.webFetch === true || isolatedSearch ? lockUpdate : {
-      ...lockUpdate,
-      testStatus: "unavailable",
-      lastError: reason,
-      errorCode: status,
-      lastErrorAt: new Date(observedAt).toISOString(),
-      backoffLevel: newBackoffLevel ?? backoffLevel
-    });
+    // Same reauth guard as recordProviderConnectionFallbackState: re-read inside
+    // the write transaction so a concurrent durable reauth is never demoted when
+    // the atomic path threw and this compatibility writer runs (#1324/#1311).
+    const recorded = await updateProviderConnection(
+      connectionId,
+      context?.webFetch === true || isolatedSearch ? lockUpdate : {
+        ...lockUpdate,
+        testStatus: "unavailable",
+        lastError: reason,
+        errorCode: status,
+        lastErrorAt: new Date(observedAt).toISOString(),
+        backoffLevel: newBackoffLevel ?? backoffLevel
+      },
+      { refuseIfReauth: true, returnCommitResult: true }
+    );
+    if (recorded?.applied === false &&
+      (recorded.connection?.testStatus === "reauth_required" || recorded.connection?.errorCode === "REAUTH")) {
+      return { shouldFallback: true, cooldownMs: 0 };
+    }
   }
 
   if (Number(status) === 429) {

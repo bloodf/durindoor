@@ -5,6 +5,7 @@ import { MODEL_FALLBACK } from "../schema/defaults.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { FORMATS } from "../formats.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 /**
  * Convert non-streaming OpenAI Chat Completions response to Anthropic Messages format.
@@ -12,8 +13,11 @@ import { FORMATS } from "../formats.js";
  *
  * Input:  OpenAI Chat Completions JSON  {object:"chat.completion", choices:[{message:{...}}]}
  * Output: Anthropic Messages JSON        {id:"msg_...", type:"message", content:[...]}
+ *
+ * Hub `finish_reason: "error"` never reaches this translator from live handlers:
+ * `handleNonStreamingResponse` rejects it via `isCoherentNonStreamingResponse`, and
+ * `handleForcedSSEToJson` returns the same incoherent 502 before projection (#1330).
  */
-import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, options = {}) {
   if (!responseBody || !responseBody.choices?.[0]) return responseBody;
 

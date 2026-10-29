@@ -340,7 +340,7 @@ export function TtsExampleCard({ providerId }) {
             <div>
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-dd-muted">Response {latency && <span className="font-normal normal-case">⚡ {latency}ms</span>}</span>
-                <a href={audioUrl} download="speech.mp3" className="inline-flex items-center gap-1 text-xs text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
+                <a href={audioUrl} download="speech.mp3" className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-dd px-2 text-xs text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus">
                   <span aria-hidden="true" className="material-symbols-outlined text-[14px]">download</span>Download
                 </a>
               </div>

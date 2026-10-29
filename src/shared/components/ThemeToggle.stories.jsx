@@ -7,12 +7,17 @@ export default meta;
 export const Default = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const btn = canvas.getByRole("button");
-    const previous = document.documentElement.classList.contains("dark");
+    const btn = canvas.getByRole("button", { name: /Switch to (light|dark) mode/ });
+    const root = document.documentElement;
+    const initialScheme = root.style.colorScheme;
+    const invertedScheme = initialScheme === "dark" ? "light" : "dark";
+    await expect(btn).toBeVisible();
     await userEvent.click(btn);
-    await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(!previous));
+    await waitFor(() => expect(root.style.colorScheme).toBe(invertedScheme));
+    await expect(btn).toHaveAccessibleName(`Switch to ${initialScheme} mode`);
     await userEvent.click(btn);
-    await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(previous));
+    await waitFor(() => expect(root.style.colorScheme).toBe(initialScheme));
+    await expect(btn).toHaveAccessibleName(`Switch to ${invertedScheme} mode`);
   },
 };
-export const Card = { args: { variant: "card" } };
+export const Card = { args: { variant: "card" }, play: Default.play };

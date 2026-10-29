@@ -42,31 +42,32 @@ describe("hasExactRequestOrigin port and proxy termination", () => {
   });
 
   it("accepts a Tailscale Serve HTTPS Origin on a non-default port with matching Host", () => {
-    expect(hasExactRequestOrigin(request({ host: "cortexos.tailfd052e.ts.net:11434", origin: "https://cortexos.tailfd052e.ts.net:11434" }))).toBe(true);
+    expect(hasExactRequestOrigin(request({ host: "gateway.synthetic-tailnet.example:11434", origin: "https://gateway.synthetic-tailnet.example:11434" }))).toBe(true);
   });
 
   it("accepts direct IP access over http (Tailscale/LAN address, same host:port)", () => {
-    expect(hasExactRequestOrigin(request({ host: "100.109.20.9:11434", origin: "http://100.109.20.9:11434" }))).toBe(true);
+    // Synthetic address in RFC 6598 shared space preserves tailnet IP semantics.
+    expect(hasExactRequestOrigin(request({ host: "100.64.0.10:11434", origin: "http://100.64.0.10:11434" }))).toBe(true);
   });
 
   it("rejects an HTTPS Origin whose host differs from the Host header", () => {
     // Implicit :443 origin vs :11434 Host -> different port -> not same-origin.
-    expect(hasExactRequestOrigin(request({ host: "cortexos.tailfd052e.ts.net:11434", origin: "https://evil.ts.net" }))).toBe(false);
+    expect(hasExactRequestOrigin(request({ host: "gateway.synthetic-tailnet.example:11434", origin: "https://attacker.synthetic-tailnet.example" }))).toBe(false);
   });
 
   it("allows a browser Origin matching the configured public BASE_URL when a proxy rewrites Host", () => {
     // Fallback path for proxies that rewrite Host to an internal name.
-    process.env.BASE_URL = "https://llm.amoena.ai";
-    expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://llm.amoena.ai" }))).toBe(true);
+    process.env.BASE_URL = "https://gateway.example";
+    expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://gateway.example" }))).toBe(true);
   });
 
   it("honors NEXT_PUBLIC_BASE_URL when BASE_URL is unset", () => {
-    process.env.NEXT_PUBLIC_BASE_URL = "https://llm.amoena.ai";
-    expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://llm.amoena.ai" }))).toBe(true);
+    process.env.NEXT_PUBLIC_BASE_URL = "https://gateway.example";
+    expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://gateway.example" }))).toBe(true);
   });
 
   it("still rejects an Origin that matches neither the Host nor the configured base URL", () => {
-    process.env.BASE_URL = "https://llm.amoena.ai";
+    process.env.BASE_URL = "https://gateway.example";
     expect(hasExactRequestOrigin(request({ host: "127.0.0.1:11434", origin: "https://attacker.test" }))).toBe(false);
   });
 });

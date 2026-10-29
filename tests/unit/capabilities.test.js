@@ -5,6 +5,34 @@ import { translateRequest } from "../../open-sse/translator/index.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
 
 describe("getCapabilitiesForModel", () => {
+  describe.each(["cursor", "cu"])("%s transport capabilities", (provider) => {
+    it.each(["gpt-5.2", "claude-4.5-sonnet", "gemini-3-flash-preview"])(
+      "disables vision for %s without changing family capabilities or limits",
+      (model) => {
+        const family = getCapabilitiesForModel(null, model);
+        expect(family.vision).toBe(true);
+        expect(getCapabilitiesForModel(provider, model)).toEqual({ ...family, vision: false });
+        expect(getCapabilitiesForModel(null, model)).toEqual(family);
+      },
+    );
+
+    it("keeps the server-selected default non-vision with unknown limits", () => {
+      expect(getCapabilitiesForModel(provider, "default")).toMatchObject({
+        vision: false,
+        contextWindow: null,
+        maxOutput: null,
+      });
+    });
+  });
+
+  it.each([
+    ["openai", "gpt-5.2"],
+    ["anthropic", "claude-sonnet-4.6"],
+    ["gemini", "gemini-3-flash-preview"],
+  ])("keeps vision enabled for %s/%s", (provider, model) => {
+    expect(getCapabilitiesForModel(provider, model).vision).toBe(true);
+  });
+
   const claudeSonnet5Expected = {
     contextWindow: 1000000,
     maxOutput: 128000,

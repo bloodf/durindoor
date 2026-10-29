@@ -10,6 +10,12 @@ import {
   __clearOAuthQuotaCacheForTesting,
 } from "../../open-sse/services/usage/claude.js";
 import { parseQuotaData } from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js";
+import accountA from "./fixtures/claude-usage-account-a.json";
+import accountB from "./fixtures/claude-usage-account-b.json";
+import {
+  getClaudeWeeklyWindowNames,
+  withClaudeWeeklyPlaceholders,
+} from "../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/claudeQuotaRows.js";
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -137,5 +143,45 @@ describe("Claude Fable provider-reported quota (upstream #3847)", () => {
 
     const quotas = parseQuotaData("claude", data);
     expect(quotas.map((q) => q.name)).toEqual(["session (5h)", "weekly mystery (7d)"]);
+  });
+});
+
+describe("Claude account-specific weekly window presentation", () => {
+  const connections = [{ id: "a", provider: "claude" }, { id: "b", provider: "claude" }];
+  const quotasA = parseQuotaData("claude", accountA);
+  const quotasB = parseQuotaData("claude", accountB);
+  const quotaData = { a: { quotas: quotasA }, b: { quotas: quotasB } };
+
+  it("keeps the reported Fable quota and leaves the omitted account's numbers unknown", () => {
+    const names = getClaudeWeeklyWindowNames(connections, quotaData);
+    const rowsA = withClaudeWeeklyPlaceholders(quotasA, quotasA, names);
+    const rowsB = withClaudeWeeklyPlaceholders(quotasB, quotasB, names);
+    expect(rowsA.find((row) => row.name === "weekly fable (7d)")).toMatchObject({
+      used: 0, total: 100, remainingPercentage: 100, resetAt: "2030-01-08T00:00:00.000Z",
+    });
+    expect(rowsB.find((row) => row.name === "weekly fable (7d)")).toEqual({
+      name: "weekly fable (7d)", notReported: true,
+      title: "Anthropic did not report this window for this account",
+    });
+    expect(accountB.quotas["weekly fable (7d)"]).toBeUndefined();
+    expect(quotasB.some((row) => row.notReported)).toBe(false);
+  });
+
+  it("does not infer model windows from non-Claude siblings", () => {
+    expect(getClaudeWeeklyWindowNames([
+      { id: "a", provider: "codex" }, connections[1],
+    ], quotaData)).toEqual([]);
+    expect(withClaudeWeeklyPlaceholders(quotasB, quotasB, [])).toEqual(quotasB);
+  });
+
+  it("does not replace an intentionally hidden reported window with a placeholder", () => {
+    const visible = quotasA.filter((row) => row.name !== "weekly fable (7d)");
+    expect(withClaudeWeeklyPlaceholders(visible, quotasA, ["weekly fable (7d)"])).toEqual(visible);
+  });
+
+  it("replaces the placeholder when Anthropic later reports the account's window", () => {
+    const reported = [...quotasB, { name: "weekly fable (7d)", used: 35, total: 100 }];
+    expect(withClaudeWeeklyPlaceholders(reported, reported, ["weekly fable (7d)"])
+      .find((row) => row.name === "weekly fable (7d)")).toEqual({ name: "weekly fable (7d)", used: 35, total: 100 });
   });
 });

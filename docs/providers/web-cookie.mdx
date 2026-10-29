@@ -11,6 +11,23 @@ On **Providers**, web-session connections have their own group. Some cards can s
 A session cookie is a full login for that account. Anyone who can send requests through your gateway can spend that session. Keep cookie providers on a personal install, or put them behind scoped DurinDoor keys. See [API key scoping](../operations/api-key-scoping.mdx).
 </Callout>
 
+## Sign in from the dashboard
+
+For **Grok Web** (`grok-web`), **Perplexity Web** (`perplexity-web`), **ChatGPT Web** (`chatgpt-web`), **HuggingChat** (`huggingchat`), and **Muse Spark Web** (`muse-spark-web`), the Add dialog offers **Sign in in-page** alongside manual cookie paste.
+
+Sign in inside the embedded page, or choose **Open in popup** if embedding fails. Each popup receives a fresh, one-time bootstrap grant for the same login session; it does not reuse the iframe's grant. The dashboard polls every two seconds and displays captured cookie **names**, never their values. Once the session is ready, enter a connection name and choose **Save connection**. Cancel, closing the modal, or leaving the page discards the login session. Sessions expire after 15 minutes. Signing in does not add an executor for a provider that is not yet runnable.
+
+Saving rechecks the exact provider/operator-bound session after readiness and immediately before the database commit. Cancellation, expiry, or a replacement login before that commit prevents an in-flight save from storing cookies.
+
+### Isolated login origin
+
+The operator must configure `DURINDOOR_WEB_LOGIN_ORIGIN`, for example `https://login.gateway.example`, and route that hostname to the same DurinDoor server. Use a dedicated hostname different from the dashboard's hostname: a different port alone does not isolate cookies. The flow fails closed if the origin is missing, invalid, or shares the dashboard cookie hostname; there is no same-origin fallback.
+
+The dedicated origin keeps login cookies separate from dashboard authentication and serves only sign-in traffic. Use HTTPS. If browser cookie rules or a provider login block the embedded page, use the popup or manual paste. MiMo keeps its existing login flow.
+
+
+Cloudflare Turnstile, Google SSO, third-party cookies, cross-origin redirects, or other site protections may reject reverse-proxied login, including in a popup. Use manual cookie paste in that case. The flow captures upstream HTTP cookies, not localStorage tokens; only the five providers listed above support this dashboard login. Cookie capture and readiness are not a guarantee that the provider will accept every later chat request.
+
 ## Copy the cookie
 
 Copy from a live request, not from the cookie storage view. The storage view can show stale values, and it can miss cookies the site only sends on signed-in requests.
@@ -79,7 +96,7 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 ## When the session ends
 
-Most cookie sessions have no proactive refresh. ChatGPT Web can save cookies rotated by the site; this does not prevent expiry or revocation. You find out when the site rejects it. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
+Most cookie sessions have no proactive refresh or expiry tracking. ChatGPT Web can save cookies rotated by the site, but rotation does not prevent expiry or revocation. The temporary dashboard-login jar discards expired cookies before saving. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
 
 If automatic recovery fails, sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
 

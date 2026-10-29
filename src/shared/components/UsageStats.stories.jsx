@@ -11,6 +11,13 @@ const stats = {
   byAccount: {}, byApiKey: {}, byEndpoint: {}, pending: { byModel: {} }, activeRequests: [], activeSessions: [], recentRequests: [], errorProvider: "",
 };
 
+const apiKeyStats = {
+  ...stats,
+  byApiKey: {
+    "team-key": { rawModel: "gpt-4", provider: "openai", keyName: "team-key", requests: 4, promptTokens: 400, completionTokens: 100, cachedTokens: 0, reasoningTokens: 0, cacheCreationTokens: 0, cost: 0.01, lastUsed: "2026-01-01T00:00:00Z" },
+  },
+};
+
 const baseFixture = {
   scenario: "default",
   pathname: "/dashboard/usage",
@@ -37,11 +44,32 @@ export const Default = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("gpt-4")).toBeVisible());
     // UsageStats starts in model view; its provider column calls
-    // neutralProviderBadge(), which renders this neutral Badge.
+    // providerBadge(), which renders a neutral badge when no request is pending.
     await expect(canvas.getByText("openai")).toBeVisible();
     await userEvent.click(canvas.getByRole("combobox", { name: /usage grouping/i }));
     await waitFor(() => expect(within(document.body).getByRole("listbox")).toBeVisible());
   }
+};
+
+export const ApiKeyGrouping = {
+  args: { hidePeriodSelector: true },
+  parameters: {
+    storyFixture: {
+      ...baseFixture,
+      routes: {
+        ...baseFixture.routes,
+        "GET /api/usage/stats": { body: apiKeyStats, status: 200 },
+        "GET /api/usage/stream": { events: [apiKeyStats] },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("combobox", { name: /usage grouping/i }));
+    await userEvent.click(within(document.body).getByRole("option", { name: "Usage by API Key" }));
+    await expect(canvas.findByText("team-key")).resolves.toBeVisible();
+    expect(canvas.getByText("openai")).toBeVisible();
+  },
 };
 
 export const CustomRange = {

@@ -50,3 +50,27 @@ export const TtsExample = {
     },
   },
 };
+
+export const CustomEmbeddingDetail = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-providers/embedding/custom-embedding-voyage",
+      params: { kind: "embedding", id: "custom-embedding-voyage" },
+      routes: {
+        ...baseRoutes,
+        "GET /api/provider-nodes": { body: { nodes: [{ id: "custom-embedding-voyage", name: "Voyage Internal", prefix: "voyage" }] }, status: 200 },
+        "DELETE /api/provider-nodes/custom-embedding-voyage": { body: { error: "Node is in use" }, status: 409 },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Voyage Internal")).toBeVisible();
+    await expect(canvas.getByText("Custom · voyage")).toBeVisible();
+    await userEvent.click(canvas.getByRole("button", { name: "Delete" }));
+    const dialog = within(document.body);
+    await userEvent.click(await dialog.findByRole("button", { name: /^Delete$/ }));
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Node is in use");
+  },
+};

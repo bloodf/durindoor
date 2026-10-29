@@ -19,6 +19,7 @@ const key = {
 
 const routes = {
   "GET /api/keys": { body: { keys: [key], providerConnections: [] } },
+  "GET /api/keys/usage": { body: { usage: {} } },
   "GET /api/combos": { body: { combos: [] } },
   "GET /api/keys/policy-catalog": { body: { models: [] } },
 };
@@ -52,5 +53,20 @@ export const Empty = {
     await expect(
       await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Create API Key" }),
     ).toBeVisible();
+  },
+};
+
+export const KeyLimits = {
+  parameters: {
+    storyFixture: {
+      scenario: "default", pathname: "/dashboard/keys", params: {},
+      routes: { ...routes, "GET /api/keys/usage": { body: { usage: { [key.id]: { rpm: { used: 5, limit: 20 }, limits: [] } } } } },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("API key limits")).toBeVisible();
+    await expect(await canvas.findByText("Requests / minute")).toBeVisible();
+    await expect(canvas.getByText("15")).toBeVisible();
   },
 };

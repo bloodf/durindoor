@@ -7,10 +7,14 @@ Open `http://localhost:20128/dashboard` after signing in. The dashboard opens **
 
 ## Connect and test a provider
 
+**Usage** (`/dashboard/usage`) is the dashboard home. Its overview starts with gateway, 24-hour activity, latency, and storage cards, followed by in-flight requests and provider health. Monitoring refreshes every 15 seconds independently of the usage date filter; pause it or refresh manually. Token totals, cost estimates, request history, provider topology, and per-request detail follow. The former `/dashboard/monitoring` URL redirects here.
+
 1. Open **Providers** and add an OAuth, API-key, cookie, compatible, or local connection.
 2. Open **API Keys** and create a DurinDoor client key.
 3. Open **Playground**, choose a model, and send a short prompt.
-4. Open **Usage** and confirm the provider, model, status, and latency for that request.
+4. Open **Usage** and confirm provider, model, status, and latency.
+
+**Timeline** (`/dashboard/timeline`) shows proxy traces as provider or connection swimlanes, with a Table toggle and live updates. Open a trace for its hop waterfall and SSE history.
 
 The client key belongs in your tools. The provider credential stays on the provider connection. See [First request](./first-request.mdx) for a test outside the dashboard.
 
@@ -18,7 +22,7 @@ The client key belongs in your tools. The provider credential stays on the provi
 
 | Section | Page | Use it to |
 | --- | --- | --- |
-| Monitor | Usage | Inspect request history, tokens, estimated cost, topology, and combo reports |
+| Monitor | Usage | Inspect monitoring, request history, tokens, estimated cost, and topology |
 | Monitor | Timeline | Follow proxy hops and SSE events for one request |
 | Monitor | Quota Tracker | Inspect provider limits, cooldowns, and reset hints |
 | Monitor | Health | Check provider connection state |
@@ -41,12 +45,16 @@ The client key belongs in your tools. The provider credential stays on the provi
 | Reference | Docs | Open documentation in a new tab |
 | Reference | Translator | Debug translation when its visibility flag is enabled |
 
-**Settings** stays at the bottom of the sidebar. Open it to change the password, theme, locale, backups, or import and export settings.
+**Settings** stays at the bottom of the sidebar. Open it to change password, theme, locale, backups, or import and export settings.
 
 Some pages open from detail views rather than the sidebar: provider and timeline details, database settings, MITM, and PXPIPE. Pricing is at `/dashboard/settings/pricing`.
+
+**Combos** has a bottom **Connection usage** report for last seven days of combo/account attribution, including unattributed requests. **API Keys** shows configured limits and consumption below the key list. **Console Log** filters, pauses, copies, or downloads its latest 2000 in-memory lines.
+
+**Endpoint** displays URLs in selectable read-only fields. Long URLs wrap and resize when the available width or loaded fonts change; select the complete value or use its copy action. In **Providers**, the OrcaRouter model picker adapts to narrow screens and keeps **Clear** beside its trigger rather than underneath the open popup.
 
 ## Interpret the result
 
 A healthy HTTP server does not prove a provider works. Confirm a real request in **Usage**. Estimated costs are gateway estimates; provider billing remains authoritative. Missing quota can mean that a provider has no quota API.
 
-If a page or connection is missing, check the [provider guide](../providers/index.mdx), the account's active state, and the [troubleshooting guide](../troubleshooting.mdx).
+If a page or connection is missing, check the [provider guide](../providers/index.mdx), account active state, and [troubleshooting guide](../troubleshooting.mdx).

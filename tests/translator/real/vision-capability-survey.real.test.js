@@ -6,6 +6,7 @@
 //
 //   RUN_REAL=1 npx vitest run --config tests/vitest.config.js tests/translator/real/vision-capability-survey.real.test.js
 //   RUN_REAL=1 REAL_PROVIDERS=mistral,nvidia npx vitest run ... (optional filter)
+import { positiveProviderBody } from "./positive-provider-body.js";
 import { describe, it, expect, afterAll } from "vitest";
 import { getProviderCredentials } from "../../../src/sse/services/auth.js";
 import { checkAndRefreshToken } from "../../../src/sse/services/tokenRefresh.js";
@@ -130,12 +131,12 @@ describe.skipIf(!RUN_REAL)("REAL vision capability survey", () => {
         const refreshed = await checkAndRefreshToken(providerId, credentials);
 
         const result = await handleChatCore({
-          body: {
+          body: positiveProviderBody(providerId, {
             model: `${providerId}/${model}`,
             stream: true,
             max_tokens: 64,
             messages: [{ role: "user", content: probe.content }],
-          },
+          }),
           modelInfo: { provider: providerId, model },
           credentials: refreshed,
           connectionId: credentials.connectionId,

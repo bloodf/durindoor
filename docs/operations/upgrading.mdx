@@ -52,21 +52,23 @@ Start through your service manager when the installation uses one. Do not overwr
 </Tab>
 </Tabs>
 
-Keep `JWT_SECRET`, `API_KEY_SECRET`, and the data mount stable. Environment selectors still determine the database engine; an empty `DURINDOOR_PG_URL` also selects PostgreSQL.
+Keep `JWT_SECRET`, `API_KEY_SECRET`, and the data mount stable. Environment selectors still determine the database engine; packaged startup discards an empty `DURINDOOR_PG_URL`, while `DURINDOOR_DATABASE_ENGINE=postgres` remains explicit.
 
-## Verify the upgrade
+Migrations run forward on startup. Both database engines have migration 025 for proxy timeline storage; SQLite keeps its sidecar while PostgreSQL uses main-database tables. Preserve existing timeline history with the [Postgres migration procedure](./postgres.mdx#postgresql-only-installations). Restore a verified backup instead of editing SQLite files by hand.
+
+## After the bump
 
 ```bash
 curl -fsS http://localhost:20128/api/health
 ```
 
-Expect `{"ok":true}`, then run the authenticated [inference smoke test](./startup.mdx#verify-inference). Confirm providers, API keys, combos, and a new usage row in the dashboard.
+This endpoint checks liveness, not database readiness. Also request `/v1/models`, then exercise authenticated inference and confirm a new usage row in the selected database. For PostgreSQL-only deployments, verify that initialization errors do not create a live SQLite database.
+
+Then open the dashboard and confirm providers, API keys, combos, and usage.
 
 On PostgreSQL, check **Settings → Database** for the active engine, no initialization error, and no **Serving SQLite** fallback banner. Liveness alone does not prove database readiness.
 
-Migrations run forward on startup. A skipped-version upgrade applies all pending migrations. Both database engines have migration 025 for proxy timeline; SQLite keeps a sidecar while PostgreSQL uses main-database tables. Preserve existing timeline history with the [Postgres migration procedure](./postgres.mdx#postgresql-only-installations).
-
-If SQLite startup reports `SQLite integrity check failed`, stop every writer and restore a verified backup. There is no automatic repair.
+If SQLite startup reports corruption, stop every writer and restore a verified backup. There is no automatic repair.
 
 ## Roll back a failed upgrade
 

@@ -564,7 +564,8 @@ function collectCredentialSecrets(value, key = "", inheritedSensitive = false, s
   return secrets;
 }
 
-function sanitizeStructuredErrorBody(value, secrets = []) {
+/** Sanitize public JSON error metadata without changing caller-owned objects. */
+export function sanitizeStructuredErrorBody(value, secrets = []) {
   if (isString(value)) return sanitizeErrorMessageWithSecrets(value, secrets);
   if (Array.isArray(value)) return value.map((nested) => sanitizeStructuredErrorBody(nested, secrets));
   if (!value || !isObject(value)) return value;
@@ -815,7 +816,11 @@ function maskQuotedPaths(line) {
  *   scheme (`https://cdn/app.js`) are NOT source-path-masked.
  * - Secrets: URL userinfo, Bearer tokens, JSON credential fields, `key: value`
  *   pairs, and query-param credentials become `[redacted]`.
- * - Safe messages (no stack/path/secret) pass through UNCHANGED.
+ *   Quoted JSON credentials are also redacted when an upstream truncates the
+ *   value before its closing quote, independently of the local output cap.
+ * - Encoded JSON diagnostics with escaped quotes, slashes, or Unicode use a
+ *   fixed fallback; decoding arbitrary nesting is not a safe diagnostic contract.
+ * - Other safe messages (no stack/path/secret) pass through UNCHANGED.
  * - Output is capped at 4096 chars (pathological-input guard).
  * @param {string} message
  * @returns {string}
@@ -834,6 +839,9 @@ export function sanitizeErrorMessage(message) {
   // lives in later stack lines, the first line ended normally and its
   // delimiters are intact — tail redaction would be a false positive.
   const raw = full.slice(0, 4096);
+  // Encoded JSON can hide credential keys or terminate a regex match inside a
+  // secret. Fail closed on the bounded diagnostic instead of recursively decoding.
+  if (/\\(?:"|\/|u[0-9a-fA-F]{4})/.test(raw)) return "Upstream provider error";
   const firstLineCut = full.length > 4096 && !raw.includes("\n") && !raw.includes("\r");
   const firstLine = raw.split(/\r?\n/)[0].trim();
   let out = maskQuotedPaths(maskSourcePaths(firstLine)).
@@ -843,7 +851,7 @@ export function sanitizeErrorMessage(message) {
   replace(/\bBearer\s+\S+/gi, "Bearer [redacted]").
   replace(/\b(?:sk[-_][A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9._-]{12,}|AIza[A-Za-z0-9_-]{20,})\b/gi, "[redacted]").
   replace(
-    /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*"/gi,
+    /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]*(?:"|$)/gi,
     '$1[redacted]"'
   ).
   replace(/([A-Za-z0-9_-]*(?:auth(?:orization)?|cookie|token|key|secret|signature|password|credential)[A-Za-z0-9_-]*\s*:\s*)[^\r\n]+/gi, "$1[redacted]").
@@ -861,17 +869,9 @@ export function sanitizeErrorMessage(message) {
   replace(/file:\/\/\S+/g, "[path]").
   replace(/\/(?:Users|home|var|tmp)\/\S+/g, "[path]");
   if (firstLineCut) {
-    // The 4096 cut may have removed a credential's closing delimiter, leaving
-    // an unredacted secret prefix at the end of the capped text. Redact an
-    // incomplete JSON credential tail and an incomplete URL userinfo tail
-    // (`user:secret` shape, no `@`; a purely numeric second segment is a
-    // port, not a password) — anchored to the end so complete,
-    // delimiter-closed forms above are never double-touched (Codex P1).
+    // A capped URL may lose its userinfo delimiter; a numeric port is not
+    // a password. JSON credential tails are handled above even without a cap.
     out = out.
-    replace(
-      /("(?:access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|ctoken|token|x[-_]?api[-_]?key|api[-_]?key|key|auth|authorization|authorization[-_]?code|oauth[-_]?code|code[-_]?verifier|oauth[-_]?state|proxy[-_]?authorization|cookie|set[-_]?cookie|secret|client[-_]?secret|password|private[-_]?key|signature|sig)"\s*:\s*")[^"]+$/i,
-      '$1[redacted]"'
-    ).
     replace(/\b([a-z][a-z0-9+.\-]{1,15}):\/\/[^@\s/:]+:(?![0-9]+$)[^@\s/]+$/i, "$1://[redacted]@");
     // Token-only URL userinfo cut at the cap (`scheme://TOKEN`, no `:`/`@` in
     // the kept text). Capped text alone cannot tell a truncated credential from

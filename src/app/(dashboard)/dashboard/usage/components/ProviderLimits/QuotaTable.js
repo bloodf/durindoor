@@ -50,7 +50,7 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
   const [page, setPage] = useState(1);
 
   const normalizedQuotas = useMemo(
-    () => quotas.map((quota, index) => ({ ...quota, index, remaining: getRemainingPercentage(quota) })),
+    () => quotas.map((quota, index) => ({ ...quota, index, remaining: quota.notReported ? null : getRemainingPercentage(quota) })),
     [quotas],
   );
   const sortedQuotas = useMemo(() => sortQuotas(normalizedQuotas, sortMode), [normalizedQuotas, sortMode]);
@@ -70,12 +70,13 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
       key: "name",
       label: "Quota",
       rowHeader: true,
-      render: (quota) => <span className={`truncate font-medium text-dd-text ${compact ? "text-[11px]" : "text-[13px]"}`}>{quota.name}</span>,
+      render: (quota) => <span title={quota.title} className={`truncate font-medium ${quota.notReported ? "text-dd-muted" : "text-dd-text"} ${compact ? "text-[11px]" : "text-[13px]"}`}>{quota.name}</span>,
     },
     {
       key: "remaining",
       label: "Remaining",
       render: (quota) => {
+        if (quota.notReported) return <span className="text-dd-muted" title={quota.title}>—</span>;
         const isCreditBalance = quota.isCreditBalance === true;
         const tone = isCreditBalance ? TONES.credit : toneFor(quota.remaining);
         const isMerged = quota.mergeMode === MERGE_MODE.ABSOLUTE || quota.mergeMode === MERGE_MODE.PERCENTAGE;
@@ -106,6 +107,7 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
       key: "reset",
       label: "Reset",
       render: (quota) => {
+        if (quota.notReported) return <span className={`italic text-dd-muted ${compact ? "text-[11px]" : "text-[13px]"}`} title={quota.title}>not reported</span>;
         const countdown = formatResetTime(quota.resetAt);
         const resetDisplay = formatResetTimeDisplay(quota.resetAt);
         const recurring = quota.recurring !== false;
@@ -129,7 +131,7 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
           key: "hide",
           label: "",
           align: "right",
-          render: (quota) => <IconButton label={`Hide quota ${quota.name}`} icon="visibility_off" size="sm" onClick={() => onHideQuota(quota)} />,
+          render: (quota) => quota.notReported ? null : <IconButton label={`Hide quota ${quota.name}`} icon="visibility_off" size="sm" onClick={() => onHideQuota(quota)} />,
         }]
       : []),
   ];

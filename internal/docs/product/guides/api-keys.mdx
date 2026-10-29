@@ -127,4 +127,4 @@ These references describe repository behavior. They do not establish that a vend
 
 ### Current behavior and implementation boundaries
 
-Policy restrictions are independent: account scopes, exact models, glob rules, combos, auto-combo allowance and usage windows. Account-scope emptiness means unrestricted; modelAccess allow with no patterns denies all. RPM/TPM are process-local; budget/token windows read stored usage and can overshoot while requests are in flight.
+Policy restrictions are independent: account scopes, exact models, glob rules, combos, auto-combo allowance and usage windows. Account-scope emptiness means unrestricted; modelAccess allow with no patterns denies all. RPM/TPM are process-local; budget/token windows read stored usage and can overshoot while requests are in flight. Empty lifetime-limit drafts mean unlimited; explicit `0` remains a real limit. The API key limits card is below the key list, not on Usage.

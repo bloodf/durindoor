@@ -4,13 +4,13 @@ import TimelineDetailPage from "./page";
 import TimelineDetailSkeleton from "./TimelineDetailSkeleton.jsx";
 
 const trace = {
-  trace: { id: "trace-001", started_at: "2026-09-05T12:00:00.000Z", status: "ok", provider: "codex", model: "gpt-5", connection_id: "fixture-connection" },
+  trace: { id: "trace-001", started_at: "2026-09-05T12:00:00.000Z", status: "ok", provider: "codex", model: "gpt-5", connection_id: "fixture-connection", total_ms: 1200 },
   events: [
-    { seq: 1, type: "request", direction: "out", summary: "POST /v1/chat/completions", payload: { model: "gpt-5" } },
-    { seq: 2, type: "sse_chunk", direction: "in", summary: "open", payload: "event: message\ndata: {\"choices\":[{}]}" },
-    { seq: 3, type: "sse_chunk", direction: "in", summary: "delta", payload: "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}" },
-    { seq: 4, type: "sse_chunk", direction: "in", summary: "delta", payload: "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\" there\"}}]}" },
-    { seq: 5, type: "response", direction: "in", summary: "200", payload: { status: 200 } },
+    { seq: 1, t_ms: 0, type: "request", direction: "out", summary: "POST /v1/chat/completions", payload: { model: "gpt-5" } },
+    { seq: 2, t_ms: 300, type: "sse_chunk", direction: "in", summary: "open", payload: "event: message\ndata: {\"choices\":[{}]}" },
+    { seq: 3, t_ms: 340, type: "sse_chunk", direction: "in", summary: "delta", payload: "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}" },
+    { seq: 4, t_ms: 380, type: "sse_chunk", direction: "in", summary: "delta", payload: "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\" there\"}}]}" },
+    { seq: 5, t_ms: 900, type: "response", direction: "in", summary: "200", payload: { status: 200 } },
   ],
 };
 
@@ -35,6 +35,20 @@ export const Loaded = {
   },
 };
 // Loaded covers singleton EventRow payloads; ExpandSseChunks covers the private EventGroup collapse lifecycle.
+
+export const Waterfall = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const waterfall = await canvas.findByRole("list", { name: "Trace waterfall" });
+    const rows = within(waterfall).getAllByRole("button");
+    await expect(rows).toHaveLength(3);
+    await expect(rows[1]).toHaveTextContent("3 chunks");
+    await expect(rows[2]).toHaveTextContent("900–1200 ms");
+    await userEvent.click(rows[2]);
+    await expect(rows[2]).toHaveAttribute("aria-expanded", "true");
+    await expect(within(waterfall).getByRole("region", { name: /Timeline event #5 details/ })).toHaveTextContent('"status": 200');
+  },
+};
 
 export const ExpandSseChunks = {
   play: async ({ canvasElement }) => {
@@ -90,5 +104,27 @@ export const Skeleton = {
   play: async ({ canvasElement }) => {
     await expect(canvasElement.querySelector('[aria-busy="true"]')).toBeInTheDocument();
     await expect(canvasElement.querySelectorAll(".animate-pulse")).toHaveLength(2);
+  },
+};
+
+export const CompletedWithoutDuration = {
+  parameters: { storyFixture: { routes: {
+    "GET /api/timeline/trace-001": { body: { trace: { ...trace.trace, status: "ok", total_ms: null }, events: [trace.events[0]] } },
+  } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("list", { name: "Trace waterfall" });
+    await expect(canvas.queryByRole("status")).not.toBeInTheDocument();
+  },
+};
+
+export const RunningWithoutDuration = {
+  parameters: { storyFixture: { routes: {
+    "GET /api/timeline/trace-001": { body: { trace: { ...trace.trace, status: "running", total_ms: null }, events: [trace.events[0]] } },
+  } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("list", { name: "Trace waterfall" });
+    await expect(canvas.getByRole("status")).toBeVisible();
   },
 };

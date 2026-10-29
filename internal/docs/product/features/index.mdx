@@ -10,6 +10,21 @@ Reviewed on 2026-10-07 against baseline `0e7307831`. Use this section and the [c
 
 Public index and meta pages must retain every published route. Internal snapshots are repository-only and are not linked from public pages. Navigation descriptions must reflect current native protocol and operation boundaries.
 
+### Unreleased campaign workflows
+
+The [public feature index](../../../../docs/features/index.mdx) keeps the routing, media, quota, MCP, realtime, compression, and Headroom routes while adding entrypoints for the campaign workflows:
+
+- Usage is the monitoring home; the former Monitoring route redirects there. API key limits belong on API Keys and connection usage belongs on Combos.
+- Proxy Timeline retains PostgreSQL or SQLite-sidecar capture and adds provider/connection swimlanes, live time windows, the Table alternative, and per-trace waterfalls with grouped SSE chunks.
+- Console Log provides level/tag filters, search highlights, pause/buffered-line handling, wrapping, copy/download, and windowed rows over a 2000-line ring.
+- Empty lifetime key-limit drafts are unlimited; explicit zero limits still apply. Omitted Claude model-scoped weekly windows remain unknown and non-hideable; manual fresh refresh still respects rate-limit cooldowns.
+- Combo create/edit spacing uses the shared modal footer and aligned capability/model controls. Connection usage remains an attribution view, not evidence that an account can serve another request.
+- Database managed-file startup selection requires restart and is separate from live migration/cutover. Web-cookie login uses a dedicated distinct-hostname origin, with popup/manual fallback and unchanged MiMo behavior.
+- Skills offer deduplicated reachable Endpoint sources. Upstream port/defer details are maintained in [upstream sync](../../upstream-sync.mdx).
+
+These are Unreleased campaign documentation commitments, not a version bump, live deployment proof, or runtime/catalog approval. Release Prepare owns version advancement from 4.10.1.
+
+
 ### Execution ownership and evidence
 
 - [docs/features/meta.json](../../../../docs/features/meta.json)

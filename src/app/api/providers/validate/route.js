@@ -655,6 +655,11 @@ export async function POST(request) {
             const headers = {};
             if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
             const res = await fetchValidationProbe(endpoints[provider], { headers });
+            // Ollama tags proves reachability, not bearer-key validity. Keyless
+            // self-hosted connections still use reachability as their check.
+            if (res.ok && (provider === "ollama" || provider === "ollama-local" && apiKey)) {
+              return NextResponse.json({ valid: false, skipped: true, error: "Model endpoint reachable; credentials not verified" });
+            }
             // xai returns 400 for bad key, 403 for valid-but-no-credit. Other providers use 401.
             if (provider === "xai") {
               isValid = res.status === 200 || res.status === 403;

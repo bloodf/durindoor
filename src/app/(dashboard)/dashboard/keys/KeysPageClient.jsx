@@ -20,6 +20,7 @@ import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import StatusAlert from "../endpoint/components/StatusAlert";
+import ApiKeyLimitsCard from "./components/ApiKeyLimitsCard";
 import ApiKeyPolicyFields from "../endpoint/components/ApiKeyPolicyFields";
 import { KeyUsageSummary, KeyLimitsModal } from "../endpoint/components/ApiKeyLimits";
 import ApiKeyModelAccessModal from "../endpoint/ApiKeyModelAccessModal";
@@ -748,6 +749,8 @@ export default function KeysPageClient() {
           )}
         </CardContent>
       </Card>
+
+      <ApiKeyLimitsCard />
 
       {/* Add Key Modal */}
       <Modal

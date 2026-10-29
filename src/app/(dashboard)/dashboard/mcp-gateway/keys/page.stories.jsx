@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { expect, spyOn, userEvent, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import McpGatewayKeysError from "./error";
 import McpGatewayKeysPage from "./page.js";
@@ -8,7 +8,9 @@ const MCP_GATEWAY_KEYS_ERROR = new Error("MCP Gateway keys failed to load");
 
 function McpGatewayKeysErrorHarness() {
   const [retried, setRetried] = useState(false);
-  return <><McpGatewayKeysError error={MCP_GATEWAY_KEYS_ERROR} reset={() => setRetried(true)} />{retried ? <p>Reset requested</p> : null}</>;
+  return retried
+    ? <p>Reset requested</p>
+    : <McpGatewayKeysError error={MCP_GATEWAY_KEYS_ERROR} reset={() => setRetried(true)} />;
 }
 
 const INSTANCES = [
@@ -27,11 +29,19 @@ const OK = { status: 200, body: { ok: true } };
  * route is served here even though no instance section is rendered.
  */
 function defaultFixture({ instances = INSTANCES, keys = KEYS } = {}) {
-  const state = { instances: instances.map((instance) => ({ ...instance })), keys: keys.map((key) => ({ ...key })), grants: new Map([["k1", ["granola", "jira"]], ["k2", []]]) };
+  const initialState = structuredClone({
+    instances,
+    keys,
+    grants: new Map([["k1", ["granola", "jira"]], ["k2", []]]),
+  });
+  let state;
+  const reset = () => { state = structuredClone(initialState); };
+  reset();
   return {
     scenario: "default",
     pathname: "/dashboard/mcp-gateway/keys",
     params: {},
+    reset,
     routes: {
       "GET /api/mcp-gateway/instances": () => ({ status: 200, body: { instances: state.instances } }),
       "GET /api/mcp-gateway/keys": () => ({ status: 200, body: { keys: state.keys } }),
@@ -62,6 +72,14 @@ const meta = {
   title: "Durin DS/Production Pages/MCP Gateway Keys",
   component: McpGatewayKeysPage,
   parameters: { layout: "fullscreen" },
+  // Restore the whole fixture graph, including grant arrays and newly added
+  // keys, on setup and cleanup so revisits exercise the same initial state.
+  beforeEach: ({ parameters }) => {
+    const reset = parameters.storyFixture?.reset;
+    if (!reset) return;
+    reset();
+    return reset;
+  },
 };
 export default meta;
 
@@ -122,6 +140,7 @@ export const NewKeyKeyboard = {
     input.focus();
     await userEvent.keyboard("{Enter}");
     await expect(await dialog.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
+    await expect(dialog.queryByRole("dialog", { name: "Name gateway key" })).not.toBeInTheDocument();
   },
 };
 
@@ -132,10 +151,22 @@ export const NewKeyFreshMount = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "New key" }));
     const dialog = within(document.body);
-    await userEvent.type(await dialog.findByLabelText("Key name"), "Discarded");
-    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
+    const firstPrompt = await dialog.findByRole("dialog", { name: "Name gateway key" });
+    const firstInput = within(firstPrompt).getByRole("textbox", { name: "Key name" });
+    await waitFor(() => expect(firstInput).toBeVisible());
+    await userEvent.type(firstInput, "Discarded");
+    await expect(firstInput).toHaveValue("Discarded");
+    await userEvent.click(within(firstPrompt).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(dialog.queryByRole("dialog", { name: "Name gateway key" })).not.toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "New key" }));
-    await expect(await dialog.findByLabelText("Key name")).toHaveValue("");
+    const prompt = await dialog.findByRole("dialog", { name: "Name gateway key" });
+    // Reopening mounts a blank form before its animated label becomes visible.
+    await waitFor(() => {
+      expect(prompt).toBeVisible();
+      expect(within(prompt).getByRole("textbox", { name: "Key name" })).toHaveValue("");
+      expect(within(prompt).getByRole("textbox", { name: "Key name" })).toBeVisible();
+      expect(within(prompt).getByText("Key name", { exact: true })).toBeVisible();
+    });
   },
 };
 
@@ -153,19 +184,58 @@ export const MobileNewKeyKeyboard = {
   },
 };
 
+export const RevealExistingKey = {
+  parameters: { storyFixture: defaultFixture() },
+  render: () => <McpGatewayKeysPage />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const cursorRow = (await canvas.findByText("Cursor laptop")).closest("article");
+    await userEvent.click(within(cursorRow).getByRole("button", { name: "Reveal and copy" }));
+    await expect(within(cursorRow).getByRole("button", { name: "Reveal and copy" }).querySelector(".material-symbols-outlined")).toHaveTextContent("check");
+  },
+};
+
+export const EmptyKeys = {
+  parameters: { storyFixture: defaultFixture({ keys: [] }) },
+  render: () => <McpGatewayKeysPage />,
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText("No gateway keys yet")).toBeVisible();
+  },
+};
+
 export const ErrorBoundary = {
   render: () => <McpGatewayKeysErrorHarness />,
   beforeEach: () => {
     const original = console.error;
-    const log = spyOn(console, "error").mockImplementation((message, error) => {
-      if (message !== "MCP Gateway keys page error:" || error !== MCP_GATEWAY_KEYS_ERROR) original(message, error);
+    const log = spyOn(console, "error").mockImplementation((...args) => {
+      if (args.length !== 2 || args[0] !== "MCP Gateway keys page error:" || args[1] !== MCP_GATEWAY_KEYS_ERROR) original(...args);
     });
     return () => log.mockRestore();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("MCP Gateway failed to load")).toBeVisible();
+    await waitFor(() => expect(console.error).toHaveBeenCalledWith("MCP Gateway keys page error:", MCP_GATEWAY_KEYS_ERROR));
     await userEvent.click(canvas.getByRole("button", { name: "Try again" }));
     await expect(await canvas.findByText("Reset requested")).toBeVisible();
+    await expect(canvas.queryByText("MCP Gateway failed to load")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  },
+};
+
+/** Keep the actual boundary/view mounted for capture; reset belongs to ErrorBoundary. */
+export const RetainedErrorBoundary = {
+  render: ErrorBoundary.render,
+  beforeEach: ErrorBoundary.beforeEach,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("MCP Gateway failed to load")).toBeVisible();
+    await expect(canvas.getByText("This usually happens during initial hydration or when the dashboard API is unreachable. Try again to reload the page.")).toBeVisible();
+    await expect(canvas.getByText("If the error persists, the dashboard server logs may include more detail.")).toBeVisible();
+    const retry = canvas.getByRole("button", { name: "Try again", exact: true });
+    await expect(retry).toBeVisible();
+    await expect(retry).toBeEnabled();
+    await expect(canvas.queryByText("Reset requested")).not.toBeInTheDocument();
+    await waitFor(() => expect(console.error).toHaveBeenCalledWith("MCP Gateway keys page error:", MCP_GATEWAY_KEYS_ERROR));
   },
 };

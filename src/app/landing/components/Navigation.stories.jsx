@@ -15,8 +15,15 @@ export const MobileMenuOpen = {
   parameters: { viewport: { defaultViewport: "mobile1" } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const toggle = canvas.getByLabelText("Open navigation menu");
-    await userEvent.click(toggle);
-    await expect(canvas.getByLabelText("Close navigation menu")).toBeInTheDocument();
+    if (window.matchMedia("(min-width: 768px)").matches) {
+      // The canonical matrix also renders this story at desktop width, where
+      // production intentionally has no mobile-menu control.
+      await expect(canvas.getByRole("link", { name: "Features" })).toBeVisible();
+      await expect(canvas.getByRole("link", { name: "How it works" })).toBeVisible();
+    } else {
+      await userEvent.click(canvas.getByRole("button", { name: "Open navigation menu" }));
+      await expect(canvas.getByRole("button", { name: "Close navigation menu" })).toBeVisible();
+      await expect(canvas.getByRole("link", { name: "Features" })).toBeVisible();
+    }
   },
 };

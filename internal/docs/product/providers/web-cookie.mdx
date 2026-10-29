@@ -14,6 +14,7 @@ These providers use `category: "webCookie"` and `authType: "cookie"` in `open-ss
 A session cookie is a full login for that account. Anyone who can send requests through your gateway can spend that session. Keep cookie providers on a personal install, or put them behind scoped DurinDoor keys. See [API key scoping](../../../../docs/operations/api-key-scoping.mdx).
 </Callout>
 
+
 ## Copy the cookie
 
 Copy from a live request, not from the cookie storage view. The storage view can show stale values, and it can miss cookies the site only sends on signed-in requests.
@@ -108,8 +109,4 @@ These references describe repository behavior. They do not establish that a vend
 
 ### Verified corrections and boundaries
 
-The preserved snapshot lists ChatGPT Web as unsupported and claims cookies are never refreshed. Current executor selection supports ChatGPT Web, and `mergeRefreshedCookie` persists rotated NextAuth cookies. General cookie expiry still requires a fresh session when upstream revokes it. Kimi Web uses access/refresh-token JSON and retains its distinct refresh path.
-
-### Current behavior and implementation boundaries
-
-The current unsupported set excludes chatgpt-web. Validation intentionally skips conversation-creating probes for grok-web/copilot-web/zenmux-free and reports skip, not pass. NextAuth chunks retain names; mergeRefreshedCookie replaces stale plain/chunked session families.
+The preserved snapshot lists ChatGPT Web as unsupported and claims cookies are never refreshed. Current executor selection supports ChatGPT Web, and `mergeRefreshedCookie` persists rotated NextAuth cookies. General cookie expiry still requires a fresh session when upstream revokes it. The current unsupported set excludes `chatgpt-web`. Validation intentionally skips conversation-creating probes for `grok-web`, `copilot-web`, and `zenmux-free`, reporting a skip rather than a pass. NextAuth chunks retain their names; `mergeRefreshedCookie` replaces stale plain and chunked session families. Kimi Web uses access/refresh-token JSON and retains its distinct refresh path. Dashboard-assisted sign-in uses the two-origin isolation described above and never replaces manual cookie entry. Grok Web, Perplexity Web, ChatGPT Web, HuggingChat, and Muse Spark Web use a dedicated HTTPS `DURINDOOR_WEB_LOGIN_ORIGIN` on a hostname distinct from the dashboard. The flow fails closed for missing, invalid, or same-hostname configuration, uses a separate host-only cookie, exposes captured names rather than values, and expires after 15 minutes. Iframe login falls back to popup, then manual paste; MiMo retains its separate flow. Its temporary jar removes expired cookies before save; readiness and final save recheck the provider/operator-bound session.

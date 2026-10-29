@@ -127,4 +127,7 @@ export const EmbeddingKind = {
 export const Closed = {
   args: { isOpen: false, activeProviders, ...callbacks },
   render: (args) => <ModelSelectModal {...args} />,
+  play: async () => {
+    await expect(within(document.body).queryByRole("dialog", { name: "Select Model" })).toBeNull();
+  },
 };

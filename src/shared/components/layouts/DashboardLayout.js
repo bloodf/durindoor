@@ -70,10 +70,29 @@ export default function DashboardLayout({ children }) {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-dd-bg">
-      {/* Toasts are how the dashboard reports the outcome of an action, so
-          they have to reach someone who cannot see them. Errors interrupt;
-          everything else waits for a pause in speech. */}
-      <div className="fixed end-4 top-4 z-[80] flex w-[min(92vw,380px)] flex-col gap-2">
+      <div className="hidden shrink-0 lg:flex">
+        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebarCollapse} />
+      </div>
+
+
+
+      <Drawer
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        title="Navigation"
+        width={320}
+        className="lg:hidden"
+      >
+        {/* Bound the rail to the drawer body so its nav scrolls independently. */}
+        <div className="h-full min-h-0 [&>aside]:h-full [&>aside]:min-h-0 [&>aside]:w-full">
+          <Sidebar onClose={() => setSidebarOpen(false)} />
+        </div>
+      </Drawer>
+      <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate">
+        <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
+      {/* Notifications occupy their own row below Header, never its hit area.
+          Errors interrupt speech; other outcomes wait for a pause. */}
+      <div className="z-0 flex max-h-[40vh] w-[min(100%,412px)] shrink-0 self-end flex-col gap-2 overflow-y-auto px-4 [&:not(:empty)]:py-2">
         {notifications.map((n) => {
           const style = getToastStyle(n.type);
           const urgent = n.type === "error";
@@ -105,26 +124,6 @@ export default function DashboardLayout({ children }) {
           );
         })}
       </div>
-      <div className="hidden shrink-0 lg:flex">
-        <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebarCollapse} />
-      </div>
-
-
-
-      <Drawer
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        title="Navigation"
-        width={320}
-        className="lg:hidden"
-      >
-        {/* Bound the rail to the drawer body so its nav scrolls independently. */}
-        <div className="h-full min-h-0 [&>aside]:h-full [&>aside]:min-h-0 [&>aside]:w-full">
-          <Sidebar onClose={() => setSidebarOpen(false)} />
-        </div>
-      </Drawer>
-      <main className="flex flex-col flex-1 h-full min-w-0 relative transition-colors duration-300 isolate">
-        <Header key={pathname} onMenuClick={() => setSidebarOpen(true)} />
         <div tabIndex={0} role="region" aria-label="Page content" className={`flex-1 overflow-y-auto custom-scrollbar outline-none focus-visible:shadow-dd-focus ${pathname === "/dashboard/playground" ? "flex flex-col overflow-hidden" : "p-4 sm:p-6 xl:p-8"}`}>
           {/* Dashboard content uses 16/24/32px responsive gutters; Playground remains full bleed. */}
           <div className={`${pathname === "/dashboard/playground" ? "flex h-full w-full flex-1 flex-col" : "mx-auto w-full min-w-0 max-w-7xl"}`}>{children}</div>

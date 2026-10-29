@@ -207,7 +207,10 @@ describe("buildModelsList — compatible provider public allowlist", () => {
       videoInput: true,
       reasoning: false,
     });
-    expect(models.some((model) => model.id === "kimi/kimi-k2.7-code")).toBe(false);
+    // Live metadata merges onto the static Platform catalog; k2.7-code is now a static entry.
+    expect(models.find((model) => model.id === "kimi/kimi-k2.7-code")?.capabilities).toMatchObject({
+      contextWindow: 262_144,
+    });
     expect(global.fetch).toHaveBeenCalledWith(
       "https://api.moonshot.ai/v1/models",
       expect.any(Object),
@@ -226,15 +229,26 @@ describe("buildModelsList — compatible provider public allowlist", () => {
     expect(await providerIds("lmstudio")).toContain("lmstudio/local-model");
   });
 
-  it("keeps dashboard import discovery for compatible providers", async () => {
+  // Node creation stores the supplied API base; validation and execution append
+  // relative endpoints. Dashboard import must preserve that same path contract.
+  it.each([
+    ["https://import.example", "https://import.example/models"],
+    ["https://import.example/", "https://import.example/models"],
+    ["https://import.example/v1", "https://import.example/v1/models"],
+    ["https://import.example/v1/", "https://import.example/v1/models"],
+    ["https://import.example/tenant/api/", "https://import.example/tenant/api/models"],
+  ])("keeps dashboard import discovery relative to stored API base %s", async (baseUrl, modelsUrl) => {
     getProviderConnectionById.mockResolvedValue(connection(
       "openai-compatible-chat-import",
       "imported",
-      { baseUrl: "https://import.example" },
+      { baseUrl },
     ));
-    proxyAwareFetch.mockResolvedValue(new Response(JSON.stringify({
-      data: [{ id: "upstream-one" }, { id: "upstream-two" }],
-    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    proxyAwareFetch.mockImplementation(async (url) => {
+      if (url !== modelsUrl) throw new Error(`Unexpected discovery URL: ${url}`);
+      return new Response(JSON.stringify({
+        data: [{ id: "upstream-one" }, { id: "upstream-two" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
 
     const response = await getProviderModels(
       new Request("http://localhost/api/providers/connection-imported/models"),
@@ -243,8 +257,8 @@ describe("buildModelsList — compatible provider public allowlist", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ models: [{ id: "upstream-one" }, { id: "upstream-two" }] });
-    expect(proxyAwareFetch).toHaveBeenCalledWith(
-      "https://import.example/v1/models",
+    expect(proxyAwareFetch).toHaveBeenCalledExactlyOnceWith(
+      modelsUrl,
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer key-imported" }) }),
       {},
     );

@@ -32,7 +32,7 @@ Selecting another preset fully replaces URL, command, args, env, headers, OAuth,
 
 Secrets belong only in Env JSON for local stdio servers. Use no secret-like placeholder values: leave each required key absent until you can supply it. Instance headers cannot carry `Authorization`, cookies, proxy authorization, or `mcp-*` headers. This is deliberate: use supported OAuth, an upstream public/keyless mode, or an allowed local environment variable instead.
 
-After testing, create or select a gateway key, grant only intended instances in **Gateway keys**, and point client at DurinDoor gateway URL. Presets do not grant clients access. Limit filesystem paths, use least-privilege provider credentials, and treat each enabled tool as available to every client holding a granted gateway key.
+After testing, create or select a gateway key, grant only intended instances in **Gateway keys**, and point the client at the DurinDoor gateway URL. Presets do not grant clients access. Limit filesystem paths, use least-privilege provider credentials, and review which tools each key's grants permit.
 
 ## Choose a client transport
 
@@ -60,7 +60,7 @@ Send the secret as `Authorization: Bearer …`, `x-api-key`, `x-goog-api-key`, o
 
 `POST /api/mcp-gateway/keys` and `GET /api/mcp-gateway/keys/<id>/reveal` are local-request only (403 otherwise). The list endpoint never returns the raw secret. Create returns it once. Reveal exists for a signed-in local dashboard session, same as DurinDoor API keys.
 
-Grant the key to instances from the Keys page. The tools a client sees are exactly the tools exposed by its granted instances. Removing a grant revokes access right away. An empty grant list means the key authenticates but sees no tools.
+Grant the key to instances from the Keys page. Clients see tools from enabled, granted instances, filtered by any per-tool allow-list on the grant. Removing a grant revokes access right away. An empty grant list means the key authenticates but sees no tools.
 
 The control endpoint `POST /api/mcp/control` does not accept a gateway key. It takes a dashboard session, the CLI token, or a DurinDoor API key. Full tool list and client setup: [MCP control](./mcp-control.mdx).
 

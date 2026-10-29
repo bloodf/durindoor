@@ -17,6 +17,8 @@ Use the DurinDoor key, not the vendor credential. OpenAI clients send `Authoriza
 
 With **Require API Key** enabled on **Endpoint**, missing, unknown, paused, and expired keys cannot authenticate. With enforcement off, an unknown local placeholder may pass, but a paused or expired saved key is still rejected. Use a real key whenever you need client scoping or usage attribution.
 
+When multiple credentials are present, the first valid saved key wins in this order: Bearer, `x-api-key`, `x-goog-api-key`, then query `key`. A stale Bearer token does not hide a valid `x-api-key`; when both are valid, Bearer wins. Local and native Files/Batches ownership uses that accepted key's stable ID, not another presented credential or the requested resource's owner. A valid CLI operator token retains its separate cross-owner authorization; a saved API key never gains it. On a shared Anthropic account, owned file and Message Batch lists can hit a 10-upstream-page scan cap and return HTTP 502 when most entries belong to other keys; see [API reference](../reference/api.mdx).
+
 New keys use the `sk-` prefix. Older stored keys remain supported. Keep the full secret unchanged when copying it.
 
 ## Expiry
@@ -49,6 +51,8 @@ A key can carry several independent restrictions. Empty means unrestricted for t
 `auto/<family>` ids (`auto/glm`, `auto/gemini`, ...) are virtual: they are synthesised in the catalog, not stored as combo rows, so `allowedCombos` and `policy.allowedModels` cannot scope them out. `policy.allowAutoCombos: false` denies every `auto/*` id for that key with HTTP 403; omitted or `true` keeps the existing behavior (allowed).
 
 `policy.maxTokens` and `policy.maxCostUsd` are lifetime caps on that key. `dailyLimitTokens` is a calendar-day token cap that resets at local midnight. `isActive` false keeps the row visible and stops authentication.
+
+In the Edit dialog's committed usage display, empty lifetime token/cost fields mean unlimited and show only the amount used, not a false “Limit reached”. An explicit `0` remains a real lifetime limit; this differs from the windowed-limit convention below.
 
 Key groups are labels only. Membership never changes what a key can call.
 
@@ -83,7 +87,7 @@ RPM and TPM are counted in memory per process: RPM when a request is admitted, T
 
 Monthly budgets use the estimated costs saved with request usage. They are not provider billing limits. Deleting usage history can affect usage-derived limits.
 
-`PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key; the Keys page and the Usage overview poll it.
+`PUT /api/keys/{id}` accepts `modelAccess` and each limit field at the top level of the body (the upstream 9router shape) and merges them into the stored policy. `GET /api/keys/usage` returns the current usage against every limit, keyed by key id, and `?apiKeyId=<id>` narrows it to one key. The API key limits card below the key list on **Dashboard → API Keys** polls it; that card is no longer on Usage.
 
 ## Rotation
 

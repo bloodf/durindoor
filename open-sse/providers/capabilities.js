@@ -152,6 +152,16 @@ export const MODEL_CAPABILITIES = {
   "for-coding-highspeed": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null },
   /** Third-party registries retain the upstream `kimi-k3` ID and its verified 1M context. */
   "kimi-k3": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
+  // https://platform.kimi.ai/docs/models.md — K3.1 Pro / Highspeed share K3 series 1M context + reasoning_effort.
+  // https://platform.kimi.ai/docs/guide/use-reasoning-effort.md — low|high|max (default max); always reasons.
+  // https://platform.kimi.ai/docs/guide/troubleshooting — default output 131072; max = 1048576 - prompt.
+  "kimi-k3.1-pro": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
+  "kimi-k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
+  // https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart — vision+video, thinking always on, 262144 context.
+  "kimi-k2.7-code": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null },
+  "kimi-k2.7-code-highspeed": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null },
+  // https://platform.kimi.ai/docs/models.md — vision (image/video), thinking and non-thinking, 262144 context.
+  "kimi-k2.6": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: null },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
   "claude-opus-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-opus-4.7": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -438,8 +448,15 @@ export const PROVIDER_CAPABILITIES = {
   // Native K3 defaults to 131072 output tokens but permits up to 1048576.
   // Coding-plan routes have separately scoped, unpublished output limits/defaults.
   // https://platform.kimi.ai/docs/guide/kimi-k3-quickstart#important-limits
+  // https://platform.kimi.ai/docs/api/models-overview — K3.1 Pro shares K3 parameter constraints.
+  // https://platform.kimi.ai/docs/guide/troubleshooting — K3.1 Pro default/ceiling; K2 max = 262144 - prompt.
   kimi: {
+    "kimi-k3.1-pro": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072 },
+    "kimi-k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072 },
     "kimi-k3": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072 },
+    "kimi-k2.7-code": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null, defaultOutput: 32768 },
+    "kimi-k2.7-code-highspeed": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null, defaultOutput: 32768 },
+    "kimi-k2.6": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: null },
   },
 
   // Kimi Web (www.kimi.com) consumer chat — OpenAI-shaped transport. The
@@ -969,7 +986,7 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     // prefix; both normalize through aliasToProviderId above.
     const custom = customCapsById?.get?.(`${providerId}/${model}`);
     const staticCaps = getCapabilitiesForModel(providerId, model);
-    const merged = custom ? { ...staticCaps, ...custom } : staticCaps;
+    const merged = enforceCursorCapabilities(providerId, custom ? { ...staticCaps, ...custom } : staticCaps);
     // getCapabilitiesForModel merges generic defaults into unknown models for
     // feature detection. Those floors are not provider guarantees, so exclude
     // them from combo limits exactly as individual /v1/models rows do.
@@ -1153,9 +1170,17 @@ function isCommandCodeTextOnly(model) {
   return false;
 }
 
+/** Apply Cursor's hard transport limit to an owned, fully overlaid capability object. */
+export function enforceCursorCapabilities(provider, capabilities) {
+  if (capabilities && (provider === "cursor" || provider === "cu")) capabilities.vision = false;
+  return capabilities;
+}
+
 /**
  * Resolve capabilities for a model using the 4-step fallback chain,
  * merged over DEFAULT_CAPABILITIES so the result is always complete.
+ * Cursor (`cursor`/`cu`) cannot encode image input in its current protobuf
+ * transport, so final resolution forces vision off without changing other capabilities.
  *
  * @param {string} provider
  * @param {string} model
@@ -1163,7 +1188,7 @@ function isCommandCodeTextOnly(model) {
  */
 export function getCapabilitiesForModel(provider, model) {
   const finalize = (caps) => {
-    let result = provider === "huggingchat" ? { ...caps, vision: false } : caps;
+    let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
     // Workers AI pages publish max_tokens defaults, never enforceable ceilings.
     if ((provider === "cloudflare-ai" || provider === "cf") && model?.startsWith("@cf/")) {
       result = { ...result, maxOutput: undefined };

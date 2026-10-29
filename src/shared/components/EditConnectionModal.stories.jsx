@@ -218,4 +218,7 @@ export const Closed = {
     onSave: () => {},
   },
   render: (args) => <EditConnectionModal {...args} />,
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement.ownerDocument.body).queryByRole("dialog", { name: "Edit Connection" })).not.toBeInTheDocument();
+  },
 };

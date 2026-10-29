@@ -78,6 +78,14 @@ function mergeProviderConnectionWithHealthReset(existing, patch) {
   return merged;
 }
 
+/**
+ * Durable reauth outranks ordinary cooldowns. Either marker pins the account
+ * until an explicit credential replacement writes testStatus:"active".
+ */
+function isDurableReauthPinned(connection) {
+  return connection?.testStatus === "reauth_required" || connection?.errorCode === "REAUTH";
+}
+
 
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
@@ -383,7 +391,10 @@ export async function updateProviderConnection(id, data, {
   expectedRefreshContext = null,
   returnCommitResult = false,
   signal = null,
-  shouldCommit = null
+  shouldCommit = null,
+  // Compatibility fallback writer (#1324/#1311): re-read under the write lock
+  // and refuse demoting a concurrent durable reauth marker.
+  refuseIfReauth = false
 } = {}) {
   const db = await getAdapter();
   let result;
@@ -408,6 +419,10 @@ export async function updateProviderConnection(id, data, {
       throw error;
     }
     if (!providerRefreshContextMatches(existing, expectedRefreshContext)) {
+      result = returnCommitResult ? { applied: false, connection: existing } : existing;
+      return;
+    }
+    if (refuseIfReauth && isDurableReauthPinned(existing)) {
       result = returnCommitResult ? { applied: false, connection: existing } : existing;
       return;
     }
@@ -489,6 +504,13 @@ export async function recordProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
+    // Auth may have read this account before a concurrent terminal failure.
+    // Recheck under the write transaction: ordinary cooldowns cannot demote
+    // durable reauth or erase the marker that guards later success clearing.
+    if (isDurableReauthPinned(existing)) {
+      result = { applied: false, connection: existing };
+      return;
+    }
     const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch, videoPoll });
     const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
     const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;
@@ -588,8 +610,7 @@ export async function clearProviderConnectionFallbackState(id, {
     // success must NOT silently clear it back to "active" — otherwise the row
     // looks healthy while every request 401s. Only a successful OAuth
     // replacement (updateProviderConnection with testStatus:"active") clears it.
-    const reauthPinned = existing.testStatus === "reauth_required" || existing.errorCode === "REAUTH";
-    if (!webFetch && !webSearch && !reauthPinned && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
+    if (!webFetch && !webSearch && !isDurableReauthPinned(existing) && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
       Object.assign(merged, {
         testStatus: "active",
         lastError: null,

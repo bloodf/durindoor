@@ -147,14 +147,43 @@ describe("API Keys page — groups", () => {
 
   it("filters the list by group, and says so when nothing matches", async () => {
     await render();
-    expect(container.textContent).toContain("laptop");
+    expect(byLabel("Edit ci-deploy")).toBeDefined();
+    expect(byLabel("Edit laptop")).toBeDefined();
+    const keyList = byLabel("Edit ci-deploy").closest("ul");
+    expect(keyList.querySelectorAll("li")).toHaveLength(2);
 
     // The filter chip carries the group name; pressing it selects that group.
     const chip = buttons().find((node) => node.textContent.trim() === "CI" && node.hasAttribute("aria-pressed"));
     await act(async () => chip.click());
 
-    expect(container.textContent).toContain("ci-deploy");
-    expect(container.textContent).not.toContain("laptop");
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    expect(byLabel("Edit ci-deploy")).toBeDefined();
+    expect(byLabel("Edit laptop")).toBeUndefined();
+    expect(keyList.querySelectorAll("li")).toHaveLength(1);
+    expect(keyList.textContent).toContain("ci-deploy");
+    expect(keyList.textContent).not.toContain("laptop");
+
+    // Search and group filters intersect: laptop exists, but is not in CI.
+    const search = container.querySelector('input[aria-label="Search"]');
+    const setSearch = async (value) => act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(globalThis.HTMLInputElement.prototype, "value").set;
+      setter.call(search, value);
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await setSearch("laptop");
+    expect(container.textContent).toContain("No keys match");
+    expect(container.textContent).not.toContain("No API keys yet");
+    expect(byLabel("Edit ci-deploy")).toBeUndefined();
+    expect(byLabel("Edit laptop")).toBeUndefined();
+
+    // Clearing the group leaves the search active and restores only laptop.
+    await act(async () => byText("Clear").click());
+    expect(container.textContent).not.toContain("No keys match");
+    expect(byLabel("Edit laptop")).toBeDefined();
+    expect(byLabel("Edit ci-deploy")).toBeUndefined();
+    await setSearch("");
+    expect(byLabel("Edit ci-deploy")).toBeDefined();
+    expect(byLabel("Edit laptop")).toBeDefined();
   });
 
   it("sends groupIds when saving a key", async () => {

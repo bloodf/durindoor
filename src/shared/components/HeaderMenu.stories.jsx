@@ -16,3 +16,13 @@ export const ShutdownConfirm = {
     await waitFor(() => expect(within(document.body).getByText("Close Proxy")).toBeVisible());
   },
 };
+
+/** Leaves private menu items visible for final-state coverage. */
+export const OpenMenu = {
+  args: { onLogout: () => undefined },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByTitle("Menu"));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Shutdown" })).toBeVisible());
+  },
+};

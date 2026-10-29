@@ -11,7 +11,7 @@ import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, sav
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
+import { openAIResponsesBodyToClaude, openAIResponsesBodyToGemini, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
 import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { translateResponse, initState } from "../../translator/index.js";
@@ -319,6 +319,30 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     claudeMsg = normalizeClaudeCacheUsage(claudeMsg, responseBody);
     return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
   }
+  if (sourceFormat === FORMATS.GEMINI && targetFormat === FORMATS.OPENAI && responseBody?.choices?.[0]) {
+    // The shared projector returns a wrapped Gemini-family body; native Gemini
+    // requires candidates and usageMetadata at the top level.
+    const result = projectCompletionToClientFormat(responseBody, sourceFormat, projectionOptions()).response;
+    const calls = responseBody.choices[0].message?.tool_calls || [];
+    let callIndex = 0;
+    for (const part of result.candidates[0].content.parts) {
+      if (part.functionCall) {
+        const id = calls[callIndex++]?.id;
+        if (id !== undefined) part.functionCall.id = id;
+      }
+    }
+    const usage = responseBody.usage;
+    if (usage?.prompt_tokens_details?.cached_tokens !== undefined) {
+      result.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
+    }
+    if (usage?.completion_tokens_details?.reasoning_tokens !== undefined) {
+      result.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
+      // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
+      result.usageMetadata.candidatesTokenCount = Math.max(0,
+        result.usageMetadata.candidatesTokenCount - result.usageMetadata.thoughtsTokenCount);
+    }
+    return result;
+  }
   if (targetFormat === FORMATS.OPENAI) return responseBody;
 
   // OpenAI Responses API JSON body → requested client format.
@@ -331,6 +355,14 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
       return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
     }
     if (sourceFormat === FORMATS.OPENAI) return openAIResponsesBodyToOpenAI(responseBody);
+    // Native Gemini uses top-level candidates; Antigravity / gemini-cli keep the
+    // { response } envelope that their stream translators emit.
+    if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) {
+      const geminiBody = openAIResponsesBodyToGemini(responseBody);
+      return sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.VERTEX ?
+        geminiBody :
+        { response: geminiBody };
+    }
   }
 
   // Gemini / Antigravity

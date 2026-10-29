@@ -3,11 +3,50 @@ title: Postgres
 description: Opt-in PostgreSQL engine, compose profiles, cutover lock, snapshot abort, and rollback that discards PG-era writes.
 ---
 
-SQLite remains the default for unconfigured installations. A nonempty `DURINDOOR_PG_URL` selects PostgreSQL directly; `DURINDOOR_DATABASE_ENGINE=postgres` additionally keeps startup PostgreSQL-only when the URL is missing or empty. This explicit mode never reads SQLite settings or falls back to SQLite. Packaged startup removes empty environment values. Installations without either selector retain the dashboard-managed cutover workflow below.
+SQLite remains the default for unconfigured installations. A nonempty `DURINDOOR_PG_URL` selects PostgreSQL directly; `DURINDOOR_DATABASE_ENGINE=postgres` additionally keeps startup PostgreSQL-only when the URL is missing or empty. This explicit mode never reads SQLite settings or falls back to SQLite. Packaged startup removes exact empty process-environment values before loading the managed file. Installations without either selector retain the dashboard-managed cutover workflow below.
 
 The dashboard page is **Settings → Database** (`/dashboard/settings/database`). Cutover, test, and rollback routes require a dashboard JWT or CLI token plus the current dashboard password (`x-9r-password`).
 
-## Choose a cluster
+## Managed startup configuration
+
+**Settings → Database → Startup configuration** shows password-free connection fields and
+the source of each database key. **Save** probes PostgreSQL before atomically writing
+`DATA_DIR/durindoor-database.env` (file mode `0600`, directory mode `0700`).
+The file overrides process environment values for `DURINDOOR_DATABASE_ENGINE`,
+`DURINDOOR_PG_URL`, and `DURINDOOR_PG_SSLMODE` only. Other environment keys are ignored.
+An explicit managed SQLite selection clears inherited PostgreSQL selectors at startup.
+Packaged `custom-server.js` removes an exact empty process `DURINDOOR_PG_URL` before
+app imports, so that value alone behaves as unset and does not force PostgreSQL.
+`DURINDOOR_DATABASE_ENGINE=postgres` still selects fail-closed PostgreSQL with a
+missing or empty URL. Managed-file values are applied after normalization: a managed
+PostgreSQL URL's presence, even if empty, selects PostgreSQL unless an explicit managed
+SQLite selection clears it. Direct driver imports that bypass packaged normalization
+also retain the URL-presence check, including empty process URLs. A stored cutover-target
+URL only prefills connection fields; it does not select PostgreSQL startup.
+
+Passwords are write-only: leaving the field untouched preserves the password from the
+managed URL, or the process URL when no managed URL exists. **Test** probes without
+saving. **Remove override** deletes the managed file; the next startup uses the
+process environment again. Saving or removing an override requires restarting DurinDoor.
+Neither action changes the active adapter or migrates data. Complete a data cutover
+before selecting PostgreSQL startup; selecting SQLite does not copy PostgreSQL-era writes.
+
+The separate **PostgreSQL connection** card below Startup configuration configures the
+data-cutover target. Enter host, port, database, user, SSL mode and the write-only
+target password, then **Test connection and save target**. A successful probe saves
+the URL encrypted in the settings row; failed probes leave the previous target intact.
+No URL or stored password is displayed. The target is available to **Cut over to Postgres**
+immediately, without restarting or saving a managed startup override. Configuring a
+target alone leaves the startup engine on its stored/active selection, usually SQLite.
+
+Connection selectors support `disable`, `require`, and `verify-full`. Legacy inherited
+modes such as `prefer` are conservatively displayed as `require` before editing.
+Startup fields that have not been edited follow refreshed target and engine status,
+including a successful cutover. Unsaved field edits and newly entered passwords are
+preserved during refreshes; stored passwords are never populated into either form.
+
+
+## Version policy
 
 Compose has `postgres16`, `postgres17`, and `postgres18` profiles. Start one profile at a time; all publish host port 5432. Use a supported major and confirm compatibility with your database tooling before cutover. `DURINDOOR_PG_PREFERRED_VERSION` defaults to `18`. Version-dependent features are enabled only when the cluster meets their minimum version.
 
@@ -23,20 +62,16 @@ docker compose --profile postgres18 up -d
 
 </Step>
 <Step>
-For a SQLite installation, configure the connection through **Settings → Database** first. **Test connection** with persist stores it encrypted on the settings row. Do not set the PostgreSQL-only environment settings until the data cutover has completed: direct PostgreSQL startup does not copy existing SQLite data.
+For a fresh SQLite installation, open **Settings → Database → PostgreSQL connection**. Enter the target fields and password, then **Test connection and save target**. This persists the validated target encrypted in SQLite without selecting PostgreSQL startup.
 
 Compose ships example user, password, and database values of `durindoor`; use the password you configured instead. The service hostname is `postgres18` when the app shares its Compose network. `DURINDOOR_PG_SSLMODE` is appended when the URL has no `sslmode=` already.
 </Step>
 <Step>
-Restart DurinDoor. It is still on SQLite.
-
-```bash
-docker compose restart durindoor
-```
+Choose **Cut over to Postgres** and confirm the migration before restarting or saving PostgreSQL startup settings. Direct PostgreSQL startup does not copy existing SQLite data.
 
 </Step>
 <Step>
-Open **Settings → Database**. Paste the URL. Run **Test connection**. On success the probe returns latency and `serverVersion`. Then **Cut over to Postgres**.
+After cutover, the active engine is PostgreSQL. Optionally use **Startup configuration** to save a managed PostgreSQL override, then restart to apply it. Its **Test** button only probes; it does not configure the data-cutover target.
 </Step>
 </Steps>
 
@@ -46,11 +81,12 @@ After a later restart on a healthy PG boot, the log line is `[DB] Driver: pg | e
 
 Resolved in this order:
 
-1. `DURINDOOR_PG_URL` (always wins at boot)
-2. `settings.postgresUrl` (AES-256-GCM blob in the settings row; dashboard persist writes here)
-3. Legacy `DATA_DIR/durindoor-secrets.json` (mode `0600`, read-only)
+1. `DATA_DIR/durindoor-database.env` overrides the three database environment keys at startup
+2. `DURINDOOR_PG_URL` from the process environment when not overridden
+3. `settings.postgresUrl` (AES-256-GCM blob in the settings row; legacy dashboard persist writes here)
+4. Legacy `DATA_DIR/durindoor-secrets.json` (mode `0600`, read-only)
 
-New writes go only to the settings row. `GET /api/settings/database/engine` returns redacted host, port, database, user, sslmode, and authSource. It never returns the password or `postgresUrl`.
+Startup configuration writes only the managed environment file. Legacy cutover configuration remains in the settings row. `GET /api/settings/database/engine` returns redacted host, port, database, user, sslmode, and source badges under `startupEnv`. It never returns the password or URL.
 
 ## PostgreSQL-only installations
 
@@ -73,6 +109,7 @@ Proxy timeline storage uses PostgreSQL tables `proxyTimelineTraces` and `proxyTi
 
 4. Verify timeline reads, new inference traces, and PostgreSQL usage writes before removing live SQLite files. Keep the archived sidecar and a verified PostgreSQL dump for rollback.
 
+
 ## Cut over an existing SQLite installation
 
 Take a full backup before pressing **Cut over to Postgres**. Plan a maintenance window because writes pause during the operation. The destination tables are replaced by the mirror; do not target a PostgreSQL database containing data you need to preserve.
@@ -93,6 +130,13 @@ A snapshot or row-count failure before the switch leaves SQLite live. Read `data
 
 Only legacy dashboard-managed installations use this fallback. If `databaseEngine` is `postgres` and `openActiveAdapter` cannot use the cluster (no URL, connect error, migration failure), it records `databaseEngineError` and returns a SQLite adapter. Explicit `DURINDOOR_DATABASE_ENGINE=postgres` or `DURINDOOR_PG_URL` startup instead rejects the failure without opening SQLite.
 
+`servingFallback` is true only when the running adapter is SQLite after a legacy
+stored PostgreSQL selection. Healthy PostgreSQL startup is not a fallback merely
+because its settings row still defaults to SQLite. An explicit managed SQLite
+selection is also not a fallback, even if the legacy settings select PostgreSQL.
+Pending managed-file edits affect `startupEnv`, not the active Engine card or
+fallback banner; restarting is required before those selectors change the runtime.
+
 Known `databaseEngineError` strings:
 
 - `PG engine is on but no connection URL is configured`
@@ -109,7 +153,7 @@ The boot log still prints `engine: postgres` for the requested engine even when 
 <Callout type="warn">
 Rollback restores SQLite as of the cutover snapshot. Writes made while PostgreSQL was live (keys, usage, settings) are not copied back. The PG cluster is left untouched. The confirm dialog on **Switch back to SQLite** says so.
 
-For an explicit PostgreSQL-only deployment, remove `DURINDOOR_DATABASE_ENGINE=postgres` and `DURINDOOR_PG_URL` from the protected service environment before restarting on a SQLite recovery snapshot. Leaving either selector in place selects PostgreSQL again. Preserve the archived timeline sidecar alongside the main SQLite recovery file; main-database rollback does not copy PostgreSQL timeline writes back.
+For an explicit PostgreSQL-only deployment, remove `DURINDOOR_DATABASE_ENGINE=postgres` and `DURINDOOR_PG_URL` from the protected service environment **and remove or change any managed PostgreSQL startup override** before restarting on a SQLite recovery snapshot. In **Startup configuration**, use **Remove override** to delete `DATA_DIR/durindoor-database.env`, or save an explicit SQLite selection instead. Removing only process selectors is insufficient: a retained managed PostgreSQL override reapplies them on restart. Removing the override alone is also insufficient if the process environment still selects PostgreSQL. These startup changes do not restore data or switch the running adapter. Preserve the archived timeline sidecar alongside the main SQLite recovery file; main-database rollback does not copy PostgreSQL timeline writes back.
 </Callout>
 
 **Switch back to SQLite** restores an allowlisted snapshot from `currentBackupsDir()` into `currentDataFile()`, reopens SQLite, and sets `databaseEngine` back to `"sqlite"`. Snapshot paths outside that backups directory are refused. A literal `~/.9router` path is never used; `path.join` does not expand `~`.
@@ -125,7 +169,7 @@ Use the dashboard rollback for its validated snapshot path and engine-setting up
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Runtime still on SQLite | Connect, URL, or migration failed | Read `databaseEngineError` on the Database page |
-| Engine card says postgres, banner says Serving SQLite | `servingFallback`: this process could not open PG | Fix the URL or cluster, then restart |
+| Engine card says sqlite, banner says Serving SQLite | Legacy PostgreSQL boot fell back to SQLite | Fix the URL or cluster, then restart |
 | `pg_isready` fails | Cluster down or wrong port | `docker compose ps postgres18` and `docker compose logs postgres18` |
 | Mirror of `requestDetails` is huge | Observability log can be gigabytes | Leave `includeRequestDetails` false (the default) |
 | Cutover returns 503 | Another cutover or rollback holds the lock | Wait and retry. `Retry-After: 5` |

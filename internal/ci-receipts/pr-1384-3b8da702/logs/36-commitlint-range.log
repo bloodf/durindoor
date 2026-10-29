@@ -1,0 +1,8 @@
+⧗   input: merge(main): resolve Responses matrix doc conflict for #1345
+⚠   footer must have leading blank line [footer-leading-blank]
+
+⚠   found 0 problems, 1 warnings
+ⓘ   Get help: https://github.com/conventional-changelog/commitlint/#what-is-commitlint
+
+⧗   input: fix(translator): clamp Responses→Chat tool names to 64 chars (#1345)
+✔   found 0 problems, 0 warnings

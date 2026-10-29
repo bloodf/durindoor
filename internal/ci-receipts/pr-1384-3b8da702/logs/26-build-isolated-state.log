@@ -1,0 +1,365 @@
+
+> durindoor@4.11.0 build
+> node scripts/build-app.mjs
+
+▲ Next.js 16.4.3 (webpack)
+✓ Running next.config.mjs took 19ms
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+- Experiments (use with caution):
+  · optimizePackageImports
+  · proxyClientMaxBodySize: "128mb"
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 55s
+  Running TypeScript ...
+  Finished TypeScript in 23ms ...
+  Collecting page data using 3 workers ...
+(node:45807) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/ubuntu/.cache/durindoor-local-ci/3b8da702fd74-20261029T201757Z/src/open-sse/utils/proxyFetch.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/ubuntu/.cache/durindoor-local-ci/3b8da702fd74-20261029T201757Z/src/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:45819) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/ubuntu/.cache/durindoor-local-ci/3b8da702fd74-20261029T201757Z/src/open-sse/utils/proxyFetch.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/ubuntu/.cache/durindoor-local-ci/3b8da702fd74-20261029T201757Z/src/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[DB] Driver: better-sqlite3 | engine: sqlite
+[DB][migrate] applied #1 initial
+[DB][migrate] applied #2 mcp gateway
+[DB][migrate] applied #3 mcp grant tool allowlist
+[DB][migrate] applied #4 add-daily-token-limit-to-api-keys
+[DB][migrate] applied #5 api-key-expiry
+[DB][migrate] applied #6 api-key-policy
+[DB][migrate] applied #7 provider-quota-snapshots
+[DB][migrate] applied #8 quota-reservations
+[DB][migrate] applied #9 encrypt-credentials
+[DB][migrate] applied #10 token-saver-events
+[DB][migrate] applied #11 model-capability-overrides
+[DB][migrate] applied #12 mcp-provider-connection
+[DB][migrate] applied #13 combo-invariant
+[DB][migrate] applied #14 api-key-provider-connections
+[DB][migrate] applied #15 combo-members
+[DB][migrate] applied #16 combo-capabilities
+[DB][migrate] applied #17 connection-groups
+[DB][migrate] applied #18 api-key-groups
+[DB][migrate] applied #20 token-saver-aggregates
+[DB][migrate] applied #21 usage-last-seen
+[DB][migrate] applied #22 token-saver-daily
+[DB][migrate] applied #23 usage-latency
+[DB][migrate] applied #24 usage-history-api-key-index
+[DB][migrate] applied #25 proxy-timeline
+[KimchiUA] Fetching latest release from: https://api.github.com/repos/getkimchi/kimchi/releases/latest
+(node:45806) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/ubuntu/.cache/durindoor-local-ci/3b8da702fd74-20261029T201757Z/src/open-sse/utils/proxyFetch.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/ubuntu/.cache/durindoor-local-ci/3b8da702fd74-20261029T201757Z/src/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[KimchiUA] Fetching latest release from: https://api.github.com/repos/getkimchi/kimchi/releases/latest
+[KimchiUA] Fetching latest release from: https://api.github.com/repos/getkimchi/kimchi/releases/latest
+[KimchiUA] GitHub response status: 200 OK
+[KimchiUA] GitHub response status: 200 OK
+[KimchiUA] Parsed version: 1.24.3
+[KimchiUA] Parsed version: 1.24.3
+[KimchiUA] GitHub response status: 200 OK
+[KimchiUA] Parsed version: 1.24.3
+[DB] Driver: better-sqlite3 | engine: sqlite
+[DB] Driver: better-sqlite3 | engine: sqlite
+  Generating static pages using 3 workers (0/169) ...
+  Generating static pages using 3 workers (42/169) 
+  Generating static pages using 3 workers (84/169) 
+  Generating static pages using 3 workers (126/169) 
+✓ Generating static pages using 3 workers (169/169) in 541ms
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /api/[...catchAll]
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/mfa/disable
+├ ƒ /api/auth/mfa/enable
+├ ƒ /api/auth/mfa/setup
+├ ƒ /api/auth/mfa/verify
+├ ƒ /api/auth/oidc/callback
+├ ƒ /api/auth/oidc/start
+├ ƒ /api/auth/oidc/test
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/status
+├ ƒ /api/cli-tools/all-statuses
+├ ƒ /api/cli-tools/antigravity-mitm
+├ ƒ /api/cli-tools/antigravity-mitm/alias
+├ ƒ /api/cli-tools/claude-settings
+├ ƒ /api/cli-tools/cline-settings
+├ ƒ /api/cli-tools/codewhale-settings
+├ ƒ /api/cli-tools/codex-settings
+├ ƒ /api/cli-tools/copilot-settings
+├ ƒ /api/cli-tools/cowork-mcp-registry
+├ ƒ /api/cli-tools/cowork-mcp-tools
+├ ƒ /api/cli-tools/cowork-settings
+├ ƒ /api/cli-tools/crush-settings
+├ ƒ /api/cli-tools/deepseek-tui-settings
+├ ƒ /api/cli-tools/droid-settings
+├ ƒ /api/cli-tools/forge-settings
+├ ƒ /api/cli-tools/grok-build-settings
+├ ƒ /api/cli-tools/hermes-settings
+├ ƒ /api/cli-tools/jcode-settings
+├ ƒ /api/cli-tools/kilo-settings
+├ ƒ /api/cli-tools/openclaw-settings
+├ ƒ /api/cli-tools/opencode-settings
+├ ƒ /api/cli-tools/pi-settings
+├ ƒ /api/cli-tools/smelt-settings
+├ ƒ /api/combos
+├ ƒ /api/combos/[id]
+├ ƒ /api/combos/presets
+├ ƒ /api/compression/preview
+├ ƒ /api/connection-groups
+├ ƒ /api/connection-groups/[id]
+├ ƒ /api/connection-groups/[id]/members
+├ ƒ /api/data-retention
+├ ƒ /api/headroom/extras
+├ ƒ /api/headroom/proxy/[...path]
+├ ƒ /api/headroom/start
+├ ƒ /api/headroom/stats
+├ ƒ /api/headroom/status
+├ ƒ /api/headroom/stop
+├ ƒ /api/health
+├ ƒ /api/health/providers
+├ ƒ /api/init
+├ ƒ /api/key-groups
+├ ƒ /api/key-groups/[id]
+├ ƒ /api/keys
+├ ƒ /api/keys/[id]
+├ ƒ /api/keys/[id]/reveal
+├ ƒ /api/keys/policy-catalog
+├ ƒ /api/keys/usage
+├ ƒ /api/livez
+├ ƒ /api/locale
+├ ƒ /api/logs/export
+├ ƒ /api/mcp-gateway
+├ ƒ /api/mcp-gateway/instances
+├ ƒ /api/mcp-gateway/instances/[id]
+├ ƒ /api/mcp-gateway/instances/[id]/test
+├ ƒ /api/mcp-gateway/keys
+├ ƒ /api/mcp-gateway/keys/[id]
+├ ƒ /api/mcp-gateway/keys/[id]/reveal
+├ ƒ /api/mcp-gateway/message
+├ ƒ /api/mcp-gateway/oauth/[id]/[action]
+├ ƒ /api/mcp-gateway/sse
+├ ƒ /api/mcp/[plugin]/message
+├ ƒ /api/mcp/[plugin]/sse
+├ ƒ /api/mcp/control
+├ ƒ /api/media-providers/routes
+├ ƒ /api/media-providers/tts/deepgram/voices
+├ ƒ /api/media-providers/tts/elevenlabs/voices
+├ ƒ /api/media-providers/tts/inworld/voices
+├ ƒ /api/media-providers/tts/minimax/voices
+├ ƒ /api/media-providers/tts/voices
+├ ƒ /api/models
+├ ƒ /api/models/alias
+├ ƒ /api/models/auto-sync
+├ ƒ /api/models/availability
+├ ƒ /api/models/custom
+├ ƒ /api/models/disabled
+├ ƒ /api/models/enabled
+├ ƒ /api/models/test
+├ ƒ /api/models/test/batch
+├ ƒ /api/monitoring
+├ ƒ /api/oauth/[provider]/[action]
+├ ƒ /api/oauth/codex/bulk-import
+├ ƒ /api/oauth/codex/import-token
+├ ƒ /api/oauth/cursor/auto-import
+├ ƒ /api/oauth/cursor/import
+├ ƒ /api/oauth/gitlab/pat
+├ ƒ /api/oauth/grok-cli/bulk-import
+├ ƒ /api/oauth/iflow/cookie
+├ ƒ /api/oauth/kiro/api-key
+├ ƒ /api/oauth/kiro/auto-import
+├ ƒ /api/oauth/kiro/import
+├ ƒ /api/oauth/kiro/import-cli-proxy
+├ ƒ /api/oauth/kiro/social-authorize
+├ ƒ /api/oauth/kiro/social-exchange
+├ ƒ /api/oauth/xiaomi-mimo/api-key
+├ ƒ /api/oauth/xiaomi-mimo/auto-import
+├ ƒ /api/oauth/xiaomi-mimo/login/start
+├ ƒ /api/oauth/xiaomi-mimo/login/status
+├ ƒ /api/pricing
+├ ƒ /api/provider-nodes
+├ ƒ /api/provider-nodes/[id]
+├ ƒ /api/provider-nodes/validate
+├ ƒ /api/providers
+├ ƒ /api/providers/[id]
+├ ƒ /api/providers/[id]/auto-ping
+├ ƒ /api/providers/[id]/models
+├ ƒ /api/providers/[id]/test
+├ ƒ /api/providers/[id]/test-models
+├ ƒ /api/providers/client
+├ ƒ /api/providers/kilo/free-models
+├ ƒ /api/providers/reorder
+├ ƒ /api/providers/suggested-models
+├ ƒ /api/providers/test-batch
+├ ƒ /api/providers/validate
+├ ƒ /api/providers/web-login/cancel
+├ ƒ /api/providers/web-login/finish
+├ ƒ /api/providers/web-login/popup
+├ ƒ /api/providers/web-login/start
+├ ƒ /api/providers/web-login/status
+├ ƒ /api/proxy-pools
+├ ƒ /api/proxy-pools/[id]
+├ ƒ /api/proxy-pools/[id]/test
+├ ƒ /api/proxy-pools/cloudflare-deploy
+├ ƒ /api/proxy-pools/vercel-deploy
+├ ƒ /api/pxpipe/health
+├ ƒ /api/pxpipe/logs
+├ ƒ /api/pxpipe/restart
+├ ƒ /api/pxpipe/start
+├ ƒ /api/pxpipe/stats
+├ ƒ /api/pxpipe/status
+├ ƒ /api/pxpipe/stop
+├ ƒ /api/readyz
+├ ƒ /api/settings
+├ ƒ /api/settings/auto-configure
+├ ƒ /api/settings/database
+├ ƒ /api/settings/database/cutover
+├ ƒ /api/settings/database/engine
+├ ƒ /api/settings/database/log
+├ ƒ /api/settings/database/rollback
+├ ƒ /api/settings/database/selective
+├ ƒ /api/settings/database/startup-env
+├ ƒ /api/settings/database/test
+├ ƒ /api/settings/firecrawl/detect
+├ ƒ /api/settings/proxy-test
+├ ƒ /api/settings/require-login
+├ ƒ /api/shutdown
+├ ƒ /api/tags
+├ ƒ /api/timeline
+├ ƒ /api/timeline/[id]
+├ ƒ /api/timeline/[id]/meta
+├ ƒ /api/timeline/stream
+├ ƒ /api/token-saver/stream
+├ ƒ /api/translator/console-logs
+├ ƒ /api/translator/console-logs/stream
+├ ƒ /api/translator/load
+├ ƒ /api/translator/save
+├ ƒ /api/translator/send
+├ ƒ /api/translator/translate
+├ ƒ /api/tunnel/disable
+├ ƒ /api/tunnel/enable
+├ ƒ /api/tunnel/status
+├ ƒ /api/tunnel/tailscale-check
+├ ƒ /api/tunnel/tailscale-disable
+├ ƒ /api/tunnel/tailscale-enable
+├ ƒ /api/tunnel/tailscale-install
+├ ƒ /api/usage/[connectionId]
+├ ƒ /api/usage/[connectionId]/claude-reset
+├ ƒ /api/usage/[connectionId]/codex-reset-credits
+├ ƒ /api/usage/chart
+├ ƒ /api/usage/combos
+├ ƒ /api/usage/history
+├ ƒ /api/usage/logs
+├ ƒ /api/usage/me
+├ ƒ /api/usage/providers
+├ ƒ /api/usage/request-details
+├ ƒ /api/usage/request-logs
+├ ƒ /api/usage/reset
+├ ƒ /api/usage/stats
+├ ƒ /api/usage/stream
+├ ƒ /api/v1
+├ ƒ /api/v1/[...catchAll]
+├ ƒ /api/v1/api/chat
+├ ƒ /api/v1/audio/music
+├ ƒ /api/v1/audio/speech
+├ ƒ /api/v1/audio/transcriptions
+├ ƒ /api/v1/audio/translations
+├ ƒ /api/v1/audio/voices
+├ ƒ /api/v1/batches
+├ ƒ /api/v1/batches/[id]
+├ ƒ /api/v1/batches/[id]/cancel
+├ ƒ /api/v1/chat/completions
+├ ƒ /api/v1/chatgpt-web/image/[id]
+├ ƒ /api/v1/completions
+├ ƒ /api/v1/embeddings
+├ ƒ /api/v1/files
+├ ƒ /api/v1/files/[id]
+├ ƒ /api/v1/files/[id]/content
+├ ƒ /api/v1/images/edits
+├ ƒ /api/v1/images/generations
+├ ƒ /api/v1/live/sessions
+├ ƒ /api/v1/messages
+├ ƒ /api/v1/messages/batches
+├ ƒ /api/v1/messages/batches/[id]
+├ ƒ /api/v1/messages/batches/[id]/cancel
+├ ƒ /api/v1/messages/batches/[id]/results
+├ ƒ /api/v1/messages/count_tokens
+├ ƒ /api/v1/models
+├ ƒ /api/v1/models/[...model]
+├ ƒ /api/v1/models/info
+├ ƒ /api/v1/moderations
+├ ƒ /api/v1/music/generations
+├ ƒ /api/v1/native/[provider]/[...operation]
+├ ƒ /api/v1/provider-plugin-manifest
+├ ƒ /api/v1/realtime/auth
+├ ƒ /api/v1/realtime/client_secrets
+├ ƒ /api/v1/realtime/native
+├ ƒ /api/v1/realtime/transcription_sessions
+├ ƒ /api/v1/realtime/translations/client_secrets
+├ ƒ /api/v1/rerank
+├ ƒ /api/v1/responses
+├ ƒ /api/v1/responses/compact
+├ ƒ /api/v1/search
+├ ƒ /api/v1/systemone
+├ ƒ /api/v1/video/generations
+├ ƒ /api/v1/videos/[[...path]]
+├ ƒ /api/v1/web/fetch
+├ ƒ /api/v1beta/models
+├ ƒ /api/v1beta/models/[...path]
+├ ƒ /api/version
+├ ƒ /api/version/shutdown
+├ ƒ /api/version/update
+├ ƒ /callback
+├ ƒ /dashboard
+├ ƒ /dashboard/auto-configure
+├ ƒ /dashboard/cli-tools
+├ ƒ /dashboard/cli-tools/[toolId]
+├ ƒ /dashboard/combos
+├ ƒ /dashboard/compression-studio
+├ ƒ /dashboard/console-log
+├ ƒ /dashboard/endpoint
+├ ƒ /dashboard/headroom
+├ ƒ /dashboard/health
+├ ƒ /dashboard/keys
+├ ƒ /dashboard/mcp-gateway
+├ ƒ /dashboard/mcp-gateway/keys
+├ ƒ /dashboard/media-providers/[kind]
+├ ƒ /dashboard/media-providers/[kind]/[id]
+├ ƒ /dashboard/media-providers/combo/[id]
+├ ƒ /dashboard/media-providers/web
+├ ƒ /dashboard/media-routes
+├ ƒ /dashboard/mitm
+├ ƒ /dashboard/monitoring
+├ ƒ /dashboard/playground
+├ ƒ /dashboard/profile
+├ ƒ /dashboard/providers
+├ ƒ /dashboard/providers/[id]
+├ ƒ /dashboard/proxy-pools
+├ ƒ /dashboard/pxpipe
+├ ƒ /dashboard/quota
+├ ƒ /dashboard/settings/database
+├ ƒ /dashboard/settings/pricing
+├ ƒ /dashboard/skills
+├ ƒ /dashboard/timeline
+├ ƒ /dashboard/timeline/[id]
+├ ƒ /dashboard/token-saver
+├ ƒ /dashboard/token-saver/settings
+├ ƒ /dashboard/translator
+├ ƒ /dashboard/usage
+├ ƒ /landing
+├ ƒ /login
+└ ○ /manifest.webmanifest
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

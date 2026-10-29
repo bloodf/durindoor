@@ -1,0 +1,8 @@
+[custom-server] realtime socket error: Max payload size exceeded
+[custom-server] realtime socket error: Max payload size exceeded
+(node:46732) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 beforeExit listeners added to [process]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46732) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 SIGINT listeners added to [process]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(node:46732) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 SIGTERM listeners added to [process]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+[custom-server] request handler failed: application failed
+JSON report written to /home/ubuntu/.cache/durindoor-local-ci/3b8da702fd74-20261029T201757Z/src/tests/.full-batch-1.json

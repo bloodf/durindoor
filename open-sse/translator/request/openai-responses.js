@@ -78,6 +78,75 @@ function stripOrphanedToolOutputs(input) {
 const MAX_TOOL_NAME_LEN = 128;
 
 /**
+ * Trim and clamp a tool name to the Responses max length. Declarations and
+ * tool_choice must share this so a padded or overlong forced name still matches
+ * `tools[]` after Chat→Responses lowering.
+ */
+function normalizeResponsesToolName(name) {
+  if (!isString(name)) return "";
+  return name.trim().slice(0, MAX_TOOL_NAME_LEN);
+}
+
+/**
+ * Lower one Chat Completions tool_choice entry (function / custom / hosted) to
+ * the Responses list shape. Chat nests names under `function` / `custom`;
+ * Responses puts `name` on the entry itself (OpenAI Chat Completions and
+ * Responses request schemas).
+ */
+function convertChatAllowedToolEntry(entry) {
+  if (!isObject(entry)) return entry;
+  if (entry.type === OPENAI_BLOCK.FUNCTION) {
+    const name = normalizeResponsesToolName(entry.function?.name ?? entry.name);
+    if (!name) return null;
+    return { type: OPENAI_BLOCK.FUNCTION, name };
+  }
+  if (entry.type === "custom") {
+    const name = normalizeResponsesToolName(entry.custom?.name ?? entry.name);
+    if (!name) return null;
+    return { type: "custom", name };
+  }
+  return entry;
+}
+
+/**
+ * Convert Chat Completions `tool_choice` to the Responses request shape.
+ * Strings pass through. Named function / custom nestings flatten to top-level
+ * `name`. Chat `{type:"allowed_tools", allowed_tools:{mode, tools}}` becomes
+ * Responses `{type:"allowed_tools", mode, tools}` with flattened entries.
+ */
+function convertChatToolChoiceToResponses(choice) {
+  if (!isObject(choice)) return choice;
+
+  if (choice.type === OPENAI_BLOCK.FUNCTION) {
+    const name = normalizeResponsesToolName(choice.function?.name ?? choice.name);
+    if (!name) return choice;
+    return { type: OPENAI_BLOCK.FUNCTION, name };
+  }
+
+  if (choice.type === "custom") {
+    const name = normalizeResponsesToolName(choice.custom?.name ?? choice.name);
+    if (!name) return choice;
+    return { type: "custom", name };
+  }
+
+  if (choice.type === "allowed_tools") {
+    // Chat nests mode/tools under `allowed_tools`; Responses keeps them flat.
+    const nested = isObject(choice.allowed_tools) ? choice.allowed_tools : null;
+    const mode = nested?.mode ?? choice.mode;
+    const toolsSrc = Array.isArray(nested?.tools) ?
+      nested.tools :
+      Array.isArray(choice.tools) ? choice.tools : [];
+    return {
+      type: "allowed_tools",
+      mode,
+      tools: toolsSrc.map(convertChatAllowedToolEntry).filter(Boolean)
+    };
+  }
+
+  return choice;
+}
+
+/**
  * Lower tool-output content parts without serializing away typed media. Native
  * Responses `input_image` parts become `image_url` parts in a following user
  * message. Other non-text blocks have no shared Chat tool-result representation
@@ -675,11 +744,11 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     result.tools = body.tools.map((tool) => {
       if (tool.type === OPENAI_BLOCK.FUNCTION) {
         // Strict upstreams reject nameless/overlong tool declarations
-        const name = isString(tool.function?.name) ? tool.function.name.trim() : "";
+        const name = normalizeResponsesToolName(tool.function?.name);
         if (!name) return null;
         return {
           type: OPENAI_BLOCK.FUNCTION,
-          name: name.slice(0, MAX_TOOL_NAME_LEN),
+          name,
           description: String(tool.function.description || ""),
           parameters: normalizeToolParameters(tool.function.parameters),
           // The Responses API requires `strict` on every function tool; default to
@@ -696,21 +765,10 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.top_p !== undefined) result.top_p = body.top_p;
   // Preserve explicit false: Responses otherwise permits parallel tool calls.
   if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
-  // Chat strings (auto/none/required) pass through; named Chat
-  // `{type:"function",function:{name}}` becomes Responses `{type:"function",name}`.
+  // Chat strings (auto/none/required) pass through; object forms lower to the
+  // Responses request shape (named function/custom flatten; allowed_tools unwraps).
   if (body.tool_choice !== undefined) {
-    const choice = body.tool_choice;
-    if (
-      isObject(choice) &&
-      choice.type === OPENAI_BLOCK.FUNCTION &&
-      isObject(choice.function) &&
-      isString(choice.function.name) &&
-      choice.function.name.trim()
-    ) {
-      result.tool_choice = { type: OPENAI_BLOCK.FUNCTION, name: choice.function.name };
-    } else {
-      result.tool_choice = choice;
-    }
+    result.tool_choice = convertChatToolChoiceToResponses(body.tool_choice);
   }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) {

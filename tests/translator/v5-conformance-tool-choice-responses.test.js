@@ -38,4 +38,80 @@ describe("#1329 Chat tool_choice to Responses", () => {
     expect(toResponses(chat({ tool_choice: "auto", parallel_tool_calls: false })).parallel_tool_calls).toBe(false);
     expect(toResponses(chat({ tool_choice: "auto", parallel_tool_calls: true })).parallel_tool_calls).toBe(true);
   });
+
+  it("aligns a padded forced name with the declared tool name", () => {
+    const padded = "  ns.search  ";
+    const out = toResponses(chat({
+      tools: [{
+        type: OPENAI_BLOCK.FUNCTION,
+        function: {
+          name: padded,
+          description: "Search",
+          parameters: { type: "object", properties: { q: { type: "string" } } },
+        },
+      }],
+      tool_choice: { type: OPENAI_BLOCK.FUNCTION, function: { name: padded } },
+    }));
+    expect(out.tools[0].name).toBe("ns.search");
+    expect(out.tool_choice.name).toBe(out.tools[0].name);
+  });
+
+  it("aligns a 140-character forced name with the declared tool name", () => {
+    const longName = `tool_${"x".repeat(135)}`;
+    expect(longName.length).toBe(140);
+    const out = toResponses(chat({
+      tools: [{
+        type: OPENAI_BLOCK.FUNCTION,
+        function: {
+          name: longName,
+          description: "Long",
+          parameters: { type: "object", properties: {} },
+        },
+      }],
+      tool_choice: { type: OPENAI_BLOCK.FUNCTION, function: { name: longName } },
+    }));
+    expect(out.tools[0].name.length).toBe(128);
+    expect(out.tool_choice.name).toBe(out.tools[0].name);
+  });
+
+  it("lowers Chat allowed_tools to the Responses flat shape with normalized names", () => {
+    const out = toResponses(chat({
+      tools: [
+        {
+          type: OPENAI_BLOCK.FUNCTION,
+          function: { name: "  get_weather  ", parameters: { type: "object", properties: {} } },
+        },
+        {
+          type: OPENAI_BLOCK.FUNCTION,
+          function: { name: "search_docs", parameters: { type: "object", properties: {} } },
+        },
+      ],
+      tool_choice: {
+        type: "allowed_tools",
+        allowed_tools: {
+          mode: "auto",
+          tools: [
+            { type: OPENAI_BLOCK.FUNCTION, function: { name: "  get_weather  " } },
+            { type: OPENAI_BLOCK.FUNCTION, function: { name: "search_docs" } },
+          ],
+        },
+      },
+    }));
+    expect(out.tool_choice).toEqual({
+      type: "allowed_tools",
+      mode: "auto",
+      tools: [
+        { type: OPENAI_BLOCK.FUNCTION, name: "get_weather" },
+        { type: OPENAI_BLOCK.FUNCTION, name: "search_docs" },
+      ],
+    });
+    expect(out.tool_choice.tools[0].name).toBe(out.tools[0].name);
+  });
+
+  it("lowers Chat named custom tool_choice to Responses {type,name}", () => {
+    const out = toResponses(chat({
+      tool_choice: { type: "custom", custom: { name: "  code_exec  " } },
+    }));
+    expect(out.tool_choice).toEqual({ type: "custom", name: "code_exec" });
+  });
 });

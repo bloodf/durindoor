@@ -3,7 +3,8 @@
  * length / content_filter → incomplete; error → failed;
  * stop / tool_calls → completed. Stream: exactly one terminal event.
  *
- * Mirrors the skipped #1322 matrix stream rows (not flipped here until that PR merges).
+ * Mirrors the reachable #1322 matrix Chat→Responses terminal rows (now on main;
+ * this file's coverage matches those flipped assertions).
  */
 import { describe, expect, it } from "vitest";
 import "./registerAll.js";

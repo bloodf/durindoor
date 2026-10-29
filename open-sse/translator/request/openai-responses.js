@@ -19,6 +19,7 @@ import {
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { fixMissingToolResponses } from "../concerns/toolCall.js";
 
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
@@ -233,10 +234,17 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  // True once this pending assistant turn absorbed a Responses `message` item.
+  // A tool-only turn (function_call first) followed by a later assistant
+  // message is a new turn (#1335); trailing text after a message-opened turn
+  // stays same-turn (Codex text → tool → more text).
+  let assistantOpenedByMessage = false;
   // call_ids skipped at FUNCTION_CALL time (nameless, #444) never get a
   // tool_calls entry. Their function_call_output must be dropped too, or the
   // "tool" message that follows references a tool_call_id that does not
   // exist in the assistant turn — OpenAI-shaped APIs reject that pairing.
+  // Also holds call_ids abandoned when a tool-only turn is closed by a later
+  // assistant message before any output arrived (#1335).
   const skippedCallIds = new Set();
 
   // A blank content value carries no text worth keeping: null/undefined, an
@@ -336,12 +344,14 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (currentAssistantMsg.content == null && !currentAssistantMsg.tool_calls) {
       if (!currentAssistantMsg.reasoning_content) {
         currentAssistantMsg = null;
+        assistantOpenedByMessage = false;
         return;
       }
       currentAssistantMsg.content = "";
     }
     result.messages.push(currentAssistantMsg);
     currentAssistantMsg = null;
+    assistantOpenedByMessage = false;
   };
 
   // Images lifted out of tool outputs wait here until the run of tool
@@ -365,12 +375,24 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       item.content;
 
       // Assistant content joins the pending turn instead of starting a second
-      // assistant message (see flushAssistant above).
+      // assistant message (see flushAssistant above) — except a tool-only turn
+      // that never opened with a message: a later assistant message is a new
+      // turn. Flush the tool-only assistant (keep its tool_calls) so a later
+      // function_call_output can still pair by call id (#1335 CTO review).
       if (item.role === ROLE.ASSISTANT) {
         if (currentAssistantMsg) {
-          appendAssistantContent(currentAssistantMsg, content);
+          const openToolCalls = currentAssistantMsg.tool_calls;
+          if (Array.isArray(openToolCalls) && openToolCalls.length > 0 && !assistantOpenedByMessage) {
+            flushAssistant();
+            currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+            assistantOpenedByMessage = true;
+          } else {
+            appendAssistantContent(currentAssistantMsg, content);
+            assistantOpenedByMessage = true;
+          }
         } else {
           currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+          assistantOpenedByMessage = true;
         }
         continue;
       }
@@ -395,6 +417,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           content: null,
           tool_calls: []
         };
+        assistantOpenedByMessage = false;
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || !isString(item.name) || item.name.trim() === "") {
@@ -571,6 +594,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   delete result.client_metadata;
   delete result.background;
   delete result.truncation;
+
+  // Relocate late function_call_output items next to their owning tool-call
+  // turn by call id, and synthesize only for ids with no real output anywhere
+  // in this request (#1335 CTO review).
+  fixMissingToolResponses(result);
 
   return result;
 }

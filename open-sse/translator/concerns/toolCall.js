@@ -441,9 +441,58 @@ export function hasToolResults(msg, toolCallIds) {
   return false;
 }
 
+/** True when `msg` is an OpenAI `role:tool` result or a Claude user tool_result carrier. */
+function isToolResultCarrier(msg) {
+  if (!msg || !isObject(msg)) return false;
+  if (msg.role === ROLE.TOOL) return true;
+  if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
+    return msg.content.some((block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT);
+  }
+  return false;
+}
+
+function syntheticToolResult(id, isClaudeFormat) {
+  return isClaudeFormat ?
+  {
+    role: ROLE.USER,
+    content: [{
+      type: CLAUDE_BLOCK.TOOL_RESULT,
+      tool_use_id: id,
+      content: "[No response received]"
+    }]
+  } :
+  {
+    role: ROLE.TOOL,
+    tool_call_id: id,
+    content: "[No response received]"
+  };
+}
+
 /**
- * Insert a matching synthetic result after unanswered tool calls, preserving
- * the source history's OpenAI or Claude shape. Ported from decolua/9router#3055.
+ * Decide whether a tool-result id from the current turn's contiguous run should
+ * be kept, dropped as a cross-turn stray, or left for salvageOrphanedToolResults.
+ * @returns {"keep"|"drop"|"orphan"}
+ */
+function classifyToolResultId(id, callIdSet, answered, allLiveIds) {
+  if (callIdSet.has(id)) {
+    if (answered.has(id)) return "drop";
+    return "keep";
+  }
+  // Id still belongs to another assistant turn in this request → cross-turn stray.
+  if (allLiveIds.has(id)) return "drop";
+  // No matching tool call anywhere → true orphan; leave for salvage.
+  return "orphan";
+}
+
+/**
+ * Pair tool results only with tool calls from the immediately preceding
+ * assistant turn, matching by call id (not position). Contiguous stray results
+ * for earlier turns (ids that are still live on a prior turn) are dropped;
+ * current-turn results are kept even when a stray precedes them; true orphans
+ * (no live call) stay in place for salvageOrphanedToolResults; only truly
+ * unanswered current-turn ids get a synthetic "[No response received]".
+ * Duplicate results for an already-answered id in the same run are dropped.
+ * Refs #1335.
  */
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
@@ -452,32 +501,60 @@ export function fixMissingToolResponses(body) {
   Array.isArray(message?.content) &&
   message.content.some((block) => block?.type === CLAUDE_BLOCK.TOOL_USE || block?.type === CLAUDE_BLOCK.TOOL_RESULT)
   );
+  const allLiveIds = new Set();
+  for (const message of body.messages) {
+    for (const id of getToolCallIds(message)) allLiveIds.add(id);
+  }
   const newMessages = [];
+  let i = 0;
 
-  for (let i = 0; i < body.messages.length; i++) {
+  while (i < body.messages.length) {
     const msg = body.messages[i];
-    const nextMsg = body.messages[i + 1];
-
     newMessages.push(msg);
+    i += 1;
 
     const toolCallIds = getToolCallIds(msg);
-    if (toolCallIds.length === 0 || nextMsg && hasToolResults(nextMsg, toolCallIds)) continue;
+    if (toolCallIds.length === 0) continue;
+
+    const callIdSet = new Set(toolCallIds);
+    const answered = new Set();
+
+    while (i < body.messages.length && isToolResultCarrier(body.messages[i])) {
+      const resultMsg = body.messages[i];
+      i += 1;
+
+      if (resultMsg.role === ROLE.TOOL) {
+        const id = resultMsg.tool_call_id;
+        const verdict = classifyToolResultId(id, callIdSet, answered, allLiveIds);
+        if (verdict === "drop") continue;
+        newMessages.push(resultMsg);
+        if (verdict === "keep") answered.add(id);
+        continue;
+      }
+
+      // Claude-shaped user carrier: keep in-turn + orphan tool_result blocks
+      // (and sibling non-result content); drop cross-turn / duplicate results.
+      if (!Array.isArray(resultMsg.content)) continue;
+      const keptBlocks = [];
+      for (const block of resultMsg.content) {
+        if (!isObject(block)) continue;
+        if (block.type !== CLAUDE_BLOCK.TOOL_RESULT) {
+          keptBlocks.push(block);
+          continue;
+        }
+        const id = block.tool_use_id;
+        const verdict = classifyToolResultId(id, callIdSet, answered, allLiveIds);
+        if (verdict === "drop") continue;
+        keptBlocks.push(block);
+        if (verdict === "keep") answered.add(id);
+      }
+      if (keptBlocks.length === 0) continue;
+      newMessages.push({ ...resultMsg, content: keptBlocks });
+    }
 
     for (const id of toolCallIds) {
-      newMessages.push(isClaudeFormat ?
-      {
-        role: ROLE.USER,
-        content: [{
-          type: CLAUDE_BLOCK.TOOL_RESULT,
-          tool_use_id: id,
-          content: "[No response received]"
-        }]
-      } :
-      {
-        role: ROLE.TOOL,
-        tool_call_id: id,
-        content: "[No response received]"
-      });
+      if (answered.has(id)) continue;
+      newMessages.push(syntheticToolResult(id, isClaudeFormat));
     }
   }
 

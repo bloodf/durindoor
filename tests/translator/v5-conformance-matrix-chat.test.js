@@ -586,8 +586,8 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     ],
   };
 
-  // #1089 failing: #1335 Chat→Claude synthesizes an empty result for the current call and leaves the real new-result unpaired.
-  it.skip("pairs Claude tool results only within the current assistant turn", () => {
+  // #1335: turn-scoped pairing by call id (stray cross-turn results dropped).
+  it("pairs Claude tool results only within the current assistant turn", () => {
     const out = request(CLAUDE, pairingBody);
     const toolResults = out.messages.flatMap((message) =>
       Array.isArray(message.content) ? message.content.filter((block) => block.type === "tool_result") : []);
@@ -597,8 +597,8 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     expect(JSON.stringify(out.messages)).not.toContain("[No response received]");
   });
 
-  // #1089 failing: #1335 Chat→Gemini drops the current-turn tool result text when a cross-turn id precedes it.
-  it.skip("pairs Gemini tool results only within the current assistant turn", () => {
+  // #1335: turn-scoped pairing by call id (stray cross-turn results dropped).
+  it("pairs Gemini tool results only within the current assistant turn", () => {
     const out = request(GEMINI, pairingBody);
     const responses = out.contents.flatMap((entry) =>
       (entry.parts || []).filter((part) => part.functionResponse).map((part) => part.functionResponse));
@@ -609,8 +609,8 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     expect(JSON.stringify(out.contents)).not.toContain("[No response received]");
   });
 
-  // #1089 failing: #1335 Chat→Responses keeps a cross-turn function_call_output for call_id old.
-  it.skip("pairs Responses tool results only within the current assistant turn", () => {
+  // #1335: turn-scoped pairing by call id (stray cross-turn results dropped).
+  it("pairs Responses tool results only within the current assistant turn", () => {
     const out = request(RESPONSES, pairingBody);
     const outputs = out.input.filter((item) => item.type === "function_call_output");
     expect(outputs.map((item) => [item.call_id, item.output])).toEqual([
@@ -684,13 +684,14 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     });
   });
 
+  // #1351 fills missing `properties` on object schemas; free-form additionalProperties stays.
   it("preserves free-form object schemas on Claude", () => {
     const schema = { type: "object", additionalProperties: true };
     const out = request(CLAUDE, chatBody({
       tools: [namespacedTool(false, schema)],
       tool_choice: "auto",
     }));
-    expect(out.tools[0].input_schema).toEqual(schema);
+    expect(out.tools[0].input_schema).toEqual({ ...schema, properties: {} });
   });
 
   it("fills empty schemas for Gemini with a reason placeholder", () => {

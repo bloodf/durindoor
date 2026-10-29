@@ -56,9 +56,9 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | tool-result image media | Claude | failing | `converts tool-result image_url media to Claude image blocks` |
 | Request | tool-result image media | Gemini | already-present | `keeps tool-result image URL visible through Gemini functionResponse` |
 | Request | tool-result image media | Responses | failing | `preserves tool-result image media on Chat to Responses` |
-| Request | turn-scoped tool pairing | Claude | failing | `pairs Claude tool results only within the current assistant turn` |
-| Request | turn-scoped tool pairing | Gemini | failing | `pairs Gemini tool results only within the current assistant turn` |
-| Request | turn-scoped tool pairing | Responses | failing | `pairs Responses tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Claude | repaired (#1335) | `pairs Claude tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Gemini | repaired (#1335) | `pairs Gemini tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Responses | repaired (#1335) | `pairs Responses tool results only within the current assistant turn` |
 | Request | non-string object description (#1091) | Kiro | failing | `coerces object tool descriptions before Kiro trim` |
 | Request | non-string numeric description (#1091) | Kiro | failing | `coerces numeric tool descriptions before Kiro trim` |
 | Request | empty description fallback (#1091) | Kiro | already-present | `fills empty Kiro descriptions with a Tool: name fallback` |
@@ -80,7 +80,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 3. #1330 — Chat JSON `finish_reason: error` becomes Claude `end_turn` / Gemini `STOP` instead of an abort terminal.
 4. #1331 — Chat→Responses non-stream copies finish reasons into invalid `status` values (`length` / `content_filter` / `error`) instead of `incomplete`/`failed`; stream flush emits `response.completed` after `length` and never `response.failed` after `error`.
 5. #1332 — Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
-6. #1335 — Cross-turn `tool_call_id` reuse breaks current-turn pairing on Claude, Gemini, and Responses.
+6. #1335 — Cross-turn `tool_call_id` reuse broke current-turn pairing on Claude, Gemini, and Responses (repaired: pair by call id within the current assistant turn; drop strays).
 7. #1333 — Kiro `description.trim` throws `TypeError` for object/number descriptions.
 8. #1334 — String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.
 

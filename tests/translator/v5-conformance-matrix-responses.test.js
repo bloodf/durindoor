@@ -231,8 +231,9 @@ describe("#1089 Responses client conformance", () => {
     });
   });
 
-  // #1089 failing: translator pairs historical function outputs by call ID across assistant turns. Refs #1335
-  it.skip("does not pair function_call_output across assistant turns", () => {
+  // #1335: a tool-only function_call turn closed by a later assistant message
+  // abandons unanswered calls; late function_call_output must not pair across.
+  it("does not pair function_call_output across assistant turns", () => {
     const out = request({
       input: [
         { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "old", name: "lookup", arguments: "{}" },

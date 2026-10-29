@@ -233,10 +233,17 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  // True once this pending assistant turn absorbed a Responses `message` item.
+  // A tool-only turn (function_call first) followed by a later assistant
+  // message is a new turn (#1335); trailing text after a message-opened turn
+  // stays same-turn (Codex text → tool → more text).
+  let assistantOpenedByMessage = false;
   // call_ids skipped at FUNCTION_CALL time (nameless, #444) never get a
   // tool_calls entry. Their function_call_output must be dropped too, or the
   // "tool" message that follows references a tool_call_id that does not
   // exist in the assistant turn — OpenAI-shaped APIs reject that pairing.
+  // Also holds call_ids abandoned when a tool-only turn is closed by a later
+  // assistant message before any output arrived (#1335).
   const skippedCallIds = new Set();
 
   // A blank content value carries no text worth keeping: null/undefined, an
@@ -336,12 +343,14 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (currentAssistantMsg.content == null && !currentAssistantMsg.tool_calls) {
       if (!currentAssistantMsg.reasoning_content) {
         currentAssistantMsg = null;
+        assistantOpenedByMessage = false;
         return;
       }
       currentAssistantMsg.content = "";
     }
     result.messages.push(currentAssistantMsg);
     currentAssistantMsg = null;
+    assistantOpenedByMessage = false;
   };
 
   // Images lifted out of tool outputs wait here until the run of tool
@@ -365,12 +374,28 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       item.content;
 
       // Assistant content joins the pending turn instead of starting a second
-      // assistant message (see flushAssistant above).
+      // assistant message (see flushAssistant above) — except a tool-only turn
+      // that never opened with a message: a later assistant message is a new
+      // turn, so abandon unanswered calls rather than folding across the
+      // boundary (#1335 Fixture B).
       if (item.role === ROLE.ASSISTANT) {
         if (currentAssistantMsg) {
-          appendAssistantContent(currentAssistantMsg, content);
+          const openToolCalls = currentAssistantMsg.tool_calls;
+          if (Array.isArray(openToolCalls) && openToolCalls.length > 0 && !assistantOpenedByMessage) {
+            for (const tc of openToolCalls) {
+              if (isString(tc?.id)) skippedCallIds.add(tc.id);
+            }
+            currentAssistantMsg = null;
+            pendingReasoning = "";
+            currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+            assistantOpenedByMessage = true;
+          } else {
+            appendAssistantContent(currentAssistantMsg, content);
+            assistantOpenedByMessage = true;
+          }
         } else {
           currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+          assistantOpenedByMessage = true;
         }
         continue;
       }
@@ -395,6 +420,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           content: null,
           tool_calls: []
         };
+        assistantOpenedByMessage = false;
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || !isString(item.name) || item.name.trim() === "") {
@@ -405,9 +431,10 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         if (isString(item.call_id) && !hasLiveToolCall) skippedCallIds.add(item.call_id);
         continue;
       }
-      // A named call reusing a call_id an earlier nameless call skipped is a
-      // real tool call now — un-skip the id so its function_call_output is
-      // not dropped as if it still answered the discarded call.
+      // A named call reusing a call_id an earlier nameless (or abandoned
+      // cross-turn) call skipped is a real tool call now — un-skip the id so
+      // its function_call_output is not dropped as if it still answered the
+      // discarded call.
       skippedCallIds.delete(item.call_id);
       // Replayed namespace calls carry `{ name, namespace }`; re-qualify them so history
       // matches the expanded `{namespace}.{subtool}` declaration (and its alias).

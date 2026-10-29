@@ -38,7 +38,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 
 | Test | Reason |
 |---|---|
-| `does not pair function_call_output across assistant turns` | Translator pairs historical function outputs by call ID across assistant turns (product bug; Refs #1335). |
+| `does not pair function_call_output across assistant turns` | Repaired (#1335): a tool-only turn closed by a later assistant message abandons unanswered calls; late outputs are dropped. |
 | `clamps overlong tool names to 64 chars for Chat with round-trip map` | Responses→Chat direct route skips `normalizeOpenAIToolNames`, so names stay longer than 64 (Refs #1345). |
 | `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` | Non-stream Responses upstream bodies are not projected into Gemini client shape (Refs #1346). |
 | `normalizes Claude free-form parameters {} to a typed empty object schema` | Responses→Claude leaves free-form `parameters:{}` as `input_schema:{}`; Anthropic requires `type:"object"` (Refs #1350). |

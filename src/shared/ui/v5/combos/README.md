@@ -8,3 +8,16 @@ The form retains keyboard/pointer ordering, one-shot provider/name sorting, weig
 
 Modal footers use the shared Modal's explicit footer slot. Filters never inherit footer positioning or spacing. The selected-model list scrolls independently with 44px remove targets. Capability checkboxes have human accessible names; invalid weights and token ceilings show field feedback and prevent saving until corrected.
 Weight errors use a stable Field wrapper so validation does not replace the focused input while typing.
+
+### Confirmed routing changes
+
+Timeouts are local drafts until Enter or blur. Invalid/blank drafts never write a
+zero accidentally. Per-row saving, saved, rejection and Retry states retain the
+operator's failed draft; all strategy patches share one queue and merge against
+the latest accepted settings map, including changes on different combos.
+
+Connection allow-list changes stay visible until accepted. Remove, group-add,
+connection-add and clear share one submission guard; a rejected draft remains
+available through Retry. Capabilities and limits remain available in a disclosure
+that starts open for existing overrides. An empty mobile selection pane is hidden
+so it does not consume catalog space; selection counts and selected rows remain.

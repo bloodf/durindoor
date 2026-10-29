@@ -8,3 +8,4 @@ export default meta;
 export const EmbeddingExample = { ...reviewStory(original.EmbeddingExample, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.stories.jsx","standalone":false}) };
 export const RunExample = { ...reviewStory(original.RunExample, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.stories.jsx","standalone":false}) };
 export const TtsExample = { ...reviewStory(original.TtsExample, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.stories.jsx","standalone":false}) };
+export const CustomEmbeddingDetail = { ...reviewStory(original.CustomEmbeddingDetail, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/page.stories.jsx","standalone":false}) };

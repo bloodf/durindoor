@@ -28,7 +28,7 @@ const editFixture = fixtureStory();
 export const EditAndReadBack = { ...editFixture, play: async ({ canvasElement }) => { const body = within(canvasElement.ownerDocument.body); const row = (await body.findByText("production-fallback", { selector: "code.block" })).closest(".v5-combo-row"); await userEvent.click(within(row).getByRole("button", { name: "Edit" })); const dialog = within(await body.findByRole("dialog", { name: "Edit Combo" })); await userEvent.click(dialog.getAllByRole("button", { name: "Move down" })[0]); await userEvent.click(dialog.getByRole("button", { name: "Save" })); await waitFor(() => expect(body.queryByRole("dialog")).not.toBeInTheDocument()); expect(editFixture.fixture.snapshot().combos[0].models[0]).toBe("anthropic/claude-sonnet-4.5"); expect(editFixture.fixture.snapshot().combos[0].members[0].weight).toBe(2); expect(editFixture.fixture.snapshot().combos[0].allowedConnectionIds).toEqual(["review-account"]); } };
 const deleteFixture = fixtureStory();
 export const DeleteAndReadBack = { ...deleteFixture, play: async ({ canvasElement }) => { const body = within(canvasElement.ownerDocument.body); const row = (await body.findByText("production-fallback", { selector: "code.block" })).closest(".v5-combo-row"); await userEvent.click(within(row).getByRole("button", { name: "Delete" })); const dialog = within(await body.findByRole("dialog", { name: "Delete Combo" })); await userEvent.click(dialog.getByRole("button", { name: "Confirm" })); await waitFor(() => expect(body.queryByText("production-fallback", { selector: "code.block" })).not.toBeInTheDocument()); expect(deleteFixture.fixture.snapshot().combos).toHaveLength(1); } };
-export const StrategyFailure = { ...fixtureStory({ failures: { "PATCH /api/settings": "Routing strategy could not be saved" } }), play: async ({ canvasElement }) => { const body = within(canvasElement.ownerDocument.body); const input = await body.findByLabelText("Timeout for production-fallback"); await userEvent.clear(input); await userEvent.type(input, "12"); expect(await body.findByRole("alert")).toHaveTextContent("could not be saved"); } };
+export const StrategyFailure = { ...fixtureStory({ failures: { "PATCH /api/settings": "Routing strategy could not be saved" } }), play: async ({ canvasElement }) => { const body = within(canvasElement.ownerDocument.body); const input = await body.findByLabelText("Timeout for production-fallback"); await userEvent.clear(input); await userEvent.type(input, "12"); await userEvent.keyboard("{Enter}"); expect(await body.findByRole("alert")).toHaveTextContent("could not be saved"); } };
 function PickerHarness() { const [selected, setSelected] = useState(["openai/gpt-4o"]); const [open, setOpen] = useState(true); return <><Button onClick={() => setOpen(true)}>Choose models</Button><ReviewModelSelectModal isOpen={open} onClose={() => setOpen(false)} onSelect={(model) => setSelected((current) => [...current, model.value])} onDeselect={(model) => setSelected((current) => current.filter((value) => value !== model.value))} activeProviders={[{ id: "review-account", provider: "openai", isActive: true }]} addedModelValues={selected} closeOnSelect={false} title="Add Model to Combo" /></>; }
 export const ModelPicker = { ...fixtureStory(), render: () => <PickerHarness /> };
 function FormHarness() { const [open, setOpen] = useState(true); const [saved, setSaved] = useState(null); return <><Button onClick={() => setOpen(true)}>Edit combo</Button><ReviewComboFormModal isOpen={open} combo={combinations[0]} onClose={() => setOpen(false)} onSave={async (payload) => { setSaved(payload); setOpen(false); return { ok: true }; }} activeProviders={[]} /><output aria-label="Saved combo">{saved ? JSON.stringify(saved) : "No changes saved"}</output></>; }
@@ -40,3 +40,32 @@ const successFixture = fixtureStory();
 export const CreateAndReadBack = { ...successFixture, play: async ({ canvasElement }) => { const body = within(canvasElement.ownerDocument.body); await userEvent.click(await body.findByRole("button", { name: "Create Combo" })); const dialog = within(await body.findByRole("dialog", { name: "Create Combo" })); await userEvent.type(dialog.getByLabelText("Combo Name"), "new-routing-chain"); await userEvent.click(dialog.getByRole("button", { name: "Create" })); expect(await body.findByText("new-routing-chain", { selector: "code.block" })).toBeVisible(); expect(successFixture.fixture.snapshot().combos.at(-1)).toMatchObject({ name: "new-routing-chain", models: [], members: [] }); } };
 export const InvalidName = { ...fixtureStory(), play: async ({ canvasElement }) => { const body = within(canvasElement.ownerDocument.body); await userEvent.click(await body.findByRole("button", { name: "Create Combo" })); const dialog = within(await body.findByRole("dialog", { name: "Create Combo" })); await userEvent.type(dialog.getByLabelText("Combo Name"), "invalid name"); expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled(); } };
 export const SearchWithoutResults = { ...fixtureStory(), render: () => <PickerHarness />, play: async ({ canvasElement }) => { const body = within(canvasElement.ownerDocument.body); const dialog = within(await body.findByRole("dialog", { name: "Add Model to Combo" })); await userEvent.type(dialog.getByLabelText("Search models"), "missing-review-model-name"); expect(await dialog.findByText("No models found")).toBeVisible(); } };
+
+const orderedFixture = fixtureStory();
+let releaseFirstWrite;
+let firstWrite;
+let writeCount = 0;
+const persistOrdered = orderedFixture.fixture.routes["PATCH /api/settings"];
+export const OrderedTimeoutSaves = {
+  ...orderedFixture,
+  beforeEach: () => { orderedFixture.fixture.reset(); writeCount = 0; firstWrite = new Promise((resolve) => { releaseFirstWrite = resolve; }); return () => releaseFirstWrite?.(); },
+  parameters: { storyFixture: { pathname: "/dashboard/combos", routes: { ...orderedFixture.fixture.routes,
+    "PATCH /api/settings": async (request) => { if (++writeCount === 1) await firstWrite; return persistOrdered(request); },
+  } } },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const primary = await body.findByLabelText("Timeout for production-fallback");
+    await userEvent.clear(primary); await userEvent.type(primary, "12");
+    await expect(writeCount).toBe(0);
+    await userEvent.keyboard("{Enter}");
+    await expect(primary).toBeDisabled();
+    const secondary = body.getByLabelText("Timeout for review-panel");
+    await userEvent.clear(secondary); await userEvent.type(secondary, "7"); await userEvent.keyboard("{Enter}");
+    await expect(writeCount).toBe(1);
+    releaseFirstWrite();
+    await waitFor(() => expect(writeCount).toBe(2));
+    await waitFor(() => expect(orderedFixture.fixture.snapshot().settings.comboStrategies["review-panel"].timeoutMs).toBe(7000));
+    await expect(orderedFixture.fixture.snapshot().settings.comboStrategies["production-fallback"].timeoutMs).toBe(12000);
+    await expect(primary).toHaveValue(12);
+  },
+};

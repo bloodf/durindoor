@@ -51,7 +51,7 @@ export default {
 export const Default = {
   render: () => <LoginPage />,
   play: async ({ canvasElement }) => {
-    await expect(await within(canvasElement).findByLabelText("Password")).toBeVisible();
+    await expect(await within(canvasElement).findByLabelText(/^Password(?: \*)?$/)).toBeVisible();
   },
 };
 
@@ -102,7 +102,7 @@ const loginFixture = (loginResponse, extraRoutes = {}) => ({
 });
 
 async function submitPassword(canvas) {
-  await userEvent.type(await canvas.findByLabelText("Password"), "fixture-password");
+  await userEvent.type(await canvas.findByLabelText(/^Password(?: \*)?$/), "fixture-password");
   await userEvent.click(canvas.getByRole("button", { name: "Login", exact: true }));
 }
 
@@ -123,7 +123,7 @@ export const MfaChallenge = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await submitPassword(canvas);
-    await expect(await canvas.findByLabelText("Authentication code")).toBeVisible();
+    await expect(await canvas.findByLabelText(/^Authentication code(?: \*)?$/)).toBeVisible();
     await expect(canvas.getByRole("button", { name: "Verify" })).toBeDisabled();
   },
 };
@@ -138,10 +138,10 @@ export const MfaRejected = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await submitPassword(canvas);
-    await userEvent.type(await canvas.findByLabelText("Authentication code"), "000000");
+    await userEvent.type(await canvas.findByLabelText(/^Authentication code(?: \*)?$/), "000000");
     await userEvent.click(canvas.getByRole("button", { name: "Verify" }));
     await expect(await canvas.findByText("Invalid code")).toBeVisible();
-    await expect(canvas.getByLabelText("Authentication code")).toHaveValue("");
+    await expect(canvas.getByLabelText(/^Authentication code(?: \*)?$/)).toHaveValue("");
   },
 };
 
@@ -151,7 +151,7 @@ export const PasswordUpdate = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await submitPassword(canvas);
-    await expect(await canvas.findByLabelText("New password")).toBeVisible();
+    await expect(await canvas.findByLabelText(/^New password(?: \*)?$/)).toBeVisible();
     await expect(canvas.getByText("Password update required")).toBeVisible();
   },
 };
@@ -163,7 +163,7 @@ export const RemoteDefaultPasswordBlocked = {
     const canvas = within(canvasElement);
     await submitPassword(canvas);
     await expect(await canvas.findByText("Default password", { exact: true })).toBeVisible();
-    await expect(canvas.queryByLabelText("Password")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText(/^Password(?: \*)?$/)).not.toBeInTheDocument();
   },
 };
 
@@ -189,7 +189,7 @@ export const ConfiguredOidc = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("button", { name: "Sign in with Example ID" })).toBeVisible();
-    await expect(canvas.queryByLabelText("Password")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText(/^Password(?: \*)?$/)).not.toBeInTheDocument();
   },
 };
 
@@ -203,9 +203,9 @@ export const UpdatedPasswordRequiresReauthentication = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await submitPassword(canvas);
-    await userEvent.type(await canvas.findByLabelText("New password"), "fixture-new-password");
+    await userEvent.type(await canvas.findByLabelText(/^New password(?: \*)?$/), "fixture-new-password");
     await userEvent.click(canvas.getByRole("button", { name: "Set password" }));
     await expect(await canvas.findByText("Password updated. Please sign in with your new password.")).toBeVisible();
-    await expect(canvas.getByLabelText("Password")).toHaveValue("");
+    await expect(canvas.getByLabelText(/^Password(?: \*)?$/)).toHaveValue("");
   },
 };

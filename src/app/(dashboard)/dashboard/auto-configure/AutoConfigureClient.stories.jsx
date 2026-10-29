@@ -72,3 +72,15 @@ export const RunFailure = {
     await expect(await canvas.findByText("Configuration service unavailable")).toBeVisible();
   },
 };
+
+export const StatusLoadRecovery = {
+  args: { status: null, initialError: "Configuration status could not be loaded." },
+  parameters: { storyFixture: { routes: { "GET /api/settings/auto-configure": { body: status } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Configuration status could not be loaded");
+    await userEvent.click(canvas.getByRole("button", { name: "Retry status" }));
+    await expect(await canvas.findByRole("heading", { name: "Status", level: 2 })).toBeVisible();
+    await expect(canvas.queryByRole("alert")).not.toBeInTheDocument();
+  },
+};

@@ -41,6 +41,7 @@ export const usageFixture = {
   routes: {
     "GET /api/providers": { body: { connections: [{ id: accountId, provider: "openai", name: "Review account", isActive: true, authType: "apikey" }] } },
     "GET /api/provider-nodes": { body: { nodes: [] } },
+    "GET /api/monitoring": { body: { version: "4.11.0", latencyMs: 12, runtime: { processUptimeSec: 3600, nodeVersion: "v20.20.2", dbSizeLabel: "12 MB", activeDetail: [{ provider: "openai", model: "gpt-5", account: "Primary", count: 2 }] }, activity: { today: { requests: 123, promptTokens: 1400, completionTokens: 900, providers: 1, models: 1 } }, health: [{ id: "openai", name: "OpenAI", requests: 123, errors: 1, successRate: 99.2 }] } },
     "GET /api/settings": { body: { enableObservability: true, disabledFreeProviders: [] } },
     "GET /api/usage/stats": (request) => ({ body: new URL(request.url).searchParams.has("startDate") ? { ...usageStats, totalRequests: 27 } : usageStats }),
     "GET /api/usage/stream": { events: [usageStats] },

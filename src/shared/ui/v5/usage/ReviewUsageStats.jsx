@@ -108,7 +108,7 @@ const TABLE_OPTIONS = [
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
 /** Review-only composition of production usage handlers; all API/SSE and grouping contracts remain intact. */
-export default function ReviewUsageStats({ renderSections, period: periodProp, setPeriod: setPeriodProp, customRange = null, isCustomRange = false, hidePeriodSelector = false, resetNonce = 0 } = {}) {
+export default function ReviewUsageStats({ renderSections, period: periodProp, setPeriod: setPeriodProp, customRange = null, isCustomRange = false, hidePeriodSelector = false, enabled = true, resetNonce = 0 } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -140,6 +140,7 @@ export default function ReviewUsageStats({ renderSections, period: periodProp, s
   // Fetch connected providers once, deduplicate by provider type
   // Always include noAuth free providers (e.g. opencode) regardless of connections
   useEffect(() => {
+    if (!enabled) return undefined;
     const controller = new AbortController();
     Promise.all([
     fetch("/api/providers", { signal: controller.signal }).then((r) => r.ok ? r.json() : null),
@@ -156,10 +157,11 @@ export default function ReviewUsageStats({ renderSections, period: periodProp, s
     }).
     catch(() => {});
     return () => controller.abort();
-  }, []);
+  }, [enabled]);
 
   // Fetch filtered stats via REST when period changes
   useEffect(() => {
+    if (!enabled) return undefined;
     const controller = new AbortController();
     statsFetchAbortRef.current = controller;
     const requestToken = statsRequestGuard.begin();
@@ -202,13 +204,14 @@ export default function ReviewUsageStats({ renderSections, period: periodProp, s
       if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
       requestToken.cancel();
     };
-  }, [period, customRange?.startDate, customRange?.endDate, isCustomRange, snapshotKey, periodLabel, statsRequestGuard, resetNonce, retryNonce]);
+  }, [period, customRange?.startDate, customRange?.endDate, isCustomRange, snapshotKey, periodLabel, statsRequestGuard, resetNonce, retryNonce, enabled]);
 
   /**
    * Upstream #3388: period-keyed SSE owns preset snapshots, while custom-range
    * REST totals stay authoritative because the stream cannot express dates.
    */
   useEffect(() => {
+    if (!enabled) return undefined;
     const es = new EventSource(`/api/usage/stream?period=${encodeURIComponent(period)}`);
     let active = true;
     setStreamError("");
@@ -252,7 +255,7 @@ export default function ReviewUsageStats({ renderSections, period: periodProp, s
     };
 
     return () => { active = false; es.close(); };
-  }, [period, isCustomRange, snapshotKey, periodLabel, retryNonce]);
+  }, [period, isCustomRange, snapshotKey, periodLabel, retryNonce, enabled]);
 
   const toggleSort = useCallback((tableType, field) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -418,9 +421,9 @@ export default function ReviewUsageStats({ renderSections, period: periodProp, s
     </div>,
   };
   return <div className="flex min-w-0 flex-col gap-6">
-    {!hidePeriodSelector ? <div className="flex w-full items-center gap-2 sm:w-auto sm:self-end"><SegmentedControl aria-label="Usage period" options={PERIODS} value={period} onChange={setPeriod} disabled={fetching} size="sm" /></div> : null}
-    {snapshot && snapshot.key !== snapshotKey ? <p role="status" className="text-xs text-dd-muted">Showing previous {snapshot.label} usage. {fetching ? "Updating selected period…" : "Waiting for the selected period."}</p> : fetching && available ? <p role="status" className="text-xs text-dd-muted">Updating usage…</p> : null}
-    {requestError || streamError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 p-3 text-xs text-dd-danger"><p>{requestError || streamError}{available ? " Last received usage remains visible." : ""}</p><Button variant="secondary" size="sm" onClick={() => setRetryNonce((value) => value + 1)}>Retry usage</Button></div> : null}
-    {renderSections ? renderSections(sections) : Object.entries(sections).map(([id, section]) => <section key={id} data-widget-id={id}>{section}</section>)}
+    {enabled && !hidePeriodSelector ? <div className="flex w-full items-center gap-2 sm:w-auto sm:self-end"><SegmentedControl aria-label="Usage period" options={PERIODS} value={period} onChange={setPeriod} disabled={fetching} size="sm" /></div> : null}
+    {enabled && snapshot && snapshot.key !== snapshotKey ? <p role="status" className="text-xs text-dd-muted">Showing previous {snapshot.label} usage. {fetching ? "Updating selected period…" : "Waiting for the selected period."}</p> : enabled && fetching && available ? <p role="status" className="text-xs text-dd-muted">Updating usage…</p> : null}
+    {enabled && (requestError || streamError) ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 p-3 text-xs text-dd-danger"><p>{requestError || streamError}{available ? " Last received usage remains visible." : ""}</p><Button variant="secondary" size="sm" onClick={() => setRetryNonce((value) => value + 1)}>Retry usage</Button></div> : null}
+    {renderSections ? renderSections(enabled ? sections : {}) : enabled ? Object.entries(sections).map(([id, section]) => <section key={id} data-widget-id={id}>{section}</section>) : null}
   </div>;
 }

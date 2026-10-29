@@ -11,3 +11,5 @@ export const AntigravityInactive = { ...reviewStory(original.AntigravityInactive
 export const AntigravityActive = { ...reviewStory(original.AntigravityActive, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx","standalone":false}) };
 export const MitmServerStopped = { ...reviewStory(original.MitmServerStopped, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx","standalone":false}) };
 export const MitmServerRunning = { ...reviewStory(original.MitmServerRunning, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx","standalone":false}) };
+export const PiConfigured = { ...reviewStory(original.PiConfigured, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx","standalone":false}) };
+export const CopilotConfigured = { ...reviewStory(original.CopilotConfigured, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/ToolCards.stories.jsx","standalone":false}) };

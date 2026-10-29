@@ -123,3 +123,15 @@ export const PostgresCutoverTarget = {
     await expect(canvas.getByRole("radio", { name: "SQLite", exact: true })).toBeChecked();
   },
 };
+
+export const StatusUnavailable = {
+  args: Default.args,
+  parameters: { storyFixture: { routes: { "GET /api/settings/database/engine": { status: 503, body: { error: "Database unavailable" } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Database status is unknown");
+    await expect(canvas.getByText("Last successful refresh: Not loaded")).toBeVisible();
+    await expect(canvas.queryByRole("region", { name: "Engine status" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Retry status" })).toBeVisible();
+  },
+};

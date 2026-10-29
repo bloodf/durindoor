@@ -1,8 +1,10 @@
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
 
+/** Reports confirmed transport state; an empty snapshot is valid only after a successful read. */
 export function startConsoleLogTransport({
   onSnapshot,
   onEvent,
+  onStatus = () => {},
   fetchImpl = globalThis.fetch,
   EventSourceImpl = globalThis.EventSource,
   setTimeoutImpl = globalThis.setTimeout,
@@ -16,6 +18,8 @@ export function startConsoleLogTransport({
   let watchdog = null;
   let pollTimer = null;
   let etag = null;
+  const report = (state, error = "") => { if (!stopped) onStatus({ state, error }); };
+  report("connecting");
 
   const clearWatchdog = () => {
     if (!watchdog) return;
@@ -29,13 +33,16 @@ export function startConsoleLogTransport({
       cache: "no-store",
       headers,
     });
-    if (stopped || response.status === 304) return;
+    if (stopped) return;
+    if (response.status === 304) { report(polling ? "polling" : "connecting"); return; }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
     if (stopped) return;
     etag = response.headers?.get?.("etag") || null;
-    if (data.success && Array.isArray(data.logs)) onSnapshot(data.logs);
+    if (!data.success || !Array.isArray(data.logs)) throw new Error("Invalid console log snapshot");
+    onSnapshot(data.logs);
+    report(polling ? "polling" : "connecting");
   };
 
   const poll = async () => {
@@ -43,7 +50,7 @@ export function startConsoleLogTransport({
     try {
       await fetchSnapshot();
     } catch (error) {
-      console.error("Failed to poll console logs:", error);
+      report("unavailable", error.message || "Console logs could not be refreshed");
     }
     if (!stopped && polling) {
       pollTimer = setTimeoutImpl(poll, pollIntervalMs);
@@ -53,6 +60,7 @@ export function startConsoleLogTransport({
   const switchToPolling = () => {
     if (stopped || polling) return Promise.resolve();
     polling = true;
+    report("reconnecting");
     clearWatchdog();
     source?.close();
     source = null;
@@ -72,13 +80,16 @@ export function startConsoleLogTransport({
       void switchToPolling();
       return;
     }
+    source.onopen = () => { clearWatchdog(); report("streaming"); };
     source.onmessage = (event) => {
+      if (stopped) return;
       clearWatchdog();
       etag = null;
       try {
         onEvent(JSON.parse(event.data));
+        report("streaming");
       } catch (error) {
-        console.error("Failed to parse console log event:", error);
+        report("unavailable", error.message || "Invalid console log event");
       }
     };
     source.onerror = switchToPolling;
@@ -86,7 +97,7 @@ export function startConsoleLogTransport({
   };
 
   const ready = Promise.resolve(fetchSnapshot())
-    .catch((error) => console.error("Failed to load console logs:", error))
+    .catch((error) => report("unavailable", error.message || "Console logs could not be loaded"))
     .finally(startStream);
 
   return {

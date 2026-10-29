@@ -96,6 +96,7 @@ export function createRoutingFixture(options = {}) {
   add("POST", "/api/models/test", () => body({ ok: true, valid: true }));
   add("GET", "/api/models/auto-sync", () => body({ providers: { [options.provider || "openai"]: { ...state.sync, enabled: state.settings.modelAutoSyncProviders[options.provider || "openai"] !== false } } }));
   add("POST", "/api/models/auto-sync", () => body({ results: [{ status: options.syncError ? "failed" : "synced", modelCount: state.sync.models.length, error: options.syncError || null }] }));
+  add("GET", "/api/usage/combos", () => body({ rows: [], boundary: "Last seven days" }));
   add("GET", "/api/combos", () => body({ combos: state.combos }));
   add("POST", "/api/combos", (payload) => { const combo = { id: `review-combo-${state.combos.length + 1}`, ...payload }; state.combos.push(combo); return body({ combo }); });
   for (const combo of state.combos) {

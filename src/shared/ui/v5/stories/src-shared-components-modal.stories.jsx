@@ -6,4 +6,5 @@ import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Workflows/shared-overlays/Modal", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/components/Modal.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/shared/components/Modal.stories.jsx","standalone":false}) };
+export const OpenConfirmation = { ...reviewStory(original.OpenConfirmation, {"source":"src/shared/components/Modal.stories.jsx","standalone":false}) };
 export const Confirmation = { ...reviewStory(original.Confirmation, {"source":"src/shared/components/Modal.stories.jsx","standalone":false}) };

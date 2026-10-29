@@ -306,14 +306,14 @@ const assertSpacingModal = async () => {
   const dialog = await canvas.findByRole("dialog", { name: "Create Combo" });
   const footer = dialog.querySelector("footer");
   await expect(footer).toBeInTheDocument();
-  await expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible();
-  await expect(within(footer).getByRole("button", { name: "Create" })).toBeVisible();
+  await waitFor(() => expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible());
+  await waitFor(() => expect(within(footer).getByRole("button", { name: "Create" })).toBeVisible());
 
   // Select an existing combo through the real picker: nested combos are valid members.
   await userEvent.click(within(dialog).getByRole("button", { name: "Add Model" }));
   const picker = await canvas.findByRole("dialog", { name: "Add Model to Combo" });
   await userEvent.click(await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ }));
-  await userEvent.click(within(picker).getByRole("button", { name: "Close" }));
+  await userEvent.click(within(picker).getByRole("button", { name: "Done" }));
   await waitFor(() => expect(picker).not.toBeInTheDocument());
   const drag = within(dialog).getByRole("button", { name: "Drag to reorder production-fallback" });
   const row = drag.parentElement;

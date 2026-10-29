@@ -13,3 +13,6 @@ export const CreateFlow = { ...reviewStory(original.CreateFlow, {"source":"src/a
 export const EditFlow = { ...reviewStory(original.EditFlow, {"source":"src/app/(dashboard)/dashboard/combos/page.stories.jsx","standalone":false}) };
 export const SaveFailure = { ...reviewStory(original.SaveFailure, {"source":"src/app/(dashboard)/dashboard/combos/page.stories.jsx","standalone":false}) };
 export const LoadFailureError = { ...reviewStory(original.LoadFailureError, {"source":"src/app/(dashboard)/dashboard/combos/page.stories.jsx","standalone":false}) };
+export const CreateComboSpacing = { ...reviewStory(original.CreateComboSpacing, {"source":"src/app/(dashboard)/dashboard/combos/page.stories.jsx","standalone":false}) };
+export const CreateComboSpacingMobile = { ...reviewStory(original.CreateComboSpacingMobile, {"source":"src/app/(dashboard)/dashboard/combos/page.stories.jsx","standalone":false}) };
+export const ConnectionUsage = { ...reviewStory(original.ConnectionUsage, {"source":"src/app/(dashboard)/dashboard/combos/page.stories.jsx","standalone":false}) };

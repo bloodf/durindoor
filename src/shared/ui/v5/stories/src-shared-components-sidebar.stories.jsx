@@ -9,3 +9,4 @@ export const GroupsAndUpdate = { ...reviewStory(original.GroupsAndUpdate, {"sour
 export const MediaExpanded = { ...reviewStory(original.MediaExpanded, {"source":"src/shared/components/Sidebar.stories.jsx","standalone":true}) };
 export const TokenSaverActiveHierarchy = { ...reviewStory(original.TokenSaverActiveHierarchy, {"source":"src/shared/components/Sidebar.stories.jsx","standalone":true}) };
 export const CollapsibleRail = { ...reviewStory(original.CollapsibleRail, {"source":"src/shared/components/Sidebar.stories.jsx","standalone":true}) };
+export const CollapsedTooltip = { ...reviewStory(original.CollapsedTooltip, {"source":"src/shared/components/Sidebar.stories.jsx","standalone":true}) };

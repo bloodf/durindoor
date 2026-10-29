@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { Card } from "@/shared/ui/components/Card.jsx";
@@ -34,6 +34,10 @@ import { fetchPxpipeStatus, getPxpipeStatusView } from "../pxpipe/pxpipeStatus.j
 
 export default function TokenSaverClient({ view = "overview" }) {
   const [settingsStatus, setSettingsStatus] = useState("loading");
+  const [settingWrites, setSettingWrites] = useState({});
+  const pendingSettings = useRef(new Set());
+  const retrySettings = useRef({});
+  const acceptedHeadroomUrl = useRef("http://localhost:8787");
   const [rtkEnabled, setRtkEnabledState] = useState(true);
   const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
   const [pxpipeMinChars, setPxpipeMinChars] = useState("25000");
@@ -99,74 +103,54 @@ export default function TokenSaverClient({ view = "overview" }) {
 
   useEffect(() => {
     const current = CAVEMAN_LEVELS.find((lvl) => lvl.id === cavemanLevel);
-    if (current?.wenyan && !isWenyanLocale) {
-      setCavemanLevel("ultra");
-      patchSetting({ cavemanLevel: "ultra" });
+    if (settingsStatus === "ready" && current?.wenyan && !isWenyanLocale) {
+      saveSetting({ cavemanLevel: "ultra" }, () => setCavemanLevel("ultra"));
     }
-  }, [isWenyanLocale, cavemanLevel]);
+  }, [isWenyanLocale, cavemanLevel, settingsStatus]);
 
-  /**
-   * PATCH one or more settings. Returns the fetch Response (or null on
-   * network error) so callers can revert optimistic local state on !res.ok.
-   */
-  const patchSetting = async (patch) => {
+  /** Settings controls show accepted values. Per-field pending locks and retryable failures prevent rejected writes appearing saved. */
+  const saveSetting = async (patch, confirm = () => {}, reject = () => {}) => {
+    const key = Object.keys(patch)[0];
+    if (pendingSettings.current.has(key)) return false;
+    pendingSettings.current.add(key);
+    retrySettings.current[key] = () => saveSetting(patch, confirm, reject);
+    setSettingWrites((current) => ({ ...current, [key]: { pending: true, error: "" } }));
     try {
-      return await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch)
+      const response = await fetch("/api/settings", {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       });
-    } catch (error) {
-      console.log("Error updating setting:", error);
-      return null;
-    }
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Settings update rejected (${response.status})`);
+      }
+      confirm();
+      setSettingWrites((current) => ({ ...current, [key]: { pending: false, error: "", saved: true } }));
+      return true;
+    } catch (failure) {
+      reject();
+      setSettingWrites((current) => ({ ...current, [key]: { pending: false, error: failure.message || "Network unavailable" } }));
+      return false;
+    } finally { pendingSettings.current.delete(key); }
   };
-
-  const handleRtkEnabled = async (value) => {
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rtkEnabled: value })
-      });
-      if (res.ok) setRtkEnabledState(value);
-    } catch (error) {
-      console.log("Error updating rtkEnabled:", error);
-    }
-  };
-
-  const handleCavemanEnabled = (value) => {
-    setCavemanEnabled(value);
-    patchSetting({ cavemanEnabled: value });
-  };
-
+  const handleRtkEnabled = (value) => saveSetting({ rtkEnabled: value }, () => setRtkEnabledState(value));
+  const handleCavemanEnabled = (value) => saveSetting({ cavemanEnabled: value }, () => setCavemanEnabled(value));
   const handleHeadroomEnabled = (value) => {
-    const nextUrl = headroomUrl.trim() || "http://localhost:8787";
-    setHeadroomUrl(nextUrl);
-    setHeadroomEnabled(value);
-    patchSetting({ headroomEnabled: value, headroomUrl: nextUrl });
+    const nextUrl = acceptedHeadroomUrl.current;
+    return saveSetting({ headroomEnabled: value, headroomUrl: nextUrl }, () => setHeadroomEnabled(value));
   };
-
-  const handleHeadroomUrlBlur = async () => {
+  const handleHeadroomUrlBlur = () => {
     const next = headroomUrl.trim() || "http://localhost:8787";
-    setHeadroomUrl(next);
-    await patchSetting({ headroomUrl: next });
-    refreshHeadroomStatus();
+    return saveSetting({ headroomUrl: next }, () => {
+      acceptedHeadroomUrl.current = next; setHeadroomUrl(next); refreshHeadroomStatus();
+    }, () => setHeadroomUrl(acceptedHeadroomUrl.current));
   };
-
-  /** Persist a validated Headroom request timeout, or restore the saved value. */
   const handleHeadroomTimeoutBlur = () => {
-    if (headroomTimeoutInputValue === "") {
-      setHeadroomTimeoutInputValue(headroomTimeoutMs);
-      return;
+    const value = headroomTimeoutInputValue;
+    const n = Number(value);
+    if (value !== "" && Number.isSafeInteger(n) && n >= 1000 && n <= 120000) {
+      return saveSetting({ headroomTimeoutMs: n }, () => setHeadroomTimeoutMs(value), () => setHeadroomTimeoutInputValue(headroomTimeoutMs));
     }
-    const n = Number(headroomTimeoutInputValue);
-    if (Number.isSafeInteger(n) && n >= 1000 && n <= 120000) {
-      setHeadroomTimeoutMs(headroomTimeoutInputValue);
-      patchSetting({ headroomTimeoutMs: n });
-    } else {
-      setHeadroomTimeoutInputValue(headroomTimeoutMs);
-    }
+    setHeadroomTimeoutInputValue(headroomTimeoutMs);
   };
 
   const refreshHeadroomStatus = useCallback(async () => {
@@ -279,20 +263,9 @@ export default function TokenSaverClient({ view = "overview" }) {
     }
   }, [refreshHeadroomStatus]);
 
-  const handleCavemanLevel = (level) => {
-    setCavemanLevel(level);
-    patchSetting({ cavemanLevel: level });
-  };
-
-  const handlePonytailEnabled = (value) => {
-    setPonytailEnabled(value);
-    patchSetting({ ponytailEnabled: value });
-  };
-
-  const handlePonytailLevel = (level) => {
-    setPonytailLevel(level);
-    patchSetting({ ponytailLevel: level });
-  };
+  const handleCavemanLevel = (level) => saveSetting({ cavemanLevel: level }, () => setCavemanLevel(level));
+  const handlePonytailEnabled = (value) => saveSetting({ ponytailEnabled: value }, () => setPonytailEnabled(value));
+  const handlePonytailLevel = (level) => saveSetting({ ponytailLevel: level }, () => setPonytailLevel(level));
 
   // Status refreshes are diagnostic only; saved settings own the editable draft.
   // A slower status response must not overwrite input typed after settings load.
@@ -354,15 +327,7 @@ export default function TokenSaverClient({ view = "overview" }) {
     }
   }, [refreshPxpipeStatus, runPxpipeHealth]);
 
-  /**
-   * Toggle PXPIPE optimistically; revert local state if the PATCH is
-   * rejected (e.g. validation 400) or the request fails.
-   */
-  const handlePxpipeEnabled = async (value) => {
-    setPxpipeEnabled(value);
-    const res = await patchSetting({ pxpipeEnabled: value });
-    if (!res?.ok) setPxpipeEnabled(!value);
-  };
+  const handlePxpipeEnabled = (value) => saveSetting({ pxpipeEnabled: value }, () => setPxpipeEnabled(value));
 
   const handlePxpipeMinChars = (value) => {
     setPxpipeInputValue(value);
@@ -379,9 +344,8 @@ export default function TokenSaverClient({ view = "overview" }) {
     }
     const n = Number(value);
     if (Number.isSafeInteger(n) && n > 0) {
-      setPxpipeMinChars(value);
       setPxpipeMinCharsError("");
-      patchSetting({ pxpipeMinChars: n });
+      saveSetting({ pxpipeMinChars: n }, () => setPxpipeMinChars(value), () => setPxpipeInputValue(pxpipeMinChars));
     } else {
       setPxpipeInputValue(pxpipeMinChars);
       setPxpipeMinCharsError("Must be a positive whole number");
@@ -391,9 +355,7 @@ export default function TokenSaverClient({ view = "overview" }) {
   /** Persist a new allowlist (dedup, trim) and keep array + input string in sync. */
   const persistPxpipeAllowedModels = (nextArray) => {
     const cleaned = Array.from(new Set(nextArray.map((m) => m.trim()).filter(Boolean)));
-    setPxpipeAllowedModels(cleaned);
-    setPxpipeAllowedModelsInputValue(cleaned.join(", "));
-    patchSetting({ pxpipeAllowedModels: cleaned });
+    saveSetting({ pxpipeAllowedModels: cleaned }, () => { setPxpipeAllowedModels(cleaned); setPxpipeAllowedModelsInputValue(cleaned.join(", ")); }, () => setPxpipeAllowedModelsInputValue(pxpipeAllowedModels.join(", ")));
   };
 
   /** Persist pxpipeAllowedModels on blur; normalize to string array. */
@@ -422,9 +384,8 @@ export default function TokenSaverClient({ view = "overview" }) {
     }
     const n = Number(value);
     if (Number.isSafeInteger(n) && n >= 1000 && n <= 120000) {
-      setPxpipeTimeoutMs(value);
       setPxpipeTimeoutError("");
-      patchSetting({ pxpipeTimeoutMs: n });
+      saveSetting({ pxpipeTimeoutMs: n }, () => setPxpipeTimeoutMs(value), () => setPxpipeTimeoutInputValue(pxpipeTimeoutMs));
     } else {
       setPxpipeTimeoutInputValue(pxpipeTimeoutMs);
       setPxpipeTimeoutError("Must be a whole number 1000–120000");
@@ -443,7 +404,8 @@ export default function TokenSaverClient({ view = "overview" }) {
           const data = await res.json();
           setRtkEnabledState(data.rtkEnabled !== false);
           setHeadroomEnabled(!!data.headroomEnabled);
-          setHeadroomUrl(data.headroomUrl || "http://localhost:8787");
+          acceptedHeadroomUrl.current = data.headroomUrl || "http://localhost:8787";
+          setHeadroomUrl(acceptedHeadroomUrl.current);
           setHeadroomTimeoutMs(String(data.headroomTimeoutMs ?? 15000));
           setHeadroomTimeoutInputValue(String(data.headroomTimeoutMs ?? 15000));
           setCavemanEnabled(!!data.cavemanEnabled);
@@ -498,6 +460,8 @@ export default function TokenSaverClient({ view = "overview" }) {
       </p>
     </div>
   );
-  return <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6"><PageHeader icon="savings" title="Token Saver settings" subtitle="Tune context and output compression without changing provider behavior." /><Card padding={false} id="rtk"><div className="border-b border-dd-border-subtle px-5 py-4"><h2 className="flex items-center gap-2 text-sm font-semibold text-dd-text"><span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-accent">bolt</span>Text and context compression</h2></div><div className="space-y-4 p-5"><Toggle label={<span>Compress tool output <a href="https://github.com/rtk-ai/rtk" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(RTK)</a></span>} description="git/grep/ls/tree/logs → 60–90% fewer input tokens" checked={rtkEnabled} onChange={handleRtkEnabled} aria-label="Enable RTK" /><div className="border-t border-dd-border-subtle" /><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-[13px] font-medium text-dd-text">Compress context <a href="https://github.com/chopratejas/headroom" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(Headroom)</a></p><Badge tone={headroomTone} size="sm">{headroomStatusLabel}</Badge><a href="/dashboard/headroom" className="text-xs text-dd-accent underline underline-offset-2">Open full page</a><button type="button" onClick={() => setShowHeadroomInstallModal(true)} className="min-h-11 rounded-dd px-2 text-xs font-medium text-dd-accent outline-none hover:bg-dd-accent-soft focus-visible:shadow-dd-focus">{headroomRunning ? "Manage" : "Setup"}</button></div><p className="mt-1 text-xs text-dd-muted">Compress prompts via /v1/compress before routing to model.</p></div><Toggle checked={headroomEnabled} onChange={handleHeadroomEnabled} aria-label="Enable Headroom" /></div>{headroomDiagnostic ? <SetupDiagnosticCard diagnostic={headroomDiagnostic} onRetry={refreshHeadroomStatus} /> : null}{headroomStatus.installed ? <div className="space-y-3 border-s-2 border-dd-border ps-4"><p className="text-xs text-dd-muted">Source: {sourceLabel(headroomStatus.source || headroomExtras.source || null)}{headroomExtras.version ? ` · v${headroomExtras.version}` : ""}</p><p className="text-xs text-dd-muted">{formatExtrasSummary(headroomExtras.extras)}</p>{shouldShowExternalInstallNote(headroomExtras) ? <p className="text-xs text-dd-muted">{externalInstallNote(headroomExtras.externalInstall)}{headroomExtras.externalInstall?.uninstallCommand ? <><code className="ms-1 break-all rounded-dd bg-dd-surface-2 px-1 py-0.5 text-dd-text">{headroomExtras.externalInstall.uninstallCommand}</code><Button size="sm" variant="ghost" className="ms-2" onClick={() => copy(headroomExtras.externalInstall.uninstallCommand, "external-install-uninstall")}>{copied === "external-install-uninstall" ? "Copied" : "Copy"}</Button></> : <span className="ms-1">Remove it with installer tool manager.</span>}</p> : null}<div className="flex flex-wrap items-center gap-2"><Button onClick={handleInstallExtras} loading={extrasActionLoading} size="sm">{installActionLabel({ installed: headroomStatus.installed, extras: headroomExtras.extras })}</Button><span className="text-xs text-dd-muted">ML downloads torch; may take several minutes.</span></div>{extrasDiagnostic ? <SetupDiagnosticCard diagnostic={extrasDiagnostic} onRetry={refreshHeadroomStatus} /> : extrasActionError ? <p role="alert" className="text-xs text-dd-danger">{extrasActionError}</p> : null}</div> : null}<div className="border-t border-dd-border-subtle" /><><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[13px] font-medium text-dd-text">Compress LLM output <a href="https://github.com/JuliusBrussee/caveman" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(Caveman)</a></p><p className="mt-1 text-xs text-dd-muted">Terse-style system prompt reduces output tokens.</p></div><div className="flex flex-wrap items-center gap-2">{cavemanEnabled ? <div className="flex flex-col gap-1"><SegmentedControl aria-label="Caveman level" options={visibleCavemanLevels.map((level) => ({ value: level.id, label: level.label }))} value={cavemanLevel} onChange={handleCavemanLevel} size="sm" /><p className="text-xs text-dd-accent">{CAVEMAN_LEVELS.find((level) => level.id === cavemanLevel)?.desc}</p></div> : null}<Toggle checked={cavemanEnabled} onChange={handleCavemanEnabled} aria-label="Enable Caveman" /></div></div><CavemanOutputPreview level={cavemanLevel} enabled={cavemanEnabled} /></><div className="border-t border-dd-border-subtle" /><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[13px] font-medium text-dd-text">Lazy senior dev <a href="https://github.com/DietrichGebert/ponytail" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(Ponytail)</a></p><p className="mt-1 text-xs text-dd-muted">Bias model toward minimal code: YAGNI, stdlib, deletion.</p></div><div className="flex flex-wrap items-center gap-2">{ponytailEnabled ? <div className="flex flex-col gap-1"><SegmentedControl aria-label="Ponytail level" options={PONYTAIL_LEVELS.map((level) => ({ value: level.id, label: level.label }))} value={ponytailLevel} onChange={handlePonytailLevel} size="sm" /><p className="text-xs text-dd-accent">{PONYTAIL_LEVELS.find((level) => level.id === ponytailLevel)?.desc}</p></div> : null}<Toggle checked={ponytailEnabled} onChange={handlePonytailEnabled} aria-label="Enable Ponytail" /></div></div></div></Card><Card padding={false} id="pxpipe"><div className="border-b border-dd-border-subtle px-5 py-4"><h2 className="flex items-center gap-2 text-sm font-semibold text-dd-text"><span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-accent">image</span>PXPIPE</h2></div><div className="space-y-4 p-5"><Toggle label="Compress bulky Claude context into images" description="Render large text context as dense PNGs for vision-capable models. Fail-open." checked={pxpipeEnabled} disabled={pxpipeStatusView.dependencyMissing} onChange={handlePxpipeEnabled} aria-label="Enable PXPIPE" /><div className="flex flex-wrap items-center justify-between gap-3 border-t border-dd-border-subtle pt-4"><StatusDot tone={pxpipeTone} label={`${pxpipeStatusLabel}${pxpipeStatus.version ? ` · v${pxpipeStatus.version}` : ""}`} /><div className="flex flex-wrap items-center gap-2">{pxpipeStatusView.error ? <p role="alert" className="max-w-xs text-xs text-dd-warning">PXPIPE status unavailable: {pxpipeStatusView.error}</p> : pxpipeStatusView.dependencyMissing ? <p role="alert" className="max-w-xs text-xs text-dd-warning">PXPIPE dependency missing. Reinstall application to restore it.</p> : pxpipeStatus.running ? <Button variant="secondary" size="sm" loading={pxpipeActionLoading} onClick={() => pxpipeAction("stop")}>Stop</Button> : <Button size="sm" loading={pxpipeActionLoading} onClick={() => pxpipeAction("start")}>Start</Button>}{pxpipeStatus.installed ? <Button variant="secondary" size="sm" disabled={pxpipeActionLoading} onClick={() => pxpipeAction("restart")}>Restart</Button> : null}<Button variant="secondary" size="sm" icon="refresh" loading={pxpipeStatus.loading} onClick={() => { refreshPxpipeStatus(); runPxpipeHealth(); }}>Recheck</Button></div></div><div className="grid gap-4 sm:grid-cols-2"><Input label="Minimum chars" type="number" min="1" step="1" value={pxpipeInputValue} onChange={(event) => handlePxpipeMinChars(event.target.value)} onBlur={handlePxpipeMinCharsBlur} error={pxpipeMinCharsError} /><Input label="Timeout (ms)" type="number" min="1000" max="120000" step="1000" value={pxpipeTimeoutInputValue} onChange={(event) => { setPxpipeTimeoutInputValue(event.target.value); setPxpipeTimeoutError(""); }} onBlur={handlePxpipeTimeoutBlur} error={pxpipeTimeoutError} /></div><Input label="Allowed models" hint="Comma-separated model IDs. Empty leaves built-in safe default." value={pxpipeAllowedModelsInputValue} onChange={(event) => handlePxpipeAllowedModelsChange(event.target.value)} onBlur={handlePxpipeAllowedModelsBlur} placeholder="claude-fable-5, blackboxai/anthropic/claude-fable-5" />{pxpipeAllowedModels.length ? <div className="flex flex-wrap gap-2">{pxpipeAllowedModels.map((model) => <Chip key={model} label={model} size="sm" onRemove={() => removePxpipeAllowedModel(model)} />)}</div> : null}{pxpipeBlockedModels.filter((model) => !pxpipeAllowedModels.includes(model)).length ? <div className="space-y-2"><p className="text-xs text-dd-muted">Recently blocked. Select to allow:</p><div className="flex flex-wrap gap-2">{pxpipeBlockedModels.filter((model) => !pxpipeAllowedModels.includes(model)).map((model) => <Chip key={model} icon="add" label={model} size="sm" onClick={() => addPxpipeAllowedModel(model)} />)}</div></div> : null}{pxpipeHealth ? <Badge tone={pxpipeHealth.healthy ? "success" : "warning"}>Health: {pxpipeHealth.healthy ? "OK" : pxpipeHealth.error || "Unhealthy"}</Badge> : null}{pxpipeActionError ? <p role="alert" className="text-xs text-dd-danger">{pxpipeActionError}</p> : null}</div></Card><Modal open={showHeadroomInstallModal} title={headroomRunning ? "Headroom" : "Setup Headroom"} onClose={() => setShowHeadroomInstallModal(false)} footer={<><Button variant="secondary" className="flex-1" onClick={refreshHeadroomStatus}>Recheck</Button><Button className="flex-1" onClick={() => setShowHeadroomInstallModal(false)}>Done</Button></>}><div className="space-y-4"><div className="flex items-center justify-between"><span className="text-[13px] text-dd-muted">Status</span><Badge tone={headroomTone}>{headroomStatusLabel}</Badge></div>{headroomRunning ? <a href="/api/headroom/proxy/dashboard" target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center rounded-dd border border-dd-border bg-dd-surface-2 px-3 text-[13px] font-medium text-dd-text outline-none hover:bg-dd-surface-3 focus-visible:shadow-dd-focus">Open Headroom Dashboard</a> : null}{headroomDiagnostic ? <SetupDiagnosticCard diagnostic={headroomDiagnostic} onRetry={refreshHeadroomStatus} /> : null}<Input label="Proxy URL" value={headroomUrl} onChange={(event) => setHeadroomUrl(event.target.value)} onBlur={handleHeadroomUrlBlur} placeholder="http://localhost:8787" hint="Use local proxy for Start/Stop or external Docker sidecar." /><Input label="Timeout (ms)" type="number" min="1000" max="120000" step="1000" value={headroomTimeoutInputValue} onChange={(event) => setHeadroomTimeoutInputValue(event.target.value)} onBlur={handleHeadroomTimeoutBlur} hint="Request timeout. Defaults to 15000 ms." />{headroomManaged ? <Button variant="secondary" className="w-full" loading={headroomActionLoading} onClick={handleHeadroomStop}>Stop Headroom</Button> : headroomRunning ? <p className="text-[13px] text-dd-success">Headroom proxy is reachable. Enable token saver when ready.</p> : headroomCanStart ? <Button className="w-full" loading={headroomActionLoading} onClick={handleHeadroomStart}>Start Headroom</Button> : !headroomLocalUrl ? <p className="text-[13px] text-dd-warning">Start Headroom at configured URL, then recheck.</p> : !headroomStatus.python ? <p className="text-[13px] text-dd-warning">Python ≥ 3.10 required for managed local mode.</p> : <p className="text-[13px] text-dd-muted">Start Headroom to create managed environment.</p>}{!headroomDiagnostic && headroomActionError ? <p role="alert" className="text-xs text-dd-danger">{headroomActionError}</p> : null}</div></Modal></div>;
+  const settingLabels = { rtkEnabled: "RTK", cavemanEnabled: "Caveman", cavemanLevel: "Caveman level", ponytailEnabled: "Ponytail", ponytailLevel: "Ponytail level", headroomEnabled: "Headroom", headroomUrl: "Headroom URL", headroomTimeoutMs: "Headroom timeout", pxpipeEnabled: "PXPIPE", pxpipeMinChars: "Minimum chars", pxpipeAllowedModels: "Allowed models", pxpipeTimeoutMs: "PXPIPE timeout" };
+  const settingFeedback = <div className="space-y-2" aria-label="Settings save status">{Object.entries(settingWrites).map(([key, state]) => <div key={key} role={state.error ? "alert" : "status"} className={`flex flex-wrap items-center justify-between gap-2 text-xs ${state.error ? "text-dd-danger" : "text-dd-muted"}`}><span>{settingLabels[key]}: {state.pending ? "Saving…" : state.error ? `Not saved. ${state.error}` : "Saved"}</span>{state.error ? <Button size="sm" icon="refresh" variant="secondary" onClick={() => retrySettings.current[key]?.()}>Retry {settingLabels[key]}</Button> : null}</div>)}</div>;
+  return <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6"><PageHeader icon="savings" title="Token Saver settings" subtitle="Tune context and output compression without changing provider behavior." />{settingFeedback}<Card padding={false} id="rtk"><div className="border-b border-dd-border-subtle px-5 py-4"><h2 className="flex items-center gap-2 text-sm font-semibold text-dd-text"><span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-accent">bolt</span>Text and context compression</h2></div><div className="space-y-4 p-5"><Toggle label={<span>Compress tool output <a href="https://github.com/rtk-ai/rtk" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(RTK)</a></span>} description="git/grep/ls/tree/logs → 60–90% fewer input tokens" checked={rtkEnabled} disabled={settingWrites.rtkEnabled?.pending} onChange={handleRtkEnabled} aria-label="Enable RTK" /><div className="border-t border-dd-border-subtle" /><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-[13px] font-medium text-dd-text">Compress context <a href="https://github.com/chopratejas/headroom" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(Headroom)</a></p><Badge tone={headroomTone} size="sm">{headroomStatusLabel}</Badge><a href="/dashboard/headroom" className="text-xs text-dd-accent underline underline-offset-2">Open full page</a><button type="button" onClick={() => setShowHeadroomInstallModal(true)} className="min-h-11 rounded-dd px-2 text-xs font-medium text-dd-accent outline-none hover:bg-dd-accent-soft focus-visible:shadow-dd-focus">{headroomRunning ? "Manage" : "Setup"}</button></div><p className="mt-1 text-xs text-dd-muted">Compress prompts via /v1/compress before routing to model.</p></div><Toggle checked={headroomEnabled} disabled={settingWrites.headroomEnabled?.pending || settingWrites.headroomUrl?.pending} onChange={handleHeadroomEnabled} aria-label="Enable Headroom" /></div>{headroomDiagnostic ? <SetupDiagnosticCard diagnostic={headroomDiagnostic} onRetry={refreshHeadroomStatus} /> : null}{headroomStatus.installed ? <div className="space-y-3 border-s-2 border-dd-border ps-4"><p className="text-xs text-dd-muted">Source: {sourceLabel(headroomStatus.source || headroomExtras.source || null)}{headroomExtras.version ? ` · v${headroomExtras.version}` : ""}</p><p className="text-xs text-dd-muted">{formatExtrasSummary(headroomExtras.extras)}</p>{shouldShowExternalInstallNote(headroomExtras) ? <p className="text-xs text-dd-muted">{externalInstallNote(headroomExtras.externalInstall)}{headroomExtras.externalInstall?.uninstallCommand ? <><code className="ms-1 break-all rounded-dd bg-dd-surface-2 px-1 py-0.5 text-dd-text">{headroomExtras.externalInstall.uninstallCommand}</code><Button size="sm" variant="ghost" className="ms-2" onClick={() => copy(headroomExtras.externalInstall.uninstallCommand, "external-install-uninstall")}>{copied === "external-install-uninstall" ? "Copied" : "Copy"}</Button></> : <span className="ms-1">Remove it with installer tool manager.</span>}</p> : null}<div className="flex flex-wrap items-center gap-2"><Button onClick={handleInstallExtras} loading={extrasActionLoading} size="sm">{installActionLabel({ installed: headroomStatus.installed, extras: headroomExtras.extras })}</Button><span className="text-xs text-dd-muted">ML downloads torch; may take several minutes.</span></div>{extrasDiagnostic ? <SetupDiagnosticCard diagnostic={extrasDiagnostic} onRetry={refreshHeadroomStatus} /> : extrasActionError ? <p role="alert" className="text-xs text-dd-danger">{extrasActionError}</p> : null}</div> : null}<div className="border-t border-dd-border-subtle" /><><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[13px] font-medium text-dd-text">Compress LLM output <a href="https://github.com/JuliusBrussee/caveman" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(Caveman)</a></p><p className="mt-1 text-xs text-dd-muted">Terse-style system prompt reduces output tokens.</p></div><div className="flex flex-wrap items-center gap-2">{cavemanEnabled ? <div className="flex flex-col gap-1"><SegmentedControl aria-label="Caveman level" disabled={settingWrites.cavemanLevel?.pending} options={visibleCavemanLevels.map((level) => ({ value: level.id, label: level.label }))} value={cavemanLevel} onChange={handleCavemanLevel} size="sm" /><p className="text-xs text-dd-accent">{CAVEMAN_LEVELS.find((level) => level.id === cavemanLevel)?.desc}</p></div> : null}<Toggle checked={cavemanEnabled} disabled={settingWrites.cavemanEnabled?.pending} onChange={handleCavemanEnabled} aria-label="Enable Caveman" /></div></div><CavemanOutputPreview level={cavemanLevel} enabled={cavemanEnabled} /></><div className="border-t border-dd-border-subtle" /><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[13px] font-medium text-dd-text">Lazy senior dev <a href="https://github.com/DietrichGebert/ponytail" target="_blank" rel="noreferrer" className="text-dd-accent underline underline-offset-2">(Ponytail)</a></p><p className="mt-1 text-xs text-dd-muted">Bias model toward minimal code: YAGNI, stdlib, deletion.</p></div><div className="flex flex-wrap items-center gap-2">{ponytailEnabled ? <div className="flex flex-col gap-1"><SegmentedControl aria-label="Ponytail level" disabled={settingWrites.ponytailLevel?.pending} options={PONYTAIL_LEVELS.map((level) => ({ value: level.id, label: level.label }))} value={ponytailLevel} onChange={handlePonytailLevel} size="sm" /><p className="text-xs text-dd-accent">{PONYTAIL_LEVELS.find((level) => level.id === ponytailLevel)?.desc}</p></div> : null}<Toggle checked={ponytailEnabled} disabled={settingWrites.ponytailEnabled?.pending} onChange={handlePonytailEnabled} aria-label="Enable Ponytail" /></div></div></div></Card><Card padding={false} id="pxpipe"><div className="border-b border-dd-border-subtle px-5 py-4"><h2 className="flex items-center gap-2 text-sm font-semibold text-dd-text"><span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-accent">image</span>PXPIPE</h2></div><div className="space-y-4 p-5"><Toggle label="Compress bulky Claude context into images" description="Render large text context as dense PNGs for vision-capable models. Fail-open." checked={pxpipeEnabled} disabled={pxpipeStatusView.dependencyMissing || settingWrites.pxpipeEnabled?.pending} onChange={handlePxpipeEnabled} aria-label="Enable PXPIPE" /><div className="flex flex-wrap items-center justify-between gap-3 border-t border-dd-border-subtle pt-4"><StatusDot tone={pxpipeTone} label={`${pxpipeStatusLabel}${pxpipeStatus.version ? ` · v${pxpipeStatus.version}` : ""}`} /><div className="flex flex-wrap items-center gap-2">{pxpipeStatusView.error ? <p role="alert" className="max-w-xs text-xs text-dd-warning">PXPIPE status unavailable: {pxpipeStatusView.error}</p> : pxpipeStatusView.dependencyMissing ? <p role="alert" className="max-w-xs text-xs text-dd-warning">PXPIPE dependency missing. Reinstall application to restore it.</p> : pxpipeStatus.running ? <Button variant="secondary" size="sm" loading={pxpipeActionLoading} onClick={() => pxpipeAction("stop")}>Stop</Button> : <Button size="sm" loading={pxpipeActionLoading} onClick={() => pxpipeAction("start")}>Start</Button>}{pxpipeStatus.installed ? <Button variant="secondary" size="sm" disabled={pxpipeActionLoading} onClick={() => pxpipeAction("restart")}>Restart</Button> : null}<Button variant="secondary" size="sm" icon="refresh" loading={pxpipeStatus.loading} onClick={() => { refreshPxpipeStatus(); runPxpipeHealth(); }}>Recheck</Button></div></div><div className="grid gap-4 sm:grid-cols-2"><Input label="Minimum chars" disabled={settingWrites.pxpipeMinChars?.pending} type="number" min="1" step="1" value={pxpipeInputValue} onChange={(event) => handlePxpipeMinChars(event.target.value)} onBlur={handlePxpipeMinCharsBlur} error={pxpipeMinCharsError} /><Input label="Timeout (ms)" type="number" min="1000" max="120000" step="1000" disabled={settingWrites.pxpipeTimeoutMs?.pending} value={pxpipeTimeoutInputValue} onChange={(event) => { setPxpipeTimeoutInputValue(event.target.value); setPxpipeTimeoutError(""); }} onBlur={handlePxpipeTimeoutBlur} error={pxpipeTimeoutError} /></div><Input label="Allowed models" disabled={settingWrites.pxpipeAllowedModels?.pending} hint="Comma-separated model IDs. Empty leaves built-in safe default." value={pxpipeAllowedModelsInputValue} onChange={(event) => handlePxpipeAllowedModelsChange(event.target.value)} onBlur={handlePxpipeAllowedModelsBlur} placeholder="claude-fable-5, blackboxai/anthropic/claude-fable-5" />{pxpipeAllowedModels.length ? <div className="flex flex-wrap gap-2">{pxpipeAllowedModels.map((model) => <Chip key={model} label={model} size="sm" onRemove={() => removePxpipeAllowedModel(model)} />)}</div> : null}{pxpipeBlockedModels.filter((model) => !pxpipeAllowedModels.includes(model)).length ? <div className="space-y-2"><p className="text-xs text-dd-muted">Recently blocked. Select to allow:</p><div className="flex flex-wrap gap-2">{pxpipeBlockedModels.filter((model) => !pxpipeAllowedModels.includes(model)).map((model) => <Chip key={model} icon="add" label={model} size="sm" onClick={() => addPxpipeAllowedModel(model)} />)}</div></div> : null}{pxpipeHealth ? <Badge tone={pxpipeHealth.healthy ? "success" : "warning"}>Health: {pxpipeHealth.healthy ? "OK" : pxpipeHealth.error || "Unhealthy"}</Badge> : null}{pxpipeActionError ? <p role="alert" className="text-xs text-dd-danger">{pxpipeActionError}</p> : null}</div></Card><Modal open={showHeadroomInstallModal} title={headroomRunning ? "Headroom" : "Setup Headroom"} onClose={() => setShowHeadroomInstallModal(false)} footer={<><Button variant="secondary" className="flex-1" onClick={refreshHeadroomStatus}>Recheck</Button><Button className="flex-1" onClick={() => setShowHeadroomInstallModal(false)}>Done</Button></>}><div className="space-y-4"><div className="flex items-center justify-between"><span className="text-[13px] text-dd-muted">Status</span><Badge tone={headroomTone}>{headroomStatusLabel}</Badge></div>{headroomRunning ? <a href="/api/headroom/proxy/dashboard" target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center rounded-dd border border-dd-border bg-dd-surface-2 px-3 text-[13px] font-medium text-dd-text outline-none hover:bg-dd-surface-3 focus-visible:shadow-dd-focus">Open Headroom Dashboard</a> : null}{headroomDiagnostic ? <SetupDiagnosticCard diagnostic={headroomDiagnostic} onRetry={refreshHeadroomStatus} /> : null}<Input label="Proxy URL" disabled={settingWrites.headroomUrl?.pending || settingWrites.headroomEnabled?.pending} value={headroomUrl} onChange={(event) => setHeadroomUrl(event.target.value)} onBlur={handleHeadroomUrlBlur} placeholder="http://localhost:8787" hint="Use local proxy for Start/Stop or external Docker sidecar." /><Input label="Timeout (ms)" type="number" min="1000" max="120000" step="1000" disabled={settingWrites.headroomTimeoutMs?.pending} value={headroomTimeoutInputValue} onChange={(event) => setHeadroomTimeoutInputValue(event.target.value)} onBlur={handleHeadroomTimeoutBlur} hint="Request timeout. Defaults to 15000 ms." />{headroomManaged ? <Button variant="secondary" className="w-full" loading={headroomActionLoading} onClick={handleHeadroomStop}>Stop Headroom</Button> : headroomRunning ? <p className="text-[13px] text-dd-success">Headroom proxy is reachable. Enable token saver when ready.</p> : headroomCanStart ? <Button className="w-full" loading={headroomActionLoading} onClick={handleHeadroomStart}>Start Headroom</Button> : !headroomLocalUrl ? <p className="text-[13px] text-dd-warning">Start Headroom at configured URL, then recheck.</p> : !headroomStatus.python ? <p className="text-[13px] text-dd-warning">Python ≥ 3.10 required for managed local mode.</p> : <p className="text-[13px] text-dd-muted">Start Headroom to create managed environment.</p>}{!headroomDiagnostic && headroomActionError ? <p role="alert" className="text-xs text-dd-danger">{headroomActionError}</p> : null}</div></Modal></div>;
 
 }

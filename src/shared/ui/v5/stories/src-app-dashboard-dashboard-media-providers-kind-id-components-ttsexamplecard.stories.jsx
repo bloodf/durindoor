@@ -7,3 +7,4 @@ const meta = { ...originalMeta, title: "V5 review/Pages/media/TtsExampleCard", p
 export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.stories.jsx","standalone":false}) };
 export const OpenLanguageModal = { ...reviewStory(original.OpenLanguageModal, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.stories.jsx","standalone":false}) };
+export const GenerateAudio = { ...reviewStory(original.GenerateAudio, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/TtsExampleCard.stories.jsx","standalone":false}) };

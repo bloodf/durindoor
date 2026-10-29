@@ -37,9 +37,10 @@ describe("review usage layout", () => {
   });
   it("rejects unknown or duplicate identities and malformed presentation fields", () => {
     const layout = normalizeUsageLayout([{ id: "topology", title: " ", span: 99, visible: "false" }, { id: "topology", visible: false }, { id: "unknown" }]);
-    expect(layout).toHaveLength(7);
+    expect(layout).toHaveLength(8);
+    expect(layout.map((widget) => widget.id)).toContain("monitoring");
     expect(layout[0]).toMatchObject(USAGE_WIDGETS[1]);
-    expect(new Set(layout.map((widget) => widget.id)).size).toBe(7);
+    expect(new Set(layout.map((widget) => widget.id)).size).toBe(8);
   });
   it("moves visible widgets without deleting hidden widgets or mutating the saved layout", () => {
     const saved = updateUsageWidget(normalizeUsageLayout(null), "chart", { visible: false });
@@ -204,9 +205,9 @@ describe("review usage composition", () => {
   it("cancel restores visibility and order while saving survives reopening the layout editor", async () => {
     const sections = Object.fromEntries(USAGE_WIDGETS.map((widget) => [widget.id, React.createElement("p", null, `${widget.id} data`)]));
     await render(React.createElement(UsageWidgetLayout, { sections, persistLayout: false }));
-    expect(container.querySelectorAll("[data-widget-id]")).toHaveLength(7);
+    expect(container.querySelectorAll("[data-widget-id]")).toHaveLength(8);
     await click("Customize dashboard"); await click("Hide Provider connections"); await click("Move Recent requests and sessions earlier");
-    expect(container.querySelectorAll("[data-widget-id]")).toHaveLength(6);
+    expect(container.querySelectorAll("[data-widget-id]")).toHaveLength(USAGE_WIDGETS.length - 1);
     await click("Cancel layout changes");
     expect([...container.querySelectorAll("[data-widget-id]")].map((node) => node.dataset.widgetId)).toEqual(USAGE_WIDGETS.map((widget) => widget.id));
     await click("Customize dashboard"); await click("Hide API key limits"); await click("Move Provider connections earlier"); await click("Save layout");

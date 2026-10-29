@@ -1,5 +1,6 @@
+import { failedReadStory } from "../providers/workflowStoryFixtures.js";
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, within, waitFor } from "storybook/test";
 
 import EndpointPageClient from "./EndpointPageClient";
 
@@ -212,8 +213,26 @@ export const TunnelRequiresApiKey = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const tunnelRow = canvas.getByText("Tunnel").parentElement;
+    const tunnelRow = (await canvas.findByText("Tunnel")).parentElement;
     await userEvent.click(within(tunnelRow).getByRole("button", { name: "Enable" }));
     await expect(await canvas.findByText('Security required: Enable "Require API key" before activating the tunnel.')).toBeVisible();
+  },
+};
+
+export const LoadFailureAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/settings", pathname: "/dashboard/endpoint", params: {}, failure: "http", loadedText: "Require API key" });
+
+export const MalformedResponseAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/settings", pathname: "/dashboard/endpoint", params: {}, failure: "malformed", loadedText: "Require API key" });
+
+export const NetworkFailureAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/settings", pathname: "/dashboard/endpoint", params: {}, failure: "network", loadedText: "Require API key" });
+
+export const StatusFailureAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/tunnel/status", pathname: "/dashboard/endpoint", loadedText: "Require API key" });
+export const SecurityWriteRejected = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/endpoint", routes: { ...safeRoutes, "PATCH /api/settings": { status: 503, body: { error: "Security change rejected" } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await canvas.findByRole("switch", { name: "Require API key" });
+    await userEvent.click(toggle);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Security change rejected");
+    await expect(toggle).toBeChecked();
   },
 };

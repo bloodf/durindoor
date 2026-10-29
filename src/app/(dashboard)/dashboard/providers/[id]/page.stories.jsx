@@ -190,8 +190,8 @@ export const CompatibleProxyOpen = {
     const dialog = await within(document.body).findByRole("dialog", { name: /apply proxy \(1 connections\)/i });
     const form = within(dialog);
     await waitFor(() => expect(dialog).toBeVisible());
-    await expect(form.getByText("One-to-one (rotate)")).toBeVisible();
-    await expect(form.getByText("EU Pool")).toBeVisible();
+    await waitFor(() => expect(form.getByText("One-to-one (rotate)")).toBeVisible());
+    await waitFor(() => expect(form.getByText("EU Pool")).toBeVisible());
     await expect(form.getByRole("button", { name: /^cancel$/i })).toBeEnabled();
   },
 };

@@ -43,3 +43,30 @@ blocked storage, and aggregate/PXPIPE lifecycle behavior. Story plays additional
 exercise complete source metrics, period controls, refresh, pagination, creating
 and composing a cross-source dashboard, switching to read it back, and deletion
 confirmation. This does not claim every backend failure state is enumerated.
+
+Visant repair contracts (October 2026): named dashboards retain independent
+unfinished editing sessions across dashboard selection, including draft names,
+widths, order and visibility. Save and Cancel remain the commit boundary. Hidden
+Usage, aggregate Saver and PXPIPE sources stop their subscriptions; a monitoring-only
+or blank canvas does not fetch unrelated resources. Enabling a widget reconnects
+its source, and stale retained snapshots identify refresh failures.
+
+PXPIPE loading, initial failure, successful-empty and retained-data refresh errors
+are distinct per resource. A raw-event outage does not erase savings or produce a
+false empty message. Estimated image tokens remain separate from actual bytes.
+Compression settings show accepted values until each PATCH succeeds; pending
+controls block duplicates, rejected drafts roll back and expose an explicit Retry.
+Console Streaming/Polling labels follow actual transport outcomes, while Pause
+freezes the display during both SSE and polling; failed Clear retains output.
+
+`v5-visant-dashboards.test.js` adds behavioral checks for rejected/pending settings,
+independent health failure, quota failure/retry, PXPIPE initial and partial
+failures, monitoring request ordering, console fallback and frozen output,
+source selection, and retained dirty dashboard sessions. Source stories add
+corresponding recoverable failures and delayed-loading examples.
+
+The integrated main branch moved live Monitoring into Usage. Review Usage now
+retains that complete source-backed monitoring surface as an eighth editable
+widget in addition to its seven original widgets, including runtime active
+requests and recorded provider health. Its measurements are independent of the
+selected historical Usage period.

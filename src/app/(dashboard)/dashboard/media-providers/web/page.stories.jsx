@@ -1,3 +1,4 @@
+import { failedReadStory } from "../../providers/workflowStoryFixtures.js";
 import React from "react";
 import { expect, userEvent, within } from "storybook/test";
 import WebProvidersPage from "./page.js";
@@ -35,7 +36,7 @@ export const CreateComboError = {
     const canvas = within(canvasElement);
     const section = await canvas.findByRole("region", { name: "Web Search" });
     await expect(within(section).getByText("Tavily")).toBeVisible();
-    const tavilyLink = within(section).getByRole("link", { name: /Tavily/i });
+    const tavilyLink = (await within(section).findByRole("heading", { name: "Tavily" })).closest("a");
     await expect(within(tavilyLink).getByText("No connections")).toBeVisible();
     const combo = await within(section).findByRole("link", { name: /research-pool/i });
     await expect(combo).toHaveAttribute("href", "/dashboard/media-providers/combo/search-combo-1");
@@ -56,7 +57,7 @@ export const ConnectionStatuses = {
         "GET /api/providers": { body: { connections: [
           { id: "tavily-1", provider: "tavily", testStatus: "success", isActive: true },
           { id: "exa-1", provider: "exa", testStatus: "error", isActive: true },
-          { id: "jina-1", provider: "jina", testStatus: "success", isActive: false },
+          { id: "brave-1", provider: "brave-search", testStatus: "success", isActive: false },
         ] }, status: 200 },
         "GET /api/combos": { body: { combos: [] }, status: 200 },
       },
@@ -64,8 +65,15 @@ export const ConnectionStatuses = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText("1 Connected")).toBeVisible();
-    await expect(canvas.getByText("1 Error")).toBeVisible();
-    await expect(canvas.getByText("Disabled")).toBeVisible();
+    const search = within(await canvas.findByRole("region", { name: "Web Search" }));
+    await expect(await search.findByText("1 Connected")).toBeVisible();
+    await expect(search.getByText("1 Error")).toBeVisible();
+    await expect(search.getByText("Disabled")).toBeVisible();
   },
 };
+
+export const LoadFailureAndRetry = failedReadStory({ routes: routes, url: "/api/providers", pathname: "/dashboard/media-providers/web", params: {}, failure: "http", loadedText: "Tavily" });
+
+export const MalformedResponseAndRetry = failedReadStory({ routes: routes, url: "/api/providers", pathname: "/dashboard/media-providers/web", params: {}, failure: "malformed", loadedText: "Tavily" });
+
+export const NetworkFailureAndRetry = failedReadStory({ routes: routes, url: "/api/providers", pathname: "/dashboard/media-providers/web", params: {}, failure: "network", loadedText: "Tavily" });

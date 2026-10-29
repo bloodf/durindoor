@@ -15,5 +15,6 @@ export const LongLabelWithIcon = { ...reviewStory(original.LongLabelWithIcon, {"
 export const Small = { ...reviewStory(original.Small, {"source":"src/shared/ui/components/Button.stories.jsx","standalone":false}) };
 export const Loading = { ...reviewStory(original.Loading, {"source":"src/shared/ui/components/Button.stories.jsx","standalone":false}) };
 export const KeyboardActivation = { ...reviewStory(original.KeyboardActivation, {"source":"src/shared/ui/components/Button.stories.jsx","standalone":false}) };
+export const RightToLeft = { ...reviewStory(original.RightToLeft, {"source":"src/shared/ui/components/Button.stories.jsx","standalone":false}) };
 export const Disabled = { ...reviewStory(original.Disabled, {"source":"src/shared/ui/components/Button.stories.jsx","standalone":false}) };
 export const VariantMatrix = { ...reviewStory(original.VariantMatrix, {"source":"src/shared/ui/components/Button.stories.jsx","standalone":false}) };

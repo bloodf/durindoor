@@ -211,10 +211,12 @@ export const DatabaseUnlockRejectsThenAccepts = story(DatabaseSettingsPage, "/da
 });
 export const DatabaseTestAndCutover = story(DatabaseSettingsPage, "/dashboard/settings/database", {}, async ({ canvasElement }, fixture) => {
   const canvas = within(canvasElement);
-  await userEvent.type(await canvas.findByLabelText("Connection URL (password included)"), "postgres://review:review@db.example.test/review");
-  await userEvent.click(canvas.getByRole("button", { name: "Test connection" }));
+  for (const [label, value] of [["Target host", "db.example.test"], ["Target database", "review"], ["Target user", "review"], ["Target password", "review"]]) {
+    const input = await canvas.findByLabelText(label); await userEvent.clear(input); await userEvent.type(input, value);
+  }
+  await userEvent.click(canvas.getByRole("button", { name: "Test connection and save target" }));
   await expect(await canvas.findByText(/Connected in 8ms/)).toBeVisible();
-  await submitted(fixture, "POST", "/api/settings/database/test", { url: "postgres://review:review@db.example.test/review", persist: true });
+  await submitted(fixture, "POST", "/api/settings/database/test", { host: "db.example.test", database: "review", user: "review", password: "review", persist: true });
   await userEvent.click(canvas.getByRole("button", { name: "Cut over to Postgres" }));
   const modal = await dialog("Cut over to Postgres");
   await userEvent.click(modal.getByRole("button", { name: "Cut over", exact: true }));
@@ -234,7 +236,7 @@ export const DatabaseFallbackAndCutoverError = story(DatabaseSettingsPage, "/das
   await expect(await canvas.findByText("Serving SQLite", { exact: true })).toBeVisible();
   await userEvent.click(canvas.getByRole("button", { name: "Cut over to Postgres" }));
   await userEvent.click((await dialog("Cut over to Postgres")).getByRole("button", { name: "Cut over", exact: true }));
-  await expect(await canvas.findByText("Review cutover rejected")).toBeVisible();
+  await expect(await canvas.findByRole("alert")).toHaveTextContent("Review cutover rejected");
 }, { initialPassword: ADMIN_PASSWORD });
 
 function MfaPresentation({ enabled = false }) {
@@ -269,13 +271,13 @@ export const MfaDisableWithBackupCode = story(MfaPresentation, "/dashboard/profi
 }, { enabled: true });
 export const SettingsMfaEnrollment = story(ProfilePage, "/dashboard/profile", {}, async (context, fixture) => {
   const canvas = within(context.canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: /Security/ }));
+  await userEvent.click(await canvas.findByRole("tab", { name: /Security/ }));
   await canvas.findByRole("button", { name: "Enable two-factor" });
   await enroll(context, fixture);
 });
 export const SettingsOidcSaveAndTestFailure = story(ProfilePage, "/dashboard/profile", { oidcError: true }, async ({ canvasElement }, fixture) => {
   const canvas = within(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: /Security/ }));
+  await userEvent.click(await canvas.findByRole("tab", { name: /Security/ }));
   const toggle = await canvas.findByRole("button", { name: "Toggle OIDC settings" });
   await waitFor(() => expect(toggle).toBeEnabled());
   if (toggle.getAttribute("aria-expanded") !== "true") await userEvent.click(toggle);
@@ -291,7 +293,7 @@ export const SettingsOidcSaveAndTestFailure = story(ProfilePage, "/dashboard/pro
 });
 export const SettingsBackupImport = story(ProfilePage, "/dashboard/profile", {}, async ({ canvasElement }, fixture) => {
   const canvas = within(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: /System & Data/ }));
+  await userEvent.click(await canvas.findByRole("tab", { name: /System & Data/ }));
   await userEvent.upload(canvas.getByLabelText("Import database backup"), new File([JSON.stringify({ settings: { theme: "dark" }, providerConnections: [], combos: [] })], "review-backup.json", { type: "application/json" }));
   const modal = await dialog("Confirm Password");
   await userEvent.type(modal.getByPlaceholderText("Current password"), ADMIN_PASSWORD);
@@ -301,7 +303,7 @@ export const SettingsBackupImport = story(ProfilePage, "/dashboard/profile", {},
 });
 export const SettingsBackupPasswordFailure = story(ProfilePage, "/dashboard/profile", {}, async ({ canvasElement }) => {
   const canvas = within(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: /System & Data/ }));
+  await userEvent.click(await canvas.findByRole("tab", { name: /System & Data/ }));
   await userEvent.click(canvas.getByRole("button", { name: "Download Backup" }));
   const modal = await dialog("Confirm Password");
   await userEvent.type(modal.getByPlaceholderText("Current password"), "wrong-review-password");
@@ -310,7 +312,7 @@ export const SettingsBackupPasswordFailure = story(ProfilePage, "/dashboard/prof
 });
 export const SettingsRetentionCleanup = story(ProfilePage, "/dashboard/profile", {}, async ({ canvasElement }, fixture) => {
   const canvas = within(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: /System & Data/ }));
+  await userEvent.click(await canvas.findByRole("tab", { name: /System & Data/ }));
   const clean = canvas.getByRole("button", { name: "Clean now" });
   await waitFor(() => expect(clean).toBeEnabled());
   await userEvent.click(clean);
@@ -320,7 +322,7 @@ export const SettingsRetentionCleanup = story(ProfilePage, "/dashboard/profile",
 });
 export const SettingsRetentionFailure = story(ProfilePage, "/dashboard/profile", { retentionError: true }, async ({ canvasElement }) => {
   const canvas = within(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: /System & Data/ }));
+  await userEvent.click(await canvas.findByRole("tab", { name: /System & Data/ }));
   const clean = canvas.getByRole("button", { name: "Clean now" });
   await waitFor(() => expect(clean).toBeEnabled());
   await userEvent.click(clean);

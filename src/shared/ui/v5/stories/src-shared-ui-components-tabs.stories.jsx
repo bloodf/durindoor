@@ -9,3 +9,5 @@ export const Default = { ...reviewStory(original.Default, {"source":"src/shared/
 export const WithIcons = { ...reviewStory(original.WithIcons, {"source":"src/shared/ui/components/Tabs.stories.jsx","standalone":false}) };
 export const WithCounts = { ...reviewStory(original.WithCounts, {"source":"src/shared/ui/components/Tabs.stories.jsx","standalone":false}) };
 export const WithDisabledTab = { ...reviewStory(original.WithDisabledTab, {"source":"src/shared/ui/components/Tabs.stories.jsx","standalone":false}) };
+export const KeyboardNavigation = { ...reviewStory(original.KeyboardNavigation, {"source":"src/shared/ui/components/Tabs.stories.jsx","standalone":false}) };
+export const RightToLeft = { ...reviewStory(original.RightToLeft, {"source":"src/shared/ui/components/Tabs.stories.jsx","standalone":false}) };

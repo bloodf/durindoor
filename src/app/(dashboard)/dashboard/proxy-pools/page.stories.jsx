@@ -1,3 +1,4 @@
+import { failedReadStory } from "../providers/workflowStoryFixtures.js";
 import React from "react";
 import { expect, userEvent, within, waitFor } from "storybook/test";
 import ProxyPoolsPage from "./page";
@@ -152,3 +153,9 @@ export const DeletePending = {
     await expect(confirm.getByRole("button", { name: "Deleting…" })).toBeDisabled();
   },
 };
+
+export const LoadFailureAndRetry = failedReadStory({ routes: buildStatefulRoutes(), url: "/api/proxy-pools", pathname: "/dashboard/proxy-pools", params: {}, failure: "http", loadedText: "Office relay" });
+
+export const MalformedResponseAndRetry = failedReadStory({ routes: buildStatefulRoutes(), url: "/api/proxy-pools", pathname: "/dashboard/proxy-pools", params: {}, failure: "malformed", loadedText: "Office relay" });
+
+export const NetworkFailureAndRetry = failedReadStory({ routes: buildStatefulRoutes(), url: "/api/proxy-pools", pathname: "/dashboard/proxy-pools", params: {}, failure: "network", loadedText: "Office relay" });

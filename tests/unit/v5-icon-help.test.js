@@ -667,3 +667,12 @@ describe("global review icon help lifecycle", () => {
     expect(tooltip().style.visibility).toBe("hidden");
   });
 });
+
+
+it("adapts native anchor JSX while preserving literal copied HTML", () => {
+  const copied = `const html = ${JSON.stringify('<a href="/dashboard">copied</a>')};`;
+  const source = `${copied} export default () => <a href="/dashboard/headroom">Open</a>;`;
+  const result = reviewNativeButtons(source, "wrapper.jsx");
+  expect(result).toContain('<V5ReviewNativeLink href="/dashboard/headroom">Open</V5ReviewNativeLink>');
+  expect(result).toContain(copied);
+});

@@ -8,3 +8,5 @@ export default meta;
 export const Connected = { ...reviewStory(original.Connected, {"source":"src/app/(dashboard)/dashboard/media-providers/components/MediaProviderCard.stories.jsx","standalone":false}) };
 export const Disabled = { ...reviewStory(original.Disabled, {"source":"src/app/(dashboard)/dashboard/media-providers/components/MediaProviderCard.stories.jsx","standalone":false}) };
 export const Error = { ...reviewStory(original.Error, {"source":"src/app/(dashboard)/dashboard/media-providers/components/MediaProviderCard.stories.jsx","standalone":false}) };
+export const NoConnection = { ...reviewStory(original.NoConnection, {"source":"src/app/(dashboard)/dashboard/media-providers/components/MediaProviderCard.stories.jsx","standalone":false}) };
+export const CooldownUnavailable = { ...reviewStory(original.CooldownUnavailable, {"source":"src/app/(dashboard)/dashboard/media-providers/components/MediaProviderCard.stories.jsx","standalone":false}) };

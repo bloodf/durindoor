@@ -7,3 +7,8 @@ const meta = { ...originalMeta, title: "V5 review/Pages/media/KindListing", para
 export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/page.stories.jsx","standalone":false}) };
 export const OpenAddCustomEmbeddingModal = { ...reviewStory(original.OpenAddCustomEmbeddingModal, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/page.stories.jsx","standalone":false}) };
+export const LocalAndCustomProviders = { ...reviewStory(original.LocalAndCustomProviders, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/page.stories.jsx","standalone":false}) };
+export const OpenAddCustomSystemOneModal = { ...reviewStory(original.OpenAddCustomSystemOneModal, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/page.stories.jsx","standalone":false}) };
+export const LoadFailureAndRetry = { ...reviewStory(original.LoadFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/page.stories.jsx","standalone":false}) };
+export const MalformedResponseAndRetry = { ...reviewStory(original.MalformedResponseAndRetry, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/page.stories.jsx","standalone":false}) };
+export const NetworkFailureAndRetry = { ...reviewStory(original.NetworkFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/page.stories.jsx","standalone":false}) };

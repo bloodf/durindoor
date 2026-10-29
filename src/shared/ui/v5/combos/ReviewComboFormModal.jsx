@@ -53,7 +53,7 @@ function ModelItem({ id, index, model, weight = 1, showWeight = true, namedButto
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex min-w-0 flex-wrap items-center gap-1.5 rounded-dd bg-dd-surface-2 px-2 py-1 transition-colors sm:flex-nowrap ${isDragging ? "shadow-dd-elevated ring-1 ring-dd-accent/30" : ""}`}
+      className={`group flex min-w-0 flex-wrap items-center gap-1.5 rounded-dd bg-dd-surface-2 px-0 py-1 transition-colors sm:flex-nowrap ${isDragging ? "shadow-dd-elevated ring-1 ring-dd-accent/30" : ""}`}
     >
       {/* Drag handle */}
       <button
@@ -373,7 +373,9 @@ export default function ReviewComboFormModal({ isOpen, combo, onClose, onSave, a
               Add Model
             </Button>
           </section>
-          <fieldset className="v5-combo-ceiling">
+          <details className="v5-combo-ceiling" open={Object.values(capabilities).some((value) => value !== undefined && value !== "")}>
+            <summary className="cursor-pointer text-sm font-medium text-dd-text">Capabilities &amp; limits</summary>
+          <fieldset className="mt-3">
             <legend className="px-1 text-sm font-medium text-dd-text">Capability ceiling</legend>
             <p className="mb-2 text-[10px] text-dd-muted">Checked features are disabled. Blank limits stay automatic.</p>
             <div className="v5-combo-capabilities">
@@ -397,6 +399,7 @@ export default function ReviewComboFormModal({ isOpen, combo, onClose, onSave, a
               <Input label="Max output" type="number" min="1" step="1" error={limitError(capabilities.maxOutput)} value={capabilities.maxOutput ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, maxOutput: event.target.value === "" ? undefined : Number(event.target.value) }))} />
             </div>
           </fieldset>
+          </details>
 
         </div>
       </Modal>

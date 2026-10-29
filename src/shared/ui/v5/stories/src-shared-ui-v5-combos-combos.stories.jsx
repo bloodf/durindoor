@@ -22,3 +22,4 @@ export const RoundRobinStrategy = { ...reviewStory(original.RoundRobinStrategy, 
 export const CreateAndReadBack = { ...reviewStory(original.CreateAndReadBack, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
 export const InvalidName = { ...reviewStory(original.InvalidName, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
 export const SearchWithoutResults = { ...reviewStory(original.SearchWithoutResults, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };
+export const OrderedTimeoutSaves = { ...reviewStory(original.OrderedTimeoutSaves, {"source":"src/shared/ui/v5/combos/Combos.stories.jsx","standalone":false}) };

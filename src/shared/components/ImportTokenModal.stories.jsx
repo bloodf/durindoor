@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, waitFor, userEvent, within } from "storybook/test";
 import ImportTokenModal from "./ImportTokenModal";
 
 function ImportTokenStory(props) {
@@ -39,7 +39,7 @@ export const Open = {
   render: Default.render,
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: "Connect GitHub" });
-    await expect(within(dialog).getByLabelText("Access token")).toBeVisible();
+    await waitFor(async () => expect(within(dialog).getByLabelText("Access token")).toBeVisible());
   },
 };
 

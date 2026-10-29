@@ -1,4 +1,6 @@
 import { Children, isValidElement } from "react";
+import Link from "next/link";
+import { isString } from "@/shared/utils/typeChecks.js";
 import MotionIcon from "./MotionIcon.jsx";
 import { actionIcon } from "./iconHelp.js";
 
@@ -40,4 +42,12 @@ export default function ReviewNativeButton({ children, className = "", ...props 
   return <button {...props} className={icon ? `${className} v5-button-with-icon` : className}>
     {icon && <MotionIcon name={icon} />}{children}
   </button>;
+}
+
+/** Keep incumbent internal links within the isolated review router. Downloads,
+ * external links and fragment-only anchors retain native browser behavior. */
+export function ReviewNativeLink({ href, children, ...props }) {
+  const review = globalThis.document?.documentElement.dataset.v5Review === "true";
+  if (review && isString(href) && /^\/dashboard(?:[/?#]|$)/.test(href) && (props.download == null || props.download === false)) return <Link {...props} href={href}>{children}</Link>;
+  return <a {...props} href={href}>{children}</a>;
 }

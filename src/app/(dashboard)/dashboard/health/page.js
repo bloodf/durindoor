@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
@@ -28,35 +28,42 @@ export default function HealthPage() {
   const [loading, setLoading] = useState(true);
   const [headroom, setHeadroom] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [headroomError, setHeadroomError] = useState("");
+  const [headroomLoading, setHeadroomLoading] = useState(true);
+  const request = useRef({ epoch: 0, abort: null });
 
+  /** Independent source reads retain last accepted measurements and reject superseded refreshes. */
   const load = useCallback(async (force = false) => {
-    setError("");
-    try {
-      const url = force ? "/api/health/providers?force=1" : "/api/health/providers";
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Health request failed (${res.status})`);
-      }
-      const [healthData, headroomRes] = await Promise.all([
-        res.json(),
-        fetch("/api/headroom/status", { cache: "no-store" }).catch(() => null),
-      ]);
-      setData(healthData);
-      if (headroomRes?.ok) setHeadroom(await headroomRes.json());
-    } catch (err) {
-      setError(err?.message || "Failed to load health");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    request.current.abort?.abort();
+    const abort = new AbortController();
+    const epoch = ++request.current.epoch;
+    request.current.abort = abort;
+    const current = () => !abort.signal.aborted && epoch === request.current.epoch;
+    setLoading(true); setHeadroomLoading(true);
+    const read = async (url) => {
+      const response = await fetch(url, { cache: "no-store", signal: abort.signal });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || `Health request failed (${response.status})`);
+      return body;
+    };
+    await Promise.allSettled([
+      read(force ? "/api/health/providers?force=1" : "/api/health/providers").then((body) => {
+        if (current()) { setData(body); setError(""); }
+      }).catch((failure) => { if (current()) setError(failure.message || "Provider health unavailable"); })
+        .finally(() => { if (current()) setLoading(false); }),
+      read("/api/headroom/status").then((body) => {
+        if (current()) { setHeadroom(body); setHeadroomError(""); }
+      }).catch((failure) => { if (current()) setHeadroomError(failure.message || "Headroom health unavailable"); })
+        .finally(() => { if (current()) setHeadroomLoading(false); }),
+    ]);
+    if (current()) setRefreshing(false);
   }, []);
 
   useEffect(() => {
     load(false);
     const poller = createVisiblePoller({ callback: () => load(false), intervalMs: 60_000 });
     poller.start();
-    return () => poller.stop();
+    return () => { poller.stop(); request.current.epoch++; request.current.abort?.abort(); };
   }, [load]);
 
   const onRefresh = async () => {
@@ -77,8 +84,8 @@ export default function HealthPage() {
     pageSize: 20,
   });
 
-  const headroomTone = headroom?.running ? (headroom?.circuit?.degraded ? "warning" : "success") : "warning";
-  const headroomLabel = headroom?.running
+  const headroomTone = !headroom || headroomError ? "neutral" : headroom?.running ? (headroom?.circuit?.degraded ? "warning" : "success") : "warning";
+  const headroomLabel = headroomLoading ? "Checking…" : headroomError ? headroom ? "Stale snapshot" : "Unknown" : !headroom ? "Unknown" : headroom?.running
     ? headroom?.circuit?.degraded
       ? `Degraded (${headroom.circuit.consecutiveFailures})`
       : "Healthy"
@@ -95,21 +102,22 @@ export default function HealthPage() {
 
   return <div className="space-y-6">
     <PageHeader icon="health_and_safety" title="Provider Health" subtitle="Reachability of your configured provider connections. Probes are SSRF-guarded and proxy-aware." actions={<Button variant="primary" onClick={onRefresh} disabled={refreshing} loading={refreshing} icon="refresh">{refreshing ? "Refreshing…" : "Refresh"}</Button>} />
-    {error ? <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger" role="alert">{error}</div> : null}
+    {error ? <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger" role="alert">{error}{data ? " Last received provider measurements remain visible and may be stale." : " Provider measurements are unknown."}</div> : null}
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-      {SUMMARY_TILES.map((tile) => <StatCard key={tile.key} label={tile.label} value={summary[tile.key] ?? 0} tone={tile.tone} />)}
+      {SUMMARY_TILES.map((tile) => <StatCard key={tile.key} label={tile.label} value={summary[tile.key] ?? "—"} tone={tile.tone} />)}
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-dd-lg border border-dd-border bg-dd-surface p-4">
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-dd bg-dd-accent-soft text-dd-accent"><span aria-hidden="true" className="material-symbols-outlined text-[20px] leading-none">compress</span></span>
         <div className="min-w-0">
           <div className="text-sm font-semibold text-dd-text">Headroom compression proxy</div>
-          <div className="truncate text-xs text-dd-muted">{headroom?.url || "Not configured"}</div>
+          <div className="truncate text-xs text-dd-muted">{headroom?.url || (headroom ? "Not configured" : "Configuration not yet known")}</div>
           {headroom?.circuit?.degraded ? <div className="mt-1 text-xs text-dd-warning">Circuit degraded: {headroom.circuit.consecutiveFailures} consecutive failures</div> : null}
         </div>
       </div>
       <StatusDot tone={headroomTone} label={headroomLabel} pulse={headroomTone === "success"} />
     </div>
+    {headroomError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-dd-danger"><p>Headroom status: {headroomError}{headroom ? ". Last received status remains visible." : ". Status is unknown."}</p><Button icon="refresh" variant="secondary" onClick={() => load(false)}>Retry health status</Button></div> : null}
     <DataTable
       caption="Configured provider connections and their reachability probes"
       ariaLabel="Provider health connections"
@@ -119,7 +127,7 @@ export default function HealthPage() {
       getRowLabel={(row) => row.name}
       density="compact"
       loading={loading && providers.length === 0}
-      emptyState={{ icon: "monitor_heart", title: "No active connections", message: "No active connections configured.", action: { label: "Refresh", icon: "refresh", onClick: onRefresh } }}
+      emptyState={{ icon: "monitor_heart", title: error && !data ? "Provider health unavailable" : "No active connections", message: error && !data ? "Retry to load provider measurements." : "No active connections configured.", action: { label: "Refresh", icon: "refresh", onClick: onRefresh } }}
       pagination={{ page, pageCount: totalPages, total: totalItems, rowsLabel: `Showing ${totalItems === 0 ? 0 : (page - 1) * pageSize + 1}–${(page - 1) * pageSize + pageItems.length} of ${totalItems}`, onPage: setPage, rowsPerPage: pageSize, onRowsPerPageChange: setPageSize }}
     />
     {data?.timestamp ? <p className="text-xs text-dd-subtle">Last computed: {new Date(data.timestamp).toLocaleString()}</p> : null}

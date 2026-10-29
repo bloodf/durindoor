@@ -20,10 +20,12 @@ export default function MonitoringWidgets() {
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   const load = useCallback(async (signal) => {
+    setLoading(true);
     try {
       const res = await fetch("/api/monitoring", { cache: "no-store", signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+      if (!json?.runtime || !json?.activity) throw new Error("Invalid monitoring snapshot");
       if (signal.aborted) return;
       setData(json);
       setError("");
@@ -116,7 +118,7 @@ export default function MonitoringWidgets() {
           </span>
           <div className="text-sm">
             <p className="font-medium">{t("Failed to load monitoring status")}</p>
-            <p>{error}</p>
+            <p>{error}{data ? " Last received measurements remain visible and may be stale." : " No measurements received."}</p>
           </div>
         </div>
       )}
@@ -185,7 +187,7 @@ export default function MonitoringWidgets() {
           </ul>
         ) : <p className="text-sm text-dd-muted">{t("No active requests")}</p>}
       </Card>
-      <Card padding="sm">
+      <Card padding="sm" role="region" aria-label="Recorded provider health">
         <h3 className="mb-3 font-semibold text-dd-text">{t("Provider health (7d)")}</h3>
         {health.length ? (
           <div className="overflow-x-auto">
@@ -253,7 +255,7 @@ StatCard.propTypes = {
 };
 
 function formatNum(n) {
-  if (n === null || n === undefined) return "0";
+  if (n === null || n === undefined) return "—";
   return Number(n).toLocaleString("en-US");
 }
 

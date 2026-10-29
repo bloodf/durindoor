@@ -90,3 +90,13 @@ export function changeWorkspace(collection, action) {
   if (action.type === "rename" || action.type === "layout") return normalizeWorkspaces({ ...current, dashboards: current.dashboards.map((dashboard) => dashboard.id === action.id ? { ...dashboard, ...(action.type === "rename" ? { name: action.name } : { layout: action.layout }) } : dashboard) });
   return current;
 }
+
+/** Shared subscriptions are enabled only by visible widgets that consume that source. */
+export function dashboardSources(layout) {
+  const visible = (layout || []).filter((widget) => widget.visible).map((widget) => widget.id);
+  return {
+    usage: visible.some((id) => ["overview", "topology", "requests", "chart", "breakdown"].includes(id)),
+    saver: visible.some((id) => id.startsWith("saver-")),
+    pxpipe: visible.some((id) => id.startsWith("pxpipe-")),
+  };
+}

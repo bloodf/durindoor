@@ -74,3 +74,16 @@
 [data-v5-review] .v5-dashboard-canvas [data-widget-id^="pxpipe-"] .v5-usage-widget-content > div > .rounded-dd-lg > div { padding-left:0; padding-right:0; }
 
 [data-v5-review] .v5-dashboard-metric-hint { display:block; margin-top:8px; color:var(--dd-text-muted); font-size:12px; font-weight:400; line-height:1.6; }
+
+/* Keep units and state qualifiers legible instead of squeezing six equal tiles. */
+[data-v5-review] .v5-dashboard-canvas section.v5-pxpipe-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
+[data-v5-review] .v5-dashboard-canvas .v5-dashboard-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+[data-v5-review] .v5-dashboard-metrics > div:nth-child(2) { border-right:0; }
+[data-v5-review] .v5-dashboard-metrics > div { overflow-wrap:anywhere; }
+[data-v5-review] [data-widget-id="saver-summary"] .v5-dashboard-metrics > div:nth-child(3) { grid-column:1/-1; grid-row:1; border-right:0; border-bottom:1px solid var(--dd-border-subtle); padding-bottom:16px; }
+[data-v5-review] [data-widget-id="saver-summary"] .v5-dashboard-metrics > div:nth-child(3) dd { font-size:30px; }
+[data-v5-review] .v5-dashboard-canvas [data-widget-id="pxpipe-trend"] .v5-dashboard-skeleton { min-height:224px; }
+@container (max-width:560px) { [data-v5-review] .v5-dashboard-canvas section.v5-pxpipe-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@container (max-width:330px) { [data-v5-review] .v5-dashboard-canvas section.v5-pxpipe-summary, [data-v5-review] .v5-dashboard-canvas .v5-dashboard-metrics { grid-template-columns:1fr; } [data-v5-review] .v5-dashboard-metrics > div { border-right:0; padding-right:0; } }
+
+[data-v5-review] .v5-monitoring-measurements h3 { display:flex; align-items:center; gap:8px; }

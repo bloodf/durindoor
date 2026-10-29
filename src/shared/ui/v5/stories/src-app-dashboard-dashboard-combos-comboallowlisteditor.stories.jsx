@@ -8,3 +8,4 @@ export default meta;
 export const Unrestricted = { ...reviewStory(original.Unrestricted, {"source":"src/app/(dashboard)/dashboard/combos/ComboAllowListEditor.stories.jsx","standalone":false}) };
 export const Populated = { ...reviewStory(original.Populated, {"source":"src/app/(dashboard)/dashboard/combos/ComboAllowListEditor.stories.jsx","standalone":false}) };
 export const WithGroupQuickAdd = { ...reviewStory(original.WithGroupQuickAdd, {"source":"src/app/(dashboard)/dashboard/combos/ComboAllowListEditor.stories.jsx","standalone":false}) };
+export const RejectedClearAndRetry = { ...reviewStory(original.RejectedClearAndRetry, {"source":"src/app/(dashboard)/dashboard/combos/ComboAllowListEditor.stories.jsx","standalone":false}) };

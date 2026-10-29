@@ -5,5 +5,8 @@ import { reviewDecorator } from '../ReviewFrame.jsx';
 import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Pages/savers/TokenSaverClient", parameters: reviewParameters(originalMeta.parameters, {"source":"src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
+export const Overview = { ...reviewStory(original.Overview, {"source":"src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx","standalone":false}) };
 export const Settings = { ...reviewStory(original.Settings, {"source":"src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx","standalone":false}) };
 export const UnavailableServices = { ...reviewStory(original.UnavailableServices, {"source":"src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx","standalone":false}) };
+export const RejectedCompressionSettings = { ...reviewStory(original.RejectedCompressionSettings, {"source":"src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx","standalone":false}) };
+export const RetryCompressionSave = { ...reviewStory(original.RetryCompressionSave, {"source":"src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx","standalone":false}) };

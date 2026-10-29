@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, within, waitFor } from "storybook/test";
 import TimelineSwimlane from "./TimelineSwimlane.jsx";
 
 const WINDOW_START = Date.parse("2026-09-05T12:00:00.000Z");
@@ -75,7 +75,7 @@ export const NarrowSimultaneous = {
   render: (args) => <div style={{ width: 240 }}><TimelineSwimlane {...args} /></div>,
   play: async ({ canvasElement, args }) => {
     const chart = within(canvasElement).getByRole("group", { name: "Trace swimlanes by provider" });
-    await expect(chart).toHaveAttribute("width", "240");
+    await waitFor(() => expect(chart).toHaveAttribute("width", "240"));
     const targets = within(chart).getAllByRole("button");
     for (const target of targets) {
       await expect(Number(target.getAttribute("width"))).toBeGreaterThanOrEqual(44);

@@ -137,3 +137,18 @@ export const LoadingMetrics = {
   parameters: { storyFixture: { routes: { "GET /api/token-saver/stream": { body: {}, events: [] } } } },
   play: async ({ canvasElement }) => { await expect(within(canvasElement).getAllByText("Loading Token Saver metrics")[0]).toBeVisible(); },
 };
+
+export const PxpipeInitialLoading = {
+  parameters: { storyFixture: { routes: Object.fromEntries(["GET /api/pxpipe/status", "GET /api/pxpipe/stats", "GET /api/pxpipe/logs?limit=50", "POST /api/pxpipe/health"].map((key) => [key, async () => { await new Promise((resolve) => setTimeout(resolve, 1200)); return saverRoutes[key]; }])) } },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(canvas.queryByText("No transform events yet.")).not.toBeInTheDocument(); await expect(canvas.queryByText("No estimated savings recorded in this period.")).not.toBeInTheDocument(); await expect(await canvas.findByText("Loading PXPIPE events")).toBeVisible(); },
+};
+export const PxpipeStatsUnavailable = {
+  parameters: { storyFixture: { routes: { "GET /api/pxpipe/stats": { status: 503, body: { error: "Metrics unavailable" } } } } },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect((await canvas.findAllByText(/PXPIPE stats could not be refreshed/))[0]).toBeVisible(); await expect(canvas.queryByText("No estimated savings recorded in this period.")).not.toBeInTheDocument(); await expect(await canvas.findByRole("region", { name: "PXPIPE raw event log" })).toBeVisible(); },
+};
+let eventReads = 0;
+export const PxpipeEventsRetry = {
+  beforeEach: () => { eventReads = 0; },
+  parameters: { storyFixture: { routes: { "GET /api/pxpipe/logs?limit=50": () => ++eventReads === 1 ? { status: 503, body: { error: "Events unavailable" } } : saverRoutes["GET /api/pxpipe/logs?limit=50"] } } },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText(/PXPIPE events could not be refreshed/)).toBeVisible(); await userEvent.click(canvas.getByRole("button", { name: "Retry PXPIPE events" })); await expect(await canvas.findByRole("region", { name: "PXPIPE raw event log" })).toBeVisible(); await expect(canvas.queryByText(/PXPIPE stats could not be refreshed/)).not.toBeInTheDocument(); },
+};

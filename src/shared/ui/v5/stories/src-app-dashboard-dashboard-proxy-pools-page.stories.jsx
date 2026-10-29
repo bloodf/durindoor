@@ -16,3 +16,6 @@ export const CreateError = { ...reviewStory(original.CreateError, {"source":"src
 export const DeleteError = { ...reviewStory(original.DeleteError, {"source":"src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx","standalone":false}) };
 export const CreatePending = { ...reviewStory(original.CreatePending, {"source":"src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx","standalone":false}) };
 export const DeletePending = { ...reviewStory(original.DeletePending, {"source":"src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx","standalone":false}) };
+export const LoadFailureAndRetry = { ...reviewStory(original.LoadFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx","standalone":false}) };
+export const MalformedResponseAndRetry = { ...reviewStory(original.MalformedResponseAndRetry, {"source":"src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx","standalone":false}) };
+export const NetworkFailureAndRetry = { ...reviewStory(original.NetworkFailureAndRetry, {"source":"src/app/(dashboard)/dashboard/proxy-pools/page.stories.jsx","standalone":false}) };

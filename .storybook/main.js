@@ -113,7 +113,7 @@ const config = {
           }
           if (!id.endsWith("/motion/ReviewNativeButton.jsx")) code = reviewNativeButtons(code, path.join(projectRoot, "src/shared/ui/v5/motion/ReviewNativeButton.jsx"));
           if (id.endsWith("/shared/components/HeaderLanguage.js") || id.endsWith("/shared/components/LanguageSwitcher.js")) {
-            code = code.replace(/(<span)([^>]*className="text-(?:lg|2xl)[^"]*"[^>]*>)(\{(?:LOCALE_FLAGS|getLocaleInfo|info\.flag))/g, '$1 data-icon-name="language"$2$3');
+            code = code.replace(/(<span)([^>]*className="text-(?:lg|2xl)[^"]*"[^>]*>)(\{(?:LOCALE_FLAGS|getLocaleInfo|info\.flag))/g, '$1 data-v5-locale-mark="true"$2$3');
           }
           if (!id.includes("/ui/v5/motion/")) code = reviewGlyphs(code, path.join(projectRoot, "src/shared/ui/v5/motion/ReviewGlyph.jsx"));
           if (id.endsWith("/shared/ui/components/Tooltip.jsx")) {

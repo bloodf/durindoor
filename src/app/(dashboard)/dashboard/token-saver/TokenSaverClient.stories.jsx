@@ -68,9 +68,10 @@ export const Overview = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("RTK bytes saved")).toBeVisible();
-    await expect(await canvas.findByRole("heading", { name: "PXPIPE Dashboard" })).toBeVisible();
+    const review = document.documentElement.dataset.v5Review === "true";
+    await expect(await canvas.findByRole(review ? "region" : "heading", { name: review ? "PXPIPE status" : "PXPIPE Dashboard", exact: true })).toBeVisible();
     await expect(await canvas.findByText("150.0K")).toBeVisible();
-    const usagePeriod = within(canvas.getByRole("radiogroup", { name: "Usage period" }));
+    const usagePeriod = within(canvas.getByRole("radiogroup", { name: review ? "Token Saver period" : "Usage period" }));
     const savingsWindow = within(canvas.getByRole("radiogroup", { name: "Savings time window" }));
     await userEvent.click(usagePeriod.getByRole("radio", { name: "7D" }));
     await expect(usagePeriod.getByRole("radio", { name: "7D" })).toHaveAttribute("aria-checked", "true");
@@ -88,3 +89,40 @@ export const Settings = { args: { view: "settings" }, parameters: { storyFixture
 
 /** Covers Headroom unavailable and PXPIPE dependency-missing error states without real providers. */
 export const UnavailableServices = { args: { view: "settings" }, parameters: { storyFixture: { scenario: "error", pathname: "/dashboard/token-saver/settings", params: {}, routes: { ...routes, "GET /api/headroom/status": { body: { installed: false, running: false, localUrl: true, canStart: false, python: null } }, "GET /api/pxpipe/status": { body: { installed: false, running: false } } } } }, play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText(/PXPIPE dependency missing/)).toBeTruthy(); await userEvent.click(await canvas.findByRole("button", { name: "Setup" })); const dialog = await within(document.body).findByRole("dialog", { name: /Setup Headroom/ }); await expect(within(dialog).getByText(/Python ≥ 3.10 required/)).toBeTruthy(); } };
+
+/** A rejected PATCH cannot alter accepted configuration in any compression family. */
+export const RejectedCompressionSettings = {
+  args: { view: "settings" },
+  parameters: { storyFixture: { scenario: "error", pathname: "/dashboard/token-saver/settings", routes: { ...routes, "PATCH /api/settings": { status: 503, body: { error: "Settings storage unavailable" } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    for (const name of ["Enable RTK", "Enable Caveman", "Enable Ponytail", "Enable Headroom"]) {
+      const control = await canvas.findByRole("switch", { name });
+      const accepted = control.getAttribute("aria-checked");
+      await userEvent.click(control);
+      await canvas.findByText(new RegExp(`${name.replace("Enable ", "")}: Not saved`));
+      await expect(control).toHaveAttribute("aria-checked", accepted);
+    }
+    await userEvent.click(canvas.getByRole("button", { name: "Manage" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "Headroom", exact: true }));
+    const url = dialog.getByRole("textbox", { name: "Proxy URL" });
+    await userEvent.clear(url); await userEvent.type(url, "http://changed.local:8787"); await userEvent.tab();
+    await canvas.findByText(/Headroom URL: Not saved/);
+    await expect(url).toHaveValue("http://localhost:8787");
+  },
+};
+
+let rejectedWrite = false;
+export const RetryCompressionSave = {
+  args: { view: "settings" },
+  beforeEach: () => { rejectedWrite = false; },
+  parameters: { storyFixture: { pathname: "/dashboard/token-saver/settings", routes: { ...routes, "PATCH /api/settings": () => { if (!rejectedWrite) { rejectedWrite = true; return { status: 503, body: { error: "Temporary write failure" } }; } return { body: { success: true } }; } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await canvas.findByRole("switch", { name: "Enable RTK" });
+    await userEvent.click(toggle);
+    await userEvent.click(await canvas.findByRole("button", { name: "Retry RTK" }));
+    await expect(await canvas.findByText("RTK: Saved")).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+  },
+};

@@ -8,3 +8,5 @@ export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.stories.jsx","standalone":false}) };
 export const DeleteOpensConfirm = { ...reviewStory(original.DeleteOpensConfirm, {"source":"src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.stories.jsx","standalone":false}) };
 export const DeleteError = { ...reviewStory(original.DeleteError, {"source":"src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.stories.jsx","standalone":false}) };
+export const ManageProvidersAndRunExample = { ...reviewStory(original.ManageProvidersAndRunExample, {"source":"src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.stories.jsx","standalone":false}) };
+export const EmptyProviders = { ...reviewStory(original.EmptyProviders, {"source":"src/app/(dashboard)/dashboard/media-providers/combo/[id]/page.stories.jsx","standalone":false}) };

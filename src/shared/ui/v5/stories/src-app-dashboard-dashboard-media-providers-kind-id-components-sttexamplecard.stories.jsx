@@ -7,3 +7,4 @@ const meta = { ...originalMeta, title: "V5 review/Pages/media/SttExampleCard", p
 export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.stories.jsx","standalone":false}) };
 export const CurlCopies = { ...reviewStory(original.CurlCopies, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.stories.jsx","standalone":false}) };
+export const UploadAndTranscribe = { ...reviewStory(original.UploadAndTranscribe, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/SttExampleCard.stories.jsx","standalone":false}) };

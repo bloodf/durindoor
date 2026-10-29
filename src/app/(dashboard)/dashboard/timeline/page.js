@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Button from "@/shared/ui/components/Button.jsx";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -40,6 +41,8 @@ function TimelineList() {
   const [captureOn, setCaptureOn] = useState(null);
   const [connectionNames, setConnectionNames] = useState({});
   const [live, setLive] = useState(false);
+  const [streamState, setStreamState] = useState("paused");
+  const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
   const view = searchParams.get("view") === "table" ? "table" : "timeline";
   const windowPreset = resolveWindow(searchParams.get("window"));
@@ -52,7 +55,7 @@ function TimelineList() {
     }
     return next.toString();
   }, [searchParams]);
-  const windowed = useWindowedTraces({ enabled: view === "timeline", filterQuery: windowFilterQuery, windowMs: windowPreset.ms, live });
+  const windowed = useWindowedTraces({ enabled: view === "timeline", filterQuery: windowFilterQuery, windowMs: windowPreset.ms, live, retry });
   const query = useMemo(() => {
     const next = new URLSearchParams();
     for (const key of FILTER_KEYS) {
@@ -70,7 +73,7 @@ function TimelineList() {
     setError("");
     setLoading(true);
     try {
-      const settingsRequest = fetch("/api/settings", { cache: "no-store", signal: controller.signal });
+      const settingsRequest = fetch("/api/settings", { cache: "no-store", signal: controller.signal }).catch(() => null);
       if (query.get("pageSize") === "all") {
         const allQuery = new URLSearchParams(query);
         allQuery.set("page", "1");
@@ -94,7 +97,7 @@ function TimelineList() {
         if (!controller.signal.aborted) setData(body);
       }
       const settingsRes = await settingsRequest;
-      if (settingsRes.ok) {
+      if (settingsRes?.ok) {
         const settings = await settingsRes.json();
         if (!controller.signal.aborted) setCaptureOn(settings.enableProxyTimeline === true);
       }
@@ -102,7 +105,7 @@ function TimelineList() {
     } finally {
       if (loadAbortRef.current === controller) setLoading(false);
     }
-  }, [query]);
+  }, [query, retry]);
   const liveReload = useMemo(() => createLiveReloadScheduler(load), [load]);
   useEffect(() => {
     if (view !== "table") return undefined;
@@ -122,12 +125,18 @@ function TimelineList() {
   // locally. Keep its subscription stable across lane/window URL changes.
   const liveScheduler = view === "table" ? liveReload : windowed.liveRefresh;
   const streamQuery = view === "table" ? query.toString() : "";
+  // Wanted live mode is separate from the transport's confirmed lifecycle.
   useEffect(() => {
-    if (!live) return undefined;
-    const source = new EventSource(`/api/timeline/stream?${streamQuery}`);
-    source.onmessage = liveScheduler.schedule;
+    if (!live) { setStreamState("paused"); return undefined; }
+    setStreamState("connecting");
+    let source;
+    try { source = new EventSource(`/api/timeline/stream?${streamQuery}`); }
+    catch { setStreamState("unavailable"); return undefined; }
+    source.onopen = () => setStreamState("listening");
+    source.onmessage = (event) => { setStreamState("listening"); liveScheduler.schedule(event); };
+    source.onerror = () => setStreamState(source.readyState === 2 ? "unavailable" : "reconnecting");
     return () => { liveScheduler.cancel(); source.close(); };
-  }, [live, streamQuery, liveScheduler]);
+  }, [live, streamQuery, liveScheduler, retry]);
 
   const setParam = (key, value, defaultValue) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -163,13 +172,14 @@ function TimelineList() {
   ], [connectionNames]);
 
   const captureOff = (view === "table" ? captureOn : windowed.captureOn) === false;
+  const viewError = view === "table" ? error : windowed.error;
   const emptyState = {
     icon: "timeline",
-    title: captureOff ? "Timeline capture is off" : "Waiting for a call",
-    message: captureOff ? <span>Enable it in <Link href="/dashboard/profile" className="text-dd-accent underline outline-none focus-visible:shadow-dd-focus">Settings</Link>.</span> : "Redacted proxy hops appear here when requests arrive.",
+    title: viewError ? "Timeline unavailable" : captureOff ? "Timeline capture is off" : "Waiting for a call",
+    message: viewError ? "Retry to load trace measurements." : captureOff ? <span>Enable it in <Link href="/dashboard/profile" className="text-dd-accent underline outline-none focus-visible:shadow-dd-focus">Settings</Link>.</span> : "Redacted proxy hops appear here when requests arrive.",
   };
-  const liveStatus = <p className="text-[13px] text-dd-muted"><StatusDot tone={live ? "success" : "neutral"} pulse={live} label={live ? "Listening for updates" : "Live updates paused"} /></p>;
-  const viewError = view === "table" ? error : windowed.error;
+  const streamLabels = { paused: "Live updates paused", connecting: "Connecting to updates", listening: "Listening for updates", reconnecting: "Reconnecting to updates", unavailable: "Live updates unavailable" };
+  const liveStatus = <div className="flex flex-wrap items-center gap-2 text-[13px] text-dd-muted"><StatusDot tone={live && streamState === "listening" ? "success" : streamState === "unavailable" ? "danger" : "neutral"} pulse={live && streamState === "listening"} label={live ? streamLabels[streamState] : streamLabels.paused} />{live && ["reconnecting", "unavailable"].includes(streamState) ? <Button size="sm" icon="refresh" variant="secondary" onClick={() => setRetry((value) => value + 1)}>Reconnect timeline</Button> : null}</div>;
   const windowCount = windowed.traces.length;
 
   return (
@@ -177,7 +187,7 @@ function TimelineList() {
       <PageHeader
         icon="timeline"
         title="Timeline"
-        subtitle="Redacted sidecar hops. Filter via URL query string."
+        subtitle="Inspect redacted request hops."
         actions={(
           <div className="flex flex-wrap items-center gap-3">
             <SegmentedControl aria-label="Timeline view" options={VIEW_OPTIONS} value={view} onChange={(value) => setParam("view", value, "timeline")} />
@@ -185,7 +195,7 @@ function TimelineList() {
           </div>
         )}
       />
-      {viewError ? <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">{viewError}</p> : null}
+      {viewError ? <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger">{viewError} <Button icon="refresh" variant="secondary" size="sm" onClick={() => setRetry((value) => value + 1)}>Retry timeline</Button></p> : null}
       {view === "table" ? (
         <DataTable
           columns={columns}

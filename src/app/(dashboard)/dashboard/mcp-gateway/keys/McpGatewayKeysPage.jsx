@@ -14,7 +14,8 @@
  * copies of the same page.
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { requestJSON } from "../../providers/workflowRequests.js";
 import Link from "next/link";
 import Button from "@/shared/ui/components/Button.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
@@ -24,13 +25,14 @@ import { CreatedKeyDialog, GrantsModal, KeysPanel, NewKeyDialog } from "../McpGa
 import { useGatewayCollection } from "../shared.js";
 
 export default function McpGatewayKeysPage() {
-  const { items: keys, loading, reload, notify } = useGatewayCollection("/api/mcp-gateway/keys", "keys");
+  const { items: keys, loading, error, reload, notify } = useGatewayCollection("/api/mcp-gateway/keys", "keys");
   // Grants are expressed in terms of instances, so the modal needs the list —
   // but only once the operator opens it. Loading instances on mount would let
   // an unrelated instance-endpoint failure raise an error toast on a page
   // whose own list is fine, and revoking a key must not be blocked or
   // distracted by that.
   const { items: instances, loading: instancesLoading, error: instancesError, reload: loadInstances } = useGatewayCollection("/api/mcp-gateway/instances", "instances", { eager: false });
+  const creating = useRef(false);
   const [editingKey, setEditingKey] = useState(null);
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -38,11 +40,15 @@ export default function McpGatewayKeysPage() {
   const { copied, copy } = useCopyToClipboard(2000);
 
   async function createKey(name = null) {
-    const res = await fetch("/api/mcp-gateway/keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) { notify({ type: "error", message: body.error ?? "create failed" }); return; }
-    setKeyPromptOpen(false); setCreatedKey(body.key ?? null); await reload();
+    if (creating.current) return;
+    creating.current = true;
+    try {
+      const body = await requestJSON("/api/mcp-gateway/keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+      if (!body.key?.key) throw new Error("The created key was not returned. Refresh the list before creating another key.");
+      setKeyPromptOpen(false); setCreatedKey(body.key); await reload();
+    } finally { creating.current = false; }
   }
+
   async function revealAndCopyKey(id) {
     const res = await fetch(`/api/mcp-gateway/keys/${id}/reveal`);
     const body = await res.json().catch(() => ({}));
@@ -69,7 +75,7 @@ export default function McpGatewayKeysPage() {
 
   return <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 text-[13px]">
     <PageHeader icon="vpn_key" title="Gateway Keys" subtitle="API keys harnesses use to talk to this gateway. Each key reaches only the instances it is granted." actions={<><Link href="/dashboard/mcp-gateway" className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-dd border border-dd-border bg-dd-surface-2 px-3.5 text-[13px] font-medium text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"><span aria-hidden="true" className="material-symbols-outlined text-base">hub</span>Instances</Link><Button variant="primary" icon="vpn_key" onClick={() => setKeyPromptOpen(true)}>New key</Button></>} />
-    <KeysPanel keys={keys} loading={loading} copied={copied} onCreate={() => setKeyPromptOpen(true)} onEdit={openGrants} onReveal={revealAndCopyKey} onDelete={(id) => setConfirmDelete({ kind: "key", id })} />
+    <KeysPanel keys={keys} loading={loading} error={error} onRetry={reload} copied={copied} onCreate={() => setKeyPromptOpen(true)} onEdit={openGrants} onReveal={revealAndCopyKey} onDelete={(id) => setConfirmDelete({ kind: "key", id })} />
     {keyPromptOpen ? <NewKeyDialog onClose={() => setKeyPromptOpen(false)} onCreate={createKey} /> : null}
     {editingKey ? <GrantsModal keyId={editingKey} allInstances={instances} instancesLoading={instancesLoading} instancesError={instancesError} onRetryInstances={loadInstances} onClose={() => setEditingKey(null)} onSave={saveGrants} /> : null}
     {createdKey ? <CreatedKeyDialog createdKey={createdKey} copied={copied} copy={copy} onClose={() => setCreatedKey(null)} /> : null}

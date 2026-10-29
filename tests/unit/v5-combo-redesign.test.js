@@ -213,18 +213,22 @@ describe("combo redesign preserves domain workflows", () => {
     expect(save.mock.calls[0][0].members[0].weight).toBe(9);
   });
   it("retains strategy after a rejected update and gives recovery feedback", async () => {
-    const fixture = setup({
-      failures: {
-        "PATCH /api/settings": "Routing strategy could not be saved"
-      }
-    });
+    const failures = { "PATCH /api/settings": "Routing strategy could not be saved" };
+    const fixture = setup({ failures });
     await mount(React.createElement(ReviewCombosPage, null));
     const input = document.querySelector('input[aria-label="Timeout for review-route"]');
     expect(input).toBeTruthy();
     await fill(input, "9");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(document.querySelector('[role="alert"]').textContent).toContain("could not be saved");
-    expect(input.value).toBe("12");
+    expect(input.value).toBe("9");
     expect(fixture.snapshot().settings.comboStrategies["review-route"].timeoutMs).toBe(12e3);
+    delete failures["PATCH /api/settings"];
+    await act(async () => [...document.querySelectorAll("button")].find((button) => button.textContent.trim().endsWith("Retry")).click());
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(input.value).toBe("9");
+    expect(fixture.snapshot().settings.comboStrategies["review-route"].timeoutMs).toBe(9000);
   });
   it("keeps failed bulk deletes visible and removes strategy only for successful deletes", async () => {
     const fixture = setup({

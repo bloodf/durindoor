@@ -8,4 +8,5 @@ export default meta;
 export const Local = { ...reviewStory(original.Local, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx","standalone":false}) };
 export const Tunnel = { ...reviewStory(original.Tunnel, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx","standalone":false}) };
 export const Cloud = { ...reviewStory(original.Cloud, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx","standalone":false}) };
+export const Tailscale = { ...reviewStory(original.Tailscale, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx","standalone":false}) };
 export const SwitchToCustom = { ...reviewStory(original.SwitchToCustom, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/BaseUrlSelect.stories.jsx","standalone":false}) };

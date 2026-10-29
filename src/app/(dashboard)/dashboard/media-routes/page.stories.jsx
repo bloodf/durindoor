@@ -60,7 +60,7 @@ export const AutomaticAndCustom = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Media Routes")).toBeVisible();
-    await expect(canvas.getByText("Automatic")).toBeVisible();
+    await expect(await canvas.findByText("Automatic")).toBeVisible();
     await expect(canvas.getByText("+1 more")).toBeVisible();
     await expect(canvas.getByText("Custom order")).toBeVisible();
     await expect(canvas.getByText("unavailable, skipped")).toBeVisible();

@@ -156,6 +156,13 @@ export default function ReviewIconHelp() {
     };
     const focusIn = (event) => { focused = keyboardInteraction ? info(event.target, true) : null; show(); };
     const focusOut = (event) => { focused = keyboardInteraction ? info(event.relatedTarget, true) : null; show(); };
+    const focusField = (event) => {
+      if (!(event.target instanceof Element)) return;
+      const icon = event.target.closest(ICON_SELECTOR);
+      const prefix = icon?.closest(".pointer-events-none");
+      const input = prefix?.parentElement?.querySelector("input,textarea");
+      if (input && !input.disabled && !event.target.closest("button,a")) input.focus();
+    };
     const touch = (event) => {
       keyboardInteraction = false;
       focused = null;
@@ -186,7 +193,7 @@ export default function ReviewIconHelp() {
     annotate();
     observer.observe(document.body, { childList: true, subtree: true, characterData: true,
       attributes: true, attributeFilter: ["data-icon-name", "aria-label", "aria-pressed", "aria-expanded", "title", "src", "alt"] });
-    const events = { pointerover: over, pointerout: out, focusin: focusIn, focusout: focusOut, pointerdown: touch };
+    const events = { pointerover: over, pointerout: out, focusin: focusIn, focusout: focusOut, pointerdown: touch, click: focusField };
     document.addEventListener("keydown", escape, true);
     for (const [name, handler] of Object.entries(events)) document.addEventListener(name, handler);
     return () => {

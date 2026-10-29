@@ -13,7 +13,7 @@ export const formatBytes = (value) => { const n = Number(value) || 0; return n >
 const number = (value) => new Intl.NumberFormat().format(Number(value) || 0);
 
 /** Source fields and period-keyed stream match TokenSaverOverview; bytes never become billed token claims. */
-export default function SaverWidgets({ renderSections, period: periodProp, setPeriod: setPeriodProp, hidePeriodSelector = false }) {
+export default function SaverWidgets({ renderSections, period: periodProp, setPeriod: setPeriodProp, hidePeriodSelector = false, enabled = true }) {
   const [localPeriod, setLocalPeriod] = useState("30d");
   const period = periodProp ?? localPeriod;
   const setPeriod = setPeriodProp ?? setLocalPeriod;
@@ -25,6 +25,7 @@ export default function SaverWidgets({ renderSections, period: periodProp, setPe
   const [diagnostic, setDiagnostic] = useState(null);
   const chartId = useId();
   useEffect(() => {
+    if (!enabled) return undefined;
     setLoading(true); setError("");
     let active = true;
     const stream = new EventSource(`/api/token-saver/stream?period=${period}`);
@@ -35,12 +36,13 @@ export default function SaverWidgets({ renderSections, period: periodProp, setPe
       catch { setLoading(false); setError("Token Saver returned an invalid metrics snapshot. Try again."); }
     };
     return () => { active = false; stream.close(); };
-  }, [period, retry]);
+  }, [period, retry, enabled]);
   useEffect(() => {
+    if (!enabled) return undefined;
     const abort = new AbortController();
     fetch("/api/headroom/status", { headers: { "Cache-Control": "no-store" }, signal: abort.signal }).then((res) => res.ok ? res.json() : null).then((data) => { if (!abort.signal.aborted) setDiagnostic(data?.ok === false ? data.diagnostic : null); }).catch(() => {});
     return () => abort.abort();
-  }, []);
+  }, [enabled]);
   const rtk = stats?.rtk || {};
   const headroom = stats?.headroom || {};
   const pxpipe = stats?.pxpipe || {};
@@ -57,5 +59,5 @@ export default function SaverWidgets({ renderSections, period: periodProp, setPe
     "saver-estimate": pending || <div><p className="v5-dashboard-description">Estimated image tokens. Separate from actual bytes.</p><p className="v5-dashboard-value">{number(pxpipe.tokensSavedEst)}</p><p>{number(pxpipe.applied)} requests, {number(pxpipe.imageCount)} images</p></div>,
     "saver-skips": pending || <div><p className="v5-dashboard-description">Skipped compression by reason.</p>{Object.keys(headroom.skipReasons || {}).length ? <dl className="v5-dashboard-reasons">{Object.entries(headroom.skipReasons).sort((a, b) => b[1] - a[1]).map(([reason, count]) => <div key={reason}><dt>{reason}</dt><dd>{number(count)}</dd></div>)}</dl> : <p>No skipped Headroom requests in this period.</p>}</div>,
   };
-  return <div className="v5-dashboard-resource">{!hidePeriodSelector ? <div className="v5-dashboard-resource-toolbar"><p>Actual bytes · estimated image tokens</p><div className="v5-dashboard-period"><SegmentedControl aria-label="Token Saver period" options={USAGE_PERIOD_OPTIONS} value={period} onChange={setPeriod} size="sm" /></div></div> : null}{snapshotPeriod && snapshotPeriod !== period ? <p role="status" className="v5-dashboard-snapshot-period">Showing previous {USAGE_PERIOD_OPTIONS.find((option) => option.value === snapshotPeriod)?.label || snapshotPeriod} snapshot. {loading ? "Waiting for the selected period." : "Retry to load the selected period."}</p> : null}{diagnostic ? <SetupDiagnosticCard diagnostic={diagnostic} /> : null}{error ? <div className="v5-dashboard-error" role="alert"><p>{error}{stats ? " Previously received metrics remain visible." : ""}</p><Button variant="secondary" onClick={() => setRetry((value) => value + 1)}>Retry Token Saver stream</Button></div> : loading && stats ? <p role="status">Updating Token Saver metrics</p> : null}{renderSections ? renderSections(sections) : Object.entries(sections).map(([id, content]) => <section key={id}>{content}</section>)}</div>;
+  return <div className="v5-dashboard-resource">{enabled && !hidePeriodSelector ? <div className="v5-dashboard-resource-toolbar"><p>Actual bytes · estimated image tokens</p><div className="v5-dashboard-period"><SegmentedControl aria-label="Token Saver period" options={USAGE_PERIOD_OPTIONS} value={period} onChange={setPeriod} size="sm" /></div></div> : null}{enabled && snapshotPeriod && snapshotPeriod !== period ? <p role="status" className="v5-dashboard-snapshot-period">Showing previous {USAGE_PERIOD_OPTIONS.find((option) => option.value === snapshotPeriod)?.label || snapshotPeriod} snapshot. {loading ? "Waiting for the selected period." : "Retry to load the selected period."}</p> : null}{enabled && diagnostic ? <SetupDiagnosticCard diagnostic={diagnostic} /> : null}{enabled && error ? <div className="v5-dashboard-error" role="alert"><p>{error}{stats ? " Previously received metrics remain visible." : ""}</p><Button variant="secondary" onClick={() => setRetry((value) => value + 1)}>Retry Token Saver stream</Button></div> : enabled && loading && stats ? <p role="status">Updating Token Saver metrics</p> : null}{renderSections ? renderSections(enabled ? sections : {}) : enabled ? Object.entries(sections).map(([id, content]) => <section key={id}>{content}</section>) : null}</div>;
 }

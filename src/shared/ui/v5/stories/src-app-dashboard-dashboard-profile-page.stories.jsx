@@ -10,3 +10,5 @@ export const OidcAndProxy = { ...reviewStory(original.OidcAndProxy, {"source":"s
 export const ShutdownConfirm = { ...reviewStory(original.ShutdownConfirm, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };
 export const DatabaseExportPrompt = { ...reviewStory(original.DatabaseExportPrompt, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };
 export const SelectiveTransferPreview = { ...reviewStory(original.SelectiveTransferPreview, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };
+export const SettingsUnavailable = { ...reviewStory(original.SettingsUnavailable, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };
+export const SettingsLoading = { ...reviewStory(original.SettingsLoading, {"source":"src/app/(dashboard)/dashboard/profile/page.stories.jsx","standalone":false}) };

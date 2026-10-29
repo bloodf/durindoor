@@ -182,7 +182,7 @@ export const ApiKeyBulkAndValidation = {
     const dialog = await body.findByRole("dialog", { name: "Add OpenAI API Key" });
     await userEvent.type(within(dialog).getByLabelText("API Key"), "sk-example");
     await userEvent.click(within(dialog).getByRole("button", { name: "Check" }));
-    await expect(await within(dialog).findByText("Invalid")).toBeVisible();
+    await waitFor(() => expect(within(dialog).getByText("Invalid")).toBeVisible());
     await userEvent.click(within(dialog).getByRole("button", { name: "Bulk Add" }));
     await userEvent.type(within(dialog).getByLabelText("Credentials"), "Key|sk-example");
     await userEvent.click(within(dialog).getByRole("button", { name: "Add All Keys" }));
@@ -202,7 +202,7 @@ export const ApiKeyValidationError = {
     const form = within(dialog);
     await userEvent.type(form.getByLabelText("API Key"), "sk-example");
     await userEvent.click(form.getByRole("button", { name: "Check" }));
-    await expect(await form.findByText("Invalid")).toBeVisible();
+    await waitFor(() => expect(form.getByText("Invalid")).toBeVisible());
     await expect(form.getByLabelText("API Key")).toHaveValue("sk-example");
   },
 };
@@ -250,7 +250,7 @@ export const ProviderErrorRules = {
     await userEvent.type(within(dialog).getByLabelText("Match (substring, case-insensitive)"), "daily cap");
     await userEvent.type(within(dialog).getByLabelText("Cooldown seconds (optional)"), "30");
     await userEvent.click(within(dialog).getByRole("button", { name: "Add Rule" }));
-    await expect(await within(dialog).findByText('429 contains "daily cap"')).toBeVisible();
+    await waitFor(() => expect(within(dialog).getByText('429 contains "daily cap"')).toBeVisible());
     await expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
   },
 };
@@ -276,8 +276,9 @@ export const ModelAutoSync = {
   render: () => <ModelAutoSyncPanel providerId="openai" hasConnection onModelsChange={noop} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText("New: gpt-live")).toBeVisible();
-    await expect(canvas.getByText("Removed in last sync: gpt-retired")).toBeVisible();
+    await userEvent.click(await canvas.findByText("Catalog changes", { selector: "summary" }));
+    await expect(await canvas.findByText("gpt-live", { selector: "code" })).toBeVisible();
+    await expect(canvas.getByText("gpt-retired", { selector: "code" })).toBeVisible();
     await expect(canvas.getByText("Last attempt failed: Upstream timeout")).toBeVisible();
   },
 };
@@ -287,7 +288,7 @@ export const ChatgptWebCookie = {
   render: () => <AddApiKeyModal isOpen provider="chatgpt-web" providerName="ChatGPT Web" authType="cookie" authHint="Paste a session cookie." proxyPools={[]} existingConnectionNames={[]} onSave={noop} onBulkDone={noop} onClose={noop} />,
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: "Add ChatGPT Web Cookie Value" });
-    await expect(within(dialog).getByTestId("chatgpt-web-cookie-steps")).toBeVisible();
+    await waitFor(() => expect(within(dialog).getByTestId("chatgpt-web-cookie-steps")).toBeVisible());
     await expect(within(dialog).getByRole("button", { name: "Copy snippet" })).toBeVisible();
   },
 };

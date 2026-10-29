@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard/usage", useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }), usePathname: () => "/dashboard/usage", useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/shared/utils/latestIntentQueue", () => ({ createLatestIntentQueue: () => ({ hydrate: () => {}, enqueue: async () => {} }) }));
 vi.mock("@/shared/components", () => ({ EditConnectionModal: () => null }));
 vi.mock("@/shared/constants/providers", () => ({ USAGE_SUPPORTED_PROVIDERS: [], AI_PROVIDERS: { codex: { name: "OpenAI Codex" } } }));

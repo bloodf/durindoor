@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -43,21 +43,24 @@ function UsageWidget({ widget, editing, index, visible, onMove, onEdit, onHide, 
 }
 
 /** Draft preferences alter presentation only. Cancel restores saved order, names, widths and visibility. */
-export default function DashboardCanvas({ sections, catalog, initialLayout, storageKey, persistLayout = false, onSave }) {
+export default function DashboardCanvas({ sections, catalog, initialLayout, storageKey, persistLayout = false, onSave, initialSession, onSessionChange }) {
   const normalize = (value) => normalizeDashboardLayout(value, catalog);
   const [saved, setSaved] = useState(() => {
+    if (initialSession?.saved) return normalize(initialSession.saved);
     if (initialLayout) return normalize(initialLayout);
     try { return persistLayout && isBrowser() ? readDashboardLayout(window.localStorage, storageKey, catalog) : normalize(null); }
     catch { return normalize(null); }
   });
-  const [draft, setDraft] = useState(saved);
-  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => initialSession?.draft ? normalize(initialSession.draft) : saved);
+  const [editing, setEditing] = useState(initialSession?.editing || false);
   const [library, setLibrary] = useState(false);
   const [widgetQuery, setWidgetQuery] = useState("");
   const [config, setConfig] = useState(null);
   const [notice, setNotice] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const layout = editing ? draft : saved;
+  // The parent keeps each named dashboard's unfinished session until Save or Cancel.
+  useEffect(() => { onSessionChange?.({ saved, draft, editing }); }, [saved, draft, editing, onSessionChange]);
   const visible = layout.filter((widget) => widget.visible);
   const groups = [
     { label: "Usage", icon: "bar_chart", matches: (widget) => widget.source?.startsWith("Usage") },

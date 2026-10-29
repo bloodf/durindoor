@@ -1,3 +1,4 @@
+import { failedReadStory } from "../../providers/workflowStoryFixtures.js";
 import React from "react";
 import { expect, userEvent, within } from "storybook/test";
 import MediaProviderKindPage from "./page.js";
@@ -42,7 +43,9 @@ export const OpenAddCustomEmbeddingModal = {
   },
 };
 
+let localActive = false;
 export const LocalAndCustomProviders = {
+  beforeEach: () => { localActive = false; },
   parameters: {
     storyFixture: {
       scenario: "default",
@@ -50,11 +53,11 @@ export const LocalAndCustomProviders = {
       params: { kind: "embedding" },
       routes: {
         ...baseRoutes,
-        "GET /api/providers": { body: { connections: [
-          { id: "ollama-1", provider: "ollama-local", isActive: false, testStatus: "success", providerSpecificData: { prefix: "local" } },
+        "GET /api/providers": () => ({ body: { connections: [
+          { id: "ollama-1", provider: "ollama-local", isActive: localActive, testStatus: "success", providerSpecificData: { prefix: "local" } },
           { id: "custom-1", provider: "custom-embedding-voyage", isActive: true, testStatus: "error" },
-        ] }, status: 200 },
-        "PUT /api/providers/ollama-1": { body: { id: "ollama-1", isActive: true }, status: 200 },
+        ] }, status: 200 }),
+        "PUT /api/providers/ollama-1": async (request) => { localActive = (await request.json()).isActive; return { body: { id: "ollama-1", isActive: localActive }, status: 200 }; },
         "GET /api/v1/models/embedding": { body: { data: [{ id: "nomic-embed-text", owned_by: "local" }] }, status: 200 },
         "GET /api/provider-nodes": { body: { nodes: [{ id: "custom-embedding-voyage", type: "custom-embedding", name: "Voyage Internal", prefix: "voyage" }] }, status: 200 },
       },
@@ -63,6 +66,7 @@ export const LocalAndCustomProviders = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Ollama Local")).toBeVisible();
+    await expect(canvas.getAllByText("Ollama Local")).toHaveLength(1);
     await expect(canvas.getByText("Voyage Internal")).toBeVisible();
     await expect(canvas.getByText("Custom")).toBeVisible();
     const toggle = canvas.getByRole("switch", { name: /Enable Ollama Local/ });
@@ -86,3 +90,9 @@ export const OpenAddCustomSystemOneModal = {
     await expect(await within(document.body).findByRole("dialog")).toBeInTheDocument();
   },
 };
+
+export const LoadFailureAndRetry = failedReadStory({ routes: baseRoutes, url: "/api/providers", pathname: "/dashboard/media-providers/embedding", params: { kind: "embedding" }, failure: "http", loadedText: "OpenAI" });
+
+export const MalformedResponseAndRetry = failedReadStory({ routes: baseRoutes, url: "/api/providers", pathname: "/dashboard/media-providers/embedding", params: { kind: "embedding" }, failure: "malformed", loadedText: "OpenAI" });
+
+export const NetworkFailureAndRetry = failedReadStory({ routes: baseRoutes, url: "/api/providers", pathname: "/dashboard/media-providers/embedding", params: { kind: "embedding" }, failure: "network", loadedText: "OpenAI" });

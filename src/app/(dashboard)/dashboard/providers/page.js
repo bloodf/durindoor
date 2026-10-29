@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import {
   Card,
@@ -31,6 +31,8 @@ import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import { getProviderStatus, getFreeAuthTypes, matchesProviderSearch, matchesProviderStatus, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
 import { testSummaryToast } from "./testSummaryToast";
+
+import { requestJSON, requestCollection, updateProviderConnections } from "./workflowRequests.js";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -102,6 +104,10 @@ function getConnectionErrorTag(connection) {
 const APIKEY_INITIAL_VISIBLE = 20;
 
 export default function ProvidersPage() {
+  const [loadError, setLoadError] = useState("");
+  const [toggleError, setToggleError] = useState(null);
+  const pendingProviders = useRef(new Set());
+  const [savingProviders, setSavingProviders] = useState([]);
   const [connections, setConnections] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [disabledFreeProviders, setDisabledFreeProviders] = useState([]);
@@ -152,35 +158,22 @@ export default function ProvidersPage() {
     return (a.name || "").localeCompare(b.name || "");
   });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [connectionsRes, nodesRes, settingsRes] = await Promise.all([
-        fetch("/api/providers"),
-        fetch("/api/provider-nodes"),
-        fetch("/api/settings")]
-        );
-        const connectionsData = await connectionsRes.json();
-        const nodesData = await nodesRes.json();
-        const settingsData = await settingsRes.json();
-        if (connectionsRes.ok)
-        setConnections(connectionsData.connections || []);
-        if (nodesRes.ok) setProviderNodes(nodesData.nodes || []);
-        if (settingsRes.ok) {
-          setDisabledFreeProviders(
-            Array.isArray(settingsData.disabledFreeProviders) ?
-            settingsData.disabledFreeProviders :
-            []
-          );
-        }
-      } catch (error) {
-        console.log("Error fetching data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [loadedConnections, nodes, settings] = await Promise.all([
+        requestCollection("/api/providers", "connections"),
+        requestCollection("/api/provider-nodes", "nodes"),
+        requestJSON("/api/settings"),
+      ]);
+      setConnections(loadedConnections);
+      setProviderNodes(nodes);
+      setDisabledFreeProviders(Array.isArray(settings.disabledFreeProviders) ? settings.disabledFreeProviders : []);
+      setLoadError(""); setToggleError(null);
+    } catch (error) { setLoadError(error.message); }
+    finally { setLoading(false); }
   }, []);
+  useEffect(() => { Promise.resolve().then(fetchData); }, [fetchData]);
 
   const getProviderStats = (providerId, authType) => {
     const authTypes = Array.isArray(authType) ? authType : [authType];
@@ -229,22 +222,23 @@ export default function ProvidersPage() {
   // Toggle all connections for a provider on/off. authType may be a single
   // string or an array (kiro counts oauth + api_key/apikey together).
   const handleToggleProvider = async (providerId, authType, newActive) => {
+    if (pendingProviders.current.has(providerId)) return;
+    pendingProviders.current.add(providerId);
+    setSavingProviders([...pendingProviders.current]);
     const authTypes = Array.isArray(authType) ? authType : [authType];
-    const matches = (c) =>
-    c.provider === providerId && authTypes.includes(c.authType);
+    const matches = (c) => c.provider === providerId && authTypes.includes(c.authType);
     const providerConns = connections.filter(matches);
-    setConnections((prev) =>
-    prev.map((c) => matches(c) ? { ...c, isActive: newActive } : c)
-    );
-    await Promise.allSettled(
-      providerConns.map((c) =>
-      fetch(`/api/providers/${c.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: newActive })
-      })
-      )
-    );
+    try {
+      const { accepted, failed } = await updateProviderConnections(providerConns, newActive);
+      setConnections((prev) => prev.map((c) => accepted.includes(c.id) ? { ...c, isActive: newActive } : c));
+      if (failed.length) setToggleError({ message: `${failed.length} of ${providerConns.length} connections could not be ${newActive ? "enabled" : "disabled"}. Their previous state is retained.`, retry: () => handleToggleProvider(providerId, authType, newActive) });
+      else setToggleError(null);
+      try { setConnections(await requestCollection("/api/providers", "connections")); }
+      catch (error) { setToggleError({ message: `Connection state could not be verified after the write. ${error.message}`, retry: fetchData }); }
+    } finally {
+      pendingProviders.current.delete(providerId);
+      setSavingProviders([...pendingProviders.current]);
+    }
   };
 
   const handleToggleFreeNoAuth = async (providerId, enabled) => {
@@ -408,6 +402,7 @@ export default function ProvidersPage() {
   apikeyEntries.slice(0, APIKEY_INITIAL_VISIBLE);
   const hiddenApikeyCount = apikeyEntries.length - APIKEY_INITIAL_VISIBLE;
 
+  if (loadError && connections.length === 0) return <div role="alert" className="flex flex-col gap-3 rounded-dd-lg border border-dd-danger/30 p-5"><p>Provider configuration could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchData}>Retry</Button></div>;
   if (loading) {
     return (
       <div className="flex flex-col gap-8">
@@ -428,6 +423,8 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+      {loadError && <div role="alert">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchData}>Retry</Button></div>}
+      {toggleError && <div role="alert">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
       <PageHeader icon="dns" title="Providers" subtitle="Manage provider connections and routing availability." />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Select
@@ -493,6 +490,7 @@ export default function ProvidersPage() {
             <ApiKeyProviderCard
               key={info.id}
               providerId={info.id}
+              saving={savingProviders.includes(info.id)}
               provider={info}
               stats={getProviderStats(info.id, "apikey")}
               authType="compatible"
@@ -540,6 +538,7 @@ export default function ProvidersPage() {
           <ProviderCard
             key={key}
             providerId={key}
+            saving={savingProviders.includes(key)}
             provider={info}
             stats={getProviderStats(key, OAUTH_STATUS_AUTH_TYPES)}
             authType="oauth"
@@ -583,6 +582,7 @@ export default function ProvidersPage() {
               <ProviderCard
                 key={key}
                 providerId={key}
+            saving={savingProviders.includes(key)}
                 provider={info}
                 stats={getProviderStats(key, freeAuthTypes)}
                 authType="free"
@@ -599,6 +599,7 @@ export default function ProvidersPage() {
           <ApiKeyProviderCard
             key={key}
             providerId={key}
+            saving={savingProviders.includes(key)}
             provider={info}
             stats={getProviderStats(key, "apikey")}
             authType="apikey"
@@ -640,6 +641,7 @@ export default function ProvidersPage() {
           <ApiKeyProviderCard
             key={key}
             providerId={key}
+            saving={savingProviders.includes(key)}
             provider={info}
             stats={getProviderStats(key, "apikey")}
             authType="apikey"
@@ -672,6 +674,7 @@ export default function ProvidersPage() {
           <ApiKeyProviderCard
             key={key}
             providerId={key}
+            saving={savingProviders.includes(key)}
             provider={info}
             stats={getProviderStats(key, "cookie")}
             authType="cookie"
@@ -742,6 +745,7 @@ function ProviderCard({
   authType,
   noAuthEnabled,
   savingNoAuth,
+  saving = false,
   onToggle,
   onToggleNoAuth
 }) {
@@ -783,7 +787,7 @@ function ProviderCard({
                 <ProviderLogo provider={providerId} size={30} />
               )}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1 pe-12">
               <h3 className="truncate font-semibold">{provider.name}</h3>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
                 {freeClass === "free" &&
@@ -836,7 +840,7 @@ function ProviderCard({
         
         </div> :
       stats.total > 0 &&
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-100">
           <div
           onClick={(e) => {
             e.preventDefault();
@@ -846,6 +850,7 @@ function ProviderCard({
             <Toggle
             size="sm"
             checked={!allDisabled}
+            disabled={saving}
             onChange={() => onToggle(!allDisabled ? false : true)}
             ariaLabel={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`} />
           
@@ -873,6 +878,7 @@ ProviderCard.propTypes = {
   authType: PropTypes.string,
   noAuthEnabled: PropTypes.bool,
   savingNoAuth: PropTypes.bool,
+  saving: PropTypes.bool,
   onToggle: PropTypes.func,
   onToggleNoAuth: PropTypes.func
 };
@@ -882,6 +888,7 @@ function ApiKeyProviderCard({
   provider,
   stats,
   authType,
+  saving = false,
   onToggle
 }) {
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
@@ -921,7 +928,7 @@ function ApiKeyProviderCard({
         className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}>
         
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2">
               {provider.iconUrl ? (
                 <ProviderIcon
@@ -943,7 +950,7 @@ function ApiKeyProviderCard({
                 <ProviderLogo provider={providerId} size={30} />
               )}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h3 className="truncate font-semibold">{provider.name}</h3>
               <div className="flex min-w-0 items-center gap-1.5 text-xs flex-wrap">
                 {freeClass === "free" &&
@@ -987,17 +994,19 @@ function ApiKeyProviderCard({
           <div className="flex shrink-0 items-center gap-2">
             {stats.total > 0 &&
             <div
-              className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+              className="opacity-100"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onToggle(!allDisabled ? false : true);
+
               }}>
               
                 <Toggle
                 size="sm"
                 checked={!allDisabled}
-                onChange={() => {}}
+                disabled={saving}
+                onChange={() => onToggle(allDisabled)}
+                aria-label={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`}
                 title={allDisabled ? "Enable provider" : "Disable provider"} />
               
               </div>
@@ -1025,6 +1034,7 @@ ApiKeyProviderCard.propTypes = {
     errorTime: PropTypes.string
   }).isRequired,
   authType: PropTypes.string,
+  saving: PropTypes.bool,
   onToggle: PropTypes.func
 };
 

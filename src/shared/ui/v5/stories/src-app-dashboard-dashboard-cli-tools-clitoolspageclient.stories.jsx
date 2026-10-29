@@ -9,3 +9,5 @@ export const Catalog = { ...reviewStory(original.Catalog, {"source":"src/app/(da
 export const CatalogVisible = { ...reviewStory(original.CatalogVisible, {"source":"src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx","standalone":false}) };
 export const MitmSectionVisible = { ...reviewStory(original.MitmSectionVisible, {"source":"src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx","standalone":false}) };
 export const FetchError = { ...reviewStory(original.FetchError, {"source":"src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx","standalone":false}) };
+export const Loading = { ...reviewStory(original.Loading, {"source":"src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx","standalone":false}) };
+export const FetchErrorRetry = { ...reviewStory(original.FetchErrorRetry, {"source":"src/app/(dashboard)/dashboard/cli-tools/CLIToolsPageClient.stories.jsx","standalone":false}) };

@@ -235,6 +235,31 @@ async function render(page, id, theme) {
 }
 
 describe.skipIf(!enabled)("v5 Storybook runtime", () => {
+  it("keeps quota filters and compression settings inside review navigation", async () => {
+    const browser = await launch("chromium");
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+      await installEvidence(page);
+      const quota = REVIEW_SURFACES.find((surface) => surface.source.endsWith("/quota/page.stories.jsx"));
+      await render(page, quota.storyId, "light");
+      expect(new URL(page.url()).pathname).toBe("/iframe.html");
+      await page.getByRole("link", { name: "Health", exact: true }).click();
+      await page.waitForURL((url) => url.pathname === "/iframe.html" && /health/.test(url.searchParams.get("id") || ""));
+      await page.getByRole("heading", { name: "Provider Health", exact: true }).waitFor();
+      await render(page, "v5-review-workflows-token-saver-overview--overview", "light");
+      await page.getByRole("link", { name: "Compression settings" }).click();
+      await page.waitForURL((url) => url.pathname === "/iframe.html" && /token-saver-settings/.test(url.searchParams.get("id") || ""));
+      await page.getByRole("heading", { name: "Token Saver settings", exact: true }).waitFor();
+      await page.waitForFunction(() => window.__v5StoryResult?.status === "success");
+      const settingsDialog = page.getByRole("dialog");
+      if (await settingsDialog.count()) await settingsDialog.getByRole("button", { name: "Close", exact: true }).click();
+      await page.getByRole("link", { name: "Open full page", exact: true }).click();
+      await page.waitForURL((url) => url.pathname === "/iframe.html" && /headroom/.test(url.searchParams.get("id") || ""));
+      await page.waitForFunction(() => window.__v5StoryResult?.status === "success");
+      expect(await page.locator("#error-message").count()).toBe(0);
+    } finally { await browser.close(); }
+  }, 60_000);
+
   it("explains icons and preserves modal keyboard actions across browsers and themes", async () => {
     const cases = [];
     try {
@@ -290,6 +315,14 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
               await search.focus();
               await tooltip.waitFor({ state: "visible" });
               expect(await tooltip.textContent()).toBe("Search the available items");
+              await page.mouse.move(1, 1);
+              await search.blur();
+              const searchIcon = search.locator('..').locator('[data-icon-name="search"]').first();
+              await searchIcon.hover();
+              await tooltip.waitFor({ state: "visible" });
+              expect(await tooltip.textContent()).toBe("Search the available items");
+              await searchIcon.click();
+              expect(await search.evaluate((input) => input === document.activeElement)).toBe(true);
               const close = page.getByRole("button", { name: "Close", exact: true });
               await close.hover();
               await close.focus();

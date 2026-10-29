@@ -8,3 +8,4 @@ export default meta;
 export const OpenAIDetail = { ...reviewStory(original.OpenAIDetail, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const SettingsControls = { ...reviewStory(original.SettingsControls, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
 export const CompatibleBranch = { ...reviewStory(original.CompatibleBranch, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };
+export const CompatibleProxyOpen = { ...reviewStory(original.CompatibleProxyOpen, {"source":"src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx","standalone":false}) };

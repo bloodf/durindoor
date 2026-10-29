@@ -8,3 +8,5 @@ export default meta;
 export const Default = { ...reviewStory(original.Default, {"source":"src/app/(dashboard)/dashboard/health/page.stories.jsx","standalone":false}) };
 export const Empty = { ...reviewStory(original.Empty, {"source":"src/app/(dashboard)/dashboard/health/page.stories.jsx","standalone":false}) };
 export const LoadFailure = { ...reviewStory(original.LoadFailure, {"source":"src/app/(dashboard)/dashboard/health/page.stories.jsx","standalone":false}) };
+export const IndependentHeadroomFailure = { ...reviewStory(original.IndependentHeadroomFailure, {"source":"src/app/(dashboard)/dashboard/health/page.stories.jsx","standalone":false}) };
+export const SlowInitialHealth = { ...reviewStory(original.SlowInitialHealth, {"source":"src/app/(dashboard)/dashboard/health/page.stories.jsx","standalone":false}) };

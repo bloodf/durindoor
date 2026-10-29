@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CardSkeleton } from "@/shared/components";
 import ModelSelectModal from "./ReviewModelSelectModal.jsx";
 import ComboFormModal from "./ReviewComboFormModal.jsx";
@@ -24,7 +24,10 @@ import { aggregateComboCapabilities, overlayComboCapabilities } from "open-sse/p
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 import ConnectionGroupsPanel from "@/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx";
+import ComboUsageReport from "@/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx";
 import ComboAllowListEditor from "@/app/(dashboard)/dashboard/combos/ComboAllowListEditor.jsx";
+
+import { createSettingsQueue } from "@/app/(dashboard)/dashboard/providers/workflowRequests.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -38,6 +41,13 @@ export default function CombosPage() {
   const [activeProviders, setActiveProviders] = useState([]);
   const [providerConnections, setProviderConnections] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
+  const strategyWrites = useRef(0);
+  const strategyVersion = useRef(0);
+  const [strategyQueue] = useState(() => createSettingsQueue({}, async (updated) => {
+    const response = await fetch("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comboStrategies: updated }) });
+    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "Could not save routing strategy. Retry."); }
+    setComboStrategies(updated);
+  }));
   const [prunedCombos, setPrunedCombos] = useState({});
   const [confirmState, setConfirmState] = useState(null);
   const [groups, setGroups] = useState([]);
@@ -152,6 +162,7 @@ export default function CombosPage() {
   };
 
   const fetchData = async () => {
+    const readVersion = strategyVersion.current;
     setLoadError("");
     try {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
@@ -162,7 +173,8 @@ export default function CombosPage() {
       ]);
       const combosData = await combosRes.json();
       const providersData = await providersRes.json();
-      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const settingsData = await settingsRes.json();
+      if (!settingsRes.ok) throw new Error(settingsData.error || "Routing settings could not be loaded");
       const groupsData = groupsRes.ok ? await groupsRes.json() : {};
 
       if (!combosRes.ok) throw new Error(combosData?.error || "Failed to load combos");
@@ -175,7 +187,10 @@ export default function CombosPage() {
         setActiveProviders(filterActiveConnections(connections));
       }
       if (groupsRes.ok) setGroups(groupsData.groups || []);
-      setComboStrategies(settingsData.comboStrategies || {});
+      if (strategyWrites.current === 0 && readVersion === strategyVersion.current) {
+        strategyQueue.replace(settingsData.comboStrategies || {});
+        setComboStrategies(settingsData.comboStrategies || {});
+      }
       await fetchPrunedCombos();
     } catch (error) {
       console.log("Error fetching data:", error);
@@ -236,17 +251,11 @@ export default function CombosPage() {
     return updated;
   };
 
-  const persistComboStrategies = async (updated) => {
-    const response = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboStrategies: updated }),
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || "Could not save routing strategy. Try again.");
-    }
-    setComboStrategies(updated);
+  const persistComboStrategies = async (change) => {
+    strategyVersion.current += 1;
+    strategyWrites.current += 1;
+    try { return await strategyQueue.update(change); }
+    finally { strategyWrites.current -= 1; }
   };
 
   const handleDelete = async (id) => {
@@ -260,7 +269,7 @@ export default function CombosPage() {
           const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
           if (res.ok) {
             if (combo?.name) {
-              await persistComboStrategies(pruneStrategiesForNames([combo.name]));
+              await persistComboStrategies((current) => pruneStrategiesForNames([combo.name], current));
             }
             setCombos((prev) => prev.filter((c) => c.id !== id));
             setSelectedIds((prev) => prev.filter((x) => x !== id));
@@ -297,7 +306,7 @@ export default function CombosPage() {
           const deleted = ids.filter((id, index) => results[index].ok);
           const deletedNames = selectedCombos.filter((combo) => deleted.includes(combo.id)).map((combo) => combo.name);
           const failed = results.length - deleted.length;
-          await persistComboStrategies(pruneStrategiesForNames(deletedNames));
+          await persistComboStrategies((current) => pruneStrategiesForNames(deletedNames, current));
           setCombos((prev) => prev.filter((c) => !deleted.includes(c.id)));
           clearSelection();
           setConfirmState(null);
@@ -318,7 +327,8 @@ export default function CombosPage() {
   // patch (strategy back to default "fallback") drops the entry entirely.
   const handleSetComboStrategy = async (comboName, patch) => {
     try {
-      const updated = { ...comboStrategies };
+      await persistComboStrategies((current) => {
+      const updated = { ...current };
       const next = { ...(updated[comboName] || {}), ...patch };
       // Prune to keep settings clean: default fallback with no extras = no entry.
       if (!next.fallbackStrategy || next.fallbackStrategy === "fallback") {
@@ -332,10 +342,12 @@ export default function CombosPage() {
         updated[comboName] = next;
       }
 
-      await persistComboStrategies(updated);
+      return updated;
+      });
+      return { ok: true };
     } catch (error) {
-      setOperationError(error.message);
       console.log("Error updating combo strategy:", error);
+      return { ok: false, error: error.message };
     }
   };
 
@@ -343,7 +355,8 @@ export default function CombosPage() {
     if (selectedCombos.length === 0 || !strategy) return;
     setBulkBusy(true);
     try {
-      const updated = { ...comboStrategies };
+      await persistComboStrategies((current) => {
+      const updated = { ...current };
       for (const combo of selectedCombos) {
         if (!strategy || strategy === "fallback") {
           delete updated[combo.name];
@@ -354,7 +367,8 @@ export default function CombosPage() {
           };
         }
       }
-      await persistComboStrategies(updated);
+      return updated;
+      });
     } catch (error) {
       console.log("Error bulk updating combo strategy:", error);
       setOperationError("Failed to update strategy for selected combos. Try again.");
@@ -527,7 +541,7 @@ export default function CombosPage() {
                     const result = await handleCreate({ ...payload, name });
                     if (!result.ok) setOperationError(result.error);
                     else if (comboStrategies[combo.name]) {
-                      try { await persistComboStrategies({ ...comboStrategies, [name]: { ...comboStrategies[combo.name] } }); }
+                      try { await persistComboStrategies((current) => ({ ...current, [name]: { ...current[combo.name] } })); }
                       catch (error) { setOperationError(error.message); }
                     }
                   }}
@@ -542,7 +556,7 @@ export default function CombosPage() {
                       connections={providerConnections}
                       groups={groups}
                       onChange={async (allowedConnectionIds) => {
-                        await handleUpdate(combo.id, { allowedConnectionIds });
+                        return handleUpdate(combo.id, { allowedConnectionIds });
                       }}
                     />
                   }
@@ -554,6 +568,10 @@ export default function CombosPage() {
       )}
 
       <ConnectionGroupsPanel connections={providerConnections} onGroupsChange={setGroups} />
+      <section className="flex min-w-0 flex-col gap-4" aria-labelledby="connection-usage-heading">
+        <h2 id="connection-usage-heading" className="text-lg font-semibold text-dd-text">{translate("Connection usage")}</h2>
+        <ComboUsageReport period="7d" customRange={null} resetNonce={0} />
+      </section>
 
       {/* Create Modal - Use key to force remount and reset state */}
       <ComboFormModal
@@ -609,6 +627,31 @@ function getStrategyOptions() {
 
 function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, onClone, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
+  const [timeoutDraft, setTimeoutDraft] = useState(null);
+  const timeoutDirty = timeoutDraft !== null;
+  const [writeState, setWriteState] = useState({ pending: false, error: "", saved: false });
+  const rowPending = useRef(false);
+  const retryPatch = useRef(null);
+  const savePatch = async (patch) => {
+    if (rowPending.current) return;
+    rowPending.current = true; retryPatch.current = patch;
+    setWriteState({ pending: true, error: "", saved: false });
+    try {
+      const result = await onSetStrategy(patch);
+      if (result?.ok === false) throw new Error(result.error);
+      if (Object.hasOwn(patch, "timeoutMs")) setTimeoutDraft(null);
+      setWriteState({ pending: false, error: "", saved: true });
+    } catch (error) { setWriteState({ pending: false, error: error.message || "Routing change could not be saved.", saved: false, retry: true }); }
+    finally { rowPending.current = false; }
+  };
+  const saveTimeout = () => {
+    if (!timeoutDirty || rowPending.current) return;
+    const seconds = Number(timeoutDraft);
+    if (timeoutDraft.trim() === "" || !Number.isSafeInteger(seconds) || seconds < 0 || !Number.isSafeInteger(seconds * 1000)) {
+      setWriteState({ pending: false, error: "Enter a whole number of seconds, zero or greater.", saved: false }); return;
+    }
+    savePatch({ timeoutMs: seconds * 1000 });
+  };
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
@@ -660,7 +703,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                     icon="close"
                     label="Reset judge to Auto"
                     size="sm"
-                    onClick={() => onSetStrategy({ judgeModel: "" })}
+                    onClick={() => savePatch({ judgeModel: "" })} disabled={writeState.pending}
                     className="text-dd-muted hover:bg-dd-danger/10 hover:text-dd-danger"
                   />
                 )}
@@ -678,7 +721,8 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               aria-label={`Strategy for ${combo.name}`}
               options={getStrategyOptions()}
               value={current}
-              onChange={(value) => onSetStrategy({ fallbackStrategy: value })}
+              disabled={writeState.pending}
+              onChange={(value) => savePatch({ fallbackStrategy: value })}
               size="sm"
             />
           </div>
@@ -693,11 +737,11 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 min="0"
                 step="1"
                 size="sm"
-                value={(strategy.timeoutMs || 0) / 1000}
-                onChange={(e) => {
-                  const sec = parseInt(e.target.value, 10) || 0;
-                  onSetStrategy({ timeoutMs: sec * 1000 });
-                }}
+                value={timeoutDraft ?? String((strategy.timeoutMs || 0) / 1000)}
+                disabled={writeState.pending}
+                onChange={(event) => { setTimeoutDraft(event.target.value); setWriteState({ pending: false, error: "", saved: false }); }}
+                onBlur={saveTimeout}
+                onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveTimeout(); } }}
                 className="w-14 text-center dd-tnum [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 placeholder="0"
                 title={translate("Max seconds per model before fallback. 0 = use fetch connect timeout (60s)")}
@@ -706,6 +750,9 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             </div>
           )}
 
+          {writeState.pending && <span role="status" className="text-xs text-dd-muted">Saving…</span>}
+          {writeState.saved && <span role="status" className="text-xs text-dd-success">Saved</span>}
+          {writeState.error && <div role="alert" className="text-xs text-dd-danger">{writeState.error}{writeState.retry && <Button icon="refresh" variant="ghost" size="sm" onClick={() => savePatch(retryPatch.current)}>Retry</Button>}</div>}
           <div className="flex flex-wrap items-center justify-end gap-1">
             <IconButton icon="file_copy" label="Duplicate combo" size="sm" onClick={onClone} />
             <IconButton
@@ -737,7 +784,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
       <ModelSelectModal
         isOpen={showJudgeSelect}
         onClose={() => setShowJudgeSelect(false)}
-        onSelect={(m) => { onSetStrategy({ judgeModel: m?.value || "" }); setShowJudgeSelect(false); }}
+        onSelect={(m) => { savePatch({ judgeModel: m?.value || "" }); setShowJudgeSelect(false); }}
         activeProviders={activeProviders}
         title={translate("Select Judge Model")}
         addedModelValues={judge ? [judge] : []}

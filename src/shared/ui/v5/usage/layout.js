@@ -10,6 +10,7 @@ export const USAGE_WIDGETS = Object.freeze([
   { id: "breakdown", title: "Grouped usage", span: 12, visible: true },
   { id: "combos", title: "Combo connection usage", span: 12, visible: true },
   { id: "keys", title: "API key limits", span: 12, visible: true },
+  { id: "monitoring", title: "Gateway monitoring", span: 12, visible: true },
 ].map(Object.freeze));
 const SPANS = new Set([4, 6, 8, 12]);
 

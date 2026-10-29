@@ -236,7 +236,8 @@ export const FailedTestRequiresLogin = {
     const staleRow = (await canvas.findByText("legacy")).closest("article");
     await userEvent.click(within(staleRow).getByRole("button", { name: "Test" }));
     await expect(await within(staleRow).findByRole("status")).toHaveTextContent("Test failed: 401 requires re-login");
-    await expect(within(staleRow).getByRole("button", { name: "Login" })).toBeVisible();
+    const failedTest = await within(staleRow).findByRole("status");
+    await expect(within(failedTest).getByRole("button", { name: "Login" })).toBeVisible();
   },
 };
 

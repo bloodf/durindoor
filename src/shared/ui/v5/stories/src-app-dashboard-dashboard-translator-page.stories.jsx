@@ -14,3 +14,5 @@ export const LoadFailure = { ...reviewStory(original.LoadFailure, {"source":"src
 export const DismissError = { ...reviewStory(original.DismissError, {"source":"src/app/(dashboard)/dashboard/translator/page.stories.jsx","standalone":false}) };
 export const MobileKeyboard = { ...reviewStory(original.MobileKeyboard, {"source":"src/app/(dashboard)/dashboard/translator/page.stories.jsx","standalone":false}) };
 export const RTL = { ...reviewStory(original.RTL, {"source":"src/app/(dashboard)/dashboard/translator/page.stories.jsx","standalone":false}) };
+export const CancelledResponse = { ...reviewStory(original.CancelledResponse, {"source":"src/app/(dashboard)/dashboard/translator/page.stories.jsx","standalone":false}) };
+export const CaptureSaveFailure = { ...reviewStory(original.CaptureSaveFailure, {"source":"src/app/(dashboard)/dashboard/translator/page.stories.jsx","standalone":false}) };

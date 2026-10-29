@@ -8,3 +8,4 @@ export default meta;
 export const StatusPreview = { ...reviewStory(original.StatusPreview, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
 export const RunSuccess = { ...reviewStory(original.RunSuccess, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
 export const RunFailure = { ...reviewStory(original.RunFailure, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };
+export const StatusLoadRecovery = { ...reviewStory(original.StatusLoadRecovery, {"source":"src/app/(dashboard)/dashboard/auto-configure/AutoConfigureClient.stories.jsx","standalone":false}) };

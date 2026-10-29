@@ -10,8 +10,9 @@
  * everything the way the combined page did.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useNotificationStore } from "@/store/notificationStore";
+import { requestCollection } from "../providers/workflowRequests.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 
 export function nowMs() {
@@ -36,9 +37,8 @@ export function stringifyMaybe(value) {
 /**
  * Load one gateway collection.
  *
- * `notify` surfaces a failed load, and the collection is emptied rather than
- * left stale: showing instances that a failed refresh can no longer vouch for
- * is how someone grants a key to something that was deleted.
+ * Failed refreshes retain the last confirmed records with an explicit error.
+ * Consumers must block grant edits while that dependency is unavailable.
  *
  * `eager: false` defers the first load until the caller invokes `reload`. The
  * keys page uses this for instances: that list backs the grants picker only,
@@ -55,27 +55,20 @@ export function useGatewayCollection(path, field, { eager = true } = {}) {
   const [error, setError] = useState(null);
   const notify = useNotificationStore((state) => state.addNotification);
 
+  const generation = useRef(0);
   const reload = useCallback(async () => {
+    const token = ++generation.current;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(path);
-      const body = res.ok ? await res.json().catch(() => ({})) : {};
-      if (!res.ok) {
-        const message = body.error ?? `Failed to load ${field} (${res.status})`;
-        notify({ type: "error", message });
-        setError(message);
-        setItems([]);
-        return;
-      }
-      setItems(Array.isArray(body[field]) ? body[field] : []);
+      const loaded = await requestCollection(path, field);
+      if (token === generation.current) setItems(loaded);
     } catch (caught) {
+      if (token !== generation.current) return;
       const message = caught instanceof Error ? caught.message : `Failed to load ${field}`;
-      notify({ type: "error", message });
-      setError(message);
-      setItems([]);
+      notify({ type: "error", message }); setError(message);
     } finally {
-      setLoading(false);
+      if (token === generation.current) setLoading(false);
     }
   }, [path, field, notify]);
 

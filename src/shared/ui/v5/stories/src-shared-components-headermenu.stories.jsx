@@ -6,3 +6,4 @@ import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Workflows/shell/HeaderMenu", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/components/HeaderMenu.stories.jsx","standalone":true}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
 export const ShutdownConfirm = { ...reviewStory(original.ShutdownConfirm, {"source":"src/shared/components/HeaderMenu.stories.jsx","standalone":true}) };
+export const OpenMenu = { ...reviewStory(original.OpenMenu, {"source":"src/shared/components/HeaderMenu.stories.jsx","standalone":true}) };

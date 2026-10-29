@@ -10,11 +10,12 @@ import Modal from "@/shared/ui/components/Modal.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import { USAGE_PERIOD_OPTIONS, getUsageCalendarCutoff, toLocalDateKey, addLocalCalendarDays } from "@/lib/usagePeriods.js";
 import RequestDetailsTab from "@/app/(dashboard)/dashboard/usage/components/RequestDetailsTab";
-import ComboUsageReport from "@/app/(dashboard)/dashboard/usage/components/ComboUsageReport";
+import ComboUsageReport from "@/app/(dashboard)/dashboard/combos/components/ComboUsageReport.jsx";
 import ApiKeyLimitsCard from "./ReviewApiKeyLimitsCard.jsx";
 
 import ReviewUsageStats from "./ReviewUsageStats.jsx";
 import UsageWidgetLayout from "./UsageWidgetLayout.jsx";
+import MonitoringWidgets from "@/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.jsx";
 
 const PERIODS = USAGE_PERIOD_OPTIONS;
 
@@ -168,6 +169,7 @@ function UsageContent({ initialLayout, persistLayout }) {
               renderSections={(sections) => <UsageWidgetLayout initialLayout={initialLayout} persistLayout={persistLayout} sections={{ ...sections,
                 combos: <ComboUsageReport period={period} customRange={customRange} resetNonce={resetNonce} />,
                 keys: <ApiKeyLimitsCard />,
+                monitoring: <MonitoringWidgets />,
               }} />}
             />
           </div>

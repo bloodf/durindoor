@@ -94,3 +94,31 @@ export const MonitoringRefreshAndPause = {
     await expect(await monitor.findByText("198 MB")).toBeVisible();
   },
 };
+
+/** Switching named dashboards retains the unfinished editor until explicit Save or Cancel. */
+export const DirtyDashboardSelection = {
+  args: { initialWorkspaces: { activeId: "first", dashboards: [{ id: "first", name: "First dashboard", layout: WORKSPACE_WIDGETS.map((widget) => ({ ...widget, visible: widget.id === "monitoring" })) }, { id: "second", name: "Second dashboard", layout: WORKSPACE_WIDGETS.map((widget) => ({ ...widget, visible: false })) }] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Customize dashboard" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Hide Gateway monitoring" }));
+    await userEvent.click(canvas.getByRole("combobox", { name: "Active dashboard" }));
+    await userEvent.click(within(document.body).getByRole("option", { name: "Second dashboard" }));
+    await userEvent.click(canvas.getByRole("combobox", { name: "Active dashboard" }));
+    await userEvent.click(within(document.body).getByRole("option", { name: "First dashboard" }));
+    await expect(canvas.getByText("No dashboard widgets are visible. Choose widgets to begin.")).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Save layout" })).toBeVisible();
+    await userEvent.click(canvas.getByRole("button", { name: "Cancel layout changes" }));
+    await expect(canvas.getByRole("region", { name: "Gateway monitoring" })).toBeVisible();
+  },
+};
+
+export const MonitoringOnlyWithOtherSourcesOffline = {
+  args: { initialWorkspaces: { activeId: "monitoring", dashboards: [{ id: "monitoring", name: "Monitoring only", layout: WORKSPACE_WIDGETS.map((widget) => ({ ...widget, visible: widget.id === "monitoring" })) }] } },
+  parameters: { storyFixture: { routes: { "GET /api/usage/stats": { status: 503, body: {} }, "GET /api/usage/stream": null, "GET /api/token-saver/stream": null, "GET /api/pxpipe/stats": { status: 503, body: {} }, "GET /api/pxpipe/logs": { status: 503, body: {} } } } },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText("146 MB")).toBeVisible(); await expect(canvas.queryByRole("alert")).not.toBeInTheDocument(); },
+};
+export const SlowMonitoringSnapshot = {
+  parameters: { storyFixture: { routes: { "GET /api/monitoring": async () => { await new Promise((resolve) => setTimeout(resolve, 1200)); return monitoringMeta.parameters.storyFixture.routes["GET /api/monitoring"]; } } } },
+  play: async ({ canvasElement }) => { const monitor = within(within(canvasElement).getByRole("region", { name: "Gateway monitoring" })); await expect(monitor.queryByText("Online")).not.toBeInTheDocument(); await expect(await monitor.findByText("146 MB", {}, { timeout: 3000 })).toBeVisible(); },
+};

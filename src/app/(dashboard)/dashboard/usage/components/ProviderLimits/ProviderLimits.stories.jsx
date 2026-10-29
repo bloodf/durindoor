@@ -96,6 +96,12 @@ const fixture = (routes, query = {}) => ({
 
 const meta = {
   title: "Production/usage/Provider limits",
+  beforeEach: () => {
+    const keys = ["quotaMergedProviders", "quotaTrackerFilterState", "quotaAutoRefresh"];
+    const saved = keys.map((key) => [key, window.localStorage.getItem(key)]);
+    for (const key of keys) window.localStorage.removeItem(key);
+    return () => { for (const [key, value] of saved) { if (value === null) window.localStorage.removeItem(key); else window.localStorage.setItem(key, value); } };
+  },
   parameters: {
     layout: "padded",
     storyFixture: fixture(baseRoutes()),
@@ -252,4 +258,9 @@ export const ClaudeModelWeeklyNotReported = {
     await expect(within(placeholder).queryByRole("button", { name: /Hide quota/ })).toBeNull();
     await expect(canvas.getByText("Rate limited; showing cached quota.")).toBeVisible();
   },
+};
+
+export const ConnectionCatalogUnavailable = {
+  parameters: { storyFixture: { routes: { "GET /api/providers/client": { status: 503, body: { error: "Connection catalog unavailable" } } } } },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText(/Provider connections could not be loaded/)).toBeVisible(); await expect(canvas.queryByText(/No Providers Connected/i)).not.toBeInTheDocument(); await expect(canvas.getByRole("button", { name: "Retry connections" })).toBeEnabled(); },
 };

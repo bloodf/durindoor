@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from "react";
 import {
   AreaChart,
   Area,
@@ -89,18 +89,20 @@ SummaryCard.propTypes = {
   icon: PropTypes.string,
 };
 
-export default function PxpipeWidgets({ renderSections }) {
+export default function PxpipeWidgets({ renderSections, enabled = true }) {
   const [status, setStatus] = useState(null);
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState(null);
   const [logs, setLogs] = useState(null);
   const [windowId, setWindowId] = useState("last7d");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [resourceState, setResourceState] = useState({});
+  const chartId = useId();
   const requestRef = useRef(0);
   const abortRef = useRef(null);
 
   const refresh = useCallback(async () => {
+    if (!enabled) return;
     const epoch = ++requestRef.current;
     abortRef.current?.abort();
     const abort = new AbortController();
@@ -113,18 +115,22 @@ export default function PxpipeWidgets({ renderSections }) {
       fetch("/api/pxpipe/health", { method: "POST", signal: abort.signal }).then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
     if (abort.signal.aborted || epoch !== requestRef.current) return;
-    setError(statsResult.status !== "fulfilled" || !statsResult.value || logsResult.status !== "fulfilled" || !logsResult.value ? "PXPIPE activity could not be refreshed. Last received records remain visible." : "");
-    if (statusResult.status === "fulfilled" && statusResult.value) setStatus(statusResult.value);
-    if (statsResult.status === "fulfilled" && statsResult.value) setStats(statsResult.value);
-    if (logsResult.status === "fulfilled" && logsResult.value) setLogs(logsResult.value);
-    if (healthResult.status === "fulfilled") setHealth(healthResult.value || null);
+    const nextStates = {};
+    for (const [key, result, setter] of [["status", statusResult, setStatus], ["stats", statsResult, setStats], ["logs", logsResult, setLogs], ["health", healthResult, setHealth]]) {
+      const accepted = result.status === "fulfilled" && result.value;
+      if (accepted) setter(result.value);
+      nextStates[key] = { error: accepted ? "" : `PXPIPE ${key === "logs" ? "events" : key} could not be refreshed.`, at: accepted ? new Date().toISOString() : null };
+    }
+    setResourceState((previous) => Object.fromEntries(Object.entries(nextStates).map(([key, state]) => [key, { ...state, at: state.at || previous[key]?.at || null }])));
+
     setLoading(false);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     refresh();
     return () => { requestRef.current++; abortRef.current?.abort(); };
-  }, [refresh]);
+  }, [refresh, enabled]);
 
   const recent = stats?.recent || [];
   const events = logs?.events || [];
@@ -146,7 +152,7 @@ export default function PxpipeWidgets({ renderSections }) {
   ], []);
 
   const sections = {
-    "pxpipe-status": (<div><section aria-label="PXPIPE status summary" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+    "pxpipe-status": (<div><section aria-label="PXPIPE status summary" className="v5-pxpipe-summary grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <SummaryCard
           icon="monitor_heart"
           label="Status"
@@ -200,13 +206,13 @@ export default function PxpipeWidgets({ renderSections }) {
                   <AreaChart data={stats.timeline} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
                     <rect width="100%" height="100%" fill="var(--dd-surface)" />
                     <defs>
-                      <linearGradient id="pxpipeTokensFill" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id={chartId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="var(--dd-accent)" stopOpacity={0.14} />
                         <stop offset="100%" stopColor="var(--dd-accent)" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="var(--dd-border-subtle)" strokeDasharray="3 3" vertical={false} />
-                    <Area type="monotone" dataKey="tokensSavedEst" stroke="var(--dd-accent)" strokeWidth={2} fill="url(#pxpipeTokensFill)" activeDot={{ fill: "var(--dd-accent)", stroke: "var(--dd-surface)", strokeWidth: 2 }} />
+                    <Area type="monotone" dataKey="tokensSavedEst" stroke="var(--dd-accent)" strokeWidth={2} fill={`url(#${chartId})`} activeDot={{ fill: "var(--dd-accent)", stroke: "var(--dd-surface)", strokeWidth: 2 }} />
                     <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "var(--dd-text-subtle)", fontSize: 11 }} tickMargin={10} tickFormatter={(date) => date.slice(5)} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--dd-text-subtle)", fontSize: 11 }} tickFormatter={fmtTokens} width={52} />
                     <Tooltip
@@ -222,7 +228,7 @@ export default function PxpipeWidgets({ renderSections }) {
             </>
           ) : (
             <div className="flex min-h-32 items-center justify-center text-center text-[13px] text-dd-muted">
-              No savings recorded yet — enable PXPIPE in Token Saver and route a large Claude-format request.
+              No estimated savings recorded in this period.
             </div>
           )}
         </CardContent>
@@ -288,9 +294,18 @@ export default function PxpipeWidgets({ renderSections }) {
     "pxpipe-history": ["history", "Recent decisions"],
     "pxpipe-events": ["events", "Recent transform events"],
   };
+  // Feedback follows the resource consumed by each widget, never an unrelated global source.
+  const resources = { status, stats, logs, health };
+  const sourceKeys = { "pxpipe-status": ["status", "health", "stats"], "pxpipe-savings": ["stats"], "pxpipe-trend": ["stats"], "pxpipe-history": ["stats"], "pxpipe-events": ["logs"] };
   const independentSections = Object.fromEntries(Object.entries(sections).map(([id, content]) => {
     const [label, windowLabel] = controlLabels[id];
-    return [id, <div key={id}><div className="v5-dashboard-inline-actions">{id === "pxpipe-status" ? <div className="v5-pxpipe-window-picker"><Select aria-label="PXPIPE status window" options={WINDOW_TABS} value={windowId} onChange={setWindowId} size="sm" /></div> : <span className="v5-dashboard-description">{windowLabel}</span>}<Button size="sm" variant="ghost" aria-label={`Refresh PXPIPE ${label}`} title={`Refresh PXPIPE ${label}`} loading={loading} onClick={refresh}><MotionIcon name="refresh" />Refresh</Button></div>{content}</div>];
+    const keys = sourceKeys[id];
+    const primary = id === "pxpipe-status" ? "status" : id === "pxpipe-events" ? "logs" : "stats";
+    const missing = !resources[primary];
+    const errors = keys.filter((key) => resourceState[key]?.error);
+    const sourceError = errors.length > 0;
+    const pending = missing && loading;
+    return [id, <div key={id}><div className="v5-dashboard-inline-actions">{id === "pxpipe-status" ? <div className="v5-pxpipe-window-picker"><Select aria-label="PXPIPE status window" options={WINDOW_TABS} value={windowId} onChange={setWindowId} size="sm" /></div> : <span className="v5-dashboard-description">{windowLabel}</span>}<Button size="sm" variant="ghost" aria-label={`Refresh PXPIPE ${label}`} loading={loading} onClick={refresh}><MotionIcon name="refresh" />Refresh</Button></div>{sourceError ? <div className="v5-dashboard-error" role="alert"><p>{errors.map((key) => resourceState[key].error).join(" ")}{!missing ? ` Last received records remain visible. Updated ${keys.map((key) => resourceState[key]?.at).filter(Boolean).sort()[0] || "previously"}; retained measurements may be stale.` : " No measurement received."}</p><Button size="sm" variant="secondary" icon="refresh" onClick={refresh} disabled={loading}>Retry PXPIPE {label}</Button></div> : null}{pending ? <div className="v5-dashboard-skeleton" role="status" aria-busy="true">Loading PXPIPE {label}</div> : missing && sourceError ? <p role="status">PXPIPE {label} unavailable.</p> : content}</div>];
   }));
-  return <div className="v5-dashboard-resource">{error ? <div className="v5-dashboard-error" role="alert"><p>{error}</p><Button variant="secondary" onClick={refresh} disabled={loading}>Retry PXPIPE activity</Button></div> : null}{renderSections ? renderSections(independentSections) : <div className="v5-dashboard-sections">{Object.entries(independentSections).map(([id, content]) => <section key={id}>{content}</section>)}</div>}</div>;
+  return <div className="v5-dashboard-resource">{renderSections ? renderSections(independentSections) : enabled ? <div className="v5-dashboard-sections">{Object.entries(independentSections).map(([id, content]) => <section key={id}>{content}</section>)}</div> : null}</div>;
 }

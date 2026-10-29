@@ -1,6 +1,6 @@
 /** Review-only icon descriptions. Keep functional meanings separate from glyph names. */
 export const ICON_SELECTOR = [
-  ".material-symbols-outlined:not([data-v5-review-glyph])", ".v5-motion-icon", "[data-icon-name]", "img[src*='/providers/']",
+  "[data-v5-locale-mark]", ".material-symbols-outlined:not([data-v5-review-glyph])", ".v5-motion-icon", "[data-icon-name]", "img[src*='/providers/']",
   "img[src*='logo']", "img[src*='/favicon.']", "[role='img']",
   "svg:not(.recharts-surface):not([data-chart]):not([aria-label*='chart' i])",
 ].join(",");
@@ -138,6 +138,7 @@ function providerDescription(element) {
 export function explainIcon(element) {
   if (!element?.matches) return null;
   const host = element.closest(".v5-motion-icon") || element;
+  if (host.hasAttribute("data-v5-locale-mark")) return host.closest("button")?.getAttribute("aria-label") || "Choose the interface language";
   const glyph = clean(host.dataset?.iconName || (host.matches(".material-symbols-outlined") ? host.textContent : host.querySelector(".material-symbols-outlined")?.textContent));
   if (["close", "cancel", "save", "save_as", "save_alt"].includes(glyph)) return null;
   const actionControl = host.closest("button,a,[role='button']");

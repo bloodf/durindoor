@@ -8,3 +8,4 @@ export default meta;
 export const Idle = { ...reviewStory(original.Idle, {"source":"src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.stories.jsx","standalone":false}) };
 export const AccentBadge = { ...reviewStory(original.AccentBadge, {"source":"src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.stories.jsx","standalone":false}) };
 export const CopyInteraction = { ...reviewStory(original.CopyInteraction, {"source":"src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.stories.jsx","standalone":false}) };
+export const LongUrlSelection = { ...reviewStory(original.LongUrlSelection, {"source":"src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.stories.jsx","standalone":false}) };

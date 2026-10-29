@@ -12,3 +12,6 @@ export const EmptyDashboard = { ...reviewStory(original.EmptyDashboard, {"source
 export const MissingSource = { ...reviewStory(original.MissingSource, {"source":"src/shared/ui/v5/dashboards/Workspaces.stories.jsx","standalone":false}) };
 export const MonitoringUnavailable = { ...reviewStory(original.MonitoringUnavailable, {"source":"src/shared/ui/v5/dashboards/Workspaces.stories.jsx","standalone":false}) };
 export const MonitoringRefreshAndPause = { ...reviewStory(original.MonitoringRefreshAndPause, {"source":"src/shared/ui/v5/dashboards/Workspaces.stories.jsx","standalone":false}) };
+export const DirtyDashboardSelection = { ...reviewStory(original.DirtyDashboardSelection, {"source":"src/shared/ui/v5/dashboards/Workspaces.stories.jsx","standalone":false}) };
+export const MonitoringOnlyWithOtherSourcesOffline = { ...reviewStory(original.MonitoringOnlyWithOtherSourcesOffline, {"source":"src/shared/ui/v5/dashboards/Workspaces.stories.jsx","standalone":false}) };
+export const SlowMonitoringSnapshot = { ...reviewStory(original.SlowMonitoringSnapshot, {"source":"src/shared/ui/v5/dashboards/Workspaces.stories.jsx","standalone":false}) };

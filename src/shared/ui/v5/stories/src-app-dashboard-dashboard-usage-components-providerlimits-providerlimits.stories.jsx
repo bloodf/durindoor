@@ -13,3 +13,5 @@ export const GroupedAccounts = { ...reviewStory(original.GroupedAccounts, {"sour
 export const GroupFilters = { ...reviewStory(original.GroupFilters, {"source":"src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx","standalone":false}) };
 export const CreditBranches = { ...reviewStory(original.CreditBranches, {"source":"src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx","standalone":false}) };
 export const DeleteConfirm = { ...reviewStory(original.DeleteConfirm, {"source":"src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx","standalone":false}) };
+export const ClaudeModelWeeklyNotReported = { ...reviewStory(original.ClaudeModelWeeklyNotReported, {"source":"src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx","standalone":false}) };
+export const ConnectionCatalogUnavailable = { ...reviewStory(original.ConnectionCatalogUnavailable, {"source":"src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx","standalone":false}) };

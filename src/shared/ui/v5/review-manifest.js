@@ -7,12 +7,14 @@ export const REVIEW_SURFACES = [
     "states": [
       "StatusPreview",
       "RunSuccess",
-      "RunFailure"
+      "RunFailure",
+      "StatusLoadRecovery"
     ],
     "storyIds": [
       "v5-review-pages-auto-configure--status-preview",
       "v5-review-pages-auto-configure--run-success",
-      "v5-review-pages-auto-configure--run-failure"
+      "v5-review-pages-auto-configure--run-failure",
+      "v5-review-pages-auto-configure--status-load-recovery"
     ],
     "pathname": "/dashboard/auto-configure",
     "routePattern": "/dashboard/auto-configure",
@@ -27,13 +29,17 @@ export const REVIEW_SURFACES = [
       "Catalog",
       "CatalogVisible",
       "MitmSectionVisible",
-      "FetchError"
+      "FetchError",
+      "Loading",
+      "FetchErrorRetry"
     ],
     "storyIds": [
       "v5-review-pages-cli-tools-clitoolspageclient--catalog",
       "v5-review-pages-cli-tools-clitoolspageclient--catalog-visible",
       "v5-review-pages-cli-tools-clitoolspageclient--mitm-section-visible",
-      "v5-review-pages-cli-tools-clitoolspageclient--fetch-error"
+      "v5-review-pages-cli-tools-clitoolspageclient--fetch-error",
+      "v5-review-pages-cli-tools-clitoolspageclient--loading",
+      "v5-review-pages-cli-tools-clitoolspageclient--fetch-error-retry"
     ],
     "pathname": "/dashboard/cli-tools",
     "routePattern": "/dashboard/cli-tools",
@@ -59,8 +65,22 @@ export const REVIEW_SURFACES = [
       "Jcode",
       "GrokBuild",
       "Cursor",
+      "Roo",
+      "Continue",
+      "Amp",
+      "Qwen",
+      "Omp",
+      "Pi",
+      "Crush",
+      "Forge",
+      "Smelt",
+      "Codewhale",
       "ClaudeLoaded",
-      "ClaudeEndpointMenu"
+      "ClaudeEndpointMenu",
+      "UnknownTool",
+      "Loading",
+      "DiscoveryUnavailable",
+      "IncompleteDiscovery"
     ],
     "storyIds": [
       "v5-review-pages-cli-tools-tooldetailclient--claude",
@@ -77,8 +97,22 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-cli-tools-tooldetailclient--jcode",
       "v5-review-pages-cli-tools-tooldetailclient--grok-build",
       "v5-review-pages-cli-tools-tooldetailclient--cursor",
+      "v5-review-pages-cli-tools-tooldetailclient--roo",
+      "v5-review-pages-cli-tools-tooldetailclient--continue",
+      "v5-review-pages-cli-tools-tooldetailclient--amp",
+      "v5-review-pages-cli-tools-tooldetailclient--qwen",
+      "v5-review-pages-cli-tools-tooldetailclient--omp",
+      "v5-review-pages-cli-tools-tooldetailclient--pi",
+      "v5-review-pages-cli-tools-tooldetailclient--crush",
+      "v5-review-pages-cli-tools-tooldetailclient--forge",
+      "v5-review-pages-cli-tools-tooldetailclient--smelt",
+      "v5-review-pages-cli-tools-tooldetailclient--codewhale",
       "v5-review-pages-cli-tools-tooldetailclient--claude-loaded",
-      "v5-review-pages-cli-tools-tooldetailclient--claude-endpoint-menu"
+      "v5-review-pages-cli-tools-tooldetailclient--claude-endpoint-menu",
+      "v5-review-pages-cli-tools-tooldetailclient--unknown-tool",
+      "v5-review-pages-cli-tools-tooldetailclient--loading",
+      "v5-review-pages-cli-tools-tooldetailclient--discovery-unavailable",
+      "v5-review-pages-cli-tools-tooldetailclient--incomplete-discovery"
     ],
     "pathname": "/dashboard/cli-tools/claude",
     "routePattern": "/dashboard/cli-tools/[^/]+",
@@ -114,12 +148,14 @@ export const REVIEW_SURFACES = [
       "Local",
       "Tunnel",
       "Cloud",
+      "Tailscale",
       "SwitchToCustom"
     ],
     "storyIds": [
       "v5-review-pages-cli-tools-baseurlselect--local",
       "v5-review-pages-cli-tools-baseurlselect--tunnel",
       "v5-review-pages-cli-tools-baseurlselect--cloud",
+      "v5-review-pages-cli-tools-baseurlselect--tailscale",
       "v5-review-pages-cli-tools-baseurlselect--switch-to-custom"
     ],
     "pathname": "/dashboard/cli-tools/claude",
@@ -209,13 +245,15 @@ export const REVIEW_SURFACES = [
       "Collapsed",
       "DnsOff",
       "DnsActive",
-      "SudoPrompted"
+      "SudoPrompted",
+      "KiroDnsActive"
     ],
     "storyIds": [
       "v5-review-pages-cli-tools-mitmtoolcard--collapsed",
       "v5-review-pages-cli-tools-mitmtoolcard--dns-off",
       "v5-review-pages-cli-tools-mitmtoolcard--dns-active",
-      "v5-review-pages-cli-tools-mitmtoolcard--sudo-prompted"
+      "v5-review-pages-cli-tools-mitmtoolcard--sudo-prompted",
+      "v5-review-pages-cli-tools-mitmtoolcard--kiro-dns-active"
     ],
     "pathname": "/dashboard/cli-tools",
     "routePattern": null,
@@ -232,7 +270,9 @@ export const REVIEW_SURFACES = [
       "AntigravityInactive",
       "AntigravityActive",
       "MitmServerStopped",
-      "MitmServerRunning"
+      "MitmServerRunning",
+      "PiConfigured",
+      "CopilotConfigured"
     ],
     "storyIds": [
       "v5-review-pages-cli-tools-toolcards--claude-collapsed",
@@ -240,7 +280,9 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-cli-tools-toolcards--antigravity-inactive",
       "v5-review-pages-cli-tools-toolcards--antigravity-active",
       "v5-review-pages-cli-tools-toolcards--mitm-server-stopped",
-      "v5-review-pages-cli-tools-toolcards--mitm-server-running"
+      "v5-review-pages-cli-tools-toolcards--mitm-server-running",
+      "v5-review-pages-cli-tools-toolcards--pi-configured",
+      "v5-review-pages-cli-tools-toolcards--copilot-configured"
     ],
     "pathname": "/dashboard/cli-tools/claude",
     "routePattern": null,
@@ -277,12 +319,14 @@ export const REVIEW_SURFACES = [
     "states": [
       "Unrestricted",
       "Populated",
-      "WithGroupQuickAdd"
+      "WithGroupQuickAdd",
+      "RejectedClearAndRetry"
     ],
     "storyIds": [
       "v5-review-pages-combos-comboallowlisteditor--unrestricted",
       "v5-review-pages-combos-comboallowlisteditor--populated",
-      "v5-review-pages-combos-comboallowlisteditor--with-group-quick-add"
+      "v5-review-pages-combos-comboallowlisteditor--with-group-quick-add",
+      "v5-review-pages-combos-comboallowlisteditor--rejected-clear-and-retry"
     ],
     "pathname": "",
     "routePattern": "/dashboard/combos",
@@ -309,6 +353,40 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/combos/components/ComboUsageReport.stories.jsx",
+    "title": "V5 review/Pages/combos/Connection usage",
+    "storyId": "v5-review-pages-combos-connection-usage--combo-report-loaded",
+    "states": [
+      "ComboReportLoaded",
+      "ComboReportError"
+    ],
+    "storyIds": [
+      "v5-review-pages-combos-connection-usage--combo-report-loaded",
+      "v5-review-pages-combos-connection-usage--combo-report-error"
+    ],
+    "pathname": "/dashboard/combos",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/combos/error.stories.jsx",
+    "title": "V5 review/Pages/combos/CombosError",
+    "storyId": "v5-review-pages-combos-comboserror--retry",
+    "states": [
+      "Retry",
+      "RetainedError"
+    ],
+    "storyIds": [
+      "v5-review-pages-combos-comboserror--retry",
+      "v5-review-pages-combos-comboserror--retained-error"
+    ],
+    "pathname": "/dashboard/combos",
+    "routePattern": "/dashboard/combos",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/combos/page.stories.jsx",
     "title": "V5 review/Pages/Combos/CombosPage",
     "storyId": "v5-review-pages-combos-combospage--default",
@@ -320,7 +398,10 @@ export const REVIEW_SURFACES = [
       "CreateFlow",
       "EditFlow",
       "SaveFailure",
-      "LoadFailureError"
+      "LoadFailureError",
+      "CreateComboSpacing",
+      "CreateComboSpacingMobile",
+      "ConnectionUsage"
     ],
     "storyIds": [
       "v5-review-pages-combos-combospage--default",
@@ -330,7 +411,10 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-combos-combospage--create-flow",
       "v5-review-pages-combos-combospage--edit-flow",
       "v5-review-pages-combos-combospage--save-failure",
-      "v5-review-pages-combos-combospage--load-failure-error"
+      "v5-review-pages-combos-combospage--load-failure-error",
+      "v5-review-pages-combos-combospage--create-combo-spacing",
+      "v5-review-pages-combos-combospage--create-combo-spacing-mobile",
+      "v5-review-pages-combos-combospage--connection-usage"
     ],
     "pathname": "/dashboard/combos",
     "routePattern": "/dashboard/combos",
@@ -364,16 +448,43 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-operations-consolelogclient--streaming",
     "states": [
       "Streaming",
+      "Filtered",
+      "Paused",
+      "ResumeFromPause",
       "Empty",
-      "FilterPauseAndClear"
+      "TransportUnavailable",
+      "ClearRejected"
     ],
     "storyIds": [
       "v5-review-pages-operations-consolelogclient--streaming",
+      "v5-review-pages-operations-consolelogclient--filtered",
+      "v5-review-pages-operations-consolelogclient--paused",
+      "v5-review-pages-operations-consolelogclient--resume-from-pause",
       "v5-review-pages-operations-consolelogclient--empty",
-      "v5-review-pages-operations-consolelogclient--filter-pause-and-clear"
+      "v5-review-pages-operations-consolelogclient--transport-unavailable",
+      "v5-review-pages-operations-consolelogclient--clear-rejected"
     ],
     "pathname": "/dashboard/console-log",
     "routePattern": "/dashboard/console-log",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/endpoint/ApiKeyModelAccessModal.stories.jsx",
+    "title": "V5 review/Pages/endpoint/ApiKeyModelAccessModal",
+    "storyId": "v5-review-pages-endpoint-apikeymodelaccessmodal--allow-list-with-security-warning",
+    "states": [
+      "AllowListWithSecurityWarning",
+      "AddAndRejectDuplicateRule",
+      "EmptyBlockList"
+    ],
+    "storyIds": [
+      "v5-review-pages-endpoint-apikeymodelaccessmodal--allow-list-with-security-warning",
+      "v5-review-pages-endpoint-apikeymodelaccessmodal--add-and-reject-duplicate-rule",
+      "v5-review-pages-endpoint-apikeymodelaccessmodal--empty-block-list"
+    ],
+    "pathname": "/dashboard/endpoint",
+    "routePattern": "/dashboard/endpoint",
     "routePriority": 0,
     "standalone": false
   },
@@ -383,16 +494,55 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-endpoint--default",
     "states": [
       "Default",
+      "Loading",
       "ApiKeyRequired",
-      "UnsafeTunnel"
+      "UnsafeTunnel",
+      "ExternalEndpoints",
+      "EnabledEndpointsPolicy",
+      "EnabledEndpointsChecking",
+      "TunnelRequiresApiKey",
+      "LoadFailureAndRetry",
+      "MalformedResponseAndRetry",
+      "NetworkFailureAndRetry",
+      "StatusFailureAndRetry",
+      "SecurityWriteRejected"
     ],
     "storyIds": [
       "v5-review-pages-endpoint--default",
+      "v5-review-pages-endpoint--loading",
       "v5-review-pages-endpoint--api-key-required",
-      "v5-review-pages-endpoint--unsafe-tunnel"
+      "v5-review-pages-endpoint--unsafe-tunnel",
+      "v5-review-pages-endpoint--external-endpoints",
+      "v5-review-pages-endpoint--enabled-endpoints-policy",
+      "v5-review-pages-endpoint--enabled-endpoints-checking",
+      "v5-review-pages-endpoint--tunnel-requires-api-key",
+      "v5-review-pages-endpoint--load-failure-and-retry",
+      "v5-review-pages-endpoint--malformed-response-and-retry",
+      "v5-review-pages-endpoint--network-failure-and-retry",
+      "v5-review-pages-endpoint--status-failure-and-retry",
+      "v5-review-pages-endpoint--security-write-rejected"
     ],
     "pathname": "/dashboard/endpoint",
     "routePattern": "/dashboard/endpoint",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/endpoint/components/ApiKeyLimits.stories.jsx",
+    "title": "V5 review/Pages/endpoint/ApiKeyLimits",
+    "storyId": "v5-review-pages-endpoint-apikeylimits--usage-summary",
+    "states": [
+      "UsageSummary",
+      "EditLimits",
+      "InvalidLimitBlocksSave"
+    ],
+    "storyIds": [
+      "v5-review-pages-endpoint-apikeylimits--usage-summary",
+      "v5-review-pages-endpoint-apikeylimits--edit-limits",
+      "v5-review-pages-endpoint-apikeylimits--invalid-limit-blocks-save"
+    ],
+    "pathname": "",
+    "routePattern": null,
     "routePriority": 0,
     "standalone": false
   },
@@ -424,14 +574,33 @@ export const REVIEW_SURFACES = [
     "states": [
       "Idle",
       "AccentBadge",
-      "CopyInteraction"
+      "CopyInteraction",
+      "LongUrlSelection"
     ],
     "storyIds": [
       "v5-review-pages-endpoint-endpointrow--idle",
       "v5-review-pages-endpoint-endpointrow--accent-badge",
-      "v5-review-pages-endpoint-endpointrow--copy-interaction"
+      "v5-review-pages-endpoint-endpointrow--copy-interaction",
+      "v5-review-pages-endpoint-endpointrow--long-url-selection"
     ],
     "pathname": "",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.stories.jsx",
+    "title": "V5 review/Pages/endpoint/MonitoringStrip",
+    "storyId": "v5-review-pages-endpoint-monitoringstrip--populated",
+    "states": [
+      "Populated",
+      "EmptyAndError"
+    ],
+    "storyIds": [
+      "v5-review-pages-endpoint-monitoringstrip--populated",
+      "v5-review-pages-endpoint-monitoringstrip--empty-and-error"
+    ],
+    "pathname": "/dashboard/endpoint",
     "routePattern": null,
     "routePriority": 0,
     "standalone": false
@@ -517,12 +686,16 @@ export const REVIEW_SURFACES = [
     "states": [
       "Default",
       "Empty",
-      "LoadFailure"
+      "LoadFailure",
+      "IndependentHeadroomFailure",
+      "SlowInitialHealth"
     ],
     "storyIds": [
       "v5-review-pages-health--default",
       "v5-review-pages-health--empty",
-      "v5-review-pages-health--load-failure"
+      "v5-review-pages-health--load-failure",
+      "v5-review-pages-health--independent-headroom-failure",
+      "v5-review-pages-health--slow-initial-health"
     ],
     "pathname": "/dashboard/health",
     "routePattern": "/dashboard/health",
@@ -535,11 +708,49 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-api-keys--default",
     "states": [
       "Default",
-      "Empty"
+      "Empty",
+      "KeyLimits",
+      "RevocationRejectedAndRetry",
+      "RevocationPending"
     ],
     "storyIds": [
       "v5-review-pages-api-keys--default",
-      "v5-review-pages-api-keys--empty"
+      "v5-review-pages-api-keys--empty",
+      "v5-review-pages-api-keys--key-limits",
+      "v5-review-pages-api-keys--revocation-rejected-and-retry",
+      "v5-review-pages-api-keys--revocation-pending"
+    ],
+    "pathname": "/dashboard/keys",
+    "routePattern": "/dashboard/keys",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/keys/components/ApiKeyLimitsCard.stories.jsx",
+    "title": "V5 review/Pages/keys/ApiKeyLimitsCard",
+    "storyId": "v5-review-pages-keys-apikeylimitscard--configured-limits",
+    "states": [
+      "ConfiguredLimits",
+      "NoConfiguredLimits"
+    ],
+    "storyIds": [
+      "v5-review-pages-keys-apikeylimitscard--configured-limits",
+      "v5-review-pages-keys-apikeylimitscard--no-configured-limits"
+    ],
+    "pathname": "/dashboard/keys",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/keys/page.stories.jsx",
+    "title": "V5 review/Pages/keys/KeysPage",
+    "storyId": "v5-review-pages-keys-keyspage--empty",
+    "states": [
+      "Empty"
+    ],
+    "storyIds": [
+      "v5-review-pages-keys-keyspage--empty"
     ],
     "pathname": "/dashboard/keys",
     "routePattern": "/dashboard/keys",
@@ -557,7 +768,15 @@ export const REVIEW_SURFACES = [
       "NewKeyKeyboard",
       "NewKeyFreshMount",
       "MobileNewKeyKeyboard",
-      "ErrorBoundary"
+      "RevealExistingKey",
+      "EmptyKeys",
+      "ErrorBoundary",
+      "RetainedErrorBoundary",
+      "LoadFailureAndRetry",
+      "MalformedResponseAndRetry",
+      "NetworkFailureAndRetry",
+      "MintRejectedAndRetry",
+      "MintPending"
     ],
     "storyIds": [
       "v5-review-pages-mcp-gateway-keys--default",
@@ -566,7 +785,15 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-mcp-gateway-keys--new-key-keyboard",
       "v5-review-pages-mcp-gateway-keys--new-key-fresh-mount",
       "v5-review-pages-mcp-gateway-keys--mobile-new-key-keyboard",
-      "v5-review-pages-mcp-gateway-keys--error-boundary"
+      "v5-review-pages-mcp-gateway-keys--reveal-existing-key",
+      "v5-review-pages-mcp-gateway-keys--empty-keys",
+      "v5-review-pages-mcp-gateway-keys--error-boundary",
+      "v5-review-pages-mcp-gateway-keys--retained-error-boundary",
+      "v5-review-pages-mcp-gateway-keys--load-failure-and-retry",
+      "v5-review-pages-mcp-gateway-keys--malformed-response-and-retry",
+      "v5-review-pages-mcp-gateway-keys--network-failure-and-retry",
+      "v5-review-pages-mcp-gateway-keys--mint-rejected-and-retry",
+      "v5-review-pages-mcp-gateway-keys--mint-pending"
     ],
     "pathname": "/dashboard/mcp-gateway/keys",
     "routePattern": "/dashboard/mcp-gateway/keys",
@@ -582,20 +809,28 @@ export const REVIEW_SURFACES = [
       "DeleteInstance",
       "OAuthLoginPopupBoundary",
       "CreateInstance",
+      "RetainedCreateInstance",
       "SelectServerPreset",
       "EditInstance",
       "ToggleInstance",
-      "ErrorBoundary"
+      "FailedTestRequiresLogin",
+      "EmptyInstances",
+      "ErrorBoundary",
+      "RetainedErrorBoundary"
     ],
     "storyIds": [
       "v5-review-pages-mcp-gateway--default",
       "v5-review-pages-mcp-gateway--delete-instance",
       "v5-review-pages-mcp-gateway--o-auth-login-popup-boundary",
       "v5-review-pages-mcp-gateway--create-instance",
+      "v5-review-pages-mcp-gateway--retained-create-instance",
       "v5-review-pages-mcp-gateway--select-server-preset",
       "v5-review-pages-mcp-gateway--edit-instance",
       "v5-review-pages-mcp-gateway--toggle-instance",
-      "v5-review-pages-mcp-gateway--error-boundary"
+      "v5-review-pages-mcp-gateway--failed-test-requires-login",
+      "v5-review-pages-mcp-gateway--empty-instances",
+      "v5-review-pages-mcp-gateway--error-boundary",
+      "v5-review-pages-mcp-gateway--retained-error-boundary"
     ],
     "pathname": "/dashboard/mcp-gateway",
     "routePattern": "/dashboard/mcp-gateway",
@@ -629,13 +864,15 @@ export const REVIEW_SURFACES = [
       "WebSearch",
       "WebSearchRun",
       "ImageGen",
-      "CodexStreamingRun"
+      "CodexStreamingRun",
+      "RunError"
     ],
     "storyIds": [
       "v5-review-pages-example--web-search",
       "v5-review-pages-example--web-search-run",
       "v5-review-pages-example--image-gen",
-      "v5-review-pages-example--codex-streaming-run"
+      "v5-review-pages-example--codex-streaming-run",
+      "v5-review-pages-example--run-error"
     ],
     "pathname": "/dashboard/media-providers/webSearch/duckduckgo-web",
     "routePattern": null,
@@ -648,11 +885,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-media-sttexamplecard--default",
     "states": [
       "Default",
-      "CurlCopies"
+      "CurlCopies",
+      "UploadAndTranscribe"
     ],
     "storyIds": [
       "v5-review-pages-media-sttexamplecard--default",
-      "v5-review-pages-media-sttexamplecard--curl-copies"
+      "v5-review-pages-media-sttexamplecard--curl-copies",
+      "v5-review-pages-media-sttexamplecard--upload-and-transcribe"
     ],
     "pathname": "/dashboard/media-providers/stt/openai",
     "routePattern": null,
@@ -665,11 +904,13 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-media-ttsexamplecard--default",
     "states": [
       "Default",
-      "OpenLanguageModal"
+      "OpenLanguageModal",
+      "GenerateAudio"
     ],
     "storyIds": [
       "v5-review-pages-media-ttsexamplecard--default",
-      "v5-review-pages-media-ttsexamplecard--open-language-modal"
+      "v5-review-pages-media-ttsexamplecard--open-language-modal",
+      "v5-review-pages-media-ttsexamplecard--generate-audio"
     ],
     "pathname": "/dashboard/media-providers/tts/edge-tts",
     "routePattern": null,
@@ -683,12 +924,14 @@ export const REVIEW_SURFACES = [
     "states": [
       "EmbeddingExample",
       "RunExample",
-      "TtsExample"
+      "TtsExample",
+      "CustomEmbeddingDetail"
     ],
     "storyIds": [
       "v5-review-pages-media-providerdetail--embedding-example",
       "v5-review-pages-media-providerdetail--run-example",
-      "v5-review-pages-media-providerdetail--tts-example"
+      "v5-review-pages-media-providerdetail--tts-example",
+      "v5-review-pages-media-providerdetail--custom-embedding-detail"
     ],
     "pathname": "/dashboard/media-providers/embedding/openai",
     "routePattern": "/dashboard/media-providers/[^/]+/[^/]+",
@@ -701,11 +944,21 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-media-kindlisting--default",
     "states": [
       "Default",
-      "OpenAddCustomEmbeddingModal"
+      "OpenAddCustomEmbeddingModal",
+      "LocalAndCustomProviders",
+      "OpenAddCustomSystemOneModal",
+      "LoadFailureAndRetry",
+      "MalformedResponseAndRetry",
+      "NetworkFailureAndRetry"
     ],
     "storyIds": [
       "v5-review-pages-media-kindlisting--default",
-      "v5-review-pages-media-kindlisting--open-add-custom-embedding-modal"
+      "v5-review-pages-media-kindlisting--open-add-custom-embedding-modal",
+      "v5-review-pages-media-kindlisting--local-and-custom-providers",
+      "v5-review-pages-media-kindlisting--open-add-custom-system-one-modal",
+      "v5-review-pages-media-kindlisting--load-failure-and-retry",
+      "v5-review-pages-media-kindlisting--malformed-response-and-retry",
+      "v5-review-pages-media-kindlisting--network-failure-and-retry"
     ],
     "pathname": "/dashboard/media-providers/embedding",
     "routePattern": "/dashboard/media-providers/[^/]+",
@@ -719,12 +972,16 @@ export const REVIEW_SURFACES = [
     "states": [
       "Default",
       "DeleteOpensConfirm",
-      "DeleteError"
+      "DeleteError",
+      "ManageProvidersAndRunExample",
+      "EmptyProviders"
     ],
     "storyIds": [
       "v5-review-pages-media-combodetail--default",
       "v5-review-pages-media-combodetail--delete-opens-confirm",
-      "v5-review-pages-media-combodetail--delete-error"
+      "v5-review-pages-media-combodetail--delete-error",
+      "v5-review-pages-media-combodetail--manage-providers-and-run-example",
+      "v5-review-pages-media-combodetail--empty-providers"
     ],
     "pathname": "/dashboard/media-providers/combo/combo-1",
     "routePattern": "/dashboard/media-providers/combo/[^/]+",
@@ -738,12 +995,16 @@ export const REVIEW_SURFACES = [
     "states": [
       "Connected",
       "Disabled",
-      "Error"
+      "Error",
+      "NoConnection",
+      "CooldownUnavailable"
     ],
     "storyIds": [
       "v5-review-pages-media-mediaprovidercard--connected",
       "v5-review-pages-media-mediaprovidercard--disabled",
-      "v5-review-pages-media-mediaprovidercard--error"
+      "v5-review-pages-media-mediaprovidercard--error",
+      "v5-review-pages-media-mediaprovidercard--no-connection",
+      "v5-review-pages-media-mediaprovidercard--cooldown-unavailable"
     ],
     "pathname": "/dashboard/media-providers/embedding",
     "routePattern": null,
@@ -756,14 +1017,43 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-media-weblisting--default",
     "states": [
       "Default",
-      "CreateComboError"
+      "CreateComboError",
+      "ConnectionStatuses",
+      "LoadFailureAndRetry",
+      "MalformedResponseAndRetry",
+      "NetworkFailureAndRetry"
     ],
     "storyIds": [
       "v5-review-pages-media-weblisting--default",
-      "v5-review-pages-media-weblisting--create-combo-error"
+      "v5-review-pages-media-weblisting--create-combo-error",
+      "v5-review-pages-media-weblisting--connection-statuses",
+      "v5-review-pages-media-weblisting--load-failure-and-retry",
+      "v5-review-pages-media-weblisting--malformed-response-and-retry",
+      "v5-review-pages-media-weblisting--network-failure-and-retry"
     ],
     "pathname": "/dashboard/media-providers/web",
     "routePattern": "/dashboard/media-providers/web",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/media-routes/page.stories.jsx",
+    "title": "V5 review/Pages/media/MediaRoutes",
+    "storyId": "v5-review-pages-media-mediaroutes--automatic-and-custom",
+    "states": [
+      "AutomaticAndCustom",
+      "CustomizeAddRemoveAndSave",
+      "LoadError",
+      "EmptyRoute"
+    ],
+    "storyIds": [
+      "v5-review-pages-media-mediaroutes--automatic-and-custom",
+      "v5-review-pages-media-mediaroutes--customize-add-remove-and-save",
+      "v5-review-pages-media-mediaroutes--load-error",
+      "v5-review-pages-media-mediaroutes--empty-route"
+    ],
+    "pathname": "/dashboard/media-routes",
+    "routePattern": "/dashboard/media-routes",
     "routePriority": 0,
     "standalone": false
   },
@@ -823,6 +1113,29 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/profile/MfaCard.stories.jsx",
+    "title": "V5 review/Pages/profile/MfaCard",
+    "storyId": "v5-review-pages-profile-mfacard--setup-api-error",
+    "states": [
+      "SetupApiError",
+      "EnrollmentShowsBackupCodes",
+      "VerificationApiError",
+      "Enabled",
+      "DisableApiError"
+    ],
+    "storyIds": [
+      "v5-review-pages-profile-mfacard--setup-api-error",
+      "v5-review-pages-profile-mfacard--enrollment-shows-backup-codes",
+      "v5-review-pages-profile-mfacard--verification-api-error",
+      "v5-review-pages-profile-mfacard--enabled",
+      "v5-review-pages-profile-mfacard--disable-api-error"
+    ],
+    "pathname": "/dashboard/profile",
+    "routePattern": "/dashboard/profile",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/profile/SelectiveTransferPanel.stories.jsx",
     "title": "V5 review/Pages/profile/SelectiveTransferPanel",
     "storyId": "v5-review-pages-profile-selectivetransferpanel--load-catalog",
@@ -850,14 +1163,18 @@ export const REVIEW_SURFACES = [
       "OidcAndProxy",
       "ShutdownConfirm",
       "DatabaseExportPrompt",
-      "SelectiveTransferPreview"
+      "SelectiveTransferPreview",
+      "SettingsUnavailable",
+      "SettingsLoading"
     ],
     "storyIds": [
       "v5-review-pages-profile-profilepage--default",
       "v5-review-pages-profile-profilepage--oidc-and-proxy",
       "v5-review-pages-profile-profilepage--shutdown-confirm",
       "v5-review-pages-profile-profilepage--database-export-prompt",
-      "v5-review-pages-profile-profilepage--selective-transfer-preview"
+      "v5-review-pages-profile-profilepage--selective-transfer-preview",
+      "v5-review-pages-profile-profilepage--settings-unavailable",
+      "v5-review-pages-profile-profilepage--settings-loading"
     ],
     "pathname": "/dashboard/profile",
     "routePattern": "/dashboard/profile",
@@ -871,12 +1188,14 @@ export const REVIEW_SURFACES = [
     "states": [
       "OpenAIDetail",
       "SettingsControls",
-      "CompatibleBranch"
+      "CompatibleBranch",
+      "CompatibleProxyOpen"
     ],
     "storyIds": [
       "v5-review-pages-providers-providerdetailpage--open-ai-detail",
       "v5-review-pages-providers-providerdetailpage--settings-controls",
-      "v5-review-pages-providers-providerdetailpage--compatible-branch"
+      "v5-review-pages-providers-providerdetailpage--compatible-branch",
+      "v5-review-pages-providers-providerdetailpage--compatible-proxy-open"
     ],
     "pathname": "/dashboard/providers/openai",
     "routePattern": "/dashboard/providers/[^/]+",
@@ -893,9 +1212,18 @@ export const REVIEW_SURFACES = [
       "CompatibleModels",
       "PassthroughModels",
       "AddApiKey",
+      "AddWebCookie",
       "AddCustomModel",
       "CompatibleEdit",
       "BulkImports",
+      "ApiKeyBulkAndValidation",
+      "ApiKeyValidationError",
+      "AddCustomModelAdvanced",
+      "VisibleModels",
+      "ProviderErrorRules",
+      "ProviderErrorRuleValidationError",
+      "ModelAutoSync",
+      "ChatgptWebCookie",
       "ErrorState"
     ],
     "storyIds": [
@@ -904,9 +1232,18 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-providers-detail-widgets--compatible-models",
       "v5-review-pages-providers-detail-widgets--passthrough-models",
       "v5-review-pages-providers-detail-widgets--add-api-key",
+      "v5-review-pages-providers-detail-widgets--add-web-cookie",
       "v5-review-pages-providers-detail-widgets--add-custom-model",
       "v5-review-pages-providers-detail-widgets--compatible-edit",
       "v5-review-pages-providers-detail-widgets--bulk-imports",
+      "v5-review-pages-providers-detail-widgets--api-key-bulk-and-validation",
+      "v5-review-pages-providers-detail-widgets--api-key-validation-error",
+      "v5-review-pages-providers-detail-widgets--add-custom-model-advanced",
+      "v5-review-pages-providers-detail-widgets--visible-models",
+      "v5-review-pages-providers-detail-widgets--provider-error-rules",
+      "v5-review-pages-providers-detail-widgets--provider-error-rule-validation-error",
+      "v5-review-pages-providers-detail-widgets--model-auto-sync",
+      "v5-review-pages-providers-detail-widgets--chatgpt-web-cookie",
       "v5-review-pages-providers-detail-widgets--error-state"
     ],
     "pathname": "/dashboard/providers/oc-prod",
@@ -970,10 +1307,14 @@ export const REVIEW_SURFACES = [
     "title": "V5 review/Pages/providers/components/ModelsCard",
     "storyId": "v5-review-pages-providers-components-modelscard--models-list",
     "states": [
-      "ModelsList"
+      "ModelsList",
+      "AddCustomModelOpen",
+      "BulkTestResults"
     ],
     "storyIds": [
-      "v5-review-pages-providers-components-modelscard--models-list"
+      "v5-review-pages-providers-components-modelscard--models-list",
+      "v5-review-pages-providers-components-modelscard--add-custom-model-open",
+      "v5-review-pages-providers-components-modelscard--bulk-test-results"
     ],
     "pathname": "/dashboard/media-providers/embedding/openai",
     "routePattern": null,
@@ -987,12 +1328,24 @@ export const REVIEW_SURFACES = [
     "states": [
       "Inventory",
       "StatusFiltering",
-      "AllStatusScenarios"
+      "AllStatusScenarios",
+      "LoadFailureAndRetry",
+      "MalformedResponseAndRetry",
+      "NetworkFailureAndRetry",
+      "RejectedToggleAndRetry",
+      "PartiallyRejectedToggle",
+      "ProviderTogglePending"
     ],
     "storyIds": [
       "v5-review-pages-providers-providerspage--inventory",
       "v5-review-pages-providers-providerspage--status-filtering",
-      "v5-review-pages-providers-providerspage--all-status-scenarios"
+      "v5-review-pages-providers-providerspage--all-status-scenarios",
+      "v5-review-pages-providers-providerspage--load-failure-and-retry",
+      "v5-review-pages-providers-providerspage--malformed-response-and-retry",
+      "v5-review-pages-providers-providerspage--network-failure-and-retry",
+      "v5-review-pages-providers-providerspage--rejected-toggle-and-retry",
+      "v5-review-pages-providers-providerspage--partially-rejected-toggle",
+      "v5-review-pages-providers-providerspage--provider-toggle-pending"
     ],
     "pathname": "/dashboard/providers",
     "routePattern": "/dashboard/providers",
@@ -1014,7 +1367,10 @@ export const REVIEW_SURFACES = [
       "CreateError",
       "DeleteError",
       "CreatePending",
-      "DeletePending"
+      "DeletePending",
+      "LoadFailureAndRetry",
+      "MalformedResponseAndRetry",
+      "NetworkFailureAndRetry"
     ],
     "storyIds": [
       "v5-review-pages-operations-proxypoolspage--populated",
@@ -1027,7 +1383,10 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-operations-proxypoolspage--create-error",
       "v5-review-pages-operations-proxypoolspage--delete-error",
       "v5-review-pages-operations-proxypoolspage--create-pending",
-      "v5-review-pages-operations-proxypoolspage--delete-pending"
+      "v5-review-pages-operations-proxypoolspage--delete-pending",
+      "v5-review-pages-operations-proxypoolspage--load-failure-and-retry",
+      "v5-review-pages-operations-proxypoolspage--malformed-response-and-retry",
+      "v5-review-pages-operations-proxypoolspage--network-failure-and-retry"
     ],
     "pathname": "/dashboard/proxy-pools",
     "routePattern": "/dashboard/proxy-pools",
@@ -1109,14 +1468,73 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/settings/database/components/CapabilityMatrix.stories.jsx",
+    "title": "V5 review/Pages/settings/CapabilityMatrix",
+    "storyId": "v5-review-pages-settings-capabilitymatrix--active-and-gated",
+    "states": [
+      "ActiveAndGated",
+      "Empty"
+    ],
+    "storyIds": [
+      "v5-review-pages-settings-capabilitymatrix--active-and-gated",
+      "v5-review-pages-settings-capabilitymatrix--empty"
+    ],
+    "pathname": "",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.stories.jsx",
+    "title": "V5 review/Pages/settings/PostgresConnectionTarget",
+    "storyId": "v5-review-pages-settings-postgresconnectiontarget--saves-target",
+    "states": [
+      "SavesTarget",
+      "Failure"
+    ],
+    "storyIds": [
+      "v5-review-pages-settings-postgresconnectiontarget--saves-target",
+      "v5-review-pages-settings-postgresconnectiontarget--failure"
+    ],
+    "pathname": "/dashboard/settings/database",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.stories.jsx",
+    "title": "V5 review/Pages/settings/StartupConfiguration",
+    "storyId": "v5-review-pages-settings-startupconfiguration--test-connection",
+    "states": [
+      "TestConnection",
+      "SaveRequiresRestart"
+    ],
+    "storyIds": [
+      "v5-review-pages-settings-startupconfiguration--test-connection",
+      "v5-review-pages-settings-startupconfiguration--save-requires-restart"
+    ],
+    "pathname": "/dashboard/settings/database",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx",
     "title": "V5 review/Pages/settings/DatabaseSettingsPage",
     "storyId": "v5-review-pages-settings-databasesettingspage--default",
     "states": [
-      "Default"
+      "Default",
+      "StartupEnvFromEnvironment",
+      "StartupEnvFromFile",
+      "PostgresCutoverTarget",
+      "StatusUnavailable"
     ],
     "storyIds": [
-      "v5-review-pages-settings-databasesettingspage--default"
+      "v5-review-pages-settings-databasesettingspage--default",
+      "v5-review-pages-settings-databasesettingspage--startup-env-from-environment",
+      "v5-review-pages-settings-databasesettingspage--startup-env-from-file",
+      "v5-review-pages-settings-databasesettingspage--postgres-cutover-target",
+      "v5-review-pages-settings-databasesettingspage--status-unavailable"
     ],
     "pathname": "/dashboard/settings/database",
     "routePattern": "/dashboard/settings/database",
@@ -1129,14 +1547,52 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-operations-skillspage--default",
     "states": [
       "Default",
-      "CopyEntryLink"
+      "CopyEntryLink",
+      "CopyInstructionFailure",
+      "ManyEndpoints"
     ],
     "storyIds": [
       "v5-review-pages-operations-skillspage--default",
-      "v5-review-pages-operations-skillspage--copy-entry-link"
+      "v5-review-pages-operations-skillspage--copy-entry-link",
+      "v5-review-pages-operations-skillspage--copy-instruction-failure",
+      "v5-review-pages-operations-skillspage--many-endpoints"
     ],
     "pathname": "/dashboard/skills",
     "routePattern": "/dashboard/skills",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/timeline/[id]/components/EventRow.stories.jsx",
+    "title": "V5 review/Pages/timeline/EventRow",
+    "storyId": "v5-review-pages-timeline-eventrow--object-payload",
+    "states": [
+      "ObjectPayload",
+      "StringPayload"
+    ],
+    "storyIds": [
+      "v5-review-pages-timeline-eventrow--object-payload",
+      "v5-review-pages-timeline-eventrow--string-payload"
+    ],
+    "pathname": "/dashboard/timeline/trace-001",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/timeline/[id]/components/TraceWaterfall.stories.jsx",
+    "title": "V5 review/Pages/timeline/TraceWaterfall",
+    "storyId": "v5-review-pages-timeline-tracewaterfall--default",
+    "states": [
+      "Default",
+      "CollapsedChunks"
+    ],
+    "storyIds": [
+      "v5-review-pages-timeline-tracewaterfall--default",
+      "v5-review-pages-timeline-tracewaterfall--collapsed-chunks"
+    ],
+    "pathname": "/dashboard/timeline/trace-001",
+    "routePattern": null,
     "routePriority": 0,
     "standalone": false
   },
@@ -1146,22 +1602,64 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-timeline-timelinedetailpage--loaded",
     "states": [
       "Loaded",
+      "Waterfall",
       "ExpandSseChunks",
       "CopyAsJson",
       "MissingTrace",
       "Loading",
-      "Skeleton"
+      "Skeleton",
+      "CompletedWithoutDuration",
+      "RunningWithoutDuration"
     ],
     "storyIds": [
       "v5-review-pages-timeline-timelinedetailpage--loaded",
+      "v5-review-pages-timeline-timelinedetailpage--waterfall",
       "v5-review-pages-timeline-timelinedetailpage--expand-sse-chunks",
       "v5-review-pages-timeline-timelinedetailpage--copy-as-json",
       "v5-review-pages-timeline-timelinedetailpage--missing-trace",
       "v5-review-pages-timeline-timelinedetailpage--loading",
-      "v5-review-pages-timeline-timelinedetailpage--skeleton"
+      "v5-review-pages-timeline-timelinedetailpage--skeleton",
+      "v5-review-pages-timeline-timelinedetailpage--completed-without-duration",
+      "v5-review-pages-timeline-timelinedetailpage--running-without-duration"
     ],
     "pathname": "/dashboard/timeline/trace-001",
     "routePattern": "/dashboard/timeline/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/timeline/components/TimelineSwimlane.stories.jsx",
+    "title": "V5 review/Pages/timeline/TimelineSwimlane",
+    "storyId": "v5-review-pages-timeline-timelineswimlane--default",
+    "states": [
+      "Default",
+      "LiveAppend",
+      "Empty",
+      "NarrowSimultaneous"
+    ],
+    "storyIds": [
+      "v5-review-pages-timeline-timelineswimlane--default",
+      "v5-review-pages-timeline-timelineswimlane--live-append",
+      "v5-review-pages-timeline-timelineswimlane--empty",
+      "v5-review-pages-timeline-timelineswimlane--narrow-simultaneous"
+    ],
+    "pathname": "/dashboard/timeline",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/timeline/components/TimelineWindowControls.stories.jsx",
+    "title": "V5 review/Pages/timeline/TimelineWindowControls",
+    "storyId": "v5-review-pages-timeline-timelinewindowcontrols--default",
+    "states": [
+      "Default"
+    ],
+    "storyIds": [
+      "v5-review-pages-timeline-timelinewindowcontrols--default"
+    ],
+    "pathname": "/dashboard/timeline",
+    "routePattern": null,
     "routePriority": 0,
     "standalone": false
   },
@@ -1171,19 +1669,29 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-pages-timeline-timelinepage--loaded",
     "states": [
       "Loaded",
+      "SelectBar",
+      "ConnectionLanes",
+      "TableView",
       "LiveUpdates",
       "CaptureDisabled",
       "AllRows",
       "LoadError",
-      "Loading"
+      "Loading",
+      "StreamDisconnectAndReconnect",
+      "InitialReadUnavailable"
     ],
     "storyIds": [
       "v5-review-pages-timeline-timelinepage--loaded",
+      "v5-review-pages-timeline-timelinepage--select-bar",
+      "v5-review-pages-timeline-timelinepage--connection-lanes",
+      "v5-review-pages-timeline-timelinepage--table-view",
       "v5-review-pages-timeline-timelinepage--live-updates",
       "v5-review-pages-timeline-timelinepage--capture-disabled",
       "v5-review-pages-timeline-timelinepage--all-rows",
       "v5-review-pages-timeline-timelinepage--load-error",
-      "v5-review-pages-timeline-timelinepage--loading"
+      "v5-review-pages-timeline-timelinepage--loading",
+      "v5-review-pages-timeline-timelinepage--stream-disconnect-and-reconnect",
+      "v5-review-pages-timeline-timelinepage--initial-read-unavailable"
     ],
     "pathname": "/dashboard/timeline",
     "routePattern": "/dashboard/timeline",
@@ -1193,17 +1701,48 @@ export const REVIEW_SURFACES = [
   {
     "source": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx",
     "title": "V5 review/Pages/savers/TokenSaverClient",
-    "storyId": "v5-review-pages-savers-tokensaverclient--settings",
+    "storyId": "v5-review-pages-savers-tokensaverclient--overview",
     "states": [
+      "Overview",
       "Settings",
-      "UnavailableServices"
+      "UnavailableServices",
+      "RejectedCompressionSettings",
+      "RetryCompressionSave"
     ],
     "storyIds": [
+      "v5-review-pages-savers-tokensaverclient--overview",
       "v5-review-pages-savers-tokensaverclient--settings",
-      "v5-review-pages-savers-tokensaverclient--unavailable-services"
+      "v5-review-pages-savers-tokensaverclient--unavailable-services",
+      "v5-review-pages-savers-tokensaverclient--rejected-compression-settings",
+      "v5-review-pages-savers-tokensaverclient--retry-compression-save"
     ],
-    "pathname": "/dashboard/token-saver/settings",
+    "pathname": "/dashboard/token-saver",
     "routePattern": "/dashboard/token-saver",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/token-saver/components/CavemanOutputPreview.stories.jsx",
+    "title": "V5 review/Pages/token-saver/CavemanOutputPreview",
+    "storyId": "v5-review-pages-token-saver-cavemanoutputpreview--full",
+    "states": [
+      "Full",
+      "Lite",
+      "Ultra",
+      "Wenyan",
+      "Disabled",
+      "Mobile"
+    ],
+    "storyIds": [
+      "v5-review-pages-token-saver-cavemanoutputpreview--full",
+      "v5-review-pages-token-saver-cavemanoutputpreview--lite",
+      "v5-review-pages-token-saver-cavemanoutputpreview--ultra",
+      "v5-review-pages-token-saver-cavemanoutputpreview--wenyan",
+      "v5-review-pages-token-saver-cavemanoutputpreview--disabled",
+      "v5-review-pages-token-saver-cavemanoutputpreview--mobile"
+    ],
+    "pathname": "",
+    "routePattern": null,
     "routePriority": 0,
     "standalone": false
   },
@@ -1300,7 +1839,9 @@ export const REVIEW_SURFACES = [
       "LoadFailure",
       "DismissError",
       "MobileKeyboard",
-      "RTL"
+      "RTL",
+      "CancelledResponse",
+      "CaptureSaveFailure"
     ],
     "storyIds": [
       "v5-review-pages-translator-translatorworkspace--empty",
@@ -1311,10 +1852,31 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-translator-translatorworkspace--load-failure",
       "v5-review-pages-translator-translatorworkspace--dismiss-error",
       "v5-review-pages-translator-translatorworkspace--mobile-keyboard",
-      "v5-review-pages-translator-translatorworkspace--rtl"
+      "v5-review-pages-translator-translatorworkspace--rtl",
+      "v5-review-pages-translator-translatorworkspace--cancelled-response",
+      "v5-review-pages-translator-translatorworkspace--capture-save-failure"
     ],
     "pathname": "/dashboard/translator",
     "routePattern": "/dashboard/translator",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/dashboard/usage/components/MonitoringWidgets.stories.jsx",
+    "title": "V5 review/Pages/usage/Monitoring widgets",
+    "storyId": "v5-review-pages-usage-monitoring-widgets--default",
+    "states": [
+      "Default",
+      "Empty",
+      "Recovery"
+    ],
+    "storyIds": [
+      "v5-review-pages-usage-monitoring-widgets--default",
+      "v5-review-pages-usage-monitoring-widgets--empty",
+      "v5-review-pages-usage-monitoring-widgets--recovery"
+    ],
+    "pathname": "/dashboard/usage",
+    "routePattern": null,
     "routePriority": 0,
     "standalone": false
   },
@@ -1330,7 +1892,9 @@ export const REVIEW_SURFACES = [
       "GroupedAccounts",
       "GroupFilters",
       "CreditBranches",
-      "DeleteConfirm"
+      "DeleteConfirm",
+      "ClaudeModelWeeklyNotReported",
+      "ConnectionCatalogUnavailable"
     ],
     "storyIds": [
       "v5-review-pages-usage-provider-limits--default",
@@ -1340,7 +1904,9 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-usage-provider-limits--grouped-accounts",
       "v5-review-pages-usage-provider-limits--group-filters",
       "v5-review-pages-usage-provider-limits--credit-branches",
-      "v5-review-pages-usage-provider-limits--delete-confirm"
+      "v5-review-pages-usage-provider-limits--delete-confirm",
+      "v5-review-pages-usage-provider-limits--claude-model-weekly-not-reported",
+      "v5-review-pages-usage-provider-limits--connection-catalog-unavailable"
     ],
     "pathname": "",
     "routePattern": "/dashboard/usage/components/ProviderLimits",
@@ -1359,8 +1925,6 @@ export const REVIEW_SURFACES = [
       "UsageTableCollapsed",
       "UsageTablePending",
       "UsageTableCostView",
-      "ComboReportLoaded",
-      "ComboReportError",
       "QuotaProgressHealthy",
       "QuotaProgressDepleted",
       "QuotaTablePaged",
@@ -1370,6 +1934,7 @@ export const REVIEW_SURFACES = [
       "RequestDetailsDefault",
       "RequestDetailsError",
       "ProviderTopologyConnected",
+      "ProviderTopologyTooltipDismissal",
       "ProviderTopologyEmpty"
     ],
     "storyIds": [
@@ -1380,8 +1945,6 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-usage-usage-surfaces--usage-table-collapsed",
       "v5-review-pages-usage-usage-surfaces--usage-table-pending",
       "v5-review-pages-usage-usage-surfaces--usage-table-cost-view",
-      "v5-review-pages-usage-usage-surfaces--combo-report-loaded",
-      "v5-review-pages-usage-usage-surfaces--combo-report-error",
       "v5-review-pages-usage-usage-surfaces--quota-progress-healthy",
       "v5-review-pages-usage-usage-surfaces--quota-progress-depleted",
       "v5-review-pages-usage-usage-surfaces--quota-table-paged",
@@ -1391,6 +1954,7 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-usage-usage-surfaces--request-details-default",
       "v5-review-pages-usage-usage-surfaces--request-details-error",
       "v5-review-pages-usage-usage-surfaces--provider-topology-connected",
+      "v5-review-pages-usage-usage-surfaces--provider-topology-tooltip-dismissal",
       "v5-review-pages-usage-usage-surfaces--provider-topology-empty"
     ],
     "pathname": "/dashboard/usage",
@@ -1410,6 +1974,21 @@ export const REVIEW_SURFACES = [
     ],
     "pathname": "/dashboard/usage",
     "routePattern": "/dashboard/usage",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/app/(dashboard)/layout.stories.jsx",
+    "title": "V5 review/Pages/Shell/DashboardRootLayout",
+    "storyId": "v5-review-pages-shell-dashboardrootlayout--child-composition",
+    "states": [
+      "ChildComposition"
+    ],
+    "storyIds": [
+      "v5-review-pages-shell-dashboardrootlayout--child-composition"
+    ],
+    "pathname": "/dashboard/usage",
+    "routePattern": "/layout.stories.jsx",
     "routePriority": 0,
     "standalone": false
   },
@@ -1471,7 +2050,15 @@ export const REVIEW_SURFACES = [
       "PasswordChangeRequired",
       "LoginErrorAndResetHint",
       "OIDCOnly",
-      "OIDCMisconfigured"
+      "OIDCMisconfigured",
+      "RejectedPassword",
+      "MfaChallenge",
+      "MfaRejected",
+      "PasswordUpdate",
+      "RemoteDefaultPasswordBlocked",
+      "UnconfiguredPassword",
+      "ConfiguredOidc",
+      "UpdatedPasswordRequiresReauthentication"
     ],
     "storyIds": [
       "v5-review-pages-public-login--default",
@@ -1481,7 +2068,15 @@ export const REVIEW_SURFACES = [
       "v5-review-pages-public-login--password-change-required",
       "v5-review-pages-public-login--login-error-and-reset-hint",
       "v5-review-pages-public-login--oidc-only",
-      "v5-review-pages-public-login--oidc-misconfigured"
+      "v5-review-pages-public-login--oidc-misconfigured",
+      "v5-review-pages-public-login--rejected-password",
+      "v5-review-pages-public-login--mfa-challenge",
+      "v5-review-pages-public-login--mfa-rejected",
+      "v5-review-pages-public-login--password-update",
+      "v5-review-pages-public-login--remote-default-password-blocked",
+      "v5-review-pages-public-login--unconfigured-password",
+      "v5-review-pages-public-login--configured-oidc",
+      "v5-review-pages-public-login--updated-password-requires-reauthentication"
     ],
     "pathname": "/login",
     "routePattern": "/login",
@@ -1494,15 +2089,36 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-workflows-shared-config-addcustomembeddingmodal--open",
     "states": [
       "Open",
+      "InvalidEndpoint",
       "EditingExisting",
       "Closed"
     ],
     "storyIds": [
       "v5-review-workflows-shared-config-addcustomembeddingmodal--open",
+      "v5-review-workflows-shared-config-addcustomembeddingmodal--invalid-endpoint",
       "v5-review-workflows-shared-config-addcustomembeddingmodal--editing-existing",
       "v5-review-workflows-shared-config-addcustomembeddingmodal--closed"
     ],
     "pathname": "/dashboard/media-providers/embedding",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/shared/components/AddSystemoneCompatibleModal.stories.jsx",
+    "title": "V5 review/Workflows/shared-config/AddSystemoneCompatibleModal",
+    "storyId": "v5-review-workflows-shared-config-addsystemonecompatiblemodal--add-and-discover",
+    "states": [
+      "AddAndDiscover",
+      "DiscoveryError",
+      "EditAndRegister"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-config-addsystemonecompatiblemodal--add-and-discover",
+      "v5-review-workflows-shared-config-addsystemonecompatiblemodal--discovery-error",
+      "v5-review-workflows-shared-config-addsystemonecompatiblemodal--edit-and-register"
+    ],
+    "pathname": "/dashboard/media-providers",
     "routePattern": null,
     "routePriority": 0,
     "standalone": false
@@ -1707,6 +2323,21 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/shared/components/DocsLink.stories.jsx",
+    "title": "V5 review/Workflows/shared-navigation/DocsLink",
+    "storyId": "v5-review-workflows-shared-navigation-docslink--external-documentation",
+    "states": [
+      "ExternalDocumentation"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-navigation-docslink--external-documentation"
+    ],
+    "pathname": "/dashboard/providers",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/shared/components/Drawer.stories.jsx",
     "title": "V5 review/Workflows/shared-overlays/Drawer",
     "storyId": "v5-review-workflows-shared-overlays-drawer--default",
@@ -1774,6 +2405,23 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/shared/components/GheCopilotAuthModal.stories.jsx",
+    "title": "V5 review/Workflows/shared-auth/GheCopilotAuthModal",
+    "storyId": "v5-review-workflows-shared-auth-ghecopilotauthmodal--invalid-origin",
+    "states": [
+      "InvalidOrigin",
+      "DeviceCodeHandoff"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-auth-ghecopilotauthmodal--invalid-origin",
+      "v5-review-workflows-shared-auth-ghecopilotauthmodal--device-code-handoff"
+    ],
+    "pathname": "/dashboard/providers",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/shared/components/GitLabAuthModal.stories.jsx",
     "title": "V5 review/Workflows/shared-oauth/GitLabAuthModal",
     "storyId": "v5-review-workflows-shared-oauth-gitlabauthmodal--mode-selection",
@@ -1833,10 +2481,12 @@ export const REVIEW_SURFACES = [
     "title": "V5 review/Workflows/shell/HeaderMenu",
     "storyId": "v5-review-workflows-shell-headermenu--shutdown-confirm",
     "states": [
-      "ShutdownConfirm"
+      "ShutdownConfirm",
+      "OpenMenu"
     ],
     "storyIds": [
-      "v5-review-workflows-shell-headermenu--shutdown-confirm"
+      "v5-review-workflows-shell-headermenu--shutdown-confirm",
+      "v5-review-workflows-shell-headermenu--open-menu"
     ],
     "pathname": "/dashboard/usage",
     "routePattern": null,
@@ -1868,10 +2518,12 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-workflows-shared-oauth-importtokenmodal--default",
     "states": [
       "Default",
+      "Open",
       "ImportFailure"
     ],
     "storyIds": [
       "v5-review-workflows-shared-oauth-importtokenmodal--default",
+      "v5-review-workflows-shared-oauth-importtokenmodal--open",
       "v5-review-workflows-shared-oauth-importtokenmodal--import-failure"
     ],
     "pathname": "/dashboard/providers",
@@ -2091,10 +2743,12 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-workflows-shared-overlays-modal--default",
     "states": [
       "Default",
+      "OpenConfirmation",
       "Confirmation"
     ],
     "storyIds": [
       "v5-review-workflows-shared-overlays-modal--default",
+      "v5-review-workflows-shared-overlays-modal--open-confirmation",
       "v5-review-workflows-shared-overlays-modal--confirmation"
     ],
     "pathname": "",
@@ -2172,6 +2826,42 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/shared/components/OrcaModelDropdown.stories.jsx",
+    "title": "V5 review/Workflows/shared-config/OrcaModelDropdown",
+    "storyId": "v5-review-workflows-shared-config-orcamodeldropdown--live-catalog",
+    "states": [
+      "LiveCatalog",
+      "DegradedEmptyCatalog",
+      "NoConnection"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-config-orcamodeldropdown--live-catalog",
+      "v5-review-workflows-shared-config-orcamodeldropdown--degraded-empty-catalog",
+      "v5-review-workflows-shared-config-orcamodeldropdown--no-connection"
+    ],
+    "pathname": "/dashboard/providers",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/shared/components/OrcaRouterAuthModal.stories.jsx",
+    "title": "V5 review/Workflows/shared-auth/OrcaRouterAuthModal",
+    "storyId": "v5-review-workflows-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+    "states": [
+      "OAuthCodeFlow",
+      "ApiKeyFailure"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-auth-orcarouterauthmodal--o-auth-code-flow",
+      "v5-review-workflows-shared-auth-orcarouterauthmodal--api-key-failure"
+    ],
+    "pathname": "/dashboard/providers",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/shared/components/Pagination.stories.jsx",
     "title": "V5 review/Workflows/shared-overlays/Pagination",
     "storyId": "v5-review-workflows-shared-overlays-pagination--interactive",
@@ -2188,6 +2878,23 @@ export const REVIEW_SURFACES = [
       "v5-review-workflows-shared-overlays-pagination--empty"
     ],
     "pathname": "",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/shared/components/PeakHourProtectionEditor.stories.jsx",
+    "title": "V5 review/Workflows/shared-config/PeakHourProtectionEditor",
+    "storyId": "v5-review-workflows-shared-config-peakhourprotectioneditor--empty",
+    "states": [
+      "Empty",
+      "ConfiguredWindow"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-config-peakhourprotectioneditor--empty",
+      "v5-review-workflows-shared-config-peakhourprotectioneditor--configured-window"
+    ],
+    "pathname": "/dashboard/providers/example",
     "routePattern": null,
     "routePriority": 0,
     "standalone": false
@@ -2351,13 +3058,15 @@ export const REVIEW_SURFACES = [
       "GroupsAndUpdate",
       "MediaExpanded",
       "TokenSaverActiveHierarchy",
-      "CollapsibleRail"
+      "CollapsibleRail",
+      "CollapsedTooltip"
     ],
     "storyIds": [
       "v5-review-workflows-shell-sidebar--groups-and-update",
       "v5-review-workflows-shell-sidebar--media-expanded",
       "v5-review-workflows-shell-sidebar--token-saver-active-hierarchy",
-      "v5-review-workflows-shell-sidebar--collapsible-rail"
+      "v5-review-workflows-shell-sidebar--collapsible-rail",
+      "v5-review-workflows-shell-sidebar--collapsed-tooltip"
     ],
     "pathname": "/dashboard/usage",
     "routePattern": null,
@@ -2446,15 +3155,55 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-workflows-shared-analytics-usagestats--default",
     "states": [
       "Default",
+      "ApiKeyGrouping",
       "CustomRange",
       "FailedStats"
     ],
     "storyIds": [
       "v5-review-workflows-shared-analytics-usagestats--default",
+      "v5-review-workflows-shared-analytics-usagestats--api-key-grouping",
       "v5-review-workflows-shared-analytics-usagestats--custom-range",
       "v5-review-workflows-shared-analytics-usagestats--failed-stats"
     ],
     "pathname": "/dashboard/usage",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/shared/components/WebLoginModal.stories.jsx",
+    "title": "V5 review/Workflows/shared-web-login/WebLoginModal",
+    "storyId": "v5-review-workflows-shared-web-login-webloginmodal--ready",
+    "states": [
+      "Waiting",
+      "Ready",
+      "OriginNotConfigured"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-web-login-webloginmodal--waiting",
+      "v5-review-workflows-shared-web-login-webloginmodal--ready",
+      "v5-review-workflows-shared-web-login-webloginmodal--origin-not-configured"
+    ],
+    "pathname": "/dashboard/providers/grok-web",
+    "routePattern": null,
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
+    "source": "src/shared/components/XiaomiMimoAuthModal.stories.jsx",
+    "title": "V5 review/Workflows/shared-auth/XiaomiMimoAuthModal",
+    "storyId": "v5-review-workflows-shared-auth-xiaomimimoauthmodal--local-credentials-found",
+    "states": [
+      "LocalCredentialsFound",
+      "BrowserLoginClusterSelection",
+      "DetectionFallback"
+    ],
+    "storyIds": [
+      "v5-review-workflows-shared-auth-xiaomimimoauthmodal--local-credentials-found",
+      "v5-review-workflows-shared-auth-xiaomimimoauthmodal--browser-login-cluster-selection",
+      "v5-review-workflows-shared-auth-xiaomimimoauthmodal--detection-fallback"
+    ],
+    "pathname": "/dashboard/providers",
     "routePattern": null,
     "routePriority": 0,
     "standalone": false
@@ -2500,7 +3249,9 @@ export const REVIEW_SURFACES = [
       "ErrorToast",
       "WarningToast",
       "InfoToast",
+      "ToastDismissal",
       "MobileDrawer",
+      "MobileDrawerTransitions",
       "PersistedDesktopCollapse",
       "PlaygroundFullBleed"
     ],
@@ -2509,7 +3260,9 @@ export const REVIEW_SURFACES = [
       "v5-review-workflows-shell-dashboardlayout--error-toast",
       "v5-review-workflows-shell-dashboardlayout--warning-toast",
       "v5-review-workflows-shell-dashboardlayout--info-toast",
+      "v5-review-workflows-shell-dashboardlayout--toast-dismissal",
       "v5-review-workflows-shell-dashboardlayout--mobile-drawer",
+      "v5-review-workflows-shell-dashboardlayout--mobile-drawer-transitions",
       "v5-review-workflows-shell-dashboardlayout--persisted-desktop-collapse",
       "v5-review-workflows-shell-dashboardlayout--playground-full-bleed"
     ],
@@ -2554,6 +3307,7 @@ export const REVIEW_SURFACES = [
       "Small",
       "Loading",
       "KeyboardActivation",
+      "RightToLeft",
       "Disabled",
       "VariantMatrix"
     ],
@@ -2568,6 +3322,7 @@ export const REVIEW_SURFACES = [
       "v5-review-components-durin-ds-actions-button--small",
       "v5-review-components-durin-ds-actions-button--loading",
       "v5-review-components-durin-ds-actions-button--keyboard-activation",
+      "v5-review-components-durin-ds-actions-button--right-to-left",
       "v5-review-components-durin-ds-actions-button--disabled",
       "v5-review-components-durin-ds-actions-button--variant-matrix"
     ],
@@ -3083,13 +3838,17 @@ export const REVIEW_SURFACES = [
       "Default",
       "WithIcons",
       "WithCounts",
-      "WithDisabledTab"
+      "WithDisabledTab",
+      "KeyboardNavigation",
+      "RightToLeft"
     ],
     "storyIds": [
       "v5-review-components-durin-ds-choice-tabs--default",
       "v5-review-components-durin-ds-choice-tabs--with-icons",
       "v5-review-components-durin-ds-choice-tabs--with-counts",
-      "v5-review-components-durin-ds-choice-tabs--with-disabled-tab"
+      "v5-review-components-durin-ds-choice-tabs--with-disabled-tab",
+      "v5-review-components-durin-ds-choice-tabs--keyboard-navigation",
+      "v5-review-components-durin-ds-choice-tabs--right-to-left"
     ],
     "pathname": "",
     "routePattern": null,
@@ -3192,7 +3951,8 @@ export const REVIEW_SURFACES = [
       "RoundRobinStrategy",
       "CreateAndReadBack",
       "InvalidName",
-      "SearchWithoutResults"
+      "SearchWithoutResults",
+      "OrderedTimeoutSaves"
     ],
     "storyIds": [
       "v5-review-workflows-v5-redesign-combos--inventory",
@@ -3211,7 +3971,8 @@ export const REVIEW_SURFACES = [
       "v5-review-workflows-v5-redesign-combos--round-robin-strategy",
       "v5-review-workflows-v5-redesign-combos--create-and-read-back",
       "v5-review-workflows-v5-redesign-combos--invalid-name",
-      "v5-review-workflows-v5-redesign-combos--search-without-results"
+      "v5-review-workflows-v5-redesign-combos--search-without-results",
+      "v5-review-workflows-v5-redesign-combos--ordered-timeout-saves"
     ],
     "pathname": "/dashboard/combos",
     "routePattern": null,
@@ -3229,7 +3990,10 @@ export const REVIEW_SURFACES = [
       "EmptyDashboard",
       "MissingSource",
       "MonitoringUnavailable",
-      "MonitoringRefreshAndPause"
+      "MonitoringRefreshAndPause",
+      "DirtyDashboardSelection",
+      "MonitoringOnlyWithOtherSourcesOffline",
+      "SlowMonitoringSnapshot"
     ],
     "storyIds": [
       "v5-review-workflows-your-dashboards--operations",
@@ -3238,7 +4002,10 @@ export const REVIEW_SURFACES = [
       "v5-review-workflows-your-dashboards--empty-dashboard",
       "v5-review-workflows-your-dashboards--missing-source",
       "v5-review-workflows-your-dashboards--monitoring-unavailable",
-      "v5-review-workflows-your-dashboards--monitoring-refresh-and-pause"
+      "v5-review-workflows-your-dashboards--monitoring-refresh-and-pause",
+      "v5-review-workflows-your-dashboards--dirty-dashboard-selection",
+      "v5-review-workflows-your-dashboards--monitoring-only-with-other-sources-offline",
+      "v5-review-workflows-your-dashboards--slow-monitoring-snapshot"
     ],
     "pathname": "/dashboard/workspaces",
     "routePattern": "/dashboard/workspaces",
@@ -3659,7 +4426,10 @@ export const REVIEW_SURFACES = [
       "EditSaveAndCancel",
       "AllWidgetsHidden",
       "MissingSavedSource",
-      "LoadingMetrics"
+      "LoadingMetrics",
+      "PxpipeInitialLoading",
+      "PxpipeStatsUnavailable",
+      "PxpipeEventsRetry"
     ],
     "storyIds": [
       "v5-review-workflows-token-saver-overview--overview",
@@ -3668,7 +4438,10 @@ export const REVIEW_SURFACES = [
       "v5-review-workflows-token-saver-overview--edit-save-and-cancel",
       "v5-review-workflows-token-saver-overview--all-widgets-hidden",
       "v5-review-workflows-token-saver-overview--missing-saved-source",
-      "v5-review-workflows-token-saver-overview--loading-metrics"
+      "v5-review-workflows-token-saver-overview--loading-metrics",
+      "v5-review-workflows-token-saver-overview--pxpipe-initial-loading",
+      "v5-review-workflows-token-saver-overview--pxpipe-stats-unavailable",
+      "v5-review-workflows-token-saver-overview--pxpipe-events-retry"
     ],
     "pathname": "/dashboard/token-saver",
     "routePattern": "/dashboard/token-saver",

@@ -12,3 +12,6 @@ export const EditSaveAndCancel = { ...reviewStory(original.EditSaveAndCancel, {"
 export const AllWidgetsHidden = { ...reviewStory(original.AllWidgetsHidden, {"source":"src/shared/ui/v5/routes/SaverOverview.stories.jsx","standalone":false}) };
 export const MissingSavedSource = { ...reviewStory(original.MissingSavedSource, {"source":"src/shared/ui/v5/routes/SaverOverview.stories.jsx","standalone":false}) };
 export const LoadingMetrics = { ...reviewStory(original.LoadingMetrics, {"source":"src/shared/ui/v5/routes/SaverOverview.stories.jsx","standalone":false}) };
+export const PxpipeInitialLoading = { ...reviewStory(original.PxpipeInitialLoading, {"source":"src/shared/ui/v5/routes/SaverOverview.stories.jsx","standalone":false}) };
+export const PxpipeStatsUnavailable = { ...reviewStory(original.PxpipeStatsUnavailable, {"source":"src/shared/ui/v5/routes/SaverOverview.stories.jsx","standalone":false}) };
+export const PxpipeEventsRetry = { ...reviewStory(original.PxpipeEventsRetry, {"source":"src/shared/ui/v5/routes/SaverOverview.stories.jsx","standalone":false}) };

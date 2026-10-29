@@ -9,3 +9,4 @@ export const WebSearch = { ...reviewStory(original.WebSearch, {"source":"src/app
 export const WebSearchRun = { ...reviewStory(original.WebSearchRun, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx","standalone":false}) };
 export const ImageGen = { ...reviewStory(original.ImageGen, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx","standalone":false}) };
 export const CodexStreamingRun = { ...reviewStory(original.CodexStreamingRun, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx","standalone":false}) };
+export const RunError = { ...reviewStory(original.RunError, {"source":"src/app/(dashboard)/dashboard/media-providers/[kind]/[id]/components/GenericExampleCard.stories.jsx","standalone":false}) };

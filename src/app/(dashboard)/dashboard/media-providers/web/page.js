@@ -1,5 +1,6 @@
 "use client";
 
+import { requestCollection } from "../../providers/workflowRequests.js";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -105,19 +106,17 @@ function Section({ title, icon, kind, providers, connections, combos, onCreateCo
 
 export default function WebProvidersPage() {
   const router = useRouter();
+  const [loadError, setLoadError] = useState("");
+  const [loaded, setLoaded] = useState(false);
   const [connections, setConnections] = useState([]);
   const [combos, setCombos] = useState([]);
   const [createError, setCreateError] = useState("");
 
   const fetchAll = async () => {
     try {
-      const [connsRes, combosRes] = await Promise.all([
-      fetch("/api/providers", { cache: "no-store" }),
-      fetch("/api/combos", { cache: "no-store" })]
-      );
-      if (connsRes.ok) setConnections((await connsRes.json()).connections || []);
-      if (combosRes.ok) setCombos((await combosRes.json()).combos || []);
-    } catch {/* noop */}
+      const [items, loadedCombos] = await Promise.all([requestCollection("/api/providers", "connections"), requestCollection("/api/combos", "combos")]);
+      setConnections(items); setCombos(loadedCombos); setLoadError(""); setLoaded(true);
+    } catch (error) { setLoadError(error.message); }
   };
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -149,8 +148,10 @@ export default function WebProvidersPage() {
     }
   };
 
+  if (!loaded) return loadError ? <div role="alert"><p>Web providers could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchAll}>Retry</Button></div> : <p role="status">Loading web providers…</p>;
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
+      {loadError && <div role="alert">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchAll}>Retry</Button></div>}
       {createError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{createError}</p>}
       <Section title="Web Search" icon="search" kind="webSearch" providers={searchProviders} connections={connections} combos={searchCombos} onCreateCombo={() => handleCreateCombo("webSearch")} />
       <hr className="border-t border-dd-border-subtle" />

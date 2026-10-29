@@ -9,3 +9,4 @@ export const Collapsed = { ...reviewStory(original.Collapsed, {"source":"src/app
 export const DnsOff = { ...reviewStory(original.DnsOff, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.stories.jsx","standalone":false}) };
 export const DnsActive = { ...reviewStory(original.DnsActive, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.stories.jsx","standalone":false}) };
 export const SudoPrompted = { ...reviewStory(original.SudoPrompted, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.stories.jsx","standalone":false}) };
+export const KiroDnsActive = { ...reviewStory(original.KiroDnsActive, {"source":"src/app/(dashboard)/dashboard/cli-tools/components/MitmToolCard.stories.jsx","standalone":false}) };

@@ -157,9 +157,14 @@ export function buildResponsesFailedError(upstreamMessage) {
  * Chat Completions finish_reason → OpenAI Responses terminal fields.
  * Shared by non-stream projection and the Chat→Responses stream flush. (#1331)
  *
- * @param {string|null|undefined} finishReason
+ * Known string finishes get real Responses statuses. Unknown truthy values
+ * (including non-string primitives like `5`) keep main's non-stream
+ * `status: finishReason` passthrough; stream still emits `response.completed`
+ * with canonical `status: "completed"` (see sendTerminal).
+ *
+ * @param {unknown} finishReason
  * @param {unknown} [upstreamMessage] optional upstream error text (sanitized on failed)
- * @returns {{ status: string, error: object|null, incomplete_details?: { reason: string }, event: string }}
+ * @returns {{ status: unknown, error: object|null, incomplete_details?: { reason: string }, event: string }}
  */
 export function responsesTerminalFromChatFinish(finishReason, upstreamMessage) {
   switch (finishReason) {
@@ -183,12 +188,33 @@ export function responsesTerminalFromChatFinish(finishReason, upstreamMessage) {
         error: buildResponsesFailedError(upstreamMessage),
         event: "response.failed"
       };
+    case OPENAI_FINISH.STOP:
+    case OPENAI_FINISH.TOOL_CALLS:
+      return {
+        status: "completed",
+        error: null,
+        event: "response.completed"
+      };
     default:
-      // stop, tool_calls, unset, and any other clean end
+      // Main non-stream: `status: finishReason` for any other truthy value.
+      // Falsy / unset → completed (same as `finish_reason || "stop"` on main).
+      if (finishReason) {
+        return {
+          status: finishReason,
+          error: null,
+          event: "response.completed"
+        };
+      }
       return {
         status: "completed",
         error: null,
         event: "response.completed"
       };
   }
+}
+
+/** Only emit incomplete_details when it is a plain object with a string reason. */
+export function responsesIncompleteDetailsOrOmit(details) {
+  if (!isUpstreamErrorObject(details)) return null;
+  return isString(details.reason) && details.reason.trim() ? { reason: details.reason } : null;
 }

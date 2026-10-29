@@ -19,6 +19,7 @@ import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } fro
 import {
   isUpstreamErrorObject,
   readUpstreamErrorMessage,
+  responsesIncompleteDetailsOrOmit,
   responsesTerminalFromChatFinish
 } from "../concerns/finishReason.js";
 
@@ -606,8 +607,10 @@ function closeToolCall(state, emit, idx) {
 /**
  * Emit exactly one Responses terminal for the Chat finish_reason.
  * length / content_filter → response.incomplete; error → response.failed;
- * stop / tool_calls / unset → response.completed. Usage attaches the same way
- * on every terminal when present. Failed.error never echoes upstream text. (#1331)
+ * stop / tool_calls / unset / unknown → response.completed. Stream status is
+ * always a canonical string from the event (main's sendCompleted used
+ * "completed" even for odd finish_reason). Usage attaches the same way on
+ * every terminal when present. Failed.error never echoes upstream text. (#1331)
  */
 function sendTerminal(state, emit) {
   if (state.completedSent) return;
@@ -618,6 +621,10 @@ function sendTerminal(state, emit) {
     state.finishReason,
     readUpstreamErrorMessage(state.upstreamError)
   );
+  const streamStatus = terminal.event === "response.incomplete" ? "incomplete" :
+    terminal.event === "response.failed" ? "failed" :
+    "completed";
+  const incompleteDetails = responsesIncompleteDetailsOrOmit(terminal.incomplete_details);
   emit(terminal.event, {
     type: terminal.event,
     response: {
@@ -626,9 +633,10 @@ function sendTerminal(state, emit) {
       created_at: state.created,
       model: state.model || MODEL_FALLBACK,
       background: false,
-      status: terminal.status,
+      status: streamStatus,
       error: terminal.error,
-      ...(terminal.incomplete_details ? { incomplete_details: terminal.incomplete_details } : null),
+      ...(incompleteDetails ? { incomplete_details: incompleteDetails } : null),
+      // Drop sparse/null slots — never forward null entries as output items.
       output: (state.finalOutputItems || []).filter(Boolean),
       ...(usage ? { usage } : null)
     }
@@ -849,15 +857,19 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // Avoid emitting duplicate errors (error + response.failed arrive back-to-back)
     if (state.finishReasonSent) return null;
 
-    const error = data.error || data.response?.error;
+    const error = data.error ?? data.response?.error;
+    // Match main: truthy primitives (e.g. error: 5) still surface; null/undefined skip.
     if (error) {
       state.error = error;
       state.finishReasonSent = true;
+      const message = readUpstreamErrorMessage(error) || (
+        isUpstreamErrorObject(error) ? JSON.stringify(error) : String(error)
+      );
 
       // Surface the error as an OpenAI-compatible error chunk
       return buildChunk(
         { id: state.chatId || `chatcmpl-${Date.now()}`, created: state.created || Math.floor(Date.now() / 1000), model: state.model || MODEL_FALLBACK },
-        { content: `[Error] ${error.message || JSON.stringify(error)}` },
+        { content: `[Error] ${message}` },
         OPENAI_FINISH.STOP
       );
     }

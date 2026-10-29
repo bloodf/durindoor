@@ -10,6 +10,8 @@ import "./registerAll.js";
 import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { initState, translateResponse } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { responsesIncompleteDetailsOrOmit } from "../../open-sse/translator/concerns/finishReason.js";
+import { responsesApiToOpenAICompletion } from "../../open-sse/translator/response/completionProjector.js";
 import { OPENAI_BLOCK, OPENAI_FINISH, ROLE } from "../../open-sse/translator/schema/index.js";
 
 const CHAT = FORMATS.OPENAI;
@@ -310,5 +312,143 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       ];
     }).not.toThrow();
     expect(events).toEqual([]);
+  });
+
+  it("tolerates primitive status (5) without inventing fields", () => {
+    // Responses→Chat: main passed the numeric status through as finish_reason.
+    let chat;
+    expect(() => {
+      chat = responsesApiToOpenAICompletion({
+        id: "r-1331",
+        model: "m",
+        status: 5,
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "hi" }],
+        }],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }, "m");
+    }).not.toThrow();
+    expect(chat.choices[0].finish_reason).toBe(5);
+    expect(chat).not.toHaveProperty("incomplete_details");
+
+    // Chat→Responses non-stream: main used `status: finishReason` for unknown truthy values.
+    let resp;
+    expect(() => {
+      resp = project(5, { role: ROLE.ASSISTANT, content: "ok" });
+    }).not.toThrow();
+    expect(resp.status).toBe(5);
+    expect(Object.keys(resp).sort()).toEqual([...mainCompletedKeys].sort());
+    expect(resp).not.toHaveProperty("error");
+    expect(resp).not.toHaveProperty("incomplete_details");
+
+    // Stream always uses canonical completed status (main's sendCompleted).
+    let events;
+    expect(() => {
+      events = streamTo([textChunk("ok", 5), null]);
+    }).not.toThrow();
+    const terminals = terminalEvents(events);
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0].event).toBe("response.completed");
+    expect(terminals[0].data.response.status).toBe("completed");
+    expect(terminals[0].data.response.status).not.toBe(5);
+    expect(terminals[0].data.response).not.toHaveProperty("incomplete_details");
+  });
+
+  it("surfaces primitive error (5) without throwing or forwarding it as an object", () => {
+    // Responses→Chat stream: main used `error.message || JSON.stringify(error)` → "[Error] 5".
+    const state = initState(CHAT);
+    let chunks;
+    expect(() => {
+      chunks = translateResponse(
+        RESPONSES,
+        CHAT,
+        {
+          event: "response.failed",
+          data: { type: "response.failed", response: { status: "failed", error: 5 } },
+        },
+        state,
+      );
+    }).not.toThrow();
+    expect(chunks?.[0]?.choices?.[0]?.delta?.content).toBe("[Error] 5");
+
+    // Chat→Responses failed path: primitive upstream error is not forwarded as-is;
+    // the failed terminal still gets a real error object (fallback message).
+    let failed;
+    expect(() => {
+      failed = project(
+        OPENAI_FINISH.ERROR,
+        { role: ROLE.ASSISTANT, content: "partial" },
+        { error: 5 },
+      );
+    }).not.toThrow();
+    expect(failed.status).toBe("failed");
+    expect(failed.error).not.toBe(5);
+    assertFailedErrorShape(failed.error, JSON.stringify(failed));
+  });
+
+  it("drops primitive incomplete_details (true) instead of forwarding it", () => {
+    expect(responsesIncompleteDetailsOrOmit(true)).toBeNull();
+    expect(responsesIncompleteDetailsOrOmit(5)).toBeNull();
+    expect(responsesIncompleteDetailsOrOmit("max_output_tokens")).toBeNull();
+
+    // Responses→Chat ignores the field entirely — no throw, nothing new emitted.
+    let chat;
+    expect(() => {
+      chat = responsesApiToOpenAICompletion({
+        id: "r-1331",
+        model: "m",
+        status: "completed",
+        incomplete_details: true,
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        }],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }, "m");
+    }).not.toThrow();
+    expect(chat.choices[0].finish_reason).toBe("stop");
+    expect(chat).not.toHaveProperty("incomplete_details");
+
+    // Chat→Responses completed path never grows an incomplete_details key.
+    const completed = project(OPENAI_FINISH.STOP, { role: ROLE.ASSISTANT, content: "ok" });
+    expect(completed).not.toHaveProperty("incomplete_details");
+  });
+
+  it("skips null entries in Responses output arrays without throwing", () => {
+    let empty;
+    expect(() => {
+      empty = responsesApiToOpenAICompletion({
+        id: "r-1331",
+        model: "m",
+        status: "completed",
+        output: [null],
+        usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 },
+      }, "m");
+    }).not.toThrow();
+    expect(empty.choices[0].message.content).toBe("");
+    expect(empty.choices[0].finish_reason).toBe("stop");
+
+    let mixed;
+    expect(() => {
+      mixed = responsesApiToOpenAICompletion({
+        id: "r-1331",
+        model: "m",
+        status: "completed",
+        output: [
+          null,
+          {
+            type: "message",
+            role: "assistant",
+            content: [null, { type: "output_text", text: "hi" }],
+          },
+        ],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }, "m");
+    }).not.toThrow();
+    expect(mixed.choices[0].message.content).toBe("hi");
+    expect(mixed).not.toHaveProperty("incomplete_details");
   });
 });

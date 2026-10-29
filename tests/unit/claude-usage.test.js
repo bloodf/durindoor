@@ -69,7 +69,7 @@ describe("Claude usage", () => {
       "X-App": "cli",
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta":
-        "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,oauth-2025-04-20",
+        "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,thinking-binding-controls-2026-08-01,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07,oauth-2025-04-20",
       // cedar_ember grant eligibility requires `(external, cli)`, not sdk-cli.
       "User-Agent": "claude-cli/2.1.312 (external, cli)",
       "X-Stainless-Retry-Count": "0",
@@ -80,6 +80,7 @@ describe("Claude usage", () => {
       "X-Stainless-Timeout": "600",
     });
     expect(CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]).not.toContain("oauth-2025-04-20");
+    expect(CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]).not.toContain("extended-cache-ttl-2025-04-11");
     expect(headers).not.toHaveProperty("X-Stainless-Helper-Method");
     expect(Object.keys(headers)).not.toContain("anthropic-beta");
   });

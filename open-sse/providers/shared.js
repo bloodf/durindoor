@@ -54,21 +54,25 @@ export const CLAUDE_API_HEADERS = {
   "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
 };
 
-// Full Claude CLI fingerprint from a live Claude Code 2.1.312 OAuth-mode
-// `claude -p` request (ANTHROPIC_BASE_URL → local sink; dummy
-// CLAUDE_CODE_OAUTH_TOKEN; Authorization: Bearer on the wire). Diffed against
-// the same OAuth capture for 2.1.282. Static stable values (UA shape, beta
-// flags, package/runtime versions, runtime, language, retry, timeout, API
-// version, dangerous browser header, x-app) are pinned to the 2.1.312 OAuth
-// wire literal. `oauth-2025-04-20` is present as the second beta on that wire
-// but is intentionally excluded here — the claude usage/OAuth helpers append
-// it for auth-mode traffic — so this pin is the capability list in wire order.
-// OS and architecture use the live host-derived Stainless mappers. The
-// optional helper-method header is omitted because the 2.1.312 OAuth request
-// did not include it. An earlier API-key capture is not used for this pin.
+// Full Claude CLI fingerprint from a live Claude Code 2.1.312 first-party
+// API-key `claude -p --model sonnet` request (ANTHROPIC_BASE_URL → local sink,
+// `_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1`, dummy ANTHROPIC_API_KEY). The
+// assume flag is required because `prompt-caching-scope-2026-01-05` is gated
+// on a first-party host check that a localhost sink otherwise fails. Diffed
+// against the same first-party captures for 2.1.282 and for OAuth mode.
+// Static stable values (UA shape, shared beta flags, package/runtime
+// versions, runtime, language, retry, timeout, API version, dangerous
+// browser header, x-app) are pinned to that 2.1.312 API-key wire literal.
+// OAuth-only extras (`oauth-2025-04-20`, `extended-cache-ttl-2025-04-11`) are
+// not in this shared pin — the claude usage/OAuth helpers add them. OS and
+// architecture use the live host-derived Stainless mappers. The optional
+// helper-method header is omitted because the capture did not include it.
+// `fallback-credit-2026-06-01` is intentionally absent: 2.1.312 only adds it
+// after a fallback-credit lane is armed (post-refusal) and drops it again on
+// a credit_beta_header 400.
 export const CLAUDE_CLI_SPOOF_HEADERS = {
   "Anthropic-Version": ANTHROPIC_API_VERSION,
-  "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11",
+  "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,thinking-binding-controls-2026-08-01,cache-diagnosis-2026-04-07",
   "Anthropic-Dangerous-Direct-Browser-Access": "true",
   "User-Agent": `claude-cli/${CLAUDE_CLI_VERSION} (external, sdk-cli)`,
   "X-App": "cli",
@@ -86,20 +90,24 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
 // (port of decolua/9router#3797). Derived from the fork's pinned Claude Code
 // fingerprint above (CLAUDE_CLI_SPOOF_HEADERS); effort-2025-11-24 is a
 // heavy-agent flag and is only sent for opus/sonnet model ids — cheaper models
-// don't need it. `extended-cache-ttl-2025-04-11` stays after effort on the wire,
-// so it is applied as a shared tail. `oauth-2025-04-20` is intentionally
-// excluded here: it is an auth-mode flag appended by the claude usage path.
+// don't need it. Post-effort shared flags stay in ANTHROPIC_BETA_TAIL so wire
+// order matches the first-party API-key capture. OAuth-only extras are not
+// listed here.
 const ANTHROPIC_BETA_BASE = [
   "claude-code-20250219",
   "interleaved-thinking-2025-05-14",
   "context-management-2025-06-27",
+  "prompt-caching-scope-2026-01-05",
   "per-turn-control-2026-07-01",
   "mid-conversation-tool-changes-2026-07-01",
   "thinking-token-count-2026-05-13",
   "advanced-tool-use-2025-11-20"
 ];
 const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
-const ANTHROPIC_BETA_TAIL = ["extended-cache-ttl-2025-04-11"];
+const ANTHROPIC_BETA_TAIL = [
+  "thinking-binding-controls-2026-08-01",
+  "cache-diagnosis-2026-04-07"
+];
 
 /**
  * Select the Anthropic-Beta header value for a model id.
@@ -109,6 +117,25 @@ export function selectAnthropicBeta(model = "") {
   const flags = [...ANTHROPIC_BETA_BASE];
   if (/^claude-(opus|sonnet)/.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
   flags.push(...ANTHROPIC_BETA_TAIL);
+  return flags.join(",");
+}
+
+/**
+ * OAuth-mode Anthropic-Beta for Claude usage/reset helpers.
+ * Starts from the shared first-party pin, inserts `extended-cache-ttl-2025-04-11`
+ * before `cache-diagnosis-2026-04-07` (OAuth wire order from the 2.1.312
+ * first-party OAuth capture), then appends `oauth-2025-04-20`.
+ * @param {string} [baseBeta]
+ * @returns {string}
+ */
+export function buildClaudeOAuthAnthropicBeta(baseBeta = CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]) {
+  const flags = String(baseBeta || "").split(",").map((f) => f.trim()).filter(Boolean);
+  if (!flags.includes("extended-cache-ttl-2025-04-11")) {
+    const i = flags.indexOf("cache-diagnosis-2026-04-07");
+    if (i >= 0) flags.splice(i, 0, "extended-cache-ttl-2025-04-11");
+    else flags.push("extended-cache-ttl-2025-04-11");
+  }
+  if (!flags.includes("oauth-2025-04-20")) flags.push("oauth-2025-04-20");
   return flags.join(",");
 }
 

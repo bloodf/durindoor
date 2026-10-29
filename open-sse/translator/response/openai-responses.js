@@ -16,6 +16,7 @@ import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
+import { responsesTerminalFromChatFinish } from "../concerns/finishReason.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -181,7 +182,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
   }
 
-  // Handle finish_reason. Length → response.incomplete; error → response.failed;
+  // Handle finish_reason. length/content_filter → incomplete; error → failed;
   // stop/tool_calls (and other clean ends) still complete. (#1331 / #1089)
   if (choice.finish_reason) {
     state.finishReason = choice.finish_reason;
@@ -592,59 +593,29 @@ function closeToolCall(state, emit, idx) {
 
 /**
  * Emit exactly one Responses terminal for the Chat finish_reason.
- * - length → response.incomplete (incomplete_details.reason = max_output_tokens)
- * - error → response.failed
- * - stop / tool_calls / unset → response.completed
- * Usage attaches the same way on every terminal when present. (#1331)
+ * length / content_filter → response.incomplete; error → response.failed;
+ * stop / tool_calls / unset → response.completed. Usage attaches the same way
+ * on every terminal when present. Failed.error never echoes upstream text. (#1331)
  */
 function sendTerminal(state, emit) {
   if (state.completedSent) return;
   state.completedSent = true;
   state.awaitingTrailingUsage = false;
   const usage = state.responsesUsage;
-  const responseBase = {
-    id: state.responseId,
-    object: "response",
-    created_at: state.created,
-    model: state.model || MODEL_FALLBACK,
-    background: false,
-    output: (state.finalOutputItems || []).filter(Boolean),
-    ...(usage ? { usage } : null)
-  };
-
-  if (state.finishReason === OPENAI_FINISH.LENGTH) {
-    emit("response.incomplete", {
-      type: "response.incomplete",
-      response: {
-        ...responseBase,
-        status: "incomplete",
-        error: null,
-        incomplete_details: { reason: "max_output_tokens" }
-      }
-    });
-    return;
-  }
-
-  if (state.finishReason === OPENAI_FINISH.ERROR) {
-    const message = state.upstreamError?.message ||
-      "Upstream aborted the response (finish_reason error)";
-    emit("response.failed", {
-      type: "response.failed",
-      response: {
-        ...responseBase,
-        status: "failed",
-        error: { type: "server_error", message }
-      }
-    });
-    return;
-  }
-
-  emit("response.completed", {
-    type: "response.completed",
+  const terminal = responsesTerminalFromChatFinish(state.finishReason);
+  emit(terminal.event, {
+    type: terminal.event,
     response: {
-      ...responseBase,
-      status: "completed",
-      error: null
+      id: state.responseId,
+      object: "response",
+      created_at: state.created,
+      model: state.model || MODEL_FALLBACK,
+      background: false,
+      status: terminal.status,
+      error: terminal.error,
+      ...(terminal.incomplete_details ? { incomplete_details: terminal.incomplete_details } : null),
+      output: (state.finalOutputItems || []).filter(Boolean),
+      ...(usage ? { usage } : null)
     }
   });
 }

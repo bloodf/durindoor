@@ -104,3 +104,47 @@ export function fromOpenAIFinish(reason, format) {
       return reason;
   }
 }
+
+/** Fixed Responses failed.error — never echoes upstream text (no secrets). (#1331) */
+export const RESPONSES_FAILED_ERROR = Object.freeze({
+  type: "server_error",
+  message: "Upstream aborted the response (finish_reason error)"
+});
+
+/**
+ * Chat Completions finish_reason → OpenAI Responses terminal fields.
+ * Shared by non-stream projection and the Chat→Responses stream flush. (#1331)
+ *
+ * @returns {{ status: string, error: object|null, incomplete_details?: { reason: string }, event: string }}
+ */
+export function responsesTerminalFromChatFinish(finishReason) {
+  switch (finishReason) {
+    case OPENAI_FINISH.LENGTH:
+      return {
+        status: "incomplete",
+        error: null,
+        incomplete_details: { reason: "max_output_tokens" },
+        event: "response.incomplete"
+      };
+    case OPENAI_FINISH.CONTENT_FILTER:
+      return {
+        status: "incomplete",
+        error: null,
+        incomplete_details: { reason: "content_filter" },
+        event: "response.incomplete"
+      };
+    case OPENAI_FINISH.ERROR:
+      return {
+        status: "failed",
+        error: { ...RESPONSES_FAILED_ERROR },
+        event: "response.failed"
+      };
+    default:
+      // stop, tool_calls, unset, and any other clean end
+      return {
+        status: "completed",
+        error: null,
+        event: "response.completed"
+      };
+  }
+}

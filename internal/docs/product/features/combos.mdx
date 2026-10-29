@@ -158,7 +158,7 @@ show `laya:<TIER>` instead of `jev:<TIER>`.
 
 ## Fallback triggers
 
-A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, prepaid credit exhaustion (case-insensitive message substrings `insufficient credit` and `credit balance is too low`, including Anthropic's HTTP 400 billing message and OpenRouter/reseller insufficient-credits bodies), and HTTP 200 with no usable output. Ordinary request-scoped 4xx (malformed body, context too long) still stop on that member. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
+A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, prepaid credit exhaustion (case-insensitive message substrings `insufficient credit` and `credit balance is too low`, including Anthropic's HTTP 400 billing envelope and OpenRouter/reseller insufficient-credits bodies — same long terminal account cooldown as `insufficient balance`, not a short transient backoff), and HTTP 200 with no usable output. Ordinary request-scoped 4xx (malformed body, context too long, other `invalid_request_error` messages) still stop on that member. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
 
 A malformed client body is rejected before combo dispatch. Do not expect a combo to paper over a bad request.
 

@@ -38,27 +38,68 @@ describe("checkFallbackError — request-scoped vs account-scoped 4xx", () => {
     expect(checkFallbackError(422, "quota exceeded").shouldFallback).toBe(true);
   });
 
-  // Port of 9router b82f5c4: credit exhaustion on HTTP 400 must backoff so
-  // account rotation / combo fallback can try the next model. Phrases are the
-  // allowlisted Anthropic + OpenRouter/reseller wordings (see errorConfig.js).
+  // Port of 9router b82f5c4 / review on #1364: credit exhaustion uses the same
+  // long terminal cooldown as `insufficient balance` so OpenRouter 402 stays
+  // on main's 120s lock (not a 2s backoff) while 400 remaps still rotate.
   it.each([
     "You have insufficient credits to make this request. Please purchase more credits to continue using the service.",
     "INSUFFICIENT CREDITS",
     "Insufficient credit balance",
     "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
     "CREDIT BALANCE IS TOO LOW",
-  ])("falls back with backoff for a 400 credit error: %s", (message) => {
+  ])("falls back with a long terminal cooldown for a 400 credit error: %s", (message) => {
     expect(checkFallbackError(400, message)).toEqual({
-      shouldFallback: true, cooldownMs: 2000, newBackoffLevel: 1, scope: null,
+      shouldFallback: true, cooldownMs: 120000, terminal: true, scope: null,
     });
     expect(checkFallbackError(400, message, 1)).toEqual({
-      shouldFallback: true, cooldownMs: 4000, newBackoffLevel: 2, scope: null,
+      shouldFallback: true, cooldownMs: 120000, terminal: true, scope: null,
+    });
+  });
+
+  it("keeps OpenRouter-style 402 insufficient credits on main's terminal long cooldown", () => {
+    // Same body OpenRouter documents for payment_required; must match main's
+    // { status: 402, cooldownMs: COOLDOWN.long, terminal: true } outcome even
+    // though the text rule sits above the status rule in ERROR_RULES.
+    expect(checkFallbackError(
+      402,
+      JSON.stringify({
+        error: {
+          message: "Insufficient credits. Add more using https://openrouter.ai/settings/credits",
+          code: 402,
+        },
+      }),
+    )).toEqual({
+      shouldFallback: true, cooldownMs: 120000, terminal: true, scope: null,
     });
   });
 
   it("does not fall back for an ordinary bad request", () => {
     expect(checkFallbackError(400, "Bad request")).toEqual({
       shouldFallback: false, cooldownMs: 0, scope: null,
+    });
+  });
+
+  it("does not rotate for a normal Anthropic invalid_request_error envelope", () => {
+    expect(checkFallbackError(400, JSON.stringify({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: "messages.0: Field required",
+      },
+    }))).toEqual({
+      shouldFallback: false, cooldownMs: 0, scope: null,
+    });
+  });
+
+  it("rotates for Anthropic credit exhaustion typed as invalid_request_error", () => {
+    expect(checkFallbackError(400, JSON.stringify({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+      },
+    }))).toEqual({
+      shouldFallback: true, cooldownMs: 120000, terminal: true, scope: null,
     });
   });
 

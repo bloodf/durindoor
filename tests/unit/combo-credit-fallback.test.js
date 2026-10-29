@@ -3,8 +3,9 @@ import { handleComboChat } from "../../open-sse/services/combo.js";
 
 /**
  * Reachability through the real combo handler (9router b82f5c4 / #1364):
- * a 400 credit-exhaustion body must advance to the next model; an ordinary
- * 400 bad request must stop on the first member.
+ * a 400 credit-exhaustion body (terminal long cooldown) must still advance
+ * to the next model because shouldFallback stays true; an ordinary 400 bad
+ * request must stop on the first member.
  */
 describe("combo credit fallback", () => {
   it.each([

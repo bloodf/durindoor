@@ -165,6 +165,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     if (directFn) {
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
       finalizeTranslatedRequest = directFn.finalize;
+      /**
+       * Direct Responses→Chat (`openai-responses:openai`) never enters the OpenAI
+       * pivot below where overlong/dotted names are aliased. Apply the same clamp
+       * so Chat upstreams and the response round-trip map stay consistent (#1345).
+       */
+      if (sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI && isObject(result)) {
+        responsesToolAliases = normalizeOpenAIToolNames(result);
+      }
     } else {
       if (sourceFormat !== FORMATS.OPENAI) {
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);

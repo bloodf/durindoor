@@ -352,7 +352,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       result.tools = [{ functionDeclarations }];
     }
   }
-  if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
+  // OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode (#1328).
+  // auto→AUTO, none→NONE, required→ANY. Named {type:function} stays ANY + allowedFunctionNames.
+  if (isString(body.tool_choice)) {
+    const mode = ({ auto: "AUTO", none: "NONE", required: "ANY" })[body.tool_choice];
+    if (mode) result.toolConfig = { functionCallingConfig: { mode } };
+  } else if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
     result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(body.tool_choice.function.name)] } };
   }
   if (toolNameMap.size) result._toolNameMap = toolNameMap;

@@ -23,11 +23,18 @@ import {
  * Robustness (sibling #1336 review): inputs where main produced no throw / no
  * new terminal must still do so — only the known string `"error"` finish drives
  * the new Claude/Gemini terminals.
+ *
+ * Exact-value policy (#1323 CTO review): assert mapped stop/finish reasons,
+ * error type + message text, and which content/candidate slot holds each block.
  */
 
 const CHAT = FORMATS.OPENAI;
 const CLAUDE = FORMATS.CLAUDE;
 const GEMINI = FORMATS.GEMINI;
+
+/** Must match DEFAULT_UPSTREAM_ABORT_MESSAGE in openai-to-claude-json.js. */
+const DEFAULT_CLAUDE_ABORT_MESSAGE =
+  "Upstream aborted the response (malformed function call or empty candidate)";
 
 const completion = (finish_reason, message, extra = {}) => ({
   id: "chat-1330",
@@ -46,52 +53,85 @@ const nonstream = (target, finish, message = textMessage(), extra = {}) =>
 const claudeDirect = (body) => translateOpenAIToClaudeIfNeeded(body, CLAUDE);
 const geminiDirect = (body) => projectCompletionToClientFormat(body, GEMINI);
 
+const expectClaudeMessage = (out, { stop_reason, text, usage = {
+  input_tokens: 1,
+  output_tokens: 1,
+} }) => {
+  expect(out.type).toBe("message");
+  expect(out.role).toBe(ROLE.ASSISTANT);
+  expect(out.model).toBe("m");
+  expect(out.stop_reason).toBe(stop_reason);
+  expect(out.stop_sequence).toBeNull();
+  expect(out.content).toEqual([{ type: "text", text }]);
+  expect(out.content).toHaveLength(1);
+  expect(out.content[0]).toEqual({ type: "text", text });
+  expect(out.usage).toEqual(usage);
+  expect(String(out.id).startsWith("msg_")).toBe(true);
+};
+
+const expectGeminiCandidate = (wrappedOrBare, { finishReason, text }) => {
+  const response = wrappedOrBare.response ?? wrappedOrBare;
+  expect(response.candidates).toHaveLength(1);
+  expect(response.candidates[0]).toEqual({
+    content: { role: GEMINI_ROLE.MODEL, parts: [{ text }] },
+    finishReason,
+    index: 0,
+  });
+  expect(response.candidates[0].content.parts[0].text).toBe(text);
+  expect(response.candidates[0].finishReason).toBe(finishReason);
+};
+
+const expectClaudeErrorTerminal = (out, message) => {
+  expect(out).toEqual({
+    type: "error",
+    error: { type: "api_error", message },
+  });
+  expect(out.stop_reason).toBeUndefined();
+};
+
 describe("#1330 Chat JSON error finish → Claude/Gemini terminals", () => {
   it("maps non-stream error finish to a Claude error terminal", () => {
     const out = nonstream(CLAUDE, OPENAI_FINISH.ERROR);
+    // Matrix #1322 assertions:
     expect(out.stop_reason).not.toBe(CLAUDE_STOP.END_TURN);
     expect(out).toMatchObject({ type: "error" });
+    // Exact terminal:
+    expectClaudeErrorTerminal(out, DEFAULT_CLAUDE_ABORT_MESSAGE);
   });
 
   it("maps non-stream error finish to a Gemini abort finishReason", () => {
     const out = nonstream(GEMINI, OPENAI_FINISH.ERROR);
+    // Matrix #1322 assertions:
     expect(out.candidates[0].finishReason).not.toBe(GEMINI_FINISH.STOP);
+    expect(out.candidates[0].finishReason).toBe(GEMINI_FINISH.OTHER);
+    // Exact candidate slot + text:
+    expect(out.candidates).toHaveLength(1);
+    expect(out.candidates[0].content).toEqual({
+      role: GEMINI_ROLE.MODEL,
+      parts: [{ text: "partial" }],
+    });
     expect(out.candidates[0].finishReason).toBe(GEMINI_FINISH.OTHER);
   });
 
   it("keeps non-stream stop and length mappings for Claude and Gemini", () => {
     const claudeStop = nonstream(CLAUDE, OPENAI_FINISH.STOP);
-    expect(claudeStop).toMatchObject({
-      type: "message",
-      stop_reason: CLAUDE_STOP.END_TURN,
-      content: [{ type: "text", text: "partial" }],
-    });
+    expectClaudeMessage(claudeStop, { stop_reason: CLAUDE_STOP.END_TURN, text: "partial" });
 
     const claudeLength = nonstream(CLAUDE, OPENAI_FINISH.LENGTH);
-    expect(claudeLength.stop_reason).toBe(CLAUDE_STOP.MAX_TOKENS);
-    expect(claudeLength.content[0]).toEqual({ type: "text", text: "partial" });
+    expectClaudeMessage(claudeLength, { stop_reason: CLAUDE_STOP.MAX_TOKENS, text: "partial" });
 
     const geminiStop = nonstream(GEMINI, OPENAI_FINISH.STOP);
-    expect(geminiStop.candidates[0]).toMatchObject({
-      finishReason: GEMINI_FINISH.STOP,
-      content: { role: GEMINI_ROLE.MODEL, parts: [{ text: "partial" }] },
-    });
+    expectGeminiCandidate(geminiStop, { finishReason: GEMINI_FINISH.STOP, text: "partial" });
 
     const geminiLength = nonstream(GEMINI, OPENAI_FINISH.LENGTH);
-    expect(geminiLength.candidates[0]).toMatchObject({
-      finishReason: GEMINI_FINISH.MAX_TOKENS,
-      content: { role: GEMINI_ROLE.MODEL, parts: [{ text: "partial" }] },
-    });
+    expectGeminiCandidate(geminiLength, { finishReason: GEMINI_FINISH.MAX_TOKENS, text: "partial" });
   });
 
-  it("uses a non-empty upstream error.message on the Claude error terminal", () => {
+  it("uses the exact upstream error.message on the Claude error terminal", () => {
     const out = claudeDirect(completion(OPENAI_FINISH.ERROR, textMessage("boom"), {
       error: { message: "provider blew up" },
     }));
-    expect(out).toMatchObject({
-      type: "error",
-      error: { type: "api_error", message: "provider blew up" },
-    });
+    expectClaudeErrorTerminal(out, "provider blew up");
   });
 });
 
@@ -102,11 +142,10 @@ describe("#1330 robustness — match main for non-error / malformed inputs", () 
       const body = completion(finish, textMessage("hi"));
       expect(() => {
         const claude = claudeDirect(structuredClone(body));
-        expect(claude).toMatchObject({ type: "message", stop_reason: CLAUDE_STOP.END_TURN });
-        expect(claude.type).not.toBe("error");
+        expectClaudeMessage(claude, { stop_reason: CLAUDE_STOP.END_TURN, text: "hi" });
 
         const gemini = geminiDirect(structuredClone(body));
-        expect(gemini.response.candidates[0].finishReason).toBe(GEMINI_FINISH.STOP);
+        expectGeminiCandidate(gemini, { finishReason: GEMINI_FINISH.STOP, text: "hi" });
       }).not.toThrow();
     },
   );
@@ -117,11 +156,10 @@ describe("#1330 robustness — match main for non-error / malformed inputs", () 
       const body = completion(finish, textMessage("hi"));
       expect(() => {
         const claude = claudeDirect(structuredClone(body));
-        expect(claude).toMatchObject({ type: "message", stop_reason: CLAUDE_STOP.END_TURN });
-        expect(claude.type).not.toBe("error");
+        expectClaudeMessage(claude, { stop_reason: CLAUDE_STOP.END_TURN, text: "hi" });
 
         const gemini = geminiDirect(structuredClone(body));
-        expect(gemini.response.candidates[0].finishReason).toBe(GEMINI_FINISH.STOP);
+        expectGeminiCandidate(gemini, { finishReason: GEMINI_FINISH.STOP, text: "hi" });
       }).not.toThrow();
     },
   );
@@ -132,11 +170,10 @@ describe("#1330 robustness — match main for non-error / malformed inputs", () 
       const body = completion(finish, textMessage("hi"));
       expect(() => {
         const claude = claudeDirect(structuredClone(body));
-        expect(claude).toMatchObject({ type: "message", stop_reason: CLAUDE_STOP.END_TURN });
-        expect(claude.type).not.toBe("error");
+        expectClaudeMessage(claude, { stop_reason: CLAUDE_STOP.END_TURN, text: "hi" });
 
         const gemini = geminiDirect(structuredClone(body));
-        expect(gemini.response.candidates[0].finishReason).toBe(GEMINI_FINISH.STOP);
+        expectGeminiCandidate(gemini, { finishReason: GEMINI_FINISH.STOP, text: "hi" });
       }).not.toThrow();
     },
   );
@@ -155,14 +192,10 @@ describe("#1330 robustness — match main for non-error / malformed inputs", () 
       const body = completion(OPENAI_FINISH.ERROR, textMessage("boom"), { error });
       expect(() => {
         const claude = claudeDirect(structuredClone(body));
-        expect(claude).toMatchObject({
-          type: "error",
-          error: { type: "api_error", message: expect.any(String) },
-        });
-        expect(claude.error.message.length).toBeGreaterThan(0);
+        expectClaudeErrorTerminal(claude, DEFAULT_CLAUDE_ABORT_MESSAGE);
 
         const gemini = geminiDirect(structuredClone(body));
-        expect(gemini.response.candidates[0].finishReason).toBe(GEMINI_FINISH.OTHER);
+        expectGeminiCandidate(gemini, { finishReason: GEMINI_FINISH.OTHER, text: "boom" });
       }).not.toThrow();
     },
   );
@@ -171,18 +204,18 @@ describe("#1330 robustness — match main for non-error / malformed inputs", () 
     const empty = { id: "x", object: "chat.completion", choices: [] };
     const missing = { id: "x", object: "chat.completion" };
     expect(() => {
-      expect(claudeDirect(empty)).toBe(empty);
-      expect(geminiDirect(empty)).toBe(empty);
-      expect(claudeDirect(missing)).toBe(missing);
-      expect(geminiDirect(missing)).toBe(missing);
+      expect(claudeDirect(empty)).toEqual(empty);
+      expect(geminiDirect(empty)).toEqual(empty);
+      expect(claudeDirect(missing)).toEqual(missing);
+      expect(geminiDirect(missing)).toEqual(missing);
     }).not.toThrow();
   });
 
   it("passthroughs choices:[null] without throwing or inventing a terminal", () => {
     const body = { id: "x", object: "chat.completion", choices: [null] };
     expect(() => {
-      expect(claudeDirect(body)).toBe(body);
-      expect(geminiDirect(body)).toBe(body);
+      expect(claudeDirect(body)).toEqual(body);
+      expect(geminiDirect(body)).toEqual(body);
     }).not.toThrow();
   });
 });

@@ -214,17 +214,8 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
     expect(out.status).not.toBe(OPENAI_FINISH.CONTENT_FILTER);
   });
 
-  it("maps non-stream error to failed with a secret-free error object", () => {
-    const out = project(
-      OPENAI_FINISH.ERROR,
-      { role: ROLE.ASSISTANT, content: "partial" },
-      { error: { message: CREDENTIAL_UPSTREAM } },
-    );
-    expect(out.status).toBe("failed");
-    expect(out).not.toHaveProperty("incomplete_details");
-    expect(out.status).not.toBe(OPENAI_FINISH.ERROR);
-    assertFailedErrorExact(out.error, JSON.stringify(out), CREDENTIAL_REDACTED);
-  });
+  // Non-stream finish_reason "error" → status "failed" is unreachable from live
+  // handlers (coherence 502 + #1348 SSE→JSON 502). Covered only on the stream path.
 
   it("maps non-stream stop and tool_calls to completed", () => {
     const stop = project(OPENAI_FINISH.STOP, { role: ROLE.ASSISTANT, content: "ok" });
@@ -280,7 +271,8 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
     expect(terminalEvents(events)[0].data.response).not.toHaveProperty("incomplete_details");
   });
 
-  it("tolerates null, string, and incomplete upstream error objects without throwing", () => {
+  it("tolerates null, string, and incomplete upstream error objects on the stream failed path", () => {
+    // Non-stream projector never sees hub finish_reason "error" (handler 502).
     const cases = [
       { error: null, message: FAILED_FALLBACK_MESSAGE },
       { error: "plain-string-error", message: "plain-string-error" },
@@ -290,17 +282,6 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       { error: { message: 12 }, message: FAILED_FALLBACK_MESSAGE },
     ];
     for (const { error, message } of cases) {
-      let out;
-      expect(() => {
-        out = project(
-          OPENAI_FINISH.ERROR,
-          { role: ROLE.ASSISTANT, content: "partial" },
-          { error },
-        );
-      }).not.toThrow();
-      expect(out.status).toBe("failed");
-      assertFailedErrorExact(out.error, JSON.stringify(out), message);
-
       let events;
       expect(() => {
         events = streamTo([textChunk("boom", OPENAI_FINISH.ERROR, { error }), null]);
@@ -387,18 +368,19 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
     expect(chunks[0].choices[0].delta.content).toBe("[Error] 5");
     expect(chunks[0].choices[0].finish_reason).toBe(OPENAI_FINISH.STOP);
 
-    // Chat→Responses failed path: primitive upstream error is not forwarded as-is.
-    let failed;
+    // Chat→Responses translator: primitive chunk.error is wrapped to { message: "5" }
+    // (live SSE with top-level error is short-circuited in stream.js, not edited here).
+    let events;
     expect(() => {
-      failed = project(
-        OPENAI_FINISH.ERROR,
-        { role: ROLE.ASSISTANT, content: "partial" },
-        { error: 5 },
-      );
+      events = streamTo([textChunk("boom", OPENAI_FINISH.ERROR, { error: 5 }), null]);
     }).not.toThrow();
-    expect(failed.status).toBe("failed");
-    expect(failed.error).toEqual(FAILED_ERROR);
-    assertFailedErrorExact(failed.error, JSON.stringify(failed));
+    expect(terminalSequence(events)).toEqual(["response.failed"]);
+    expect(terminalEvents(events)[0].data.response.status).toBe("failed");
+    assertFailedErrorExact(
+      terminalEvents(events)[0].data.response.error,
+      JSON.stringify(terminalEvents(events)[0].data.response),
+      "5",
+    );
   });
 
   it("drops primitive incomplete_details (true) instead of forwarding it", () => {
@@ -521,7 +503,7 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
     }
   });
 
-  it("uses fallback failed.error for empty upstream error message/code shapes", () => {
+  it("uses fallback failed.error for empty upstream error message/code shapes on stream", () => {
     const cases = [
       { error: {}, content: "[Error] {}" },
       { error: { message: "" }, content: '[Error] {"message":""}' },
@@ -543,15 +525,11 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
       expect(chunks[0].choices[0].delta.content).toBe(content);
       expect(chunks[0].choices[0].finish_reason).toBe(OPENAI_FINISH.STOP);
 
-      // Chat→Responses failed path never forwards empty shapes; exact fallback object.
-      const failed = project(
-        OPENAI_FINISH.ERROR,
-        { role: ROLE.ASSISTANT, content: "partial" },
-        { error },
-      );
-      expect(failed.status).toBe("failed");
-      expect(failed).not.toHaveProperty("incomplete_details");
-      expect(failed.error).toEqual(FAILED_ERROR);
+      // Chat→Responses stream failed path never forwards empty shapes; exact fallback.
+      const events = streamTo([textChunk("boom", OPENAI_FINISH.ERROR, { error }), null]);
+      expect(terminalSequence(events)).toEqual(["response.failed"]);
+      expect(terminalEvents(events)[0].data.response.status).toBe("failed");
+      expect(terminalEvents(events)[0].data.response.error).toEqual(FAILED_ERROR);
     }
   });
 

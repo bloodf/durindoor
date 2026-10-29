@@ -157,6 +157,11 @@ export function buildResponsesFailedError(upstreamMessage) {
  * Chat Completions finish_reason → OpenAI Responses terminal fields.
  * Shared by non-stream projection and the Chat→Responses stream flush. (#1331)
  *
+ * `error` → failed is for the stream flush only: live non-stream handlers
+ * 502 on hub `finish_reason: "error"` before projection (coherence gate +
+ * #1348 SSE→JSON). The projector remaps that finish away and never calls
+ * this case.
+ *
  * Known string finishes get real Responses statuses. Unknown truthy values
  * (including non-string primitives like `5`) keep main's non-stream
  * `status: finishReason` passthrough; stream still emits `response.completed`

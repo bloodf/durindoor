@@ -299,13 +299,18 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
     });
   }
 
-  const finishReason = getChoice(completion).finish_reason || OPENAI_FINISH.STOP;
-  // Real Responses statuses only: incomplete / failed / completed — never the
-  // Chat finish_reason literal ("length", "content_filter", "error"). (#1331)
-  // Completed matches main's field set (no synthetic `error: null`).
+  const rawFinish = getChoice(completion).finish_reason || OPENAI_FINISH.STOP;
+  // Hub finish_reason "error" never reaches this projector from live handlers:
+  // non-stream isCoherentOpenAICompletion and SSE→JSON (#1348) both 502 first.
+  // Streaming Chat→Responses maps error → response.failed in sendTerminal (#1331).
+  const unreachableErrorFinish = rawFinish === OPENAI_FINISH.ERROR;
+  const finishReason = unreachableErrorFinish ? OPENAI_FINISH.STOP : rawFinish;
+  // Real Responses statuses only for reachable finishes: incomplete / completed —
+  // never the Chat literals "length" / "content_filter". Completed matches main's
+  // field set (no synthetic `error: null`).
   const terminal = responsesTerminalFromChatFinish(
     finishReason,
-    readUpstreamErrorMessage(completion?.error)
+    unreachableErrorFinish ? undefined : readUpstreamErrorMessage(completion?.error)
   );
   const incompleteDetails = responsesIncompleteDetailsOrOmit(terminal.incomplete_details);
   return {

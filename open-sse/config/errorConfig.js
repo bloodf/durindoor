@@ -85,6 +85,11 @@ export const EMPTY_CONTENT_COOLDOWN_MS = 7 * 60 * 1000;
 // Envoy emits this transport-level marker when its retry buffer overflows.
 export const REQUEST_REPLAY_BUFFER_ERROR = "exceeded request buffer limit while retrying upstream";
 
+// Shared 502 message when a non-stream (or SSE→JSON) OpenAI completion ends with
+// finish_reason "error" / otherwise fails the coherence gate (#1330 / #1089 Option A).
+export const INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE =
+  "Provider returned an incoherent non-streaming response";
+
 // Confirmed Kiro credit exhaustion (monthly quota, `resetAt` from GetUsageLimits) can be
 // weeks away. Capping it at the generic 30-min window would re-probe a known-exhausted
 // account every 30 minutes; cap it at a low-frequency daily probe so the account is

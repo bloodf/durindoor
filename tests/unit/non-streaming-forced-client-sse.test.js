@@ -10,6 +10,7 @@ import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJso
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { getDefaultModel } from "../../open-sse/config/providerModels.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
+import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../open-sse/config/errorConfig.js";
 import { REASONING_HEADER } from "../../open-sse/config/runtimeConfig.js";
 import { CLAUDE_BLOCK } from "../../open-sse/translator/schema/blocks.js";
 import { CLAUDE_STOP, GEMINI_FINISH, OPENAI_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
@@ -335,11 +336,9 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
 
     const result = await handleNonStreamingResponse(options);
 
-    expect(result).toMatchObject({
-      success: false,
-      status: 502,
-      error: "Provider returned an incoherent non-streaming response",
-    });
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(502);
+    expect(result.error).toBe(INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
     expect(options.trackDone).toHaveBeenCalledOnce();
   });
 
@@ -354,11 +353,9 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
         streamToClient: false,
       }));
 
-      expect(malformed).toMatchObject({
-        success: false,
-        status: 502,
-        error: "Provider returned an incoherent non-streaming response",
-      });
+      expect(malformed.success).toBe(false);
+      expect(malformed.status).toBe(502);
+      expect(malformed.error).toBe(INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
       expect(normalizeResponse).not.toHaveBeenCalled();
 
       const valid = await handleNonStreamingResponse(baseOptions({

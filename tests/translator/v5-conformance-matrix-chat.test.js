@@ -1,9 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import "./registerAll.js";
 import { initState, translateRequest, translateResponse } from "../../open-sse/translator/index.js";
-import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
+import {
+  handleNonStreamingResponse,
+  translateNonStreamingResponse,
+} from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { CLAUDE_STOP, GEMINI_FINISH, GEMINI_ROLE, OPENAI_BLOCK, OPENAI_FINISH, ROLE } from "../../open-sse/translator/schema/index.js";
+import { HTTP_STATUS } from "../../open-sse/config/runtimeConfig.js";
+import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../open-sse/config/errorConfig.js";
+
+vi.mock("@/lib/usageDb.js", () => ({
+  appendRequestLog: vi.fn(() => Promise.resolve()),
+  saveRequestDetail: vi.fn(() => Promise.resolve()),
+  saveRequestUsage: vi.fn(() => Promise.resolve()),
+  saveUsageStats: vi.fn(() => Promise.resolve()),
+}));
 
 const CHAT = FORMATS.OPENAI;
 const CLAUDE = FORMATS.CLAUDE;
@@ -279,18 +291,44 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out.output[0].content[0].text).toBe("partial");
   });
 
-  // #1089 failing: #1330 Chat JSON error finish collapses to Claude end_turn instead of an error terminal.
-  it.skip("maps non-stream error finish to a Claude error terminal", () => {
-    const out = nonstream(CLAUDE, OPENAI_FINISH.ERROR);
-    expect(out.stop_reason).not.toBe(CLAUDE_STOP.END_TURN);
-    expect(out).toMatchObject({ type: "error" });
-  });
+  // #1330 / #1089 Option A: non-stream error finish never reaches Claude/Gemini
+  // translators — handleNonStreamingResponse returns the shared incoherent 502.
+  it.each([
+    ["Claude", CLAUDE],
+    ["Gemini", GEMINI],
+  ])("returns 502 for non-stream error finish for a %s client", async (_label, sourceFormat) => {
+    const onRequestSuccess = vi.fn(() => Promise.resolve());
+    const appendLog = vi.fn();
+    const providerBody = completion(OPENAI_FINISH.ERROR, textMessage());
+    const result = await handleNonStreamingResponse({
+      providerResponse: {
+        headers: new Map([["content-type", "application/json"]]),
+        text: () => Promise.resolve(JSON.stringify(providerBody)),
+        status: 200,
+        statusText: "OK",
+      },
+      provider: "openai",
+      model: "m",
+      sourceFormat,
+      targetFormat: CHAT,
+      body: { model: "m", messages: [{ role: ROLE.USER, content: "hi" }] },
+      stream: false,
+      streamToClient: false,
+      requestStartTime: Date.now(),
+      reqLogger: { logProviderResponse: vi.fn(), logConvertedResponse: vi.fn() },
+      toolNameMap: null,
+      trackDone: vi.fn(),
+      appendLog,
+      onRequestSuccess,
+      terminalProvenance: "upstream",
+    });
 
-  // #1089 failing: #1330 Chat JSON error finish collapses to Gemini STOP instead of an abort reason.
-  it.skip("maps non-stream error finish to a Gemini abort finishReason", () => {
-    const out = nonstream(GEMINI, OPENAI_FINISH.ERROR);
-    expect(out.candidates[0].finishReason).not.toBe(GEMINI_FINISH.STOP);
-    expect(out.candidates[0].finishReason).toBe(GEMINI_FINISH.OTHER);
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(HTTP_STATUS.BAD_GATEWAY);
+    expect(result.error).toBe(INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
+    expect(result.response.status).toBe(HTTP_STATUS.BAD_GATEWAY);
+    expect(onRequestSuccess).not.toHaveBeenCalled();
+    expect(appendLog.mock.calls).toEqual([[{ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` }]]);
   });
 
   it("emits Claude stream length as message_delta max_tokens", () => {

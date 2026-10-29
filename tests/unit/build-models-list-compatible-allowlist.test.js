@@ -207,7 +207,10 @@ describe("buildModelsList — compatible provider public allowlist", () => {
       videoInput: true,
       reasoning: false,
     });
-    expect(models.some((model) => model.id === "kimi/kimi-k2.7-code")).toBe(false);
+    // Live metadata merges onto the static Platform catalog; k2.7-code is now a static entry.
+    expect(models.find((model) => model.id === "kimi/kimi-k2.7-code")?.capabilities).toMatchObject({
+      contextWindow: 262_144,
+    });
     expect(global.fetch).toHaveBeenCalledWith(
       "https://api.moonshot.ai/v1/models",
       expect.any(Object),

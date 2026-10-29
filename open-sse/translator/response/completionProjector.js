@@ -28,6 +28,12 @@ function getToolCalls(completion) {
   return Array.isArray(calls) ? calls : [];
 }
 
+/**
+ * Map OpenAI Chat `finish_reason` onto Gemini `finishReason` for non-stream
+ * projection. Hub `finish_reason: "error"` never reaches this projector from
+ * live handlers: non-stream coherence and SSE→JSON both 502 first (#1330).
+ * Streaming Chat→Gemini / antigravity keep their own ERROR→OTHER maps.
+ */
 function openAIToGeminiFinish(reason) {
   switch (reason) {
     case OPENAI_FINISH.LENGTH:return GEMINI_FINISH.MAX_TOKENS;

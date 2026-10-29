@@ -1,7 +1,8 @@
 // Concern #6: finish_reason / stop_reason mapping.
 // One entry per direction; switch by special format, default handles common providers.
 import { OPENAI_FINISH, CLAUDE_STOP, GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../schema/finishReasons.js";
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CLAUDE_STOP_VALUES = new Set(Object.values(CLAUDE_STOP));
 
@@ -103,4 +104,122 @@ export function fromOpenAIFinish(reason, format) {
     default:
       return reason;
   }
+}
+
+const RESPONSES_FAILED_FALLBACK_MESSAGE = "Upstream aborted the response (finish_reason error)";
+
+/**
+ * Null-safe plain-object check. Repo `isObject` treats `null` as object
+ * (typeof semantics); callers that read `.message` must reject null/arrays. (#1331)
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isUpstreamErrorObject(value) {
+  return value != null && isObject(value) && !Array.isArray(value);
+}
+
+/**
+ * Pull a usable upstream error string from Chat error payloads.
+ * Accepts a string, or a plain object's `.message`; null / missing / non-string
+ * message fields yield undefined so the failed terminal can use its fallback. (#1331)
+ * @param {unknown} error
+ * @returns {string|undefined}
+ */
+export function readUpstreamErrorMessage(error) {
+  if (isString(error) && error.trim()) return error;
+  if (isUpstreamErrorObject(error) && isString(error.message) && error.message.trim()) {
+    return error.message;
+  }
+  return undefined;
+}
+
+/**
+ * Build a Responses `error` object for Chat finish_reason error.
+ * `code` and `message` are always non-empty; message goes through
+ * sanitizeErrorMessage so credential-like upstream text is redacted. (#1331)
+ *
+ * @param {unknown} [upstreamMessage]
+ * @returns {{ type: string, code: string, message: string }}
+ */
+export function buildResponsesFailedError(upstreamMessage) {
+  const raw = isString(upstreamMessage) && upstreamMessage.trim() ?
+    upstreamMessage :
+    RESPONSES_FAILED_FALLBACK_MESSAGE;
+  const message = sanitizeErrorMessage(raw);
+  return {
+    type: "server_error",
+    code: "server_error",
+    message: message || RESPONSES_FAILED_FALLBACK_MESSAGE
+  };
+}
+
+/**
+ * Chat Completions finish_reason → OpenAI Responses terminal fields.
+ * Shared by non-stream projection and the Chat→Responses stream flush. (#1331)
+ *
+ * `error` → failed is for the stream flush only: live non-stream handlers
+ * 502 on hub `finish_reason: "error"` before projection (coherence gate +
+ * #1348 SSE→JSON). The projector remaps that finish away and never calls
+ * this case.
+ *
+ * Known string finishes get real Responses statuses. Unknown truthy values
+ * (including non-string primitives like `5`) keep main's non-stream
+ * `status: finishReason` passthrough; stream still emits `response.completed`
+ * with canonical `status: "completed"` (see sendTerminal).
+ *
+ * @param {unknown} finishReason
+ * @param {unknown} [upstreamMessage] optional upstream error text (sanitized on failed)
+ * @returns {{ status: unknown, error: object|null, incomplete_details?: { reason: string }, event: string }}
+ */
+export function responsesTerminalFromChatFinish(finishReason, upstreamMessage) {
+  switch (finishReason) {
+    case OPENAI_FINISH.LENGTH:
+      return {
+        status: "incomplete",
+        error: null,
+        incomplete_details: { reason: "max_output_tokens" },
+        event: "response.incomplete"
+      };
+    case OPENAI_FINISH.CONTENT_FILTER:
+      return {
+        status: "incomplete",
+        error: null,
+        incomplete_details: { reason: "content_filter" },
+        event: "response.incomplete"
+      };
+    case OPENAI_FINISH.ERROR:
+      return {
+        status: "failed",
+        error: buildResponsesFailedError(upstreamMessage),
+        event: "response.failed"
+      };
+    case OPENAI_FINISH.STOP:
+    case OPENAI_FINISH.TOOL_CALLS:
+      return {
+        status: "completed",
+        error: null,
+        event: "response.completed"
+      };
+    default:
+      // Main non-stream: `status: finishReason` for any other truthy value.
+      // Falsy / unset → completed (same as `finish_reason || "stop"` on main).
+      if (finishReason) {
+        return {
+          status: finishReason,
+          error: null,
+          event: "response.completed"
+        };
+      }
+      return {
+        status: "completed",
+        error: null,
+        event: "response.completed"
+      };
+  }
+}
+
+/** Only emit incomplete_details when it is a plain object with a string reason. */
+export function responsesIncompleteDetailsOrOmit(details) {
+  if (!isUpstreamErrorObject(details)) return null;
+  return isString(details.reason) && details.reason.trim() ? { reason: details.reason } : null;
 }

@@ -249,8 +249,8 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out).not.toHaveProperty("choices");
   });
 
-  // #1089 failing: #1331 Chat→Responses non-stream copies finish_reason "length" into status instead of incomplete/max_output_tokens.
-  it.skip("maps non-stream length to Responses incomplete with max_output_tokens", () => {
+  // #1089 / #1331: Chat→Responses non-stream length → incomplete/max_output_tokens.
+  it("maps non-stream length to Responses incomplete with max_output_tokens", () => {
     const out = nonstream(RESPONSES, OPENAI_FINISH.LENGTH);
     expect(out.status).toBe("incomplete");
     expect(out.incomplete_details).toEqual({ reason: "max_output_tokens" });
@@ -263,15 +263,16 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out.candidates[0].content.parts[0].text).toBe("partial");
   });
 
-  // #1089 failing: #1331 Chat→Responses non-stream copies finish_reason "content_filter" into status instead of incomplete/content_filter.
-  it.skip("maps non-stream content_filter to Responses incomplete with content_filter", () => {
+  // #1089 / #1331: Chat→Responses non-stream content_filter → incomplete/content_filter.
+  it("maps non-stream content_filter to Responses incomplete with content_filter", () => {
     const out = nonstream(RESPONSES, OPENAI_FINISH.CONTENT_FILTER);
     expect(out.status).toBe("incomplete");
     expect(out.incomplete_details).toEqual({ reason: "content_filter" });
     expect(out.output[0].content[0].text).toBe("partial");
   });
 
-  // #1089 failing: #1331 Chat→Responses non-stream copies finish_reason "error" into status instead of failed with an error object.
+  // #1089 / #1331: non-stream error → status "failed" is unreachable from live handlers.
+  // isCoherentOpenAICompletion and SSE→JSON (#1348) both 502 before projection.
   it.skip("maps non-stream error finish to Responses failed with error object", () => {
     const out = nonstream(RESPONSES, OPENAI_FINISH.ERROR);
     expect(out.status).toBe("failed");
@@ -347,8 +348,8 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out.response.candidates[0].content.parts[0].text).toBe("boom");
   });
 
-  // #1089 failing: #1331 Chat→Responses stream flush reports response.completed after finish_reason length.
-  it.skip("emits Responses stream incomplete for Chat length finish", () => {
+  // #1089 / #1331: Chat→Responses stream length → response.incomplete.
+  it("emits Responses stream incomplete for Chat length finish", () => {
     const events = streamTo(RESPONSES, [
       { id: "x", choices: [{ index: 0, delta: { content: "partial" }, finish_reason: OPENAI_FINISH.LENGTH }] },
       null,
@@ -358,8 +359,8 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(events.some((event) => event.event === "response.completed")).toBe(false);
   });
 
-  // #1089 failing: #1331 Chat→Responses stream flush never emits response.failed for finish_reason error.
-  it.skip("emits Responses stream failed for Chat error finish", () => {
+  // #1089 / #1331: Chat→Responses stream error → response.failed.
+  it("emits Responses stream failed for Chat error finish", () => {
     const events = streamTo(RESPONSES, [
       { id: "x", choices: [{ index: 0, delta: { content: "boom" }, finish_reason: OPENAI_FINISH.ERROR }] },
       null,

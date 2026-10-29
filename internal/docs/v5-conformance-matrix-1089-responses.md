@@ -38,7 +38,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Test | Reason |
 |---|---|
 | `does not pair function_call_output across assistant turns` | Translator pairs historical function outputs by call ID across assistant turns (product bug; Refs #1335). |
-| `clamps overlong tool names to 64 chars for Chat with round-trip map` | Responses→Chat direct route skips `normalizeOpenAIToolNames`, so names stay longer than 64. |
-| `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` | Non-stream Responses upstream bodies are not projected into Gemini client shape. |
-| `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` | String numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers. |
-| `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` | Malformed tool schemas are forwarded instead of rejected with a predictable 400. |
+| `clamps overlong tool names to 64 chars for Chat with round-trip map` | Responses→Chat direct route skips `normalizeOpenAIToolNames`, so names stay longer than 64 (Refs #1345). |
+| `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` | Non-stream Responses upstream bodies are not projected into Gemini client shape (Refs #1346). |
+| `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` | String numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers (Refs #1334). |
+| `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` | Malformed tool schemas are forwarded instead of rejected with a predictable 400 (Refs #1334). |

@@ -349,7 +349,7 @@ describe("#1089 Responses client conformance", () => {
     }
   });
 
-  // #1089 failing: Responses→Chat direct route skips normalizeOpenAIToolNames, so names stay >64.
+  // #1089 failing: Responses→Chat direct route skips normalizeOpenAIToolNames, so names stay >64. Refs #1345
   it.skip("clamps overlong tool names to 64 chars for Chat with round-trip map", () => {
     const out = request({
       input: "hi",
@@ -461,7 +461,7 @@ describe("#1089 Responses client conformance", () => {
     });
   });
 
-  // #1089 failing: non-stream Responses upstream bodies are not projected into Gemini client shape.
+  // #1089 failing: non-stream Responses upstream bodies are not projected into Gemini client shape. Refs #1346
   it.skip("projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call", () => {
     const out = nonstreamTo({
       id: "r",
@@ -555,7 +555,7 @@ describe("#1089 Responses client conformance", () => {
     }, chat), chat)).toEqual({ type: "object", properties: {} });
   });
 
-  // #1089 failing: string numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers.
+  // #1089 failing: string numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers. Refs #1334
   it.skip("coerces string numeric schema constraints to integers for Chat, Claude, and Gemini", () => {
     const parameters = {
       type: "object",
@@ -573,7 +573,7 @@ describe("#1089 Responses client conformance", () => {
     }
   });
 
-  // #1089 failing: malformed tool schemas are forwarded instead of rejected with a predictable 400.
+  // #1089 failing: malformed tool schemas are forwarded instead of rejected with a predictable 400. Refs #1334
   it.skip("rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini", () => {
     const body = {
       input: "hi",

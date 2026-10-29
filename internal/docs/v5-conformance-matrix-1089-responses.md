@@ -1,6 +1,6 @@
 # #1089 OpenAI Responses client conformance matrix
 
-Counts: already-present 21; failing 6; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 22; failing 5; unsupported-by-contract 0; upstream-pending 0.
 
 Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-responses.test.js`.
 
@@ -19,7 +19,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Request | `input_image` tool-result media | OpenAI Chat, Claude | already-present | `lifts input_image tool-result media beside text for Chat and Claude` |
 | Request | Unsupported tool-result file/audio media | OpenAI Chat, Claude, Gemini | already-present | `rejects unsupported tool-result file and audio media with HTTP 400` |
 | Request | 64-char tool-name clamp + original round-trip | Claude, Gemini | already-present | `clamps overlong tool names to 64 chars for Claude and Gemini with round-trip map` |
-| Request | 64-char tool-name clamp + original round-trip | OpenAI Chat | failing | `clamps overlong tool names to 64 chars for Chat with round-trip map` |
+| Request | 64-char tool-name clamp + original round-trip | OpenAI Chat | already-present | `clamps overlong tool names to 64 chars for Chat with round-trip map` |
 | Stream | `response.incomplete` terminal | OpenAI Chat, Claude, Gemini | already-present | `translates stream response.incomplete to length/max_tokens terminals` |
 | Stream | Incomplete with tool call in progress | OpenAI Chat, Claude, Gemini | already-present | `translates stream incomplete with a tool call in progress for Chat, Claude, and Gemini` |
 | Stream | `response.failed` terminal | OpenAI Chat, Claude, Gemini | already-present | `translates stream response.failed error text for Chat, Claude, and Gemini` |
@@ -39,7 +39,6 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Test | Reason |
 |---|---|
 | `does not pair function_call_output across assistant turns` | Translator pairs historical function outputs by call ID across assistant turns (product bug; Refs #1335). |
-| `clamps overlong tool names to 64 chars for Chat with round-trip map` | Responses→Chat direct route skips `normalizeOpenAIToolNames`, so names stay longer than 64 (Refs #1345). |
 | `projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call` | Non-stream Responses upstream bodies are not projected into Gemini client shape (Refs #1346). |
 | `normalizes Claude free-form parameters {} to a typed empty object schema` | Responses→Claude leaves free-form `parameters:{}` as `input_schema:{}`; Anthropic requires `type:"object"` (Refs #1350). |
 | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` | String numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers (Refs #1334). |

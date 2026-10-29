@@ -54,18 +54,21 @@ export const CLAUDE_API_HEADERS = {
   "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
 };
 
-// Full Claude CLI fingerprint from a live Claude Code 2.1.312 `claude -p`
-// request (ANTHROPIC_BASE_URL → local sink; dummy API key). Diffed against the
-// same capture for 2.1.282. Static stable values (UA shape, beta flags,
-// package/runtime versions, runtime, language, retry, timeout, API version,
-// dangerous browser header, x-app) are pinned to the 2.1.312 wire literal. OS
-// and architecture use the live host-derived Stainless mappers — the capture
-// ran on Linux x64, so other hosts will report different values while every
-// other field stays exact. The optional helper-method header is omitted
-// because the 2.1.312 request did not include it.
+// Full Claude CLI fingerprint from a live Claude Code 2.1.312 OAuth-mode
+// `claude -p` request (ANTHROPIC_BASE_URL → local sink; dummy
+// CLAUDE_CODE_OAUTH_TOKEN; Authorization: Bearer on the wire). Diffed against
+// the same OAuth capture for 2.1.282. Static stable values (UA shape, beta
+// flags, package/runtime versions, runtime, language, retry, timeout, API
+// version, dangerous browser header, x-app) are pinned to the 2.1.312 OAuth
+// wire literal. `oauth-2025-04-20` is present as the second beta on that wire
+// but is intentionally excluded here — the claude usage/OAuth helpers append
+// it for auth-mode traffic — so this pin is the capability list in wire order.
+// OS and architecture use the live host-derived Stainless mappers. The
+// optional helper-method header is omitted because the 2.1.312 OAuth request
+// did not include it. An earlier API-key capture is not used for this pin.
 export const CLAUDE_CLI_SPOOF_HEADERS = {
   "Anthropic-Version": ANTHROPIC_API_VERSION,
-  "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24",
+  "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11",
   "Anthropic-Dangerous-Direct-Browser-Access": "true",
   "User-Agent": `claude-cli/${CLAUDE_CLI_VERSION} (external, sdk-cli)`,
   "X-App": "cli",
@@ -83,8 +86,9 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
 // (port of decolua/9router#3797). Derived from the fork's pinned Claude Code
 // fingerprint above (CLAUDE_CLI_SPOOF_HEADERS); effort-2025-11-24 is a
 // heavy-agent flag and is only sent for opus/sonnet model ids — cheaper models
-// don't need it. `oauth-2025-04-20` is intentionally excluded here: it is an
-// auth-mode flag appended by the claude usage path, not a request capability.
+// don't need it. `extended-cache-ttl-2025-04-11` stays after effort on the wire,
+// so it is applied as a shared tail. `oauth-2025-04-20` is intentionally
+// excluded here: it is an auth-mode flag appended by the claude usage path.
 const ANTHROPIC_BETA_BASE = [
   "claude-code-20250219",
   "interleaved-thinking-2025-05-14",
@@ -95,6 +99,7 @@ const ANTHROPIC_BETA_BASE = [
   "advanced-tool-use-2025-11-20"
 ];
 const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
+const ANTHROPIC_BETA_TAIL = ["extended-cache-ttl-2025-04-11"];
 
 /**
  * Select the Anthropic-Beta header value for a model id.
@@ -103,6 +108,7 @@ const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
 export function selectAnthropicBeta(model = "") {
   const flags = [...ANTHROPIC_BETA_BASE];
   if (/^claude-(opus|sonnet)/.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
+  flags.push(...ANTHROPIC_BETA_TAIL);
   return flags.join(",");
 }
 

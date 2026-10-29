@@ -69,7 +69,7 @@ describe("Claude usage", () => {
       "X-App": "cli",
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta":
-        "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,oauth-2025-04-20",
+        "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,oauth-2025-04-20",
       // cedar_ember grant eligibility requires `(external, cli)`, not sdk-cli.
       "User-Agent": "claude-cli/2.1.312 (external, cli)",
       "X-Stainless-Retry-Count": "0",

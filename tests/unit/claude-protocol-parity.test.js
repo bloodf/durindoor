@@ -25,7 +25,7 @@ describe("direct Claude protocol parity", () => {
     expect(claude.transport.headers).toBe(CLAUDE_CLI_SPOOF_HEADERS);
     expect(CLAUDE_CLI_SPOOF_HEADERS).toEqual({
       "Anthropic-Version": "2023-06-01",
-      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24",
+      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11",
       "Anthropic-Dangerous-Direct-Browser-Access": "true",
       "User-Agent": "claude-cli/2.1.312 (external, sdk-cli)",
       "X-App": "cli",

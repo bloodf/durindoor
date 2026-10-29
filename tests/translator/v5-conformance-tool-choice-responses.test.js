@@ -175,4 +175,38 @@ describe("#1329 Chat tool_choice to Responses", () => {
     expect(out.tools.length).toBeGreaterThan(0);
     expect(out.tool_choice).toBeUndefined();
   });
+
+  it("drops tool_choice null when tools are present without throwing", () => {
+    expect(() => {
+      const out = toResponses(chat({ tool_choice: null }));
+      expect(out.tools.length).toBeGreaterThan(0);
+      expect(out.tool_choice).toBeUndefined();
+    }).not.toThrow();
+  });
+
+  it("drops tool_choice null when no tools are present without throwing", () => {
+    expect(() => {
+      const out = toResponses({
+        messages: [{ role: ROLE.USER, content: "Search" }],
+        tool_choice: null,
+      });
+      expect(out.tools).toBeUndefined();
+      expect(out.tool_choice).toBeUndefined();
+    }).not.toThrow();
+  });
+
+  // Custom declaration lowering is follow-up #1344; this PR must not change it.
+  it("passes Chat custom tool declarations through unchanged", () => {
+    const customTool = {
+      type: "custom",
+      custom: { name: "code_exec", description: "Run code", format: { type: "text" } },
+    };
+    const out = toResponses({
+      messages: [{ role: ROLE.USER, content: "Run" }],
+      tools: [customTool],
+      tool_choice: "auto",
+    });
+    expect(out.tools).toEqual([customTool]);
+    expect(out.tool_choice).toBe("auto");
+  });
 });

@@ -118,6 +118,9 @@ function convertChatAllowedToolEntry(entry) {
  * (main never forwarded these; OpenAI rejects an empty forced-choice list).
  */
 function convertChatToolChoiceToResponses(choice) {
+  // isObject(null) is true in this codebase; null must drop like main, not throw
+  // on choice.type. Arrays are not a Chat tool_choice shape either.
+  if (choice == null || Array.isArray(choice)) return undefined;
   if (!isObject(choice)) return choice;
 
   if (choice.type === OPENAI_BLOCK.FUNCTION) {
@@ -772,7 +775,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // with no tools. Blank function/custom names and empty allowed_tools lists
   // also drop (convertChatToolChoiceToResponses returns undefined).
   if (
-    body.tool_choice !== undefined &&
+    body.tool_choice != null &&
     Array.isArray(result.tools) &&
     result.tools.length > 0
   ) {

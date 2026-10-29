@@ -68,7 +68,8 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
     };
   }
 
-  // Passthrough: the provider's own frames reach the client unchanged.
+  // Passthrough: ordinary frames are forwarded as-is; recognized error envelopes
+  // are sanitized and re-serialized before they reach the client.
   return {
     stream: createPassthroughStreamWithLogger(provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, targetFormat, onCoherentTerminal, providerBody, claudeCloaked, credentials),
     emittedFormat: targetFormat

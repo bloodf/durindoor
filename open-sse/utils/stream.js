@@ -64,9 +64,11 @@ function normalizeStreamError(error, secrets = []) {
 /**
  * Redact the selected credential values from a PUBLIC error envelope in place.
  *
- * Passthrough mode forwards the upstream frame verbatim, so message/type/code
- * reach the client unredacted. `streamErrorPayload` is a separate copy produced
- * by `extractStreamErrorPayload`, so the internal upstreamError stays raw.
+ * Recognized failure envelopes (`error`, nested `response.failed`, string
+ * errors) are sanitized and re-serialized before they leave the stream.
+ * Ordinary non-error frames are left alone. `streamErrorPayload` is a separate
+ * copy produced by `extractStreamErrorPayload`, so the internal upstreamError
+ * stays raw.
  */
 function sanitizePublicErrorEnvelope(parsed, secrets = []) {
   // isObject(null) is true here, so a bare `data: null` frame would pass and then throw
@@ -1083,7 +1085,10 @@ export function createSSEStream(options = {}) {
         }
 
         if (upstreamErrorForwarded) continue;
+        // Capture raw diagnostics first; redact the public envelope (including
+        // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
+        sanitizePublicErrorEnvelope(parsed, errorSecrets);
         if (parsed.error) {
           clearCompletionFlushTimer();
           const output = formatTranslatedStreamError(parsed.error, sourceFormat, errorSecrets);
@@ -1433,8 +1438,11 @@ export function createSSEStream(options = {}) {
         // same formatter instead of letting the translators ignore it and synthesize success.
         if (mode === STREAM_MODE.TRANSLATE && !upstreamErrorForwarded && buffer.trim()) {
           const tail = parseSSELine(buffer.trim(), targetFormat);
+          // Raw diagnostics first; redact nested response.failed before any
+          // client-facing translation or formatted error terminal.
+          streamErrorPayload ??= extractStreamErrorPayload(tail);
+          sanitizePublicErrorEnvelope(tail, errorSecrets);
           if (tail?.error) {
-            streamErrorPayload ??= extractStreamErrorPayload(tail);
             const output = formatTranslatedStreamError(tail.error, sourceFormat, errorSecrets);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
@@ -1462,7 +1470,10 @@ export function createSSEStream(options = {}) {
           const trimmedBuffer = buffer.trim();
           currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
           const parsed = parseSSELine(trimmedBuffer, targetFormat);
+          // Nested response.failed EOF tails re-parse here; keep raw diagnostics
+          // and redact the public envelope before translation.
           streamErrorPayload ??= extractStreamErrorPayload(parsed);
+          sanitizePublicErrorEnvelope(parsed, errorSecrets);
           /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
           if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
           if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {

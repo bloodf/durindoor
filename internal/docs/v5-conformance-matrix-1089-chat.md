@@ -1,8 +1,8 @@
 # Issue #1089: OpenAI Chat Completions client matrix
 
-Status counts: already-present 42; failing 24; unsupported-by-contract 0; upstream-pending 0.
+Status counts: already-present 39; failing 27; unsupported-by-contract 0; upstream-pending 0.
 
-Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing:` reason; no source fixes land in this slice.
+Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing: #<issue> …` reason; no source fixes land in this slice. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance.
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
@@ -32,10 +32,10 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | max_tool_calls numeric ceiling | Claude | already-present | `does not invent a Claude parallel ban from max_tool_calls` |
 | Non-stream | length terminal | Claude | already-present | `maps non-stream length to Claude max_tokens with text` |
 | Non-stream | length terminal | Gemini | already-present | `maps non-stream length to Gemini MAX_TOKENS with text` |
-| Non-stream | length terminal | Responses | already-present | `maps non-stream length to Responses non-completed status with text` |
+| Non-stream | length → incomplete/max_output_tokens | Responses | failing | `maps non-stream length to Responses incomplete with max_output_tokens` |
 | Non-stream | content_filter terminal | Gemini | already-present | `maps non-stream content_filter to Gemini SAFETY` |
-| Non-stream | content_filter terminal | Responses | already-present | `maps non-stream content_filter to Responses content_filter status` |
-| Non-stream | error terminal | Responses | already-present | `maps non-stream error finish to Responses error status` |
+| Non-stream | content_filter → incomplete/content_filter | Responses | failing | `maps non-stream content_filter to Responses incomplete with content_filter` |
+| Non-stream | error → failed with error object | Responses | failing | `maps non-stream error finish to Responses failed with error object` |
 | Non-stream | error terminal | Claude | failing | `maps non-stream error finish to a Claude error terminal` |
 | Non-stream | error terminal | Gemini | failing | `maps non-stream error finish to a Gemini abort finishReason` |
 | Stream | length terminal | Claude | already-present | `emits Claude stream length as message_delta max_tokens` |
@@ -62,9 +62,9 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | non-string object description (#1091) | Kiro | failing | `coerces object tool descriptions before Kiro trim` |
 | Request | non-string numeric description (#1091) | Kiro | failing | `coerces numeric tool descriptions before Kiro trim` |
 | Request | empty description fallback (#1091) | Kiro | already-present | `fills empty Kiro descriptions with a Tool: name fallback` |
-| Request | tuple prefixItems (#1091) | Gemini | already-present | `converts Gemini tuple prefixItems into items` |
+| Request | tuple prefixItems (lossy Gemini degradation) (#1091) | Gemini | already-present (known degradation) | `converts Gemini tuple prefixItems into items` |
 | Request | free-form schema (#1091) | Claude | already-present | `preserves free-form object schemas on Claude` |
-| Request | empty schema (#1091) | Gemini | already-present | `fills empty schemas for Gemini with a reason placeholder` |
+| Request | empty schema reason placeholder (deliberate Gemini workaround) (#1091) | Gemini | already-present (deliberate degradation) | `fills empty schemas for Gemini with a reason placeholder` |
 | Request | keyword-named properties (#1091) | Claude/Gemini/Responses | already-present | `preserves keyword-named properties through Claude, Gemini, and Responses` |
 | Request | string numeric constraints (#1091) | Claude | failing | `coerces string numeric schema constraints for Claude` |
 | Request | string numeric constraints (#1091) | Gemini | failing | `coerces string numeric schema constraints for Gemini` |
@@ -73,13 +73,18 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | malformed schema rejection (#1091) | Gemini | failing | `rejects malformed tool schemas for Gemini` |
 | Request | malformed schema rejection (#1091) | Responses | failing | `rejects malformed tool schemas for Responses` |
 
-## Failing reasons
+## Failing reasons (tracked issues)
 
-1. Gemini string `tool_choice` auto/none/required are dropped; only named `{type:function}` is mapped.
-2. Chat→Responses never copies `tool_choice`.
-3. Chat JSON `finish_reason: error` becomes Claude `end_turn` / Gemini `STOP` instead of an abort terminal.
-4. Chat→Responses stream flush emits `response.completed` after `length` / never emits `response.failed` after `error`.
-5. Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
-6. Cross-turn `tool_call_id` reuse breaks current-turn pairing on Claude, Gemini, and Responses.
-7. Kiro `description.trim` throws `TypeError` for object/number descriptions.
-8. String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.
+1. #1328 — Gemini string `tool_choice` auto/none/required are dropped; only named `{type:function}` is mapped.
+2. #1329 — Chat→Responses never copies `tool_choice`.
+3. #1330 — Chat JSON `finish_reason: error` becomes Claude `end_turn` / Gemini `STOP` instead of an abort terminal.
+4. #1331 — Chat→Responses non-stream copies finish reasons into invalid `status` values (`length` / `content_filter` / `error`) instead of `incomplete`/`failed`; stream flush emits `response.completed` after `length` and never `response.failed` after `error`.
+5. #1332 — Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
+6. #1335 — Cross-turn `tool_call_id` reuse breaks current-turn pairing on Claude, Gemini, and Responses.
+7. #1333 — Kiro `description.trim` throws `TypeError` for object/number descriptions.
+8. #1334 — String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.
+
+## Known / deliberate degradations (not conformance)
+
+1. Gemini tuple `prefixItems` → single `items: { type: "string" }` drops later tuple positions and `items: false` (lossy Gemini schema workaround).
+2. Empty Gemini schemas are filled with a required `reason` placeholder string (intentional Antigravity/Gemini empty-schema workaround).

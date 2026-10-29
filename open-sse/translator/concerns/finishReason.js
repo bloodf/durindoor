@@ -2,7 +2,7 @@
 // One entry per direction; switch by special format, default handles common providers.
 import { OPENAI_FINISH, CLAUDE_STOP, GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../schema/finishReasons.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CLAUDE_STOP_VALUES = new Set(Object.values(CLAUDE_STOP));
 
@@ -107,6 +107,31 @@ export function fromOpenAIFinish(reason, format) {
 }
 
 const RESPONSES_FAILED_FALLBACK_MESSAGE = "Upstream aborted the response (finish_reason error)";
+
+/**
+ * Null-safe plain-object check. Repo `isObject` treats `null` as object
+ * (typeof semantics); callers that read `.message` must reject null/arrays. (#1331)
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isUpstreamErrorObject(value) {
+  return value != null && isObject(value) && !Array.isArray(value);
+}
+
+/**
+ * Pull a usable upstream error string from Chat error payloads.
+ * Accepts a string, or a plain object's `.message`; null / missing / non-string
+ * message fields yield undefined so the failed terminal can use its fallback. (#1331)
+ * @param {unknown} error
+ * @returns {string|undefined}
+ */
+export function readUpstreamErrorMessage(error) {
+  if (isString(error) && error.trim()) return error;
+  if (isUpstreamErrorObject(error) && isString(error.message) && error.message.trim()) {
+    return error.message;
+  }
+  return undefined;
+}
 
 /**
  * Build a Responses `error` object for Chat finish_reason error.

@@ -197,7 +197,7 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
     const out = project(OPENAI_FINISH.LENGTH);
     expect(out.status).toBe("incomplete");
     expect(out.incomplete_details).toEqual({ reason: "max_output_tokens" });
-    expect(out.error).toBeNull();
+    expect(out).not.toHaveProperty("error");
     expect(out.status).not.toBe(OPENAI_FINISH.LENGTH);
     expect(out.output[0].content[0].text).toBe("partial");
   });
@@ -206,7 +206,7 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
     const out = project(OPENAI_FINISH.CONTENT_FILTER);
     expect(out.status).toBe("incomplete");
     expect(out.incomplete_details).toEqual({ reason: "content_filter" });
-    expect(out.error).toBeNull();
+    expect(out).not.toHaveProperty("error");
     expect(out.status).not.toBe(OPENAI_FINISH.CONTENT_FILTER);
   });
 
@@ -228,6 +228,7 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
     expect(stop.status).not.toBe("incomplete");
     expect(stop.status).not.toBe("failed");
     expect(stop).not.toHaveProperty("incomplete_details");
+    expect(stop).not.toHaveProperty("error");
 
     const tools = project(OPENAI_FINISH.TOOL_CALLS, {
       role: ROLE.ASSISTANT,
@@ -240,5 +241,74 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
     });
     expect(tools.status).toBe("completed");
     expect(tools).not.toHaveProperty("incomplete_details");
+    expect(tools).not.toHaveProperty("error");
+  });
+});
+
+describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
+  const mainCompletedKeys = ["id", "object", "created_at", "model", "status", "output", "usage"];
+
+  it("does not throw and adds no new fields for null/undefined finish_reason", () => {
+    for (const finish_reason of [null, undefined]) {
+      let out;
+      expect(() => {
+        out = project(finish_reason, { role: ROLE.ASSISTANT, content: "ok" });
+      }).not.toThrow();
+      expect(out.status).toBe("completed");
+      expect(Object.keys(out).sort()).toEqual([...mainCompletedKeys].sort());
+      expect(out).not.toHaveProperty("error");
+      expect(out).not.toHaveProperty("incomplete_details");
+    }
+
+    let events;
+    expect(() => {
+      events = streamTo([textChunk("ok", null), textChunk("!", undefined), null]);
+    }).not.toThrow();
+    expect(events.some((event) => event.event === "response.failed")).toBe(false);
+    expect(events.some((event) => event.event === "response.incomplete")).toBe(false);
+  });
+
+  it("tolerates null, string, and incomplete upstream error objects without throwing", () => {
+    const cases = [
+      null,
+      "plain-string-error",
+      {},
+      { code: "x" },
+      { message: null },
+      { message: 12 },
+    ];
+    for (const error of cases) {
+      let out;
+      expect(() => {
+        out = project(
+          OPENAI_FINISH.ERROR,
+          { role: ROLE.ASSISTANT, content: "partial" },
+          { error },
+        );
+      }).not.toThrow();
+      expect(out.status).toBe("failed");
+      assertFailedErrorShape(out.error, JSON.stringify(out));
+
+      let events;
+      expect(() => {
+        events = streamTo([textChunk("boom", OPENAI_FINISH.ERROR, { error }), null]);
+      }).not.toThrow();
+      const failed = terminalEvents(events).find((event) => event.event === "response.failed");
+      expect(failed).toBeTruthy();
+      assertFailedErrorShape(failed.data.response.error, JSON.stringify(failed.data.response));
+    }
+  });
+
+  it("returns no events and does not throw when there are no choices", () => {
+    let events;
+    expect(() => {
+      const state = initState(RESPONSES);
+      events = [
+        ...(translateResponse(CHAT, RESPONSES, { id: "x", model: "m", choices: [] }, state) || []),
+        ...(translateResponse(CHAT, RESPONSES, { id: "x", model: "m" }, state) || []),
+        ...(translateResponse(CHAT, RESPONSES, { id: "x", model: "m", choices: null }, state) || []),
+      ];
+    }).not.toThrow();
+    expect(events).toEqual([]);
   });
 });

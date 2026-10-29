@@ -1,5 +1,5 @@
 import { FORMATS } from "../formats.js";
-import { fromOpenAIFinish, responsesTerminalFromChatFinish } from "../concerns/finishReason.js";
+import { fromOpenAIFinish, readUpstreamErrorMessage, responsesTerminalFromChatFinish } from "../concerns/finishReason.js";
 import { toResponsesUsage } from "../concerns/usage.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -289,17 +289,18 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
   const finishReason = getChoice(completion).finish_reason || OPENAI_FINISH.STOP;
   // Real Responses statuses only: incomplete / failed / completed — never the
   // Chat finish_reason literal ("length", "content_filter", "error"). (#1331)
-  const upstreamMessage = isString(completion?.error) ?
-    completion.error :
-    completion?.error?.message;
-  const terminal = responsesTerminalFromChatFinish(finishReason, upstreamMessage);
+  // Completed matches main's field set (no synthetic `error: null`).
+  const terminal = responsesTerminalFromChatFinish(
+    finishReason,
+    readUpstreamErrorMessage(completion?.error)
+  );
   return {
     id: completion.id ? `resp_${completion.id}` : `resp_${Date.now()}`,
     object: "response",
     created_at: completion.created || Math.floor(Date.now() / 1000),
     model: completion.model || "unknown",
     status: terminal.status,
-    error: terminal.error,
+    ...(terminal.error ? { error: terminal.error } : null),
     ...(terminal.incomplete_details ? { incomplete_details: terminal.incomplete_details } : null),
     output,
     usage: {

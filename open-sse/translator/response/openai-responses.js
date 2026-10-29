@@ -16,7 +16,11 @@ import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
-import { responsesTerminalFromChatFinish } from "../concerns/finishReason.js";
+import {
+  isUpstreamErrorObject,
+  readUpstreamErrorMessage,
+  responsesTerminalFromChatFinish
+} from "../concerns/finishReason.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -72,9 +76,12 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   if (chunk.model) state.model = chunk.model;
   // Capture Chat-stream error payloads so finish_reason error can sanitize them
-  // into response.failed.error (never raw credentials). (#1331)
-  if (chunk.error) {
-    state.upstreamError = isObject(chunk.error) ? chunk.error : { message: String(chunk.error) };
+  // into response.failed.error (never raw credentials). Null-safe: repo isObject
+  // treats null as object. (#1331)
+  if (chunk.error != null) {
+    state.upstreamError = isUpstreamErrorObject(chunk.error) ?
+      chunk.error :
+      { message: isString(chunk.error) ? chunk.error : String(chunk.error) };
   }
   // Merge rather than overwrite so provider-only fields already extracted
   // into shared state (e.g. Kiro credits) survive the Responses projection.
@@ -607,10 +614,10 @@ function sendTerminal(state, emit) {
   state.completedSent = true;
   state.awaitingTrailingUsage = false;
   const usage = state.responsesUsage;
-  const upstreamMessage = isString(state.upstreamError) ?
-    state.upstreamError :
-    state.upstreamError?.message;
-  const terminal = responsesTerminalFromChatFinish(state.finishReason, upstreamMessage);
+  const terminal = responsesTerminalFromChatFinish(
+    state.finishReason,
+    readUpstreamErrorMessage(state.upstreamError)
+  );
   emit(terminal.event, {
     type: terminal.event,
     response: {

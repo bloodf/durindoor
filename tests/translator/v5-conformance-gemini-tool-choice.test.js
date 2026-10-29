@@ -57,4 +57,22 @@ describe("#1328 Chat tool_choice strings to Gemini functionCallingConfig", () =>
     const out = toGemini(chat({ tool_choice: "toString" }));
     expect(out.toolConfig).toBeUndefined();
   });
+
+  // #1339: string modes must not emit toolConfig without function declarations.
+  describe.each(["auto", "none", "required"])("tool_choice %s without declarations", (tool_choice) => {
+    it("leaves toolConfig unset when tools is []", () => {
+      const out = toGemini(chat({ tools: [], tool_choice }));
+      expect(out.tools).toBeUndefined();
+      expect(out.toolConfig).toBeUndefined();
+    });
+
+    it("leaves toolConfig unset when tools is missing", () => {
+      const out = toGemini({
+        messages: [{ role: ROLE.USER, content: "hi" }],
+        tool_choice,
+      });
+      expect(out.tools).toBeUndefined();
+      expect(out.toolConfig).toBeUndefined();
+    });
+  });
 });

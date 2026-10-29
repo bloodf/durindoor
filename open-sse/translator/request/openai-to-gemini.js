@@ -359,19 +359,20 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       result.tools = [{ functionDeclarations }];
     }
   }
-  // OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode (#1328).
+  const hasFunctionDeclarations = result.tools?.[0]?.functionDeclarations?.length > 0;
+  // OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode (#1328 / #1339).
   // auto→AUTO, none→NONE, required→ANY. Named {type:function} stays ANY + allowedFunctionNames.
   // Map lookup avoids prototype keys (e.g. "toString") resolving to non-mode values.
+  // Only emit mode when declarations exist — Gemini rejects ANY/AUTO with an empty tools list.
   if (isString(body.tool_choice)) {
     const mode = OPENAI_TOOL_CHOICE_TO_GEMINI_MODE.get(body.tool_choice);
-    if (mode) result.toolConfig = { functionCallingConfig: { mode } };
+    if (mode && hasFunctionDeclarations) result.toolConfig = { functionCallingConfig: { mode } };
   } else if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
     result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(body.tool_choice.function.name)] } };
   }
   if (toolNameMap.size) result._toolNameMap = toolNameMap;
 
   const responseSchema = body.response_format?.json_schema?.schema;
-  const hasFunctionDeclarations = result.tools?.[0]?.functionDeclarations?.length > 0;
   if (body.response_format?.type === "json_schema" && isObject(responseSchema) &&
     (!hasFunctionDeclarations || /^gemini-3(?:[.-]|$)/i.test(model))) {
     result.generationConfig.responseMimeType = "application/json";

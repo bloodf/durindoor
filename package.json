@@ -81,7 +81,7 @@
   "optionalDependencies": {
     "better-sqlite3": "^12.11.1"
   },
-  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
+  "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
   "comment_pg": "added for the opt-in PostgreSQL engine (see docs/operations/postgres.md); never imported when databaseEngine === 'sqlite'",
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

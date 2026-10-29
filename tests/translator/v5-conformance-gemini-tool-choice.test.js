@@ -52,4 +52,9 @@ describe("#1328 Chat tool_choice strings to Gemini functionCallingConfig", () =>
       functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["ns.search"] },
     });
   });
+
+  it("leaves toolConfig unset for unknown string tool_choice including prototype keys", () => {
+    const out = toGemini(chat({ tool_choice: "toString" }));
+    expect(out.toolConfig).toBeUndefined();
+  });
 });

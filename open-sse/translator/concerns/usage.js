@@ -82,16 +82,17 @@ const USAGE_EXTRACTORS = {
   /**
    * Ollama prompt accounting is cache-INCLUSIVE: `prompt_eval_count` already
    * includes tokens reported in `prompt_eval_cached_count` (cache-read subset).
-   * Do not add cached into prompt/total. Docs:
-   * https://docs.ollama.com/api/usage
+   * Do not add cached into prompt/total. Clamp cached to prompt so non-cached
+   * input (and cost) cannot go negative. Docs: https://docs.ollama.com/api/usage
    * Absent/null/non-finite/negative cached counts behave like main (no cache detail).
    */
   ollama(raw) {
     const input = n(raw.prompt_eval_count),output = n(raw.eval_count);
     const cachedRaw = raw.prompt_eval_cached_count;
-    const cached = isNumber(cachedRaw) && Number.isFinite(cachedRaw) && cachedRaw >= 0 ?
-    cachedRaw :
-    0;
+    let cached = 0;
+    if (isNumber(cachedRaw) && Number.isFinite(cachedRaw) && cachedRaw >= 0) {
+      cached = Number.isFinite(input) ? Math.min(cachedRaw, input) : cachedRaw;
+    }
     return { promptTokens: input, completionTokens: output, totalTokens: input + output, cachedTokens: cached };
   },
   commandcode(raw) {

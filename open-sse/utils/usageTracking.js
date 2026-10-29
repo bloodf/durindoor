@@ -436,6 +436,7 @@ export function extractUsage(chunk) {
   // Final chunk: {"model":"...","done":true,"prompt_eval_count":N,"eval_count":M,
   // "prompt_eval_cached_count":C}. prompt_eval_cached_count is a cache-read subset
   // of prompt_eval_count (cache-INCLUSIVE; https://docs.ollama.com/api/usage).
+  // Clamp C to prompt so non-cached input/cost cannot go negative.
   // Absent/null/non-finite/negative C → omit cached_tokens (same as main).
   if (chunk.done === true && isNumber(chunk.prompt_eval_count)) {
     const usage = {
@@ -445,7 +446,8 @@ export function extractUsage(chunk) {
     };
     const cachedRaw = chunk.prompt_eval_cached_count;
     if (isNumber(cachedRaw) && Number.isFinite(cachedRaw) && cachedRaw >= 0) {
-      usage.cached_tokens = cachedRaw;
+      const prompt = usage.prompt_tokens;
+      usage.cached_tokens = Number.isFinite(prompt) ? Math.min(cachedRaw, prompt) : cachedRaw;
     }
     return normalizeUsage(usage);
   }

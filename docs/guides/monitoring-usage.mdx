@@ -32,7 +32,7 @@ Output speed excludes the time to first token when timing is available. Non-stre
 
 Cache-hit percentage and output speed on detail rows are calculated from recorded tokens and timing. They are not separate provider measurements.
 
-Ollama (and Ollama Cloud) report cache hits as `prompt_eval_cached_count`, a subset of the inclusive `prompt_eval_count` total ([Ollama usage API](https://docs.ollama.com/api/usage)). DurinDoor records that count as cached tokens on both streaming and non-streaming paths without adding it again into prompt/input totals or cost.
+Ollama (and Ollama Cloud) report cache hits as `prompt_eval_cached_count`, a subset of the inclusive `prompt_eval_count` total ([Ollama usage API](https://docs.ollama.com/api/usage)). DurinDoor records that count as cached tokens on both streaming and non-streaming paths without adding it again into prompt/input totals. Cached tokens are billed at the model's cached rate, so priced `ollama-cloud` models get cheaper on cache hits. Over-reported cache counts are clamped to the prompt count so estimated cost cannot go negative.
 
 ## Console log
 

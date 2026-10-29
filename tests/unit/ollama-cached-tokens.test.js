@@ -106,4 +106,98 @@ describe("Ollama prompt_eval_cached_count → cached_tokens (#1365)", () => {
       20 * 1 + 80 * 0.1 + 20 * 2
     );
   });
+
+  it("clamps cached > prompt to prompt so cost stays non-negative (all-cached)", () => {
+    const pricing = { input: 1_000_000, output: 2_000_000, cached: 100_000 };
+    const allCachedCost =
+    // non-cached 0 + cached 100 * 0.1 + output 20 * 2
+    0 * 1 + 100 * 0.1 + 20 * 2;
+
+    expect(extractUsage({
+      done: true,
+      prompt_eval_count: 100,
+      eval_count: 20,
+      prompt_eval_cached_count: 150
+    })).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      cached_tokens: 100
+    });
+    expect(extractUsageFromResponse({
+      done: true,
+      prompt_eval_count: 100,
+      eval_count: 20,
+      prompt_eval_cached_count: 150
+    })).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: { cached_tokens: 100 }
+    });
+
+    const canon = canonicalizeUsage(extractUsage({
+      done: true,
+      prompt_eval_count: 100,
+      eval_count: 20,
+      prompt_eval_cached_count: 150
+    }));
+    expect(canon).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      cached_tokens: 100,
+      cache_creation_input_tokens: 0
+    });
+    const cost = calculateCostFromTokens(canon, pricing);
+    expect(cost).toBeGreaterThanOrEqual(0);
+    expect(cost).toBe(allCachedCost);
+  });
+
+  it("cached == prompt and cached < prompt stay unclamped", () => {
+    expect(extractUsage({
+      done: true,
+      prompt_eval_count: 100,
+      eval_count: 20,
+      prompt_eval_cached_count: 100
+    })).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      cached_tokens: 100
+    });
+    expect(extractUsage({
+      done: true,
+      prompt_eval_count: 100,
+      eval_count: 20,
+      prompt_eval_cached_count: 80
+    })).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      cached_tokens: 80
+    });
+    expect(extractUsageFromResponse({
+      done: true,
+      prompt_eval_count: 100,
+      eval_count: 20,
+      prompt_eval_cached_count: 100
+    })).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: { cached_tokens: 100 }
+    });
+    expect(extractUsageFromResponse({
+      done: true,
+      prompt_eval_count: 100,
+      eval_count: 20,
+      prompt_eval_cached_count: 80
+    })).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: { cached_tokens: 80 }
+    });
+  });
 });

@@ -33,8 +33,8 @@ export function extractUsageFromResponse(responseBody) {
 
   // Ollama non-stream bodies put prompt_eval_count / eval_count /
   // prompt_eval_cached_count at the top level (not under `usage`).
-  // toOpenAIUsage("ollama") keeps prompt cache-INCLUSIVE and surfaces
-  // prompt_eval_cached_count as prompt_tokens_details.cached_tokens when valid
+  // toOpenAIUsage("ollama") keeps prompt cache-INCLUSIVE, clamps cached to
+  // prompt, and surfaces prompt_tokens_details.cached_tokens when valid
   // (https://docs.ollama.com/api/usage).
   if (responseBody.prompt_eval_count !== undefined || responseBody.eval_count !== undefined) {
     return toOpenAIUsage(responseBody, "ollama");

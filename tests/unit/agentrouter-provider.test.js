@@ -10,13 +10,13 @@ describe("AgentRouter provider", () => {
 
     expect(headers).toMatchObject({
       "Anthropic-Version": "2023-06-01",
-      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
-      "User-Agent": "claude-cli/2.1.282 (external, sdk-cli)",
+      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24",
+      "User-Agent": "claude-cli/2.1.312 (external, sdk-cli)",
       "X-App": "cli",
       "X-Stainless-Lang": "js",
       "X-Stainless-Runtime": "node",
-      "X-Stainless-Runtime-Version": "v26.3.0",
-      "X-Stainless-Package-Version": "0.112.1",
+      "X-Stainless-Runtime-Version": "v26.12.1",
+      "X-Stainless-Package-Version": "0.128.0",
       "X-Stainless-Retry-Count": "0",
       "X-Stainless-Timeout": "600",
       "x-api-key": "sk-agentrouter",

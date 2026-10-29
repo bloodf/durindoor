@@ -30,7 +30,7 @@ export const ANTHROPIC_API_VERSION = "2023-06-01";
  * Pinned Claude Code release (latest on npm when last bumped). It must stay at or above
  * 2.1.280, the first release Anthropic accepts for Claude Opus 5.5.
  */
-export const DEFAULT_CLAUDE_CLI_VERSION = "2.1.282";
+export const DEFAULT_CLAUDE_CLI_VERSION = "2.1.312";
 const SAFE_CLI_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
 
 /**
@@ -54,26 +54,24 @@ export const CLAUDE_API_HEADERS = {
   "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
 };
 
-// Full Claude CLI fingerprint captured from Claude Code 2.1.258. The version
-// (User-Agent + billing cc_version) is bumped to 2.1.282 (Anthropic rejects
-// Claude Opus 5.5 from CLI versions older than 2.1.280). Every beta flag below
-// and the Stainless SDK version (0.112.1) are still present in the 2.1.282 bundle.
-// Static stable values (UA, beta flags, package/runtime versions, runtime,
-// language, retry, timeout, API version, dangerous browser header, x-app) are
-// pinned to the captured wire literal. OS and architecture use the live
-// host-derived Stainless mappers — the 2.1.258 capture ran on Linux x64, so
-// other hosts will report different values while every other field stays
-// exact. The optional helper-method header from older captures is omitted
-// because the 2.1.258 request did not include it.
+// Full Claude CLI fingerprint from a live Claude Code 2.1.312 `claude -p`
+// request (ANTHROPIC_BASE_URL → local sink; dummy API key). Diffed against the
+// same capture for 2.1.282. Static stable values (UA shape, beta flags,
+// package/runtime versions, runtime, language, retry, timeout, API version,
+// dangerous browser header, x-app) are pinned to the 2.1.312 wire literal. OS
+// and architecture use the live host-derived Stainless mappers — the capture
+// ran on Linux x64, so other hosts will report different values while every
+// other field stays exact. The optional helper-method header is omitted
+// because the 2.1.312 request did not include it.
 export const CLAUDE_CLI_SPOOF_HEADERS = {
   "Anthropic-Version": ANTHROPIC_API_VERSION,
-  "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
+  "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24",
   "Anthropic-Dangerous-Direct-Browser-Access": "true",
   "User-Agent": `claude-cli/${CLAUDE_CLI_VERSION} (external, sdk-cli)`,
   "X-App": "cli",
   "X-Stainless-Retry-Count": "0",
-  "X-Stainless-Runtime-Version": "v26.3.0",
-  "X-Stainless-Package-Version": "0.112.1",
+  "X-Stainless-Runtime-Version": "v26.12.1",
+  "X-Stainless-Package-Version": "0.128.0",
   "X-Stainless-Runtime": "node",
   "X-Stainless-Lang": "js",
   "X-Stainless-Arch": mapStainlessArch(),
@@ -90,11 +88,11 @@ export const CLAUDE_CLI_SPOOF_HEADERS = {
 const ANTHROPIC_BETA_BASE = [
   "claude-code-20250219",
   "interleaved-thinking-2025-05-14",
-  "thinking-token-count-2026-05-13",
   "context-management-2025-06-27",
-  "prompt-caching-scope-2026-01-05",
-  "mid-conversation-system-2026-04-07",
-  "fallback-credit-2026-06-01"
+  "per-turn-control-2026-07-01",
+  "mid-conversation-tool-changes-2026-07-01",
+  "thinking-token-count-2026-05-13",
+  "advanced-tool-use-2025-11-20"
 ];
 const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
 

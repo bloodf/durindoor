@@ -3,23 +3,25 @@
 
 const providerLogo = (file) => `/providers/${file}.png`;
 
-// Counts are visible (non-hidden) entries in ../open-sse/providers/registry/index.js,
-// grouped by `serviceKinds`. Entries without `serviceKinds` default to ["llm"]
-// (see ../src/shared/constants/providers.js). Snapshot taken for this page.
-export const REGISTRY_PROVIDER_COUNT = 238;
-
-// Routes are the directories under ../src/app/api/v1 plus MEDIA_PROVIDER_KINDS.
+// Routes mirror MEDIA_PROVIDER_KINDS. Counts are computed on the server from
+// the current visible registry, never stored as a marketing snapshot.
 export const SERVICE_KINDS = [
-  { id: "chat", icon: "chat", label: "Chat & code", route: "/v1/chat/completions", count: 195 },
-  { id: "embedding", icon: "vector", label: "Embeddings", route: "/v1/embeddings", count: 14 },
-  { id: "tts", icon: "voice", label: "Text to speech", route: "/v1/audio/speech", count: 13 },
-  { id: "stt", icon: "mic", label: "Speech to text", route: "/v1/audio/transcriptions", count: 7 },
-  { id: "image", icon: "image", label: "Image generation", route: "/v1/images/generations", count: 20 },
-  { id: "vision", icon: "eye", label: "Vision", route: "image input", count: 12 },
-  { id: "video", icon: "film", label: "Video", route: "/v1/video/generations", count: 4 },
-  { id: "search", icon: "search", label: "Web search", route: "/v1/search", count: 17 },
-  { id: "fetch", icon: "globe", label: "Web fetch", route: "/v1/web/fetch", count: 6 },
+  { id: "chat", registryKind: "llm", icon: "chat", label: "Chat & code", route: "/v1/chat/completions" },
+  { id: "embedding", registryKind: "embedding", icon: "vector", label: "Embeddings", route: "/v1/embeddings" },
+  { id: "tts", registryKind: "tts", icon: "voice", label: "Text to speech", route: "/v1/audio/speech" },
+  { id: "stt", registryKind: "stt", icon: "mic", label: "Speech to text", route: "/v1/audio/transcriptions" },
+  { id: "image", registryKind: "image", icon: "image", label: "Image generation", route: "/v1/images/generations" },
+  { id: "vision", registryKind: "imageToText", icon: "eye", label: "Vision", route: "image input" },
+  { id: "video", registryKind: "video", icon: "film", label: "Video", route: "/v1/video/generations" },
+  { id: "search", registryKind: "webSearch", icon: "search", label: "Web search", route: "/v1/search" },
+  { id: "fetch", registryKind: "webFetch", icon: "globe", label: "Web fetch", route: "/v1/web/fetch" },
 ];
+
+// Setup matches docs/getting-started. Keep secrets in the deployment environment
+// after first boot; do not rotate them each time a process restarts.
+export const NATIVE_SETUP = `export JWT_SECRET="$(openssl rand -hex 32)"
+export API_KEY_SECRET="$(openssl rand -hex 32)"
+export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"`;
 
 // Tier order mirrors docs/providers/free-and-local.mdx ("Primary subscription or paid API
 // model → ... → Local model or free-tier model") and the combo strategies table.
@@ -82,24 +84,28 @@ export const DEPLOYMENTS = [
     id: "npm",
     label: "npm",
     note: "Requires Node.js 20.20.2 and npm 10.8.2. Serves on port 20128.",
-    command: "npm install -g durindoor\ndurindoor",
+    command: `npm install -g durindoor
+${NATIVE_SETUP}
+durindoor --host 127.0.0.1`,
   },
   {
     id: "npx",
     label: "npx",
     note: "Try it without installing. Use a global install or Docker for daily use.",
-    command: "npx durindoor",
+    command: `${NATIVE_SETUP}
+npx durindoor --host 127.0.0.1`,
   },
   {
     id: "docker",
     label: "Docker",
     note: "Bound to localhost with a volume so data survives. Pin a version tag in production.",
-    command: `docker run -d --name durindoor \\
+    command: `export INITIAL_PASSWORD="CHANGE_ME_STRONG_PASSWORD"
+docker run -d --name durindoor \\
   -p 127.0.0.1:20128:20128 \\
   -v "$HOME/.durindoor:/app/data" \\
   -e DATA_DIR=/app/data \\
   -e JWT_SECRET="$(openssl rand -hex 32)" \\
-  -e INITIAL_PASSWORD="$(openssl rand -hex 16)" \\
+  -e INITIAL_PASSWORD="$INITIAL_PASSWORD" \\
   ghcr.io/bloodf/durindoor:latest`,
   },
   {
@@ -110,6 +116,7 @@ export const DEPLOYMENTS = [
 cd durindoor
 npm install --no-audit --no-fund
 npm run build
+${NATIVE_SETUP}
 npm start`,
   },
 ];

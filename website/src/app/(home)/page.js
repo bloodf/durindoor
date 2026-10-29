@@ -1,3 +1,6 @@
+import REGISTRY from "open-sse/providers/registry/index.js";
+import { providerCoverage } from "@site/lib/provider-coverage.js";
+import { SERVICE_KINDS } from "@site/components/home/content.js";
 import Hero from "@site/components/home/hero/Hero.jsx";
 import ServiceKinds from "@site/components/home/sections/ServiceKinds.jsx";
 import FlowSection from "@site/components/home/flow/FlowSection.jsx";
@@ -22,10 +25,10 @@ export default function HomePage() {
       <ScrollProgress />
       <CursorGlow />
       <Nav />
-      <main id="main">
+      <main id="main" tabIndex={-1}>
         <Hero />
         <DemoTeaser />
-        <ServiceKinds />
+        <ServiceKinds coverage={providerCoverage(REGISTRY, SERVICE_KINDS)} />
         <FlowSection />
         <Constellation />
         <ToolsMarquee />

@@ -1,12 +1,19 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Copy failed. Select the command and copy it manually.": "No se pudo copiar. Selecciona el comando y cópialo manualmente.",
+  "Set your own initial password before starting. Keep both signing secrets for later starts.": "Establece tu contraseña inicial antes de iniciar. Conserva ambos secretos de firma para los próximos inicios.",
+  "Pause examples": "Pausar ejemplos",
+  "Play examples": "Reproducir ejemplos",
+  "Pause motion": "Pausar animación",
+  "Play motion": "Reproducir animación",
+
   "Speak, friend, and enter.": "Habla, amigo, y entra.",
   "You choose the fallback order": "Tú eliges el orden de respaldo",
   "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "Un combo da a tu cliente un solo nombre de modelo. DurinDoor prueba los miembros configurados en orden y reintenta con cuentas elegibles antes de pasar al siguiente modelo.",
   "Example configuration": "Configuración de ejemplo",
   "This order is an example, not a built-in subscription, API, or local-model priority.": "Este orden es un ejemplo. No existe una prioridad fija entre suscripciones, APIs o modelos locales.",
 
-  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "Tus proveedores de IA. Una puerta de enlace. APIs de OpenAI y Anthropic, suscripciones y modelos locales, conectados a tu manera.",
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models, connected on your terms.": "Tus proveedores de IA. Una puerta de enlace. APIs de OpenAI y Anthropic, suscripciones y modelos locales, conectados a tu manera.",
   "Close the door": "Cerrar la puerta",
   "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "Conecta un proveedor, elige un modelo y configura tu cliente para APIs de OpenAI o Anthropic.",
 
@@ -91,7 +98,7 @@ const messages = {
   "Your tools speak OpenAI. Your providers speak whatever they like. DurinDoor stands between them, holds the keys, and keeps the ledger.": "Tus herramientas hablan OpenAI. Tus proveedores hablan lo que quieran. DurinDoor se sitúa entre ellos, guarda las claves y lleva el registro.",
   "model resolution": "resolución de modelo",
   "Model string shapes": "Formatos de identificación de modelo",
-  "Open source · MIT · Self-hosted AI gateway": "Código abierto · MIT · Pasarela de IA autoalojada",
+  "Open source. MIT. Self-hosted AI gateway": "Código abierto. MIT. Pasarela de IA autoalojada",
   "enter.": "entra.",
   "One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.": "Una pasarela protegida para todos los proveedores de IA. Añade credenciales una vez y apunta cada herramienta compatible con OpenAI a un único endpoint local.",
   "Install command": "Comando de instalación",
@@ -252,7 +259,7 @@ const messages = {
   "standing by": "en espera",
   "trying": "intentando",
   "Language": "Idioma",
-  "DurinDoor. Speak, friend, and enter": "DurinDoor. Habla, amigo, y entra",
+  "DurinDoor | Self-hosted AI gateway": "DurinDoor | Gateway de IA autohospedado",
   "Ancient stone door glowing emerald in dark ruins": "Puerta de piedra antigua con brillo esmeralda entre ruinas oscuras",
   "GitHub": "GitHub",
   "npm": "npm",

@@ -35,15 +35,12 @@ export function CountUp({
     return () => controls.stop();
   }, [inView, reduce, from, to, duration]);
 
-  useEffect(() => {
-    if (!reduce) setValue(from);
-    // Only reset once on mount; the animation above takes it from here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <span ref={ref} className={className}>
-      {number(value)}
+      {/* Animation is decorative. Accessible and server text always state the real value. */}
+      <span aria-hidden="true">{number(value)}</span>
+      <span className="sr-only">{number(to)}</span>
     </span>
   );
 }
@@ -57,30 +54,44 @@ export function Reveal({ children, as = "div", className = "" }) {
 export function CopyButton({ text, label, className = "" }) {
   const { t } = useHomeLocale();
   const actionLabel = label ?? t("Copy");
-  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState("idle");
+  const timer = useRef(null);
+  const mounted = useRef(true);
+  const generation = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; clearTimeout(timer.current); };
+  }, []);
   const copy = async () => {
+    clearTimeout(timer.current);
+    const request = ++generation.current;
+    setStatus("idle");
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
+      if (!mounted.current || request !== generation.current) return;
+      setStatus("copied");
+      timer.current = setTimeout(() => setStatus("idle"), 1600);
     } catch {
-      setCopied(false);
+      // Denied clipboard access must not look like a successful copy.
+      if (mounted.current && request === generation.current) setStatus("error");
     }
   };
+  const feedback = status === "copied" ? t("Copied")
+    : status === "error" ? t("Copy failed. Select the command and copy it manually.") : "";
   return (
-    <button
-      type="button"
-      className={`copy-btn ${className}`}
-      onClick={copy}
-      aria-label={
-        copied ? t("Copied") : t("{label} to clipboard", { label: actionLabel })
-      }
-    >
-      <Icon name={copied ? "check" : "copy"} size={16} />
-      <span className="copy-btn-text" aria-live="polite">
-        {copied ? t("Copied") : actionLabel}
-      </span>
-    </button>
+    <span className="copy-action">
+      <button
+        type="button"
+        className={`copy-btn ${className}`}
+        onClick={copy}
+        aria-label={status === "copied" ? t("Copied") : t("{label} to clipboard", { label: actionLabel })}
+        data-copy-state={status}
+      >
+        <Icon name={status === "copied" ? "check" : status === "error" ? "alert" : "copy"} size={16} />
+        <span className="copy-btn-text">{status === "copied" ? t("Copied") : actionLabel}</span>
+      </button>
+      <span className={`copy-feedback ${status === "error" ? "is-error" : "sr-only"}`} role="status">{feedback}</span>
+    </span>
   );
 }
 

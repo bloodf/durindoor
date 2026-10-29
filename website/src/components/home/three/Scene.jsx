@@ -7,6 +7,7 @@ import Portal from "./Portal.jsx";
 import Beams, { Wall } from "./Beams.jsx";
 import Mist from "./Mist.jsx";
 import Particles from "./Particles.jsx";
+import { GATE_MATERIALS } from "./palette.js";
 import { gateOpening } from "./gateOpening.js";
 
 function Gateway({ progress, opened, stage, onReady }) {
@@ -48,7 +49,7 @@ function Gateway({ progress, opened, stage, onReady }) {
   });
   return <group position={[doorX, doorY, 0]}>
     <ambientLight intensity={0.65} />
-    <directionalLight position={[-3, 5, 4]} color="#cadfd4" intensity={2} />
+    <directionalLight position={[-3, 5, 4]} color={GATE_MATERIALS.moonlight} intensity={2} />
     <Wall uniforms={uniforms} />
     <Portal uniforms={uniforms} />
     <Beams uniforms={uniforms} />

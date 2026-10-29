@@ -99,6 +99,8 @@
 /* The public identity uses parchment for reading and forest stone at night.
    These tokens are scoped to docs, including the Fumadocs shell. */
 .dd-docs {
+  --dd-gate-bg: #0c1410;
+  --dd-gate-caption: #a7e5c9;
   --dd-bg: #f7f5f0;
   --dd-surface: #efede6;
   --dd-surface-2: #e7e4dc;
@@ -390,7 +392,7 @@
   margin: 0;
   overflow: hidden;
   border-radius: 12px;
-  background: #0c1410;
+  background: var(--dd-gate-bg);
 }
 .dd-docs .dd-docs-gate img {
   width: 100%;
@@ -404,7 +406,7 @@
     500 23px/1.2 var(--font-docs-display),
     Georgia,
     serif;
-  color: #a7e5c9;
+  color: var(--dd-gate-caption);
   padding: 20px 24px;
   margin: 0;
   text-align: center;
@@ -592,4 +594,20 @@
   .dd-docs :is(a, button) {
     transition: none;
   }
+}
+
+/* Theme stays reachable without opening the mobile sidebar. */
+.dd-docs-reading-controls { display: none; }
+@media (max-width: 767px) {
+  .dd-docs-reading-controls {
+    display: flex;
+    position: fixed;
+    z-index: 40;
+    inset-block-start: 6px;
+    inset-inline-end: 88px;
+  }
+  .dd-docs-reading-controls .dd-docs-theme-toggle { width: 44px; height: 44px; }
+}
+@media (pointer: coarse) {
+  .dd-docs-sidebar-icon, .dd-docs-theme-toggle { min-width: 44px; min-height: 44px; }
 }

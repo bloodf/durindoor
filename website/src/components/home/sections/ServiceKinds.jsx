@@ -2,17 +2,14 @@
 
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
-import { REGISTRY_PROVIDER_COUNT, SERVICE_KINDS } from "../content.js";
+
 import Icon from "../ui/Icon.jsx";
 import { CountUp, DocsCta, Reveal, SectionHeader, spotlight } from "../ui/primitives.jsx";
 
-const MAX = Math.max(...SERVICE_KINDS.map((kind) => kind.count));
-
-// Log scale so a kind with 4 providers still shows a visible sliver next to 195.
-// Rounded to a string so server and client render identical inline styles.
-const share = (count) => Math.max(0.08, Math.log(count + 1) / Math.log(MAX + 1)).toFixed(3);
-
-export default function ServiceKinds() {
+export default function ServiceKinds({ coverage }) {
+  const max = Math.max(1, ...coverage.kinds.map((kind) => kind.count));
+  // The bar is a decorative logarithmic indicator. Exact counts stay visible.
+  const share = (count) => Math.max(0.08, Math.log(count + 1) / Math.log(max + 1)).toFixed(3);
   const { t } = useHomeLocale();
   return (
     <section id="kinds" className="section section-kinds" aria-labelledby="kinds-title">
@@ -26,14 +23,14 @@ export default function ServiceKinds() {
 
         <Reveal className="kinds-total">
           <span className="kinds-total-n">
-            <CountUp to={REGISTRY_PROVIDER_COUNT} className="count" />
+            <CountUp to={coverage.total} className="count" />
           </span>
           <span className="kinds-total-label">{t("providers in the registry")}</span>
         </Reveal>
 
         <ul className="kinds-grid">
-          {SERVICE_KINDS.map((kind, i) => (
-            <Reveal as="li" key={kind.id} delay={(i % 3) * 0.07} className="kind-card">
+          {coverage.kinds.map((kind, i) => (
+            <Reveal as="li" key={kind.id} className="kind-card">
               <div className="kind-inner" onPointerMove={spotlight}>
                 <div className="kind-top">
                   <span className="kind-icon">

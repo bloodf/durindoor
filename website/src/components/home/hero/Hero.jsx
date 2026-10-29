@@ -36,12 +36,13 @@ export default function Hero() {
       />
       <div className="gateway-hero-grid container">
         <motion.div className="gateway-copy" style={{ y: reduce ? 0 : y }}>
+          {/* EXCEPTION to noise-scan/italic-headline-word: the approved doorway identity uses a silver inscription ending in emerald italic type. */}
           <h1 id="hero-title">
             {t("Speak, friend, and")} <em>{t("enter.")}</em>
           </h1>
           <p className="gateway-pitch">
             {t(
-              "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.",
+              "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models, connected on your terms.",
             )}
           </p>
           <div className="gateway-actions">
@@ -54,7 +55,7 @@ export default function Hero() {
               <Icon name="arrow" size={18} />
             </Magnetic>
             <Magnetic internal href="/docs" className="gateway-docs">
-              {t("Read the docs")} <span aria-hidden="true">↗</span>
+              {t("Read the docs")} <Icon name="external" size={16} />
             </Magnetic>
           </div>
           <div

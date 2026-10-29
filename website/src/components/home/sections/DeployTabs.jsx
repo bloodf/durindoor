@@ -3,13 +3,14 @@
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
 import { useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { DEPLOYMENTS } from "../content.js";
 import { CopyButton } from "../ui/primitives.jsx";
 
 // WAI-ARIA tabs: arrow keys, Home and End move between deployment methods.
 export default function DeployTabs() {
   const { t } = useHomeLocale();
+  const reduce = useReducedMotion();
   const [active, setActive] = useState(0);
   const tabs = useRef([]);
   const current = DEPLOYMENTS[active];
@@ -62,14 +63,12 @@ export default function DeployTabs() {
           <span className="code-label">{t(current.note)}</span>
           <CopyButton text={current.command} />
         </div>
-        <AnimatePresence mode="wait" initial={false}>
           <motion.pre
             key={current.id}
             tabIndex={0}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.22 }}
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: reduce ? 0 : 0.16 }}
           >
             <code>
               {current.command.split("\n").map((line, i) => (
@@ -81,7 +80,6 @@ export default function DeployTabs() {
               ))}
             </code>
           </motion.pre>
-        </AnimatePresence>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import { source } from "@site/lib/source";
 import { baseOptions } from "@site/lib/layout.shared";
+import { DocsReadingPreferences } from "@site/components/docs/ThemeToggle.jsx";
 import { DocsSidebarFooter } from "@site/components/docs/SidebarFooter.jsx";
 import "./docs.css";
 
@@ -46,8 +47,9 @@ export default function Layout({ children }) {
           collapsible: true,
           footer: <DocsSidebarFooter key="docs-footer" version={VERSION} />,
         }}
-        containerProps={{ className: `dd-docs ${display.variable} ${sans.variable}` }}
+        containerProps={{ lang: "en", className: `dd-docs ${display.variable} ${sans.variable}` }}
       >
+        <DocsReadingPreferences />
         {children}
       </DocsLayout>
     </RootProvider>

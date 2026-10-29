@@ -1,4 +1,5 @@
 "use client";
+import Icon from "../ui/Icon.jsx";
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 import BrandMark from "@site/components/brand/BrandMark.jsx";
 export default function FlowDiagram() {
@@ -14,7 +15,7 @@ export default function FlowDiagram() {
         </ul>
       </div>
       <span className="request-arrow" aria-hidden="true">
-        →
+        <Icon name="arrow" size={28} />
       </span>
       <div className="request-gateway">
         <div>
@@ -27,7 +28,7 @@ export default function FlowDiagram() {
         <code>/v1/messages</code>
       </div>
       <span className="request-arrow" aria-hidden="true">
-        →
+        <Icon name="arrow" size={28} />
       </span>
       <div className="request-providers">
         <h3>{t("Providers")}</h3>
@@ -43,7 +44,7 @@ export default function FlowDiagram() {
             <li key={name}>{name}</li>
           ))}
         </ul>
-        <a href="#providers">{t("providers in the registry")} ↗</a>
+        <a href="#providers">{t("providers in the registry")} <Icon name="external" size={16} /></a>
       </div>
     </div>
   );

@@ -1,18 +1,85 @@
 # Issue #1089: OpenAI Chat Completions client matrix
 
-Status counts: already-present 5; failing 0; unsupported-by-contract 0; upstream-pending 0.
+Status counts: already-present 42; failing 24; unsupported-by-contract 0; upstream-pending 0.
 
-Existing coverage is linked rather than duplicated where an existing test already asserts behavior.
+Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing:` reason; no source fixes land in this slice.
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
-| Request | Custom namespaced tool, schema keyword properties, strict false, tool choice, parallel false | Chat | already-present | `tests/translator/v5-conformance-matrix-chat.test.js` |
-| Request | Custom tool and explicit choice | Claude | already-present | `tests/translator/v5-conformance-matrix-chat.test.js` |
-| Request | Custom tool | Gemini | already-present | `tests/translator/v5-conformance-matrix-chat.test.js` |
-| Non-stream | Tool call and terminal reason | Chat | already-present | `tests/translator/v5-conformance-matrix-chat.test.js` |
-| Stream | Tool call and terminal reason | Chat | already-present | `tests/translator/v5-conformance-matrix-chat.test.js` |
-| Request | strict true/false and parallel limits through Responses | Responses | already-present | `tests/translator/v5-protocol-tool-flags.test.js`, `tests/translator/v5-conformance-responses-json.test.js` |
-| Request | parallel_tool_calls false to Claude | Claude | already-present | `tests/translator/v5-conformance-parallel-limits.test.js` |
-| Non-stream | Incomplete and filtered terminal handling | Responses | already-present | `tests/translator/v5-conformance-responses-json.test.js` |
-| Stream | Error and incomplete terminal handling | Responses | already-present | `tests/translator/v5-conformance-error-terminals.test.js` |
-| Request | Namespaced tool conversion | Responses | already-present | `tests/translator/v5-conformance-responses-json.test.js` |
+| Request | Namespaced tool, keyword schema, strict false, named choice, parallel false | Chat | already-present | `preserves namespaced tool, keyword schema, strict false, named choice, and parallel false in Chat` |
+| Request | Namespaced tool, keyword schema, named choice | Claude | already-present | `translates namespaced tool, keyword schema, and named choice to Claude` |
+| Request | Namespaced tool, keyword schema, named choice | Gemini | already-present | `translates namespaced tool, keyword schema, and named choice to Gemini` |
+| Request | Namespaced tool, strict false | Responses | already-present | `translates namespaced tool and strict false to Responses` |
+| Request | strict true | Claude | already-present | `preserves explicit strict=true through Claude` |
+| Request | strict false | Claude | already-present | `preserves explicit strict=false through Claude` |
+| Request | strict true | Responses | already-present | `preserves explicit strict=true through Responses` |
+| Request | strict false | Responses | already-present | `preserves explicit strict=false through Responses` |
+| Request | strict true schema without OpenAI strict field | Gemini | already-present | `delivers schema to Gemini without an OpenAI strict field when strict is true` |
+| Request | tool_choice auto | Claude | already-present | `maps tool_choice auto to Claude` |
+| Request | tool_choice none | Claude | already-present | `maps tool_choice none to Claude` |
+| Request | tool_choice required | Claude | already-present | `maps tool_choice required to Claude` |
+| Request | tool_choice named function | Gemini | already-present | `maps named tool_choice to Gemini ANY with allowedFunctionNames` |
+| Request | tool_choice auto | Gemini | failing | `maps tool_choice auto to Gemini AUTO mode` |
+| Request | tool_choice none | Gemini | failing | `maps tool_choice none to Gemini NONE mode` |
+| Request | tool_choice required | Gemini | failing | `maps tool_choice required to Gemini ANY mode` |
+| Request | tool_choice auto | Responses | failing | `preserves tool_choice auto on Chat to Responses` |
+| Request | tool_choice none | Responses | failing | `preserves tool_choice none on Chat to Responses` |
+| Request | tool_choice required | Responses | failing | `preserves tool_choice required on Chat to Responses` |
+| Request | tool_choice named function | Responses | failing | `preserves named tool_choice on Chat to Responses` |
+| Request | parallel_tool_calls false | Claude | already-present | `carries parallel_tool_calls false as Claude disable_parallel_tool_use` |
+| Request | parallel_tool_calls true | Claude | already-present | `leaves Claude unrestricted when parallel_tool_calls is true` |
+| Request | parallel_tool_calls false/true | Responses | already-present | `preserves parallel_tool_calls false and true on Chat to Responses` |
+| Request | max_tool_calls numeric ceiling | Claude | already-present | `does not invent a Claude parallel ban from max_tool_calls` |
+| Non-stream | length terminal | Claude | already-present | `maps non-stream length to Claude max_tokens with text` |
+| Non-stream | length terminal | Gemini | already-present | `maps non-stream length to Gemini MAX_TOKENS with text` |
+| Non-stream | length terminal | Responses | already-present | `maps non-stream length to Responses non-completed status with text` |
+| Non-stream | content_filter terminal | Gemini | already-present | `maps non-stream content_filter to Gemini SAFETY` |
+| Non-stream | content_filter terminal | Responses | already-present | `maps non-stream content_filter to Responses content_filter status` |
+| Non-stream | error terminal | Responses | already-present | `maps non-stream error finish to Responses error status` |
+| Non-stream | error terminal | Claude | failing | `maps non-stream error finish to a Claude error terminal` |
+| Non-stream | error terminal | Gemini | failing | `maps non-stream error finish to a Gemini abort finishReason` |
+| Stream | length terminal | Claude | already-present | `emits Claude stream length as message_delta max_tokens` |
+| Stream | length terminal | Gemini | already-present | `emits Gemini stream length as MAX_TOKENS with text` |
+| Stream | content_filter terminal | Gemini | already-present | `emits Gemini stream content_filter as SAFETY with text` |
+| Stream | error terminal | Claude | already-present | `emits Claude stream error as an Anthropic error event` |
+| Stream | error terminal | Gemini | already-present | `emits Gemini stream error as OTHER finishReason` |
+| Stream | incomplete/length terminal | Responses | failing | `emits Responses stream incomplete for Chat length finish` |
+| Stream | error terminal | Responses | failing | `emits Responses stream failed for Chat error finish` |
+| Non-stream | tool call identity | Chat | already-present | `keeps tool call identity and finish_reason in Chat non-stream` |
+| Stream | tool call identity | Chat | already-present | `keeps tool call identity and finish_reason in Chat stream` |
+| Non-stream | tool call | Claude | already-present | `projects non-stream tool calls to Claude tool_use` |
+| Non-stream | tool call | Gemini | already-present | `projects non-stream tool calls to Gemini functionCall` |
+| Non-stream | tool call | Responses | already-present | `projects non-stream tool calls to Responses function_call` |
+| Stream | tool call | Claude | already-present | `streams tool calls to Claude with tool_use stop` |
+| Stream | tool call | Gemini | already-present | `streams tool calls to Gemini with functionCall name and args` |
+| Stream | tool call | Responses | already-present | `streams tool calls to Responses with call identity and completed arguments` |
+| Request | tool-result image media | Claude | failing | `converts tool-result image_url media to Claude image blocks` |
+| Request | tool-result image media | Gemini | already-present | `keeps tool-result image URL visible through Gemini functionResponse` |
+| Request | tool-result image media | Responses | failing | `preserves tool-result image media on Chat to Responses` |
+| Request | turn-scoped tool pairing | Claude | failing | `pairs Claude tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Gemini | failing | `pairs Gemini tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Responses | failing | `pairs Responses tool results only within the current assistant turn` |
+| Request | non-string object description (#1091) | Kiro | failing | `coerces object tool descriptions before Kiro trim` |
+| Request | non-string numeric description (#1091) | Kiro | failing | `coerces numeric tool descriptions before Kiro trim` |
+| Request | empty description fallback (#1091) | Kiro | already-present | `fills empty Kiro descriptions with a Tool: name fallback` |
+| Request | tuple prefixItems (#1091) | Gemini | already-present | `converts Gemini tuple prefixItems into items` |
+| Request | free-form schema (#1091) | Claude | already-present | `preserves free-form object schemas on Claude` |
+| Request | empty schema (#1091) | Gemini | already-present | `fills empty schemas for Gemini with a reason placeholder` |
+| Request | keyword-named properties (#1091) | Claude/Gemini/Responses | already-present | `preserves keyword-named properties through Claude, Gemini, and Responses` |
+| Request | string numeric constraints (#1091) | Claude | failing | `coerces string numeric schema constraints for Claude` |
+| Request | string numeric constraints (#1091) | Gemini | failing | `coerces string numeric schema constraints for Gemini` |
+| Request | string numeric constraints (#1091) | Responses | failing | `coerces string numeric schema constraints for Responses` |
+| Request | malformed schema rejection (#1091) | Claude | failing | `rejects malformed tool schemas for Claude` |
+| Request | malformed schema rejection (#1091) | Gemini | failing | `rejects malformed tool schemas for Gemini` |
+| Request | malformed schema rejection (#1091) | Responses | failing | `rejects malformed tool schemas for Responses` |
+
+## Failing reasons
+
+1. Gemini string `tool_choice` auto/none/required are dropped; only named `{type:function}` is mapped.
+2. Chat→Responses never copies `tool_choice`.
+3. Chat JSON `finish_reason: error` becomes Claude `end_turn` / Gemini `STOP` instead of an abort terminal.
+4. Chat→Responses stream flush emits `response.completed` after `length` / never emits `response.failed` after `error`.
+5. Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
+6. Cross-turn `tool_call_id` reuse breaks current-turn pairing on Claude, Gemini, and Responses.
+7. Kiro `description.trim` throws `TypeError` for object/number descriptions.
+8. String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.

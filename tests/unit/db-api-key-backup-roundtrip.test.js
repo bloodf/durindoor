@@ -46,8 +46,8 @@ describe("API-key database backup", () => {
       ],
     );
     db.run(
-      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
-      ["key-1", 44, 1.25, 3, "2026-01-02T00:00:00.000Z"],
+      `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
+      ["key-1", 44, 1.25, 3, 2, "2026-01-02T00:00:00.000Z"],
     );
 
     const snapshot = await database.exportDb();
@@ -62,7 +62,7 @@ describe("API-key database backup", () => {
       expiresAt: "2030-01-01T00:00:00.000Z",
       createdAt: "2026-01-01T00:00:00.000Z",
     });
-    expect(snapshot.apiKeyUsageTotals[0]).toMatchObject({ totalTokens: 44, totalCost: 1.25, totalRequests: 3 });
+    expect(snapshot.apiKeyUsageTotals[0]).toMatchObject({ totalTokens: 44, totalCost: 1.25, totalRequests: 3, unknownCostRequests: 2 });
 
     db.run(`UPDATE apiKeys SET key = 'sk-feedface', name = 'changed', machineId = 'changed', isActive = 1,
       allowedCombos = '[]', dailyLimitTokens = NULL, policy = NULL, expiresAt = NULL,
@@ -81,10 +81,11 @@ describe("API-key database backup", () => {
       expiresAt: "2030-01-01T00:00:00.000Z",
       createdAt: "2026-01-01T00:00:00.000Z",
     });
-    expect(db.get(`SELECT totalTokens, totalCost, totalRequests FROM apiKeyUsageTotals WHERE apiKeyId = 'key-1'`)).toEqual({
+    expect(db.get(`SELECT totalTokens, totalCost, totalRequests, unknownCostRequests FROM apiKeyUsageTotals WHERE apiKeyId = 'key-1'`)).toEqual({
       totalTokens: 44,
       totalCost: 1.25,
       totalRequests: 3,
+      unknownCostRequests: 2,
     });
   });
 
@@ -120,6 +121,7 @@ describe("API-key database backup", () => {
       totalTokens: 0,
       totalCost: 0,
       totalRequests: 0,
+      unknownCostRequests: 0,
     });
     expect(db.get(`SELECT key FROM apiKeys WHERE id = 'key-legacy'`).key).toBe(secret);
     await expect(database.getApiKeyUsageLimitStatus(secret, new Date("2026-01-02T12:00:00.000Z"))).resolves.toMatchObject({
@@ -129,6 +131,17 @@ describe("API-key database backup", () => {
     });
     expect(db.get(`SELECT apiKey FROM usageHistory LIMIT 1`).apiKey).toBeNull();
     expect(JSON.parse(db.get(`SELECT data FROM usageDaily WHERE dateKey = '2026-01-02'`).data).byApiKey).toEqual({});
+  });
+
+  it("imports older totals without an unknown-cost counter as zero", async () => {
+    const database = await import("@/lib/db/index.js");
+    await database.importDb({
+      apiKeys: [{ id: "legacy-total", key: "sk-deadbeef" }],
+      apiKeyUsageTotals: [{ apiKeyId: "legacy-total", totalTokens: 9, totalCost: 0.5, totalRequests: 3 }],
+    });
+    expect(await database.getApiKeyUsageTotals("legacy-total")).toMatchObject({
+      totalTokens: 9, totalCost: 0.5, totalRequests: 3, unknownCostRequests: 0,
+    });
   });
 
   it("rounds fractional non-chat estimates so its own export remains importable", async () => {
@@ -181,6 +194,10 @@ describe("API-key database backup", () => {
 
   it.each([
     [{ totalTokens: "1", totalCost: 0, totalRequests: 1 }, "totalTokens"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: -1 }, "unknownCostRequests"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: 0.5 }, "unknownCostRequests"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: "1" }, "unknownCostRequests"],
+    [{ totalTokens: 1, totalCost: 0, totalRequests: 1, unknownCostRequests: null }, "unknownCostRequests"],
     [{ totalTokens: 1, totalCost: Number.NaN, totalRequests: 1 }, "totalCost"],
     [{ totalTokens: 1, totalCost: 0, totalRequests: 1.5 }, "totalRequests"],
     [{ totalTokens: 1, totalCost: 0, totalRequests: 1, updatedAt: "2030-01-01T00:00:00" }, "updatedAt"],

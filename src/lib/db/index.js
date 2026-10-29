@@ -110,8 +110,9 @@ function validateApiKeyImport(payload) {
   const totalIds = assertUniqueNonEmpty(totals, "apiKeyId", "API-key total");
   for (const total of totals) {
     if (!ids.has(total.apiKeyId)) throw new Error(`API-key total references missing key: ${total.apiKeyId}`);
-    for (const field of ["totalTokens", "totalCost", "totalRequests"]) {
-      const value = total[field];
+    for (const field of ["totalTokens", "totalCost", "totalRequests", "unknownCostRequests"]) {
+      // Older backups cannot prove unknown-cost history; omission means zero.
+      const value = field === "unknownCostRequests" && !Object.hasOwn(total, field) ? 0 : total[field];
       if (!isNumber(value) || !Number.isFinite(value) || value < 0 || field !== "totalCost" && !Number.isSafeInteger(value)) {
         throw new Error(`API-key total ${total.apiKeyId} ${field} is invalid`);
       }
@@ -426,6 +427,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         totalTokens: Number(r.totalTokens) || 0,
         totalCost: Number(r.totalCost) || 0,
         totalRequests: Number(r.totalRequests) || 0,
+        unknownCostRequests: Number(r.unknownCostRequests) || 0,
         updatedAt: r.updatedAt || null
       })),
       quota: readQuotaPortableStateSync(db, { now: quotaNow }),
@@ -555,8 +557,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       for (const total of totals) {
         if (!total?.apiKeyId) continue;
         db.run(
-          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, ?, ?, ?, ?)`,
-          [total.apiKeyId, Number(total.totalTokens) || 0, Number(total.totalCost) || 0, Number(total.totalRequests) || 0, total.updatedAt || null]
+          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
+          [total.apiKeyId, Number(total.totalTokens) || 0, Number(total.totalCost) || 0, Number(total.totalRequests) || 0, total.unknownCostRequests ?? 0, total.updatedAt || null]
         );
       }
     } else {
@@ -566,7 +568,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       // that happen to reuse the same literal secret.
       for (const key of apiKeys) {
         db.run(
-          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, updatedAt) VALUES(?, 0, 0, 0, NULL)`,
+          `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt) VALUES(?, 0, 0, 0, 0, NULL)`,
           [key.id]
         );
       }

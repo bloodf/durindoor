@@ -42,7 +42,7 @@ afterAll(() => {
 describe("apiKeyUsageTotals missing table guard", () => {
   it("getApiKeyUsageTotals returns safe default when table is missing", async () => {
     const result = await getApiKeyUsageTotals("key-1");
-    expect(result).toEqual({ totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null });
+    expect(result).toEqual({ totalTokens: 0, totalCost: 0, totalRequests: 0, unknownCostRequests: 0, updatedAt: null });
   });
 
   it("getAllApiKeyUsageTotals returns empty array when table is missing", async () => {

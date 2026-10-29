@@ -27,10 +27,11 @@ import m022 from "./022-token-saver-daily.js";
 import m023 from "./023-usage-latency.js";
 import m024 from "./024-usage-history-api-key-index.js";
 import m025 from "./025-proxy-timeline.js";
+import m026 from "./026-usage-unknown-cost.js";
 
 export const PG_MIGRATIONS = [
   m001, m002, m003, m004, m005, m006, m007, m008, m009,
-  m010, m011, m012, m013, m014, m015, m016, m017, m018, m019, m020, m021, m022, m023, m024, m025,
+  m010, m011, m012, m013, m014, m015, m016, m017, m018, m019, m020, m021, m022, m023, m024, m025, m026,
 ].sort((a, b) => a.version - b.version);
 
 export function pgLatestVersion() {

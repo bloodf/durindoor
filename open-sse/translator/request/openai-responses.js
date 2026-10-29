@@ -97,7 +97,7 @@ const RESPONSES_ALLOWED_TOOLS_MODES = new Set(["auto", "required"]);
  * `null` as an object in this codebase, so converters must not use it bare.
  */
 function isPlainToolChoiceObject(value) {
-  return value != null && typeof value === "object" && !Array.isArray(value);
+  return value != null && isObject(value) && !Array.isArray(value);
 }
 
 /**

@@ -432,14 +432,22 @@ export function extractUsage(chunk) {
     });
   }
 
-  // Ollama NDJSON format (raw from provider, before translation)
-  // Ollama sends: {"model":"...","done":true,"prompt_eval_count":N,"eval_count":M}
+  // Ollama NDJSON format (raw from provider, before translation).
+  // Final chunk: {"model":"...","done":true,"prompt_eval_count":N,"eval_count":M,
+  // "prompt_eval_cached_count":C}. prompt_eval_cached_count is a cache-read subset
+  // of prompt_eval_count (cache-INCLUSIVE; https://docs.ollama.com/api/usage).
+  // Absent/null/non-finite/negative C → omit cached_tokens (same as main).
   if (chunk.done === true && isNumber(chunk.prompt_eval_count)) {
-    return normalizeUsage({
+    const usage = {
       prompt_tokens: chunk.prompt_eval_count || 0,
       completion_tokens: chunk.eval_count || 0,
       total_tokens: (chunk.prompt_eval_count || 0) + (chunk.eval_count || 0)
-    });
+    };
+    const cachedRaw = chunk.prompt_eval_cached_count;
+    if (isNumber(cachedRaw) && Number.isFinite(cachedRaw) && cachedRaw >= 0) {
+      usage.cached_tokens = cachedRaw;
+    }
+    return normalizeUsage(usage);
   }
 
   return null;

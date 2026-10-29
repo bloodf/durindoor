@@ -446,36 +446,54 @@ function flattenAnyOfOneOf(obj) {
   }
 }
 
+/**
+ * Lowercase Gemini/JSON Schema type keywords for predicate comparisons only.
+ * Preserves the emitted casing of `obj.type` (Gemini-native clients send
+ * OBJECT/ARRAY/STRING; OpenAI-style schemas send object/array/string).
+ *
+ * @param {unknown} type - Schema `type` value (string, or other).
+ * @returns {unknown} Lowercased string when `type` is a string; otherwise `type`.
+ */
+function schemaTypeKey(type) {
+  return isString(type) ? type.toLowerCase() : type;
+}
+
+function typeListIncludes(types, wanted) {
+  return types.some((t) => schemaTypeKey(t) === wanted);
+}
+
 // Flatten type arrays. Gemini Schema accepts a single type string; when a JSON
 // Schema union lists several non-null types, prefer structural clues (object /
 // array) then string over boolean/number so leftover `items` on a collapsed
 // non-array node can be stripped by enforceTypeConstraints.
+// Multi-member unions such as ["number","string"] therefore become "string"
+// (upstream 8db1f4a); main previously kept the first non-null entry.
 function flattenTypeArrays(obj) {
   if (!obj || !isObject(obj)) return;
 
   if (obj.type && Array.isArray(obj.type)) {
-    const nonNullTypes = obj.type.filter((t) => t !== "null");
+    const nonNullTypes = obj.type.filter((t) => schemaTypeKey(t) !== "null");
     if (nonNullTypes.length === 0) {
       obj.type = "string";
     } else if (nonNullTypes.length === 1) {
       obj.type = nonNullTypes[0];
-    } else if (obj.properties && nonNullTypes.includes("object")) {
+    } else if (obj.properties && typeListIncludes(nonNullTypes, "object")) {
       obj.type = "object";
     } else if (
       obj.items &&
       isObject(obj.items) &&
       Object.keys(obj.items).length > 0 &&
       obj.items.type &&
-      nonNullTypes.includes("array")
+      typeListIncludes(nonNullTypes, "array")
     ) {
       obj.type = "array";
-    } else if (nonNullTypes.includes("string")) {
+    } else if (typeListIncludes(nonNullTypes, "string")) {
       obj.type = "string";
-    } else if (nonNullTypes.includes("number")) {
+    } else if (typeListIncludes(nonNullTypes, "number")) {
       obj.type = "number";
-    } else if (nonNullTypes.includes("integer")) {
+    } else if (typeListIncludes(nonNullTypes, "integer")) {
       obj.type = "integer";
-    } else if (nonNullTypes.includes("boolean")) {
+    } else if (typeListIncludes(nonNullTypes, "boolean")) {
       obj.type = "boolean";
     } else {
       obj.type = nonNullTypes[0];
@@ -583,11 +601,12 @@ function convertPrefixItems(obj) {
 }
 
 /**
- * Gemini requires every `type:"array"` schema to carry a typed `items` node.
+ * Gemini requires every array schema to carry a typed `items` node.
  * Empty `items: {}` and untyped items objects are filled before placeholders
  * can turn them into object schemas with a `reason` property.
+ * Existing `items.type` values keep their original casing (STRING stays STRING).
  *
- * @param {object} obj - Schema node that may be `type:"array"` (mutated in place).
+ * @param {object} obj - Schema node already known to be an array (mutated in place).
  * @returns {void}
  */
 function fillArrayItemsPredicate(obj) {
@@ -595,7 +614,8 @@ function fillArrayItemsPredicate(obj) {
     obj.items = { type: "string" };
     return;
   }
-  if (obj.items.type) return;
+  // Case-insensitive: Gemini-native `items: { type: "STRING" }` is already typed.
+  if (schemaTypeKey(obj.items.type)) return;
   if (obj.items.properties) {
     obj.items.type = "object";
   } else if (obj.items.items) {
@@ -605,17 +625,23 @@ function fillArrayItemsPredicate(obj) {
   }
 }
 
-// Gemini requires items on every type:"array" schema — fill a permissive placeholder
+// Gemini requires items on every array schema — fill a permissive placeholder.
+// Compare type case-insensitively so Gemini-native `type:"ARRAY"` is filled too.
 function ensureArrayItems(obj) {
   if (!obj || !isObject(obj)) return;
-  if (obj.type === "array") fillArrayItemsPredicate(obj);
+  if (schemaTypeKey(obj.type) === "array") fillArrayItemsPredicate(obj);
   for (const v of Object.values(obj)) if (v && isObject(v)) ensureArrayItems(v);
 }
 
 /**
  * Enforce Gemini protobuf Schema field predicates after placeholders run:
- * - `items` only when `type === "array"` (and then items must be typed)
- * - `properties` / `required` only when `type === "object"`
+ * - `items` only when type is array (case-insensitive; then items must be typed)
+ * - `properties` / `required` only when type is object (case-insensitive)
+ *
+ * Depends on earlier phases (`ensureObjectType`, `ensureArrayItems`,
+ * `addPlaceholders`) having already assigned a `type` on every schema node that
+ * should keep `properties`/`required`/`items`. A typeless node is treated as
+ * non-object/non-array and those fields are stripped.
  *
  * Recurses only into real schema nodes (property-map values and `items`), never
  * into the properties name-map itself, so a parameter literally named
@@ -634,7 +660,8 @@ function enforceTypeConstraints(obj) {
   }
   if (obj.items && isObject(obj.items)) enforceTypeConstraints(obj.items);
 
-  if (obj.type === "array") {
+  const typeKey = schemaTypeKey(obj.type);
+  if (typeKey === "array") {
     delete obj.properties;
     delete obj.required;
     fillArrayItemsPredicate(obj);
@@ -643,7 +670,7 @@ function enforceTypeConstraints(obj) {
     delete obj.items;
   }
 
-  if (obj.type !== "object") {
+  if (typeKey !== "object") {
     delete obj.properties;
     delete obj.required;
   }

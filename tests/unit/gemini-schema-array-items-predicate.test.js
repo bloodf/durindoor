@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import "../translator/registerAll.js";
 import { cleanJSONSchemaForAntigravity } from "../../open-sse/translator/formats/gemini.js";
+import { translateRequest } from "../../open-sse/translator/index.js";
+import { FORMATS } from "../../open-sse/translator/formats.js";
 
 /**
  * Guards port of upstream decolua/9router#5257 / `8db1f4ae`:
@@ -7,6 +10,10 @@ import { cleanJSONSchemaForAntigravity } from "../../open-sse/translator/formats
  * values lack a valid type predicate (e.g. `items: {}`, untyped property,
  * `items` on a non-array). Also verifies #4620: a parameter literally named
  * `properties` still survives name-map-aware enforcement.
+ *
+ * Uppercase Gemini-native types (OBJECT/ARRAY/STRING) must keep their casing
+ * and their nested fields — enforceTypeConstraints / fillArrayItemsPredicate
+ * compare type case-insensitively so they do not strip properties/items.
  */
 describe("cleanJSONSchemaForAntigravity handles array items and type predicates", () => {
   it("removes items field when type is not array (fixing: field predicate failed: $type == Type.ARRAY)", () => {
@@ -147,5 +154,80 @@ describe("cleanJSONSchemaForAntigravity handles array items and type predicates"
     const schema = structuredClone(original);
     const cleaned = cleanJSONSchemaForAntigravity(schema);
     expect(cleaned).toEqual(original);
+  });
+
+  it("preserves top-level uppercase OBJECT schemas exactly (Gemini-native)", () => {
+    const original = {
+      type: "OBJECT",
+      properties: { city: { type: "STRING" } },
+      required: ["city"]
+    };
+    expect(cleanJSONSchemaForAntigravity(structuredClone(original))).toEqual(original);
+  });
+
+  it("preserves top-level uppercase ARRAY schemas with items exactly", () => {
+    const original = {
+      type: "ARRAY",
+      items: { type: "STRING" }
+    };
+    expect(cleanJSONSchemaForAntigravity(structuredClone(original))).toEqual(original);
+  });
+
+  it("preserves nested uppercase OBJECT and ARRAY schemas exactly", () => {
+    const original = {
+      type: "OBJECT",
+      properties: {
+        city: { type: "STRING" },
+        tags: {
+          type: "ARRAY",
+          items: { type: "STRING" }
+        },
+        meta: {
+          type: "OBJECT",
+          properties: {
+            ids: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            }
+          },
+          required: ["ids"]
+        }
+      },
+      required: ["city", "tags"]
+    };
+    expect(cleanJSONSchemaForAntigravity(structuredClone(original))).toEqual(original);
+  });
+
+  it("preserves uppercase OBJECT tool parameters through gemini → antigravity", () => {
+    const parameters = {
+      type: "OBJECT",
+      properties: {
+        city: { type: "STRING" },
+        tags: { type: "ARRAY", items: { type: "STRING" } }
+      },
+      required: ["city"]
+    };
+    const body = {
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+      tools: [{
+        functionDeclarations: [{
+          name: "weather",
+          description: "Get weather",
+          parameters: structuredClone(parameters)
+        }]
+      }]
+    };
+
+    const out = translateRequest(
+      FORMATS.GEMINI,
+      FORMATS.ANTIGRAVITY,
+      "gemini-2.5-flash",
+      body,
+      false,
+      null,
+      "antigravity"
+    );
+    const cleaned = out.request.tools[0].functionDeclarations[0].parameters;
+    expect(cleaned).toEqual(parameters);
   });
 });

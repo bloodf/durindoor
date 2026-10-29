@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "./openai-responses-nonstream.js";
+import { openAIResponsesBodyToClaude, openAIResponsesBodyToGemini, openAIResponsesBodyToOpenAI } from "./openai-responses-nonstream.js";
 
 test("converts Responses body to Claude message with usage fallback when usage is missing", () => {
   const out = openAIResponsesBodyToClaude({
@@ -218,4 +218,64 @@ test("maps incomplete Responses status to OpenAI length finish_reason", () => {
 
   assert.equal(out.choices[0].message.content, "[Error] max_output_tokens");
   assert.equal(out.choices[0].finish_reason, "length");
+});
+
+test("projects Responses text and usage to Gemini generateContent shape", () => {
+  const out = openAIResponsesBodyToGemini({
+    id: "resp_gemini_text",
+    model: "model-a",
+    status: "completed",
+    output: [{ type: "message", content: [{ type: "output_text", text: "hello" }] }],
+    usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7, input_tokens_details: { cached_tokens: 1 } },
+  });
+
+  assert.equal(out.candidates[0].content.parts[0].text, "hello");
+  assert.equal(out.candidates[0].finishReason, "STOP");
+  assert.deepEqual(out.usageMetadata, {
+    promptTokenCount: 5,
+    candidatesTokenCount: 2,
+    totalTokenCount: 7,
+    cachedContentTokenCount: 1,
+  });
+  assert.equal(out.responseId, "resp_gemini_text");
+  assert.equal("status" in out, false);
+});
+
+test("projects Responses function_call to Gemini functionCall part", () => {
+  const out = openAIResponsesBodyToGemini({
+    id: "resp_gemini_tool",
+    status: "completed",
+    output: [{
+      type: "function_call",
+      call_id: "c1",
+      name: "lookup",
+      arguments: "{\"q\":\"a\"}",
+    }],
+  });
+
+  assert.deepEqual(out.candidates[0].content.parts[0].functionCall, {
+    name: "lookup",
+    args: { q: "a" },
+  });
+  assert.equal(out.candidates[0].finishReason, "STOP");
+});
+
+test("maps incomplete Responses body to Gemini MAX_TOKENS with the tool call", () => {
+  const out = openAIResponsesBodyToGemini({
+    id: "r",
+    status: "incomplete",
+    incomplete_details: { reason: "max_output_tokens" },
+    output: [{
+      type: "function_call",
+      call_id: "c1",
+      name: "lookup",
+      arguments: "{\"q\":\"a\"}",
+    }],
+  });
+
+  assert.equal(out.candidates[0].finishReason, "MAX_TOKENS");
+  assert.deepEqual(out.candidates[0].content.parts[0].functionCall, {
+    name: "lookup",
+    args: { q: "a" },
+  });
 });

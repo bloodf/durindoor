@@ -10,6 +10,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
+import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
@@ -799,7 +800,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           return {
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: tool.function.parameters,
+            input_schema: toClaudeInputSchema(tool.function.parameters),
             ...(tool.function.strict !== undefined && { strict: tool.function.strict })
           };
         }

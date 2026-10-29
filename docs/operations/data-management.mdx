@@ -33,6 +33,8 @@ DATA_DIR/
 
 For SQLite, the main database and its backups live under `DATA_DIR/db`. PostgreSQL cutover snapshots use that backup directory. Keep credential directories and database files owner-only.
 
+Bound string parameters are sanitized once at the driver bind boundary: embedded NUL bytes (`\0`) are stripped before SQLite or PostgreSQL see them. Non-string binds (numbers, null, booleans, blobs) are unchanged. Stored credentials are not rewritten except for that NUL removal.
+
 PostgreSQL installations keep the main store, usage, and proxy timeline in the selected PostgreSQL database. Copying `DATA_DIR` alone does not back up those rows. Take a full custom-format dump with `pg_dump -Fc`, verify its table listing with `pg_restore -l`, and rehearse the restore into an isolated database. Keep the dump owner-only and preserve the matching master key, machine ID, JWT secret, and protected service environment alongside it. A database dump without its encryption keys cannot recover provider credentials.
 
 ## Files that do not follow DATA_DIR

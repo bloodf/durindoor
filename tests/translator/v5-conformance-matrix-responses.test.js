@@ -231,8 +231,8 @@ describe("#1089 Responses client conformance", () => {
     });
   });
 
-  // #1089 failing: translator pairs historical function outputs by call ID across assistant turns. Refs #1335
-  it.skip("does not pair function_call_output across assistant turns", () => {
+  // #1335 CTO: flush the tool-only turn and relocate the late real output by call id.
+  it("relocates function_call_output after an intervening assistant message by call id", () => {
     const out = request({
       input: [
         { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "old", name: "lookup", arguments: "{}" },
@@ -244,7 +244,15 @@ describe("#1089 Responses client conformance", () => {
         { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "old", output: "result" },
       ],
     }, chat);
-    expect(out.messages.filter((message) => message.tool_call_id === "old")).toHaveLength(0);
+    expect(out.messages).toEqual([
+      {
+        role: ROLE.ASSISTANT,
+        content: null,
+        tool_calls: [{ id: "old", type: OPENAI_BLOCK.FUNCTION, function: { name: "lookup", arguments: "{}" } }],
+      },
+      { role: ROLE.TOOL, tool_call_id: "old", content: "result" },
+      { role: ROLE.ASSISTANT, content: "new turn" },
+    ]);
   });
 
   it("preserves text tool-result media to Chat, Claude, and Gemini", () => {
@@ -544,8 +552,7 @@ describe("#1089 Responses client conformance", () => {
     });
   });
 
-  // #1089 failing: non-stream Responses upstream bodies are not projected into Gemini client shape. Refs #1346
-  it.skip("projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call", () => {
+  it("projects non-stream incomplete Responses body to Gemini MAX_TOKENS with the tool call", () => {
     const out = nonstreamTo({
       id: "r",
       status: "incomplete",

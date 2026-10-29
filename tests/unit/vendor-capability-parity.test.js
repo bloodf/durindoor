@@ -120,6 +120,25 @@ describe("vendor capability parity", () => {
     });
   });
 
+  it("publishes sourced Kimi Platform K3.1 Pro and K2 catalog capabilities", () => {
+    expect(getCapabilitiesForModel("kimi", "kimi-k3.1-pro")).toMatchObject({
+      contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072,
+      vision: true, videoInput: true, thinkingEfforts: ["low", "high", "max"], thinkingCanDisable: false,
+    });
+    expect(getCapabilitiesForModel("kimi", "kimi-k3.1-pro-highspeed")).toMatchObject({
+      contextWindow: 1048576, maxOutput: 1048576, thinkingEfforts: ["low", "high", "max"],
+    });
+    expect(getCapabilitiesForModel("kimi", "kimi-k2.7-code")).toMatchObject({
+      contextWindow: 262144, maxOutput: null, defaultOutput: 32768, thinkingCanDisable: false, vision: true, videoInput: true,
+    });
+    expect(getCapabilitiesForModel("kimi", "kimi-k2.6")).toMatchObject({
+      contextWindow: 262144, maxOutput: null, thinkingCanDisable: true, vision: true, videoInput: true,
+    });
+    expect(resolveModelLimits("kimi", "kimi-k2.7-code")).toMatchObject({
+      contextWindow: 262144, maxOutput: undefined, known: true,
+    });
+  });
+
   it("keeps Coding-plan aliases and K3-256k video restrictions separate", () => {
     expect(getCapabilitiesForModel("kimi-coding", "for-coding")).toMatchObject({
       vision: true, videoInput: true, contextWindow: 1048576,

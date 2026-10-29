@@ -84,7 +84,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     // usage (or before finish_reason deferred completion) must not complete early.
     if (state.awaitingTrailingUsage && !state.completedSent && state.responsesUsage) {
       const { events, emit } = createEventEmitter(state);
-      sendCompleted(state, emit);
+      sendTerminal(state, emit);
       return events;
     }
     return [];
@@ -181,13 +181,15 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
   }
 
-  // Handle finish_reason
+  // Handle finish_reason. Length → response.incomplete; error → response.failed;
+  // stop/tool_calls (and other clean ends) still complete. (#1331 / #1089)
   if (choice.finish_reason) {
+    state.finishReason = choice.finish_reason;
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
     if (state.responsesUsage) {
-      sendCompleted(state, emit);
+      sendTerminal(state, emit);
     } else {
       state.awaitingTrailingUsage = true;
     }
@@ -588,26 +590,63 @@ function closeToolCall(state, emit, idx) {
   }
 }
 
-function sendCompleted(state, emit) {
-  if (!state.completedSent) {
-    state.completedSent = true;
-    state.awaitingTrailingUsage = false;
-    const usage = state.responsesUsage;
-    emit("response.completed", {
-      type: "response.completed",
+/**
+ * Emit exactly one Responses terminal for the Chat finish_reason.
+ * - length → response.incomplete (incomplete_details.reason = max_output_tokens)
+ * - error → response.failed
+ * - stop / tool_calls / unset → response.completed
+ * Usage attaches the same way on every terminal when present. (#1331)
+ */
+function sendTerminal(state, emit) {
+  if (state.completedSent) return;
+  state.completedSent = true;
+  state.awaitingTrailingUsage = false;
+  const usage = state.responsesUsage;
+  const responseBase = {
+    id: state.responseId,
+    object: "response",
+    created_at: state.created,
+    model: state.model || MODEL_FALLBACK,
+    background: false,
+    output: (state.finalOutputItems || []).filter(Boolean),
+    ...(usage ? { usage } : null)
+  };
+
+  if (state.finishReason === OPENAI_FINISH.LENGTH) {
+    emit("response.incomplete", {
+      type: "response.incomplete",
       response: {
-        id: state.responseId,
-        object: "response",
-        created_at: state.created,
-        model: state.model || MODEL_FALLBACK,
-        status: "completed",
-        background: false,
+        ...responseBase,
+        status: "incomplete",
         error: null,
-        output: (state.finalOutputItems || []).filter(Boolean),
-        ...(usage ? { usage } : null)
+        incomplete_details: { reason: "max_output_tokens" }
       }
     });
+    return;
   }
+
+  if (state.finishReason === OPENAI_FINISH.ERROR) {
+    const message = state.upstreamError?.message ||
+      "Upstream aborted the response (finish_reason error)";
+    emit("response.failed", {
+      type: "response.failed",
+      response: {
+        ...responseBase,
+        status: "failed",
+        error: { type: "server_error", message }
+      }
+    });
+    return;
+  }
+
+  emit("response.completed", {
+    type: "response.completed",
+    response: {
+      ...responseBase,
+      status: "completed",
+      error: null
+    }
+  });
 }
 
 function flushEvents(state) {
@@ -618,7 +657,7 @@ function flushEvents(state) {
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-  sendCompleted(state, emit);
+  sendTerminal(state, emit);
 
   return events;
 }

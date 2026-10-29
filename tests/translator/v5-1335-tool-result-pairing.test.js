@@ -179,23 +179,93 @@ describe("#1335 turn-scoped tool-result pairing", () => {
     ]);
   });
 
-  it("does not pair a Responses function_call_output across an intervening assistant message", () => {
+  it("flushes a Responses tool-only turn and relocates a late real output by call id", () => {
     const out = responsesRequest({
       input: [
-        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "old", name: "lookup", arguments: "{}" },
+        { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "hi" }] },
+        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "c1", name: "lookup", arguments: "{}" },
+        {
+          type: RESPONSES_ITEM.MESSAGE,
+          role: ROLE.ASSISTANT,
+          content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, text: "running" }],
+        },
+        { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "c1", output: "REAL" },
+      ],
+    }, CHAT);
+
+    expect(out.messages).toEqual([
+      { role: ROLE.USER, content: "hi" },
+      { role: ROLE.ASSISTANT, content: null, tool_calls: [call("c1", "lookup")] },
+      { role: ROLE.TOOL, tool_call_id: "c1", content: "REAL" },
+      { role: ROLE.ASSISTANT, content: "running" },
+    ]);
+    expect(JSON.stringify(out.messages)).not.toContain("[No response received]");
+  });
+
+  it("relocates parallel late Responses outputs after an intervening assistant message", () => {
+    const out = responsesRequest({
+      input: [
+        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "c1", name: "a", arguments: "{}" },
+        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "c2", name: "b", arguments: "{}" },
+        {
+          type: RESPONSES_ITEM.MESSAGE,
+          role: ROLE.ASSISTANT,
+          content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, text: "running" }],
+        },
+        { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "c2", output: "REAL_2" },
+        { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "c1", output: "REAL_1" },
+      ],
+    }, CHAT);
+
+    expect(out.messages).toEqual([
+      {
+        role: ROLE.ASSISTANT,
+        content: null,
+        tool_calls: [call("c1", "a"), call("c2", "b")],
+      },
+      { role: ROLE.TOOL, tool_call_id: "c2", content: "REAL_2" },
+      { role: ROLE.TOOL, tool_call_id: "c1", content: "REAL_1" },
+      { role: ROLE.ASSISTANT, content: "running" },
+    ]);
+    expect(JSON.stringify(out.messages)).not.toContain("[No response received]");
+  });
+
+  it("synthesizes only when a Responses tool-only turn has no output anywhere", () => {
+    const out = responsesRequest({
+      input: [
+        { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "c1", name: "lookup", arguments: "{}" },
         {
           type: RESPONSES_ITEM.MESSAGE,
           role: ROLE.ASSISTANT,
           content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, text: "new turn" }],
         },
-        { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "old", output: "result" },
       ],
     }, CHAT);
 
     expect(out.messages).toEqual([
+      { role: ROLE.ASSISTANT, content: null, tool_calls: [call("c1", "lookup")] },
+      { role: ROLE.TOOL, tool_call_id: "c1", content: "[No response received]" },
       { role: ROLE.ASSISTANT, content: "new turn" },
     ]);
-    expect(out.messages.filter((message) => message.tool_call_id === "old")).toHaveLength(0);
+  });
+
+  it("relocates a Chat tool result that arrives after a later assistant turn", () => {
+    const messages = [
+      { role: ROLE.ASSISTANT, content: null, tool_calls: [call("a", "fn_a")] },
+      { role: ROLE.ASSISTANT, content: null, tool_calls: [call("b", "fn_b")] },
+      { role: ROLE.TOOL, tool_call_id: "a", content: "REAL_A" },
+      { role: ROLE.TOOL, tool_call_id: "b", content: "REAL_B" },
+    ];
+
+    const body = { messages: structuredClone(messages) };
+    fixMissingToolResponses(body);
+    expect(body.messages).toEqual([
+      { role: ROLE.ASSISTANT, content: null, tool_calls: [call("a", "fn_a")] },
+      { role: ROLE.TOOL, tool_call_id: "a", content: "REAL_A" },
+      { role: ROLE.ASSISTANT, content: null, tool_calls: [call("b", "fn_b")] },
+      { role: ROLE.TOOL, tool_call_id: "b", content: "REAL_B" },
+    ]);
+    expect(JSON.stringify(body.messages)).not.toContain("[No response received]");
   });
 
   it("still merges same-turn trailing assistant text before tool outputs", () => {

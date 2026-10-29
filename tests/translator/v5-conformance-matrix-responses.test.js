@@ -231,9 +231,8 @@ describe("#1089 Responses client conformance", () => {
     });
   });
 
-  // #1335: a tool-only function_call turn closed by a later assistant message
-  // abandons unanswered calls; late function_call_output must not pair across.
-  it("does not pair function_call_output across assistant turns", () => {
+  // #1335 CTO: flush the tool-only turn and relocate the late real output by call id.
+  it("relocates function_call_output after an intervening assistant message by call id", () => {
     const out = request({
       input: [
         { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "old", name: "lookup", arguments: "{}" },
@@ -245,7 +244,15 @@ describe("#1089 Responses client conformance", () => {
         { type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT, call_id: "old", output: "result" },
       ],
     }, chat);
-    expect(out.messages.filter((message) => message.tool_call_id === "old")).toHaveLength(0);
+    expect(out.messages).toEqual([
+      {
+        role: ROLE.ASSISTANT,
+        content: null,
+        tool_calls: [{ id: "old", type: OPENAI_BLOCK.FUNCTION, function: { name: "lookup", arguments: "{}" } }],
+      },
+      { role: ROLE.TOOL, tool_call_id: "old", content: "result" },
+      { role: ROLE.ASSISTANT, content: "new turn" },
+    ]);
   });
 
   it("preserves text tool-result media to Chat, Claude, and Gemini", () => {

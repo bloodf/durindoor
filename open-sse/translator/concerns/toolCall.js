@@ -468,31 +468,34 @@ function syntheticToolResult(id, isClaudeFormat) {
   };
 }
 
-/**
- * Decide whether a tool-result id from the current turn's contiguous run should
- * be kept, dropped as a cross-turn stray, or left for salvageOrphanedToolResults.
- * @returns {"keep"|"drop"|"orphan"}
- */
-function classifyToolResultId(id, callIdSet, answered, allLiveIds) {
-  if (callIdSet.has(id)) {
-    if (answered.has(id)) return "drop";
-    return "keep";
-  }
-  // Id still belongs to another assistant turn in this request → cross-turn stray.
-  if (allLiveIds.has(id)) return "drop";
-  // No matching tool call anywhere → true orphan; leave for salvage.
-  return "orphan";
+function openaiResultForId(id, sourceMsg) {
+  return {
+    role: ROLE.TOOL,
+    tool_call_id: id,
+    content: sourceMsg.content,
+    ...(sourceMsg.is_error === true && { is_error: true }),
+    ...(isString(sourceMsg.name) && sourceMsg.name && { name: sourceMsg.name })
+  };
+}
+
+function claudeResultForId(id, block) {
+  return {
+    role: ROLE.USER,
+    content: [{
+      type: CLAUDE_BLOCK.TOOL_RESULT,
+      tool_use_id: id,
+      content: block.content,
+      ...(block.is_error && { is_error: block.is_error })
+    }]
+  };
 }
 
 /**
- * Pair tool results only with tool calls from the immediately preceding
- * assistant turn, matching by call id (not position). Contiguous stray results
- * for earlier turns (ids that are still live on a prior turn) are dropped;
- * current-turn results are kept even when a stray precedes them; true orphans
- * (no live call) stay in place for salvageOrphanedToolResults; only truly
- * unanswered current-turn ids get a synthetic "[No response received]".
- * Duplicate results for an already-answered id in the same run are dropped.
- * Refs #1335.
+ * Pair tool results to their owning assistant turn by call id (not position).
+ * Real results that appear after a later assistant turn are relocated back to
+ * their turn. Duplicate results for an already-claimed id are dropped (logged).
+ * True orphans (no live call) stay for salvageOrphanedToolResults. Only ids with
+ * no real result anywhere get a synthetic "[No response received]". Refs #1335.
  */
 export function fixMissingToolResponses(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
@@ -505,57 +508,108 @@ export function fixMissingToolResponses(body) {
   for (const message of body.messages) {
     for (const id of getToolCallIds(message)) allLiveIds.add(id);
   }
-  const newMessages = [];
-  let i = 0;
 
-  while (i < body.messages.length) {
-    const msg = body.messages[i];
+  // First real result per live call id (insertion order = first seen).
+  const resultsById = new Map();
+  const orphanCarriers = [];
+
+  for (const msg of body.messages) {
+    if (!msg || !isObject(msg)) continue;
+
+    if (msg.role === ROLE.TOOL && msg.tool_call_id) {
+      const id = msg.tool_call_id;
+      if (!allLiveIds.has(id)) {
+        orphanCarriers.push(msg);
+        continue;
+      }
+      if (resultsById.has(id)) {
+        console.warn(
+          `[Translator] Dropped duplicate tool result for call_id=${id} (already paired)`
+        );
+        continue;
+      }
+      resultsById.set(id, isClaudeFormat ? claudeResultForId(id, { content: msg.content, is_error: msg.is_error }) : openaiResultForId(id, msg));
+      continue;
+    }
+
+    if (msg.role === ROLE.USER && Array.isArray(msg.content) &&
+    msg.content.some((block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT)) {
+      const leftover = [];
+      const orphanBlocks = [];
+      for (const block of msg.content) {
+        if (!isObject(block)) continue;
+        if (block.type !== CLAUDE_BLOCK.TOOL_RESULT) {
+          leftover.push(block);
+          continue;
+        }
+        const id = block.tool_use_id;
+        if (!allLiveIds.has(id)) {
+          orphanBlocks.push(block);
+          continue;
+        }
+        if (resultsById.has(id)) {
+          console.warn(
+            `[Translator] Dropped duplicate tool_result for tool_use_id=${id} (already paired)`
+          );
+          continue;
+        }
+        resultsById.set(id, claudeResultForId(id, block));
+      }
+      if (orphanBlocks.length > 0) {
+        orphanCarriers.push({ ...msg, content: orphanBlocks });
+      }
+      if (leftover.length > 0) {
+        orphanCarriers.push({ ...msg, content: leftover });
+      }
+    }
+  }
+
+  const usedIds = new Set();
+  const newMessages = [];
+
+  for (const msg of body.messages) {
+    if (!msg || !isObject(msg)) {
+      newMessages.push(msg);
+      continue;
+    }
+
+    if (msg.role === ROLE.TOOL) continue;
+    if (msg.role === ROLE.USER && Array.isArray(msg.content) &&
+    msg.content.some((block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT)) {
+      continue;
+    }
+
     newMessages.push(msg);
-    i += 1;
 
     const toolCallIds = getToolCallIds(msg);
     if (toolCallIds.length === 0) continue;
 
-    const callIdSet = new Set(toolCallIds);
     const answered = new Set();
-
-    while (i < body.messages.length && isToolResultCarrier(body.messages[i])) {
-      const resultMsg = body.messages[i];
-      i += 1;
-
-      if (resultMsg.role === ROLE.TOOL) {
-        const id = resultMsg.tool_call_id;
-        const verdict = classifyToolResultId(id, callIdSet, answered, allLiveIds);
-        if (verdict === "drop") continue;
-        newMessages.push(resultMsg);
-        if (verdict === "keep") answered.add(id);
-        continue;
-      }
-
-      // Claude-shaped user carrier: keep in-turn + orphan tool_result blocks
-      // (and sibling non-result content); drop cross-turn / duplicate results.
-      if (!Array.isArray(resultMsg.content)) continue;
-      const keptBlocks = [];
-      for (const block of resultMsg.content) {
-        if (!isObject(block)) continue;
-        if (block.type !== CLAUDE_BLOCK.TOOL_RESULT) {
-          keptBlocks.push(block);
-          continue;
-        }
-        const id = block.tool_use_id;
-        const verdict = classifyToolResultId(id, callIdSet, answered, allLiveIds);
-        if (verdict === "drop") continue;
-        keptBlocks.push(block);
-        if (verdict === "keep") answered.add(id);
-      }
-      if (keptBlocks.length === 0) continue;
-      newMessages.push({ ...resultMsg, content: keptBlocks });
+    // Preserve first-seen order among this turn's ids.
+    for (const [id, resultMsg] of resultsById) {
+      if (!toolCallIds.includes(id) || usedIds.has(id)) continue;
+      newMessages.push(resultMsg);
+      usedIds.add(id);
+      answered.add(id);
     }
-
     for (const id of toolCallIds) {
       if (answered.has(id)) continue;
       newMessages.push(syntheticToolResult(id, isClaudeFormat));
+      usedIds.add(id);
     }
+  }
+
+  // True orphans (and leftover non-result blocks from Claude carriers) stay for salvage.
+  for (const orphan of orphanCarriers) newMessages.push(orphan);
+
+  // Any live-id result that never found its assistant was unexpected; never
+  // silently discard a real payload — append and log.
+  for (const [id, resultMsg] of resultsById) {
+    if (usedIds.has(id)) continue;
+    console.warn(
+      `[Translator] Relocated unpaired tool result for call_id=${id} to end of messages (no owning turn emitted)`
+    );
+    newMessages.push(resultMsg);
   }
 
   body.messages = newMessages;

@@ -5,32 +5,7 @@ import { MODEL_FALLBACK } from "../schema/defaults.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { FORMATS } from "../formats.js";
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-
-const DEFAULT_UPSTREAM_ABORT_MESSAGE =
-  "Upstream aborted the response (malformed function call or empty candidate)";
-
-/**
- * Plain-record guard. Shared `isObject` follows `typeof` and treats `null` as an
- * object, so callers that would read `.message` / nested fields must use this
- * instead of a bare `typeof === "object"` check (#1330 robustness).
- */
-function isPlainRecord(value) {
-  return value != null && isObject(value) && !Array.isArray(value);
-}
-
-/**
- * Prefer a non-empty string `message` from a plain upstream error object.
- * Null, strings, primitives, arrays, and missing/empty fields fall through
- * without throwing so the translator keeps main's non-throwing contract.
- */
-function messageFromUpstreamError(...candidates) {
-  for (const candidate of candidates) {
-    if (!isPlainRecord(candidate)) continue;
-    if (isString(candidate.message) && candidate.message.length > 0) return candidate.message;
-  }
-  return null;
-}
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 /**
  * Convert non-streaming OpenAI Chat Completions response to Anthropic Messages format.
@@ -38,34 +13,17 @@ function messageFromUpstreamError(...candidates) {
  *
  * Input:  OpenAI Chat Completions JSON  {object:"chat.completion", choices:[{message:{...}}]}
  * Output: Anthropic Messages JSON        {id:"msg_...", type:"message", content:[...]}
- *         or Anthropic error terminal    {type:"error", error:{type, message}} when
- *         `finish_reason` is the hub `"error"` abort (#1330 / #1089).
- *         Only the known string `"error"` drives that terminal; null / empty /
- *         unknown / non-string finishes keep main's end_turn message path.
+ *
+ * Hub `finish_reason: "error"` never reaches this translator from live handlers:
+ * `handleNonStreamingResponse` rejects it via `isCoherentNonStreamingResponse`, and
+ * `handleForcedSSEToJson` returns the same incoherent 502 before projection (#1330).
  */
 export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, options = {}) {
   if (!responseBody || !responseBody.choices?.[0]) return responseBody;
 
   const choice = responseBody.choices[0];
   const msg = choice.message || {};
-  const rawFinish = choice.finish_reason;
-
-  // Match the streaming Chat→Claude translator: only the hub `"error"` finish is
-  // an aborted turn. Returning type:"message" with stop_reason end_turn makes
-  // Anthropic clients treat a broken turn as done.
-  if (rawFinish === OPENAI_FINISH.ERROR) {
-    const message = messageFromUpstreamError(responseBody.error, choice.error) ||
-      DEFAULT_UPSTREAM_ABORT_MESSAGE;
-    return {
-      type: "error",
-      error: {
-        type: "api_error",
-        message,
-      },
-    };
-  }
-
-  const finishReason = rawFinish || OPENAI_FINISH.STOP;
+  const finishReason = choice.finish_reason || OPENAI_FINISH.STOP;
 
   const content = [];
 

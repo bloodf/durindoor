@@ -35,9 +35,19 @@ describe("Claude tool input schema normalization (#1350)", () => {
     expect(schema).toEqual(original);
   });
 
-  it.each([undefined, null, [], "x", 5])("defaults non-object parameters (%s)", (parameters) => {
-    const tool = parameters === undefined ? {} : { parameters };
+  it.each([
+    { label: "missing", tool: {} },
+    { label: "null", tool: { parameters: null } },
+    { label: "empty array", tool: { parameters: [] } },
+    { label: "non-empty array", tool: { parameters: [{ a: 1 }] } },
+    { label: "string", tool: { parameters: "x" } },
+    { label: "number", tool: { parameters: 5 } },
+  ])("defaults non-object parameters ($label)", ({ tool }) => {
     expect(translateTool(tool)).toEqual({ type: "object", properties: {}, required: [] });
+  });
+
+  it("passes a non-object typed schema through unchanged", () => {
+    expect(translateTool({ parameters: { type: "string" } })).toEqual({ type: "string" });
   });
 
   it("normalizes parameters first when empty parameters coexist with valid input_schema", () => {

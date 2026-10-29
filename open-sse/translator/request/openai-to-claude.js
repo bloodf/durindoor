@@ -15,9 +15,12 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
+const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
 function toClaudeInputSchema(parameters, inputSchema) {
-  const schema = [parameters, inputSchema].find((value) => isObject(value));
+  const schema = [parameters, inputSchema].find(isPlainObject);
   if (!schema) return { type: "object", properties: {}, required: [] };
+  if (schema.type !== undefined && schema.type !== "object") return schema;
   if (schema.type !== undefined && schema.properties !== undefined) return schema;
   return { type: "object", ...schema, ...(schema.properties === undefined && { properties: {} }) };
 }

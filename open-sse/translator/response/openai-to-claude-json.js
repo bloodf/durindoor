@@ -12,6 +12,8 @@ import { FORMATS } from "../formats.js";
  *
  * Input:  OpenAI Chat Completions JSON  {object:"chat.completion", choices:[{message:{...}}]}
  * Output: Anthropic Messages JSON        {id:"msg_...", type:"message", content:[...]}
+ *         or Anthropic error terminal    {type:"error", error:{type, message}} when
+ *         `finish_reason` is the hub `"error"` abort (#1330 / #1089).
  */
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, options = {}) {
@@ -20,6 +22,19 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
   const choice = responseBody.choices[0];
   const msg = choice.message || {};
   const finishReason = choice.finish_reason || OPENAI_FINISH.STOP;
+
+  // Match the streaming Chat→Claude translator: a hub `"error"` finish is an
+  // aborted turn, not a clean end_turn. Returning type:"message" with
+  // stop_reason end_turn makes Anthropic clients treat a broken turn as done.
+  if (finishReason === OPENAI_FINISH.ERROR) {
+    return {
+      type: "error",
+      error: {
+        type: "api_error",
+        message: "Upstream aborted the response (malformed function call or empty candidate)",
+      },
+    };
+  }
 
   const content = [];
 

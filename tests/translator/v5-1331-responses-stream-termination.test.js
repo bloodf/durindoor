@@ -15,11 +15,8 @@ import { OPENAI_BLOCK, OPENAI_FINISH, ROLE } from "../../open-sse/translator/sch
 const CHAT = FORMATS.OPENAI;
 const RESPONSES = FORMATS.OPENAI_RESPONSES;
 
-/** Contract for failed.error — fixed copy, never upstream text. (#1331) */
-const FAILED_ERROR = {
-  type: "server_error",
-  message: "Upstream aborted the response (finish_reason error)",
-};
+/** Credential-like upstream text — must be redacted via sanitizeErrorMessage. (#1331) */
+const CREDENTIAL_SENTINEL = "sk-test-SENTINEL-1331";
 
 const TERMINALS = new Set([
   "response.completed",
@@ -42,16 +39,25 @@ const textChunk = (content, finish_reason, extra = {}) => ({
   ...extra,
 });
 
-const completion = (finish_reason, message = { role: ROLE.ASSISTANT, content: "partial" }) => ({
+const completion = (finish_reason, message = { role: ROLE.ASSISTANT, content: "partial" }, extra = {}) => ({
   id: "chat-1331",
   model: "m",
   object: "chat.completion",
   choices: [{ index: 0, message, finish_reason }],
   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+  ...extra,
 });
 
-const project = (finish_reason, message) =>
-  translateNonStreamingResponse(completion(finish_reason, message), CHAT, RESPONSES);
+const project = (finish_reason, message, extra) =>
+  translateNonStreamingResponse(completion(finish_reason, message, extra), CHAT, RESPONSES);
+
+const assertFailedErrorShape = (error, serialized) => {
+  expect(typeof error?.code).toBe("string");
+  expect(error.code.length).toBeGreaterThan(0);
+  expect(typeof error?.message).toBe("string");
+  expect(error.message.length).toBeGreaterThan(0);
+  expect(serialized).not.toContain(CREDENTIAL_SENTINEL);
+};
 
 describe("#1331 Chat→Responses stream termination", () => {
   it("emits Responses stream incomplete for Chat length finish", () => {
@@ -94,7 +100,9 @@ describe("#1331 Chat→Responses stream termination", () => {
 
   it("emits Responses stream failed for Chat error finish", () => {
     const events = streamTo([
-      textChunk("boom", OPENAI_FINISH.ERROR),
+      textChunk("boom", OPENAI_FINISH.ERROR, {
+        error: { message: `upstream aborted with ${CREDENTIAL_SENTINEL}` },
+      }),
       null,
     ]);
     const terminals = terminalEvents(events);
@@ -102,12 +110,12 @@ describe("#1331 Chat→Responses stream termination", () => {
     expect(terminals[0].event).toBe("response.failed");
     expect(terminals[0].data).toMatchObject({
       type: "response.failed",
-      response: {
-        status: "failed",
-        error: FAILED_ERROR,
-      },
+      response: { status: "failed" },
     });
-    expect(JSON.stringify(terminals[0].data.response.error)).not.toMatch(/sk-|api[_-]?key|bearer/i);
+    assertFailedErrorShape(
+      terminals[0].data.response.error,
+      JSON.stringify(terminals[0].data.response),
+    );
     expect(events.some((event) => event.event === "response.completed")).toBe(false);
     expect(events.some((event) => event.event === "response.incomplete")).toBe(false);
   });
@@ -203,12 +211,15 @@ describe("#1331 Chat→Responses non-stream JSON termination", () => {
   });
 
   it("maps non-stream error to failed with a secret-free error object", () => {
-    const out = project(OPENAI_FINISH.ERROR);
+    const out = project(
+      OPENAI_FINISH.ERROR,
+      { role: ROLE.ASSISTANT, content: "partial" },
+      { error: { message: `upstream aborted with ${CREDENTIAL_SENTINEL}` } },
+    );
     expect(out.status).toBe("failed");
-    expect(out.error).toEqual(FAILED_ERROR);
     expect(out).not.toHaveProperty("incomplete_details");
     expect(out.status).not.toBe(OPENAI_FINISH.ERROR);
-    expect(JSON.stringify(out.error)).not.toMatch(/sk-|api[_-]?key|bearer/i);
+    assertFailedErrorShape(out.error, JSON.stringify(out));
   });
 
   it("maps non-stream stop and tool_calls to completed", () => {

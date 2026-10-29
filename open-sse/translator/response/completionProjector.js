@@ -289,7 +289,10 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
   const finishReason = getChoice(completion).finish_reason || OPENAI_FINISH.STOP;
   // Real Responses statuses only: incomplete / failed / completed — never the
   // Chat finish_reason literal ("length", "content_filter", "error"). (#1331)
-  const terminal = responsesTerminalFromChatFinish(finishReason);
+  const upstreamMessage = isString(completion?.error) ?
+    completion.error :
+    completion?.error?.message;
+  const terminal = responsesTerminalFromChatFinish(finishReason, upstreamMessage);
   return {
     id: completion.id ? `resp_${completion.id}` : `resp_${Date.now()}`,
     object: "response",

@@ -71,6 +71,11 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   }
 
   if (chunk.model) state.model = chunk.model;
+  // Capture Chat-stream error payloads so finish_reason error can sanitize them
+  // into response.failed.error (never raw credentials). (#1331)
+  if (chunk.error) {
+    state.upstreamError = isObject(chunk.error) ? chunk.error : { message: String(chunk.error) };
+  }
   // Merge rather than overwrite so provider-only fields already extracted
   // into shared state (e.g. Kiro credits) survive the Responses projection.
   if (chunk.usage && isObject(chunk.usage)) {
@@ -602,7 +607,10 @@ function sendTerminal(state, emit) {
   state.completedSent = true;
   state.awaitingTrailingUsage = false;
   const usage = state.responsesUsage;
-  const terminal = responsesTerminalFromChatFinish(state.finishReason);
+  const upstreamMessage = isString(state.upstreamError) ?
+    state.upstreamError :
+    state.upstreamError?.message;
+  const terminal = responsesTerminalFromChatFinish(state.finishReason, upstreamMessage);
   emit(terminal.event, {
     type: terminal.event,
     response: {

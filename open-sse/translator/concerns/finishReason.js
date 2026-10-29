@@ -1,6 +1,7 @@
 // Concern #6: finish_reason / stop_reason mapping.
 // One entry per direction; switch by special format, default handles common providers.
 import { OPENAI_FINISH, CLAUDE_STOP, GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../schema/finishReasons.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CLAUDE_STOP_VALUES = new Set(Object.values(CLAUDE_STOP));
@@ -105,19 +106,37 @@ export function fromOpenAIFinish(reason, format) {
   }
 }
 
-/** Fixed Responses failed.error — never echoes upstream text (no secrets). (#1331) */
-export const RESPONSES_FAILED_ERROR = Object.freeze({
-  type: "server_error",
-  message: "Upstream aborted the response (finish_reason error)"
-});
+const RESPONSES_FAILED_FALLBACK_MESSAGE = "Upstream aborted the response (finish_reason error)";
+
+/**
+ * Build a Responses `error` object for Chat finish_reason error.
+ * `code` and `message` are always non-empty; message goes through
+ * sanitizeErrorMessage so credential-like upstream text is redacted. (#1331)
+ *
+ * @param {unknown} [upstreamMessage]
+ * @returns {{ type: string, code: string, message: string }}
+ */
+export function buildResponsesFailedError(upstreamMessage) {
+  const raw = isString(upstreamMessage) && upstreamMessage.trim() ?
+    upstreamMessage :
+    RESPONSES_FAILED_FALLBACK_MESSAGE;
+  const message = sanitizeErrorMessage(raw);
+  return {
+    type: "server_error",
+    code: "server_error",
+    message: message || RESPONSES_FAILED_FALLBACK_MESSAGE
+  };
+}
 
 /**
  * Chat Completions finish_reason → OpenAI Responses terminal fields.
  * Shared by non-stream projection and the Chat→Responses stream flush. (#1331)
  *
+ * @param {string|null|undefined} finishReason
+ * @param {unknown} [upstreamMessage] optional upstream error text (sanitized on failed)
  * @returns {{ status: string, error: object|null, incomplete_details?: { reason: string }, event: string }}
  */
-export function responsesTerminalFromChatFinish(finishReason) {
+export function responsesTerminalFromChatFinish(finishReason, upstreamMessage) {
   switch (finishReason) {
     case OPENAI_FINISH.LENGTH:
       return {
@@ -136,7 +155,7 @@ export function responsesTerminalFromChatFinish(finishReason) {
     case OPENAI_FINISH.ERROR:
       return {
         status: "failed",
-        error: { ...RESPONSES_FAILED_ERROR },
+        error: buildResponsesFailedError(upstreamMessage),
         event: "response.failed"
       };
     default:

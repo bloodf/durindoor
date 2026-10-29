@@ -29,7 +29,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Request | Non-string tool description (#1091) | Kiro | already-present | `translates non-string tool descriptions to a string for Kiro without TypeError` |
 | Request | Keyword-named schema properties (#1091) | OpenAI Chat, Claude, Gemini | already-present | `preserves keyword-named schema properties through Chat, Claude, and Gemini` |
 | Request | Tuple `prefixItems` / items (#1091) | OpenAI Chat, Claude, Gemini | already-present | `converts tuple prefixItems to Gemini items while Chat and Claude keep the tuple` |
-| Request | Free-form / empty schemas (#1091) | OpenAI Chat, Gemini | already-present | `coerces free-form and empty object schemas for Gemini and leaves Chat/Claude empty` |
+| Request | Free-form / empty schemas (#1091) | OpenAI Chat, Claude, Gemini | already-present | `coerces free-form and empty object schemas for Gemini and leaves Chat/Claude empty` |
 | Request | String numeric schema constraints (#1091) | OpenAI Chat, Claude, Gemini | failing | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` |
 | Request | Malformed tool schemas (#1091) | OpenAI Chat, Claude, Gemini | failing | `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` |
 

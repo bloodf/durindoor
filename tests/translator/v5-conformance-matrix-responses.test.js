@@ -269,10 +269,17 @@ describe("#1089 Responses client conformance", () => {
       .flatMap((message) => message.content)
       .find((block) => block.type === CLAUDE_BLOCK.TOOL_RESULT);
     expect(claudeResult).toMatchObject({ tool_use_id: "c1", content: "first\nsecond" });
-    const geminiResult = request(body, gemini).contents
-      .flatMap((turn) => turn.parts)
-      .find((part) => part.functionResponse);
-    expect(JSON.stringify(geminiResult.functionResponse.response)).toContain("first\\nsecond");
+    const geminiContents = request(body, gemini).contents;
+    expect(geminiContents[1]).toEqual({
+      role: ROLE.USER,
+      parts: [{
+        functionResponse: {
+          id: "c1",
+          name: "fetch",
+          response: { result: { result: "first\nsecond" } },
+        },
+      }],
+    });
   });
 
   it("lifts input_image tool-result media beside text for Chat and Claude", () => {
@@ -291,15 +298,51 @@ describe("#1089 Responses client conformance", () => {
       ],
     };
     const toChat = request(body, chat);
-    expect(toChat.messages.find((message) => message.role === ROLE.TOOL).content).toContain("report");
-    expect(toChat.messages.at(-1)).toEqual({
+    expect(toChat.messages).toHaveLength(3);
+    expect(toChat.messages[0]).toEqual({
+      role: ROLE.ASSISTANT,
+      content: null,
+      tool_calls: [{
+        id: "c1",
+        type: OPENAI_BLOCK.FUNCTION,
+        function: { name: "fetch", arguments: "{}" },
+      }],
+    });
+    expect(toChat.messages[1]).toEqual({
+      role: ROLE.TOOL,
+      tool_call_id: "c1",
+      content: "report\n[tool returned an image; see attached]",
+    });
+    expect(toChat.messages[2]).toEqual({
       role: ROLE.USER,
       content: [{ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: "auto" } }],
     });
     const toClaude = request(body, claude);
-    const blocks = toClaude.messages.flatMap((message) => message.content);
-    expect(blocks.some((block) => block.type === CLAUDE_BLOCK.TOOL_RESULT)).toBe(true);
-    expect(blocks.some((block) => block.type === CLAUDE_BLOCK.IMAGE)).toBe(true);
+    expect(toClaude.messages).toHaveLength(2);
+    expect(toClaude.messages[0]).toEqual({
+      role: ROLE.ASSISTANT,
+      content: [{
+        type: CLAUDE_BLOCK.TOOL_USE,
+        id: "c1",
+        name: "fetch",
+        input: {},
+        cache_control: { type: "ephemeral" },
+      }],
+    });
+    expect(toClaude.messages[1]).toEqual({
+      role: ROLE.USER,
+      content: [
+        {
+          type: CLAUDE_BLOCK.TOOL_RESULT,
+          tool_use_id: "c1",
+          content: "report\n[tool returned an image; see attached]",
+        },
+        {
+          type: CLAUDE_BLOCK.IMAGE,
+          source: { type: "url", url },
+        },
+      ],
+    });
   });
 
   it("rejects unsupported tool-result file and audio media with HTTP 400", () => {
@@ -390,12 +433,52 @@ describe("#1089 Responses client conformance", () => {
       },
     ];
     const toChat = streamTo(events, chat);
-    expect(toChat.some((chunk) => chunk.choices[0].delta?.tool_calls?.[0]?.id === "c1")).toBe(true);
-    expect(toChat.at(-1).choices[0].finish_reason).toBe(OPENAI_FINISH.LENGTH);
+    expect(toChat).toHaveLength(3);
+    expect(toChat[0].object).toBe("chat.completion.chunk");
+    expect(toChat[0].choices[0]).toEqual({
+      index: 0,
+      delta: {
+        tool_calls: [{
+          index: 0,
+          id: "c1",
+          type: OPENAI_BLOCK.FUNCTION,
+          function: { name: "lookup", arguments: "" },
+        }],
+      },
+      finish_reason: null,
+    });
+    expect(toChat[1].choices[0]).toEqual({
+      index: 0,
+      delta: {
+        tool_calls: [{
+          index: 0,
+          function: { arguments: "{\"q\":\"a\"}" },
+        }],
+      },
+      finish_reason: null,
+    });
+    expect(toChat[2].choices[0]).toEqual({
+      index: 0,
+      delta: {},
+      finish_reason: OPENAI_FINISH.LENGTH,
+    });
 
     const toClaude = streamTo(events, claude);
-    expect(toClaude.some((event) =>
-      event.type === "content_block_start" && event.content_block?.type === CLAUDE_BLOCK.TOOL_USE)).toBe(true);
+    expect(toClaude.find((event) => event.type === "content_block_start")).toEqual({
+      type: "content_block_start",
+      index: 0,
+      content_block: {
+        type: CLAUDE_BLOCK.TOOL_USE,
+        id: "c1",
+        name: "lookup",
+        input: {},
+      },
+    });
+    expect(toClaude.find((event) => event.type === "content_block_delta")).toEqual({
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "input_json_delta", partial_json: "{\"q\":\"a\"}" },
+    });
     expect(toClaude.find((event) => event.type === "message_delta").delta.stop_reason)
       .toBe(CLAUDE_STOP.MAX_TOKENS);
 
@@ -553,6 +636,14 @@ describe("#1089 Responses client conformance", () => {
       input: "hi",
       tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: { type: "object" } }],
     }, chat), chat)).toEqual({ type: "object", properties: {} });
+    expect(toolParams(request({
+      input: "hi",
+      tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: {} }],
+    }, claude), claude)).toEqual({});
+    expect(toolParams(request({
+      input: "hi",
+      tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: { type: "object" } }],
+    }, claude), claude)).toEqual({ type: "object", properties: {} });
   });
 
   // #1089 failing: string numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers. Refs #1334

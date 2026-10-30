@@ -8,7 +8,7 @@ import Beams, { Wall } from "./Beams.jsx";
 import Mist from "./Mist.jsx";
 import Particles from "./Particles.jsx";
 import { GATE_MATERIALS } from "./palette.js";
-import { gateOpening } from "./gateOpening.js";
+import { advanceGateOpening, gateOpening } from "./gateOpening.js";
 
 function Gateway({ progress, opened, stage, onReady }) {
   const { camera, size } = useThree();
@@ -28,7 +28,7 @@ function Gateway({ progress, opened, stage, onReady }) {
     const smoothing = 1 - Math.exp(-dt * 3);
     const target = gateOpening(progress?.get() ?? 0, opened);
     uniforms.uTime.value += dt;
-    uniforms.uOpen.value += (target - uniforms.uOpen.value) * smoothing;
+    uniforms.uOpen.value = advanceGateOpening(uniforms.uOpen.value, target, delta);
     const open = uniforms.uOpen.value;
     const aspect = size.width / size.height;
     const distance = wide ? Math.max(7.9, 10 / aspect) : Math.max(10.8, 5.4 / aspect);

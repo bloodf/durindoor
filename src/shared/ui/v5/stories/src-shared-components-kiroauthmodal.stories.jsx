@@ -1,0 +1,22 @@
+// Generated from the actual component stories. Do not edit; run node scripts/gen-v5-stories.mjs.
+import React from 'react';
+import originalMeta, * as original from "../../../components/KiroAuthModal.stories.jsx";
+import { reviewDecorator } from '../ReviewFrame.jsx';
+import { reviewParameters, reviewStory } from '../review-parameters.js';
+const meta = { ...originalMeta, title: "V5 review/Workflows/shared-kiro/KiroAuthModal", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
+export default meta;
+export const MethodSelection = { ...reviewStory(original.MethodSelection, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const IdcValidationError = { ...reviewStory(original.IdcValidationError, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const ApiKeyBackNavigation = { ...reviewStory(original.ApiKeyBackNavigation, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const ImportAutoDetectFailure = { ...reviewStory(original.ImportAutoDetectFailure, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const ImportAutoDetecting = { ...reviewStory(original.ImportAutoDetecting, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const ImportAutoDetected = { ...reviewStory(original.ImportAutoDetected, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const CliProxyImportFailure = { ...reviewStory(original.CliProxyImportFailure, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const SocialGoogleManualCallback = { ...reviewStory(original.SocialGoogleManualCallback, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const SocialGitHubManualCallback = { ...reviewStory(original.SocialGitHubManualCallback, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const IdcContinueSuccess = { ...reviewStory(original.IdcContinueSuccess, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const ApiKeySubmitSuccess = { ...reviewStory(original.ApiKeySubmitSuccess, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const ImportTokenSubmitSuccess = { ...reviewStory(original.ImportTokenSubmitSuccess, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const CliProxyImportSuccess = { ...reviewStory(original.CliProxyImportSuccess, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const MobileMethodSelection = { ...reviewStory(original.MobileMethodSelection, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };
+export const RtlMethodSelection = { ...reviewStory(original.RtlMethodSelection, {"source":"src/shared/components/KiroAuthModal.stories.jsx","standalone":false}) };

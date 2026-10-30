@@ -8,6 +8,7 @@ import Modal from "@/shared/ui/components/Modal.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
+import { requestCollection } from "../providers/workflowRequests.js";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
@@ -40,6 +41,8 @@ function normalizeFormData(data = {}) {
 
 export default function ProxyPoolsPage() {
   const [proxyPools, setProxyPools] = useState([]);
+  const [loadError, setLoadError] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showBatchImportModal, setShowBatchImportModal] = useState(false);
@@ -79,14 +82,11 @@ export default function ProxyPoolsPage() {
   }, [showRelayMenu]);
 
   const fetchProxyPools = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/proxy-pools?includeUsage=true", { cache: "no-store" });
-      const data = await res.json();
-      if (res.ok) {
-        setProxyPools(data.proxyPools || []);
-      }
-    } catch (error) {
-      console.log("Error fetching proxy pools:", error);
+      const pools = await requestCollection("/api/proxy-pools?includeUsage=true", "proxyPools");
+      setProxyPools(pools); setLoadError(""); setHasLoaded(true);
+    } catch (error) { setLoadError(error.message);
     } finally {
       setLoading(false);
     }
@@ -558,10 +558,12 @@ export default function ProxyPoolsPage() {
     [proxyPools]
   );
 
+  if (loadError && !hasLoaded) return <div role="alert"><p>Proxy pools could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchProxyPools}>Retry</Button></div>;
   if (loading) return <div className="mx-auto max-w-5xl space-y-4"><div className="h-24 animate-pulse rounded-dd-lg bg-dd-surface-2" /><div className="h-72 animate-pulse rounded-dd-lg bg-dd-surface-2" /></div>;
 
   const modalFooter = (onCancel, onSubmit, submitLabel, disabled, pending, pendingLabel = submitLabel) => <><Button variant="secondary" onClick={onCancel} disabled={pending}>Cancel</Button><Button variant="primary" onClick={onSubmit} disabled={disabled} loading={pending}>{pending ? pendingLabel : submitLabel}</Button></>;
   return <div className="mx-auto max-w-5xl space-y-4">
+    {loadError && <div role="alert">Showing last confirmed proxy pools. {loadError}<Button icon="refresh" onClick={fetchProxyPools}>Retry</Button></div>}
     <PageHeader icon="dns" title="Proxy Pools" subtitle="Manage outbound proxy routes and relay deployments" actions={<><Button variant="secondary" icon="upload" onClick={openBatchImportModal}>Batch import</Button><Button variant="primary" icon="add" onClick={openCreateModal}>Add proxy pool</Button></>} />
     <Card padding={false}><CardHeader icon="route" title="Configured pools" subtitle={`${proxyPools.length} total · ${activeCount} active`} actions={<div className="relative" ref={relayMenuRef}><Button variant="secondary" icon="rocket_launch" iconTrailing="expand_more" aria-expanded={showRelayMenu} onClick={() => setShowRelayMenu((open) => !open)}>Deploy relay</Button>{showRelayMenu ? <div className="absolute end-0 z-50 mt-1 w-52 rounded-dd border border-dd-border bg-dd-surface p-1 shadow-dd-elevated"><Button variant="ghost" className="w-full justify-start" icon="cloud" onClick={() => { openCloudflareModal(); setShowRelayMenu(false); }}>Cloudflare relay</Button><Button variant="ghost" className="w-full justify-start" icon="cloud_upload" onClick={() => { openVercelModal(); setShowRelayMenu(false); }}>Vercel relay</Button></div> : null}</div>} />
       <CardContent className="space-y-3">

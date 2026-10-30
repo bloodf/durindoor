@@ -1,0 +1,23 @@
+.v5-login-review { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr); min-height:calc(100dvh - 57px); background:var(--dd-bg); color:var(--dd-text); }
+.v5-login-scene { position:relative; min-height:calc(100dvh - 57px); overflow:hidden; background:var(--dd-bg); }
+.v5-gate-scene { position:absolute; inset:0; }
+.v5-gate-canvas { width:100%; height:100%; display:block; }
+.v5-gate-scene[data-renderer="css"] .v5-gate-canvas { opacity:0; }
+.v5-gate-scene[data-renderer="webgl"] .v5-gate-fallback { display:none; }
+.v5-gate-fallback { position:absolute; inset:0; display:grid; place-items:center; perspective:900px; }
+.v5-gate-arch { height:320px; width:210px; border:20px solid var(--dd-accent); border-radius:120px 120px 0 0; transform:rotateY(-24deg) rotateX(8deg); position:relative; box-shadow:18px 22px 40px #0004; opacity:.7; }
+.v5-gate-leaf { position:absolute; right:0; bottom:0; width:83%; height:84%; background:var(--dd-surface-3); border:1px solid var(--dd-accent); transform-origin:right center; transform:rotateY(-47deg); }
+.v5-gate-pause { position:absolute; top:24px; left:24px; border:1px solid var(--dd-border); border-radius:8px; padding:8px 12px; font-size:12px; color:var(--dd-text); background:var(--dd-surface); }
+.v5-gate-pause:focus-visible { outline:2px solid var(--dd-accent); outline-offset:3px; }
+.v5-login-scene-caption { position:absolute; bottom:48px; left:48px; right:48px; pointer-events:none; }
+.v5-login-scene-caption p { font-size:24px; font-weight:600; letter-spacing:-.025em; margin:0 0 8px; }
+.v5-login-scene-caption span { font-size:14px; color:var(--dd-text-muted); }
+.v5-login-form { align-self:center; justify-self:center; width:min(420px,100%); padding:48px 32px; box-sizing:border-box; }
+.v5-login-brand { display:flex; align-items:center; gap:14px; font-size:23px; font-weight:650; color:var(--dd-text); margin-bottom:52px; }
+.v5-login-brand svg { flex:none; color:var(--dd-accent); }
+.v5-login-heading h1 { font-size:28px; line-height:1.25; font-weight:650; margin:0 0 12px; letter-spacing:-.025em; }
+.v5-login-heading > p { text-align:left; margin:0 0 32px; line-height:1.6; }
+.v5-login-review .v5-login-fields { border:none; border-radius:0; padding:0; box-shadow:none; background:transparent; }
+@media(max-width:760px) { .v5-login-review { align-content:start; } }
+@media(max-width:760px) { .v5-login-review { grid-template-columns:1fr; } .v5-login-scene { min-height:240px; height:30dvh; } .v5-login-scene-caption { left:24px; bottom:22px; } .v5-login-scene-caption p { font-size:18px; } .v5-login-scene-caption span { display:none; } .v5-login-form { padding:32px 24px 48px; } .v5-login-brand { margin-bottom:28px; } .v5-gate-arch { height:150px; width:100px; border-width:10px; } }
+@media(prefers-reduced-motion:reduce) { .v5-gate-pause { display:none; } }

@@ -14,7 +14,7 @@ function getEffectiveStatus(conn) {
   return conn.testStatus === "unavailable" && !isCooldown ? "active" : conn.testStatus;
 }
 
-export function MediaProviderCard({ provider, kind, connections, isCustom, onToggle }) {
+export function MediaProviderCard({ provider, kind, connections, isCustom, onToggle, saving = false }) {
   const providerInfo = AI_PROVIDERS[provider.id];
   const isNoAuth = !!providerInfo?.noAuth;
 
@@ -57,6 +57,7 @@ export function MediaProviderCard({ provider, kind, connections, isCustom, onTog
         {total > 0 && (
           <Toggle
             size="sm"
+            disabled={saving}
             checked={!allDisabled}
             onChange={() => onToggle && onToggle(provider.id, allDisabled)}
             aria-label={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`}

@@ -29,7 +29,7 @@ export const GroupsAndUpdate = {
     await expect(group).toHaveAttribute("aria-expanded", "false");
     await userEvent.click(group);
     await expect(group).toHaveAttribute("aria-expanded", "true");
-    await waitFor(() => expect(canvas.getByText("Statistics")).toBeVisible());
+    await waitFor(() => expect(canvas.getByText(document.documentElement.dataset.v5Review === "true" ? "Dashboard" : "Statistics")).toBeVisible());
     await userEvent.click(await canvas.findByRole("button", { name: "Update now" }));
     await waitFor(() => expect(within(document.body).getByRole("dialog", { name: "Update available" })).toBeVisible());
   },
@@ -62,7 +62,7 @@ export const TokenSaverActiveHierarchy = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const parent = canvas.getByRole("button", { name: "Token Saver" });
-    const statistics = canvas.getByRole("link", { name: "Statistics" });
+    const statistics = canvas.getByRole("link", { name: document.documentElement.dataset.v5Review === "true" ? "Dashboard" : "Statistics" });
     await expect(parent).toHaveAttribute("aria-expanded", "true");
     await expect(parent).not.toHaveAttribute("aria-current");
     await expect(statistics).toHaveAttribute("aria-current", "page");

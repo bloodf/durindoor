@@ -1,5 +1,6 @@
+import { failedReadStory } from "../providers/workflowStoryFixtures.js";
 import React from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, within, waitFor } from "storybook/test";
 
 import EndpointPageClient from "./EndpointPageClient";
 
@@ -11,6 +12,7 @@ const safeSettings = {
 };
 
 const safeRoutes = {
+  "GET /api/monitoring": { body: { runtime: { activeRequests: 2, memoryRssMB: 146, processUptimeSec: 3600 }, health: [{ id: "openai", name: "OpenAI", requests: 100, errors: 1, successRate: 99 }], activity: { recent: [{ provider: "openai", model: "gpt-4o", status: 200, timestamp: "2026-10-09T12:00:00Z" }] } } },
   "GET /api/settings": { body: safeSettings },
   "GET /api/tunnel/status": {
     body: {
@@ -40,7 +42,13 @@ const meta = {
 
 export default meta;
 
-export const Default = {};
+export const Default = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("146 MB")).toBeVisible();
+    await expect(canvas.queryByText(/Unexpected Storybook network request/)).not.toBeInTheDocument();
+  },
+};
 
 // Keep the real parent in its pending phase through final capture; release the
 // deferred request only when navigation disposes this story.
@@ -205,8 +213,26 @@ export const TunnelRequiresApiKey = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const tunnelRow = canvas.getByText("Tunnel").parentElement;
+    const tunnelRow = (await canvas.findByText("Tunnel")).parentElement;
     await userEvent.click(within(tunnelRow).getByRole("button", { name: "Enable" }));
     await expect(await canvas.findByText('Security required: Enable "Require API key" before activating the tunnel.')).toBeVisible();
+  },
+};
+
+export const LoadFailureAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/settings", pathname: "/dashboard/endpoint", params: {}, failure: "http", loadedText: "Require API key" });
+
+export const MalformedResponseAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/settings", pathname: "/dashboard/endpoint", params: {}, failure: "malformed", loadedText: "Require API key" });
+
+export const NetworkFailureAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/settings", pathname: "/dashboard/endpoint", params: {}, failure: "network", loadedText: "Require API key" });
+
+export const StatusFailureAndRetry = failedReadStory({ routes: safeRoutes, url: "/api/tunnel/status", pathname: "/dashboard/endpoint", loadedText: "Require API key" });
+export const SecurityWriteRejected = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/endpoint", routes: { ...safeRoutes, "PATCH /api/settings": { status: 503, body: { error: "Security change rejected" } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = await canvas.findByRole("switch", { name: "Require API key" });
+    await userEvent.click(toggle);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Security change rejected");
+    await expect(toggle).toBeChecked();
   },
 };

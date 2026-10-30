@@ -1,7 +1,8 @@
 "use client";
 
 import { useParams, notFound, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { requestCollection, updateProviderConnections } from "../../providers/workflowRequests.js";
 import Link from "next/link";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card } from "@/shared/ui/components/Card.jsx";
@@ -46,6 +47,12 @@ function ComboList({ combos }) {
 export default function MediaProviderKindPage() {
   const { kind } = useParams();
   const router = useRouter();
+  const [loadError, setLoadError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [toggleError, setToggleError] = useState(null);
+  const pending = useRef(new Set());
+  const [saving, setSaving] = useState([]);
   const [connections, setConnections] = useState([]);
   const [customNodes, setCustomNodes] = useState([]);
   const [combos, setCombos] = useState([]);
@@ -65,44 +72,24 @@ export default function MediaProviderKindPage() {
   const isSystemone = kind === "systemone";
   const supportsCombo = COMBO_KINDS.has(kind);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!kindConfig) return;
-    let cancelled = false;
-    let fetchedConnections = [];
-
-    fetch("/api/providers", { cache: "no-store" }).
-    then((r) => r.json()).
-    then((d) => {
-      if (cancelled) return;
-      fetchedConnections = d.connections || [];
-      setConnections(fetchedConnections);
-    }).
-    catch(() => {}).
-    then(() => {
-      if (!isEmbedding || cancelled) return;
-      fetch("/api/v1/models/embedding", { cache: "no-store" }).
-      then((r) => r.ok ? r.json() : { data: [] }).
-      then((d) => {
-        if (cancelled) return;
-        setLocalEmbeddingProviders(getLocalEmbeddingProviders(d.data, fetchedConnections));
-      }).
-      catch(() => {if (!cancelled) setLocalEmbeddingProviders([]);});
-    });
-
-    if (isEmbedding || isSystemone) {
-      fetch("/api/provider-nodes", { cache: "no-store" }).
-      then((r) => r.json()).
-      then((d) => {if (!cancelled) setCustomNodes((d.nodes || []).filter((n) => n.type === (isSystemone ? "systemone-compatible" : "custom-embedding")));}).
-      catch(() => {});
-    }
-    if (supportsCombo) {
-      fetch("/api/combos", { cache: "no-store" }).
-      then((r) => r.json()).
-      then((d) => {if (!cancelled) setCombos(d.combos || []);}).
-      catch(() => {});
-    }
-    return () => {cancelled = true;};
+    setLoading(true);
+    try {
+      const [items, nodes, models, loadedCombos] = await Promise.all([
+        requestCollection("/api/providers", "connections"),
+        isEmbedding || isSystemone ? requestCollection("/api/provider-nodes", "nodes") : [],
+        isEmbedding ? requestCollection("/api/v1/models/embedding", "data") : [],
+        supportsCombo ? requestCollection("/api/combos", "combos") : [],
+      ]);
+      setConnections(items);
+      setCustomNodes(nodes.filter((node) => node.type === (isSystemone ? "systemone-compatible" : "custom-embedding")));
+      setLocalEmbeddingProviders(isEmbedding ? getLocalEmbeddingProviders(models, items) : []);
+      setCombos(loadedCombos); setLoadError(""); setToggleError(null); setLoaded(true);
+    } catch (error) { setLoadError(error.message); }
+    finally { setLoading(false); }
   }, [isEmbedding, isSystemone, supportsCombo, kindConfig]);
+  useEffect(() => { Promise.resolve().then(load); }, [load]);
 
   if (!kindConfig) return notFound();
 
@@ -115,22 +102,20 @@ export default function MediaProviderKindPage() {
     textIcon: isSystemone ? "S1" : "CE"
   }));
 
-  const allProviders = [...providers, ...(isEmbedding ? [...localEmbeddingProviders, ...customProviders] : isSystemone ? customProviders : [])];
+  const discoveredProviders = localEmbeddingProviders.filter((provider) => !providers.some((listed) => listed.id === provider.id));
+  const allProviders = [...providers, ...(isEmbedding ? [...discoveredProviders, ...customProviders] : isSystemone ? customProviders : [])];
 
   const handleToggleProvider = async (providerId, newActive) => {
-    const providerConns = connections.filter((c) => c.provider === providerId);
-    setConnections((prev) =>
-    prev.map((c) => c.provider === providerId ? { ...c, isActive: newActive } : c)
-    );
-    await Promise.allSettled(
-      providerConns.map((c) =>
-      fetch(`/api/providers/${c.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: newActive })
-      })
-      )
-    );
+    if (pending.current.has(providerId)) return;
+    pending.current.add(providerId); setSaving([...pending.current]);
+    try {
+      const providerConns = connections.filter((c) => c.provider === providerId);
+      const { accepted, failed } = await updateProviderConnections(providerConns, newActive);
+      setConnections((prev) => prev.map((c) => accepted.includes(c.id) ? { ...c, isActive: newActive } : c));
+      setToggleError(failed.length ? { message: `${failed.length} connections could not be ${newActive ? "enabled" : "disabled"}. Previous state retained.`, retry: () => handleToggleProvider(providerId, newActive) } : null);
+      try { setConnections(await requestCollection("/api/providers", "connections")); }
+      catch (error) { setToggleError({ message: `Connection state could not be verified after the write. ${error.message}`, retry: load }); }
+    } finally { pending.current.delete(providerId); setSaving([...pending.current]); }
   };
 
   const handleCreateCombo = async () => {
@@ -153,8 +138,12 @@ export default function MediaProviderKindPage() {
     }
   };
 
+  if (!loaded && loadError) return <div role="alert"><p>Provider configuration could not be loaded. {loadError}</p><Button icon="refresh" onClick={load}>Retry</Button></div>;
+  if (!loaded && loading) return <p role="status">Loading provider configuration…</p>;
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      {loadError && <div role="alert">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={load}>Retry</Button></div>}
+      {toggleError && <div role="alert">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
       {createError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{createError}</p>}
       {(isEmbedding || isSystemone || supportsCombo) && (
         <div className="flex flex-wrap justify-end gap-2">
@@ -168,9 +157,9 @@ export default function MediaProviderKindPage() {
         <EmptyState icon="deployed_code" title={`No ${kindConfig.label} providers`} message={`No providers support ${kindConfig.label} yet.`} />
       ) : (
         <section aria-label={`${kindConfig.label} providers`} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {providers.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} />)}
-          {isEmbedding && localEmbeddingProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} />)}
-          {(isEmbedding || isSystemone) && customProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} isCustom onToggle={handleToggleProvider} />)}
+          {providers.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} saving={saving.includes(provider.id)} />)}
+          {isEmbedding && discoveredProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} saving={saving.includes(provider.id)} />)}
+          {(isEmbedding || isSystemone) && customProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} isCustom onToggle={handleToggleProvider} saving={saving.includes(provider.id)} />)}
         </section>
       )}
       {isEmbedding && <AddCustomEmbeddingModal isOpen={showAddCustomEmbedding} onClose={() => setShowAddCustomEmbedding(false)} onCreated={(node) => { setCustomNodes((prev) => [...prev, node]); setShowAddCustomEmbedding(false); }} />}

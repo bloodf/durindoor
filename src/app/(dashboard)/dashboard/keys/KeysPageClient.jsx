@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { requestJSON } from "../providers/workflowRequests.js";
 import PropTypes from "prop-types";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -221,6 +222,7 @@ export default function KeysPageClient() {
   const [keyStatus, setKeyStatus] = useState(null);
   const [createdKey, setCreatedKey] = useState(null);
   const [createdKeyExpiresAt, setCreatedKeyExpiresAt] = useState(null);
+  const keyWrites = useRef(new Set());
   const [confirmState, setConfirmState] = useState(null);
   const [combos, setCombos] = useState([]);
   const [newKeyAllowedCombos, setNewKeyAllowedCombos] = useState([]);
@@ -461,32 +463,34 @@ export default function KeysPageClient() {
       title: "Delete API Key",
       message: "Delete this API key?",
       onConfirm: async () => {
-        setConfirmState(null);
+        if (keyWrites.current.has(id)) return;
+        keyWrites.current.add(id);
+        setConfirmState((prev) => ({ ...prev, pending: true, error: "" }));
         try {
           const res = await fetch(`/api/keys/${id}`, { method: "DELETE" });
-          if (res.ok) {
-            setKeys(keys.filter((k) => k.id !== id));
-          }
+          if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || "Key could not be revoked. Access remains active. Retry."); }
+          setKeys((prev) => prev.filter((key) => key.id !== id));
+          setConfirmState(null); setKeyStatus({ type: "success", message: "API key revoked" });
         } catch (error) {
-          console.log("Error deleting key:", error);
-        }
+          setConfirmState((prev) => ({ ...prev, pending: false, error: error.message || "Key could not be revoked. Retry." }));
+          setKeyStatus({ type: "error", message: error.message || "Key could not be revoked" });
+        } finally { keyWrites.current.delete(id); }
       },
     });
   };
 
   const handleToggleKey = async (id, isActive) => {
+    if (keyWrites.current.has(id)) return false;
+    keyWrites.current.add(id);
     try {
-      const res = await fetch(`/api/keys/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive }),
-      });
-      if (res.ok) {
-        setKeys((prev) => prev.map((k) => (k.id === id ? { ...k, isActive } : k)));
-      }
+      await requestJSON(`/api/keys/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive }) });
+      setKeys((prev) => prev.map((key) => key.id === id ? { ...key, isActive } : key));
+      setKeyStatus({ type: "success", message: isActive ? "API key resumed" : "API key paused" });
+      return true;
     } catch (error) {
-      console.log("Error toggling key:", error);
-    }
+      setKeyStatus({ type: "error", message: error.message || "API key could not be updated" });
+      return false;
+    } finally { keyWrites.current.delete(id); }
   };
 
   const requestToggleKey = (key, checked) => {
@@ -495,8 +499,9 @@ export default function KeysPageClient() {
         title: "Pause API Key",
         message: `Pause API key "${key.name}"?\n\nThis key will stop working immediately but can be resumed later.`,
         onConfirm: async () => {
-          setConfirmState(null);
-          handleToggleKey(key.id, checked);
+          setConfirmState((prev) => ({ ...prev, pending: true, error: "" }));
+          if (await handleToggleKey(key.id, checked)) setConfirmState(null);
+          else setConfirmState((prev) => ({ ...prev, pending: false, error: "Key could not be paused. Access remains active. Retry." }));
         },
       });
       return;
@@ -1110,11 +1115,12 @@ export default function KeysPageClient() {
       <ConfirmDialog
         open={!!confirmState}
         title={confirmState?.title || "Confirm"}
-        message={confirmState?.message}
+        message={<>{confirmState?.message}{confirmState?.error && <p role="alert" className="mt-3 text-dd-danger">{confirmState.error}</p>}</>}
+        pending={confirmState?.pending}
         confirmLabel="Confirm"
         tone="danger"
         onConfirm={confirmState?.onConfirm}
-        onCancel={() => setConfirmState(null)}
+        onCancel={() => { if (!confirmState?.pending) setConfirmState(null); }}
       />
 
       {/* Group create/rename. PromptDialog, not window.prompt — the Durin DS

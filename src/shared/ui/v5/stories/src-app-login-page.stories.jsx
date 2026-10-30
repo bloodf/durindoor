@@ -1,0 +1,23 @@
+// Generated from the actual component stories. Do not edit; run node scripts/gen-v5-stories.mjs.
+import React from 'react';
+import originalMeta, * as original from "../../../../app/login/page.stories.jsx";
+import { reviewDecorator } from '../ReviewFrame.jsx';
+import { reviewParameters, reviewStory } from '../review-parameters.js';
+const meta = { ...originalMeta, title: "V5 review/Pages/Public/Login", parameters: reviewParameters(originalMeta.parameters, {"source":"src/app/login/page.stories.jsx","standalone":true}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
+export default meta;
+export const Default = { ...reviewStory(original.Default, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const PasswordEntry = { ...reviewStory(original.PasswordEntry, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const OIDCAndPassword = { ...reviewStory(original.OIDCAndPassword, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const RateLimited = { ...reviewStory(original.RateLimited, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const PasswordChangeRequired = { ...reviewStory(original.PasswordChangeRequired, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const LoginErrorAndResetHint = { ...reviewStory(original.LoginErrorAndResetHint, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const OIDCOnly = { ...reviewStory(original.OIDCOnly, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const OIDCMisconfigured = { ...reviewStory(original.OIDCMisconfigured, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const RejectedPassword = { ...reviewStory(original.RejectedPassword, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const MfaChallenge = { ...reviewStory(original.MfaChallenge, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const MfaRejected = { ...reviewStory(original.MfaRejected, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const PasswordUpdate = { ...reviewStory(original.PasswordUpdate, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const RemoteDefaultPasswordBlocked = { ...reviewStory(original.RemoteDefaultPasswordBlocked, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const UnconfiguredPassword = { ...reviewStory(original.UnconfiguredPassword, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const ConfiguredOidc = { ...reviewStory(original.ConfiguredOidc, {"source":"src/app/login/page.stories.jsx","standalone":true}) };
+export const UpdatedPasswordRequiresReauthentication = { ...reviewStory(original.UpdatedPasswordRequiresReauthentication, {"source":"src/app/login/page.stories.jsx","standalone":true}) };

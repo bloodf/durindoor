@@ -1,3 +1,4 @@
+import { failedReadStory } from "../../providers/workflowStoryFixtures.js";
 import React, { useState } from "react";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
@@ -184,14 +185,37 @@ export const MobileNewKeyKeyboard = {
   },
 };
 
+const revealFixture = defaultFixture();
+let finishReveal;
+let revealPending;
+let revealCount;
 export const RevealExistingKey = {
-  parameters: { storyFixture: defaultFixture() },
+  parameters: { storyFixture: { ...revealFixture, routes: { ...revealFixture.routes,
+    "GET /api/mcp-gateway/keys/k1/reveal": () => { revealCount += 1; return revealPending; },
+  } } },
+  beforeEach: () => {
+    revealFixture.reset(); revealCount = 0;
+    revealPending = new Promise((resolve) => { finishReveal = resolve; });
+    return () => finishReveal?.({ body: { key: "sk-story-revealed" } });
+  },
   render: () => <McpGatewayKeysPage />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const cursorRow = (await canvas.findByText("Cursor laptop")).closest("article");
-    await userEvent.click(within(cursorRow).getByRole("button", { name: "Reveal and copy" }));
-    await expect(within(cursorRow).getByRole("button", { name: "Reveal and copy" }).querySelector(".material-symbols-outlined")).toHaveTextContent("check");
+    const row = within(cursorRow);
+    const clipboard = spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    try {
+      await userEvent.click(row.getByRole("button", { name: "Copy key" }));
+      await waitFor(() => expect(revealCount).toBe(1));
+      await expect(row.queryByRole("button", { name: "Copied" })).not.toBeInTheDocument();
+      await expect(clipboard).not.toHaveBeenCalled();
+      finishReveal({ body: { key: "sk-story-revealed" } });
+      const copied = await row.findByRole("button", { name: "Copied" });
+      await expect(copied).toBeVisible();
+      await expect(clipboard).toHaveBeenCalledTimes(1);
+      await expect(clipboard).toHaveBeenCalledWith("sk-story-revealed");
+      await waitFor(() => expect(copied.querySelector('[data-icon-name="check"]') || [...copied.querySelectorAll(".material-symbols-outlined")].find((icon) => icon.textContent.trim() === "check")).toBeTruthy());
+    } finally { clipboard.mockRestore(); }
   },
 };
 
@@ -237,5 +261,50 @@ export const RetainedErrorBoundary = {
     await expect(retry).toBeEnabled();
     await expect(canvas.queryByText("Reset requested")).not.toBeInTheDocument();
     await waitFor(() => expect(console.error).toHaveBeenCalledWith("MCP Gateway keys page error:", MCP_GATEWAY_KEYS_ERROR));
+  },
+};
+
+export const LoadFailureAndRetry = failedReadStory({ routes: defaultFixture().routes, url: "/api/mcp-gateway/keys", pathname: "/dashboard/mcp-gateway/keys", params: {}, failure: "http", loadedText: "Cursor laptop" });
+
+export const MalformedResponseAndRetry = failedReadStory({ routes: defaultFixture().routes, url: "/api/mcp-gateway/keys", pathname: "/dashboard/mcp-gateway/keys", params: {}, failure: "malformed", loadedText: "Cursor laptop" });
+
+export const NetworkFailureAndRetry = failedReadStory({ routes: defaultFixture().routes, url: "/api/mcp-gateway/keys", pathname: "/dashboard/mcp-gateway/keys", params: {}, failure: "network", loadedText: "Cursor laptop" });
+
+export const MintRejectedAndRetry = {
+  parameters: { storyFixture: (() => {
+    const fixture = defaultFixture();
+    const mint = fixture.routes["POST /api/mcp-gateway/keys"];
+    let count = 0;
+    return { ...fixture, reset: () => { fixture.reset(); count = 0; }, routes: { ...fixture.routes,
+      "POST /api/mcp-gateway/keys": async (request) => ++count === 1 ? { status: 503, body: { error: "Key creation rejected" } } : mint(request),
+    } };
+  })() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "New key" }));
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole("dialog", { name: "Name gateway key" }));
+    await userEvent.type(dialog.getByLabelText("Key name"), "Retry key");
+    await userEvent.click(dialog.getByRole("button", { name: "Create key" }));
+    await expect(await dialog.findByRole("alert")).toHaveTextContent("Key creation rejected");
+    await expect(dialog.getByLabelText("Key name")).toHaveValue("Retry key");
+    await userEvent.click(dialog.getByRole("button", { name: "Create key" }));
+    await expect(await body.findByRole("dialog", { name: "Gateway key created" })).toBeVisible();
+    await userEvent.click(body.getByRole("button", { name: "Done" }));
+    await expect(await canvas.findByText("Retry key")).toBeVisible();
+  },
+};
+
+export const MintPending = {
+  parameters: { storyFixture: { ...defaultFixture(), routes: { ...defaultFixture().routes,
+    "POST /api/mcp-gateway/keys": () => new Promise(() => {}),
+  } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "New key" }));
+    const dialog = within(await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Name gateway key" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Create key" }));
+    await expect(dialog.getByRole("button", { name: /Create key/ })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
   },
 };

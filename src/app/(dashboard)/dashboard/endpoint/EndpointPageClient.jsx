@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { requestJSON } from "../providers/workflowRequests.js";
 import PropTypes from "prop-types";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -26,7 +27,7 @@ import SecurityWarning from "./components/SecurityWarning";
 import StatusAlert from "./components/StatusAlert";
 import MonitoringStrip from "./components/MonitoringStrip";
 import DocsLink from "@/shared/components/DocsLink";
-import { isBrowser } from "@/shared/utils/typeChecks.js";
+import { isBrowser, isBoolean } from "@/shared/utils/typeChecks.js";
 
 function CardSkeleton() {
   return (
@@ -82,6 +83,11 @@ function StatePill({ tone, icon, spin = false, children }) {
 
 
 export default function EndpointPageClient({ localPort = 20128 }) {
+  const [loadError, setLoadError] = useState("");
+  const [settingsKnown, setSettingsKnown] = useState(false);
+  const [securityError, setSecurityError] = useState(null);
+  const [securitySaving, setSecuritySaving] = useState(false);
+  const securityPending = useRef(false);
   const [loading, setLoading] = useState(true);
   const [tunnelExternal, setTunnelExternal] = useState(null);
   const [tsExternal, setTsExternal] = useState(null);
@@ -132,7 +138,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
   const [isRemoteHost, setIsRemoteHost] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
-  const isLoginUnsafe = !requireLogin || !hasPassword;
+  const isLoginUnsafe = !settingsKnown || Boolean(loadError) || !requireLogin || !hasPassword;
   const unsafeReason = !requireLogin
     ? "Enable \"Require login\" and set a custom password before activating the tunnel."
     : "Change the default dashboard password before activating the tunnel.";
@@ -255,19 +261,20 @@ export default function EndpointPageClient({ localPort = 20128 }) {
   const loadSettings = async () => {
     setTunnelChecking(true);
     try {
-      const [settingsRes, statusRes] = await Promise.all([
-        fetch("/api/settings"),
-        fetch("/api/tunnel/status", { cache: "no-store" }),
+      const [settings, status] = await Promise.all([
+        requestJSON("/api/settings"),
+        requestJSON("/api/tunnel/status", { cache: "no-store" }),
       ]);
-      if (settingsRes.ok) {
-        const data = await settingsRes.json();
+      if (!isBoolean(settings.requireApiKey) || !isBoolean(settings.requireLogin) || !status?.tunnel || !status?.tailscale) throw new Error("Endpoint configuration is incomplete. Retry.");
+      {
+        const data = settings;
         setRequireApiKey(data.requireApiKey || false);
         setRequireLogin(data.requireLogin !== false);
         setHasPassword(data.hasPassword || false);
         setTunnelDashboardAccess(data.tunnelDashboardAccess || false);
       }
-      if (statusRes.ok) {
-        const data = await statusRes.json();
+      {
+        const data = status;
         const tEnabled = getCompositeEndpointEnabled(data.tunnel);
         const tUrl = data.tunnel?.tunnelUrl || "";
         setTunnelUrl(tUrl);
@@ -284,38 +291,26 @@ export default function EndpointPageClient({ localPort = 20128 }) {
         setTsExternal(data.tailscale?.systemTailscale || null);
         updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
       }
+      setSettingsKnown(true); setLoadError("");
     } catch (error) {
-      console.log("Error loading settings:", error);
+      setLoadError(error.message || "Endpoint configuration could not be loaded");
     } finally {
       setTunnelChecking(false);
     }
   };
 
-  const handleTunnelDashboardAccess = async (value) => {
+  // Settings remain confirmed until the server accepts the write. Retry preserves intent.
+  const saveSecuritySetting = async (field, value, apply) => {
+    if (!settingsKnown || loadError || securityPending.current) return;
+    securityPending.current = true; setSecuritySaving(true); setSecurityError(null);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tunnelDashboardAccess: value }),
-      });
-      if (res.ok) setTunnelDashboardAccess(value);
-    } catch (error) {
-      console.log("Error updating tunnelDashboardAccess:", error);
-    }
+      await requestJSON("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
+      apply(value);
+    } catch (error) { setSecurityError({ message: error.message || "Security setting could not be saved.", retry: () => saveSecuritySetting(field, value, apply) }); }
+    finally { securityPending.current = false; setSecuritySaving(false); }
   };
-
-  const handleRequireApiKey = async (value) => {
-    try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requireApiKey: value }),
-      });
-      if (res.ok) setRequireApiKey(value);
-    } catch (error) {
-      console.log("Error updating requireApiKey:", error);
-    }
-  };
+  const handleTunnelDashboardAccess = (value) => saveSecuritySetting("tunnelDashboardAccess", value, setTunnelDashboardAccess);
+  const handleRequireApiKey = (value) => saveSecuritySetting("requireApiKey", value, setRequireApiKey);
 
   const pingTunnelHealth = async (...urls) => {
     setTunnelLoading(true);
@@ -652,6 +647,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   const currentEndpoint = getLocalEndpointUrl(localPort);
 
+  if (!settingsKnown && loadError) return <div role="alert" className="flex flex-col gap-3 rounded-dd-lg border border-dd-danger/30 p-5"><p>Endpoint configuration could not be loaded. Authentication and exposure controls are unavailable until verified. {loadError}</p><Button icon="refresh" onClick={loadSettings}>Retry</Button></div>;
   if (loading) {
     return (
       <div className="flex flex-col gap-8">
@@ -662,6 +658,9 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   return (
     <div className="flex flex-col gap-8">
+      {loadError && <div role="alert">Showing last confirmed endpoint configuration. {loadError}<Button icon="refresh" onClick={loadSettings}>Retry</Button></div>}
+      {securityError && <div role="alert">{securityError.message}<Button icon="refresh" onClick={securityError.retry}>Retry</Button></div>}
+      {securitySaving && <p role="status">Saving security setting…</p>}
       <PageHeader
         icon="key"
         title="Endpoint"
@@ -677,6 +676,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
               <p className="text-xs text-dd-muted">Requests without a valid key will be rejected</p>
             </div>
             <Toggle
+              disabled={securitySaving || Boolean(loadError)}
               checked={requireApiKey}
               onChange={() => handleRequireApiKey(!requireApiKey)}
               aria-label="Require API key"
@@ -960,7 +960,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
           {(tunnelEnabled || tsEnabled) ? (
             <div className="mt-4 flex items-center gap-3 border-t border-dd-border-subtle pt-4">
               <Toggle
-                checked={tunnelDashboardAccess}
+                disabled={securitySaving || Boolean(loadError)} checked={tunnelDashboardAccess}
                 onChange={() => handleTunnelDashboardAccess(!tunnelDashboardAccess)}
                 label="Allow dashboard access via tunnel"
                 description="When enabled, the dashboard can be reached through tunnel/Tailscale URL with login still required."

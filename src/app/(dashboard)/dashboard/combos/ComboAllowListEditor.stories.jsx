@@ -89,3 +89,24 @@ export const WithGroupQuickAdd = {
     await expect(window.__lastAllowList).toEqual(["conn-openai-1", "conn-anthropic-1"]);
   },
 };
+
+function AllowListRetryHarness() {
+  const [ids, setIds] = React.useState(["conn-openai-1"]);
+  const attempts = React.useRef(0);
+  return <ComboAllowListEditor connections={connections} groups={groups} allowedConnectionIds={ids} onChange={async (next) => {
+    if (++attempts.current === 1) return { ok: false, error: "Connection restriction rejected" };
+    setIds(next); return { ok: true };
+  }} />;
+}
+export const RejectedClearAndRetry = {
+  render: () => <AllowListRetryHarness />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /Clear/ }));
+    const alert = await canvas.findByRole("alert");
+    await expect(alert).toHaveTextContent("restriction rejected");
+    await expect(canvas.getByRole("button", { name: /Remove OpenAI/ })).toBeVisible();
+    await userEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await expect(canvas.queryByRole("button", { name: /Remove OpenAI/ })).not.toBeInTheDocument();
+  },
+};

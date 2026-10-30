@@ -84,8 +84,10 @@
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
   "comment_pg": "added for the opt-in PostgreSQL engine (see docs/operations/postgres.md); never imported when databaseEngine === 'sqlite'",
   "devDependencies": {
+    "@animateicons/react": "^0.12.0",
     "@axe-core/playwright": "4.13.0",
     "@babel/parser": "7.29.8",
+    "@babel/traverse": "7.29.8",
     "@oxlint/plugins": "1.83.0",
     "@playwright/test": "1.63.0",
     "@storybook/react-vite": "^10.6.0",
@@ -96,6 +98,7 @@
     "eslint-config-next": "16.4.3",
     "eslint-plugin-react-hooks": "7.1.1",
     "lint-staged": "^16.4.0",
+    "motion": "^14.0.0",
     "oxlint": "1.83.0",
     "postcss": "^8.5.28",
     "storybook": "^10.6.0",

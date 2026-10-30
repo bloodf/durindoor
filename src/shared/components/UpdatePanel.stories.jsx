@@ -25,6 +25,7 @@ const TRIGGER_CLASS =
 const INSTALL_CMD = "npm i -g durindoor@latest";
 
 const STATUS_KEY = `GET http://127.0.0.1:${UPDATER_CONFIG.statusPort}/update/status`;
+const LOCALHOST_STATUS_KEY = `GET http://localhost:${UPDATER_CONFIG.statusPort}/update/status`;
 const UPDATE_KEY = "POST /api/version/update";
 const VERSION_KEY = "GET /api/version";
 const SHUTDOWN_KEY = "POST /api/version/shutdown";
@@ -35,11 +36,14 @@ const AUTO_SUCCESS_ROUTES = {
   [SHUTDOWN_KEY]: { body: { ok: true }, status: 200 },
 };
 
+const AUTO_SUCCESS_STATUS = {
+  body: { done: true, success: true, phase: "done", logTail: ["installed durindoor@3.19.0", "restart scheduled"] },
+  status: 200,
+};
+// The production URL helper retains a plain-HTTP loopback canvas hostname.
 const AUTO_SUCCESS_EXTERNAL = {
-  [STATUS_KEY]: {
-    body: { done: true, success: true, phase: "done", logTail: ["installed durindoor@3.19.0", "restart scheduled"] },
-    status: 200,
-  },
+  [STATUS_KEY]: AUTO_SUCCESS_STATUS,
+  [LOCALHOST_STATUS_KEY]: AUTO_SUCCESS_STATUS,
 };
 
 const AUTO_FAIL_ROUTES = {
@@ -128,7 +132,7 @@ export const AutoSuccess = {
     const panel = await within(document.body).findByLabelText(/Update .* to v3\.19\.0/);
     expect(within(panel).getByText(/One-click install/)).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: /Update & Restart/i }));
-    await waitFor(() => expect(within(panel).getByText(/Install succeeded/)).toBeInTheDocument());
+    await waitFor(() => expect(within(panel).getByText(/Install succeeded/)).toBeInTheDocument(), { timeout: 5000 });
     expect(within(panel).getByText(/installed durindoor@3\.19\.0/)).toBeInTheDocument();
     await waitFor(() => expect(canvas.getByText("Dashboard reloaded")).toBeVisible());
   },

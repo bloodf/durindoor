@@ -70,3 +70,41 @@ export const KeyLimits = {
     await expect(canvas.getByText("15")).toBeVisible();
   },
 };
+
+export const RevocationRejectedAndRetry = {
+  parameters: { storyFixture: (() => {
+    let removed = false;
+    let attempts = 0;
+    return { scenario: "default", pathname: "/dashboard/keys", reset: () => { removed = false; attempts = 0; }, routes: { ...routes,
+      "GET /api/keys": () => ({ body: { keys: removed ? [] : [key], providerConnections: [] } }),
+      "DELETE /api/keys/key-production": () => { if (++attempts === 1) return { status: 503, body: { error: "Revocation rejected" } }; removed = true; return { body: { ok: true } }; },
+    } };
+  })() },
+  beforeEach: ({ parameters }) => { parameters.storyFixture.reset(); },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Delete Production key" }));
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole("dialog", { name: "Delete API Key" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    await expect(await dialog.findByRole("alert")).toHaveTextContent("Revocation rejected");
+    await expect(canvas.getByText("Production key", { selector: "p" })).toBeVisible();
+    await userEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    await expect(canvas.queryByText("Production key", { selector: "p" })).not.toBeInTheDocument();
+  },
+};
+
+export const RevocationPending = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/keys", routes: { ...routes,
+    "DELETE /api/keys/key-production": () => new Promise(() => {}),
+  } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Delete Production key" }));
+    const dialog = within(await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Delete API Key" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Confirm" }));
+    await expect(dialog.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await expect(canvas.getByText("Production key", { selector: "p" })).toBeVisible();
+  },
+};

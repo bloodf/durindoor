@@ -42,7 +42,7 @@ export const Waiting = {
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: "Sign in to Grok Web" });
     await within(dialog).findByText(/Waiting for sign-in/);
-    expect(within(dialog).getByText(/Captured cookies: none/)).toBeVisible();
+    await waitFor(async () => expect(within(dialog).getByText(/Captured cookies: none/)).toBeVisible());
     expect(within(dialog).getByRole("button", { name: "Save connection" })).toBeDisabled();
     expect(within(dialog).getByTitle("Grok Web login")).toHaveAttribute("srcdoc", expect.stringContaining("Provider login page fixture"));
   },

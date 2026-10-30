@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { readProviderStream } from "./readProviderStream.js";
 import dynamic from "next/dynamic";
 import { loader } from "@monaco-editor/react";
 import { isString } from "../../../../shared/utils/typeChecks.js";
@@ -115,6 +116,9 @@ export function TranslatorWorkspace({ initialContents = {}, initialMeta = null }
   const [loading, setLoading] = useState({});
   const [meta, setMeta] = useState(initialMeta);
   const [error, setError] = useState("");
+  const [sendStatus, setSendStatus] = useState("");
+  const sendRequest = useRef(null);
+  useEffect(() => () => { sendRequest.current?.abort(); sendRequest.current = null; }, []);
   const { copy } = useCopyToClipboard();
 
   const setLoad = (key, value) => setLoading((previous) => ({ ...previous, [key]: value }));
@@ -179,28 +183,33 @@ export function TranslatorWorkspace({ initialContents = {}, initialMeta = null }
   };
 
   const handleSend = async () => {
-    setLoad("send", true);
+    if (sendRequest.current) return;
+    const controller = new AbortController();
+    sendRequest.current = controller;
+    setLoad("send", true); setError(""); setSendStatus("Connecting…");
     try {
       const raw = contents[4];
       const step4 = JSON.parse(raw);
-      save("4_req_target.json", raw);
       const provider = step4.provider || meta?.provider;
       const model = step4.model || meta?.model;
-      if (!provider || !model) { reportError("Missing provider or model. Please run step 1 first to detect them."); return; }
-      const response = await fetch("/api/translator/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, model, body: step4.body || step4 }) });
-      if (!response.ok) { reportError((await response.json().catch(() => ({ error: response.statusText }))).error || "Send failed"); return; }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let full = "";
-      while (true) { const { done, value } = await reader.read(); if (done) break; full += decoder.decode(value, { stream: true }); }
-      setContent(5, full);
-      openNext(5);
-      // Preserve original behavior: original code awaited the fetch directly
-      // so a rejected save surfaced in the catch and reported via alert. The
-      // fire-and-forget `save` helper swallows rejections, so do not use it here.
-      await fetch("/api/translator/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file: "5_res_provider.txt", content: full }) });
-    } catch (caught) { reportError(caught.message); }
-    finally { setLoad("send", false); }
+      if (!provider || !model) throw new Error("Missing provider or model. Load a request first.");
+      save("4_req_target.json", raw);
+      const response = await fetch("/api/translator/send", { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ provider, model, body: step4.body || step4 }) });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Send failed (${response.status})`);
+      setContent(5, ""); openNext(5); setSendStatus("Streaming");
+      const full = await readProviderStream(response, { signal: controller.signal, onChunk: (content) => {
+        if (sendRequest.current === controller) setContent(5, content);
+      } });
+      const saved = await fetch("/api/translator/save", { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ file: "5_res_provider.txt", content: full }) });
+      if (!saved.ok) throw new Error("Response received, but saving the capture failed. Copy the response to keep it.");
+      if (sendRequest.current === controller) setSendStatus("Complete");
+    } catch (caught) {
+      if (sendRequest.current !== controller) return;
+      if (controller.signal.aborted) setSendStatus("Cancelled. Received content retained.");
+      else { setSendStatus("Failed. Received content retained."); reportError(caught.message); }
+    } finally {
+      if (sendRequest.current === controller) { sendRequest.current = null; setLoad("send", false); }
+    }
   };
 
   const handleFormat = (id, value, changed) => {
@@ -212,6 +221,7 @@ export function TranslatorWorkspace({ initialContents = {}, initialMeta = null }
   return (
     <main className="mx-auto w-full max-w-6xl space-y-4 p-4 text-[13px] sm:p-6 lg:p-8">
       <PageHeader icon="swap_horiz" title="Translator Debug" subtitle="Replay request flow — matches log files" actions={meta ? <div className="flex flex-wrap justify-end gap-1.5"><MetaBadge label="Source" value={meta.sourceFormat} tone="info" /><span aria-hidden="true" className="material-symbols-outlined self-center text-[18px] text-dd-muted">arrow_forward</span><MetaBadge label="Target" value={meta.targetFormat} tone="warning" /><MetaBadge label="Provider" value={meta.provider} tone="success" /><MetaBadge label="Model" value={meta.model} tone="accent" /></div> : null} />
+      {sendStatus && <div className="flex items-center justify-between gap-3" role="status"><span>{sendStatus}</span>{loading.send && <Button icon="stop" variant="secondary" onClick={() => sendRequest.current?.abort()}>Stop response</Button>}</div>}
       <TranslatorNotice error={error} onDismiss={() => setError("")} />
       {!Object.values(contents).some(Boolean) ? <Card><EmptyState icon="description" title="Load a captured request" message="Start with Client Request to inspect each conversion step and replay it safely." /></Card> : null}
       <section aria-label="Translation steps" className="space-y-3">

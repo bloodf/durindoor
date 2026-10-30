@@ -19,8 +19,8 @@ export const Success = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByTitle("Language"));
-    await userEvent.click(await within(document.body).findByTitle("Tiếng Việt"));
+    await userEvent.click(canvas.getByRole("button"));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Tiếng Việt", exact: true }));
     await waitFor(() => expect(within(document.body).queryByText("Select Language")).not.toBeInTheDocument());
   },
 };
@@ -42,8 +42,8 @@ export const RequestError = {
       if (args[0] !== "Failed to set locale:" || !String(args[1]).includes("503")) original(...args);
     });
     try {
-      await userEvent.click(canvas.getByTitle("Language"));
-      await userEvent.click(await within(document.body).findByTitle("Tiếng Việt"));
+      await userEvent.click(canvas.getByRole("button"));
+      await userEvent.click(await within(document.body).findByRole("button", { name: "Tiếng Việt", exact: true }));
       await waitFor(() => expect(within(document.body).getByRole("alert")).toHaveTextContent("503"));
       await expect(error).toHaveBeenCalled();
     } finally { error.mockRestore(); }

@@ -9,7 +9,9 @@ const fetchMock = vi.fn();
 const refreshNow = vi.fn();
 let schedulerOnCountdown;
 
+const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
+  useRouter: () => navigation,
   usePathname: () => "/dashboard/usage",
   useSearchParams: () => new URLSearchParams(),
 }));

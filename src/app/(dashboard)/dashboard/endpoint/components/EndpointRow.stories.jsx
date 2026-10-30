@@ -50,7 +50,11 @@ export const CopyInteraction = {
     await expect(endpoint).toBeVisible();
     await expect(endpoint).toHaveProperty("readOnly", true);
     await expect(endpoint).toHaveValue(args.url);
+    const iconName = () => copyButton.querySelector("[data-icon-name]")?.dataset.iconName
+      || copyButton.querySelector(".material-symbols-outlined")?.textContent;
+    await expect(iconName()).toBe("content_copy");
     await userEvent.click(copyButton);
+    await expect(iconName()).toBe("check");
   },
 };
 

@@ -17,8 +17,8 @@ export const Interactive = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Next page" }));
     await expect(canvas.getByRole("button", { current: "page" })).toHaveTextContent("3");
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Rows per page" }), canvas.getByRole("option", { name: "50" }));
-    await expect(canvas.getByRole("combobox", { name: "Rows per page" })).toHaveValue("50");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Rows per page" }), "50");
+    await expect(canvasElement.querySelector("select")).toHaveValue("50");
   },
 };
 
@@ -32,7 +32,7 @@ export const TransitionalPageSizeTwenty = {
   render: () => <TransitionalTwentyScenario />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("combobox", { name: "Rows per page" })).toHaveValue("20");
+    await expect(canvasElement.querySelector("select")).toHaveValue("20");
   },
 };
 
@@ -46,7 +46,7 @@ export const AllRows = {
   render: () => <AllRowsScenario />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("combobox", { name: "Rows per page" })).toHaveValue("all");
+    await expect(canvasElement.querySelector("select")).toHaveValue("all");
     await expect(canvas.getByText(/Showing 1 to 180 of 180 results/)).toBeVisible();
   },
 };

@@ -140,14 +140,29 @@ export const LoadFailure = {
   },
 };
 
+let deleteFlowCombos = structuredClone(baseCombos);
+let deleteFlowSettings = { comboStrategies: { "round-robin-pool": { fallbackStrategy: "round-robin" } } };
 export const DeleteFlow = {
+  beforeEach: () => {
+    deleteFlowCombos = structuredClone(baseCombos);
+    deleteFlowSettings = { comboStrategies: { "round-robin-pool": { fallbackStrategy: "round-robin" } } };
+  },
   parameters: {
     storyFixture: {
       scenario: "default",
       pathname: "/dashboard/combos",
       routes: {
         ...fixtureRoutes("default"),
-        "DELETE /api/combos/combo-prod-2": { body: { ok: true } },
+        "GET /api/combos": () => ({ body: { combos: structuredClone(deleteFlowCombos) } }),
+        "GET /api/settings": () => ({ body: structuredClone(deleteFlowSettings) }),
+        "PATCH /api/settings": async (request) => {
+          deleteFlowSettings = { ...deleteFlowSettings, ...await request.json() };
+          return { body: structuredClone(deleteFlowSettings) };
+        },
+        "DELETE /api/combos/combo-prod-2": () => {
+          deleteFlowCombos = deleteFlowCombos.filter((combo) => combo.id !== "combo-prod-2");
+          return { body: { ok: true } };
+        },
       },
     },
   },
@@ -159,6 +174,10 @@ export const DeleteFlow = {
     await expect(within(dialog).getByText("Delete Combo")).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(canvas.queryByText("round-robin-pool")).not.toBeInTheDocument());
+    expect(deleteFlowCombos.map((combo) => combo.id)).toEqual(["combo-prod-1", "combo-prod-3"]);
+    expect(deleteFlowSettings.comboStrategies).not.toHaveProperty("round-robin-pool");
+    expect(await canvas.findByText("production-fallback")).toBeVisible();
+    expect(canvas.getByText("fusion-panel")).toBeVisible();
   },
 };
 
@@ -287,14 +306,14 @@ const assertSpacingModal = async () => {
   const dialog = await canvas.findByRole("dialog", { name: "Create Combo" });
   const footer = dialog.querySelector("footer");
   await expect(footer).toBeInTheDocument();
-  await expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible();
-  await expect(within(footer).getByRole("button", { name: "Create" })).toBeVisible();
+  await waitFor(() => expect(within(footer).getByRole("button", { name: "Cancel" })).toBeVisible());
+  await waitFor(() => expect(within(footer).getByRole("button", { name: "Create" })).toBeVisible());
 
   // Select an existing combo through the real picker: nested combos are valid members.
   await userEvent.click(within(dialog).getByRole("button", { name: "Add Model" }));
   const picker = await canvas.findByRole("dialog", { name: "Add Model to Combo" });
   await userEvent.click(await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ }));
-  await userEvent.click(within(picker).getByRole("button", { name: "Close" }));
+  await userEvent.click(within(picker).getByRole("button", { name: "Done" }));
   await waitFor(() => expect(picker).not.toBeInTheDocument());
   const drag = within(dialog).getByRole("button", { name: "Drag to reorder production-fallback" });
   const row = drag.parentElement;

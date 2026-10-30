@@ -84,12 +84,13 @@ describe("profile settings behavior", () => {
       ? new Promise((resolve) => { resolveSettings = resolve; })
       : Promise.resolve(new Response("{}")));
     render(h(ProfilePage));
-    await selectTab("Security");
-    const toggle = document.querySelector('[aria-label="Toggle OIDC settings"]');
-    expect(toggle.disabled).toBe(true);
+    expect(document.querySelector('[role="status"]').textContent).toContain("Loading settings");
+    expect(document.querySelector('[aria-label="Toggle OIDC settings"]')).toBeNull();
     await act(async () => {
       resolveSettings(new Response(JSON.stringify(settings)));
     });
+    await selectTab("Security");
+    const toggle = document.querySelector('[aria-label="Toggle OIDC settings"]');
     expect(toggle.disabled).toBe(false);
     await act(async () => toggle.click());
     const issuer = document.querySelector('input[placeholder="https://auth.example.com/application/o/durindoor/"]');
@@ -180,4 +181,29 @@ describe("profile settings behavior", () => {
       window.happyDOM.setURL("http://localhost/");
     }
   });
+});
+
+
+describe("profile settings load recovery", () => {
+  it("keeps policy controls unavailable after failed reads and retries without a write", async () => {
+    let failed = true;
+    globalThis.fetch.mockImplementation(async (url) => url === "/api/settings"
+      ? new Response(JSON.stringify(failed ? { error: "Settings unavailable" } : settings), { status: failed ? 503 : 200 })
+      : new Response("{}"));
+    render(h(ProfilePage)); await flush();
+    expect(document.querySelector('[role="alert"]').textContent).toContain("Settings unavailable");
+    expect(document.querySelector('[role="tab"]')).toBeNull();
+    failed = false;
+    await act(async () => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Retry settings")).click());
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.querySelector('[role="tab"]')).not.toBeNull();
+    expect(fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+  });
+});
+
+it("rejects a JSON null settings response without exposing policy defaults", async () => {
+  globalThis.fetch.mockImplementation(async () => new Response("null"));
+  render(h(ProfilePage)); await flush();
+  expect(document.querySelector('[role="alert"]').textContent).toContain("Settings could not be loaded");
+  expect(document.querySelector('[role="tab"]')).toBeNull();
 });

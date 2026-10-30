@@ -157,3 +157,44 @@ it("preserves unsaved engine, connection and write-only password edits while ref
   expect(host.textContent).not.toContain("unsaved-startup-password");
   expect(host.textContent).not.toContain("private-target-password");
 });
+
+it("shows unknown status after a rejected read, and stamps only a successful retry", async () => {
+  const original = fetch.getMockImplementation();
+  let unavailable = true;
+  fetch.mockImplementation((url, options) => url === "/api/settings/database/engine" && unavailable
+    ? Promise.resolve({ ok: false, status: 503 }) : original(url, options));
+  await act(async () => root.render(React.createElement(DatabaseSettingsPage, { initialPassword: "dashboard" })));
+  expect(host.querySelector('[role="alert"]').textContent).toContain("Database status is unknown");
+  expect(host.textContent).toContain("Last successful refresh: Not loaded");
+  expect(host.querySelector('[aria-label="Engine status"]')).toBeNull();
+  unavailable = false;
+  await act(async () => button("Retry status").click());
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.textContent).not.toContain("Last successful refresh: Not loaded");
+  expect(host.querySelector('[aria-label="Engine status"]')).not.toBeNull();
+});
+
+it("forces fresh mutation read-back and rejects the older pending poll snapshot", async () => {
+  vi.useFakeTimers();
+  const original = fetch.getMockImplementation();
+  let reads = 0;
+  let finishOldPoll;
+  fetch.mockImplementation((url, options) => {
+    if (url === "/api/settings/database/engine" && ++reads === 2) {
+      const oldSnapshot = structuredClone(currentStatus);
+      return new Promise((resolve) => { finishOldPoll = () => resolve({ ok: true, json: async () => oldSnapshot }); });
+    }
+    return original(url, options);
+  });
+  try {
+    await act(async () => root.render(React.createElement(DatabaseSettingsPage, { initialPassword: "dashboard" })));
+    await act(async () => vi.advanceTimersByTime(5000));
+    expect(finishOldPoll).toBeTypeOf("function");
+    await act(async () => button("Cut over to Postgres").click());
+    await act(async () => within(document.body).getByRole("button", { name: "Cut over", exact: true }).click());
+    expect(reads).toBe(3);
+    expect(within(host.querySelector('[aria-label="Engine status"]')).getByText("postgres")).not.toBeNull();
+    await act(async () => finishOldPoll());
+    expect(within(host.querySelector('[aria-label="Engine status"]')).queryByText("sqlite")).toBeNull();
+  } finally { vi.useRealTimers(); }
+});

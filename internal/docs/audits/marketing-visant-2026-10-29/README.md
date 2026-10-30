@@ -181,3 +181,21 @@ This evidence is Chromium source/fixture/built-site verification. It does not pr
 ## Low-frame-rate interaction follow-up
 
 M23. The parent built-site browser run exposed a real timing defect under rendering load. The scene capped every frame delta at 50 ms for decorative effects, then reused that cap for the user-controlled gate. At two frames per second, one second advanced the opening by only 100 ms. Opening now uses actual elapsed time with the existing exponential easing; decorative time and camera smoothing retain their separate bounds. A regression checks the same literal opening/closing positions after one second at 2, 30 and 60 fps. The existing WebGL browser assertions and timeouts are unchanged. Fresh final-head results belong to the integration owner's PR receipt.
+
+## Unslop craft follow-up — 2026-10-30
+
+Applied [Unslop by Damir Sokolovsky (@heydamir)](https://github.com/heydamir/unslop/blob/4652254daff586ff4739849395a127b56f7f8cc7/skills/unslop/SKILL.md), pinned at `4652254daff586ff4739849395a127b56f7f8cc7`, with its Signs and Tokens references. Attribution retained under CC BY 4.0. This is a bounded polish pass over the established identity.
+
+- Product: a gateway for developers connecting tools to provider accounts through compatible APIs.
+- Character: deliberate, technical, welcoming.
+- World: engraved stone and a working gateway, retaining the existing serif, emerald palette and doorway mark.
+- Moments: the opening gate and real dashboard demonstration remain the visual anchors.
+- Signature: the doorway mark and visible request paths remain consistent.
+
+Four remaining findings are repaired: quota captions use sentence case with normal tracking and readable 12px/16px or 13px/20px metrics; article subheads lose display-only negative tracking; resolver tabs name only their three color transition properties at 160ms; tunnel packets use transforms inside a reserved track rather than animating `left`. The packet still travels in both directions, respects reduced motion and stays within its track on desktop and mobile.
+
+Pass order: spacing (caption line heights), color (no change), icons (retain existing animated glyphs), copy (retain translated strings), type (caption case and subhead tracking), layout (retain section order and geometry), details (retain controls and focus), visuals (retain hero and feature art), motion (named transitions and bounded packet transforms). No claims, features or publication boundaries changed.
+
+The focused built-browser scenarios in `website/tests/docs.spec.mjs` inspect computed caption/subhead styles, named transition properties and durations, live animation keyframes and packet positions at 1280px and 390px, plus reduced-motion cancellation. These checks exercise the rendered site rather than matching CSS source text. Fresh check results are recorded by the implementation owner and final exact-head full checkpoint belongs to the integration owner.
+
+Focused verification: website production build passes (108 routes); `unit/visant-marketing-docs.test.js` passes all 10 assertions with two workers; the three new browser scenarios plus existing docs onboarding/theme flow pass, 4 tests in 14.3 seconds. Scoped ESLint, test syntax and `git diff --check` pass. The built quota section and API article headings were also inspected visually in Chrome. No full checkpoint, deployment or live-provider check was run by this worker.

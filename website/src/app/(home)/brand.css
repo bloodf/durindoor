@@ -846,6 +846,8 @@ html:has(.dd-home) body {
   flex: 1;
   background: linear-gradient(90deg, transparent, #6ee7b7);
   position: relative;
+  /* The packet travels within this reserved track without animating layout. */
+  container-type: inline-size;
 }
 .tunnel-path i:last-child {
   transform: rotate(180deg);
@@ -871,8 +873,11 @@ html:has(.dd-home) body {
   filter: brightness(1.15);
 }
 @keyframes tunnel-packet {
+  from {
+    transform: translateX(0);
+  }
   to {
-    left: 100%;
+    transform: translateX(calc(100cqw - 100%));
   }
 }
 @keyframes text-caret {

@@ -218,9 +218,8 @@
   top: -30px;
   left: 0;
   color: var(--home-muted);
-  font: 600 11px var(--home-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 500 12px/16px var(--home-mono);
+  letter-spacing: 0;
 }
 
 .gauges {
@@ -322,9 +321,9 @@
   margin-bottom: 14px !important;
   color: var(--home-gold);
   font-size: 13px;
+  line-height: 20px;
   font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .quota-ledger ul {

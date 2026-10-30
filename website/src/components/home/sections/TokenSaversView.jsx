@@ -67,7 +67,7 @@ export default function TokenSaversView({ raw, compressed, before, after }) {
 
         <ul className="saver-engines">
           {SAVER_ENGINES.map((engine, i) => (
-            <Reveal as="li" key={engine.name} delay={i * 0.06} className="saver-engine">
+            <Reveal as="li" key={engine.name} className="saver-engine">
               <h3>{t(engine.name)}</h3>
               <p>{t(engine.body)}</p>
             </Reveal>

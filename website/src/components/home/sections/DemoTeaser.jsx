@@ -1,4 +1,5 @@
 "use client";
+import Icon from "../ui/Icon.jsx";
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 import { Magnetic } from "../ui/primitives.jsx";
 export default function DemoTeaser() {
@@ -22,7 +23,7 @@ export default function DemoTeaser() {
             </p>
           </div>
           <Magnetic internal href="/demo-preview" className="btn btn-ghost">
-            {t("Open the live demo")} ↗
+            {t("Open the live demo")} <Icon name="external" size={16} />
           </Magnetic>
         </div>
         <div className="actual-demo-window">

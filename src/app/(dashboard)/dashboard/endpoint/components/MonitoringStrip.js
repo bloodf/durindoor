@@ -92,7 +92,7 @@ export default function MonitoringStrip() {
             No provider activity recorded yet.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div role="region" aria-label="Provider health" tabIndex={0} className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border-subtle text-left text-xs uppercase tracking-wider text-dd-muted">

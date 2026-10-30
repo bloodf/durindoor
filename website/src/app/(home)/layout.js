@@ -1,3 +1,4 @@
+import { SITE_URL } from "@site/lib/site.js";
 import localFont from "next/font/local";
 
 import { cookies } from "next/headers";
@@ -22,8 +23,9 @@ export async function generateMetadata() {
   const locale = resolveHomeLocale((await cookies()).get(LOCALE_COOKIE)?.value);
   return {
     ...homeMetadata(locale),
-    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+    metadataBase: SITE_URL,
     icons: { icon: "/home/favicon.svg" },
+    alternates: { canonical: new URL("/", SITE_URL).href },
   };
 }
 

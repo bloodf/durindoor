@@ -2,6 +2,8 @@
 
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
+import { useState } from "react";
+import Icon from "../ui/Icon.jsx";
 import Link from "next/link";
 import { TOOLS } from "../data.js";
 import { DocsCta, SectionHeader } from "../ui/primitives.jsx";
@@ -24,8 +26,9 @@ function Track({ items, reverse, renderItem, label }) {
 
 export default function ToolsMarquee() {
   const { t } = useHomeLocale();
+  const [paused, setPaused] = useState(false);
   return (
-    <section id="tools" className="section section-tools" aria-labelledby="tools-title">
+    <section id="tools" className={`section section-tools ${paused ? "is-paused" : ""}`} aria-labelledby="tools-title">
       <div className="container">
         <SectionHeader
           eyebrow={t("Compatible tools")}
@@ -33,6 +36,7 @@ export default function ToolsMarquee() {
           lead={t("Claude Code, Codex, Cursor, Cline, Roo, and Continue have setup pages. Anything that speaks OpenAI uses the same base URL.")}
         />
       </div>
+      <div className="container tools-controls"><button type="button" className="copy-btn" aria-pressed={paused} onClick={() => setPaused(!paused)}><Icon name={paused ? "play" : "pause"} size={16} />{t(paused ? "Play motion" : "Pause motion")}</button></div>
       <Track
         label={t("Compatible tools")}
         items={TOOLS}

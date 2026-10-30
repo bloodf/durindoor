@@ -445,3 +445,82 @@ test("public docs exclude AI references and brand maintenance files", async ({ p
   expect((await request.get("/brand/durindoor-logo-dark.svg")).status()).toBe(200);
   expect((await request.get("/docs/reference/api")).status()).toBe(200);
 });
+
+test("quota labels and resolver feedback retain quiet readable type", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const sample = page.locator(".sample-tag");
+  const ledger = page.locator(".quota-ledger-title");
+  await expect(sample).toHaveText("Sample data");
+  await expect(ledger).toHaveText("In the dashboard");
+  for (const label of [sample, ledger]) {
+    await expect(label).toHaveCSS("text-transform", "none");
+    await expect(label).toHaveCSS("letter-spacing", "normal");
+  }
+  await expect(sample).toHaveCSS("font-size", "12px");
+  await expect(sample).toHaveCSS("line-height", "16px");
+  await expect(ledger).toHaveCSS("line-height", "20px");
+
+  const tab = page.getByRole("tablist", { name: "Model string shapes" }).getByRole("tab").first();
+  const transition = await tab.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { properties: style.transitionProperty.split(", "), durations: style.transitionDuration.split(", ") };
+  });
+  expect(transition.properties).toEqual(["color", "background-color", "border-color"]);
+  expect(transition.durations).toEqual(["0.16s", "0.16s", "0.16s"]);
+});
+
+test("tunnel packets animate within each track and stop for reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const tracks = page.locator(".tunnel-path i");
+    await expect(tracks).toHaveCount(2);
+    const samples = await tracks.evaluateAll((nodes) => nodes.map((node) => {
+      const animation = node.getAnimations({ subtree: true }).find((entry) => entry.animationName === "tunnel-packet");
+      if (!animation) throw new Error("Tunnel packet animation missing");
+      animation.pause();
+      const sample = (time) => {
+        animation.currentTime = time;
+        const style = getComputedStyle(node, "::after");
+        return { x: new DOMMatrixReadOnly(style.transform).m41, width: Number.parseFloat(style.width), left: style.left };
+      };
+      return {
+        track: node.getBoundingClientRect().width,
+        frames: animation.effect.getKeyframes().map((frame) => ({ transform: frame.transform, left: frame.left })),
+        start: sample(0), middle: sample(1500), end: sample(2999),
+      };
+    }));
+    for (const packet of samples) {
+      expect(packet.track, `reserved track at ${width}px`).toBeGreaterThan(5);
+      expect(packet.frames.every((frame) => frame.transform && frame.left === undefined)).toBe(true);
+      expect(packet.start.x).toBeCloseTo(0, 2);
+      expect(packet.middle.x).toBeCloseTo((packet.track - 5) / 2, 1);
+      expect(packet.end.x).toBeGreaterThan((packet.track - 5) * 0.99);
+      for (const sample of [packet.start, packet.middle, packet.end]) {
+        expect(sample.width).toBe(5);
+        expect(sample.left).toBe("0px");
+        expect(sample.x).toBeGreaterThanOrEqual(0);
+        expect(sample.x + sample.width).toBeLessThanOrEqual(packet.track + 0.1);
+      }
+    }
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const stopped = await page.locator(".tunnel-path i").evaluateAll((nodes) => nodes.map((node) => ({
+    animation: getComputedStyle(node, "::after").animationName,
+    running: node.getAnimations({ subtree: true }).filter((entry) => entry.animationName === "tunnel-packet").length,
+  })));
+  expect(stopped).toEqual([{ animation: "none", running: 0 }, { animation: "none", running: 0 }]);
+});
+
+test("article subheads keep normal tracking without changing display headings", async ({ page }) => {
+  await page.goto("/docs/reference/api", { waitUntil: "domcontentloaded" });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.getByRole("heading", { name: "Authentication Copy Anchor Link", exact: true })).toHaveCSS("letter-spacing", "normal");
+    await expect(page.getByRole("heading", { name: "Native background Responses Copy Anchor Link", exact: true })).toHaveCSS("letter-spacing", "normal");
+    const displayTracking = await page.locator("h1").first().evaluate((node) => Number.parseFloat(getComputedStyle(node).letterSpacing));
+    expect(displayTracking).toBeLessThan(0);
+  }
+});

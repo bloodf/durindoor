@@ -1,3 +1,4 @@
+import { SITE_URL } from "@site/lib/site.js";
 import { notFound } from "next/navigation";
 import {
   DocsBody,
@@ -17,7 +18,7 @@ function withDotPrefix(href) {
   return /\.mdx?(#.*)?$/.test(href) ? `./${href}` : href;
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://durindoor.vercel.app";
+
 const GITHUB_DOCS = "https://github.com/bloodf/durindoor/blob/main/docs";
 
 export default async function Page(props) {
@@ -72,8 +73,10 @@ export async function generateMetadata(props) {
   if (!page) notFound();
 
   return {
-    title: page.data.title,
+    metadataBase: SITE_URL,
+    title: `${page.data.title} | DurinDoor`,
     description: page.data.description,
+    alternates: { canonical: new URL(page.url, SITE_URL).href },
     icons: {
       icon: "/home/favicon.svg",
       apple: "/brand/durindoor-apple-touch-icon.png",
@@ -81,7 +84,10 @@ export async function generateMetadata(props) {
     openGraph: {
       title: page.data.title,
       description: page.data.description,
-      url: `${SITE_URL}${page.url}`,
+      url: new URL(page.url, SITE_URL).href,
+      locale: "en_US",
+      type: "article",
+      images: [{ url: "/brand/durindoor-social.png", width: 1200, height: 630, alt: "DurinDoor self-hosted AI gateway" }],
     },
   };
 }

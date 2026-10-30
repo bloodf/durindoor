@@ -4471,6 +4471,7 @@ export const REVIEW_SURFACES = [
     "storyId": "v5-review-scenarios-v5-preservation-usage-complete-usage-workspace--all-widgets",
     "states": [
       "AllWidgets",
+      "CompactWidgets",
       "LayoutDraftSaveAndReopen",
       "GroupedPendingAndSessions",
       "CustomRangeKeepsLiveSessions",
@@ -4494,6 +4495,7 @@ export const REVIEW_SURFACES = [
     ],
     "storyIds": [
       "v5-review-scenarios-v5-preservation-usage-complete-usage-workspace--all-widgets",
+      "v5-review-scenarios-v5-preservation-usage-complete-usage-workspace--compact-widgets",
       "v5-review-scenarios-v5-preservation-usage-complete-usage-workspace--layout-draft-save-and-reopen",
       "v5-review-scenarios-v5-preservation-usage-complete-usage-workspace--grouped-pending-and-sessions",
       "v5-review-scenarios-v5-preservation-usage-complete-usage-workspace--custom-range-keeps-live-sessions",

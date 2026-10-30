@@ -23,6 +23,13 @@ export const AllWidgets = {
   },
 };
 
+/** A desktop canvas can contain phone-width widgets. Preserve their data
+ * through local table scrolling rather than shrinking individual words. */
+export const CompactWidgets = {
+  args: { initialLayout: USAGE_WIDGETS.map((widget) => ({ ...widget, span: 4 })) },
+  play: AllWidgets.play,
+};
+
 export const LayoutDraftSaveAndReopen = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

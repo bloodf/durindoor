@@ -11,7 +11,7 @@ import Select from "@/shared/ui/components/Select.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import { isBrowser } from "@/shared/utils/typeChecks.js";
-import { USAGE_LAYOUT_KEY, moveUsageWidget, normalizeUsageLayout, readUsageLayout, updateUsageWidget } from "./layout.js";
+import { USAGE_LAYOUT_KEY, USAGE_WIDGETS, moveUsageWidget, normalizeUsageLayout, readUsageLayout, updateUsageWidget } from "./layout.js";
 
 const WIDTHS = [
   { value: 12, label: "Full width" },
@@ -22,8 +22,12 @@ const WIDTHS = [
 
 function UsageWidget({ widget, editing, index, visible, onMove, onEdit, onHide, children }) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id: widget.id, disabled: !editing });
+  // These cards already label themselves. Keep a separate heading for renamed
+  // widgets and while editing, when it anchors the layout controls.
+  const cardHasTitle = widget.id === "combos" || widget.id === "keys";
+  const renamed = widget.title !== USAGE_WIDGETS.find((item) => item.id === widget.id)?.title;
   return <section ref={setNodeRef} className="v5-usage-widget" aria-label={widget.title} data-widget-id={widget.id} data-span={widget.span} data-editing={editing} data-dragging={isDragging || undefined} style={{ transform: CSS.Transform.toString(transform), transition }}>
-    <div className="v5-usage-widget-heading">
+    {editing || !cardHasTitle || renamed ? <div className="v5-usage-widget-heading">
       {editing ? <button type="button" {...attributes} {...listeners} className="v5-usage-drag-handle" aria-label={`Drag ${widget.title}`}><span aria-hidden="true" className="material-symbols-outlined">drag_indicator</span></button> : null}
       <h2>{widget.title}</h2>
       {editing ? <div className="v5-usage-widget-controls">
@@ -32,7 +36,7 @@ function UsageWidget({ widget, editing, index, visible, onMove, onEdit, onHide, 
         <IconButton icon="edit" label={`Edit ${widget.title}`} onClick={() => onEdit(widget)} />
         <IconButton icon="visibility_off" label={`Hide ${widget.title}`} onClick={() => onHide(widget.id)} />
       </div> : null}
-    </div>
+    </div> : null}
     <div className="v5-usage-widget-content">{children}</div>
   </section>;
 }

@@ -6,6 +6,7 @@ import { reviewParameters, reviewStory } from '../review-parameters.js';
 const meta = { ...originalMeta, title: "V5 review/Scenarios/V5 preservation/Usage/Complete usage workspace", parameters: reviewParameters(originalMeta.parameters, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}), decorators: [...(originalMeta.decorators || []), reviewDecorator] };
 export default meta;
 export const AllWidgets = { ...reviewStory(original.AllWidgets, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
+export const CompactWidgets = { ...reviewStory(original.CompactWidgets, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
 export const LayoutDraftSaveAndReopen = { ...reviewStory(original.LayoutDraftSaveAndReopen, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
 export const GroupedPendingAndSessions = { ...reviewStory(original.GroupedPendingAndSessions, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };
 export const CustomRangeKeepsLiveSessions = { ...reviewStory(original.CustomRangeKeepsLiveSessions, {"source":"src/shared/ui/v5/usage/Usage.stories.jsx","standalone":false}) };

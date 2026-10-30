@@ -92,6 +92,23 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
 describe("review usage composition", () => {
+  it("avoids repeated card titles while retaining renamed headings and editing controls", async () => {
+    const sections = Object.fromEntries(USAGE_WIDGETS.map((widget) => [widget.id, React.createElement("p", null, widget.title)]));
+    await render(React.createElement(UsageWidgetLayout, { sections, persistLayout: false }));
+    const keyWidget = () => container.querySelector('[data-widget-id="keys"]');
+    expect(keyWidget().querySelector("h2")).toBeNull();
+    expect(keyWidget().textContent).toBe("API key limits");
+    await click("Customize dashboard");
+    expect(keyWidget().querySelector("h2").textContent).toBe("API key limits");
+    expect(keyWidget().querySelector('button[aria-label="Edit API key limits"]')).not.toBeNull();
+    await click("Cancel layout changes");
+    expect(keyWidget().querySelector("h2")).toBeNull();
+    await render(null);
+    await render(React.createElement(UsageWidgetLayout, { sections, persistLayout: false, initialLayout: [{ id: "keys", title: "Team budgets" }] }));
+    expect(keyWidget().querySelector("h2").textContent).toBe("Team budgets");
+    expect(keyWidget().querySelector("p").textContent).toBe("API key limits");
+  });
+
   it("exposes chart request failure, retries the same period contract and retains loaded intervals after a later failure", async () => {
     let resolveChart;
     fetch.mockImplementationOnce(() => new Promise((resolve) => { resolveChart = resolve; }));

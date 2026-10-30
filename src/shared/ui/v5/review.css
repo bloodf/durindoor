@@ -1,16 +1,16 @@
 /* Loaded only by the Storybook review frame. Production tokens are untouched.
    Root scoping also reaches body/dialog portals used by the actual components. */
 html[data-v5-review="true"] {
-  --dd-bg: #f5f7f5;
-  --dd-bg-alt: #edf1ed;
+  --dd-bg: #f7f8f7;
+  --dd-bg-alt: #eff1ef;
   --dd-surface: #ffffff;
-  --dd-surface-2: #f0f4f0;
-  --dd-surface-3: #e6ece6;
-  --dd-border: #ccd7cd;
-  --dd-border-subtle: #e0e6e0;
-  --dd-text: #172a20;
-  --dd-text-muted: #435c4d;
-  --dd-text-subtle: #4d6355;
+  --dd-surface-2: #f2f4f2;
+  --dd-surface-3: #e8ebe8;
+  --dd-border: #cdd3ce;
+  --dd-border-subtle: #e2e6e2;
+  --dd-text: #202622;
+  --dd-text-muted: #505b53;
+  --dd-text-subtle: #5c675f;
   --dd-accent: #17623f;
   --dd-accent-hover: #104b2f;
   --dd-accent-soft: #e3f1e8;
@@ -18,8 +18,8 @@ html[data-v5-review="true"] {
   --dd-focus-ring: #17623f;
   --dd-radius: 10px;
   --dd-radius-lg: 14px;
-  --dd-shadow-raised: 0 2px 6px -3px rgb(20 45 28 / 10%);
-  --dd-shadow-elevated: 0 12px 32px -8px rgb(20 45 28 / 20%);
+  --dd-shadow-raised: 0 2px 6px -3px rgb(0 0 0 / 10%);
+  --dd-shadow-elevated: 0 12px 32px -8px rgb(0 0 0 / 20%);
   accent-color: var(--dd-accent);
   caret-color: var(--dd-accent);
   scrollbar-color: var(--dd-border) var(--dd-bg);
@@ -40,16 +40,16 @@ html[data-v5-review="true"] {
   --color-info: var(--dd-info);
 }
 html.dark[data-v5-review="true"] {
-  --dd-bg: #111a15;
-  --dd-bg-alt: #17221b;
-  --dd-surface: #1b2921;
-  --dd-surface-2: #24342a;
-  --dd-surface-3: #304538;
-  --dd-border: #405b49;
-  --dd-border-subtle: #304638;
-  --dd-text: #edf5ed;
-  --dd-text-muted: #c0d4c4;
-  --dd-text-subtle: #b4cabb;
+  --dd-bg: #151817;
+  --dd-bg-alt: #191d1b;
+  --dd-surface: #202522;
+  --dd-surface-2: #292f2b;
+  --dd-surface-3: #363d38;
+  --dd-border: #4c5750;
+  --dd-border-subtle: #363f39;
+  --dd-text: #edf1ed;
+  --dd-text-muted: #c5cdc7;
+  --dd-text-subtle: #b6c0b9;
   --dd-accent: #9cd9b0;
   --dd-accent-hover: #b5e8c5;
   --dd-accent-soft: #2b4836;
@@ -68,16 +68,29 @@ html[data-v5-review="true"] :is([class*="border-blue-"],[class*="border-sky-"]) 
 /* White monochrome source assets need ink on the light review surface. */
 html[data-v5-review="true"]:not(.dark) img:is([src$="/providers/openai.svg"], [src$="/providers/qwen.svg"], [src$="/providers/anthropic.svg"], [src$="/providers/openrouter.svg"], [src$="/providers/ollama.svg"]) { filter: brightness(0); }
 html[data-v5-review="true"]:not(.dark) img[src$="/providers/kimi.svg"] { background:var(--dd-text); padding:2px; }
-/* Preserve readable cells inside each table's own keyboard-reachable scroll region. */
+/* A card's anywhere wrapping must not collapse a table's intrinsic columns.
+ * Keep ordinary words and atomic values readable; the existing focusable
+ * region owns overflow at every widget width, including desktop span 4. */
+html[data-v5-review="true"] [role="region"] > table,
+html[data-v5-review="true"] [role="region"] > table > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+html[data-v5-review="true"] table thead th,
+html[data-v5-review="true"] table tbody th[scope="row"],
+html[data-v5-review="true"] table :is(th, td):is(.font-mono, .text-right) { white-space: nowrap; }
+html[data-v5-review="true"] [aria-label="API key rate and budget limits"] td:first-child { white-space: nowrap; }
 html[data-v5-review="true"] [aria-label="Configured provider connections and their reachability probes rows"] table { min-width: 760px; }
 html[data-v5-review="true"] [aria-label="Pricing rates per provider and model rows"] table { min-width: 980px; }
 html[data-v5-review="true"] [aria-label="Pricing rates per provider and model rows"] :is(th, td):nth-child(-n+2) { white-space: nowrap; }
 .v5-review-surface main > header { background: var(--dd-bg); }
 .v5-review-surface aside { background: var(--dd-bg-alt); }
 .v5-review-content { min-width: 0; padding-block: 24px 32px; }
-.v5-review-content :is(h1,h2,h3) { text-wrap: balance; letter-spacing: -.018em; }
-.v5-review-content h1 { font-size: 24px; line-height: 1.3; font-weight: 650; }
+.v5-review-content :is(h1,h2,h3) { text-wrap: balance; letter-spacing: normal; }
+.v5-review-content h1 { font-size: 24px; line-height: 1.3; font-weight: 600; }
 .v5-review-content table { font-variant-numeric: tabular-nums; }
+html[data-v5-review="true"] .uppercase { text-transform: none; letter-spacing: normal; }
+html[data-v5-review="true"] .uppercase.text-\[11px\] { font-size: 12px; line-height: 16px; }
 .v5-review-bar { position: relative; display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 0 0 12px; border-bottom: 1px solid var(--dd-border-subtle); }
 .v5-review-context { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; }
 .v5-review-context strong { font-size: 14px; }

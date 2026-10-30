@@ -118,7 +118,23 @@ async function layoutDefects(page) {
     // still need enough width to avoid breaking into character fragments.
     for (const table of document.querySelectorAll("table")) {
       const caption = table.querySelector("caption")?.textContent || table.getAttribute("aria-label") || "";
-      if (!visible(table) || !/Configured provider connections and their reachability probes|Pricing rates per provider and model/.test(caption)) continue;
+      if (!visible(table)) continue;
+      // Run word/figure checks for every rendered table, not only the two
+      // provider tables that originally exposed this failure. Long identifiers
+      // and descriptions may still wrap at useful boundaries.
+      const cellText = document.createTreeWalker(table, NodeFilter.SHOW_TEXT);
+      for (let node = cellText.nextNode(); node; node = cellText.nextNode()) {
+        if (!visible(node.parentElement) || node.parentElement.closest('.sr-only, caption, [aria-hidden="true"], [data-v5-review-glyph]')) continue;
+        for (const match of node.textContent.matchAll(/\S+/g)) {
+          if (!/^(?:[A-Za-z]{3,24}|[$€£]?\d[\d,]*(?:\.\d+)?%?)$/.test(match[0])) continue;
+          const range = document.createRange();
+          range.setStart(node, match.index);
+          range.setEnd(node, match.index + match[0].length);
+          const lines = new Set([...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0).map((rect) => Math.round(rect.top)));
+          if (lines.size > 1) failures.push(`Table word/figure fragments across lines: ${caption}: ${match[0]}`);
+        }
+      }
+      if (!/Configured provider connections and their reachability probes|Pricing rates per provider and model/.test(caption)) continue;
       const headers = table.querySelectorAll("thead th").length;
       if (table.getBoundingClientRect().width < headers * 96 - 2) failures.push(`Table columns are too narrow to read: ${caption}`);
       const region = table.closest('[role="region"]');
@@ -239,6 +255,77 @@ async function render(page, id, theme) {
 }
 
 describe.skipIf(!enabled)("v5 Storybook runtime", () => {
+  it("keeps Usage table words and figures readable in narrow canvases and widgets", async () => {
+    const cases = [];
+    for (const engine of Object.keys(engines)) {
+      const browser = await launch(engine);
+      try {
+        for (const theme of ["light", "dark"]) {
+          for (const width of [390, 560, 1440]) {
+            const page = await browser.newPage({ viewport: { width, height: 1000 } });
+            await installEvidence(page);
+            await render(page, "v5-review-start-here--explore-workspace", theme);
+            await page.getByText("Requests / minute", { exact: true }).waitFor();
+            if (width === 1440) {
+              await page.getByRole("button", { name: "Customize dashboard", exact: true }).click();
+              for (const title of ["Grouped usage", "Combo connection usage", "API key limits"]) {
+                await page.getByRole("button", { name: `Edit ${title}`, exact: true }).click();
+                const dialog = page.getByRole("dialog", { name: "Edit usage widget", exact: true });
+                await dialog.getByRole("combobox", { name: "Widget width", exact: true }).click();
+                await page.getByRole("option", { name: "One third", exact: true }).click();
+                await dialog.getByRole("button", { name: "Apply changes", exact: true }).click();
+              }
+              await page.getByRole("button", { name: "Save layout", exact: true }).click();
+            }
+            const defects = await page.evaluate(() => {
+              const failures = [];
+              for (const id of ["breakdown", "combos", "keys"]) {
+                const widget = document.querySelector(`[data-widget-id="${id}"]`);
+                const table = widget?.querySelector("table");
+                if (!table || !table.querySelector("tbody td, tbody th")) { failures.push(`${id}: missing populated table`); continue; }
+                const region = table.closest('[role="region"]');
+                if (!region || region.tabIndex !== 0 || !["auto", "scroll"].includes(getComputedStyle(region).overflowX)) failures.push(`${id}: missing keyboard scroll region`);
+                const walker = document.createTreeWalker(table, NodeFilter.SHOW_TEXT);
+                for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                  if (node.parentElement.closest('.sr-only, [aria-hidden="true"], [data-v5-review-glyph], caption')) continue;
+                  for (const match of node.textContent.matchAll(/\S+/g)) {
+                    const range = document.createRange();
+                    range.setStart(node, match.index);
+                    range.setEnd(node, match.index + match[0].length);
+                    const lines = new Set([...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0).map((rect) => Math.round(rect.top)));
+                    if (lines.size > 1) failures.push(`${id}: fragmented ${match[0]} across ${lines.size} lines`);
+                  }
+                }
+              }
+              if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) failures.push("Tables widened the document");
+              return failures;
+            });
+            cases.push({ engine, theme, width, defects });
+            expect(defects, JSON.stringify(cases.at(-1))).toEqual([]);
+            if (engine === "chromium" && theme === "light" && width === 390) {
+              for (const id of ["combos", "keys"]) {
+                const region = page.locator(`[data-widget-id="${id}"] [role="region"]`).first();
+                expect(await region.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+                await region.focus();
+                for (let press = 0; press < 30; press++) await page.keyboard.press("ArrowRight");
+                await expect.poll(() => region.evaluate((element) => {
+                  const last = element.querySelector("thead tr").lastElementChild.getBoundingClientRect();
+                  return last.right <= element.getBoundingClientRect().right + 1;
+                })).toBe(true);
+              }
+              const group = page.locator('[data-widget-id="breakdown"]');
+              await group.getByRole("button", { name: /Expand Group/ }).click();
+              expect(await group.locator("table").count()).toBe(2);
+              expect(await group.getByRole("button", { name: /Collapse Group/ }).getAttribute("aria-expanded")).toBe("true");
+            }
+            await page.close();
+          }
+        }
+      } finally { await browser.close(); }
+    }
+    writeFileSync(resolve(reportDir, "usage-table-readability.json"), JSON.stringify(cases, null, 2));
+  }, 280_000);
+
   it("keeps quota filters and compression settings inside review navigation", async () => {
     const browser = await launch("chromium");
     try {

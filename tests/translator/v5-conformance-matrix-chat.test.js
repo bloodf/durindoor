@@ -76,23 +76,31 @@ const kiroTool = (out) =>
 describe("#1089 OpenAI Chat client conformance — tools and policies", () => {
   it("preserves namespaced tool, keyword schema, strict false, named choice, and parallel false in Chat", () => {
     const out = request(CHAT, chatBody());
+    const alias = out.tools[0].function.name;
+    // Chat upstreams reject dots (#1343); schema / strict / parallel stay intact.
+    expect(alias).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    expect(alias).not.toBe("ns.search");
+    expect(out._toolNameMap.get(alias)).toBe("ns.search");
     expect(out.tools[0].function).toMatchObject({
-      name: "ns.search",
       strict: false,
       parameters: keywordSchema,
     });
-    expect(out.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: "ns.search" } });
+    expect(out.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: alias } });
     expect(out.parallel_tool_calls).toBe(false);
   });
 
   it("translates namespaced tool, keyword schema, and named choice to Claude", () => {
     const out = request(CLAUDE, chatBody());
+    const alias = out.tools[0].name;
+    // Anthropic rejects dots (#1343); schema / strict / parallel stay intact.
+    expect(alias).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    expect(alias).not.toBe("ns.search");
+    expect(out._toolNameMap.get(alias)).toBe("ns.search");
     expect(out.tools[0]).toMatchObject({
-      name: "ns.search",
       input_schema: keywordSchema,
       strict: false,
     });
-    expect(out.tool_choice).toMatchObject({ type: "tool", name: "ns.search", disable_parallel_tool_use: true });
+    expect(out.tool_choice).toMatchObject({ type: "tool", name: alias, disable_parallel_tool_use: true });
   });
 
   it("translates namespaced tool, keyword schema, and named choice to Gemini", () => {

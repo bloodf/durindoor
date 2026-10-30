@@ -220,6 +220,10 @@ async function render(page, id, theme) {
   const result = await page.evaluate(() => window.__v5StoryResult);
   expect(result.status, `${id}: ${JSON.stringify(result)}`).toBe("success");
   await page.evaluate(() => document.fonts.ready);
+  // StartHere has no play readiness: its dynamic graph can mount between checks.
+  // Await the populated fixture's control panel before checking its fitted nodes.
+  if (id === "v5-review-start-here--explore-workspace")
+    await page.getByRole("group", { name: "Control Panel", exact: true }).waitFor({ state: "visible", timeout: 3_000 });
   await settleTopology(page);
   const geometry = await page.evaluate(() => ({
     width: document.documentElement.clientWidth,

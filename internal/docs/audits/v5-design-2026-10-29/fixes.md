@@ -40,7 +40,7 @@ Usage includes all seven original widgets plus the runtime-monitoring widget add
 |---|---|---|
 | S1 | Profile blocks policy editing until a confirmed non-null settings object loads | Loading, failed-read, null and recovery tests/stories |
 | S2 | Database timestamps advance only after successful reads; mutations force fresh read-back and invalidate older polls | Unknown/recovery and pending-poll/cutover/stale-response regressions |
-| S3 | Search-prefix glyphs receive pointer help; clicking them still focuses the input | Icon-help regression and browser pointer check |
+| S3 | Search-prefix glyphs receive pointer help, including portaled dialogs outside the story canvas; clicking them still focuses the input | Icon-help regression and browser pointer check |
 | S4 | Translator renders decoded chunks immediately, supports cancellation and retains partial responses after failure | Incremental UTF-8, cancellation, transport-failure tests; cancelled and capture-save-failure stories |
 | S5 | Auto-configure exposes initial status failures and read-only retry | Status recovery regression and story |
 | S6 | Authored ButtonIcon identity survives minification, preventing inferred duplicate icons | Stable-name/minified-name and one-glyph regression |

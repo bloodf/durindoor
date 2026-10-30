@@ -146,14 +146,16 @@ html[data-v5-review="true"] [data-v5-review-glyph] { display: inline-flex; align
 html[data-v5-review="true"] :is(img[src*="/providers/"], img[src*="logo"], img[src*="/favicon."], span[role="img"]:not(:has(svg)):not(.v5-motion-icon), svg[aria-label="DurinDoor"]) {
   transition: rotate 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-html[data-v5-review="true"] :is(img[src*="/providers/"], img[src*="logo"], img[src*="/favicon."], span[role="img"]:not(:has(svg)):not(.v5-motion-icon), svg[aria-label="DurinDoor"]):is(:hover, :focus-visible, :active) { rotate: -5deg; }
+@media (prefers-reduced-motion: no-preference) { html[data-v5-review="true"] :is(img[src*="/providers/"], img[src*="logo"], img[src*="/favicon."], span[role="img"]:not(:has(svg)):not(.v5-motion-icon), svg[aria-label="DurinDoor"]):is(:hover, :focus-visible, :active) { rotate: -5deg; } }
 @media (prefers-reduced-motion: reduce) {
   html[data-v5-review="true"] :is(img[src*="/providers/"], img[src*="logo"], img[src*="/favicon."], span[role="img"]:not(:has(svg)):not(.v5-motion-icon), svg[aria-label="DurinDoor"]) { transition: none; scale: 1; rotate: 0deg; }
 }
 
 /* The page owns its title when present; the shell retains navigation and tools. */
 html[data-v5-review="true"] .v5-review-surface:has([data-v5-story-canvas] h1) [data-dashboard-identity]:not(:has(nav)) { display: none; }
-html[data-v5-review="true"] [data-v5-story-canvas] .pointer-events-none > [data-v5-review-glyph],
+/* Dialog portals sit outside the story canvas; the review root still owns them.
+ * Raise only the glyph above the input so the field keeps the remaining hit area. */
+html[data-v5-review="true"] .pointer-events-none > [data-v5-review-glyph] { pointer-events: auto; position: relative; z-index: 1; }
 html[data-v5-review="true"] [data-v5-review-glyph].pointer-events-none { pointer-events: auto; }
 html[data-v5-review="true"] [data-v5-locale-mark] { display: inline-block; transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
 html[data-v5-review="true"] button:hover [data-v5-locale-mark],

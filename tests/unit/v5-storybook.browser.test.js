@@ -351,8 +351,11 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
               expect(await pending.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
               await page.emulateMedia({ reducedMotion: "no-preference" });
               await render(page, "v5-review-workflows-monitoring--runtime", theme);
-              for (const meaning of ["Provider servers", "Usage statistics", "Processing speed", "Storage usage"])
-                expect(await page.getByRole("img", { name: meaning, exact: true }).count()).toBe(1);
+              for (const meaning of ["Provider servers", "Usage statistics", "Latency and throughput", "Storage usage"]) {
+                const icon = page.getByRole("img", { name: meaning, exact: true });
+                await icon.waitFor({ state: "visible" });
+                expect(await icon.count()).toBe(1);
+              }
               expect(await page.getByRole("img", { name: "Page content", exact: true }).count()).toBe(0);
               cases.push({ browser: name, viewport, theme, icons: "passed" });
             }
@@ -380,6 +383,11 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
             await mark.evaluate((element) => element.decode());
             const appearance = await mark.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, filter: getComputedStyle(element).filter }));
             expect(appearance.filter, "Kimi blue accent retains its source color").toBe("none");
+            await mark.hover();
+            await page.waitForFunction(() => getComputedStyle(document.querySelector('img[src="/providers/kimi.svg"]')).rotate === "-5deg");
+            await page.emulateMedia({ reducedMotion: "reduce" });
+            expect(await mark.evaluate((element) => ({ rotate: getComputedStyle(element).rotate, transition: getComputedStyle(element).transitionDuration }))).toEqual({ rotate: "0deg", transition: "0s" });
+            await page.emulateMedia({ reducedMotion: "no-preference" });
             if (theme === "light") {
               const channels = appearance.background.match(/[\d.]+/g).map(Number);
               expect(channels.slice(0, 3).every((channel) => channel < 100), "White Kimi body needs a dark icon well").toBe(true);

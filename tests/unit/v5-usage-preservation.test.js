@@ -96,13 +96,15 @@ describe("review usage composition", () => {
     const sections = Object.fromEntries(USAGE_WIDGETS.map((widget) => [widget.id, React.createElement("p", null, widget.title)]));
     await render(React.createElement(UsageWidgetLayout, { sections, persistLayout: false }));
     const keyWidget = () => container.querySelector('[data-widget-id="keys"]');
-    expect(keyWidget().querySelector("h2")).toBeNull();
-    expect(keyWidget().textContent).toBe("API key limits");
+    expect(keyWidget().querySelector("h2").textContent).toBe("API key limits");
+    expect(keyWidget().querySelector("h2").className).toBe("sr-only");
+    expect(keyWidget().querySelector(".v5-usage-widget-heading")).toBeNull();
     await click("Customize dashboard");
     expect(keyWidget().querySelector("h2").textContent).toBe("API key limits");
     expect(keyWidget().querySelector('button[aria-label="Edit API key limits"]')).not.toBeNull();
     await click("Cancel layout changes");
-    expect(keyWidget().querySelector("h2")).toBeNull();
+    expect(keyWidget().querySelector("h2").textContent).toBe("API key limits");
+    expect(keyWidget().querySelector(".v5-usage-widget-heading")).toBeNull();
     await render(null);
     await render(React.createElement(UsageWidgetLayout, { sections, persistLayout: false, initialLayout: [{ id: "keys", title: "Team budgets" }] }));
     expect(keyWidget().querySelector("h2").textContent).toBe("Team budgets");

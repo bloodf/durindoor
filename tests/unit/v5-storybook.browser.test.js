@@ -266,6 +266,8 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
             await installEvidence(page);
             await render(page, "v5-review-start-here--explore-workspace", theme);
             await page.getByText("Requests / minute", { exact: true }).waitFor();
+            for (const title of ["Combo connection usage", "API key limits"])
+              expect(await page.getByRole("heading", { name: title, exact: true }).count()).toBe(1);
             if (width === 1440) {
               await page.getByRole("button", { name: "Customize dashboard", exact: true }).click();
               for (const title of ["Grouped usage", "Combo connection usage", "API key limits"]) {

@@ -36,7 +36,7 @@ function UsageWidget({ widget, editing, index, visible, onMove, onEdit, onHide, 
         <IconButton icon="edit" label={`Edit ${widget.title}`} onClick={() => onEdit(widget)} />
         <IconButton icon="visibility_off" label={`Hide ${widget.title}`} onClick={() => onHide(widget.id)} />
       </div> : null}
-    </div> : null}
+    </div> : <h2 className="sr-only">{widget.title}</h2>}
     <div className="v5-usage-widget-content">{children}</div>
   </section>;
 }

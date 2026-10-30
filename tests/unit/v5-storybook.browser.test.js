@@ -395,6 +395,15 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
             expect(await weight.evaluate((element) => document.activeElement === element)).toBe(true);
             expect(await weight.getAttribute("aria-invalid")).toBeNull();
             expect(await page.getByRole("button", { name: "Save", exact: true }).isEnabled()).toBe(true);
+            await render(page, "v5-review-workflows-redesign-login--static-fallback", theme);
+            const brand = page.getByRole("img", { name: "DurinDoor logo", exact: true });
+            await brand.hover();
+            await page.waitForFunction(() => getComputedStyle(document.querySelector(".v5-login-brand-mark")).rotate === "-5deg");
+            await page.emulateMedia({ reducedMotion: "reduce" });
+            expect(await brand.evaluate((element) => ({ rotate: getComputedStyle(element).rotate, transition: getComputedStyle(element).transitionDuration }))).toEqual({ rotate: "0deg", transition: "0s" });
+            await brand.focus();
+            expect(await brand.evaluate((element) => getComputedStyle(element).rotate)).toBe("0deg");
+            await page.emulateMedia({ reducedMotion: "no-preference" });
             cases.push({ browser: name, viewport, theme, layout: "passed" });
           }
           await page.close();
@@ -551,8 +560,10 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
     }
   }, 600_000);
 
+  // Keep the full engine/theme/viewport matrix while bounding each CI command.
   for (const name of Object.keys(engines))
-    it.concurrent(`${name} has accessible page layouts and interactions across both themes and sizes`, async () => {
+    for (const theme of ["light", "dark"])
+    it.concurrent(`${name} ${theme} has accessible page layouts and interactions across both sizes`, async () => {
       const browser = await launch(name);
       const cases = [];
       const errors = [];
@@ -572,8 +583,7 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
       const representatives = ["v5-review-start-here--explore-workspace", ...REVIEW_SURFACES.filter((surface) => representativeSources.includes(surface.source)).map((surface) => surface.storyId)];
       const interactions = REVIEW_SURFACES.filter((surface) => /\/v5\/(?:usage|combos|login|providers|dashboards)\//.test(surface.source) || surface.source.endsWith("/SaverOverview.stories.jsx")).flatMap((surface) => surface.storyIds);
       try {
-        for (const theme of ["light", "dark"])
-          for (const [size, viewport] of Object.entries({
+        for (const [size, viewport] of Object.entries({
             desktop: { width: 1440, height: 1000 },
             mobile: { width: 390, height: 844 },
           })) {
@@ -600,7 +610,7 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
       } finally {
         mkdirSync(reportDir, { recursive: true });
         writeFileSync(
-          resolve(reportDir, `${name}-matrix.json`),
+          resolve(reportDir, `${name}-${theme}-matrix.json`),
           JSON.stringify(
             {
               cases,
@@ -616,5 +626,5 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
         );
         await browser.close();
       }
-    }, 600_000);
+    }, 280_000);
 });

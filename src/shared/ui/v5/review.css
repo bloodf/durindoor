@@ -161,5 +161,5 @@ html[data-v5-review="true"] button:focus-visible [data-v5-locale-mark] { transfo
 @media (prefers-reduced-motion: reduce) { html[data-v5-review="true"] [data-v5-locale-mark] { transition: none; transform: none !important; } }
 
 html[data-v5-review="true"] .v5-login-brand-mark { display: inline-flex; transition: rotate 180ms cubic-bezier(0.16, 1, 0.3, 1); }
-html[data-v5-review="true"] .v5-login-brand-mark:is(:hover,:focus-visible) { rotate: -5deg; }
+@media (prefers-reduced-motion: no-preference) { html[data-v5-review="true"] .v5-login-brand-mark:is(:hover,:focus-visible) { rotate: -5deg; } }
 @media (prefers-reduced-motion: reduce) { html[data-v5-review="true"] .v5-login-brand-mark { transition: none; rotate: 0deg; } }

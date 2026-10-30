@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import accountA from "./fixtures/claude-usage-account-a.json";
 import accountB from "./fixtures/claude-usage-account-b.json";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard/usage", useSearchParams: () => new URLSearchParams() }));
+const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => navigation, usePathname: () => "/dashboard/usage", useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/shared/utils/latestIntentQueue", () => ({ createLatestIntentQueue: () => ({ hydrate: () => {}, enqueue: async () => {} }) }));
 vi.mock("@/shared/components", () => ({ EditConnectionModal: () => null }));
 vi.mock("@/shared/constants/providers", () => ({ USAGE_SUPPORTED_PROVIDERS: ["claude"], AI_PROVIDERS: {} }));

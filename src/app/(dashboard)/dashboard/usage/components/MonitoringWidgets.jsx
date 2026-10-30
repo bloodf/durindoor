@@ -190,7 +190,7 @@ export default function MonitoringWidgets() {
       <Card padding="sm" role="region" aria-label="Recorded provider health">
         <h3 className="mb-3 font-semibold text-dd-text">{t("Provider health (7d)")}</h3>
         {health.length ? (
-          <div className="overflow-x-auto">
+          <div role="region" aria-label="Recorded provider health table" tabIndex={0} className="overflow-x-auto">
             <table className="w-full text-sm text-dd-text">
               <thead className="text-left text-dd-muted"><tr>
                 {[t("Provider"), t("Requests"), t("Errors"), t("Success rate"), t("Last used")].map((label) => <th key={label} className="p-2">{label}</th>)}

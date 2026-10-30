@@ -30,6 +30,8 @@ These changes address the confirmed audit findings. V5 page compositions remain 
 | D9 | Hidden widget sources stop subscriptions; enabling a source keeps the dashboard editor mounted | Hidden-source and editor-remount regressions |
 | D10 | Switching personal dashboards retains each unsaved editing session | Dirty-layout switching tests and story |
 
+Scrollable provider-health tables in Usage and Endpoint expose named keyboard focus regions. The login emblem retains its artwork with an explicit DurinDoor logo explanation and reduced-motion support.
+
 Usage includes all seven original widgets plus the runtime-monitoring widget added upstream. Token Saver retains all nine widgets. Personal dashboards retain cross-source composition, visibility, order, width, names and saved layouts. Combos now also retains the connection-usage report introduced upstream.
 
 ## Shared system and review navigation

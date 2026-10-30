@@ -47,7 +47,7 @@ export function ReviewLoginView({
 
       <div className="v5-login-form">
         <div className="v5-login-heading">
-          <div className="v5-login-brand"><BrandMark size={40} /><span>DurinDoor</span></div>
+          <div className="v5-login-brand"><span className="v5-login-brand-mark" role="img" aria-label="DurinDoor logo"><BrandMark size={40} /></span><span>DurinDoor</span></div>
           <h1>{mfaRequired ? "Verify your identity" : mustChange ? "Update your password" : "Welcome back"}</h1>
           <p className="mt-3 text-[13px] text-dd-muted">
             {mfaRequired

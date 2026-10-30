@@ -7,7 +7,7 @@ function View(props) {const[password,setPassword]=useState(''),[newPassword,setN
 const meta = {title:'Redesign/Login',component:ReviewLoginView,parameters:{layout:'fullscreen',v5Review:{standalone:true},storyFixture:{pathname:'/login',routes:{}}},render:(args)=><View {...args}/>};
 export default meta;
 export const AnimatedGate = {};
-export const StaticFallback = {args:{sceneFallback:true},play:async({canvasElement})=>{const canvas=within(canvasElement);await expect(canvas.getByRole('heading',{name:'Welcome back'})).toBeVisible();await userEvent.type(canvas.getByLabelText(/^Password/),'review-password');await expect(canvas.getByLabelText(/^Password/)).toHaveValue('review-password');}};
+export const StaticFallback = {args:{sceneFallback:true},play:async({canvasElement})=>{const canvas=within(canvasElement);await expect(canvas.getByRole('heading',{name:'Welcome back'})).toBeVisible();await expect(canvas.getByRole('img',{name:'DurinDoor logo'})).toBeVisible();await userEvent.type(canvas.getByLabelText(/^Password/),'review-password');await expect(canvas.getByLabelText(/^Password/)).toHaveValue('review-password');}};
 export const AnimationPaused = {args:{scenePaused:true}};
 export const SigningIn = {args:{loading:true,password:'storybook-password'}};
 export const InvalidPassword = {args:{error:'Invalid password',resetHint:'Reset password from the host CLI.'}};

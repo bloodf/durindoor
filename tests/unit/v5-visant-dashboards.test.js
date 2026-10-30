@@ -169,6 +169,9 @@ describe("Visant truthful dashboard reads", () => {
     stubFetch(async () => response({ ...monitoring, health: [{ id: "openai", name: "OpenAI", requests: 2 }] }));
     await render(React.createElement(MonitoringWidgets));
     const health = container.querySelector('[role="region"][aria-label="Recorded provider health"]');
+    const table = container.querySelector('[aria-label="Recorded provider health table"]');
+    table.focus();
+    expect(document.activeElement).toBe(table);
     expect(health).not.toBeNull(); expect(health.querySelector("tbody td").textContent).toBe("OpenAI");
   });
   it("keeps first monitoring load unknown and rejects an older refresh arriving after a newer one", async () => {

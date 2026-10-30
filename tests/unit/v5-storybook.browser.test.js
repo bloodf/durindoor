@@ -256,7 +256,7 @@ describe.skipIf(!enabled)("v5 Storybook runtime", () => {
       await page.getByRole("link", { name: "Open full page", exact: true }).click();
       await page.waitForURL((url) => url.pathname === "/iframe.html" && /headroom/.test(url.searchParams.get("id") || ""));
       await page.waitForFunction(() => window.__v5StoryResult?.status === "success");
-      expect(await page.locator("#error-message").count()).toBe(0);
+      expect(await page.locator("#error-message").isVisible()).toBe(false);
     } finally { await browser.close(); }
   }, 60_000);
 

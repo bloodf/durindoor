@@ -3,6 +3,7 @@ import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
+import { CLAUDE_TOOL_SUFFIX } from "../config/appConstants.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
@@ -171,7 +172,10 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
        * Do not widen this to Responses→Chat — that direct route is owned by #1384.
        */
       if (sourceFormat === FORMATS.OPENAI && targetFormat === FORMATS.CLAUDE && isObject(result)) {
-        responsesToolAliases = normalizeOpenAIToolNames(result);
+        const credential = credentials?.accessToken || credentials?.apiKey;
+        const willSuffixTools = PROVIDERS[provider]?.quirks?.cloakToolsOnOAuth &&
+          isString(credential) && credential.includes("sk-ant-oat");
+        responsesToolAliases = normalizeOpenAIToolNames(result, willSuffixTools ? 64 - CLAUDE_TOOL_SUFFIX.length : 64);
       }
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
       finalizeTranslatedRequest = directFn.finalize;

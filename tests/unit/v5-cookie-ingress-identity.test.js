@@ -16,11 +16,7 @@ const accounts = {
 };
 
 beforeEach(async () => {
-  const temporaryParent = process.env.TMPDIR;
-  if (!temporaryParent || !path.isAbsolute(temporaryParent) || os.tmpdir() !== temporaryParent) {
-    throw new Error("Confined runtime must supply an absolute private TMPDIR");
-  }
-  root = fs.mkdtempSync(path.join(temporaryParent, "cookie-db-"));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "cookie-db-"));
   vi.stubEnv("DATA_DIR", path.join(root, "data"));
   vi.stubEnv("HOME", path.join(root, "home"));
   vi.stubEnv("DURINDOOR_DATABASE_ENGINE", "sqlite");

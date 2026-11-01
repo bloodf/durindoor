@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
-import { extractCookieValue } from "../../providers/webCookieAuth.js";
+import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
@@ -318,7 +318,7 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
         return true;
       });
     }
-    if (data.provider === "iflow" && data.authType === "cookie") {
+    if (!existing && data.provider === "iflow" && data.authType === "cookie") {
       const session = extractCookieValue(data.providerSpecificData?.cookie, "BXAuth");
       if (session) {
         existing = all.find((c) => c.authType === "cookie" &&

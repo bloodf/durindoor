@@ -109,7 +109,8 @@ async function transport(vendorHeaders, status = 200, {
     handleLocale: (pathname) => ({ pathname }),
     getItem: async (pathname) => pathname.startsWith("/api/") ? { type: "appFile", itemPath: pathname } : null,
   };
-  const resolve = getResolveRoutes(fsChecker, nextConfig,
+  // Next 16.4 reads the asset prefix through a callback before resolving routes.
+  const resolve = getResolveRoutes(fsChecker, nextConfig, () => nextConfig.assetPrefix || "",
     { dir: process.cwd(), dev: false, minimalMode: false, hostname: LOGIN_HOST, port: 443 }, {
     initialize: async () => ({ requestHandler: async (req) => {
       middlewareRequests.push(req.url);

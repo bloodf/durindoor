@@ -102,7 +102,9 @@ These are source-backed catalog facts checked against the linked vendor document
 | Model and surface | Context tokens | Output ceiling tokens | Notes |
 | --- | ---: | ---: | --- |
 | GPT-6 Astra, Sol, Luna; GPT-6.1 Sol, direct API and known Codex rows | 1,050,000 | 128,000 | Maximum input 922,000; text/image input and text output. Codex shares capacity, not automatic API model access or effort availability. |
+| Kimi K3.1 Pro / Highspeed, native Platform API | 1,048,576 | 1,048,576 | Same K3-series ceiling; published output default 131,072. Sources: [models](https://platform.kimi.ai/docs/models.md), [troubleshooting](https://platform.kimi.ai/docs/guide/troubleshooting). |
 | Kimi K3, native Platform API | 1,048,576 | 1,048,576 | Published output default 131,072 is distinct from the ceiling. |
+| Kimi K2.7 Code / Highspeed and K2.6, native Platform API | 262,144 | Unknown | K2 series unavailable to new users from 2026-10-31; retires by end of December 2026. Prefer `kimi-k3.1-pro`. |
 | Kimi Code `kimi-for-coding` | 1,048,576 | Unknown | Now K2.8 Preview, not a K3 alias or the older K2.7 Code model. |
 | MiniMax `MiniMax-M3.1-Flash-Preview` | 1,000,000 | Unknown | Currently M Plan / MiniMax Code access; image/video input and tunable mandatory thinking. |
 

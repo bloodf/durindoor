@@ -846,6 +846,8 @@ html:has(.dd-home) body {
   flex: 1;
   background: linear-gradient(90deg, transparent, #6ee7b7);
   position: relative;
+  /* The packet travels within this reserved track without animating layout. */
+  container-type: inline-size;
 }
 .tunnel-path i:last-child {
   transform: rotate(180deg);
@@ -871,8 +873,11 @@ html:has(.dd-home) body {
   filter: brightness(1.15);
 }
 @keyframes tunnel-packet {
+  from {
+    transform: translateX(0);
+  }
   to {
-    left: 100%;
+    transform: translateX(calc(100cqw - 100%));
   }
 }
 @keyframes text-caret {
@@ -1107,3 +1112,55 @@ html:has(.dd-home) body {
     font-size: 14px;
   }
 }
+
+/* Short landscape screens must retain the final navigation actions. */
+@media (max-width: 1099px) {
+  .dd-home .nav-panel {
+    max-height: calc(100dvh - 76px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .dd-home .nav-links { margin-inline: 0; }
+}
+.dd-home :is(button, a[href]) { cursor: pointer; }
+.dd-home .copy-action { position: relative; display: inline-flex; flex: none; }
+.dd-home .copy-action { flex-direction: column; align-items: flex-end; }
+.dd-home .copy-feedback.is-error {
+  max-width: min(200px, calc(100vw - 48px));
+  padding-block-start: 8px;
+  color: var(--home-danger);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  text-align: end;
+}
+.dd-home .copy-btn[data-copy-state="error"] { color: var(--home-danger); }
+.dd-home .setup-note { margin-block: 16px 32px; color: var(--home-muted); font-size: 14px; }
+.dd-home .trace-hops { display: flex; gap: 12px; }
+.dd-home .terminal-bar { flex-wrap: wrap; }
+.dd-home .terminal-playback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: auto;
+  padding: 6px;
+  border: 1px solid var(--home-line-strong);
+  border-radius: 7px;
+  color: var(--home-muted);
+  background: var(--home-panel-solid);
+  font: 500 11px/1.4 var(--home-sans);
+}
+.dd-home .terminal-playback:hover { color: var(--home-text); }
+.dd-home .tools-controls { display: flex; justify-content: flex-end; }
+.dd-home .section-tools.is-paused .marquee-track,
+.dd-home .marquee:focus-within .marquee-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .dd-home .tools-controls { display: none; } }
+
+.dd-home .final-command { flex-wrap: wrap; }
+.dd-home .final-command code { overflow-wrap: anywhere; min-width: 0; }
+.dd-home .gateway-install code { overflow-wrap: anywhere; min-width: 0; }
+
+/* Closing CTA copies exactly the complete first-run block shown here. */
+.dd-home .final-command { align-items: flex-start; }
+.dd-home .final-command pre { min-width: 0; max-width: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dd-home .final-command code { font-size: 13px; line-height: 1.8; }

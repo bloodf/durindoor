@@ -50,8 +50,14 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
     }
   }
 
-  // Convert Responses API format to Chat Completions format
-  const convertedBody = convertResponsesApiFormat(body);
+  // Keep converter validation failures inside the same HTTP result contract as chatCore.
+  let convertedBody;
+  try {
+    convertedBody = convertResponsesApiFormat(body);
+  } catch (error) {
+    if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+  }
 
   // Preserve client's stream preference (matches OpenClaw behavior)
   // Default to false if omitted: Boolean(undefined) = false

@@ -50,9 +50,25 @@ describe("toOpenAIUsage", () => {
 
   it("ollama: prompt_eval_count/eval_count", () => {
     const u = toOpenAIUsage({ prompt_eval_count: 7, eval_count: 4 }, "ollama");
-    expect(u.prompt_tokens).toBe(7);
-    expect(u.completion_tokens).toBe(4);
-    expect(u.total_tokens).toBe(11);
+    expect(u).toEqual({
+      prompt_tokens: 7,
+      completion_tokens: 4,
+      total_tokens: 11
+    });
+  });
+
+  it("ollama: surfaces prompt_eval_cached_count as cached_tokens detail", () => {
+    const u = toOpenAIUsage(
+      { prompt_eval_count: 100, eval_count: 20, prompt_eval_cached_count: 80 },
+      "ollama"
+    );
+    // cache-INCLUSIVE: prompt already contains cached; do not inflate totals
+    expect(u).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      prompt_tokens_details: { cached_tokens: 80 }
+    });
   });
 
   it("commandcode: keeps totalTokens fallback", () => {

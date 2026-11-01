@@ -13,6 +13,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
 /**
@@ -219,7 +220,7 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
       result.tools.push({
         name: toolName,
         description: toolData.description || "",
-        input_schema: toolData.parameters || toolData.input_schema || { type: "object", properties: {}, required: [] },
+        input_schema: toClaudeInputSchema(toolData.parameters, toolData.input_schema),
         ...(toolData.strict !== undefined && { strict: toolData.strict })
       });
     }
@@ -236,6 +237,14 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
   // Tool choice
   if (body.tool_choice) {
     result.tool_choice = convertOpenAIToolChoice(body.tool_choice);
+  }
+
+  // OpenAI's parallel_tool_calls:false is Claude's tool_choice.disable_parallel_tool_use.
+  // The shared lowering otherwise drops the caller's limit; only the GitHub executor
+  // re-added it downstream. Same guards as that executor: tools must be present and the
+  // caller must not have disabled tools outright.
+  if (body.parallel_tool_calls === false && result.tools?.length > 0 && result.tool_choice?.type !== "none") {
+    result.tool_choice = { ...(result.tool_choice || { type: "auto" }), disable_parallel_tool_use: true };
   }
 
   // Thinking is normalized centrally by applyThinking (thinkingUnified.js) after translation.

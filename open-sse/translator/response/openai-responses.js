@@ -16,6 +16,12 @@ import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
+import {
+  isUpstreamErrorObject,
+  readUpstreamErrorMessage,
+  responsesIncompleteDetailsOrOmit,
+  responsesTerminalFromChatFinish
+} from "../concerns/finishReason.js";
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -70,6 +76,14 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   }
 
   if (chunk.model) state.model = chunk.model;
+  // Capture Chat-stream error payloads so finish_reason error can sanitize them
+  // into response.failed.error (never raw credentials). Null-safe: repo isObject
+  // treats null as object. (#1331)
+  if (chunk.error != null) {
+    state.upstreamError = isUpstreamErrorObject(chunk.error) ?
+      chunk.error :
+      { message: isString(chunk.error) ? chunk.error : String(chunk.error) };
+  }
   // Merge rather than overwrite so provider-only fields already extracted
   // into shared state (e.g. Kiro credits) survive the Responses projection.
   if (chunk.usage && isObject(chunk.usage)) {
@@ -84,7 +98,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     // usage (or before finish_reason deferred completion) must not complete early.
     if (state.awaitingTrailingUsage && !state.completedSent && state.responsesUsage) {
       const { events, emit } = createEventEmitter(state);
-      sendCompleted(state, emit);
+      sendTerminal(state, emit);
       return events;
     }
     return [];
@@ -181,13 +195,15 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
   }
 
-  // Handle finish_reason
+  // Handle finish_reason. length/content_filter → incomplete; error → failed;
+  // stop/tool_calls (and other clean ends) still complete. (#1331 / #1089)
   if (choice.finish_reason) {
+    state.finishReason = choice.finish_reason;
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
     if (state.responsesUsage) {
-      sendCompleted(state, emit);
+      sendTerminal(state, emit);
     } else {
       state.awaitingTrailingUsage = true;
     }
@@ -588,26 +604,43 @@ function closeToolCall(state, emit, idx) {
   }
 }
 
-function sendCompleted(state, emit) {
-  if (!state.completedSent) {
-    state.completedSent = true;
-    state.awaitingTrailingUsage = false;
-    const usage = state.responsesUsage;
-    emit("response.completed", {
-      type: "response.completed",
-      response: {
-        id: state.responseId,
-        object: "response",
-        created_at: state.created,
-        model: state.model || MODEL_FALLBACK,
-        status: "completed",
-        background: false,
-        error: null,
-        output: (state.finalOutputItems || []).filter(Boolean),
-        ...(usage ? { usage } : null)
-      }
-    });
-  }
+/**
+ * Emit exactly one Responses terminal for the Chat finish_reason.
+ * length / content_filter → response.incomplete; error → response.failed;
+ * stop / tool_calls / unset / unknown → response.completed. Stream status is
+ * always a canonical string from the event (main's sendCompleted used
+ * "completed" even for odd finish_reason). Usage attaches the same way on
+ * every terminal when present. Failed.error never echoes upstream text. (#1331)
+ */
+function sendTerminal(state, emit) {
+  if (state.completedSent) return;
+  state.completedSent = true;
+  state.awaitingTrailingUsage = false;
+  const usage = state.responsesUsage;
+  const terminal = responsesTerminalFromChatFinish(
+    state.finishReason,
+    readUpstreamErrorMessage(state.upstreamError)
+  );
+  const streamStatus = terminal.event === "response.incomplete" ? "incomplete" :
+    terminal.event === "response.failed" ? "failed" :
+    "completed";
+  const incompleteDetails = responsesIncompleteDetailsOrOmit(terminal.incomplete_details);
+  emit(terminal.event, {
+    type: terminal.event,
+    response: {
+      id: state.responseId,
+      object: "response",
+      created_at: state.created,
+      model: state.model || MODEL_FALLBACK,
+      background: false,
+      status: streamStatus,
+      error: terminal.error,
+      ...(incompleteDetails ? { incomplete_details: incompleteDetails } : null),
+      // Drop sparse/null slots — never forward null entries as output items.
+      output: (state.finalOutputItems || []).filter(Boolean),
+      ...(usage ? { usage } : null)
+    }
+  });
 }
 
 function flushEvents(state) {
@@ -618,7 +651,7 @@ function flushEvents(state) {
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
-  sendCompleted(state, emit);
+  sendTerminal(state, emit);
 
   return events;
 }
@@ -824,15 +857,19 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // Avoid emitting duplicate errors (error + response.failed arrive back-to-back)
     if (state.finishReasonSent) return null;
 
-    const error = data.error || data.response?.error;
+    const error = data.error ?? data.response?.error;
+    // Match main: truthy primitives (e.g. error: 5) still surface; null/undefined skip.
     if (error) {
       state.error = error;
       state.finishReasonSent = true;
+      const message = readUpstreamErrorMessage(error) || (
+        isUpstreamErrorObject(error) ? JSON.stringify(error) : String(error)
+      );
 
       // Surface the error as an OpenAI-compatible error chunk
       return buildChunk(
         { id: state.chatId || `chatcmpl-${Date.now()}`, created: state.created || Math.floor(Date.now() / 1000), model: state.model || MODEL_FALLBACK },
-        { content: `[Error] ${error.message || JSON.stringify(error)}` },
+        { content: `[Error] ${message}` },
         OPENAI_FINISH.STOP
       );
     }

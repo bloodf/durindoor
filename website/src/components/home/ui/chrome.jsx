@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ReactLenis } from "lenis/react";
 import { MotionConfig, motion, useScroll, useSpring, useReducedMotion } from "motion/react";
-import { GitHubMark } from "./Icon.jsx";
+import Icon, { GitHubMark } from "./Icon.jsx";
 import BrandMark from "@site/components/brand/BrandMark.jsx";
 export { default as BrandMark } from "@site/components/brand/BrandMark.jsx";
 import { GITHUB_URL } from "../data.js";
@@ -63,17 +63,6 @@ const NAV_LINKS = [
   { href: "#demo", label: "Demo" },
 ];
 
-function MenuIcon({ open }) {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      {open ? (
-        <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      ) : (
-        <path d="M4 6h12M4 10h12M4 14h12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      )}
-    </svg>
-  );
-}
 
 export function Nav() {
   const { t } = useHomeLocale();
@@ -169,7 +158,7 @@ export function Nav() {
             aria-controls="home-nav-panel"
             onClick={() => setMenuOpen((value) => !value)}
           >
-            <MenuIcon open={menuOpen} />
+            <Icon name={menuOpen ? "close" : "menu"} size={20} />
           </button>
         </div>
       </nav>

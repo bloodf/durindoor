@@ -72,6 +72,14 @@ The host bind path `$HOME/.durindoor` is not the native default (`~/.9router`). 
 </Tab>
 </Tabs>
 
+## Confirm your installation
+
+1. Open `http://localhost:20128/dashboard` and sign in with the initial password you chose.
+2. [Connect a provider](../providers/connecting-accounts.mdx). A running dashboard alone does not confirm provider access.
+3. [Create a gateway key and send your first request](./first-request.mdx).
+
+If you cannot sign in, verify that the startup process has the same `JWT_SECRET` and `INITIAL_PASSWORD` environment you configured. Avoid generating new signing secrets on every restart. [Troubleshooting](../troubleshooting.mdx) separates process, gateway-key, and provider failures.
+
 ## Data directory
 
 `DATA_DIR` is the persistent root. Set it at deploy time. If it is unset, the process uses `~/.9router` on macOS and Linux, or `%APPDATA%\9router` on Windows. The directory is created if missing. A Unix-style path on Windows is ignored and the default is used.

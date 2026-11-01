@@ -83,6 +83,16 @@ Create `durindoor.env` using [Docker setup](../deployment/docker.mdx#prepare-sec
 </Tab>
 </Tabs>
 
+## Restricted network observation
+
+Some runtimes do not allow the process to enumerate network interfaces.
+DurinDoor treats that observation as unknown rather than aborting startup:
+quota auto-ping and background token-refresh setup still run. The network
+monitor retries on later ticks and retains its last valid interface snapshot.
+An unavailable reading alone does not trigger a tunnel restart; connectivity
+recovery and wake-from-sleep checks continue independently. This does not grant
+network permissions or change listener, proxy, or tunnel security settings.
+
 ## Verify inference
 
 ```bash

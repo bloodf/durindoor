@@ -32,7 +32,7 @@ export default function FlowSection() {
         <div className="flow-split">
           <ol className="flow-steps">
             {STEPS.map((step, i) => (
-              <Reveal as="li" key={step.n} delay={i * 0.08} className="flow-step">
+              <Reveal as="li" key={step.n} className="flow-step">
                 <span className="flow-step-n">{step.n}</span>
                 <div>
                   <h3>{t(step.title)}</h3>
@@ -41,7 +41,7 @@ export default function FlowSection() {
               </Reveal>
             ))}
           </ol>
-          <Reveal delay={0.15}>
+          <Reveal>
             <ModelResolver />
           </Reveal>
         </div>

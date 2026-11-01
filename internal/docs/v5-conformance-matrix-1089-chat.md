@@ -32,10 +32,10 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | max_tool_calls numeric ceiling | Claude | already-present | `does not invent a Claude parallel ban from max_tool_calls` |
 | Non-stream | length terminal | Claude | already-present | `maps non-stream length to Claude max_tokens with text` |
 | Non-stream | length terminal | Gemini | already-present | `maps non-stream length to Gemini MAX_TOKENS with text` |
-| Non-stream | length → incomplete/max_output_tokens | Responses | failing | `maps non-stream length to Responses incomplete with max_output_tokens` |
+| Non-stream | length → incomplete/max_output_tokens | Responses | passing (#1331) | `maps non-stream length to Responses incomplete with max_output_tokens` |
 | Non-stream | content_filter terminal | Gemini | already-present | `maps non-stream content_filter to Gemini SAFETY` |
-| Non-stream | content_filter → incomplete/content_filter | Responses | failing | `maps non-stream content_filter to Responses incomplete with content_filter` |
-| Non-stream | error → failed with error object | Responses | failing | `maps non-stream error finish to Responses failed with error object` |
+| Non-stream | content_filter → incomplete/content_filter | Responses | passing (#1331) | `maps non-stream content_filter to Responses incomplete with content_filter` |
+| Non-stream | error → failed with error object | Responses | handler-502 (#1348) | `maps non-stream error finish to Responses failed with error object` |
 | Non-stream | error terminal | Claude | failing | `maps non-stream error finish to a Claude error terminal` |
 | Non-stream | error terminal | Gemini | failing | `maps non-stream error finish to a Gemini abort finishReason` |
 | Stream | length terminal | Claude | already-present | `emits Claude stream length as message_delta max_tokens` |
@@ -43,8 +43,8 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Stream | content_filter terminal | Gemini | already-present | `emits Gemini stream content_filter as SAFETY with text` |
 | Stream | error terminal | Claude | already-present | `emits Claude stream error as an Anthropic error event` |
 | Stream | error terminal | Gemini | already-present | `emits Gemini stream error as OTHER finishReason` |
-| Stream | incomplete/length terminal | Responses | failing | `emits Responses stream incomplete for Chat length finish` |
-| Stream | error terminal | Responses | failing | `emits Responses stream failed for Chat error finish` |
+| Stream | incomplete/length terminal | Responses | passing (#1331) | `emits Responses stream incomplete for Chat length finish` |
+| Stream | error terminal | Responses | passing (#1331) | `emits Responses stream failed for Chat error finish` |
 | Non-stream | tool call identity | Chat | already-present | `keeps tool call identity and finish_reason in Chat non-stream` |
 | Stream | tool call identity | Chat | already-present | `keeps tool call identity and finish_reason in Chat stream` |
 | Non-stream | tool call | Claude | already-present | `projects non-stream tool calls to Claude tool_use` |
@@ -56,9 +56,9 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | tool-result image media | Claude | failing | `converts tool-result image_url media to Claude image blocks` |
 | Request | tool-result image media | Gemini | already-present | `keeps tool-result image URL visible through Gemini functionResponse` |
 | Request | tool-result image media | Responses | failing | `preserves tool-result image media on Chat to Responses` |
-| Request | turn-scoped tool pairing | Claude | failing | `pairs Claude tool results only within the current assistant turn` |
-| Request | turn-scoped tool pairing | Gemini | failing | `pairs Gemini tool results only within the current assistant turn` |
-| Request | turn-scoped tool pairing | Responses | failing | `pairs Responses tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Claude | repaired (#1335) | `pairs Claude tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Gemini | repaired (#1335) | `pairs Gemini tool results only within the current assistant turn` |
+| Request | turn-scoped tool pairing | Responses | repaired (#1335) | `pairs Responses tool results only within the current assistant turn` |
 | Request | non-string object description (#1091) | Kiro | failing | `coerces object tool descriptions before Kiro trim` |
 | Request | non-string numeric description (#1091) | Kiro | failing | `coerces numeric tool descriptions before Kiro trim` |
 | Request | empty description fallback (#1091) | Kiro | already-present | `fills empty Kiro descriptions with a Tool: name fallback` |
@@ -78,9 +78,9 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 1. #1328 — Gemini string `tool_choice` auto/none/required are dropped; only named `{type:function}` is mapped.
 2. #1329 — Chat→Responses never copies `tool_choice`.
 3. #1330 — Chat JSON `finish_reason: error` becomes Claude `end_turn` / Gemini `STOP` instead of an abort terminal.
-4. #1331 — Chat→Responses non-stream copies finish reasons into invalid `status` values (`length` / `content_filter` / `error`) instead of `incomplete`/`failed`; stream flush emits `response.completed` after `length` and never `response.failed` after `error`.
+4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` stays skipped: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so that projector branch is unreachable.
 5. #1332 — Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
-6. #1335 — Cross-turn `tool_call_id` reuse breaks current-turn pairing on Claude, Gemini, and Responses.
+6. #1335 — Cross-turn `tool_call_id` reuse broke current-turn pairing on Claude, Gemini, and Responses (repaired: pair by call id within the current assistant turn; drop strays).
 7. #1333 — Kiro `description.trim` throws `TypeError` for object/number descriptions.
 8. #1334 — String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.
 

@@ -11,7 +11,7 @@ import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, sav
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { openAIResponsesBodyToClaude, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
+import { openAIResponsesBodyToClaude, openAIResponsesBodyToGemini, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
 import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { translateResponse, initState } from "../../translator/index.js";
@@ -355,6 +355,14 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
       return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
     }
     if (sourceFormat === FORMATS.OPENAI) return openAIResponsesBodyToOpenAI(responseBody);
+    // Native Gemini uses top-level candidates; Antigravity / gemini-cli keep the
+    // { response } envelope that their stream translators emit.
+    if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) {
+      const geminiBody = openAIResponsesBodyToGemini(responseBody);
+      return sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.VERTEX ?
+        geminiBody :
+        { response: geminiBody };
+    }
   }
 
   // Gemini / Antigravity

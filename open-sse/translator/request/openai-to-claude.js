@@ -13,17 +13,8 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 // Empty prefix matches real Claude Code behavior (no tool name prefix).
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
-
-const isPlainObject = (value) => value !== null && isObject(value) && !Array.isArray(value);
-
-function toClaudeInputSchema(parameters, inputSchema) {
-  const schema = [parameters, inputSchema].find(isPlainObject);
-  if (!schema) return { type: "object", properties: {}, required: [] };
-  if (schema.type !== undefined && schema.type !== "object") return schema;
-  if (schema.type !== undefined && schema.properties !== undefined) return schema;
-  return { type: "object", ...schema, ...(schema.properties === undefined && { properties: {} }) };
-}
 
 /**
  * Convert OpenAI requests while preserving client system instructions.

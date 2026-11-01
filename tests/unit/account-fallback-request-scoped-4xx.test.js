@@ -132,4 +132,10 @@ describe("checkFallbackError — 400 billing text is scoped to error.message (#1
     expect(result.shouldFallback).toBe(true);
     expect(result.terminal).toBe(true);
   });
+
+  it("honors billing text in a non-JSON error string without structuredError", () => {
+    const result = checkFallbackError(400, "[400]: invalid_request_error Your credit balance is too low");
+    expect(result.shouldFallback).toBe(true);
+    expect(result.terminal).toBe(true);
+  });
 });

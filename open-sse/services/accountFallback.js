@@ -163,7 +163,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
 function extractErrorMessage(structuredError, errorText) {
   let body = structuredError;
   if (!body && isString(errorText)) {
-    try { body = JSON.parse(errorText); } catch { body = null; }
+    try { body = JSON.parse(errorText); } catch { return errorText; } // non-JSON text is the message itself
   }
   const message = body?.error?.message ?? body?.message;
   return isString(message) ? message : "";

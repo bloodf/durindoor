@@ -47,7 +47,7 @@ describe("provider-scoped dashboard capabilities", () => {
     const models = getModelsByProviderId("openai");
     expect(models.some((m) => m.id === "gpt-6.1-terra")).toBe(true);
     for (const id of ["gpt-realtime-mini", "gpt-4o-mini-tts", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"]) {
-      expect(models.find((m) => m.id === id)?.name).toMatch(/Deprecated/);
+      expect(models.find((m) => m.id === id)?.deprecated).toBe(true);
     }
   });
 

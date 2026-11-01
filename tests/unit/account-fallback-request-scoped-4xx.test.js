@@ -110,3 +110,26 @@ describe("checkFallbackError — request-scoped vs account-scoped 4xx", () => {
     expect(result.cooldownMs).toBeGreaterThan(0);
   });
 });
+
+describe("checkFallbackError — 400 billing text is scoped to error.message (#1391)", () => {
+  it("does not lock the account when a billing phrase is quoted outside error.message", () => {
+    const body = {
+      error: { message: "Invalid value for 'messages[0]'", type: "invalid_request_error" },
+      param: "insufficient balance",
+    };
+    for (const args of [[JSON.stringify(body)], [JSON.stringify(body), 0, null, null, null, body]]) {
+      const result = checkFallbackError(400, ...args);
+      expect(result.shouldFallback).toBe(false);
+      expect(result.cooldownMs).toBe(0);
+      expect(result.terminal).toBeUndefined();
+    }
+  });
+
+  it("still honors a billing phrase inside error.message", () => {
+    const result = checkFallbackError(400, JSON.stringify({
+      error: { message: "Your credit balance is too low", type: "invalid_request_error" },
+    }));
+    expect(result.shouldFallback).toBe(true);
+    expect(result.terminal).toBe(true);
+  });
+});

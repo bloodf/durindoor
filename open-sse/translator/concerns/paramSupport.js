@@ -9,6 +9,9 @@ import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
 import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const STRIP_RULES = [
+// 9router 7c42d8f: OpenAI accepts the modern completion cap. Keep explicit
+// destination values and scope this policy to the actual OpenAI provider.
+{ provider: "openai", renameParams: { max_tokens: "max_completion_tokens" } },
 /**
  * Claude models reject deprecated temperature and Claude Code's top-level
  * telemetry with `diagnostics: Extra inputs are not permitted`.
@@ -113,6 +116,12 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
   for (const rule of rules) {
     if (rule.provider && !matchesProvider(rule.provider, provider)) continue;
     if (!matches(rule, model)) continue;
+    // Rename before clamps; a client-supplied target wins even when it is zero.
+    for (const [from, to] of Object.entries(rule.renameParams || {})) {
+      if (body[from] === undefined) continue;
+      if (body[to] === undefined) body[to] = body[from];
+      delete body[from];
+    }
     // Drop top-level params (guard: a rule may omit `drop`, e.g. message-only rules).
     for (const key of rule.drop || []) {
       if (body[key] !== undefined) delete body[key];
@@ -185,7 +194,7 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
 // (o1/o3/o4 + the whole gpt-5.x family, matching the pre-port GitHub rule
 // `/gpt-5|o[134]-/i`) rather than the source's narrower exact list — so o4-mini
 // and gpt-5.6 keep the forward rename they had before this port.
-// Direction is decided by the MODEL STRING ALONE, provider-independent, mirroring
+// For non-OpenAI providers, direction is model-driven, mirroring
 // OmniRoute's supportsMaxTokens (modelCapabilities.ts). Source matches by raw
 // substring; DurinDoor anchors at a prefix boundary (`^`, `/`, `:`, `-`) and a
 // version boundary (`.`, `-`, end) so `openai/o3-mini`, `azure:o1`, `databricks-gpt-5`,
@@ -195,8 +204,9 @@ const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:-])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.
 
 /**
  * Normalize the max-token field name for the target model, in place.
- * - Family match (o1-family/o3-family/o4-family/gpt-5[.x]): forward rename `max_tokens` → `max_completion_tokens`.
- * - Any other model: reverse rename `max_completion_tokens` → `max_tokens`, because
+ * - OpenAI provider or family match (o1/o3/o4/gpt-5[.x]): forward rename
+ *   `max_tokens` → `max_completion_tokens`.
+ * - Other providers and models: reverse rename `max_completion_tokens` → `max_tokens`, because
  *   legacy-compatible providers (Volcengine Ark / DeepSeek, …) silently ignore the
  *   newer field and would apply no cap (OmniRoute #6912/#6964).
  * Precedence both directions: an explicitly set destination field always wins;
@@ -206,8 +216,10 @@ const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:-])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.
  * @param {object} body
  */
 export function applyParamRenames(provider, model, body) {
-  void provider; // direction is model-driven only (OmniRoute supportsMaxTokens parity)
-  if (MAX_TOKENS_UNSUPPORTED_MODEL.test(model)) {
+  // This runs before stripUnsupportedParams at the executor boundary. Select
+  // OpenAI's forward policy here too, or reverse renaming GPT-6 would erase an
+  // explicitly supplied max_completion_tokens before the final wire rule (#1366).
+  if (provider === "openai" || MAX_TOKENS_UNSUPPORTED_MODEL.test(model)) {
     if (body.max_tokens !== undefined) {
       if (body.max_completion_tokens === undefined) body.max_completion_tokens = body.max_tokens;
       delete body.max_tokens;

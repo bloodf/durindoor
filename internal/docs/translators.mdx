@@ -68,3 +68,14 @@ RTK compresses `tool_result` bodies in place. `handleChatCore` calls `compressMe
 It skips Claude blocks with `is_error === true` and Kiro tool results with `status: "error"`. Blobs under 500 bytes are left alone (`MIN_COMPRESS_SIZE`). Filter panics go through `safeApply`, which returns the original text.
 
 Token-saver and Headroom behaviour for operators is on [Compression](../../docs/features/compression.mdx).
+
+## NVIDIA reasoning aliases
+
+Port `decolua/9router@ced0cf6e6c5583e82d7d66e2555712b5dbbf7809` adds an
+assistant-only message rename rule for NVIDIA in `paramSupport.js`. It runs
+before `DefaultExecutor` injects DeepSeek reasoning placeholders. Canonical
+undefined/null/blank-string values can be filled from the alias; other canonical
+values are retained without coercion. A defined alias is removed afterward.
+This intentionally differs from top-level token-parameter renaming, whose
+explicit destination precedence includes zero and is undefined-only (#1394).
+The existing GLM top-level stripping and other vendors' drop rules remain.

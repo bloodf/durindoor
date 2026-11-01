@@ -83,6 +83,7 @@ const OPENAI_API_CAPABILITIES = {
 };
 
 const MINIMAX_API_CAPABILITIES = {
+  "MiniMax-M3.1-Flash": {"vision":true,"audioInput":false,"videoInput":true,"reasoning":true,"thinkingFormat":"openai","thinkingCanDisable":false,"contextWindow":1000000,"maxOutput":null,"tools":true,"supportedTools":["function_calling"],"thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingType":"adaptive"},
   "MiniMax-M3.1-Flash-Preview": {"vision":true,"audioInput":false,"videoInput":true,"reasoning":true,"thinkingFormat":"openai","thinkingCanDisable":false,"contextWindow":1000000,"maxOutput":null,"tools":true,"supportedTools":["function_calling"],"thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingType":"adaptive"},
   "MiniMax-M3": {"vision":true,"audioInput":false,"videoInput":true,"reasoning":true,"thinkingFormat":"minimax","thinkingCanDisable":true,"contextWindow":1000000,"maxOutput":null,"tools":true,"search":true,"promptCaching":true,"supportedTools":["function_calling","web_search"]},
   "MiniMax-M2.7": {"vision":false,"audioInput":false,"videoInput":false,"reasoning":true,"thinkingFormat":"minimax","thinkingCanDisable":false,"contextWindow":204800,"maxOutput":null,"tools":true},

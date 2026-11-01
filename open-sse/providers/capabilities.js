@@ -893,6 +893,7 @@ export const PATTERN_CAPABILITIES = [
 // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
 { pattern: "*minimax*image*", caps: { imageOutput: true } },
 { pattern: "*minimax-m3.1-flash-preview*", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3.1-Flash-Preview"] },
+{ pattern: "*minimax-m3.1-flash", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3.1-Flash"] },
 { pattern: "*minimax-m3", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3"] },
 { pattern: "*minimax-m2.7*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
 { pattern: "*minimax-m2.5*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },

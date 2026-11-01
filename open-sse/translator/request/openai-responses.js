@@ -621,6 +621,22 @@ function extractInstructionsText(content) {
 }
 
 /**
+ * Lower one Chat content part to a Responses content part. Chat `image_url`
+ * `{url, detail}` becomes `input_image` with a string URL; unknown types
+ * (tool_use, tool_result, thinking, ...) are serialized as text.
+ */
+function chatPartToResponses(c, contentType) {
+  if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
+  if (c.type === OPENAI_BLOCK.IMAGE_URL) {
+    const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
+    return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
+  }
+  if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
+  const text = c.text || c.content || JSON.stringify(c);
+  return { type: contentType, text: isString(text) ? text : JSON.stringify(text) };
+}
+
+/**
  * Ensure object schema always has properties field (required by Codex Responses API)
  */
 function normalizeToolParameters(params) {
@@ -724,20 +740,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       const content = isString(msg.content) ?
       [{ type: contentType, text: msg.content }] :
       Array.isArray(msg.content) ?
-      msg.content.map((c) => {
-        if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
-        // Convert Chat Completions image_url → Responses API input_image
-        // Responses API expects: { type: "input_image", image_url: "<url string>" }
-        // Chat Completions sends: { type: "image_url", image_url: { url: "...", detail: "..." } }
-        if (c.type === OPENAI_BLOCK.IMAGE_URL) {
-          const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
-          return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
-        }
-        if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
-        // Serialize any unknown type (tool_use, tool_result, thinking, etc.) as text
-        const text = c.text || c.content || JSON.stringify(c);
-        return { type: contentType, text: isString(text) ? text : JSON.stringify(text) };
-      }) :
+      msg.content.map((c) => chatPartToResponses(c, contentType)) :
       [];
 
       // Only push a message block if content is non-empty.
@@ -770,10 +773,18 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     // Convert tool results - output must be a string for Responses API
     if (msg.role === ROLE.TOOL) {
       // Responses has no tool-error flag; retain failure meaning in its output text.
+      const errorPrefix = msg.is_error === true ? "[Tool error]\n" : "";
+      // Image parts stay media: Responses accepts an input_text/input_image array (#1332).
+      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL);
+      const output = hasImage ?
+      [
+      ...(errorPrefix ? [{ type: RESPONSES_ITEM.INPUT_TEXT, text: errorPrefix }] : []),
+      ...msg.content.map((c) => chatPartToResponses(c, RESPONSES_ITEM.INPUT_TEXT))] :
+      `${errorPrefix}${coerceResponsesOutput(msg.content)}`;
       result.input.push({
         type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
         call_id: clampResponsesCallId(msg.tool_call_id),
-        output: `${msg.is_error === true ? "[Tool error]\n" : ""}${coerceResponsesOutput(msg.content)}`
+        output
       });
     }
   }

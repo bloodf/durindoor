@@ -255,6 +255,79 @@ async function render(page, id, theme) {
 }
 
 describe.skipIf(!enabled)("v5 Storybook runtime", () => {
+  it("gives summary cards readable rows at desktop, tablet and widget widths", async () => {
+    const cases = [];
+    const overview = '[data-usage-overview], [data-widget-id="overview"] .v5-usage-widget-content > .grid';
+    const scenes = [
+      { id: "v5-review-workflows-your-dashboards--operations", selector: overview, count: 6, columns: [2, 3, 3, 3] },
+      { id: "v5-review-start-here--explore-workspace", selector: overview, count: 6, columns: [2, 3, 3, 3] },
+      { id: "v5-review-scenarios-v5-preservation-usage-complete-usage-workspace--compact-widgets", selector: overview, count: 6, columns: [2, 3, 1, 2] },
+      { id: "v5-review-pages-usage-usage-surfaces--overview", selector: ".grid:has(> .rounded-dd-lg)", count: 6, columns: [2, 3, 3, 3] },
+      { id: "v5-review-workflows-token-saver-overview--overview", selector: ".v5-dashboard-metrics", count: 4, columns: [1, 2, 2, 2] },
+    ];
+    const viewports = [{ width: 360, height: 800 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 1000 }];
+    try {
+      for (const engine of Object.keys(engines)) {
+        const browser = await launch(engine);
+        try {
+          for (const theme of ["light", "dark"]) {
+            const page = await browser.newPage();
+            await installEvidence(page);
+            for (const [index, viewport] of viewports.entries()) {
+              await page.setViewportSize(viewport);
+              for (const scene of scenes) {
+                await render(page, scene.id, theme);
+                const grid = page.locator(scene.selector);
+                expect(await grid.count(), scene.id).toBe(1);
+                const measured = await grid.evaluate((element) => {
+                  const fragmented = [];
+                  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+                  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                    if (node.parentElement.closest('[aria-hidden="true"], .sr-only, [data-v5-review-glyph]')) continue;
+                    for (const match of node.textContent.matchAll(/\S+/g)) {
+                      if (!/^(?:[A-Za-z]{3,24}|[~$]?\d[\d,.]*[kMB]?)$/.test(match[0])) continue;
+                      const range = document.createRange();
+                      range.setStart(node, match.index);
+                      range.setEnd(node, match.index + match[0].length);
+                      const lines = new Set([...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0).map((rect) => Math.round(rect.top)));
+                      if (lines.size > 1) fragmented.push(match[0]);
+                    }
+                  }
+                  return {
+                    columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
+                    rows: new Set([...element.children].map((card) => Math.round(card.getBoundingClientRect().top))).size,
+                    count: element.children.length,
+                    width: element.clientWidth,
+                    cardWidths: [...element.children].map((card) => card.getBoundingClientRect().width),
+                    values: [...element.querySelectorAll("dd")].map((field) => [...field.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join("").trim()),
+                    fragmented,
+                  };
+                });
+                cases.push({ engine, theme, viewport, id: scene.id, ...measured });
+                expect(measured.columns, `${scene.id} at ${viewport.width}px`).toBe(scene.columns[index]);
+                expect(measured.count, scene.id).toBe(scene.count);
+                expect(measured.rows, scene.id).toBe(Math.ceil(scene.count / scene.columns[index]));
+                expect(measured.fragmented, `${scene.id} readable words and values`).toEqual([]);
+                for (const width of measured.cardWidths) expect(width).toBeGreaterThanOrEqual(Math.min(140, measured.width) - 2);
+                if (scene.count === 6) {
+                  for (const label of ["Total requests", "Total input tokens", "Cached tokens", "Output tokens", "Est. cost", "Output speed"])
+                    expect(await grid.getByText(label, { exact: true }).count()).toBe(1);
+                } else {
+                  expect(measured.values).toEqual(["1.7 MB", "44,820", "2.0 MB", "11"]);
+                }
+              }
+            }
+            await page.close();
+          }
+        } finally { await browser.close(); }
+      }
+      expect(cases).toHaveLength(120);
+    } finally {
+      mkdirSync(reportDir, { recursive: true });
+      writeFileSync(resolve(reportDir, "summary-card-layout.json"), JSON.stringify(cases, null, 2));
+    }
+  }, 280_000);
+
   it("keeps Usage table words and figures readable in narrow canvases and widgets", async () => {
     const cases = [];
     for (const engine of Object.keys(engines)) {

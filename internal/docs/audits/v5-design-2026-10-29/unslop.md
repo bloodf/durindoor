@@ -20,6 +20,22 @@ The remaining craft changes keep the same layout, fonts and artwork. Surfaces us
 
 The nine-pass review preserved spacing, existing icons, copy, content layout, diagrams and purposeful animation where no confirmed defect required a change. The user's animated-icon requirement overrides the skill's preference for fewer icons. Provider artwork and locale identity remain intact, with existing keyboard help and reduced-motion behavior. No generated image, dependency or gate-policy change is needed.
 
+## Readable summary rows
+
+The responsive followup found that viewport breakpoints put six Usage cards
+inside a narrow widget, including beside the tablet sidebar. The review now
+caps the summary at three columns, giving six metrics two rows when space
+allows. A 140px minimum card width reduces the column count inside smaller
+widgets. All six metrics, hints and animated icons remain present. The shared
+component only gains a styling hook; the layout change is scoped to Storybook.
+
+Saver's four metrics now form two rows of two in wider widgets. Removing the
+stronger four-column selector lets the narrow-container rule stack metrics.
+The previous featured cell no longer spans a full row, keeping the four
+measurements aligned. A browser regression checks actual card rows, widths,
+word/figure ranges and retained metric labels across 360, 768, 1024 and 1440px,
+both themes and all three engines, including third-width widgets.
+
 ## Evidence boundary
 
 The PR records fresh exact-head build, browser and independently verified full CI results. The earlier audit receipts remain historical. Storybook fixtures do not prove deployed/provider behavior or grant visual acceptance. Strict coverage classifications remain pending; this followup does not manufacture approval.

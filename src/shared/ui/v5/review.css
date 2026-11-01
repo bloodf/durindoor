@@ -129,9 +129,10 @@ html[data-v5-review="true"] .uppercase.text-\[11px\] { font-size: 12px; line-hei
   .v5-review-content { padding-block-start: 16px; }
   .v5-review-content h1 { font-size: 22px; }
 }
-/* Keep the six summary cards compact without changing the underlying metrics. */
-@media (min-width: 360px) and (max-width: 639px) {
-  .v5-usage-widget[data-widget-id="overview"] .v5-usage-widget-content > .grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+/* Six metrics form two rows of three when space allows. The 140px floor
+ * reduces columns inside narrow widgets, independently of the viewport. */
+html[data-v5-review="true"] [data-usage-overview] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(140px, calc((100% - 24px) / 3))), 1fr));
 }
 
 html[data-v5-review="true"] [class*="text-green-"] { color: var(--dd-accent); }

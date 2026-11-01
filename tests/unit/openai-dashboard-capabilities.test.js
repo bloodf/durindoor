@@ -7,6 +7,7 @@ vi.mock("react", () => ({
 }));
 
 import { useModelCaps } from "../../src/shared/hooks/useModelCaps.js";
+import { getModelsByProviderId } from "../../open-sse/config/providerModels.js";
 
 function lookup(key, full = {}, bare = {}, combos = {}) {
   state.values = [full, bare, combos];
@@ -35,6 +36,19 @@ describe("provider-scoped dashboard capabilities", () => {
       supportedTools: expect.arrayContaining(["web_search", "image_generation"]),
       audioInput: false, videoInput: false, imageOutput: false, audioOutput: false,
     });
+  });
+
+  it("lists gpt-6.1-terra with documented limits and flags deprecated audio/realtime models", () => {
+    expect(lookup("openai/gpt-6.1-terra")).toMatchObject({
+      vision: true, reasoning: true, contextWindow: 1050000, maxOutput: 128000,
+      thinkingCanDisable: true, thinkingEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
+      supportedTools: ["web_search", "file_search", "computer_use"],
+    });
+    const models = getModelsByProviderId("openai");
+    expect(models.some((m) => m.id === "gpt-6.1-terra")).toBe(true);
+    for (const id of ["gpt-realtime-mini", "gpt-4o-mini-tts", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"]) {
+      expect(models.find((m) => m.id === id)?.name).toMatch(/Deprecated/);
+    }
   });
 
   it("does not display an invented 200K context for an unknown model", () => {

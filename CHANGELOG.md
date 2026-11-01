@@ -31,6 +31,7 @@
 
 ## Fixes
 
+- **DB**: strip NUL bytes from bound strings at the shared driver bind boundary so a value carrying raw binary no longer aborts the write on better-sqlite3 ("String contains null byte"), gets silently truncated at the first NUL on node:sqlite, or is rejected by PostgreSQL TEXT. Credential and other stored secrets are unchanged except that any embedded NUL is removed (#1358 / upstream 5a4e812).
 - Support explicit PostgreSQL-only startup without SQLite configuration reads or outage fallback, including PostgreSQL proxy timeline storage and an atomic sidecar migration helper.
 - Preserve large PostgreSQL query results and original error status with bounded shared-memory transfer instead of truncating timeline reads at 8 MiB.
 - Refresh Codex discovery with the supported client version so GPT-6.1 Sol appears in live catalogs; preserve its provider-specific reasoning efforts without inventing a review variant.

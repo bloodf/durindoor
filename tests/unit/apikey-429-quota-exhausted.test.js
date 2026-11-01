@@ -193,6 +193,7 @@ describe("AgentRouter auth fallback classification", () => {
     expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
       "agentrouter-1",
       expect.objectContaining({ "modelLock_claude-opus-4-6": expect.any(String) }),
+      expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );
   });
 
@@ -211,6 +212,7 @@ describe("AgentRouter auth fallback classification", () => {
     expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
       "agentrouter-1",
       expect.objectContaining({ modelLock___all: expect.any(String) }),
+      expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );
   });
 });

@@ -1,12 +1,19 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Copy failed. Select the command and copy it manually.": "复制失败。请选择命令并手动复制。",
+  "Set your own initial password before starting. Keep both signing secrets for later starts.": "启动前请设置自己的初始密码。请保留两个签名密钥，以供后续启动使用。",
+  "Pause examples": "暂停示例",
+  "Play examples": "播放示例",
+  "Pause motion": "暂停动画",
+  "Play motion": "播放动画",
+
   "Speak, friend, and enter.": "说吧，朋友，然后进来。",
   "You choose the fallback order": "由你选择回退顺序",
   "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "组合向客户端提供一个模型名称。DurinDoor 按配置顺序尝试各个成员，在转到下一个模型之前重试符合条件的账户。",
   "Example configuration": "配置示例",
   "This order is an example, not a built-in subscription, API, or local-model priority.": "此顺序仅为示例。订阅、API 或本地模型没有内置的固定优先级。",
 
-  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "你的 AI 提供商，一个网关。连接 OpenAI 和 Anthropic API、订阅以及本地模型，由你掌控。",
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models, connected on your terms.": "你的 AI 提供商，一个网关。连接 OpenAI 和 Anthropic API、订阅以及本地模型，由你掌控。",
   "Close the door": "关闭大门",
   "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "连接提供商，选择模型，并为 OpenAI 或 Anthropic API 配置客户端。",
 
@@ -91,7 +98,7 @@ const messages = {
   "Your tools speak OpenAI. Your providers speak whatever they like. DurinDoor stands between them, holds the keys, and keeps the ledger.": "工具使用 OpenAI 格式，提供商各有自己的格式。DurinDoor 位于两者之间，保管密钥并记录调用。",
   "model resolution": "模型解析",
   "Model string shapes": "模型标识格式",
-  "Open source · MIT · Self-hosted AI gateway": "开源 · MIT · 自托管 AI 网关",
+  "Open source. MIT. Self-hosted AI gateway": "开源. MIT. 自托管 AI 网关",
   "enter.": "进来。",
   "One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.": "一个安全网关，连接所有 AI 提供商。凭据只需添加一次，所有 OpenAI 兼容工具都指向同一个本地端点。",
   "Install command": "安装命令",
@@ -252,7 +259,7 @@ const messages = {
   "standing by": "待命",
   "trying": "尝试中",
   "Language": "语言",
-  "DurinDoor. Speak, friend, and enter": "DurinDoor. 说吧，朋友，然后进来",
+  "DurinDoor | Self-hosted AI gateway": "DurinDoor | 自托管 AI 网关",
   "Ancient stone door glowing emerald in dark ruins": "黑暗废墟中泛着翡翠光芒的古老石门",
   "GitHub": "GitHub",
   "npm": "npm",

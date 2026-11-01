@@ -70,6 +70,19 @@ async function pinReauth(id, at = T - 1000) {
   return database.getProviderConnectionById(id);
 }
 
+async function pinLegacyReauth(id, at = T - 1000) {
+  // Legacy marker: errorCode REAUTH with a non-reauth testStatus.
+  await database.updateProviderConnection(id, {
+    testStatus: "unavailable",
+    isActive: false,
+    errorCode: "REAUTH",
+    lastError: "legacy reauth marker",
+    lastErrorAt: new Date(at).toISOString(),
+    backoffLevel: 0,
+  });
+  return database.getProviderConnectionById(id);
+}
+
 describe("recordProviderConnectionFallbackState reauth write guard", () => {
   it("refuses an ordinary cooldown write against durable reauth (guard conflict)", async () => {
     const row = await seedActive();
@@ -102,6 +115,35 @@ describe("recordProviderConnectionFallbackState reauth write guard", () => {
     expect(stored.refreshToken).toBe(pinned.refreshToken);
   });
 
+  it("refuses an ordinary cooldown write against legacy errorCode REAUTH marker", async () => {
+    const row = await seedActive();
+    const pinned = await pinLegacyReauth(row.id);
+    const result = await database.recordProviderConnectionFallbackState(row.id, {
+      model: M1,
+      status: 503,
+      reasonCode: "provider_error",
+      reason: "provider overloaded",
+      cooldownMs: 60_000,
+      observedAt: T - 500,
+    });
+    expect(result).toEqual({ applied: false, connection: expect.objectContaining({
+      id: row.id,
+      testStatus: "unavailable",
+      isActive: false,
+      errorCode: "REAUTH",
+      accessToken: pinned.accessToken,
+      refreshToken: pinned.refreshToken,
+    }) });
+    const stored = await database.getProviderConnectionById(row.id);
+    expect(stored).toMatchObject({
+      testStatus: "unavailable",
+      isActive: false,
+      errorCode: "REAUTH",
+      lastError: "legacy reauth marker",
+    });
+    expect(stored[`modelLock_${M1}`]).toBeFalsy();
+  });
+
   it("missing row fails closed with no return payload and no throw side effects", async () => {
     const result = await database.recordProviderConnectionFallbackState("missing-connection-id", {
       model: M1,
@@ -114,7 +156,7 @@ describe("recordProviderConnectionFallbackState reauth write guard", () => {
     expect(await database.getProviderConnectionById("missing-connection-id")).toBeNull();
   });
 
-  it("aborted transaction fails closed without demoting reauth or writing locks", async () => {
+  it("pre-aborted signal fails closed without demoting reauth or writing locks", async () => {
     const row = await seedActive();
     const pinned = await pinReauth(row.id);
     const signal = AbortSignal.abort();
@@ -133,6 +175,33 @@ describe("recordProviderConnectionFallbackState reauth write guard", () => {
       lastError: pinned.lastError,
       accessToken: pinned.accessToken,
       refreshToken: pinned.refreshToken,
+    });
+    expect(stored[`modelLock_${M1}`]).toBeFalsy();
+  });
+
+  it("compatibility refuseIfReauth skips demotion inside the update transaction", async () => {
+    const row = await seedActive();
+    const pinned = await pinReauth(row.id);
+    const result = await database.updateProviderConnection(row.id, {
+      testStatus: "unavailable",
+      lastError: "provider overloaded",
+      errorCode: 503,
+      lastErrorAt: new Date(T - 500).toISOString(),
+      [`modelLock_${M1}`]: new Date(T - 500 + 60_000).toISOString(),
+      backoffLevel: 1,
+    }, { refuseIfReauth: true, returnCommitResult: true });
+    expect(result).toEqual({ applied: false, connection: expect.objectContaining({
+      id: row.id,
+      testStatus: "reauth_required",
+      isActive: false,
+      errorCode: 401,
+    }) });
+    const stored = await database.getProviderConnectionById(row.id);
+    expect(stored).toMatchObject({
+      testStatus: "reauth_required",
+      isActive: false,
+      errorCode: 401,
+      lastError: pinned.lastError,
     });
     expect(stored[`modelLock_${M1}`]).toBeFalsy();
   });

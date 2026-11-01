@@ -26,6 +26,13 @@ import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.j
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { decodeToolCallId } from "../concerns/signatureTransport.js";
 
+/** Own-key map: OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode. */
+const OPENAI_TOOL_CHOICE_TO_GEMINI_MODE = new Map([
+  ["auto", "AUTO"],
+  ["none", "NONE"],
+  ["required", "ANY"],
+]);
+
 /**
  * Keep Gemini history legal by isolating function responses and ensuring a
  * terminal user turn. Ported from decolua/9router#3055.
@@ -352,13 +359,20 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       result.tools = [{ functionDeclarations }];
     }
   }
-  if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
+  const hasFunctionDeclarations = result.tools?.[0]?.functionDeclarations?.length > 0;
+  // OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode (#1328 / #1339).
+  // auto→AUTO, none→NONE, required→ANY. Named {type:function} stays ANY + allowedFunctionNames.
+  // Map lookup avoids prototype keys (e.g. "toString") resolving to non-mode values.
+  // Only emit mode when declarations exist — Gemini rejects ANY/AUTO with an empty tools list.
+  if (isString(body.tool_choice)) {
+    const mode = OPENAI_TOOL_CHOICE_TO_GEMINI_MODE.get(body.tool_choice);
+    if (mode && hasFunctionDeclarations) result.toolConfig = { functionCallingConfig: { mode } };
+  } else if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
     result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(body.tool_choice.function.name)] } };
   }
   if (toolNameMap.size) result._toolNameMap = toolNameMap;
 
   const responseSchema = body.response_format?.json_schema?.schema;
-  const hasFunctionDeclarations = result.tools?.[0]?.functionDeclarations?.length > 0;
   if (body.response_format?.type === "json_schema" && isObject(responseSchema) &&
     (!hasFunctionDeclarations || /^gemini-3(?:[.-]|$)/i.test(model))) {
     result.generationConfig.responseMimeType = "application/json";

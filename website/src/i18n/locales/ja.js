@@ -1,12 +1,19 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Copy failed. Select the command and copy it manually.": "コピーできませんでした。コマンドを選択して手動でコピーしてください。",
+  "Set your own initial password before starting. Keep both signing secrets for later starts.": "起動前に初期パスワードを設定してください。署名用の2つのシークレットは次回以降の起動でも使用します。",
+  "Pause examples": "サンプルを一時停止",
+  "Play examples": "サンプルを再生",
+  "Pause motion": "アニメーションを一時停止",
+  "Play motion": "アニメーションを再生",
+
   "Speak, friend, and enter.": "友よ、言葉を唱えて入れ。",
   "You choose the fallback order": "フォールバックの順序を自分で選ぶ",
   "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "コンボはクライアントにひとつのモデル名を提供します。DurinDoorは設定された順序でモデルを試し、次のモデルへ進む前に利用可能なアカウントで再試行します。",
   "Example configuration": "設定例",
   "This order is an example, not a built-in subscription, API, or local-model priority.": "この順序は例です。サブスクリプション、API、ローカルモデルの優先順位は固定されていません。",
 
-  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "AIプロバイダーをひとつのゲートウェイに。OpenAI・Anthropic API、サブスクリプション、ローカルモデルを自分の環境で接続。",
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models, connected on your terms.": "AIプロバイダーをひとつのゲートウェイに。OpenAI・Anthropic API、サブスクリプション、ローカルモデルを自分の環境で接続。",
   "Close the door": "扉を閉じる",
   "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "プロバイダーを接続し、モデルを選び、OpenAIまたはAnthropic API用にクライアントを設定します。",
 
@@ -91,7 +98,7 @@ const messages = {
   "Your tools speak OpenAI. Your providers speak whatever they like. DurinDoor stands between them, holds the keys, and keeps the ledger.": "ツールは OpenAI 形式、プロバイダーはそれぞれの形式。DurinDoor が間に立ち、キーを守り、利用を記録します。",
   "model resolution": "モデルの解決",
   "Model string shapes": "モデル指定の形式",
-  "Open source · MIT · Self-hosted AI gateway": "オープンソース · MIT · セルフホスト型 AI ゲートウェイ",
+  "Open source. MIT. Self-hosted AI gateway": "オープンソース. MIT. セルフホスト型 AI ゲートウェイ",
   "enter.": "中へ入れ。",
   "One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.": "すべての AI プロバイダーへ、1 つの安全なゲートウェイで接続。認証情報を一度追加すれば、すべての OpenAI 互換ツールを同じローカルエンドポイントに接続できます。",
   "Install command": "インストールコマンド",
@@ -252,7 +259,7 @@ const messages = {
   "standing by": "待機中",
   "trying": "試行中",
   "Language": "言語",
-  "DurinDoor. Speak, friend, and enter": "DurinDoor. 友よ、言葉を唱えて入れ",
+  "DurinDoor | Self-hosted AI gateway": "DurinDoor | セルフホスト型AIゲートウェイ",
   "Ancient stone door glowing emerald in dark ruins": "暗い遺跡でエメラルド色に輝く古代の石扉",
   "GitHub": "GitHub",
   "npm": "npm",

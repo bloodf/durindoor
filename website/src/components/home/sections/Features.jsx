@@ -44,18 +44,18 @@ function FeatureIllustration({ kind }) {
     return (
       <div className="feature-art trace-art" aria-hidden="true">
         <div>
-          <span>01</span>
+          <span>POST</span>
           <i />
         </div>
         <div>
-          <span>02</span>
+          <span>route</span>
           <i />
         </div>
         <div>
-          <span>03</span>
+          <span>SSE</span>
           <i />
         </div>
-        <code>→ → →</code>
+        <span className="trace-hops"><Icon name="arrow" /><Icon name="arrow" /><Icon name="arrow" /></span>
       </div>
     );
   return (
@@ -97,7 +97,7 @@ export default function Features() {
             <Reveal
               as="li"
               key={feature.title}
-              delay={(i % 4) * 0.06}
+
               className={`feature-card feature-${feature.icon}`}
             >
               <Link
@@ -115,7 +115,7 @@ export default function Features() {
                   <span className="feature-icon">
                     <Icon name={feature.icon} size={22} />
                   </span>
-                  <span aria-hidden="true">↗</span>
+                  <Icon name="external" size={16} />
                 </div>
                 <h3>{t(feature.title)}</h3>
                 <p>{t(feature.body)}</p>

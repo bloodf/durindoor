@@ -87,6 +87,18 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
   return true;
 }
 
+/**
+ * Error that ends a translated stream with the client's protocol error terminal.
+ * A nested Responses `response.failed` counts like a top-level `error` when the
+ * client speaks another format, so it never reaches the client as `[Error]`
+ * stop content (#1327). Same-format Responses keeps the upstream failed event.
+ */
+function translatedTerminalError(parsed, sourceFormat) {
+  if (parsed?.error) return parsed.error;
+  if (parsed?.type !== "response.failed" || sourceFormat === FORMATS.OPENAI_RESPONSES) return null;
+  return parsed.response?.error || null;
+}
+
 /** Forward executor-side validation failures in the client's SSE format (#2681). */
 function formatTranslatedStreamError(error, sourceFormat, secrets = []) {
   const normalized = normalizeStreamError(error, secrets);
@@ -1089,9 +1101,10 @@ export function createSSEStream(options = {}) {
         // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
         sanitizePublicErrorEnvelope(parsed, errorSecrets);
-        if (parsed.error) {
+        const terminalError = translatedTerminalError(parsed, sourceFormat);
+        if (terminalError) {
           clearCompletionFlushTimer();
-          const output = formatTranslatedStreamError(parsed.error, sourceFormat, errorSecrets);
+          const output = formatTranslatedStreamError(terminalError, sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           upstreamErrorForwarded = true;
@@ -1442,8 +1455,9 @@ export function createSSEStream(options = {}) {
           // client-facing translation or formatted error terminal.
           streamErrorPayload ??= extractStreamErrorPayload(tail);
           sanitizePublicErrorEnvelope(tail, errorSecrets);
-          if (tail?.error) {
-            const output = formatTranslatedStreamError(tail.error, sourceFormat, errorSecrets);
+          const tailError = translatedTerminalError(tail, sourceFormat);
+          if (tailError) {
+            const output = formatTranslatedStreamError(tailError, sourceFormat, errorSecrets);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             upstreamErrorForwarded = true;

@@ -60,4 +60,21 @@ describe.each([false, true])("Chat tool-result images to Claude (stream=%s)", (s
     expect(translate([...invalid, text("valid")], stream).content).toEqual([text("valid")]);
     expect(translate(invalid, stream).content).toEqual([]);
   });
+
+  it("preserves cache_control and native document/search_result blocks, skips empty text", () => {
+    const cc = { type: "ephemeral" };
+    const doc = { type: "document", source: { type: "text", media_type: "text/plain", data: "d" }, cache_control: cc };
+    const sr = { type: "search_result", source: "s", title: "t", content: [{ type: "text", text: "x" }] };
+    const image = { type: CLAUDE_BLOCK.IMAGE, source: { type: "base64", media_type: "image/png", data: "AAAA" }, cache_control: cc };
+    const content = [
+      { ...text("keep"), cache_control: cc }, text(""),
+      { ...imageUrl("data:image/png;base64,BBBB"), cache_control: cc },
+      image, doc, sr,
+    ];
+    expect(translate(content, stream).content).toEqual([
+      { type: CLAUDE_BLOCK.TEXT, text: "keep", cache_control: cc },
+      { type: CLAUDE_BLOCK.IMAGE, source: { type: "base64", media_type: "image/png", data: "BBBB" }, cache_control: cc },
+      image, doc, sr,
+    ]);
+  });
 });

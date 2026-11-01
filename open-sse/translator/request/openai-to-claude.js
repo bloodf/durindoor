@@ -300,12 +300,16 @@ function isToolResultImageUrl(value) {
   }
 }
 
+const NATIVE_TOOL_RESULT_BLOCKS = new Set(["document", "search_result"]);
+
 function convertToolResultContent(content) {
   if (!Array.isArray(content)) return content;
   const parts = [];
   for (const part of content) {
+    const cache = part?.cache_control ? { cache_control: part.cache_control } : {};
     if (part?.type === OPENAI_BLOCK.TEXT && isString(part.text)) {
-      parts.push({ type: CLAUDE_BLOCK.TEXT, text: part.text });
+      // Claude 400s on empty text blocks (upstream 9500965 skips falsy text too).
+      if (part.text) parts.push({ type: CLAUDE_BLOCK.TEXT, text: part.text, ...cache });
     } else if (part?.type === OPENAI_BLOCK.IMAGE_URL) {
       const url = part.image_url?.url;
       if (!isString(url)) continue;
@@ -313,20 +317,24 @@ function convertToolResultContent(content) {
       if (parsed?.mimeType.startsWith("image/")) {
         parts.push({
           type: CLAUDE_BLOCK.IMAGE,
-          source: { type: "base64", media_type: parsed.mimeType, data: parsed.base64 }
+          source: { type: "base64", media_type: parsed.mimeType, data: parsed.base64 },
+          ...cache
         });
       } else if (isToolResultImageUrl(url)) {
-        parts.push({ type: CLAUDE_BLOCK.IMAGE, source: { type: "url", url } });
+        parts.push({ type: CLAUDE_BLOCK.IMAGE, source: { type: "url", url }, ...cache });
       }
     } else if (part?.type === CLAUDE_BLOCK.IMAGE) {
       const source = part.source;
       if (!source || !isObject(source) || Array.isArray(source)) continue;
       if (source.type === "url" && isToolResultImageUrl(source.url)) {
-        parts.push({ type: CLAUDE_BLOCK.IMAGE, source: { ...source } });
+        parts.push({ ...part, source: { ...source } });
       } else if (source.type === "base64" && isString(source.media_type) &&
         source.media_type.startsWith("image/") && isString(source.data) && source.data.length > 0) {
-        parts.push({ type: CLAUDE_BLOCK.IMAGE, source: { ...source } });
+        parts.push({ ...part, source: { ...source } });
       }
+    } else if (NATIVE_TOOL_RESULT_BLOCKS.has(part?.type)) {
+      // Claude accepts these inside tool_result; main forwarded them verbatim.
+      parts.push(part);
     }
   }
   return parts;

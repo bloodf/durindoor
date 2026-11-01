@@ -11,6 +11,8 @@ Open **Dashboard → Headroom** (`/dashboard/headroom`) for the proxy UI. Start,
 
 Headroom makes one proxy call. It rejects CCR markers, explicit error-tool results, reordered or identity-changing OpenAI messages, skipped/no-gain/conflicting token results, and candidates that shrink the serialized request by five percent or less.
 
+Native formats are never round-tripped through OpenAI. CommandCode sends only text fields under `params` (system, text blocks, text tool results) and writes compressed text back into those fields, so tool calls, reasoning and images stay untouched. Gemini-family (`gemini`, `gemini-cli`, `vertex`, `antigravity`) `functionResponse` payloads and OpenAI Responses `function_call_output` items are compressed only at plain-text leaves; JSON-looking strings, non-text blocks and protocol items are left as sent, and a proxy reply that changes IDs, order, roles or grows a leaf is rejected. Claude requests containing documents (PDFs), images or tool results are not sent to Headroom.
+
 ## Prepare Python
 
 `headroom-ai` requires Python 3.10 or newer. There is no upper bound.

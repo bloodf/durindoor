@@ -159,3 +159,23 @@ describe("#1389 stream Gemini functionCall.id", () => {
     expect(fc).toEqual({ id: "call_1", name: "lookup", args: { q: 1 } });
   });
 });
+
+describe("#1389 id/name pairing for Gemini tool results", () => {
+  it("keeps a name-only functionResponse for a call that carries an id (strip + salvage)", async () => {
+    const { stripOrphanedToolResults, salvageOrphanedToolResults } = await import("../../open-sse/translator/concerns/toolCall.js");
+    const mk = () => ({ contents: [
+      { role: "model", parts: [{ functionCall: { id: "c1", name: "lookup", args: {} } }] },
+      { role: "user", parts: [{ functionResponse: { name: "lookup", response: { result: "ok" } } }] },
+    ] });
+    for (const fn of [stripOrphanedToolResults, salvageOrphanedToolResults]) {
+      const body = mk();
+      fn(body);
+      expect(body.contents[1].parts).toEqual(mk().contents[1].parts);
+    }
+  });
+
+  it("omits functionCall.id when the Responses item has no real id", () => {
+    const out = openAIResponsesBodyToGemini({ id: "r", status: "completed", output: [{ type: RESPONSES_ITEM.FUNCTION_CALL, name: "n", arguments: "{}" }] });
+    expect(out.candidates[0].content.parts[0].functionCall).toEqual({ name: "n", args: {} });
+  });
+});

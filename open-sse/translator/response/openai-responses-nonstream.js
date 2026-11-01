@@ -117,6 +117,7 @@ function collectResponsesOutput(responseBody) {
       isString(item.arguments) ? item.arguments : JSON.stringify(item.arguments || {});
       toolCalls.push({
         id: item.call_id || item.id || `call_${toolCalls.length}`,
+        hasRealId: Boolean(item.call_id || item.id),
         name: item.name || "",
         arguments: args
       });
@@ -223,7 +224,7 @@ export function openAIResponsesBodyToGemini(responseBody) {
   for (const call of toolCalls) {
     parts.push({
       functionCall: {
-        ...(call.id ? { id: call.id } : null),
+        ...(call.hasRealId ? { id: call.id } : null),
         name: call.name,
         args: safeJsonParseObject(call.arguments)
       }

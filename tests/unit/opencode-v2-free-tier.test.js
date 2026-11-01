@@ -166,4 +166,18 @@ describe("OpenCode Free reasoning_content placeholder (upstream e964e482)", () =
     const transformed = new OpenCodeExecutor().transformRequest("union-alpha", history(), true, {});
     expect(transformed.messages.find((msg) => msg.role === "assistant")).not.toHaveProperty("reasoning_content");
   });
+
+  it("keeps the tool rename map when transformRequest re-runs on the same body (retry)", () => {
+    const executor = new OpenCodeExecutor();
+    const body = {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "read", parameters: { type: "object", properties: { file: { type: "string" } } } } }],
+    };
+    const first = executor.transformRequest("big-pickle", body, true, {});
+    expect([...first._toolNameMap]).toEqual([["read_client", "read"]]);
+    const second = executor.transformRequest("big-pickle", body, true, {});
+    expect([...second._toolNameMap]).toEqual([["read_client", "read"]]);
+    const third = executor.transformRequest("big-pickle", first, true, {});
+    expect([...third._toolNameMap]).toEqual([["read_client", "read"]]);
+  });
 });

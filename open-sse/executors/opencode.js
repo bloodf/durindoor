@@ -103,9 +103,9 @@ function nativeSession(rawHeaders) {
 // validates. Namespacing by clientTool isolates different downstream agents
 // that happen to reuse the same raw conversation id.
 function canonicalSessionId(source, clientTool) {
-  const digest = crypto.createHash("sha256").
-  update(`opencode\0${clientTool || "generic"}\0${source}`).
-  digest();
+  const digest = crypto.createHash("sha256")
+    .update(`opencode\0${clientTool || "generic"}\0${source}`)
+    .digest();
   // Deterministic time field from the digest, counter pinned to 1 (what the
   // CLI sends on a session's first id).
   const time = BigInt(`0x${digest.subarray(0, 5).toString("hex")}`) & SESSION_TIME_MASK;
@@ -177,11 +177,19 @@ function anonymousCallerIp(rawHeaders) {
 // Rename map (sent alias -> caller name) for chatCore's response-side restore.
 // Non-enumerable, so it never reaches the provider JSON (same contract as
 // antigravity.js); attached last because injectReasoningContent may copy body.
-function withToolNameMap(body, toolNameMap) {
+function withToolNameMap(body, toolNameMap, source = body) {
   if (body && toolNameMap?.size) {
-    Object.defineProperty(body, "_toolNameMap", { value: toolNameMap, configurable: true });
+    for (const target of new Set([body, source])) {
+      if (target) Object.defineProperty(target, "_toolNameMap", { value: toolNameMap, configurable: true });
+    }
   }
   return body;
+}
+
+// A retry re-runs transformRequest on the already-rewritten body, where no
+// collisions remain and the fresh map is empty; reuse the first pass's map.
+function ensureToolNameMap(source, fresh) {
+  return fresh?.size ? fresh : source?._toolNameMap ?? fresh;
 }
 
 // Strip the thinking suffix "model(level)" so quirk checks hit the base id.
@@ -244,7 +252,7 @@ export class OpenCodeExecutor extends BaseExecutor {
       // Strips prior-turn `reasoning` items and their encrypted_content (port of
       // decolua/9router eafac37d) as part of its existing item-shape pass.
       sanitizeResponsesItems(body);
-      const toolNameMap = applyFingerprintTools(body, "responses");
+      const toolNameMap = ensureToolNameMap(body, applyFingerprintTools(body, "responses"));
       // Upstream #4128: the real client pins its Responses prompt cache to the
       // session it is running under. Mirror that with the same canonical
       // session id, so repeated turns of one conversation share a cache entry.
@@ -268,15 +276,15 @@ export class OpenCodeExecutor extends BaseExecutor {
         body.tool_choice = "auto";
       }
       return withToolNameMap(stripUnsupportedParams(this.provider, model,
-        injectReasoningContent({ provider: this.provider, model, body })), toolNameMap);
+        injectReasoningContent({ provider: this.provider, model, body })), toolNameMap, body);
     }
     if (MESSAGES_MODELS.has(model)) {
       // Claude Messages bodies have no reasoning_content field; the registry's
       // reasoningInject placeholder is Chat Completions only.
-      return withToolNameMap(body, body ? applyFingerprintTools(body, "claude") : null);
+      return withToolNameMap(body, body ? ensureToolNameMap(body, applyFingerprintTools(body, "claude")) : null);
     }
-    const toolNameMap = body ? applyFingerprintTools(body, "chat") : null;
-    return withToolNameMap(injectReasoningContent({ provider: this.provider, model, body }), toolNameMap);
+    const toolNameMap = body ? ensureToolNameMap(body, applyFingerprintTools(body, "chat")) : null;
+    return withToolNameMap(injectReasoningContent({ provider: this.provider, model, body }), toolNameMap, body);
   }
 
   /**
@@ -315,6 +323,8 @@ export class OpenCodeExecutor extends BaseExecutor {
     }
 
     const clientUaIsCli = /^opencode-cli\//i.test(clientUa?.trim() ?? "");
+    // Unsupported under v2: the synthesized opencode-cli/1.0.0 UA is rejected
+    // (v2 needs major >= 2). Kept only for legacy /zen deployments.
     const synthesizeCli = isEnabled("OPENCODE_SYNTHESIZE_CLI_HEADERS");
     // Mirrors the v2 CLI: the session travels under all four names, and any
     // x-opencode-request (v1 only) is answered with 403.

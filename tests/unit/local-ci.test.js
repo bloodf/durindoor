@@ -5,11 +5,22 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
-  selectRiskFloor, validateSelection, testEnvironment, scopedTestArgs,
+  selectRiskFloor, validateSelection, testEnvironment, scopedTestArgs, fullTestArgs,
   validateTestReport, validateReceipt, terminateCommandGroup, assertPrivateTemporaryRoot,
 } from "../../scripts/local-ci.mjs";
 
 const base = "a".repeat(40);
+
+it("reports genuine full-batch progress while retaining machine JSON and execution constraints", () => {
+  const selected = ["unit/first.test.js", "translator/second.test.js"];
+  const tests = path.join(os.tmpdir(), "private-tests");
+  const report = path.join(os.tmpdir(), "private-report.json");
+  expect(fullTestArgs(tests, selected, report)).toEqual([
+    path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...selected,
+    "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=verbose", "--reporter=json",
+    `--outputFile.json=${report}`,
+  ]);
+});
 const head = "b".repeat(40);
 const policySha256 = "c".repeat(64);
 const runnerSha256 = "d".repeat(64);

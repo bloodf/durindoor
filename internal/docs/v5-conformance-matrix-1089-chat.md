@@ -66,12 +66,12 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | free-form schema (#1091) | Claude | already-present | `preserves free-form object schemas on Claude` |
 | Request | empty schema reason placeholder (deliberate Gemini workaround) (#1091) | Gemini | already-present (deliberate degradation) | `fills empty schemas for Gemini with a reason placeholder` |
 | Request | keyword-named properties (#1091) | Claude/Gemini/Responses | already-present | `preserves keyword-named properties through Claude, Gemini, and Responses` |
-| Request | string numeric constraints (#1091) | Claude | failing | `coerces string numeric schema constraints for Claude` |
-| Request | string numeric constraints (#1091) | Gemini | failing | `coerces string numeric schema constraints for Gemini` |
-| Request | string numeric constraints (#1091) | Responses | failing | `coerces string numeric schema constraints for Responses` |
-| Request | malformed schema rejection (#1091) | Claude | failing | `rejects malformed tool schemas for Claude` |
-| Request | malformed schema rejection (#1091) | Gemini | failing | `rejects malformed tool schemas for Gemini` |
-| Request | malformed schema rejection (#1091) | Responses | failing | `rejects malformed tool schemas for Responses` |
+| Request | string numeric constraints (#1091) | Claude | repaired (#1334) | `coerces string numeric schema constraints for Claude` |
+| Request | string numeric constraints (#1091) | Gemini | repaired (#1334) | `coerces string numeric schema constraints for Gemini` |
+| Request | string numeric constraints (#1091) | Responses | repaired (#1334) | `coerces string numeric schema constraints for Responses` |
+| Request | malformed schema rejection (#1091) | Claude | repaired (#1334) | `rejects malformed tool schemas for Claude` |
+| Request | malformed schema rejection (#1091) | Gemini | repaired (#1334) | `rejects malformed tool schemas for Gemini` |
+| Request | malformed schema rejection (#1091) | Responses | repaired (#1334) | `rejects malformed tool schemas for Responses` |
 
 ## Failing reasons (tracked issues)
 
@@ -82,7 +82,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 5. #1332 — Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
 6. #1335 — Cross-turn `tool_call_id` reuse broke current-turn pairing on Claude, Gemini, and Responses (repaired: pair by call id within the current assistant turn; drop strays).
 7. #1333 — Kiro `description.trim` throws `TypeError` for object/number descriptions.
-8. #1334 — String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.
+8. #1334 — String `minimum`/`maximum` stayed strings and malformed schemas were forwarded (repaired: `concerns/toolSchema.js` coerces numeric-string constraints and rejects non-object `properties` entries or non-string-array `required` with HTTP 400 naming the tool, on the Claude, Gemini, and Chat→Responses paths).
 
 ## Known / deliberate degradations (not conformance)
 

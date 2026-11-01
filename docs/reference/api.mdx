@@ -149,6 +149,8 @@ Dify exposes the configured published chat app, not an upstream model catalog. I
 
 Tools execute in the client or the vendor's declared server-tool service. DurinDoor does not execute consumer function, computer, or browser tools on the gateway host.
 
+Tool parameter schemas are checked before a request is translated to Claude, Gemini, or (from Chat Completions) Responses. Numeric constraints sent as strings, such as `"minimum": "1"`, become numbers. A schema whose `properties` is not an object, whose property entries are not schema objects, or whose `required` is not an array of strings returns HTTP 400 `Invalid tool schema for "<tool>": ...` before any upstream call. Claude accepts only object schemas, so a tool whose schema has another `type` (for example `string` or `array`) also returns that 400 on Claude-bound routes. A schema with no `type` is treated as an object.
+
 ### Native background Responses
 
 ```bash

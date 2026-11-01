@@ -55,9 +55,10 @@ describe("MiniMax-M3 model registration", () => {
     const cn = PROVIDER_MODELS["minimax-cn"];
     expect(intl.find((m) => m.id === "MiniMax-M3.1-Flash")).toMatchObject({ contextLength: 1000000 });
     expect(cn.some((m) => m.id === "MiniMax-M3.1-Flash")).toBe(false);
+    expect(intl.find((m) => m.id === "MiniMax-M3.1-Flash-Preview").deprecated).toBe(true);
+    expect(cn.find((m) => m.id === "MiniMax-M3.1-Flash-Preview").deprecated).not.toBe(true);
     for (const models of [intl, cn]) {
-      expect(models.find((m) => m.id === "MiniMax-M3.1-Flash-Preview").deprecated).toBe(true);
-      expect(models.find((m) => m.id === "MiniMax-M2.7").deprecated).toBe(true);
+            expect(models.find((m) => m.id === "MiniMax-M2.7").deprecated).toBe(true);
       expect(models.find((m) => m.id === "MiniMax-M2.1").deprecated).toBe(true);
       expect(models.find((m) => m.id === "MiniMax-M3.1-Flash")?.deprecated).not.toBe(true);
     }

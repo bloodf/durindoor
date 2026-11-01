@@ -892,7 +892,10 @@
       ],
       "expectedText": "Proxy Pools",
       "expectedTextSource": "src/app/(dashboard)/dashboard/proxy-pools/page.js:565 <h1>Proxy Pools</h1>",
-      "expectedSecondary": ["Batch import", "Deploy relay"],
+      "expectedSecondary": [
+        "Batch import",
+        "Deploy relay"
+      ],
       "expectedSecondaryLocator": "button",
       "fixture": "baseline",
       "states": [
@@ -968,7 +971,9 @@
       ],
       "expectedText": "Skills",
       "expectedTextSource": "src/app/(dashboard)/dashboard/skills/page.js:26 PageHeader title",
-      "expectedSecondary": ["Copy instruction"],
+      "expectedSecondary": [
+        "Copy instruction"
+      ],
       "expectedSecondaryLocator": "button",
       "fixture": "key",
       "states": [
@@ -1026,6 +1031,11 @@
         {
           "url": "/dashboard/timeline?view=table",
           "predicate": "table view renders the Timeline traces caption"
+        },
+        {
+          "url": "/dashboard/timeline",
+          "predicate": "default swimlane view",
+          "expectedSecondary": []
         }
       ],
       "expectedText": "Timeline",
@@ -1085,7 +1095,9 @@
       ],
       "expectedText": "Token Saver settings",
       "expectedTextSource": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx:484 PageHeader title",
-      "expectedSecondary": ["Minimum chars"],
+      "expectedSecondary": [
+        "Minimum chars"
+      ],
       "expectedSecondaryLocator": "label",
       "fixture": "baseline",
       "states": [
@@ -1298,6 +1310,29 @@
         "redirect"
       ],
       "actions": []
+    },
+    {
+      "id": "R38",
+      "template": "/dashboard/endpoint",
+      "entry": "src/app/(dashboard)/dashboard/endpoint/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/endpoint",
+          "predicate": "static, renders EndpointPageClient"
+        }
+      ],
+      "expectedText": "Endpoint",
+      "expectedTextSource": "EndpointPageClient PageHeader title",
+      "expectedSecondary": [
+        "API Endpoint",
+        "Require API key"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [],
+      "headingLocator": false
     }
   ]
 }

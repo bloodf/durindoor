@@ -14,21 +14,39 @@ describe("#1089 Claude Messages client conformance", () => {
     expect(out.tools[0].input_schema.properties.q.type).toBe("string");
     expect(out.tools[0].cache_control.type).toBe("ephemeral");
     expect(out.system[0].cache_control.type).toBe("ephemeral");
-    expect(out.messages[0].content[0].cache_control.type).toBe("ephemeral");
+    // prepareClaudeRequest strips user-block cache_control by design; only system/tools/last assistant keep it.
+    expect(out.messages[0].content[0].cache_control).toBeUndefined();
   });
+
+  it("already-present: OpenAI source cache_control survives Claude target", () => {
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "claude-sonnet-4-5", {
+      messages: [
+        { role: "system", content: [{ type: "text", text: "rules", cache_control: { type: "ephemeral" } }] },
+        { role: "user", content: [{ type: "text", text: "find", cache_control: { type: "ephemeral" } }] },
+      ],
+    }, false);
+    const blocks = [...(out.system || []), ...out.messages.flatMap((m) => m.content)];
+    expect(blocks.some((b) => b.cache_control?.type === "ephemeral")).toBe(true);
+  });
+
+  const streamTo = (stopReason, withStop = true) => {
+    const state = initState(FORMATS.CLAUDE);
+    const events = [
+      { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "x", content: [], usage: { input_tokens: 1, output_tokens: 0 } } },
+      { type: "message_delta", delta: { stop_reason: stopReason }, usage: { output_tokens: 2 } },
+      ...(withStop ? [{ type: "message_stop" }] : []),
+    ];
+    return events.flatMap((e) => translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, e, state) || []);
+  };
 
   it("already-present: Claude stop_reason maps to OpenAI finish_reason", () => {
-    const out = translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, {
-      id: "msg_1", type: "message", role: "assistant", model: "m", content: [], stop_reason: "max_tokens", usage: { input_tokens: 1, output_tokens: 2 },
-    }, initState(FORMATS.CLAUDE));
-    expect(out.choices[0].finish_reason).toBe("length");
+    const chunks = streamTo("max_tokens");
+    expect(chunks.at(-1).choices[0].finish_reason).toBe("length");
   });
 
-  it("already-present: Claude stream message_stop completes OpenAI stream", () => {
-    const state = initState(FORMATS.CLAUDE);
-    translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "x", content: [], usage: { input_tokens: 1, output_tokens: 0 } } }, state);
-    translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } }, state);
-    const out = translateResponse(FORMATS.CLAUDE, FORMATS.OPENAI, { type: "message_stop" }, state);
-    expect(out.at(-1).choices[0].finish_reason).toBe("stop");
+  it("already-present: Claude stream terminal completes OpenAI stream with one finish", () => {
+    const chunks = streamTo("end_turn");
+    expect(chunks.at(-1).choices[0].finish_reason).toBe("stop");
+    expect(chunks.filter((c) => c.choices?.[0]?.finish_reason).length).toBe(1);
   });
 });

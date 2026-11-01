@@ -1186,6 +1186,20 @@ export function enforceCursorCapabilities(provider, capabilities) {
  * @param {string} model
  * @returns {object} full capabilities object
  */
+// 9router 0ad0a722 (#1367): Haiku 3/4 take budget thinking; Haiku 5+ accepts only
+// adaptive thinking + output_config.effort. The version may follow "haiku"
+// (haiku-4-5, haiku-5.5) or precede it (claude-3-5-haiku). Unversioned Haiku keeps
+// the conservative budget shape. Single source for the translated path (below) and
+// the native passthrough (normalizeClaudePassthrough).
+export function isLegacyHaikuModel(model = "") {
+  if (!/haiku/i.test(model)) return false;
+  const match = String(model).match(/haiku[-._]?(\d+)|(?<![\d.])(\d+)(?:[-._]\d+)?[-._]?haiku/i);
+  return match ? Number(match[1] || match[2]) < 5 : true;
+}
+
+/** Haiku 5+ family caps; overrides the budget-shaped `*claude*haiku*` pattern. */
+const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 };
+
 export function getCapabilitiesForModel(provider, model) {
   const finalize = (caps) => {
     let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
@@ -1253,6 +1267,10 @@ export function getCapabilitiesForModel(provider, model) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
     if (hasUnpublishedOutput(provider, exactId)) merged.maxOutput = undefined;
     return finalize(merged);
+  }
+
+  if (/claude/i.test(normalizedModel) && /haiku/i.test(normalizedModel) && !isLegacyHaikuModel(normalizedModel)) {
+    return finalize({ ...DEFAULT_CAPABILITIES, ...ADAPTIVE_HAIKU_CAPABILITIES });
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {

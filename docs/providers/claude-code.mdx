@@ -70,6 +70,13 @@ The connection uses the Claude subscription Messages endpoint. DurinDoor adds Cl
 
 Use a current Claude Code client when a model requires newer request headers. The gateway preserves required beta flags from compatible clients, but model entitlement still depends on the account.
 
+Haiku 5-series models use adaptive thinking and `output_config.effort` on both
+native `/v1/messages` requests and translated OpenAI or Responses requests.
+Haiku 3/4 and unversioned Haiku aliases keep budget thinking: native adaptive
+requests are downgraded to enabled thinking with a 10,000-token budget and the
+effort field is removed. Dotted and dashed version identifiers are recognized.
+Forced tool choice is still normalized to automatic choice while thinking is on.
+
 ## Models
 
 Send `cc/<model>`, for example `cc/claude-sonnet-5`. `cc/claude-opus-5-5` (Claude Opus 5.5) is the default Opus model the [Claude Code integration](../integrations/claude-code.mdx) card writes. `GET /v1/models` shows the current set.

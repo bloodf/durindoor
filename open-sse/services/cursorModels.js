@@ -10,6 +10,7 @@ import crypto from "crypto";
 import { PROVIDER_OAUTH } from "../providers/index.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { decodeMessage } from "../utils/cursorProtobuf.js";
+import { isNumber } from "../../src/shared/utils/typeChecks.js";
 import { shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -52,7 +53,7 @@ function cacheKey(credentials) {
 
 function firstString(fields, fieldNumber) {
   const value = fields.get(fieldNumber)?.[0]?.value;
-  if (!value || typeof value === "number") return "";
+  if (!value || isNumber(value)) return "";
   return Buffer.from(value).toString("utf8");
 }
 
@@ -71,7 +72,7 @@ export function parseCursorUsableModels(payload) {
   const models = [];
 
   for (const entry of response.get(RESPONSE_MODELS_FIELD) || []) {
-    if (!entry?.value || typeof entry.value === "number") continue;
+    if (!entry?.value || isNumber(entry.value)) continue;
     const detail = decodeMessage(entry.value);
     const id = firstString(detail, MODEL_ID_FIELD).trim();
     if (!id || seen.has(id)) continue;
@@ -200,7 +201,7 @@ export function parseCursorAvailableModels(payload) {
   const models = [];
 
   for (const entry of response.get(RESPONSE_AVAILABLE_MODELS_FIELD) || []) {
-    if (!entry?.value || typeof entry.value === "number") continue;
+    if (!entry?.value || isNumber(entry.value)) continue;
     const fields = decodeMessage(entry.value);
     const id = firstString(fields, AVAILABLE_MODEL_NAME_FIELD).trim();
     if (!id || seen.has(id)) continue;

@@ -3,7 +3,7 @@ import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
-import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
+import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
@@ -150,6 +150,8 @@ export function createSSEStream(options = {}) {
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
   const errorSecrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken, credentials?.providerSpecificData?.sessionToken];
   let buffer = "";
+  // Passthrough tool-call (choice, index) keys already opened on the client wire.
+  const openedToolCalls = new Set();
   let usage = null;
 
   // Per-stream decoder with stream:true to correctly handle multi-byte chars split across chunks
@@ -834,6 +836,7 @@ export function createSSEStream(options = {}) {
                   }
                 }
               }
+              if (ensureStreamToolCallIds(parsed, openedToolCalls)) fieldsInjected = true;
 
               // Peel leaked MiniMax thinking markers out of delta.content into
               // reasoning_content before the inline-thinking extractor and content

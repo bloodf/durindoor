@@ -37,6 +37,8 @@ vi.mock("@/lib/localDb", async () => {
   };
 });
 
+vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: async () => true }));
+
 const { PUT } = await import("@/app/api/keys/[id]/route.js");
 const { GET } = await import("@/app/api/keys/route.js");
 const { createApiKeyGroup, deleteApiKeyGroup, getGroupIdsForApiKey } = await import(

@@ -776,7 +776,12 @@ describe("dashboard guard management API auth", () => {
       "/api/headroom%2Fstatus/details",
       "/api/headroom%2Fstats/export",
     ]) {
-      expect(await proxy(request(path, { host: "router.example.com" }))).toBe(mocks.nextResponse);
+      // Child paths stay on the generic gate: a loopback open dashboard passes,
+      // and an API key is not enough there.
+      expect(await proxy(request(path, { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1" }))).toBe(mocks.nextResponse);
+      mocks.validateApiKey.mockResolvedValue(true);
+      expect((await proxy(request(path, { host: "router.example.com", authorization: "Bearer sk-valid" }))).status).toBe(401);
+      mocks.validateApiKey.mockResolvedValue(false);
     }
   });
 
@@ -1058,6 +1063,46 @@ describe("dashboard guard management API auth", () => {
       }));
       expect(response.status, `${path} must refuse an API key`).toBe(401);
     }
+  });
+});
+
+describe("dashboard guard generic API auth", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+  });
+
+  const genericPaths = ["/api/logs/export", "/api/key-groups", "/api/key-groups/g1", "/api/token-saver/stream", "/api/compression/preview"];
+
+  for (const path of genericPaths) {
+    it(`rejects remote unauthenticated ${path} when requireLogin=false`, async () => {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response.status).toBe(401);
+    });
+
+    it(`allows loopback ${path} when requireLogin=false`, async () => {
+      const response = await proxy(request(path, { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1" }));
+      expect(response).toBe(mocks.nextResponse);
+    });
+  }
+
+  it("rejects loopback without credentials when requireLogin=true", async () => {
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    const response = await proxy(request("/api/logs/export", { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1" }));
+    expect(response.status).toBe(401);
+  });
+
+  it("allows remote CLI token and dashboard session", async () => {
+    expect(await proxy(request("/api/logs/export", { host: "router.example.com", "x-9r-cli-token": "cli-token" })))
+      .toBe(mocks.nextResponse);
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    const req = request("/api/key-groups", { host: "router.example.com" });
+    req.cookies.get = vi.fn((name) => (name === "auth_token" ? { value: "valid-jwt" } : undefined));
+    expect(await proxy(req)).toBe(mocks.nextResponse);
   });
 });
 

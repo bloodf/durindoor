@@ -633,7 +633,11 @@ export async function proxy(request) {
       if (await canAccessManagementApi(request)) return NextResponse.next();
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (await hasValidCliToken(request) || await isAuthenticated(request))
+    // The open-dashboard policy (requireLogin=false) applies to loopback peers
+    // only; remote callers need a CLI token or a dashboard session.
+    if (await hasValidCliToken(request) || await hasValidToken(request))
+      return NextResponse.next();
+    if (isLocalRequest(request) && await isAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

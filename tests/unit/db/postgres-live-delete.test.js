@@ -5,11 +5,14 @@
 // drops its own database, so it never touches data it did not create. With the
 // variable unset, or the cluster unreachable, the suite is skipped.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import pg from "pg";
+
+// Route calls run as the operator; principal checks are covered elsewhere.
+vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: async () => true }));
 
 const ADMIN_URL = process.env.DURINDOOR_TEST_PG_URL;
 

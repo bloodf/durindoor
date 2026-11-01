@@ -117,4 +117,13 @@ describe("unknown network observations do not abort startup (#1396)", () => {
     clock += 7000; await advance();
     expect(mocks.enableTunnel).toHaveBeenCalledOnce();
   });
+  it("warns once, with the error code only, across repeated failures", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    observe.mockImplementation(denied); await start();
+    await advance(); await advance();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0][0]).toContain("interface enumeration unavailable");
+    expect(warn.mock.calls[0][0]).toContain("ERR_SYSTEM_ERROR");
+    expect(warn.mock.calls[0][0]).not.toContain("denied");
+  });
 });

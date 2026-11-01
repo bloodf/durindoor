@@ -252,11 +252,17 @@ function startWatchdog() {
 
 // ─── Network monitor: detect IPv4 fingerprint change + sleep/wake ────────────
 
+let warnedInterfacesUnavailable = false;
+
 function getNetworkFingerprint() {
   let interfaces;
   try {
     interfaces = os.networkInterfaces();
-  } catch {
+  } catch (err) {
+    if (!warnedInterfacesUnavailable) {
+      warnedInterfacesUnavailable = true;
+      console.warn(`[NetworkMonitor] interface enumeration unavailable; change detection paused (${err?.code ?? "unknown"})`);
+    }
     // Restricted runtimes can deny interface enumeration. Unknown is not an
     // empty network: keep startup and reachability checks running, then retry.
     return null;

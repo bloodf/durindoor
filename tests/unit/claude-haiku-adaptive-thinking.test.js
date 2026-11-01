@@ -42,6 +42,7 @@ describe("normalizeClaudePassthrough — Haiku adaptive thinking (#5183)", () =>
       "claude-3-haiku-20240307",
       "haiku",
       "claude-haiku-latest",
+      "claude-haiku-20260101", // dated but unversioned
     ];
 
     for (const model of models) {
@@ -110,7 +111,7 @@ describe("OpenAI → Claude translated path — Haiku thinking shape (#1367)", (
     },
   );
 
-  it.each(["claude-haiku-4-5", "claude-3-5-haiku-20241022", "claude-haiku-latest"])(
+  it.each(["claude-haiku-4-5", "claude-3-5-haiku-20241022", "claude-haiku-latest", "claude-haiku-20260101"])(
     "%s keeps budget thinking",
     (model) => {
       expect(getCapabilitiesForModel("claude", model).thinkingFormat).toBe("claude-budget");

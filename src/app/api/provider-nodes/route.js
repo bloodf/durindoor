@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isOperatorRequest } from "@/dashboardGuard";
+import { canManageAccessConfig } from "@/dashboardGuard";
 import { createProviderNode, getProviderNodes } from "@/models";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX, SYSTEMONE_COMPATIBLE_PREFIX } from "@/shared/constants/providers";
 import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
@@ -36,7 +36,7 @@ export async function GET() {
 
 // POST /api/provider-nodes - Create provider node
 export async function POST(request) {
-  if (!(await isOperatorRequest(request))) {
+  if (!(await canManageAccessConfig(request))) {
     return NextResponse.json({ error: "Creating a provider node requires an operator session" }, { status: 403 });
   }
 

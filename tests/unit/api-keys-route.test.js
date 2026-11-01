@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   getApiKeyGroups: vi.fn(),
   getGroupIdsByApiKey: vi.fn(),
   getGroupIdsForApiKey: vi.fn(),
-  isOperatorRequest: vi.fn(),
+  canManageAccessConfig: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -52,7 +52,7 @@ vi.mock("@/lib/localDb", () => ({
   getGroupIdsForApiKey: mocks.getGroupIdsForApiKey,
 }));
 
-vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: mocks.isOperatorRequest }));
+vi.mock("@/dashboardGuard", () => ({ canManageAccessConfig: mocks.canManageAccessConfig }));
 
 vi.mock("@/shared/utils/machineId", () => ({
   getConsistentMachineId: mocks.getConsistentMachineId,
@@ -103,7 +103,7 @@ describe("API keys routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getConsistentMachineId.mockResolvedValue("machine-abc");
-    mocks.isOperatorRequest.mockResolvedValue(true);
+    mocks.canManageAccessConfig.mockResolvedValue(true);
     mocks.getApiKeys.mockResolvedValue([{ ...storedKey }]);
     mocks.getApiKeyById.mockResolvedValue({ ...storedKey });
     mocks.getComboByName.mockResolvedValue(null);
@@ -136,7 +136,7 @@ describe("API keys routes", () => {
   });
 
   it("requires an operator principal to create, update, or delete keys", async () => {
-    mocks.isOperatorRequest.mockResolvedValue(false);
+    mocks.canManageAccessConfig.mockResolvedValue(false);
     const collection = await import("@/app/api/keys/route.js");
     const item = await import("@/app/api/keys/[id]/route.js");
     const params = { params: Promise.resolve({ id: "key-id" }) };

@@ -37,7 +37,7 @@ vi.mock("@/lib/localDb", async () => {
   };
 });
 
-vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: async () => true }));
+vi.mock("@/dashboardGuard", () => ({ canManageAccessConfig: async () => true }));
 
 const { PUT } = await import("@/app/api/keys/[id]/route.js");
 const { GET } = await import("@/app/api/keys/route.js");

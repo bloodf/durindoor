@@ -439,6 +439,18 @@ export async function isOperatorRequest(request) {
 }
 
 /**
+ * Principal check shared by API-key and provider-node mutations
+ * (`/api/keys`, `/api/provider-nodes`). Only operators qualify today; a later
+ * admin scope on API keys is meant to widen this one helper.
+ *
+ * @param {Request} request
+ * @returns {Promise<boolean>}
+ */
+export async function canManageAccessConfig(request) {
+  return isOperatorRequest(request);
+}
+
+/**
  * Management routes (providers, usage, keys, settings, …) must not trust the
  * global requireLogin=false bypass for remote callers. JWT and CLI token always
  * qualify; a valid DurinDoor application API key grants full programmatic

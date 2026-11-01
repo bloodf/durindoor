@@ -12,7 +12,7 @@ import path from "node:path";
 import pg from "pg";
 
 // Route calls run as the operator; principal checks are covered elsewhere.
-vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: async () => true }));
+vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: async () => true, canManageAccessConfig: async () => true }));
 
 const ADMIN_URL = process.env.DURINDOOR_TEST_PG_URL;
 

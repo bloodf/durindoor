@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isOperatorRequest } from "@/dashboardGuard";
+import { canManageAccessConfig } from "@/dashboardGuard";
 import {
   getAllApiKeyUsageTotals,
   getApiKeys,
@@ -70,7 +70,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  if (!(await isOperatorRequest(request))) {
+  if (!(await canManageAccessConfig(request))) {
     return NextResponse.json({ error: "Creating an API key requires an operator session" }, { status: 403 });
   }
 

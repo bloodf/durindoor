@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isOperatorRequest } from "@/dashboardGuard";
+import { canManageAccessConfig } from "@/dashboardGuard";
 import { deleteCustomModel, deleteProviderConnectionsByProvider, deleteProviderNode, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/models";
 import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
 import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
@@ -8,7 +8,7 @@ import REGISTRY from "open-sse/providers/registry/index.js";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
-  if (!(await isOperatorRequest(request))) {
+  if (!(await canManageAccessConfig(request))) {
     return NextResponse.json({ error: "Updating a provider node requires an operator session" }, { status: 403 });
   }
 
@@ -117,7 +117,7 @@ export async function PUT(request, { params }) {
 
 // DELETE /api/provider-nodes/[id] - Delete provider node and its connections
 export async function DELETE(request, { params }) {
-  if (!(await isOperatorRequest(request))) {
+  if (!(await canManageAccessConfig(request))) {
     return NextResponse.json({ error: "Deleting a provider node requires an operator session" }, { status: 403 });
   }
 

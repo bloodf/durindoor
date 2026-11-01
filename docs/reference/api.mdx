@@ -45,6 +45,15 @@ The catalog handlers do not consult `requireApiKey`. On loopback, reaching `/v1/
 
 ## Chat and completions
 
+When Chat Completions requests are routed to Claude, a tool message may contain
+text and `image_url` parts. Image data URIs become Claude base64 image blocks;
+HTTP(S) URLs become Claude URL image blocks inside the matching `tool_result`.
+String tool results and their `is_error` flag are preserved. Unsupported part
+types, missing image source fields, and invalid or non-HTTP(S) remote URLs are
+omitted, including when no supported parts remain. The conversion does not
+fetch images or validate their decoded bytes; the target provider validates
+image data. This applies to both streaming and non-streaming requests.
+
 Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. The gateway translates that format to the selected upstream provider.
 
 ```bash

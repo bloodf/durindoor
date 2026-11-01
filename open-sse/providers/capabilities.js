@@ -596,6 +596,10 @@ export const PROVIDER_CAPABILITIES = {
     "muse-spark-1.2": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "muse-spark-1.2-contributor-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
+    // The free MiMo route can disable thinking ("none" yields no reasoning,
+    // upstream b8331283); the global *mimo*v2.6* pattern describes Xiaomi's own
+    // always-on API. Limits repeat that pattern.
+    "mimo-v2.6-flash-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 131072 },
     // Union Alpha routes through the Claude Messages wire (see executors/opencode.js
     // MESSAGES_MODELS), not the opencode reasoning_effort enum.
     "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 }

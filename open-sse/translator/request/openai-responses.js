@@ -800,6 +800,13 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           strict: tool.function.strict ?? false
         };
       }
+      // Chat nests custom tools under `custom`; Responses declares them flat (#1344).
+      if (tool.type === "custom") {
+        const name = normalizeResponsesToolName(tool.custom?.name ?? tool.name);
+        if (!name) return null;
+        const source = isPlainToolChoiceObject(tool.custom) ? tool.custom : tool;
+        return { ...source, type: "custom", name };
+      }
       return tool;
     }).filter(Boolean);
   }

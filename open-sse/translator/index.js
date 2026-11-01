@@ -176,6 +176,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
            * Claude, Kiro and OpenAI-format upstreams reject. Alias the OpenAI intermediate
            * once, before any target translator, so declarations, tool_choice and history
            * share one map whatever the target (upstream PR #4200).
+           * chatCore aliases again for OpenAI targets with the provider's
+           * `toolNameMaxLength`; that is deliberate, and both maps compose into
+           * one toolNameMap that the response path restores (#1406).
            */
           if (sourceFormat === FORMATS.OPENAI_RESPONSES && isObject(result)) {
             responsesToolAliases = normalizeOpenAIToolNames(result);

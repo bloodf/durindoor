@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { getModelLifecycleDecision } from "../../open-sse/services/modelLifecycle.js";
 import { PROVIDER_MODELS, getModelsByProviderId, getModelTargetFormat, getModelType, getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 
 describe("MiniMax-M3 model registration", () => {
@@ -55,10 +56,19 @@ describe("MiniMax-M3 model registration", () => {
     expect(intl.find((m) => m.id === "MiniMax-M3.1-Flash")).toMatchObject({ contextLength: 1000000 });
     expect(cn.some((m) => m.id === "MiniMax-M3.1-Flash")).toBe(false);
     for (const models of [intl, cn]) {
-      expect(models.find((m) => m.id === "MiniMax-M3.1-Flash-Preview").name).toMatch(/Deprecated/);
-      expect(models.find((m) => m.id === "MiniMax-M2.7").name).toMatch(/Retiring 2026-11-18/);
-      expect(models.find((m) => m.id === "MiniMax-M2.1").name).toMatch(/Legacy/);
+      expect(models.find((m) => m.id === "MiniMax-M3.1-Flash-Preview").deprecated).toBe(true);
+      expect(models.find((m) => m.id === "MiniMax-M2.7").deprecated).toBe(true);
+      expect(models.find((m) => m.id === "MiniMax-M2.1").deprecated).toBe(true);
+      expect(models.find((m) => m.id === "MiniMax-M3.1-Flash")?.deprecated).not.toBe(true);
     }
+  });
+
+  it("schedules M2.5/M2.7 shutdown on 2026-11-18 with M3.1 Flash as replacement", () => {
+    const d = getModelLifecycleDecision("minimax", "MiniMax-M2.7", new Date("2026-11-01T00:00:00.000Z"));
+    expect(d).toMatchObject({ status: "deprecated", shutdownAt: "2026-11-18" });
+    expect(d.replacement.model).toBe("MiniMax-M3.1-Flash");
+    expect(getModelLifecycleDecision("minimax", "MiniMax-M2.5", new Date("2026-11-19T00:00:00.000Z")).status).toBe("shutdown");
+    expect(getModelLifecycleDecision("minimax", "MiniMax-M3.1-Flash", new Date("2026-11-19T00:00:00.000Z")).status).toBe("untracked");
   });
 
   it("exposes MiniMax-M3 through getModelsByProviderId for both provider IDs", () => {

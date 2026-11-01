@@ -28,7 +28,7 @@ import {
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
-import { sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
+import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -148,7 +148,7 @@ export function createSSEStream(options = {}) {
   } = options;
 
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
-  const errorSecrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken, credentials?.providerSpecificData?.sessionToken];
+  const errorSecrets = credentialErrorSecrets(credentials);
   let buffer = "";
   let usage = null;
 

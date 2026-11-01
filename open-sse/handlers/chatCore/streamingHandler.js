@@ -12,13 +12,13 @@ import { createTerminalTracker } from "../../utils/streamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
-import { createErrorResult, readBoundedResponseText, sanitizeErrorMessage } from "../../utils/error.js";
+import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
-import { isFunction } from "../../../src/shared/utils/typeChecks.js";
+import { isFunction, isString } from "../../../src/shared/utils/typeChecks.js";
 import { classifyStreamAbandonReason, isRequestScopedStreamError } from "../../utils/streamLifecycle.js";
 const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
@@ -220,9 +220,10 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {number} params.requestStartTime - `Date.now()` at request start (TTFT base).
  * @param {Function} [params.onEmptyStream] - notified after a coherent stream
  *   completes without text, thinking, tool calls, or generated tokens.
+ * @param {object} [params.credentials] - selected credentials redacted from the persisted stream error.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -259,7 +260,13 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // A stream can fail after HTTP 200: the upstream sends an `error` frame or
     // a Responses `response.failed` event and the stream then ends normally.
     // Record that turn as an error instead of a success (upstream 9router #4332).
-    const streamError = contentObj?.upstreamError || null;
+    // The raw upstreamError stays with the stream for diagnostics; the copy
+    // persisted to request details redacts credentials first (#1342).
+    const rawStreamError = contentObj?.upstreamError || null;
+    const streamError = rawStreamError && Object.fromEntries(Object.entries(rawStreamError).map(([key, value]) => [
+      key,
+      isString(value) ? sanitizeErrorMessageWithSecrets(value, credentialErrorSecrets(credentials)) : value
+    ]));
     // Tool calls carry no accumulated content, so a tool-call-only turn would otherwise
     // log as "[Empty streaming response]" — indistinguishable from a truncated stream.
     const safeContent = contentObj?.content

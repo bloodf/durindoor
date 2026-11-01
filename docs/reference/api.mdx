@@ -58,6 +58,14 @@ Claude-format requests normally end on a user turn. A trailing assistant text pr
 
 `POST /v1/completions` is a router shim: `prompt` (string, or a one-element array) becomes one user message, then the chat core runs. Multiple prompts return 400. Streaming SSE `chat.completion.chunk` frames are rewritten to `text_completion`. Provider-native `/v1/completions` is not a goal.
 
+If a non-streaming request receives an OpenAI-style SSE error envelope upstream,
+the gateway returns an error rather than a partial completion. A valid integer
+`error.status` between 400 and 599 is preserved; otherwise the status is 502.
+The error message passes through credential/path redaction. Raw error details
+and partial content are not returned or recorded as successful usage. A
+`finish_reason: "error"` without an error envelope keeps the existing 502
+incoherent-response contract.
+
 `POST /v1/api/chat` runs the same chat core, then returns an Ollama-shaped response. Default model name if the body omits `model`: `llama3.2`.
 
 `POST /v1/responses` with `"stream": true`, or `Accept: text/event-stream`, opens an early SSE response so slow provider setup does not drop Codex CLI. `POST /v1/messages` with `"stream": true` sends Anthropic ping frames on the same timer. Compact is detected from the `/v1/responses/compact` path; do not send `_compact` in client JSON.

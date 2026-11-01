@@ -50,6 +50,21 @@ Import them from `open-sse/translator/schema/index.js`.
 
 Endpoint detection (`detectFormatByEndpoint`): `/v1/responses` is `openai-responses`, `/v1/messages` is `claude`. `/v1/chat/completions` with an `input[]` body still counts as OpenAI (Cursor CLI).
 
+## Non-streaming SSE errors
+
+Port `decolua/9router@56dbf466f10787d284b09bd28e35c0f7171b6d06`
+(#1355) preserves explicit OpenAI-style SSE error envelopes before the fork's
+terminal-coherence aggregation. `createSSEErrorResult` is shared by
+`handleNonStreamingResponse` and the standard `handleForcedSSEToJson` path.
+It accepts integer numeric/string 400–599 statuses, uses 502 otherwise, and
+passes only the selected message to `createErrorResult` for redaction.
+`chatCore` supplies the selected credentials directly to these two buffered
+handlers (not to the shared logging context), so opaque credential values are
+redacted just as they are on the existing HTTP-error path.
+Both paths log FAILED before any success accounting or cleanup callback;
+their existing finally blocks still call `trackDone` once. The existing
+finish-reason error and native Responses conversion contracts are unchanged.
+
 ## Tests
 
 Every test that calls `translateRequest` or `translateResponse` must import `tests/translator/registerAll.js` at the top of the file. That file re-imports every translator module so `register()` runs under Vitest ESM.

@@ -3,6 +3,7 @@ import "./registerAll.js";
 import {
   openaiToGeminiRequest,
   openaiToGeminiCLIRequest,
+  openaiToAntigravityRequest,
 } from "../../open-sse/translator/request/openai-to-gemini.js";
 
 const buildBody = () => ({
@@ -41,4 +42,11 @@ describe("#1381 openai-to-gemini does not mutate the caller's schemas", () => {
       expect(params.properties.q.type).toBe("string");
     });
   }
+
+  it("antigravity claude path: request body equals its pre-call clone", () => {
+    const body = buildBody();
+    const before = structuredClone(body);
+    openaiToAntigravityRequest("claude-sonnet-4-5", body, false, { projectId: "p" });
+    expect(body).toEqual(before);
+  });
 });

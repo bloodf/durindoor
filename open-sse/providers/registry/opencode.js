@@ -25,6 +25,14 @@ export default {
     // non-streaming free-tier requests. Force stream upstream; chatCore
     // aggregates the SSE back to JSON for clients that asked for JSON.
     forceStream: true,
+    // Free reasoning models reject multi-turn history whose assistant messages
+    // carry no reasoning_content (400 missing_required_parameter), and the
+    // response pipeline strips the field before it reaches the client, so the
+    // echo can never come from the client. Inject a placeholder (upstream
+    // e964e482). The executor skips it on the Claude Messages route.
+    reasoningInject: {
+      scope: "all",
+    },
     // OpenCode Free 400s the Muse Spark contributor models when tool_choice is
     // anything but "auto" (port of decolua/9router aa14ef72; 1.2 added by
     // upstream #4165, which found the same constraint on that model).

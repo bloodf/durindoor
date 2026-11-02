@@ -21,6 +21,9 @@ export const SECRET_SETTING_KEYS = Object.freeze([
   "mfaEnabled",
   "mfaSecret",
   "mfaBackupCodes",
+  // Webhook destinations hold signing secrets; managed only via
+  // /api/settings/webhooks (dashboard JWT or CLI token).
+  "operatorWebhooks",
 ]);
 
 /**

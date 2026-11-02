@@ -1,5 +1,6 @@
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
+import { ROLE } from "../schema/roles.js";
 
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
@@ -43,6 +44,8 @@ const STRIP_RULES = [
 { provider: "groq", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 { provider: "mistral", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 { provider: "cerebras", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
+// 9router ced0cf6: NIM treats these as aliases and rejects duplicate fields.
+{ provider: "nvidia", renameMessageFields: { reasoning: "reasoning_content" } },
 // Mistral's OpenAI-compatible API validates the body strictly and rejects the
 // Anthropic/Z.ai-native `thinking` object with 422 extra_forbidden. It only
 // accepts `reasoning_effort`, so drop any stray native thinking field that
@@ -139,10 +142,18 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // assistant reasoning_content with 422 extra_forbidden (#1649). Assistant turns
     // only: that is where clients replay reasoning; a user-authored field is left
     // alone (#4220).
-    if (Array.isArray(rule.dropMessageFields) && Array.isArray(body.messages)) {
+    if ((rule.renameMessageFields || Array.isArray(rule.dropMessageFields)) && Array.isArray(body.messages)) {
       for (const msg of body.messages) {
-        if (!msg || !isObject(msg) || msg.role !== "assistant") continue;
-        for (const field of rule.dropMessageFields) {
+        if (!msg || !isObject(msg) || msg.role !== ROLE.ASSISTANT) continue;
+        for (const [from, to] of Object.entries(rule.renameMessageFields || {})) {
+          if (msg[from] === undefined) continue;
+          const existing = msg[to];
+          if (existing === undefined || existing === null || isString(existing) && !existing.trim()) {
+            msg[to] = msg[from];
+          }
+          delete msg[from];
+        }
+        for (const field of Array.isArray(rule.dropMessageFields) ? rule.dropMessageFields : []) {
           if (msg[field] !== undefined) delete msg[field];
         }
       }

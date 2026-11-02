@@ -76,6 +76,23 @@ function stripOrphanedToolOutputs(input) {
   });
   return stripped.length === 0 ? input : deduped;
 }
+/**
+ * Lower custom (freeform) tool history to function history so it pairs, repairs,
+ * and strips like `function_call` items. The raw `input` rides as `{input}`, the
+ * shape the custom declaration lowers to (#1387, upstream d06e0d26).
+ */
+function lowerCustomToolHistory(items) {
+  if (!Array.isArray(items)) return items;
+  return items.map((item) => {
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL) {
+      const { input, ...rest } = item;
+      const raw = isString(input) ? input : input == null ? "" : JSON.stringify(input);
+      return { ...rest, type: RESPONSES_ITEM.FUNCTION_CALL, arguments: JSON.stringify({ input: raw }) };
+    }
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) return { ...item, type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT };
+    return item;
+  });
+}
 const MAX_TOOL_NAME_LEN = 128;
 
 /**
@@ -283,7 +300,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // strip below: pairing an id-less function_call_output with the oldest
   // unanswered function_call keeps a legitimate tool result instead of the
   // strip pass discarding it as an orphan.
-  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(normalizeResponsesInput(body.input)));
+  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input))));
   if (!inputItems) return body;
 
   // Declared tool types (custom vs function) on this request, hoisted above

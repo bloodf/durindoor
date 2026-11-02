@@ -111,4 +111,43 @@ describe("connection-scoped auto-ping persistence", () => {
     await expect(db.setProviderConnectionAutoPing("missing", true)).resolves.toBeNull();
     await expect(db.setProviderConnectionAutoPing(unsupported.id, "true")).rejects.toBeInstanceOf(TypeError);
   });
+
+  it("stores an anchored schedule beside the reactive flag and prunes it on disable/delete", async () => {
+    const schedule = { enabled: true, anchor: "09:30", timezone: "UTC", windowHours: 5, slotsPerDay: 3 };
+    const kept = await createOAuth("codex", "schedule-kept@example.com");
+    const disabled = await createOAuth("codex", "schedule-disabled@example.com");
+    const deleted = await createOAuth("codex", "schedule-deleted@example.com");
+
+    await db.setProviderConnectionAutoPing(kept.id, true);
+    await expect(db.setProviderConnectionAutoPing(kept.id, undefined, schedule)).resolves.toMatchObject({ enabled: true, schedule });
+    await Promise.all([disabled, deleted].map((connection) => db.setProviderConnectionAutoPing(connection.id, undefined, schedule)));
+    await db.updateProviderConnection(disabled.id, { isActive: false });
+    await db.deleteProviderConnection(deleted.id);
+
+    const config = (await db.getSettings()).codexAutoPing;
+    expect(config.connections).toHaveProperty(kept.id, true);
+    expect(config.schedules).toEqual(expect.objectContaining({ [kept.id]: schedule }));
+    expect(config.schedules).not.toHaveProperty(disabled.id);
+    expect(config.schedules).not.toHaveProperty(deleted.id);
+
+    await expect(db.setProviderConnectionAutoPing(kept.id, undefined, null)).resolves.toMatchObject({ enabled: true, schedule: null });
+    expect((await db.getSettings()).codexAutoPing.schedules).not.toHaveProperty(kept.id);
+    await expect(db.setProviderConnectionAutoPing(disabled.id, undefined, schedule)).rejects.toMatchObject({ code: "AUTO_PING_INELIGIBLE" });
+  });
+
+  it("keeps the stored schedule when the flag is toggled without a schedule", async () => {
+    const schedule = { enabled: true, anchor: "09:30", timezone: "UTC", windowHours: 5, slotsPerDay: 3 };
+    const conn = await createOAuth("codex", "schedule-toggle@example.com");
+    await db.setProviderConnectionAutoPing(conn.id, undefined, schedule);
+    await expect(db.setProviderConnectionAutoPing(conn.id, true)).resolves.toMatchObject({ enabled: true, schedule });
+    expect((await db.getSettings()).codexAutoPing.schedules).toHaveProperty(conn.id, schedule);
+  });
+
+  it("claims a ping marker atomically (compare-and-set)", async () => {
+    const conn = await createOAuth("codex", "claim@example.com");
+    await expect(db.claimProviderConnectionPing(conn.id, { lastPingedSlotKey: undefined }, { lastPingedSlotKey: "k1" })).resolves.toBe(true);
+    await expect(db.claimProviderConnectionPing(conn.id, { lastPingedSlotKey: undefined }, { lastPingedSlotKey: "k1" })).resolves.toBe(false);
+    await expect(db.claimProviderConnectionPing(conn.id, { lastPingedSlotKey: "k1" }, { lastPingedSlotKey: "k2" })).resolves.toBe(true);
+    expect((await db.getProviderConnectionById(conn.id)).lastPingedSlotKey).toBe("k2");
+  });
 });

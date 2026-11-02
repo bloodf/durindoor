@@ -142,13 +142,17 @@
     "kimi": "kimi",
     "kimi-coding": "kmc",
     "kiro": "kr",
+    "meganova-ai": "meganova-ai",
     "mimo-free": "mmf",
     "minimax": "minimax",
     "minimax-cn": "minimax-cn",
     "mistral": "mistral",
+    "mixlayer": "mixlayer",
     "mmf": "mmf",
     "muse-code": "mc",
+    "naga-ac": "naga",
     "nanobanana": "nanobanana",
+    "nara": "nara",
     "nebius": "nebius",
     "novita": "novita",
     "nvidia": "nvidia",
@@ -177,7 +181,8 @@
     "volcengine-ark": "volcengine-ark",
     "xai": "xai",
     "xiaomi-mimo": "xiaomi-mimo",
-    "xiaomi-tokenplan": "xiaomi-tokenplan"
+    "xiaomi-tokenplan": "xiaomi-tokenplan",
+    "zylo-api": "zylo"
   },
   "modelKeys": [
     "ag",
@@ -232,11 +237,15 @@
     "kr",
     "local-device",
     "mc",
+    "meganova-ai",
     "minimax",
     "minimax-cn",
     "mistral",
+    "mixlayer",
     "mmf",
+    "naga",
     "nanobanana",
+    "nara",
     "nebius",
     "novita",
     "nvidia",
@@ -272,6 +281,7 @@
     "voyage-ai",
     "xai",
     "xiaomi-mimo",
-    "xiaomi-tokenplan"
+    "xiaomi-tokenplan",
+    "zylo"
   ]
 }

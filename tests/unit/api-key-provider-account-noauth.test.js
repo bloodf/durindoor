@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-key-noauth-"));
 const originalDataDir = process.env.DATA_DIR;
 process.env.DATA_DIR = tempDir;
@@ -174,10 +175,11 @@ describe("API-key provider scope at no-auth handler entrypoints", () => {
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
   global.fetch = originalFetch;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempDir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });

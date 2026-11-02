@@ -108,3 +108,74 @@ describe("#1346 Responses non-stream → Gemini projection", () => {
     });
   });
 });
+
+describe("#1389 Responses → Gemini parity", () => {
+  const call = (extra) => ({ type: RESPONSES_ITEM.FUNCTION_CALL, call_id: "c1", name: "lookup", ...extra });
+
+  it("carries call_id into functionCall.id and always emits object args", () => {
+    for (const [args, expected] of [["{\"q\":1}", { q: 1 }], ["null", {}], ["[1]", {}], ["7", {}], ["{bad", {}]]) {
+      const fc = project({ id: "r", status: "completed", output: [call({ arguments: args })] })
+        .candidates[0].content.parts[0].functionCall;
+      expect(fc).toEqual({ id: "c1", name: "lookup", args: expected });
+    }
+  });
+
+  it("maps reasoning tokens to thoughtsTokenCount and keeps total", () => {
+    const out = project({
+      id: "r", status: "completed", output: [],
+      usage: { input_tokens: 10, output_tokens: 9, total_tokens: 19, output_tokens_details: { reasoning_tokens: 6 } },
+    });
+    expect(out.usageMetadata).toEqual({
+      promptTokenCount: 10, candidatesTokenCount: 3, totalTokenCount: 19, thoughtsTokenCount: 6,
+    });
+  });
+
+  it("emits explicit zero cachedContentTokenCount and zero usage", () => {
+    const out = project({
+      id: "r", status: "completed", output: [],
+      usage: { input_tokens: 5, output_tokens: 1, total_tokens: 6, input_tokens_details: { cached_tokens: 0 } },
+    });
+    expect(out.usageMetadata.cachedContentTokenCount).toBe(0);
+    expect(project({ id: "r", status: "completed", output: [] }).usageMetadata).toEqual({
+      promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0,
+    });
+  });
+
+  it("treats incomplete content_filter as a refusal in Gemini, OpenAI and Claude", () => {
+    const body = { id: "r", status: "incomplete", incomplete_details: { reason: "content_filter" }, output: [] };
+    expect(project(body).candidates[0].finishReason).toBe(GEMINI_FINISH.SAFETY);
+    expect(translateNonStreamingResponse(structuredClone(body), responses, FORMATS.OPENAI).choices[0].finish_reason).toBe("content_filter");
+    expect(translateNonStreamingResponse(structuredClone(body), responses, FORMATS.CLAUDE).stop_reason).toBe("refusal");
+  });
+});
+
+describe("#1389 stream Gemini functionCall.id", () => {
+  it("carries the tool call id into the emitted functionCall", async () => {
+    const { openaiToAntigravityResponse } = await import("../../open-sse/translator/response/openai-to-antigravity.js");
+    const state = {};
+    openaiToAntigravityResponse({ id: "r", choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", function: { name: "lookup", arguments: "{\"q\":1}" } }] } }] }, state);
+    const out = openaiToAntigravityResponse({ id: "r", choices: [{ delta: {}, finish_reason: "tool_calls" }] }, state);
+    const fc = (out.response ?? out).candidates[0].content.parts[0].functionCall;
+    expect(fc).toEqual({ id: "call_1", name: "lookup", args: { q: 1 } });
+  });
+});
+
+describe("#1389 id/name pairing for Gemini tool results", () => {
+  it("keeps a name-only functionResponse for a call that carries an id (strip + salvage)", async () => {
+    const { stripOrphanedToolResults, salvageOrphanedToolResults } = await import("../../open-sse/translator/concerns/toolCall.js");
+    const mk = () => ({ contents: [
+      { role: "model", parts: [{ functionCall: { id: "c1", name: "lookup", args: {} } }] },
+      { role: "user", parts: [{ functionResponse: { name: "lookup", response: { result: "ok" } } }] },
+    ] });
+    for (const fn of [stripOrphanedToolResults, salvageOrphanedToolResults]) {
+      const body = mk();
+      fn(body);
+      expect(body.contents[1].parts).toEqual(mk().contents[1].parts);
+    }
+  });
+
+  it("omits functionCall.id when the Responses item has no real id", () => {
+    const out = openAIResponsesBodyToGemini({ id: "r", status: "completed", output: [{ type: RESPONSES_ITEM.FUNCTION_CALL, name: "n", arguments: "{}" }] });
+    expect(out.candidates[0].content.parts[0].functionCall).toEqual({ name: "n", args: {} });
+  });
+});

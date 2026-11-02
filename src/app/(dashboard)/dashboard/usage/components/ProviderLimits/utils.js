@@ -820,12 +820,16 @@ export function parseQuotaData(provider, data) {
               return;
             }
             normalizedQuotas.push({
-              name: quotaType === "user" ? "Personal" : quotaType === "organization" ? "Organization" : quotaType,
+              name: quotaType === "user" ? "Personal" : quotaType === "organization" ? "Organization" : quotaType === "addOn" ? "Add-on" : quotaType,
               used: quota.used || 0,
               total: Math.max(0, Number(quota.total) || 0) ||
               (Number(quota.used) || 0) + (Number(quota.remaining) || 0),
               unit: quota.unit,
-              resetAt: quota.resetAt || null
+              resetAt: quota.resetAt || null,
+              // Open-ended plans: the service flags Qoder's year-9999 sentinel.
+              neverExpires: quota.neverExpires === true,
+              // Add-on credits link to Qoder's own usage page (https only).
+              detailUrl: quota.detailUrl || null
             });
           });
         }

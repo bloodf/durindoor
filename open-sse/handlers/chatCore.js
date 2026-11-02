@@ -1760,7 +1760,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   }
 
   // Streaming response
-  const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+  const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx, credentials });
   abandonStreamingDetail = onStreamAbandoned;
   try {
     const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });

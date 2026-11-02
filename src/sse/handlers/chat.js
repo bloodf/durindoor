@@ -1260,6 +1260,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         "off",
         compressionEnabled: !!chatSettings.compressionEnabled,
         compressionEngines: chatSettings.compressionEngines || {},
+        contentMasking: chatSettings.contentMasking ?? null,
         // Detect source format by endpoint + body
         sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
         // A durable credential (OrcaRouter) has nothing to refresh: injecting the

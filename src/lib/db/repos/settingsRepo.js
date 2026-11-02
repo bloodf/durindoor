@@ -133,6 +133,8 @@ const DEFAULT_SETTINGS = {
   // Any engine throw fail-opens and restores the body; the loop never throws.
   compressionEnabled: false,
   compressionEngines: {},
+  // Opt-in outbound PII / credential masking (#1112): mode "off" | "warn" | "mask".
+  contentMasking: { mode: "off", credentials: true, pii: true },
   cavemanEnabled: false,
   cavemanLevel: "full",
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,

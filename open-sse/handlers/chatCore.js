@@ -58,6 +58,7 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
+import { maskRequestContent } from "../services/contentMasking.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
@@ -304,7 +305,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -585,6 +586,23 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // targetFormat lets a target that validates its own tool-call arguments
   // (e.g. CommandCode) keep rejecting malformed JSON instead of having it
   // silently coerced to "{}" before its own translator ever sees it.
+  // Opt-in PII / credential masking (#1112) on the source body, before any
+  // translation, so every provider format sees the masked text. Logs counts
+  // per type only, never the matched values. Not affected by the token-saver
+  // bypass header: it is a data-protection control, not a saver.
+  if (contentMasking?.mode === "warn" || contentMasking?.mode === "mask") {
+    try {
+      const masked = maskRequestContent(body, contentMasking);
+      if (masked.total > 0) {
+        body = masked.body;
+        const summary = Object.entries(masked.counts).map(([k, n]) => `${k}:${n}`).join(",");
+        log?.warn?.("MASKING", `${contentMasking.mode === "mask" ? "masked" : "detected"} ${masked.total} (${summary})`);
+      }
+    } catch (e) {
+      log?.warn?.("MASKING", `skipped: ${sanitizeErrorMessage(e?.message)}`);
+    }
+  }
+
   ensureToolCallIds(body, targetFormat);
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);

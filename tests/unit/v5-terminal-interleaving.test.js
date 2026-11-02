@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 // Auth imports the real machineId utility; only its host provider is synthetic.
 vi.mock("node-machine-id", () => ({ machineIdSync: () => "synthetic-cookie-machine-id" }));
 
@@ -76,6 +77,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   if (root) {
+    await disposeLoadedRequestDetailsRepo();
     fs.rmSync(root, { recursive: true, force: true });
     root = undefined;
   }

@@ -728,8 +728,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     }
   });
 
-  // #1089 failing: #1334 string numeric JSON Schema constraints are forwarded as strings instead of numbers.
-  it.skip("coerces string numeric schema constraints for Claude", () => {
+  it("coerces string numeric schema constraints for Claude", () => {
     const schema = { type: "object", properties: { n: { type: "number", minimum: "1", maximum: "10" } } };
     const out = request(CLAUDE, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -738,8 +737,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(out.tools[0].input_schema.properties.n).toEqual({ type: "number", minimum: 1, maximum: 10 });
   });
 
-  // #1089 failing: #1334 string numeric JSON Schema constraints are forwarded as strings instead of numbers.
-  it.skip("coerces string numeric schema constraints for Gemini", () => {
+  it("coerces string numeric schema constraints for Gemini", () => {
     const schema = { type: "object", properties: { n: { type: "number", minimum: "1", maximum: "10" } } };
     const out = request(GEMINI, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -748,8 +746,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(geminiDecl(out).parameters.properties.n).toEqual({ type: "number", minimum: 1, maximum: 10 });
   });
 
-  // #1089 failing: #1334 string numeric JSON Schema constraints are forwarded as strings instead of numbers.
-  it.skip("coerces string numeric schema constraints for Responses", () => {
+  it("coerces string numeric schema constraints for Responses", () => {
     const schema = { type: "object", properties: { n: { type: "number", minimum: "1", maximum: "10" } } };
     const out = request(RESPONSES, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -758,8 +755,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(out.tools[0].parameters.properties.n).toEqual({ type: "number", minimum: 1, maximum: 10 });
   });
 
-  // #1089 failing: #1334 malformed tool schemas are forwarded instead of rejected predictably.
-  it.skip("rejects malformed tool schemas for Claude", () => {
+  it("rejects malformed tool schemas for Claude", () => {
     const schema = { type: "object", properties: { x: null }, required: "not-an-array" };
     expect(() => request(CLAUDE, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -767,8 +763,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     }))).toThrow(/schema|invalid|malformed/i);
   });
 
-  // #1089 failing: #1334 malformed tool schemas are forwarded instead of rejected predictably.
-  it.skip("rejects malformed tool schemas for Gemini", () => {
+  it("rejects malformed tool schemas for Gemini", () => {
     const schema = { type: "object", properties: { x: null }, required: "not-an-array" };
     expect(() => request(GEMINI, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -776,8 +771,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     }))).toThrow(/schema|invalid|malformed/i);
   });
 
-  // #1089 failing: #1334 malformed tool schemas are forwarded instead of rejected predictably.
-  it.skip("rejects malformed tool schemas for Responses", () => {
+  it("rejects malformed tool schemas for Responses", () => {
     const schema = { type: "object", properties: { x: null }, required: "not-an-array" };
     expect(() => request(RESPONSES, chatBody({
       tools: [namespacedTool(false, schema)],

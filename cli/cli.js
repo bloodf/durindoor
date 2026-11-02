@@ -110,13 +110,18 @@ try { ensureTrayRuntime({ silent: true }); } catch {}
 
 const DISPLAY_NAME = "DurinDoor";
 // First non-internal IPv4 — the address remote peers actually reach when bound to 0.0.0.0.
+// Returns null when none found, undefined when interface enumeration itself failed.
 function getLanIp() {
-  for (const ifaces of Object.values(os.networkInterfaces())) {
-    for (const i of ifaces || []) {
-      if (i.family === "IPv4" && !i.internal) return i.address;
+  try {
+    for (const ifaces of Object.values(os.networkInterfaces())) {
+      for (const i of ifaces || []) {
+        if (i.family === "IPv4" && !i.internal) return i.address;
+      }
     }
+    return null;
+  } catch {
+    return undefined;
   }
-  return null;
 }
 
 // Local URL stays "localhost"; warn separately when bound to all interfaces (network-exposed).
@@ -564,6 +569,7 @@ function startServer(updatePromise) {
   if (host === DEFAULT_HOST) {
     const lanIp = getLanIp();
     if (lanIp) console.log(`\x1b[33m⚠ Network-exposed: reachable at http://${lanIp}:${port} (bound 0.0.0.0). Use --host 127.0.0.1 for local-only.\x1b[0m`);
+    else console.log(`\x1b[33m⚠ Network-exposed: bound 0.0.0.0 on port ${port}, ${lanIp === undefined ? "but the binding address is unknown (network interfaces unavailable)" : "but no external IPv4 address was found"}. Use --host 127.0.0.1 for local-only.\x1b[0m`);
   }
 
   let restartCount = 0;

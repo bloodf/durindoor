@@ -3,12 +3,13 @@ import createOpenAIEmbeddingAdapter from "./openai.js";
 import cloudflare from "./cloudflare.js";
 import cohere from "./cohere.js";
 import gemini from "./gemini.js";
+import github from "./github.js";
 import openaiCompatNode from "./openaiCompatNode.js";
 import ollamaLocal from "./ollama-local.js";
 
 const OPENAI_COMPAT_PROVIDERS = [
   "openai", "openrouter", "mistral", "voyage-ai", "fireworks",
-  "together", "nebius", "github", "nvidia", "jina-ai",
+  "together", "nebius", "nvidia", "jina-ai",
   "vercel-ai-gateway",
 ];
 
@@ -17,6 +18,7 @@ const ADAPTERS = {
   "cloudflare-ai": cloudflare,
   cohere,
   gemini,
+  github,
   google_ai_studio: gemini,
   "ollama-local": ollamaLocal,
 };

@@ -20,6 +20,7 @@ import {
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { fixMissingToolResponses } from "../concerns/toolCall.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
@@ -856,7 +857,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           type: OPENAI_BLOCK.FUNCTION,
           name,
           description: String(tool.function.description || ""),
-          parameters: normalizeToolParameters(tool.function.parameters),
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.function.parameters, name)),
           // The Responses API requires `strict` on every function tool; default to
           // false (non-strict) instead of forwarding an undefined field.
           strict: tool.function.strict ?? false

@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let pricingRepo;
@@ -20,7 +21,8 @@ beforeAll(async () => {
   pricingRepo = await import("@/lib/db/repos/pricingRepo.js");
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await disposeLoadedRequestDetailsRepo();
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

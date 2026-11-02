@@ -35,6 +35,7 @@ vi.mock("next/server", () => ({
   NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }) },
 }));
 vi.mock("@/models", () => model);
+vi.mock("@/dashboardGuard", () => ({ canManageAccessConfig: async () => true }));
 vi.mock("@/shared/utils", () => ({ generateId: () => "test" }));
 
 const { POST } = await import("../../src/app/api/provider-nodes/route.js");

@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import m005 from "@/lib/db/migrations/005-api-key-expiry.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../../utils/requestDetailsCleanup.js";
 let tempDir;
 const originalDataDir = process.env.DATA_DIR;
 
@@ -15,9 +16,10 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
+  await disposeLoadedRequestDetailsRepo();
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
 });
 

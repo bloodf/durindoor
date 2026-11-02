@@ -79,11 +79,15 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `9router` | openai | apikey | `http://127.0.0.1:20130/v1` |
 | `adapta-web` | openai | webCookie | `https://agent.adapta.one/api/chat/stream/v1` |
 | `agentrouter` | claude | apikey | `https://agentrouter.org/v1/messages` |
+| `agnes` |  | apikey | `https://apihub.agnes-ai.com/v1/chat/completions` |
+| `agnes-cn` |  | apikey | `https://api.agnes-ai.cn/v1/chat/completions` |
 | `agy` | antigravity | oauth | `` |
 | `ai21` |  | apikey | `https://api.ai21.com/studio/v1/chat/completions` |
 | `aihorde` | openai | free | `https://oai.aihorde.net/v1/chat/completions` |
 | `aimlapi` |  | apikey | `https://api.aimlapi.com/v1/chat/completions` |
+| `ainative` |  | apikey | `https://api.ainative.studio/api/v1/chat/completions` |
 | `ainetcafe` |  | apikey | `https://microquickjs.com/v1/chat/completions` |
+| `aion` |  | apikey | `https://api.aionlabs.ai/v1/chat/completions` |
 | `alibaba` |  | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alibaba-cn` |  | apikey | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `alicode` |  | apikey | `https://coding.dashscope.aliyuncs.com/v1/chat/completions` |

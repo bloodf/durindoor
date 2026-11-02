@@ -31,7 +31,7 @@ describe("normalizeContextBudgetConfig", () => {
   it("keeps valid fields and filters the ladder override", () => {
     expect(normalizeContextBudgetConfig({
       mode: "floor", policy: "percentage", pct: 0.5, outputReserve: 100.7,
-      ladderOverride: [{ engine: "lite" }, { engine: 3 }, null, { engine: "caveman", intensity: "full" }],
+      ladderOverride: [{ engine: "lite" }, { engine: 3 }, null, { engine: "not-an-engine" }, { engine: "constructor" }, { engine: "caveman", intensity: "full" }],
     })).toEqual({
       ...DEFAULT_CONTEXT_BUDGET, mode: "floor", policy: "percentage", pct: 0.5, outputReserve: 100,
       ladderOverride: [{ engine: "lite" }, { engine: "caveman", intensity: "full" }],

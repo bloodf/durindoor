@@ -1,4 +1,5 @@
 import { isObject, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { ENGINE_CATALOG } from "../engineCatalog.js";
 
 /**
  * Context-budget adaptive compression — shared types + safe defaults (JS port).
@@ -45,7 +46,7 @@ export function normalizeContextBudgetConfig(raw) {
   // An absolute policy needs a positive budget; 0 would escalate every request.
   if (out.policy === "absolute" && out.absoluteBudget <= 0) out.policy = DEFAULT_CONTEXT_BUDGET.policy;
   if (Array.isArray(cfg.ladderOverride)) {
-    const ladder = cfg.ladderOverride.filter((s) => s && isString(s.engine) &&
+    const ladder = cfg.ladderOverride.filter((s) => s && isString(s.engine) && Object.hasOwn(ENGINE_CATALOG, s.engine) &&
       (s.intensity === undefined || isString(s.intensity))).
       map((s) => s.intensity ? { engine: s.engine, intensity: s.intensity } : { engine: s.engine });
     if (ladder.length > 0) out.ladderOverride = ladder;

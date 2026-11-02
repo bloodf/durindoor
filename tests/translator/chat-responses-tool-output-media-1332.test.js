@@ -34,6 +34,23 @@ describe("#1332 Chat→Responses tool-result media", () => {
     ]);
   });
 
+  it("accepts a string image_url and an existing input_image part", () => {
+    expect(outputOf({ content: [{ type: "image_url", image_url: "https://example.invalid/s.png" }] }))
+      .toEqual([{ type: "input_image", image_url: "https://example.invalid/s.png", detail: "auto" }]);
+    expect(outputOf({ content: [{ type: "input_image", image_url: "https://example.invalid/r.png" }] }))
+      .toEqual([{ type: "input_image", image_url: "https://example.invalid/r.png" }]);
+  });
+
+  it("falls back to a text part for an image_url without a url", () => {
+    const output = outputOf({ content: [
+      { type: "text", text: "see" },
+      { type: "image_url", image_url: { url: "" } },
+      { type: "image_url", image_url: { url: "https://example.invalid/a.png" } },
+    ] });
+    expect(output[1].type).toBe("input_text");
+    expect(output.some((part) => part.type === "input_image" && !part.image_url)).toBe(false);
+  });
+
   it("leaves text-only and string tool output as a string", () => {
     expect(outputOf({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] })).toBe("ab");
     expect(outputOf({ is_error: true, content: "boom" })).toBe("[Tool error]\nboom");

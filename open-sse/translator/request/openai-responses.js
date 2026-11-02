@@ -629,7 +629,8 @@ function chatPartToResponses(c, contentType) {
   if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
   if (c.type === OPENAI_BLOCK.IMAGE_URL) {
     const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
-    return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
+    // No usable URL: fall through to the text serialization below.
+    if (isString(url) && url) return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
   }
   if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
   const text = c.text || c.content || JSON.stringify(c);
@@ -775,7 +776,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       // Responses has no tool-error flag; retain failure meaning in its output text.
       const errorPrefix = msg.is_error === true ? "[Tool error]\n" : "";
       // Image parts stay media: Responses accepts an input_text/input_image array (#1332).
-      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL);
+      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE);
       const output = hasImage ?
       [
       ...(errorPrefix ? [{ type: RESPONSES_ITEM.INPUT_TEXT, text: errorPrefix }] : []),

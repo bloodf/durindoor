@@ -3,7 +3,7 @@ title: Installation
 description: Install DurinDoor with npm, from source, or Docker, and set DATA_DIR and JWT_SECRET.
 ---
 
-Choose npm, a source checkout, or Docker. Native installs use Node.js 20.20.2 and npm 10.8.2. Docker includes Node.js. You need disk for persistent data, a browser for the dashboard and OAuth, and access to your upstream providers.
+Choose npm, a source checkout, or Docker. Native installs use Node.js 26.13.0 and npm 11.20.0. Docker includes Node.js. You need disk for persistent data, a browser for the dashboard and OAuth, and access to your upstream providers.
 
 Before a native start, set a strong `INITIAL_PASSWORD` and a persistent `JWT_SECRET` in the process environment. For a source install, copy `.env.example` to `.env` and replace its `CHANGE_ME` values. Keep the same signing secrets on later starts. A source deployment without an explicit `DATA_DIR` also needs `API_KEY_SECRET` to create client keys.
 
@@ -71,6 +71,14 @@ The host bind path `$HOME/.durindoor` is not the native default (`~/.9router`). 
 
 </Tab>
 </Tabs>
+
+## Confirm your installation
+
+1. Open `http://localhost:20128/dashboard` and sign in with the initial password you chose.
+2. [Connect a provider](../providers/connecting-accounts.mdx). A running dashboard alone does not confirm provider access.
+3. [Create a gateway key and send your first request](./first-request.mdx).
+
+If you cannot sign in, verify that the startup process has the same `JWT_SECRET` and `INITIAL_PASSWORD` environment you configured. Avoid generating new signing secrets on every restart. [Troubleshooting](../troubleshooting.mdx) separates process, gateway-key, and provider failures.
 
 ## Data directory
 

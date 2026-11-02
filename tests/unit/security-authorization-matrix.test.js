@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // #1115: real auth, ownership, model/combo resolution, policy, account selection
 // and handler routing. HTTP rewriting is covered by the separate HTTP runner.
-const fixture = vi.hoisted(() => ({ keys: new Map(), scopes: new Map(), owners: new Map(), connections: [], settings: {}, combo: null, fetch: vi.fn(), core: vi.fn() }));
+const fixture = vi.hoisted(() => ({ keys: new Map(), scopes: new Map(), owners: new Map(), connections: [], settings: {}, combo: null, fetch: vi.fn(), core: vi.fn(), writes: [], trustedPeer: false }));
 vi.mock("@/lib/db/driver.js", () => ({
   getAdapter: () => { throw new Error("Unexpected database access in authorization matrix"); },
   getAdapterSync: () => { throw new Error("Unexpected database access in authorization matrix"); },
@@ -11,7 +11,7 @@ vi.mock("@/lib/apiKeyLimits.js", () => ({ enforceApiKeyLimits: async () => null 
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: async () => "matrix-cli" }));
 vi.mock("@/lib/auth/dashboardSession", () => ({ verifyDashboardAuthToken: async (value) => value === "matrix-session" }));
-vi.mock("@/lib/auth/trustedPeer", () => ({ hasTrustedPeerHeaders: () => false }));
+vi.mock("@/lib/auth/trustedPeer", () => ({ hasTrustedPeerHeaders: () => fixture.trustedPeer }));
 vi.mock("next/server", () => ({ NextResponse: class extends Response {
   static next() { return new Response(null, { headers: { "x-matrix-next": "1" } }); }
   static json(body, init) { return Response.json(body, init); }
@@ -39,6 +39,16 @@ vi.mock("@/lib/localDb", () => ({
   getModelAliases: async () => ({ friendly: "openai/gpt-4o" }),
   getProviderNodes: async () => [], getCustomModels: async () => [],
   getSyncedModelCatalog: async () => null, getSyncedModelCatalogs: async () => [],
+  // Management mutations record the write instead of touching storage.
+  createApiKey: async (name) => { fixture.writes.push("createApiKey"); return { id: "new", key: "sk-new", name, policy: null }; },
+  updateApiKey: async (id) => { fixture.writes.push("updateApiKey"); return { id, name: id, policy: null }; },
+  deleteApiKey: async () => { fixture.writes.push("deleteApiKey"); return true; },
+  getGroupIdsForApiKey: async () => [],
+  getProviderNodeById: async (id) => ({ id, type: "openai-compatible", name: "Node", prefix: "node", baseUrl: "https://node.invalid/v1" }),
+  createProviderNode: async (node) => { fixture.writes.push("createProviderNode"); return node; },
+  updateProviderNode: async (id, patch) => { fixture.writes.push("updateProviderNode"); return { id, ...patch }; },
+  deleteProviderNode: async () => { fixture.writes.push("deleteProviderNode"); return true; },
+  deleteProviderConnectionsByProvider: async () => { fixture.writes.push("deleteProviderConnectionsByProvider"); },
 }));
 // Keep actual key authentication and account scope selection; exclude live quota
 // discovery/reservations from this authorization-only suite.
@@ -62,6 +72,10 @@ const { NATIVE_OPERATIONS } = await import("@/sse/handlers/nativeProviderConfig.
 const { handleChat } = await import("@/sse/handlers/chat.js");
 const { default: registry } = await import("open-sse/providers/registry/index.js");
 const { resetComboRotation, resetComboScoring } = await import("open-sse/services/combo.js");
+const keysRoute = await import("@/app/api/keys/route.js");
+const keyRoute = await import("@/app/api/keys/[id]/route.js");
+const nodesRoute = await import("@/app/api/provider-nodes/route.js");
+const nodeRoute = await import("@/app/api/provider-nodes/[id]/route.js");
 const principals = ["dashboard", "cli", "owner", "foreign", "inactive", "expired", "anonymous"];
 const admitted = (principal) => ["cli", "owner", "foreign"].includes(principal);
 const paths = ["canonical", "alias", "double-v1", "encoded"];
@@ -106,7 +120,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network access in authorization matrix"); }));
   resetComboRotation(); resetComboScoring();
-  fixture.keys.clear(); fixture.scopes.clear(); fixture.owners.clear(); fixture.combo = null;
+  fixture.keys.clear(); fixture.scopes.clear(); fixture.owners.clear(); fixture.combo = null; fixture.writes = []; fixture.trustedPeer = false;
   fixture.settings = { requireApiKey: true, requireLogin: true, comboStrategy: "fallback", visionBridgeEnabled: false };
   for (const principal of ["owner", "foreign", "inactive", "expired"]) fixture.keys.set(`matrix-${principal}`, {
     id: principal, key: `matrix-${principal}`, name: principal, isActive: principal !== "inactive",
@@ -240,4 +254,51 @@ it.each(tracked)("rejects cross-provider substitution: $label", async (op) => {
     op.method === "POST" ? {} : undefined, { "x-connection-id": `${op.provider}-account` });
   const response = await native[op.method](req, { params: Promise.resolve({ provider: op.provider, operation: path.slice(1).split("/") }) });
   expect(response.status).toBe(400); expect(fixture.fetch).not.toHaveBeenCalled();
+});
+
+// Key and provider-node management needs an operator principal. Application
+// API keys pass the management gate but not the route, whether or not they
+// carry a policy cap or provider-account scope.
+const nodeBody = { name: "Node", prefix: "node", apiType: "chat", baseUrl: "https://node.invalid/v1" };
+const managementMutations = [
+  ["POST /api/keys", () => ["/api/keys", "POST", { name: "minted" }], (req) => keysRoute.POST(req)],
+  ["PUT /api/keys/:id", () => ["/api/keys/owner", "PUT", { dailyLimitTokens: null, policy: null }], (req) => keyRoute.PUT(req, { params: Promise.resolve({ id: "owner" }) })],
+  ["DELETE /api/keys/:id", () => ["/api/keys/owner", "DELETE"], (req) => keyRoute.DELETE(req, { params: Promise.resolve({ id: "owner" }) })],
+  ["POST /api/provider-nodes", () => ["/api/provider-nodes", "POST", { ...nodeBody, type: "openai-compatible" }], (req) => nodesRoute.POST(req)],
+  ["PUT /api/provider-nodes/:id", () => ["/api/provider-nodes/node-1", "PUT", nodeBody], (req) => nodeRoute.PUT(req, { params: Promise.resolve({ id: "node-1" }) })],
+  ["DELETE /api/provider-nodes/:id", () => ["/api/provider-nodes/node-1", "DELETE"], (req) => nodeRoute.DELETE(req, { params: Promise.resolve({ id: "node-1" }) })],
+];
+describe.each([...principals, "scoped"])("management mutations as %s", (principal) => {
+  it.each(managementMutations)("%s", async (_label, spec, handler) => {
+    fixture.keys.set("matrix-scoped", { id: "scoped", key: "matrix-scoped", name: "scoped", isActive: true, expiresAt: null, policy: { allowedModels: ["openai/gpt-4o"], dailyLimitTokens: 10 } });
+    fixture.scopes.set("scoped", ["openai-account"]);
+    const [path, method, body] = spec();
+    const req = request(path, principal, method, body, principal === "scoped" ? { authorization: "Bearer matrix-scoped" } : {});
+    const response = await guarded(req, handler);
+    if (["dashboard", "cli"].includes(principal)) {
+      expect(response.status).toBeLessThan(300);
+      expect(fixture.writes.length).toBeGreaterThan(0);
+      return;
+    }
+    expect(response.status).toBe(["owner", "foreign", "scoped"].includes(principal) ? 403 : 401);
+    expect(fixture.writes).toEqual([]);
+  });
+});
+
+// Loopback peer with requireLogin off is the open local dashboard: an operator
+// without credentials. A presented application key still is not.
+describe.each(["anonymous", "owner"])("management mutations on loopback, login off, as %s", (principal) => {
+  it.each(managementMutations)("%s", async (_label, spec, handler) => {
+    fixture.trustedPeer = true;
+    fixture.settings.requireLogin = false;
+    const [path, method, body] = spec();
+    const response = await guarded(request(path, principal, method, body, { "x-9r-real-ip": "127.0.0.1" }), handler);
+    if (principal === "anonymous") {
+      expect(response.status).toBeLessThan(300);
+      expect(fixture.writes.length).toBeGreaterThan(0);
+    } else {
+      expect(response.status).toBe(403);
+      expect(fixture.writes).toEqual([]);
+    }
+  });
 });

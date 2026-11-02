@@ -53,7 +53,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Stream | tool call | Claude | already-present | `streams tool calls to Claude with tool_use stop` |
 | Stream | tool call | Gemini | already-present | `streams tool calls to Gemini with functionCall name and args` |
 | Stream | tool call | Responses | already-present | `streams tool calls to Responses with call identity and completed arguments` |
-| Request | tool-result image media | Claude | failing | `converts tool-result image_url media to Claude image blocks` |
+| Request | tool-result image media | Claude | repaired (#1356) | `converts tool-result image_url media to Claude image blocks` |
 | Request | tool-result image media | Gemini | already-present | `keeps tool-result image URL visible through Gemini functionResponse` |
 | Request | tool-result image media | Responses | failing | `preserves tool-result image media on Chat to Responses` |
 | Request | turn-scoped tool pairing | Claude | repaired (#1335) | `pairs Claude tool results only within the current assistant turn` |
@@ -66,12 +66,12 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | free-form schema (#1091) | Claude | already-present | `preserves free-form object schemas on Claude` |
 | Request | empty schema reason placeholder (deliberate Gemini workaround) (#1091) | Gemini | already-present (deliberate degradation) | `fills empty schemas for Gemini with a reason placeholder` |
 | Request | keyword-named properties (#1091) | Claude/Gemini/Responses | already-present | `preserves keyword-named properties through Claude, Gemini, and Responses` |
-| Request | string numeric constraints (#1091) | Claude | failing | `coerces string numeric schema constraints for Claude` |
-| Request | string numeric constraints (#1091) | Gemini | failing | `coerces string numeric schema constraints for Gemini` |
-| Request | string numeric constraints (#1091) | Responses | failing | `coerces string numeric schema constraints for Responses` |
-| Request | malformed schema rejection (#1091) | Claude | failing | `rejects malformed tool schemas for Claude` |
-| Request | malformed schema rejection (#1091) | Gemini | failing | `rejects malformed tool schemas for Gemini` |
-| Request | malformed schema rejection (#1091) | Responses | failing | `rejects malformed tool schemas for Responses` |
+| Request | string numeric constraints (#1091) | Claude | repaired (#1334) | `coerces string numeric schema constraints for Claude` |
+| Request | string numeric constraints (#1091) | Gemini | repaired (#1334) | `coerces string numeric schema constraints for Gemini` |
+| Request | string numeric constraints (#1091) | Responses | repaired (#1334) | `coerces string numeric schema constraints for Responses` |
+| Request | malformed schema rejection (#1091) | Claude | repaired (#1334) | `rejects malformed tool schemas for Claude` |
+| Request | malformed schema rejection (#1091) | Gemini | repaired (#1334) | `rejects malformed tool schemas for Gemini` |
+| Request | malformed schema rejection (#1091) | Responses | repaired (#1334) | `rejects malformed tool schemas for Responses` |
 
 ## Failing reasons (tracked issues)
 
@@ -79,10 +79,10 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 2. #1329 — Chat→Responses never copies `tool_choice`.
 3. #1330 — Chat JSON `finish_reason: error` becomes Claude `end_turn` / Gemini `STOP` instead of an abort terminal.
 4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` stays skipped: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so that projector branch is unreachable.
-5. #1332 — Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
+5. #1332 — Chat→Claude image conversion is repaired by #1356 (data URI and HTTP(S), preserving error flags). Chat→Responses still stringifies image parts into output text; that residual remains open.
 6. #1335 — Cross-turn `tool_call_id` reuse broke current-turn pairing on Claude, Gemini, and Responses (repaired: pair by call id within the current assistant turn; drop strays).
 7. #1333 — Kiro `description.trim` throws `TypeError` for object/number descriptions.
-8. #1334 — String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.
+8. #1334 — String `minimum`/`maximum` stayed strings and malformed schemas were forwarded (repaired: `concerns/toolSchema.js` coerces numeric-string constraints and rejects non-object `properties` entries or non-string-array `required` with HTTP 400 naming the tool, on the Claude, Gemini, and Chat→Responses paths).
 
 ## Known / deliberate degradations (not conformance)
 

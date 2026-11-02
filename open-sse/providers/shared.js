@@ -227,13 +227,14 @@ export function isOpenCodeZenBaseUrl(baseUrl) {
   baseUrl.trim().replace(/\/+$/, "") === OPENCODE_ZEN_BASE_URL;
 }
 
-// Official Antigravity IDE Desktop 2.11.0 fingerprint captured from macOS arm64.
-// Keep this static even when DurinDoor runs on Linux: the provider profile is
-// intentionally matching the IDE client, not the server host.
+// Official Antigravity Hub Desktop 2.24.0 fingerprint captured from macOS arm64
+// (upstream 9router f172c3c4). Keep this static even when DurinDoor runs on
+// Linux: the provider profile is intentionally matching the Hub client, not the
+// server host.
 // DurinDoor keeps the PROD cloudcode-pa host (upstream uses the daily host).
-export const ANTIGRAVITY_IDE_VERSION = "2.11.0";
+export const ANTIGRAVITY_IDE_VERSION = "2.24.0";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://cloudcode-pa.googleapis.com";
-export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/ide/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
+export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 
 // Antigravity OAuth client credentials (public CLI client — duplicated in usage.js + src/lib/oauth)
 // Set via env vars — see SECRETS_AND_CONFIG.md

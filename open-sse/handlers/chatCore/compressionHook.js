@@ -114,7 +114,12 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       // Always forward stepConfig per contract {config, stepConfig}. Stacked steps
       // carry the real planner step (with intensity); single-mode plans have an
       // empty stackedPipeline, so synthesize a minimal {engine} step.
-      const step = stepById[id] ?? { engine: id };
+      // Per-engine options from the toggle map (e.g. lite truncateToolResults /
+      // maxToolLength) ride on the step; the plan's own step fields win.
+      const engineOptions = isObject(cfg.engines?.[id]) ? { ...cfg.engines[id] } : {};
+      delete engineOptions.enabled;
+      delete engineOptions.level;
+      const step = { ...engineOptions, ...(stepById[id] ?? { engine: id }) };
       const opts = { config: cfg.applyOpts || {}, stepConfig: step };
       const res = await getEngine(id).apply(working, opts);
       if (!res || !isObject(res) || !res.body || !isObject(res.body)) {

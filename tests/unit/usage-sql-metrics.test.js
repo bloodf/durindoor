@@ -6,6 +6,7 @@ import { aggregateTokenSaverEvents } from "../../open-sse/rtk/index.js";
 import migration from "../../src/lib/db/migrations/020-token-saver-aggregates.js";
 import { backfillTokenSaverDaily } from "../../src/lib/db/migrations/token-saver-daily-schema.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const now = new Date(2026, 6, 14, 12);
 const dateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 let dir, oldDataDir, repo, db;
@@ -19,13 +20,14 @@ beforeEach(async () => {
   repo = await import("@/lib/db/repos/usageRepo.js");
   db = await (await import("@/lib/db/driver.js")).getAdapter();
 });
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   delete global._statsEmitTimers;
   if (oldDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = oldDataDir;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

@@ -52,7 +52,8 @@ describe("#6411 OpenCodeExecutor strips client_metadata", () => {
     });
     expect(out.client_metadata).toBeUndefined();
     expect(out.model).toBe("kimi-k2.5");
-    expect(out.messages[0].content).toBe("hi");
+    // messages[0] is the fingerprint placeholder note (upstream 5bdcd5e7).
+    expect(out.messages.find((msg) => msg.role === "user").content).toBe("hi");
   });
 
   it("transformRequest is a no-op when client_metadata absent", () => {

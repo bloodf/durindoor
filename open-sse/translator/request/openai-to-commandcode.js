@@ -196,13 +196,13 @@ function convertTools(tools) {
       result.push({
         name: t.function.name,
         description: t.function.description,
-        input_schema: toClaudeInputSchema(t.function.parameters)
+        input_schema: toClaudeInputSchema(t.function.parameters, undefined, t.function.name)
       });
     } else if (t.name && (t.input_schema || t.parameters)) {
       result.push({
         name: t.name,
         description: t.description,
-        input_schema: toClaudeInputSchema(t.input_schema, t.parameters)
+        input_schema: toClaudeInputSchema(t.input_schema, t.parameters, t.name)
       });
     }
   }

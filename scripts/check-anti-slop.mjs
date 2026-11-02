@@ -5,7 +5,7 @@
  * Runs vendored dmmulroy/anti-slop (via oxlint) with every generic rule as
  * error. Exit code is non-zero when any diagnostic remains.
  *
- * Node 20.20.x (CI pin) does not support `--experimental-strip-types`. The
+ * Oxlint does not rely on Node type stripping. The
  * vendored plugin is pre-bundled to `tools/oxlint/anti-slop/index.bundle.js`
  * by `scripts/build-anti-slop-plugin.mjs` before oxlint runs.
  *

@@ -46,8 +46,10 @@ describe("Claude tool input schema normalization (#1350)", () => {
     expect(translateTool(tool)).toEqual({ type: "object", properties: {}, required: [] });
   });
 
-  it("passes a non-object typed schema through unchanged", () => {
-    expect(translateTool({ parameters: { type: "string" } })).toEqual({ type: "string" });
+  // #1353: Anthropic requires type:"object"; a non-object schema is a 400, not a passthrough.
+  it("rejects a non-object typed schema with a 400 naming the tool", () => {
+    expect(() => translateTool({ parameters: { type: "string" } }))
+      .toThrowError(expect.objectContaining({ statusCode: 400, message: expect.stringContaining('"lookup"') }));
   });
 
   it("normalizes parameters first when empty parameters coexist with valid input_schema", () => {

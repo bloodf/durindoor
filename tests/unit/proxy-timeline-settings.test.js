@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 vi.mock("next/server", () => ({
   NextResponse: {
     json: (body, init = {}) => ({ body, status: init.status || 200 }),
@@ -28,7 +29,8 @@ beforeAll(async () => {
   settingsRoute = await import("../../src/app/api/settings/route.js");
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

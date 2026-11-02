@@ -1,36 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_DECOY_RESPONSES_TOOLS, OPENCODE_UA } from "../../open-sse/executors/opencode.js";
+import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_UA } from "../../open-sse/executors/opencode.js";
+import { OPENCODE_FINGERPRINT_TOOLS } from "../../open-sse/utils/opencodeFingerprint.js";
 
-// Upstream #4188: the free-tier gate wants all four of the official CLI's
-// file-search tools, not just the bash/read pair the fork shipped before.
-const OPENCODE_FINGERPRINT_NAMES = ["bash", "glob", "grep", "read"];
+// Upstream 5bdcd5e7 + 483c10f5: OpenCode v2 wants its own `read` and `shell`
+// definitions verbatim on every free-tier request.
+const chatNames = (body) => body.tools.map((tool) => tool.function.name);
+const flatNames = (body) => body.tools.map((tool) => tool.name);
+const responsesInput = [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }];
 
-describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
-  it("cloaks Responses requests even when the client already supplies tools", () => {
+describe("OpenCodeExecutor free-tier fingerprint tools (5bdcd5e7, 483c10f5)", () => {
+  it("appends read and shell to Responses requests that already carry caller tools", () => {
     const executor = new OpenCodeExecutor();
     const body = {
-      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
-      tools: [{
-        type: "function",
-        name: "zcode_search",
-        description: "client-provided tool",
-        parameters: { type: "object", properties: {} },
-      }],
+      input: responsesInput,
+      tools: [{ type: "function", name: "zcode_search", description: "client-provided tool", parameters: { type: "object", properties: {} } }],
       tool_choice: "auto",
     };
 
     const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
 
-    const names = transformed.tools.map((tool) => tool.name);
-    expect(names).toContain("zcode_search");
-    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
-      expect(names.filter((n) => n === decoy)).toHaveLength(1);
-    }
+    expect(flatNames(transformed)).toEqual(["zcode_search", "read", "shell"]);
     expect(transformed.store).toBe(false);
   });
 
-  it("cloaks Chat Completions requests even when the client already supplies tools", () => {
+  it("appends read and shell to Chat Completions requests that already carry caller tools", () => {
     const executor = new OpenCodeExecutor();
     const body = {
       messages: [{ role: "user", content: "hi" }],
@@ -39,124 +33,72 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
 
     const transformed = executor.transformRequest("big-pickle", body, true, {});
 
-    const names = transformed.tools.map((tool) => tool.function.name);
-    expect(names).toContain("custom_tool");
-    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
-      expect(names).toContain(decoy);
-    }
+    expect(chatNames(transformed)).toEqual(["custom_tool", "read", "shell"]);
   });
 
-  // #4128 round-4 review: Zen's gate checks for the exact lowercase strings
-  // "bash"/"glob"/"grep"/"read". A caller's TitleCase Bash/Glob/Grep/Read
-  // tool (as a Claude Code caller sends) is a DIFFERENT string and must
-  // never suppress the exact lowercase decoy — doing so drops the
-  // fingerprint from the outgoing request and Zen 403s FreeTierError. The
-  // caller's own TitleCase tool must also survive untouched.
-  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Chat Completions)", () => {
+  it("keeps a caller TitleCase Read next to the exact lowercase fingerprint tool", () => {
     const executor = new OpenCodeExecutor();
-    const body = {
+    const chat = executor.transformRequest("big-pickle", {
       messages: [{ role: "user", content: "hi" }],
-      tools: [{ type: "function", function: { name: "Bash", parameters: { type: "object", properties: {} } } }],
-    };
+      tools: [{ type: "function", function: { name: "Read", parameters: { type: "object", properties: {} } } }],
+    }, true, {});
+    expect(chatNames(chat)).toEqual(["Read", "read", "shell"]);
+    expect(chat._toolNameMap).toBeUndefined();
 
-    const transformed = executor.transformRequest("big-pickle", body, true, {});
-
-    const names = transformed.tools.map((tool) => tool.function.name);
-    expect(names).toContain("Bash");
-    for (const decoy of OPENCODE_FINGERPRINT_NAMES) {
-      expect(names.filter((n) => n === decoy)).toHaveLength(1);
-    }
-  });
-
-  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Responses)", () => {
-    const executor = new OpenCodeExecutor();
-    const body = {
-      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
-      tools: [{ type: "function", name: "Read", description: "d", parameters: { type: "object", properties: {} } }],
-      tool_choice: "auto",
-    };
-
-    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
-
-    const names = transformed.tools.map((tool) => tool.name);
-    expect(names).toContain("Read");
-    expect(names.filter((n) => n === "read")).toHaveLength(1);
-  });
-
-  it("keeps the exact lowercase decoy alongside a caller TitleCase tool of the same base name (Claude Messages, Union Alpha)", () => {
-    const executor = new OpenCodeExecutor();
-    const body = {
+    const claude = executor.transformRequest("union-alpha", {
       messages: [{ role: "user", content: "hi" }],
-      tools: [{ name: "Grep", description: "d", input_schema: { type: "object", properties: {} } }],
-    };
-
-    const transformed = executor.transformRequest("union-alpha", body, true, {});
-
-    const names = transformed.tools.map((tool) => tool.name);
-    expect(names).toContain("Grep");
-    expect(names.filter((n) => n === "grep")).toHaveLength(1);
+      tools: [{ name: "Read", description: "d", input_schema: { type: "object", properties: {} } }],
+    }, true, {});
+    expect(flatNames(claude)).toEqual(["Read", "read", "shell"]);
+    expect(claude.tools[1].input_schema.required).toEqual(["path"]);
+    expect(claude.tools[1].function).toBeUndefined();
   });
 
   it("does not throw when a caller tool name is a non-string (#4146 extended)", () => {
     const executor = new OpenCodeExecutor();
-    const chatBody = {
+    expect(() => executor.transformRequest("big-pickle", {
       messages: [{ role: "user", content: "hi" }],
       tools: [{ type: "function", function: { name: 1, parameters: { type: "object", properties: {} } } }],
-    };
-    expect(() => executor.transformRequest("big-pickle", chatBody, true, {})).not.toThrow();
-
-    const responsesBody = {
-      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+    }, true, {})).not.toThrow();
+    expect(() => executor.transformRequest("muse-spark-1.3-contributor-free", {
+      input: responsesInput,
       tools: [{ type: "function", name: true, description: "d", parameters: { type: "object", properties: {} } }],
       tool_choice: "auto",
-    };
-    expect(() => executor.transformRequest("muse-spark-1.3-contributor-free", responsesBody, true, {})).not.toThrow();
-
-    const claudeBody = {
+    }, true, {})).not.toThrow();
+    expect(() => executor.transformRequest("union-alpha", {
       messages: [{ role: "user", content: "hi" }],
       tools: [{ name: {}, description: "d", input_schema: { type: "object", properties: {} } }],
-    };
-    expect(() => executor.transformRequest("union-alpha", claudeBody, true, {})).not.toThrow();
+    }, true, {})).not.toThrow();
   });
 
-  it("still injects the full decoy set when no tools are supplied", () => {
+  it("injects the fingerprint set without defaulting tool_choice to none when no tools are supplied", () => {
     const executor = new OpenCodeExecutor();
     const transformed = executor.transformRequest("big-pickle", { messages: [] }, true, {});
-    const names = transformed.tools.map((tool) => tool.function.name);
-    expect(names).toEqual(OPENCODE_FINGERPRINT_NAMES);
-    expect(transformed.tool_choice).toBe("none");
+    expect(chatNames(transformed)).toEqual(OPENCODE_FINGERPRINT_TOOLS);
+    // Upstream answers tool_choice "none" with 403 FreeTierError.
+    expect(transformed.tool_choice).toBeUndefined();
   });
 
   it("does not override a caller-supplied tool_choice on Responses requests that already carry tools (#4146)", () => {
     const executor = new OpenCodeExecutor();
     const body = {
-      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      input: responsesInput,
       tools: [{ type: "function", name: "zcode_search", description: "d", parameters: { type: "object", properties: {} } }],
       tool_choice: "required",
     };
 
-    // Deliberately not a Muse Spark contributor model: 1.2 and 1.3 both carry
-    // the hard-400 quirk (port(upstream): aa14ef7 + #4165) that demotes any
-    // non-auto tool_choice regardless of caller tools, which is the opposite of
-    // what this test is checking. See the dedicated test below for that quirk.
+    // Not a Muse Spark contributor model: 1.2 and 1.3 carry the hard-400 quirk
+    // that demotes any non-auto tool_choice (see the test below).
     const transformed = executor.transformRequest("muse-spark-2.0-contributor-free", body, true, {});
 
     expect(transformed.tool_choice).toBe("required");
-    const names = transformed.tools.map((tool) => tool.name);
-    expect(names).toEqual(["zcode_search", ...OPENCODE_DECOY_RESPONSES_TOOLS.map((t) => t.name)]);
+    expect(flatNames(transformed)).toEqual(["zcode_search", "read", "shell"]);
   });
 
-  it("demotes a caller-supplied tool_choice to auto on muse-spark-1.3-contributor-free even with caller tools (aa14ef7 overrides #4146 for this model only)", () => {
-    // OpenCode Free returns HTTP 400 for muse-spark-1.3-contributor-free when
-    // tool_choice is anything but "auto" — a hard upstream constraint, not a
-    // preference. #4146's "don't override the caller" rule exists to avoid
-    // gratuitously discarding intent, not to send a request known to fail;
-    // the model-specific quirk (forceAutoToolChoiceModels) wins for this one
-    // id. Every other muse model keeps #4146's preservation behavior, proven
-    // by the test above.
+  it("demotes a caller-supplied tool_choice to auto on muse-spark-1.3-contributor-free even with caller tools (aa14ef7)", () => {
     const executor = new OpenCodeExecutor();
     const body = {
-      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      input: responsesInput,
       tools: [{ type: "function", name: "zcode_search", description: "d", parameters: { type: "object", properties: {} } }],
       tool_choice: "required",
     };
@@ -164,29 +106,25 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
     const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
 
     expect(transformed.tool_choice).toBe("auto");
-    const names = transformed.tools.map((tool) => tool.name);
-    expect(names).toEqual(["zcode_search", ...OPENCODE_DECOY_RESPONSES_TOOLS.map((t) => t.name)]);
+    expect(flatNames(transformed)).toEqual(["zcode_search", "read", "shell"]);
   });
 
   it("still defaults tool_choice to auto on Responses requests with no caller tools (#4146)", () => {
     const executor = new OpenCodeExecutor();
-    const body = { input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }] };
-
-    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", body, true, {});
-
+    const transformed = executor.transformRequest("muse-spark-1.3-contributor-free", { input: responsesInput }, true, {});
     expect(transformed.tool_choice).toBe("auto");
   });
 
   it("ignores a malformed tool entry instead of throwing (#4146)", () => {
     const executor = new OpenCodeExecutor();
-    const responsesBody = {
-      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+    expect(() => executor.transformRequest("muse-spark-1.3-contributor-free", {
+      input: responsesInput,
       tools: [null, { type: "function", name: "zcode_search", parameters: { type: "object", properties: {} } }],
-    };
-    expect(() => executor.transformRequest("muse-spark-1.3-contributor-free", responsesBody, true, {})).not.toThrow();
-
-    const chatBody = { messages: [{ role: "user", content: "hi" }], tools: [undefined, { type: "function", function: { name: "custom_tool" } }] };
-    expect(() => executor.transformRequest("big-pickle", chatBody, true, {})).not.toThrow();
+    }, true, {})).not.toThrow();
+    expect(() => executor.transformRequest("big-pickle", {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [undefined, { type: "function", function: { name: "custom_tool" } }],
+    }, true, {})).not.toThrow();
   });
 
   it("forces stream:true for free-tier dispatch", () => {
@@ -206,47 +144,34 @@ describe("OpenCodeExecutor free-tier decoy tool cloaking (#4155)", () => {
   });
 });
 
-describe("OpenCodeExecutor free-tier client identity (#4128)", () => {
-  it("advertises the full official-client User-Agent, not a bare version token", () => {
+describe("OpenCodeExecutor free-tier client identity (5bdcd5e7)", () => {
+  it("advertises the OpenCode v2 User-Agent and cli client", () => {
     const executor = new OpenCodeExecutor();
     const headers = executor.buildHeaders({ id: "noauth", connectionId: "noauth" }, true, null, "big-pickle");
-    expect(headers["User-Agent"]).toBe(OPENCODE_UA);
-    // The gate still has to read a >= 1.17 opencode version out of it.
-    expect(headers["User-Agent"]).toMatch(/(^|\s)opencode\/1\.(1[7-9]|[2-9]\d)/);
-    // Pin the ai-sdk and runtime tokens as literal strings, independent of the
-    // OPENCODE_UA constant: a regression that shrinks the constant back to a
-    // bare "opencode/<version>" must not stay green here.
-    expect(headers["User-Agent"]).toContain("ai-sdk/provider-utils/4.0.40");
-    expect(headers["User-Agent"]).toContain("runtime/bun/1.3.14");
+    // Pinned as a literal, independent of the constant: upstream 403s the v1 form.
+    expect(headers["User-Agent"]).toBe("opencode/latest/2.0.26/cli");
+    expect(OPENCODE_UA).toBe("opencode/latest/2.0.26/cli");
+    expect(headers["x-opencode-client"]).toBe("cli");
   });
 
-  it("does not forward a client UA that only contains opencode/X.Y as a substring", () => {
-    // "not-opencode/1.18.31" and "opencode/1.18.31extra" both contain a
-    // digit-for-digit match of the version regex if it isn't token-bounded,
-    // but neither is a string Zen's real client ever sends; forwarding it
-    // unchanged would ship a fingerprint Zen has never seen instead of
-    // falling back to the known-good literal.
+  it("does not forward a v1 or substring-spoofed client UA", () => {
     const executor = new OpenCodeExecutor();
-    const spoofed = executor.buildHeaders(
-      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "not-opencode/1.18.31" } },
-      true, null, "big-pickle"
-    );
-    expect(spoofed["User-Agent"]).toBe(OPENCODE_UA);
-
-    const trailing = executor.buildHeaders(
-      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "opencode/1.18.31extra" } },
-      true, null, "big-pickle"
-    );
-    expect(trailing["User-Agent"]).toBe(OPENCODE_UA);
+    for (const ua of ["opencode/1.18.31", "not-opencode/latest/2.0.26/cli", "opencode/latest/2.0.26/cli extra", "opencode/latest/1.9.0/cli"]) {
+      const headers = executor.buildHeaders(
+        { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": ua } },
+        true, null, "big-pickle"
+      );
+      expect(headers["User-Agent"]).toBe(OPENCODE_UA);
+    }
   });
 
-  it("still forwards a genuine opencode/X.Y client UA unchanged", () => {
+  it("still forwards a genuine v2 opencode client UA unchanged", () => {
     const executor = new OpenCodeExecutor();
     const headers = executor.buildHeaders(
-      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "opencode/1.17.0" } },
+      { id: "noauth", connectionId: "noauth", rawHeaders: { "user-agent": "opencode/beta/2.1.0/desktop" } },
       true, null, "big-pickle"
     );
-    expect(headers["User-Agent"]).toBe("opencode/1.17.0");
+    expect(headers["User-Agent"]).toBe("opencode/beta/2.1.0/desktop");
   });
 
   it("pins prompt_cache_key to the canonical session on Muse Responses requests", () => {

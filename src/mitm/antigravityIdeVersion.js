@@ -1,10 +1,12 @@
 "use strict";
 
-// Rewrite Antigravity IDE markers so upstream AG 2.x backend accepts the request.
-// User-Agent header (antigravity/<old>) and body.metadata.ideVersion are forced
-// to a known-good IDE version. Hardcoded MVP — toggle/version configurable later.
+// Rewrite Antigravity IDE markers on generation requests so upstream AG 2.x
+// backend accepts them. User-Agent header (antigravity/<old>) and
+// body.metadata.ideVersion are forced to a known-good version. Catalog,
+// discovery and other passthrough requests retain the client's current identity
+// (upstream 9router f68d2f5e). Hardcoded MVP — toggle/version configurable later.
 const { isObject, isString } = require("../shared/utils/typeChecks.cjs");
-const ANTIGRAVITY_IDE_VERSION = "2.11.0";
+const ANTIGRAVITY_IDE_VERSION = "2.24.0";
 const ANTIGRAVITY_IDE_VERSION_OVERRIDE_ENABLED = true;
 
 function shouldRewriteMetadata(metadata) {
@@ -19,8 +21,10 @@ function rewriteAntigravityUserAgent(userAgent, version) {
   return userAgent.replace(/antigravity\/[^\s]+/, `antigravity/${version}`);
 }
 
-function applyAntigravityIdeVersionOverride(bodyBuffer, headers) {
-  if (!ANTIGRAVITY_IDE_VERSION_OVERRIDE_ENABLED) {
+function applyAntigravityIdeVersionOverride(bodyBuffer, headers, requestUrl) {
+  const isGenerationEndpoint = isString(requestUrl) &&
+  (requestUrl.includes(":generateContent") || requestUrl.includes(":streamGenerateContent"));
+  if (!ANTIGRAVITY_IDE_VERSION_OVERRIDE_ENABLED || !isGenerationEndpoint) {
     return { bodyBuffer, headers, applied: false, version: ANTIGRAVITY_IDE_VERSION };
   }
 

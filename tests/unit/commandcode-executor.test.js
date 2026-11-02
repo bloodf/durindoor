@@ -164,16 +164,31 @@ describe("CommandCode HTTP-200 error preflight", () => {
   });
 });
 
-describe("CommandCode reference protocol compatibility (port of decolua/9router #4224)", () => {
-  it("uses the current official CLI identity headers and drops the per-request session id", () => {
+describe("CommandCode CLI 1.88.0 identity headers (port of decolua/9router b1effa03)", () => {
+  it("sends the official CLI identity header set", () => {
     const headers = new CommandCodeExecutor().buildHeaders({ apiKey: "user_test" });
     expect(headers).toMatchObject({
       Authorization: "Bearer user_test",
-      "x-command-code-version": "1.54.2",
+      "x-command-code-version": "1.88.0",
       "x-cli-environment": "production",
+      "x-cli-surface": "cli",
+      "x-taste-learning": "false",
       "User-Agent": "cli",
     });
-    expect(headers["x-session-id"]).toBeUndefined();
+    expect(headers["x-session-id"]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it("keeps x-session-id stable for a captured client session", () => {
+    const ex = new CommandCodeExecutor();
+    const a = ex.buildHeaders({ apiKey: "k", _clientSessionId: "conv-1" })["x-session-id"];
+    expect(ex.buildHeaders({ apiKey: "k", _clientSessionId: "conv-1" })["x-session-id"]).toBe(a);
+    expect(ex.buildHeaders({ apiKey: "k", _clientSessionId: "conv-2" })["x-session-id"]).not.toBe(a);
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it("lists Kimi K3.1 Pro in the Command Code catalog (a3bdaf6d)", async () => {
+    const { default: reg } = await import("../../open-sse/providers/registry/commandcode.js");
+    expect(reg.models.some((m) => m.id === "moonshotai/Kimi-K3.1-Pro")).toBe(true);
   });
 });
 

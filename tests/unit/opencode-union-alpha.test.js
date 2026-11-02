@@ -25,7 +25,7 @@ describe("OpenCode Free Union Alpha", () => {
   it("routes Union Alpha through the Messages endpoint with the Anthropic version header", () => {
     const executor = new OpenCodeExecutor();
     const url = executor.buildUrl("union-alpha");
-    expect(url).toBe("https://opencode.ai/zen/v1/messages");
+    expect(url).toBe("https://opencode.ai/inference/v1/messages");
     expect(executor.buildHeaders({}, true, null, "union-alpha")).toMatchObject({
       "anthropic-version": "2023-06-01",
     });
@@ -34,8 +34,8 @@ describe("OpenCode Free Union Alpha", () => {
 
   it("leaves every other free model on its existing route", () => {
     const executor = new OpenCodeExecutor();
-    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/zen/v1/chat/completions");
-    expect(executor.buildUrl("muse-spark-1.2")).toBe("https://opencode.ai/zen/v1/responses");
+    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/inference/v1/chat/completions");
+    expect(executor.buildUrl("muse-spark-1.2")).toBe("https://opencode.ai/inference/v1/responses");
   });
 
   it("translates an OpenAI request into Claude wire format for Union Alpha", () => {
@@ -55,28 +55,24 @@ describe("OpenCode Free Union Alpha", () => {
     });
   });
 
-  it("cloaks Union Alpha requests with Claude-shaped decoy tools, never the OpenAI envelope", () => {
+  it("appends Claude-shaped fingerprint tools to Union Alpha, never the OpenAI envelope", () => {
     // Union Alpha's body arrives at transformRequest already in Claude wire
-    // format (see the translation test above). The free-tier fingerprint
-    // quartet must be appended in that same shape (name + input_schema) with
-    // a Claude tool_choice object, not the {type:"function", function:{...}}
-    // Chat Completions envelope and string tool_choice — /zen/v1/messages
-    // rejects a mixed/OpenAI-shaped body.
+    // format (see the translation test above). The fingerprint tools must be
+    // appended in that same shape (name + input_schema), and no tool_choice
+    // "none" is defaulted (upstream 5bdcd5e7 answers it with 403).
     const executor = new OpenCodeExecutor();
     const body = { model: "union-alpha", messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }] };
 
     const transformed = executor.transformRequest("union-alpha", body, true, {});
 
-    expect(transformed.tools).toEqual(
-      expect.arrayContaining(["bash", "glob", "grep", "read"].map((name) =>
-        expect.objectContaining({ name, input_schema: { type: "object", properties: {} } })
-      ))
-    );
+    expect(transformed.tools.map((tool) => tool.name)).toEqual(["read", "shell"]);
     for (const tool of transformed.tools) {
+      expect(tool).toHaveProperty("input_schema.type", "object");
       expect(tool).not.toHaveProperty("type");
       expect(tool).not.toHaveProperty("function");
     }
-    expect(transformed.tool_choice).toEqual({ type: "none" });
+    expect(transformed.tool_choice).toBeUndefined();
+    expect(transformed.system).toMatch(/^Do not call the `read` or `shell` tools;/);
   });
 
   it("leaves a caller-supplied Claude tool_choice alone for Union Alpha", () => {
@@ -92,6 +88,6 @@ describe("OpenCode Free Union Alpha", () => {
 
     expect(transformed.tool_choice).toEqual({ type: "tool", name: "custom_tool" });
     const names = transformed.tools.map((t) => t.name);
-    expect(names).toEqual(expect.arrayContaining(["custom_tool", "bash", "glob", "grep", "read"]));
+    expect(names).toEqual(["custom_tool", "read", "shell"]);
   });
 });

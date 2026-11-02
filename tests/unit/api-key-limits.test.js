@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let db;
@@ -39,11 +40,12 @@ beforeAll(async () => {
   policyInput = await import("@/shared/utils/apiKeyPolicyManagement.js");
 });
 
-afterAll(() => {
+afterAll(async () => {
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
   delete global._dbAdapter;
   delete global._apiKeyLimitState;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 

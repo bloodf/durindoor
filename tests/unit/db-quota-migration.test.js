@@ -11,6 +11,7 @@ import { canonicalizeSchemaSql, verifyQuotaStorageLayouts } from "../../src/lib/
 import { QUOTA_V7_TABLES, buildQuotaV7TableSql } from "../../src/lib/db/migrations/quota-v7-schema.js";
 
 import { latestVersion } from "../../src/lib/db/migrations/index.js";
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 let tempDir;
 let originalDataDir;
 let originalHome;
@@ -44,7 +45,8 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (originalDataDir === undefined) delete process.env.DATA_DIR;

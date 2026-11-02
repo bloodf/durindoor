@@ -9,7 +9,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getModelUpstreamThinkingIntent, resolveRequestedModelTier, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
@@ -441,7 +441,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
-  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
+  // Suffix intent, then body effort/budget, select `<model>-<tier>` catalog rows
+  // (upstream 9router 82aeb907). A catalog preset such as `(high)` applies only
+  // when the client sent no suffix and no effort.
+  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body);
+  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
+  const thinkingIntent = modelThinkingIntent ||
+  (requestedModelTier ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({
     provider,
     model: cleanModel,
@@ -627,7 +633,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent, modelCapabilities);
+    applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     /**
@@ -666,7 +672,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         stripList,
         connectionId,
         clientTool,
-        { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
+        { thinkingIntent, capabilityModel: cleanModel, modelCapabilities }
       );
     } catch (error) {
       // Translators flag a malformed client payload with statusCode 400; anything else is ours.

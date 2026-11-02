@@ -124,22 +124,67 @@ export function getModelType(aliasOrId, modelId) {
 function findModelAlias(models, modelId) {
   return models?.find((model) => model.aliases?.includes(modelId));
 }
-export function getModelUpstreamId(aliasOrId, modelId) {
+const TIER_ALIASES = { xhigh: "high", max: "high", minimal: "low" };
+
+function normalizeTier(level) {
+  if (!isString(level) || !level.trim()) return null;
+  const value = level.trim().toLowerCase();
+  return TIER_ALIASES[value] || value;
+}
+
+function budgetTier(budget) {
+  const value = Number(budget);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value > 16384 ? "high" : value <= 4096 ? "low" : "medium";
+}
+
+/**
+ * Requested catalog tier for `<model>-<tier>` rows (upstream 9router 82aeb907).
+ * Precedence: request suffix intent, then body effort, then thinking budget.
+ * Returns null when nothing names a tier.
+ */
+export function resolveRequestedModelTier(thinkingIntent, body = null) {
+  if (thinkingIntent?.mode === "level") return normalizeTier(thinkingIntent.level);
+  if (thinkingIntent?.mode === "budget") return budgetTier(thinkingIntent.budget);
+  if (thinkingIntent) return null;
+  const effort = body?.reasoning_effort || body?.output_config?.effort || body?.reasoning?.effort;
+  if (isString(effort) && effort.trim()) return normalizeTier(effort);
+  return budgetTier(body?.thinking?.budget_tokens);
+}
+
+function findUpstreamModel(aliasOrId, modelId, tier) {
+  const parsed = parseSuffix(modelId);
+  const baseId = parsed.cleanModel;
+  const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
+  const requestedTier = tier || resolveRequestedModelTier(parsed.override);
+  // Only rows whose upstream id carries a thinking preset are tier variants
+  // (Antigravity today); other `<model>-<level>` ids are distinct models.
+  const tieredRow = requestedTier && isString(baseId) ? findModel(models, `${baseId}-${requestedTier}`, aliasOrId) : null;
+  const tiered = parseSuffix(tieredRow?.upstreamModelId).override ? tieredRow : null;
+  return { baseId, found: tiered || findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId) };
+}
+
+export function getModelUpstreamId(aliasOrId, modelId, tier = null) {
   // Only recognized request-only thinking controls participate in catalog
   // lookup. Unknown parentheses may be part of a real passthrough/custom model
   // ID and must remain opaque instead of being rewritten through a base alias.
   // The control is never re-appended: provider-facing model IDs are always clean,
   // while thinking intent travels in request-scoped translation context.
-  const parsed = parseSuffix(modelId);
-  const baseId = parsed.cleanModel;
-  const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
-  const found = findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId);
-  if (found?.upstreamModelId) return found.upstreamModelId;
+  // Catalog upstreamModelId presets such as "gemini-3.8-flash-high(high)" are
+  // stripped here too; getModelUpstreamThinkingIntent exposes the preset level.
+  const { baseId, found } = findUpstreamModel(aliasOrId, modelId, tier);
+  if (found?.upstreamModelId) return parseSuffix(found.upstreamModelId).cleanModel;
   if (found?.id) return found.id;
   if (aliasOrId === "cx" && isString(baseId) && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
     return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length);
   }
   return baseId;
+}
+
+/** Thinking preset carried by a catalog upstreamModelId suffix, or null. */
+export function getModelUpstreamThinkingIntent(aliasOrId, modelId, tier = null) {
+  const upstreamModelId = findUpstreamModel(aliasOrId, modelId, tier).found?.upstreamModelId;
+  return parseSuffix(upstreamModelId).override;
 }
 
 export function getCanonicalModelId(aliasOrId, modelId) {

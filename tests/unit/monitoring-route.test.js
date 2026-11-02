@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 vi.mock("open-sse/index.js", () => ({}));
 vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: async (id) => ({ id, provider: "opencode", authType: "apikey" }) }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: async () => ({}) }));
@@ -27,7 +28,8 @@ beforeEach(async () => {
   monitoring = (await import("../../src/app/api/monitoring/route.js")).GET;
   connection = (await import("../../src/app/api/usage/[connectionId]/route.js")).GET;
 });
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (oldDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = oldDir;

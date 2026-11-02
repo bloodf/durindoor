@@ -45,10 +45,9 @@ describe("OpenCodeExecutor Muse Free tool_choice normalization", () => {
       const body = responsesBody(model, structuredClone(choice));
       const out = new OpenCodeExecutor().transformRequest(model, body, true, {});
       expect(out.tool_choice).toBe("auto");
-      // The cluster's unconditional decoy cloaking (port(upstream): #907, widened
-      // to the quartet by #4188) appends bash/glob/grep/read fingerprint tools
-      // alongside the caller's own tool; assert the
-      // caller's tool survives rather than pinning an exact count.
+      // The unconditional fingerprint pass (upstream 5bdcd5e7) appends read and
+      // shell alongside the caller's own tool; assert the caller's tool survives
+      // rather than pinning an exact count.
       expect(out.tools.some((t) => t.name === "get_weather")).toBe(true);
     }
   });
@@ -58,17 +57,15 @@ describe("OpenCodeExecutor Muse Free tool_choice normalization", () => {
     expect(autoOut.tool_choice).toBe("auto");
   });
 
-  it("absent tool_choice composes with #4146's own hasTools-gated default", () => {
-    // #4146 (decolua/9607 #915) narrowed cloakOpencodeTools's own default to
-    // `!hasTools && !body.tool_choice`, so it only fills in "auto" when the
-    // caller sent no tools of its own — this quirk's force only ever acts on
-    // an EXPLICIT non-auto value, so the two compose without fighting:
+  it("absent tool_choice defaults to auto with or without caller tools (upstream 5bdcd5e7)", () => {
+    // The fingerprint pass fills a missing Responses tool_choice with "auto",
+    // the API default; this quirk only ever acts on an EXPLICIT non-auto value.
     const noToolsBody = { model: FREE_13, input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }] };
     const noToolsOut = new OpenCodeExecutor().transformRequest(FREE_13, noToolsBody, true, {});
-    expect(noToolsOut.tool_choice).toBe("auto"); // #4146's own default fires (no caller tools)
+    expect(noToolsOut.tool_choice).toBe("auto");
 
     const withToolsOut = new OpenCodeExecutor().transformRequest(FREE_13, responsesBody(FREE_13, undefined), true, {});
-    expect("tool_choice" in withToolsOut).toBe(false); // #4146's default does NOT fire (caller sent tools)
+    expect(withToolsOut.tool_choice).toBe("auto");
   });
 
   it.each([

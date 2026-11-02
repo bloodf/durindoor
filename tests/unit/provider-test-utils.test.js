@@ -209,4 +209,33 @@ describe("testApiKeyConnection generic fallback (new batch providers)", () => {
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Provider test not supported");
   });
+
+  it.each([
+    ["antigravity", "antigravity/hub/2.24.0 darwin/arm64"],
+    ["agy", "antigravity/hub/2.24.0 darwin/arm64"],
+    ["gemini-cli", "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0"],
+  ])("probes %s Cloud Code access with the provider client identity", async (provider, userAgent) => {
+    mocks.getProviderConnectionById.mockResolvedValue({
+      id: `conn-${provider}`,
+      provider,
+      authType: "oauth",
+      accessToken: "token",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      providerSpecificData: {},
+    });
+    const { __setProviderTestFetchForTesting, testSingleConnection } = await import(
+      "../../src/app/api/providers/[id]/test/testUtils.js"
+    );
+    const probeFetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    const restoreFetch = __setProviderTestFetchForTesting(probeFetch);
+    try {
+      const result = await testSingleConnection(`conn-${provider}`);
+      expect(result.valid, JSON.stringify(result)).toBe(true);
+      expect(probeFetch).toHaveBeenCalledTimes(1);
+      expect(String(probeFetch.mock.calls[0][0])).toContain("cloudcode-pa.googleapis.com");
+      expect(probeFetch.mock.calls[0][1].headers["User-Agent"]).toBe(userAgent);
+    } finally {
+      restoreFetch();
+    }
+  });
 });

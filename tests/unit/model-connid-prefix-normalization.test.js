@@ -13,7 +13,7 @@ const originalDataDir = process.env.DATA_DIR;
 
 const CONN_ID = "openai-compatible-chat-6890";
 const ANTHROPIC_CONN_ID = "anthropic-compatible-chat-6890";
-const PREFIX = "fta";
+const PREFIX = "cnp";
 const RAW_MODEL_ID = "vova/gpt-5.5"; // upstream's own model id already has a slash
 
 async function setupDb() {
@@ -135,10 +135,10 @@ describe("connId-addressed custom node prefix normalization (#6890)", () => {
       baseUrl: "https://compatible.test/v1",
     });
 
-    // `fta-x/...` starts with "fta" but not "fta/" — must NOT be stripped.
-    await expect(ctx.getModelInfo(`${CONN_ID}/fta-x/model`)).resolves.toEqual({
+    // `cnp-x/...` starts with "cnp" but not "cnp/" — must NOT be stripped.
+    await expect(ctx.getModelInfo(`${CONN_ID}/cnp-x/model`)).resolves.toEqual({
       provider: CONN_ID,
-      model: "fta-x/model",
+      model: "cnp-x/model",
     });
   });
 });

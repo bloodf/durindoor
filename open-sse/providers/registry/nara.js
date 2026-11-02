@@ -17,6 +17,8 @@ export default {
     baseUrl: "https://router.bynara.id/v1/chat/completions",
     validateUrl: "https://router.bynara.id/v1/models",
   },
+  // Seed snapshot from OmniRoute release/v3.8.52 (61e07fb7), which took the free-plan models from
+  // the provider's plans API on 2026-09-02. No models endpoint is configured, so it is not refreshed.
   models: [
     { id: "agnes-2.0-flash", name: "Agnes 2.0 Flash", contextLength: 262144, supportsVision: true },
     { id: "agnes-2.5-flash", name: "Agnes 2.5 Flash", contextLength: 524288, supportsVision: true },

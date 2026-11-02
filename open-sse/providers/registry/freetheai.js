@@ -17,10 +17,7 @@ export default {
     validateUrl: "https://api.freetheai.org/v1/models",
     defaultContextLength: 128000,
   },
-  models: [
-    { id: "fta/zai/glm-5.3", name: "GLM 5.3 (zai)" },
-    { id: "fta/kimi/k3", name: "Kimi K3" },
-  ],
+  models: [],
   modelsFetcher: { url: "https://api.freetheai.org/v1/models", type: "openai" },
   passthroughModels: true,
   serviceKinds: ["llm"],

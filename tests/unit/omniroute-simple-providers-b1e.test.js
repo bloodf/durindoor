@@ -10,7 +10,7 @@ const CASES = [
     id: "freetheai",
     alias: "fta",
     base: "https://api.freetheai.org/v1",
-    models: ["fta/zai/glm-5.3","fta/kimi/k3"],
+    models: [],
     fetcher: true,
     extraFormats: [],
     notice: true,

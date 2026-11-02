@@ -1748,6 +1748,30 @@
     },
     "format": "openai"
   },
+  "tokenreply": {
+    "baseUrl": "https://api.tokenreply.com/v1/chat/completions",
+    "validateUrl": "https://api.tokenreply.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "uc-direct": {
+    "baseUrl": "https://api.uncensored.com/api/v1/chat/completions",
+    "validateUrl": "https://api.uncensored.com/api/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "unifically": {
+    "baseUrl": "https://api.unifically.com/v1/chat/completions",
+    "validateUrl": "https://api.unifically.com/v1/models?category=llm",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "unorouter": {
+    "baseUrl": "https://api.unorouter.com/v1/chat/completions",
+    "validateUrl": "https://api.unorouter.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "watsonx": {
     "baseUrl": "https://ca-tor.ml.cloud.ibm.com/ml/gateway/v1/chat/completions",
     "validateUrl": "https://ca-tor.ml.cloud.ibm.com/ml/gateway/v1/models",

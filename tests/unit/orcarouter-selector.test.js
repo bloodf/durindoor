@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 /**
  * Exercises the real `/api/providers/[id]/models` handler — the exact endpoint the
  * OrcaRouter model dropdown calls — so the assertions prove what the selector is
@@ -75,7 +76,8 @@ beforeAll(async () => {
   route = await import("@/app/api/providers/[id]/models/route.js");
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await disposeLoadedRequestDetailsRepo();
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

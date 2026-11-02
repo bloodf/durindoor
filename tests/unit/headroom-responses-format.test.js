@@ -215,7 +215,7 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     expect(diagnostics.reason).toBe("openai-responses request did not translate to messages[]");
   });
 
-  it("skips Responses tool/reasoning history instead of collapsing it into a message (#2132)", async () => {
+  it("never collapses Responses tool/reasoning history into a message (#2132)", async () => {
     global.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -267,8 +267,13 @@ describe("compressWithHeadroom openai-responses format (#1998)", () => {
     });
 
     expect(data).toBeNull();
-    expect(global.fetch).not.toHaveBeenCalled();
+    // Only the plain-text function_call_output leaf is projected (never the
+    // custom-tool call or reasoning items); a proxy reply that collapses it
+    // into a user message is rejected and the native input stays untouched.
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).messages).toEqual([
+      { role: "tool", tool_call_id: "headroom-tool-0", content: "ok" },
+    ]);
     expect(body.input).toEqual(input);
-    expect(diagnostics.reason).toBe("skipped: openai-responses tool/reasoning input is not safe to compress");
+    expect(diagnostics.reason).toBe("proxy response did not preserve tool-output IDs, order, roles or text");
   });
 });

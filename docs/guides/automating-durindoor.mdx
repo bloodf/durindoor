@@ -92,6 +92,8 @@ Account scoping details: [API key scoping](../operations/api-key-scoping.mdx).
 Do not put these on the automation key:
 
 - `GET /api/keys/{id}/reveal` and gateway-key reveal (`?reveal=1` included)
+- `POST /api/keys`, `PUT`/`DELETE /api/keys/{id}` (mint, edit, or delete keys)
+- `POST /api/provider-nodes`, `PUT`/`DELETE /api/provider-nodes/{id}`
 - `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`
 - `/api/settings/database` and cutover/rollback/import
 - `PATCH /api/settings` keys that change login, API-key enforcement, OIDC, outbound proxy, tunnel dashboard access, or observability

@@ -13,6 +13,7 @@ import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore.js";
+import { isGemini4Model } from "../providers/capabilities.js";
 
 /**
  * Preserve common OpenCode casing while rewriting branding at the Antigravity boundary.
@@ -195,6 +196,15 @@ function buildIdeRequestId({ body, request, credentials, model, requestType }) {
   const contentCount = Array.isArray(request?.contents) ? request.contents.length : 1;
   const step = Math.max(1, contentCount * 2 - 1);
   return `agent/${conversationId}/${Date.now()}/${trajectoryId}/${step}`;
+}
+
+// Gemini 4 rejects a user turn whose last part is not a functionResponse.
+function moveFunctionResponsesLast(content) {
+  if (content?.role !== "user" || !content.parts?.some((part) => part?.functionResponse)) return content;
+  return {
+    ...content,
+    parts: [...content.parts.filter((part) => !part?.functionResponse), ...content.parts.filter((part) => part?.functionResponse)]
+  };
 }
 
 export class AntigravityExecutor extends BaseExecutor {
@@ -446,11 +456,20 @@ export class AntigravityExecutor extends BaseExecutor {
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
     }
+    // Gemini 4 request rules apply at the provider boundary so every source
+    // format (OpenAI, Claude, native Gemini) is covered (upstream eb373017).
+    const gemini4 = isGemini4Model(model);
+    if (gemini4) {
+      delete generationConfig.temperature;
+      delete generationConfig.topP;
+      delete generationConfig.topK;
+    }
+    const finalContents = gemini4 ? contents.map(moveFunctionResponsesLast) : contents;
 
     const transformedRequest = {
       ...requestWithoutTools,
       generationConfig,
-      ...(contents.length > 0 && { contents }),
+      ...(finalContents.length > 0 && { contents: finalContents }),
       ...(tools && { tools }),
       sessionId,
       safetySettings: undefined,

@@ -124,8 +124,8 @@ export function terminateCommandGroup(pid) {
 
 export async function main() {
 
-const NODE_VERSION = "20.20.2";
-const NPM_VERSION = "10.8.2";
+const NODE_VERSION = "26.13.0";
+const NPM_VERSION = "11.20.0";
 const COMMITLINT_CLI_VERSION = "18.6.1"; // pins from wagoid/commitlint-github-action v5.5.1 / commitlint.yml
 const COMMITLINT_CONFIG_VERSION = "18.6.3";
 const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;

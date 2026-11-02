@@ -52,7 +52,7 @@ export default {
     // quirks: { dropOutputConfig: true, preservePromptCacheKey: true }, // latter: Chat endpoint accepts a client Responses prompt_cache_key on the Responses→Chat hop (default: stripped)
     // retry: { 429: { attempts: 6 }, 503: { attempts: 3 } },
     // usage: { url: "https://api.example.com/usage" }, // or { urls: [...] } for multi-call.
-    // modelsFetcher: { url: "https://api.example.com/models", type: "openai" }, // dynamic model list.
+    // modelsFetcher: { url: "https://api.example.com/models", type: "openai" }, // dynamic model list; optional excludeIdPattern (regex string) drops non-chat ids from the dashboard list.
     // regions: { sgp: "https://sgp...", cn: "https://cn..." }, defaultRegion: "sgp",
     // NOTE: clientId/clientSecret/tokenUrl are injected from `oauth` — do NOT duplicate here.
   },

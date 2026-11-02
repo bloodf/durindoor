@@ -26,7 +26,7 @@ The management key endpoints accept `providerConnectionIds` on create and update
 | `PUT /api/keys/<id>` without the field | Keep the existing selection. |
 | `PUT /api/keys/<id>` with `[]` | Remove the restriction and allow all eligible accounts. |
 
-Use your authenticated [management API](../reference/management-api.mdx) connection. `GET /api/keys` returns available account IDs, names, and providers without their credentials. Invalid, missing, or duplicate IDs return HTTP 400 and do not change the key.
+Use an operator credential on the [management API](../reference/management-api.mdx): a dashboard session, the CLI token, or the open local dashboard. A DurinDoor API key cannot create or change keys. `GET /api/keys` returns available account IDs, names, and providers without their credentials. Invalid, missing, or duplicate IDs return HTTP 400 and do not change the key.
 
 ## Remove an account without widening access
 

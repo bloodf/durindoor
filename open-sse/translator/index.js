@@ -165,6 +165,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     if (directFn) {
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
       finalizeTranslatedRequest = directFn.finalize;
+      /**
+       * Direct Responses→Chat (`openai-responses:openai`) never enters the OpenAI
+       * pivot below where overlong/dotted names are aliased. Apply the same clamp
+       * so Chat upstreams and the response round-trip map stay consistent (#1345).
+       */
+      if (sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI && isObject(result)) {
+        responsesToolAliases = normalizeOpenAIToolNames(result);
+      }
     } else {
       if (sourceFormat !== FORMATS.OPENAI) {
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
@@ -176,6 +184,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
            * Claude, Kiro and OpenAI-format upstreams reject. Alias the OpenAI intermediate
            * once, before any target translator, so declarations, tool_choice and history
            * share one map whatever the target (upstream PR #4200).
+           * chatCore aliases again for OpenAI targets with the provider's
+           * `toolNameMaxLength`; that is deliberate, and both maps compose into
+           * one toolNameMap that the response path restores (#1406).
            */
           if (sourceFormat === FORMATS.OPENAI_RESPONSES && isObject(result)) {
             responsesToolAliases = normalizeOpenAIToolNames(result);

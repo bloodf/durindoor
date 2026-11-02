@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isEncryptedBlob } from "../../src/lib/crypto/columnCrypto.js";
 import { QUOTA_MAX_IMPORT_ROWS, QUOTA_MAX_SOURCE_SNAPSHOTS } from "../../src/shared/constants/quota.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 let tempDir;
 let originalDataDir;
 let originalHome;
@@ -21,7 +22,8 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (originalDataDir === undefined) delete process.env.DATA_DIR;

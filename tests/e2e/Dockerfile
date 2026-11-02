@@ -1,5 +1,5 @@
 # Provisioning may use network; the resulting QA runtime has no external network.
-FROM node:20.20.2-bookworm-slim AS deps
+FROM node:26.13.0-bookworm-slim AS deps
 WORKDIR /usr/src/app
 RUN apt-get update \
  && apt-get install --no-install-recommends -y python3 make g++ ca-certificates \

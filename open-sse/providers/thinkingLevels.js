@@ -88,6 +88,10 @@ const PATTERN_THINKING = [
   // = disable. Placed after the codebuddy-cn/commandcode-scoped deepseek-v4*
   // rules above so those gateways keep their own narrower sets (first-match
   // semantics).
+  // OpenCode's free deepseek-v4.1-flash id publishes low|high|max (upstream
+  // 313559f4); the generic dotted rule below would advertise medium/xhigh,
+  // which it does not serve, so this entry must stay above it.
+  { pattern: "*deepseek-v4.1-flash-free*", levels: ["low", "high", "max"] },
   { pattern: "*deepseek-v4.*", levels: ["none", "low", "medium", "high", "xhigh", "max"] },
   // K3.1 Pro documents reasoning_effort low|high|max (default max). Placed before
   // the broad *kimi-k3* rule so third-party K3.1 Pro IDs are not clamped to max-only.
@@ -96,6 +100,10 @@ const PATTERN_THINKING = [
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
+  // OpenCode Free's MiMo route takes every effort and "none" really disables
+  // thinking (upstream b8331283, probed live). The lane speaks the gateway
+  // "opencode" enum, so advertise that set instead of Xiaomi's own one below.
+  { provider: "opencode", pattern: "*mimo*v2.6*", levels: L.opencode },
   { pattern: "*mimo*v2.6*", levels: ["none", "low", "medium", "high", "xhigh"] },
   // xAI publishes only low/medium/high/xhigh for Grok 4.5-4.7 and the 4.20
   // multi-agent model; reasoning cannot be disabled. grok-build-latest is a

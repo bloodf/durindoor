@@ -45,6 +45,15 @@ The catalog handlers do not consult `requireApiKey`. On loopback, reaching `/v1/
 
 ## Chat and completions
 
+When Chat Completions requests are routed to Claude, a tool message may contain
+text and `image_url` parts. Image data URIs become Claude base64 image blocks;
+HTTP(S) URLs become Claude URL image blocks inside the matching `tool_result`.
+String tool results and their `is_error` flag are preserved. Unsupported part
+types, missing image source fields, and invalid or non-HTTP(S) remote URLs are
+omitted, including when no supported parts remain. The conversion does not
+fetch images or validate their decoded bytes; the target provider validates
+image data. This applies to both streaming and non-streaming requests.
+
 Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. The gateway translates that format to the selected upstream provider.
 
 ```bash
@@ -57,6 +66,14 @@ curl http://localhost:20128/v1/chat/completions \
 Claude-format requests normally end on a user turn. A trailing assistant text prefill becomes a continuation user turn. Trailing `tool_use` blocks get error `tool_result` blocks. Opt out per request with `X-9Router-Assistant-Prefill: preserve`.
 
 `POST /v1/completions` is a router shim: `prompt` (string, or a one-element array) becomes one user message, then the chat core runs. Multiple prompts return 400. Streaming SSE `chat.completion.chunk` frames are rewritten to `text_completion`. Provider-native `/v1/completions` is not a goal.
+
+If a non-streaming request receives an OpenAI-style SSE error envelope upstream,
+the gateway returns an error rather than a partial completion. A valid integer
+`error.status` between 400 and 599 is preserved; otherwise the status is 502.
+The error message passes through credential/path redaction. Raw error details
+and partial content are not returned or recorded as successful usage. A
+`finish_reason: "error"` without an error envelope keeps the existing 502
+incoherent-response contract.
 
 `POST /v1/api/chat` runs the same chat core, then returns an Ollama-shaped response. Default model name if the body omits `model`: `llama3.2`.
 

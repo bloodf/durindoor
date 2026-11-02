@@ -17,9 +17,8 @@ export default {
     validateUrl: "https://inference.dahl.global/v1/models",
     defaultContextLength: 200000,
   },
-  models: [
-    { id: "MiniMaxAI/MiniMax-M2.7", name: "MiniMax M2.7" },
-    { id: "moonshotai/Kimi-K2.6", name: "Kimi K2.6" },
-  ],
+  models: [],
+  modelsFetcher: { url: "https://inference.dahl.global/v1/models", type: "openai" },
+  passthroughModels: true,
   serviceKinds: ["llm"],
 };

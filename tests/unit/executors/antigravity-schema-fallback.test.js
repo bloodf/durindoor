@@ -4,7 +4,8 @@ const cleaner = vi.hoisted(() => vi.fn(() => {
   throw new Error("unsupported cyclic schema");
 }));
 
-vi.mock("../../../open-sse/translator/formats/gemini.js", () => ({
+vi.mock("../../../open-sse/translator/formats/gemini.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   cleanJSONSchemaForAntigravity: cleaner,
 }));
 

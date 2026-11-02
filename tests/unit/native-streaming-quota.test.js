@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const nativeTransport = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: nativeTransport.fetch }));
 vi.mock("@/sse/services/auth.js", () => ({
@@ -34,7 +35,8 @@ beforeEach(async () => {
   key = await (await import("@/lib/db/repos/apiKeysRepo.js")).createApiKey("Native quota", "fixture-machine", [], 8, null, { policy: { maxTokens: 8 } });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   for (const signal of signals) {

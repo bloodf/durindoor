@@ -2,10 +2,10 @@ import { test, expect } from "./fixtures.js";
 
 // Real browser keyboard events exercise native dialog defaults. Synthetic story
 // key events cannot prove Escape, background inertness, or focus return.
-test("endpoint dialog contains keyboard focus and restores its opener", async ({ page, qa }) => {
+test("keys dialog contains keyboard focus and restores its opener", async ({ page, qa }) => {
   await qa.seed("empty");
   await qa.authenticate(page);
-  await page.goto(`${qa.baseURL}/dashboard/endpoint`);
+  await page.goto(`${qa.baseURL}/dashboard/keys`);
   const opener = page.getByRole("button", { name: "Create Key", exact: true }).first();
   await opener.click();
   const dialog = page.getByRole("dialog", { name: "Create API Key", exact: true });

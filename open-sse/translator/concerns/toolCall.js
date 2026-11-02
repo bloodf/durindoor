@@ -788,9 +788,10 @@ export function stripOrphanedToolResults(body) {
       if (!Array.isArray(turn.parts)) continue;
       for (const part of turn.parts) {
         if (!part.functionCall) continue;
-        // Prefer explicit id; fall back to name when id is absent (older Gemini shapes).
-        const key = part.functionCall.id ?? part.functionCall.name;
-        if (key) liveIds.add(key);
+        // Register id and name: a client may echo the id on the call but send
+        // the response with only a name (or vice versa).
+        if (part.functionCall.id) liveIds.add(part.functionCall.id);
+        if (part.functionCall.name) liveIds.add(part.functionCall.name);
       }
     }
     if (liveIds.size > 0 || body.contents.some((t) => Array.isArray(t.parts) && t.parts.some((p) => p.functionResponse))) {
@@ -799,8 +800,8 @@ export function stripOrphanedToolResults(body) {
         const before = turn.parts.length;
         turn.parts = turn.parts.filter((part) => {
           if (!part.functionResponse) return true;
-          const key = part.functionResponse.id ?? part.functionResponse.name;
-          return key ? liveIds.has(key) : true;
+          const { id, name } = part.functionResponse;
+          return id || name ? liveIds.has(id) || liveIds.has(name) : true;
         });
         stripped += before - turn.parts.length;
       }
@@ -959,8 +960,8 @@ export function salvageOrphanedToolResults(body) {
         if (!Array.isArray(turn.parts)) continue;
         for (const part of turn.parts) {
           if (part?.functionCall) {
-            const key = part.functionCall.id ?? part.functionCall.name;
-            if (key) knownFnIds.add(key);
+            if (part.functionCall.id) knownFnIds.add(part.functionCall.id);
+            if (part.functionCall.name) knownFnIds.add(part.functionCall.name);
           }
         }
       }
@@ -985,8 +986,8 @@ export function salvageOrphanedToolResults(body) {
               rebuiltParts.push(part);
               continue;
             }
-            const key = part.functionResponse.id ?? part.functionResponse.name;
-            if (key && knownFnIds.has(key)) {
+            const { id, name } = part.functionResponse;
+            if (knownFnIds.has(id) || knownFnIds.has(name)) {
               rebuiltParts.push(part);
               continue;
             }

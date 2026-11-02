@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 267 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 271 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -94,11 +94,14 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Doubao | `doubao` | apikey | 9 | [site](https://www.volcengine.com/product/doubao) |
 | DuckDuckGo AI Chat | `duckduckgo-web` | none | 6 | [site](https://duckduckgo.com/aichat) |
 | Edge TTS | `edge-tts` | none | 11 |  |
+| Electron Hub | `electronhub` | apikey | 0 |  |
 | ElevenLabs | `elevenlabs` | apikey | 0 | [site](https://elevenlabs.io) |
 | Empower | `empower` | apikey | 0 | [site](https://docs.empower.dev) |
+| EUrouter | `eurouter` | apikey | 0 |  |
 | Exa | `exa` | apikey | 0 | [site](https://exa.ai) |
 | Factory | `factory` | apikey | 1 | [site](https://factory.ai) |
 | Fal.ai | `fal-ai` | apikey | 7 | [site](https://fal.ai) |
+| FastRouter | `fastrouter` | apikey | 0 |  |
 | Featherless AI | `featherless-ai` | apikey | 9 | [site](https://featherless.ai) |
 | FenayAI | `fenayai` | apikey | 0 | [site](https://fenayai.com) |
 | Firecrawl | `firecrawl` | apikey | 0 | [site](https://firecrawl.dev) |
@@ -106,6 +109,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Fireworks AI | `fireworks` | apikey | 17 | [site](https://fireworks.ai) |
 | Fish Audio | `fish-audio` | apikey | 0 | [site](https://fish.audio) |
 | FreeAIAPIKey | `freeaiapikey` | apikey | 7 | [site](https://freeaiapikey.com) |
+| FreeInference | `freeinference` | apikey | 0 |  |
 | FreeModel.dev | `freemodel-dev` | apikey | 4 | [site](https://freemodel.dev) |
 | FriendliAI | `friendliai` | apikey | 2 | [site](https://friendli.ai) |
 | Galadriel | `galadriel` | apikey | 1 | [site](https://galadriel.ai) |

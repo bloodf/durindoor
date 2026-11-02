@@ -44,7 +44,10 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
       return { error: `Failed to fetch models: ${response.status}`, status: response.status };
     }
     const data = await response.json();
-    return { provider: connection.provider, connectionId: connection.id, models: parseOpenAIStyleModels(data) };
+    // Optional `excludeIdPattern` drops non-chat entries (whisper, embeddings, tts) from mixed catalogs.
+    const exclude = isString(fetcher.excludeIdPattern) ? new RegExp(fetcher.excludeIdPattern, "i") : null;
+    const models = parseOpenAIStyleModels(data).filter((model) => !exclude || !exclude.test(String(model?.id ?? "")));
+    return { provider: connection.provider, connectionId: connection.id, models };
   } catch (error) {
     console.log(`Error fetching models from ${connection.provider}:`, sanitizeErrorMessage(error?.message));
     return { error: "Failed to fetch models", status: 500 };

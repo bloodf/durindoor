@@ -434,7 +434,7 @@ const CLAUDE_VERSIONED = /^claude-(sonnet|opus|haiku)-(\d+)(?:[.-](\d+))?$/;
  * @returns {string}
  */
 export function normalizeKiroUpstreamModelId(model) {
-  if (typeof model !== "string" || model === "") return model;
+  if (!isString(model) || model === "") return model;
 
   const id = model.toLowerCase().replace(ANTHROPIC_SNAPSHOT_SUFFIX, "");
 

@@ -93,6 +93,10 @@ OpenCode Free uses provider ID `opencode` and alias `oc`. It needs no upstream k
 
 OpenCode's free tier lives at `opencode.ai/inference/v1` and requires an official OpenCode v2 client request shape. DurinDoor adds the required headers and OpenCode's own `read` and `shell` tool definitions, and tells the model in the system prompt not to call the ones it added. If you send a tool named exactly `read` or `shell` whose parameters fit OpenCode's, it takes OpenCode's definition and keeps its name. If its parameters differ, it is sent as `read_client` or `shell_client` and renamed back in the response. Test tools before relying on this fallback; upstream requirements can change.
 
+DurinDoor also appends OpenCode's `<env>` environment block to the system prompt, with neutral paths (`/workspace`) rather than the server's own. Upstream refuses free requests without it.
+
+Upstream also checks the TLS handshake. DurinDoor sends the free-tier requests through the optional `wreq-js` package, which presents the handshake upstream accepts. npm installs it with DurinDoor and the Docker image includes it. If it cannot load on your platform, DurinDoor logs `wreq-js unavailable` once and uses the normal Node fetch, which upstream may answer with 429 `FreeUsageLimitError`. A configured proxy or relay takes priority over `wreq-js`.
+
 Muse Spark contributor models only accept `tool_choice: "auto"`; the gateway normalizes explicit choices for those IDs.
 
 ## OpenRouter free models

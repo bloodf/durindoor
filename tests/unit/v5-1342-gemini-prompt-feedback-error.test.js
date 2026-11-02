@@ -11,6 +11,7 @@ vi.mock("@/lib/usageDb.js", () => ({
 
 const { saveRequestDetail, saveRequestUsage } = await import("@/lib/usageDb.js");
 const { buildOnStreamComplete } = await import("../../open-sse/handlers/chatCore/streamingHandler.js");
+const { createSSETransformStreamWithLogger } = await import("../../open-sse/utils/stream.js");
 const { initState, translateResponse } = await import("../../open-sse/translator/index.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
 const { OPENAI_FINISH } = await import("../../open-sse/translator/schema/index.js");
@@ -110,5 +111,57 @@ describe("#1342 persisted stream upstreamError is redacted", () => {
     expect(detail.response.content).toContain("[redacted]");
     // The caller's raw diagnostic object is not mutated.
     expect(upstreamError.message).toContain(SENTINEL);
+  });
+});
+
+describe("#1342 Gemini nested error through the real translated stream", () => {
+  const OPAQUE = "opaque-selected-1342-ζ";
+  const credentials = { apiKey: OPAQUE };
+
+  beforeEach(() => {
+    saveRequestDetail.mockClear();
+    saveRequestUsage.mockClear();
+  });
+
+  async function run(sourceFormat, frame) {
+    const { onStreamComplete } = buildOnStreamComplete({
+      provider: "gemini",
+      model: "gemini-fixture",
+      connectionId: "connection",
+      requestStartTime: Date.now(),
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials,
+      log: { line: vi.fn(), warn: vi.fn() },
+    });
+    const input = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`));
+        controller.close();
+      },
+    });
+    const output = input.pipeThrough(createSSETransformStreamWithLogger(
+      FORMATS.GEMINI, sourceFormat, "gemini", null, null, "gemini-fixture", "connection", null, onStreamComplete,
+      null, "off", null, null, credentials,
+    ));
+    return new Response(output).text();
+  }
+
+  it.each([
+    ["plain promptFeedback", (error) => ({ promptFeedback: { blockReason: "OTHER", error } })],
+    ["Antigravity-wrapped promptFeedback", (error) => ({ response: { promptFeedback: { blockReason: "OTHER", error } } })],
+    ["Antigravity-wrapped response.error", (error) => ({ response: { error } })],
+  ])("records %s as an error and redacts opaque credentials on the Claude wire", async (_label, build) => {
+    const frame = { ...build({ code: 500, status: "INTERNAL", message: `backend failed ${OPAQUE}` }), usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 0, totalTokenCount: 3 } };
+    const wire = await run(FORMATS.CLAUDE, frame);
+    expect(wire).not.toContain(OPAQUE);
+    expect(wire).toContain('"type":"error"');
+    expect(wire).toContain("[redacted]");
+
+    const detail = saveRequestDetail.mock.calls.at(-1)[0];
+    expect(detail.status).toBe("error");
+    expect(JSON.stringify(detail)).not.toContain(OPAQUE);
+    expect(saveRequestUsage).toHaveBeenCalled();
+    expect(saveRequestUsage.mock.calls.at(-1)[0].status).toBe("error");
   });
 });

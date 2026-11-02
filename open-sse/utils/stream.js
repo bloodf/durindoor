@@ -74,6 +74,15 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
   // isObject(null) is true here, so a bare `data: null` frame would pass and then throw
   // on the property read below.
   if (!isObject(parsed) || parsed === null) return false;
+  if (parsed.type !== "response.failed" && parsed.error == null && parsed.type !== "error") {
+    // Gemini nested errors reach translators as public text: redact in place (#1342).
+    const holder = parsed.promptFeedback?.error ? parsed.promptFeedback :
+    parsed.response?.promptFeedback?.error ? parsed.response.promptFeedback :
+    parsed.response?.error ? parsed.response : null;
+    if (!holder || (!isObject(holder.error) && !isString(holder.error))) return false;
+    holder.error = sanitizeStructuredErrorBody(holder.error, secrets);
+    return true;
+  }
   const error = parsed.type === "response.failed" ? parsed.response?.error :
   parsed.error ?? (parsed.type === "error" ? parsed : null);
   if (error === null || (!isObject(error) && !isString(error))) return false;

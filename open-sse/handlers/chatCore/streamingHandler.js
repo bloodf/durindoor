@@ -12,13 +12,13 @@ import { createTerminalTracker } from "../../utils/streamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
-import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
+import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
-import { isFunction, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isFunction } from "../../../src/shared/utils/typeChecks.js";
 import { classifyStreamAbandonReason, isRequestScopedStreamError } from "../../utils/streamLifecycle.js";
 const CODEX_SOURCE_TO_TARGET = {
   [FORMATS.OPENAI_RESPONSES]: FORMATS.OPENAI_RESPONSES,
@@ -263,10 +263,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // The raw upstreamError stays with the stream for diagnostics; the copy
     // persisted to request details redacts credentials first (#1342).
     const rawStreamError = contentObj?.upstreamError || null;
-    const streamError = rawStreamError && Object.fromEntries(Object.entries(rawStreamError).map(([key, value]) => [
-      key,
-      isString(value) ? sanitizeErrorMessageWithSecrets(value, credentialErrorSecrets(credentials)) : value
-    ]));
+    const streamError = rawStreamError && sanitizeStructuredErrorBody(rawStreamError, credentialErrorSecrets(credentials));
     // Tool calls carry no accumulated content, so a tool-call-only turn would otherwise
     // log as "[Empty streaming response]" — indistinguishable from a truncated stream.
     const safeContent = contentObj?.content

@@ -45,7 +45,7 @@ Every compression-stack step is checked before its output is kept. If a step cha
 
 Set `compressionFidelityGate` to `true` in settings to add text checks. With text checks on, a step is also discarded when it drops a number, a URL, a file path or an identifier, a JSON key, a diff hunk header, or a negation word such as "not" or "não". This setting is off by default.
 
-The gate runs locally. It does not call a provider. Repository maintainers keep a pinned offline corpus in `open-sse/services/compression/eval/`. Each stack engine must pass it before it is marked available. That corpus reports estimated token savings, not provider-reported usage or cost.
+The gate runs locally. It does not call a provider. Repository maintainers keep a pinned offline corpus in `open-sse/services/compression/eval/`. Each stack engine must pass it, or have its known failures recorded as a baseline in the test, before it is marked available. That corpus reports estimated token savings, not provider-reported usage or cost.
 
 ## Bypass compression for one request
 

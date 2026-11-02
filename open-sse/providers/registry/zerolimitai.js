@@ -7,7 +7,7 @@ export default {
     color: "#111827",
     textIcon: "ZL",
     notice: {
-      text: "Operator unknown; verify terms before enabling.",
+      text: "Third-party gateway; review the provider's terms before use.",
     },
   },
   category: "apikey",

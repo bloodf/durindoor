@@ -7,7 +7,7 @@ export default {
     color: "#475569",
     textIcon: "VA",
     notice: {
-      text: "Aggregator; verify upstream terms.",
+      text: "Third-party gateway; review the provider's terms before use.",
     },
   },
   category: "apikey",

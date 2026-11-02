@@ -43,3 +43,4 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | `normalizes Claude free-form parameters {} to a typed empty object schema` | Responses→Claude leaves free-form `parameters:{}` as `input_schema:{}`; Anthropic requires `type:"object"` (Refs #1350). |
 
 Note (#1334): Responses tool declarations go through the shared `normalizeToolSchema`. Numeric-string constraints are coerced for every target. The Gemini/Antigravity schema cleaner still drops string-length keywords (`minLength` / `maxLength`) by design.
+Chat-shaped `{type:"function", function:{...}}` tools inside a Responses body are validated too. Responses→Responses passthrough (no translation) does not run this validation.

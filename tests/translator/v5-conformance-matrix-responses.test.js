@@ -680,6 +680,18 @@ describe("#1089 Responses client conformance", () => {
     }
   });
 
+  // #1334: a Chat-shaped tool inside a Responses body gets the same validation.
+  it("validates Chat-shaped tools inside a Responses body", () => {
+    const body = (parameters) => ({
+      input: "hi",
+      tools: [{ type: OPENAI_BLOCK.FUNCTION, function: { name: "lookup", parameters } }],
+    });
+    const coerced = toolParams(request(body({ type: "object", properties: { n: { type: "number", minimum: "1" } } }), chat), chat);
+    expect(coerced.properties.n.minimum).toBe(1);
+    expect(() => request(body({ type: "object", properties: { q: { type: "string" } }, required: "q" }), chat))
+      .toThrow(expect.objectContaining({ statusCode: 400 }));
+  });
+
   // #1089 / #1334: malformed Responses tool schemas are rejected with HTTP 400 for every target.
   it("rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini", () => {
     const body = {

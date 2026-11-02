@@ -507,8 +507,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.
     flatMap((tool) => {
-      // Already in Chat Completions format: { type: "function", function: { name, ... } }
-      if (tool.function) return tool;
+      // Already in Chat Completions format: { type: "function", function: { name, ... } }.
+      // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.
+      if (tool.function) {
+        if (tool.function.parameters === undefined) return tool;
+        return { ...tool, function: { ...tool.function, parameters: normalizeToolSchema(tool.function.parameters, tool.function.name) } };
+      }
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
       // Dotted names stay dotted here: translateRequest aliases the OpenAI intermediate

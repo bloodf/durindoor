@@ -8,7 +8,7 @@ export default {
     textIcon: "NG",
     website: "https://docs.naga.ac",
     notice: {
-      text: "Free models accept an optional API key; authenticated users get higher rate limits. Free tier may permit data collection or training; check the terms.",
+      text: "Third-party gateway; review the provider's terms before use. Free tier may permit data collection or training.",
     },
   },
   category: "apikey",

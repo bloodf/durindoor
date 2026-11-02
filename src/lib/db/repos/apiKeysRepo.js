@@ -38,6 +38,7 @@ function rowToKey(row) {
     dailyLimitTokens: row.dailyLimitTokens ?? null,
     policy: parseApiKeyPolicy(row.policy),
     expiresAt: row.expiresAt ?? null,
+    isAdmin: row.isAdmin === 1 || row.isAdmin === true,
     createdAt: row.createdAt
   };
 }
@@ -137,12 +138,13 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     dailyLimitTokens: tokenLimit ?? null,
     policy,
     expiresAt: expiry,
+    isAdmin: options.isAdmin === true,
     createdAt: new Date(Number(now)).toISOString()
   };
   db.transaction(() => {
     db.run(
-      `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, policy == null ? null : JSON.stringify(policy), apiKey.expiresAt, apiKey.createdAt]
+      `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, isAdmin, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, JSON.stringify(apiKey.allowedCombos), apiKey.dailyLimitTokens, policy == null ? null : JSON.stringify(policy), apiKey.expiresAt, apiKey.isAdmin ? 1 : 0, apiKey.createdAt]
     );
     if (Object.hasOwn(options, "providerConnectionIds")) {
       replaceProviderConnectionScopeInTx(db, apiKey.id, options.providerConnectionIds);
@@ -163,6 +165,7 @@ export async function updateApiKey(id, data, now = Date.now()) {
     if (Object.hasOwn(data, "allowedCombos")) merged.allowedCombos = Array.isArray(data.allowedCombos) ? [...data.allowedCombos] : [];
     if (Object.hasOwn(data, "dailyLimitTokens")) merged.dailyLimitTokens = normalizeDailyLimitTokens(data.dailyLimitTokens);
     if (Object.hasOwn(data, "expiresAt")) merged.expiresAt = normalizeApiKeyExpiresAt(data.expiresAt, now);
+    if (Object.hasOwn(data, "isAdmin")) merged.isAdmin = data.isAdmin === true;
     const updatesPolicy = Object.hasOwn(data, "policy") || Object.hasOwn(data, "policyPatch");
     if (Object.hasOwn(data, "policy")) merged.policy = normalizeApiKeyPolicy(data.policy);
     if (Object.hasOwn(data, "policyPatch")) merged.policy = mergeApiKeyPolicy(merged.policy, data.policyPatch);
@@ -178,8 +181,8 @@ export async function updateApiKey(id, data, now = Date.now()) {
       replaceApiKeyGroupsInTx(db, id, data.groupIds);
     }
     db.run(
-      `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ?, expiresAt = ? WHERE id = ?`,
-      [merged.name, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, policyStorage, merged.expiresAt ?? null, id]
+      `UPDATE apiKeys SET name = ?, isActive = ?, allowedCombos = ?, dailyLimitTokens = ?, policy = ?, expiresAt = ?, isAdmin = ? WHERE id = ?`,
+      [merged.name, merged.isActive ? 1 : 0, JSON.stringify(merged.allowedCombos || []), merged.dailyLimitTokens ?? null, policyStorage, merged.expiresAt ?? null, merged.isAdmin ? 1 : 0, id]
     );
     result = merged;
   });

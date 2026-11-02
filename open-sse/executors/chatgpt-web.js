@@ -84,7 +84,8 @@ export class ChatGptWebExecutor extends BaseExecutor {
         return this.httpExecutor.execute(input);
       }
       const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
-      const status = statusForAdapterError(message);
+      // Runtime prerequisites are unavailable even when their diagnostics mention a request.
+      const status = error instanceof BrowserUnavailableError ? 503 : statusForAdapterError(message);
       return {
         response: errorResponse(status, message || "ChatGPT Web browser execution failed", {
           type: "upstream_error",

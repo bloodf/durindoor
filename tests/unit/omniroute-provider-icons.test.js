@@ -57,7 +57,6 @@ const ADDED_SVG_IDS = [
 // consumer), so they are stored for future ports but are not wired yet.
 const EXCLUDED_UNWIRED = [
   "pioneer",
-  "publicai",
   "zed-hosted",
 ];
 

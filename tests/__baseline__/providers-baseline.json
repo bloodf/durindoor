@@ -1744,6 +1744,24 @@
     },
     "format": "openai"
   },
+  "publicai": {
+    "baseUrl": "https://api.publicai.co/v1/chat/completions",
+    "validateUrl": "https://api.publicai.co/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "regolo": {
+    "baseUrl": "https://api.regolo.ai/v1/chat/completions",
+    "validateUrl": "https://api.regolo.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "routeway": {
+    "baseUrl": "https://api.routeway.ai/v1/chat/completions",
+    "validateUrl": "https://api.routeway.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "poixe-ai": {
     "baseUrl": "https://api.poixe.com/v1/chat/completions",
     "validateUrl": "https://api.poixe.com/v1/models",
@@ -1771,6 +1789,12 @@
       "scheme": "bearer"
     },
     "format": "openai"
+  },
+  "token-kiosk": {
+    "baseUrl": "https://agent-router.gaib.ai/v1/chat/completions",
+    "validateUrl": "https://agent-router.gaib.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "tokenreply": {
     "baseUrl": "https://api.tokenreply.com/v1/chat/completions",

@@ -252,8 +252,21 @@ function startWatchdog() {
 
 // ─── Network monitor: detect IPv4 fingerprint change + sleep/wake ────────────
 
+let warnedInterfacesUnavailable = false;
+
 function getNetworkFingerprint() {
-  const interfaces = os.networkInterfaces();
+  let interfaces;
+  try {
+    interfaces = os.networkInterfaces();
+  } catch (err) {
+    if (!warnedInterfacesUnavailable) {
+      warnedInterfacesUnavailable = true;
+      console.warn(`[NetworkMonitor] interface enumeration unavailable; change detection paused (${err?.code ?? "unknown"})`);
+    }
+    // Restricted runtimes can deny interface enumeration. Unknown is not an
+    // empty network: keep startup and reachability checks running, then retry.
+    return null;
+  }
   const active = [];
   for (const [name, addrs] of Object.entries(interfaces)) {
     if (!addrs) continue;
@@ -281,9 +294,10 @@ function startNetworkMonitor() {
       g.lastWatchdogTick = now;
 
       const currentFingerprint = getNetworkFingerprint();
-      const networkChanged = currentFingerprint !== g.lastNetworkFingerprint;
+      const networkChanged = currentFingerprint !== null && g.lastNetworkFingerprint !== null &&
+        currentFingerprint !== g.lastNetworkFingerprint;
       const wasSleep = elapsed > NETWORK_CHECK_INTERVAL_MS * 6;
-      if (networkChanged) g.lastNetworkFingerprint = currentFingerprint;
+      if (currentFingerprint !== null) g.lastNetworkFingerprint = currentFingerprint;
 
       // Real reachability check (TCP 1.1.1.1:443) — not just interface presence
       const online = await checkInternet();

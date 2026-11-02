@@ -24,7 +24,7 @@ export default function DemoBanner({ hint = null }) {
   return (
     <div role="status" className={styles.pill}>
       <span aria-hidden="true" className={`material-symbols-outlined ${styles.icon}`}>science</span>
-      <span><strong className={styles.strong}>Demo mode</strong> — all data is mocked and lives in your browser{hint ? `. ${hint}` : ""}</span>
+      <span><strong className={styles.strong}>Demo mode</strong>. All data is mocked and lives in your browser{hint ? `. ${hint}` : ""}</span>
       <button type="button" onClick={reset} className={styles.action}>Reset demo data</button>
       <Link href="/" className={styles.link}>Back to site</Link>
       <button type="button" onClick={() => setOpen(false)} aria-label="Dismiss demo mode notice" className={styles.close}>

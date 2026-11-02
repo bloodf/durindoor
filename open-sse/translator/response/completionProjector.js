@@ -1,5 +1,11 @@
 import { FORMATS } from "../formats.js";
-import { fromOpenAIFinish } from "../concerns/finishReason.js";
+import {
+  fromOpenAIFinish,
+  isUpstreamErrorObject,
+  readUpstreamErrorMessage,
+  responsesIncompleteDetailsOrOmit,
+  responsesTerminalFromChatFinish
+} from "../concerns/finishReason.js";
 import { toResponsesUsage } from "../concerns/usage.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -154,7 +160,10 @@ function openAICompletionToOllama(completion) {
 }
 
 export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
-  const output = Array.isArray(responseBody?.output) ? responseBody.output : [];
+  // Skip null / non-object slots the same way main's optional chaining did.
+  const output = (Array.isArray(responseBody?.output) ? responseBody.output : []).filter(
+    (item) => item != null && isObject(item) && !Array.isArray(item)
+  );
   const reasoningText = output.
   filter((item) => item?.type === "reasoning").
   flatMap((item) => Array.isArray(item.summary) ? item.summary : []).
@@ -163,10 +172,10 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
   const messages = output.filter((item) => item?.type === "message");
   const msgItem = [...messages].reverse().find((item) => {
     const content = Array.isArray(item.content) ? item.content : [];
-    return content.some((part) => isString(part.text) && part.text.length > 0);
+    return content.some((part) => isString(part?.text) && part.text.length > 0);
   }) || messages[messages.length - 1] || null;
   const textContent = (Array.isArray(msgItem?.content) ? msgItem.content : []).
-  map((part) => part.type === "output_text" || isString(part.text) ? part.text || "" : "").
+  map((part) => part?.type === "output_text" || isString(part?.text) ? part.text || "" : "").
   join("");
   const toolCalls = output.
   filter((item) => item?.type === "function_call").
@@ -197,8 +206,12 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
   if (reasoningText) message.reasoning_content = reasoningText;
   if (toolCalls.length > 0) message.tool_calls = toolCalls;
 
-  const responseDone = responseBody?.status === "completed" || responseBody?.status === "done";
-  const finishReason = toolCalls.length > 0 ? "tool_calls" : responseDone ? "stop" : responseBody?.status || "stop";
+  // Only treat real string statuses as completed/done; primitive status (e.g. 5)
+  // must not become a boolean trap — match main's `=== "completed"` check, then
+  // passthrough the status value as finish_reason when not completed.
+  const status = responseBody?.status;
+  const responseDone = status === "completed" || status === "done";
+  const finishReason = toolCalls.length > 0 ? "tool_calls" : responseDone ? "stop" : status || "stop";
   return {
     id: responseBody?.id || `chatcmpl-${Date.now()}`,
     object: "chat.completion",
@@ -292,13 +305,28 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
     });
   }
 
-  const finishReason = getChoice(completion).finish_reason || "stop";
+  const rawFinish = getChoice(completion).finish_reason || OPENAI_FINISH.STOP;
+  // Hub finish_reason "error" never reaches this projector from live handlers:
+  // non-stream isCoherentOpenAICompletion and SSE→JSON (#1348) both 502 first.
+  // Streaming Chat→Responses maps error → response.failed in sendTerminal (#1331).
+  const unreachableErrorFinish = rawFinish === OPENAI_FINISH.ERROR;
+  const finishReason = unreachableErrorFinish ? OPENAI_FINISH.STOP : rawFinish;
+  // Real Responses statuses only for reachable finishes: incomplete / completed —
+  // never the Chat literals "length" / "content_filter". Completed matches main's
+  // field set (no synthetic `error: null`).
+  const terminal = responsesTerminalFromChatFinish(
+    finishReason,
+    unreachableErrorFinish ? undefined : readUpstreamErrorMessage(completion?.error)
+  );
+  const incompleteDetails = responsesIncompleteDetailsOrOmit(terminal.incomplete_details);
   return {
     id: completion.id ? `resp_${completion.id}` : `resp_${Date.now()}`,
     object: "response",
     created_at: completion.created || Math.floor(Date.now() / 1000),
     model: completion.model || "unknown",
-    status: finishReason === "stop" || finishReason === "tool_calls" ? "completed" : finishReason,
+    status: terminal.status,
+    ...(isUpstreamErrorObject(terminal.error) ? { error: terminal.error } : null),
+    ...(incompleteDetails ? { incomplete_details: incompleteDetails } : null),
     output,
     usage: {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,

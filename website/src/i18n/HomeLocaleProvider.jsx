@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createHomeTranslator, HOME_LOCALE_OPTIONS, homeLocaleCookie } from "./home.js";
 
+import Icon from "../components/home/ui/Icon.jsx";
+
 const HomeLocaleContext = createContext(null);
 
 const LOCALE_CODES = Object.freeze({
@@ -24,14 +26,6 @@ export function useHomeLocale() {
   const context = useContext(HomeLocaleContext);
   if (!context) throw new Error("Homepage requires HomeLocaleProvider");
   return context;
-}
-
-function GlobeMark() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z" />
-    </svg>
-  );
 }
 
 /** Compact globe + ISO code. Full names live in the listbox only. */
@@ -107,7 +101,9 @@ export function HomeLocaleSelect() {
   };
 
   return (
-    <div className="home-locale" ref={rootRef}>
+    <div className="home-locale" ref={rootRef} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) close();
+    }}>
       <button
         ref={buttonRef}
         type="button"
@@ -118,7 +114,7 @@ export function HomeLocaleSelect() {
         aria-controls={listId}
         onClick={() => setOpen((value) => !value)}
       >
-        <GlobeMark />
+        <Icon name="globe" size={16} />
         <span className="home-locale-code">{LOCALE_CODES[locale]}</span>
       </button>
       {open ? (

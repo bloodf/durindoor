@@ -89,6 +89,10 @@ const PATTERN_THINKING = [
   // rules above so those gateways keep their own narrower sets (first-match
   // semantics).
   { pattern: "*deepseek-v4.*", levels: ["none", "low", "medium", "high", "xhigh", "max"] },
+  // K3.1 Pro documents reasoning_effort low|high|max (default max). Placed before
+  // the broad *kimi-k3* rule so third-party K3.1 Pro IDs are not clamped to max-only.
+  // https://platform.kimi.ai/docs/guide/use-reasoning-effort.md
+  { pattern: "*kimi-k3.1-pro*", levels: ["low", "high", "max"] },
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking

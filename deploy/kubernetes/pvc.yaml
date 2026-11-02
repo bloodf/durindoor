@@ -1,0 +1,13 @@
+# DATA_DIR volume: SQLite database, backups, secrets file, provider state.
+# ReadWriteOnce + one replica: DurinDoor is a single-instance service.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: durindoor-data
+  labels:
+    app.kubernetes.io/name: durindoor
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi

@@ -1,0 +1,98 @@
+---
+title: Kubernetes
+description: Run one DurinDoor pod with a persistent volume, probes, secrets, and a stop-and-copy backup.
+---
+
+The repository ships example manifests in `deploy/kubernetes/`. They run **one** DurinDoor pod with a persistent volume. Review each file before applying, and pin the image.
+
+## Topology: one instance
+
+Run DurinDoor as a single instance, with one replica and the `Recreate` strategy.
+
+Several kinds of state live inside the running process: quota tracking, rate limits, account cooldowns, concurrency gates, and dashboard sessions. They are not shared between processes. SQLite also needs a single writer on a `ReadWriteOnce` volume. Two pods would apply limits twice, and could corrupt or lock the database.
+
+The PostgreSQL engine moves storage out of the volume, but it does not coordinate that in-process state either. Running several replicas, even with sticky sessions, is not supported. Use node-level restarts and fast rescheduling for availability.
+
+## Before you apply
+
+1. Create the namespace and the Secret from your own values. Do not apply `secret.example.yaml` as is.
+
+   ```bash
+   kubectl apply -f deploy/kubernetes/namespace.yaml
+   kubectl -n durindoor create secret generic durindoor-secrets \
+     --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
+     --from-literal=API_KEY_SECRET="$(openssl rand -hex 32)" \
+     --from-literal=INITIAL_PASSWORD='<your password>'
+   ```
+
+   Keep these values for the life of the install. If you regenerate them, every session is signed out and existing API keys stop working. See [Security](../operations/security.mdx).
+
+2. Optional: for a fresh install on PostgreSQL, add `DURINDOOR_PG_URL` to the same Secret before the first start. Existing SQLite installs should leave it unset and follow [Postgres](../operations/postgres.mdx) cutover instead.
+
+3. Pin the image. In `deploy/kubernetes/kustomization.yaml`, replace `newTag: latest` with a verified numbered tag such as `X.Y.Z`, or with a digest.
+
+4. Check the storage size in `pvc.yaml`, and set a `storageClassName` if your cluster has no default.
+
+## Apply
+
+```bash
+kubectl apply -k deploy/kubernetes
+kubectl -n durindoor rollout status deployment/durindoor
+kubectl -n durindoor port-forward service/durindoor 20128:20128
+curl -fsS http://localhost:20128/api/health
+```
+
+Expect `{"ok":true}`, then sign in at `http://localhost:20128/dashboard`. The Service is `ClusterIP`. To expose it, put your own ingress or gateway in front of it with TLS. Read [exposing the dashboard](../operations/security.mdx#exposing-the-dashboard) first.
+
+## Probes, migrations and shutdown
+
+| Probe | Path | Purpose |
+| --- | --- | --- |
+| startup | `/api/livez` | Allows up to 5 minutes for the first start, while migrations run forward. |
+| liveness | `/api/livez` | Checks that the process is alive. A slow database never restarts the pod. |
+| readiness | `/api/readyz` | Uses the same check as `/api/health`. While not ready, the pod is removed from the Service but not restarted. |
+
+Migrations run on startup inside the pod. No separate Job is needed. Startup keeps safety copies under `DATA_DIR`, but those are not backups. Take a backup before every upgrade.
+
+On stop, the pod waits 5 seconds in `preStop` so the Service can drop its endpoint. It then gets SIGTERM, with a 30-second grace period. Streaming requests still open at that point are cut. Because of `Recreate`, an upgrade or restart has a short downtime window.
+
+## Back up and restore
+
+Stop DurinDoor before copying data, because SQLite can be mid-write.
+
+```bash
+kubectl -n durindoor scale deployment/durindoor --replicas=0
+kubectl -n durindoor apply -f - <<'YAML'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: durindoor-backup
+spec:
+  restartPolicy: Never
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: durindoor-data
+  containers:
+    - name: shell
+      image: alpine:3
+      command: ["sleep", "3600"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+YAML
+kubectl -n durindoor wait --for=condition=Ready pod/durindoor-backup
+kubectl -n durindoor cp durindoor-backup:/data ./durindoor-data-backup
+kubectl -n durindoor delete pod durindoor-backup
+kubectl -n durindoor scale deployment/durindoor --replicas=1
+```
+
+Keep the backup directory private. It contains `durindoor-secrets.json` and provider credentials. To restore, scale to 0, start the same helper pod, copy the backup back with `kubectl -n durindoor cp ./durindoor-data-backup/. durindoor-backup:/data`, delete the helper pod, and scale back to 1. Use the same Secret values the backup was taken with. PostgreSQL installs back up the database with their own tools, in addition to this volume. See [Data management](../operations/data-management.mdx).
+
+## Remove
+
+```bash
+kubectl delete -k deploy/kubernetes
+```
+
+This also deletes the PersistentVolumeClaim. Whether the data itself is deleted depends on the storage class reclaim policy. Take a backup first.

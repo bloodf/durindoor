@@ -1,0 +1,89 @@
+# Single instance by design: quotas, rate limits, cooldowns and dashboard
+# state live in this process, and SQLite needs one writer. Do not raise
+# replicas or switch to RollingUpdate (two pods would share one RWO volume).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: durindoor
+  labels:
+    app.kubernetes.io/name: durindoor
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: durindoor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: durindoor
+    spec:
+      # The image entrypoint starts as root only to chown DATA_DIR on mounted
+      # volumes, then drops to the `node` user (uid 1000) with su-exec.
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: durindoor
+          image: ghcr.io/bloodf/durindoor
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 20128
+          envFrom:
+            - secretRef:
+                name: durindoor-secrets
+          env:
+            - name: DATA_DIR
+              value: /app/data
+            - name: PORT
+              value: "20128"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: NODE_ENV
+              value: production
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          # Migrations run forward on startup; allow up to 5 minutes before
+          # liveness takes over.
+          startupProbe:
+            httpGet:
+              path: /api/livez
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          # Process-alive only: never restarts the pod for a slow database.
+          livenessProbe:
+            httpGet:
+              path: /api/livez
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness (same body as /api/health): removes the pod from the
+          # Service while it cannot serve, without restarting it.
+          readinessProbe:
+            httpGet:
+              path: /api/readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            # Let the Service drop the endpoint before SIGTERM stops Node.
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: durindoor-data

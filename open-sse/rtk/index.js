@@ -5,6 +5,40 @@ import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
+const RESPONSES_TOOL_OUTPUT_LAYOUT = {
+  function_call_output: "openai-responses",
+  custom_tool_call_output: "openai-responses-custom"
+};
+// Codex exec output header: "Exit code: <n>\nWall time: ...\nOutput:\n...".
+const CODEX_EXIT_CODE_RE = /^Exit code: (-?\d+)\b/;
+
+function responsesOutputText(output) {
+  if (isString(output)) return output;
+  if (!Array.isArray(output)) return "";
+  return output.filter((p) => p?.type === "input_text" && isString(p.text)).map((p) => p.text).join("\n");
+}
+
+/** Error-flagged Responses tool outputs keep their full trace. */
+function isResponsesErrorOutput(item) {
+  if (item.is_error === true || item.success === false) return true;
+  if (item.status === "incomplete" || item.status === "failed") return true;
+  const match = CODEX_EXIT_CODE_RE.exec(responsesOutputText(item.output));
+  return !!match && match[1] !== "0";
+}
+
+/** JSON documents and fenced code are structured payloads, never filtered. */
+function isProtectedPayload(text) {
+  if (/```|~~~/.test(text)) return true;
+  const t = text.trim();
+  if (!(t.startsWith("{") || t.startsWith("["))) return false;
+  try {
+    JSON.parse(t);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
 export function compressMessages(body, enabled) {
   if (!enabled) return null;
@@ -27,15 +61,20 @@ export function compressMessages(body, enabled) {
       const msg = items[i];
       if (!msg) continue;
 
-      // Shape 4: OpenAI Responses — top-level { type:"function_call_output", output: string | [{type:"input_text", text}] }
-      if (msg.type === "function_call_output") {
+      // Shape 4: OpenAI Responses — top-level { type:"function_call_output" | "custom_tool_call_output",
+      // output: string | [{type:"input_text", text}, {type:"input_image"}, ...] }.
+      // Only eligible text is rewritten: call_id/type/media parts are untouched,
+      // error outputs and JSON / fenced-code payloads pass through (#1102).
+      if (RESPONSES_TOOL_OUTPUT_LAYOUT[msg.type]) {
+        if (isResponsesErrorOutput(msg)) continue;
+        const layout = RESPONSES_TOOL_OUTPUT_LAYOUT[msg.type];
         if (isString(msg.output)) {
-          msg.output = compressText(msg.output, stats, "openai-responses-string");
+          if (!isProtectedPayload(msg.output)) msg.output = compressText(msg.output, stats, `${layout}-string`);
         } else if (Array.isArray(msg.output)) {
           for (let k = 0; k < msg.output.length; k++) {
             const part = msg.output[k];
-            if (part && part.type === "input_text" && isString(part.text)) {
-              part.text = compressText(part.text, stats, "openai-responses-array");
+            if (part && part.type === "input_text" && isString(part.text) && !isProtectedPayload(part.text)) {
+              part.text = compressText(part.text, stats, `${layout}-array`);
             }
           }
         }

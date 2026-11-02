@@ -20,7 +20,7 @@ Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/setting
 
 | Option | Behavior |
 | --- | --- |
-| RTK | Compress eligible tool-result content. Skip explicit error results. |
+| RTK | Compress eligible tool-result content. Skip explicit error results. For OpenAI Responses, cover `function_call_output` and `custom_tool_call_output` text only. Keep call IDs and media parts. Skip error outputs (flagged items and Codex `Exit code: <non-zero>`), JSON documents, and fenced code. |
 | Headroom | Call the optional Python proxy. Follow [Headroom setup](./headroom.mdx). |
 | Session dedup | Remove eligible repeated blocks across turns in the compression stack. |
 | Caveman | Inject the selected output-style instruction into eligible text-only requests; settings preview shows the exact instruction block. |

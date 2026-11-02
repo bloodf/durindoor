@@ -9,7 +9,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getModelUpstreamThinkingIntent, resolveRequestedModelTier, applyProviderThinkingOverride, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
@@ -442,7 +442,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
-  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
+  body = applyProviderThinkingOverride(body, providerThinking);
+  // Suffix intent, then body effort/budget (including the provider-level
+  // override injected above), select `<model>-<tier>` catalog rows (upstream
+  // 9router 82aeb907). A catalog preset such as `(high)` applies only when
+  // nothing named a tier and neither the client nor the provider setting
+  // controls thinking (`thinking` present, or mode none/off).
+  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body);
+  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
+  const thinkingControlled = requestedModelTier || body.thinking ||
+  providerThinking?.mode === "none" || providerThinking?.mode === "off";
+  const thinkingIntent = modelThinkingIntent ||
+  (thinkingControlled ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({
     provider,
     model: cleanModel,
@@ -477,25 +488,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     return lifecycleError;
   }
   requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
-  // Inject provider-level thinking config override (only if client hasn't set)
-  // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
-  if (providerThinking?.mode && providerThinking.mode !== "auto") {
-    const mode = providerThinking.mode;
-    if (mode === "none") {
-      // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
-      // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
-      delete body.thinking;
-      delete body.reasoning_effort;
-      delete body.reasoning;
-    } else if (mode === "on" && !body.thinking) {
-      console.log("Injecting provider-level thinking config override: on");
-      body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-    } else if (mode === "off" && !body.thinking) {
-      body = { ...body, thinking: { type: "disabled" } };
-    } else if (!body.reasoning_effort) {
-      body = { ...body, reasoning_effort: mode };
-    }
-  }
 
   const isCompactRequest = requestContext?.compact === true;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
@@ -628,7 +620,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent, modelCapabilities);
+    applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     /**
@@ -667,7 +659,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         stripList,
         connectionId,
         clientTool,
-        { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
+        { thinkingIntent, capabilityModel: cleanModel, modelCapabilities }
       );
     } catch (error) {
       // Translators flag a malformed client payload with statusCode 400; anything else is ours.

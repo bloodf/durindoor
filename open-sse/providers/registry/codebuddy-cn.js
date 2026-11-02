@@ -71,7 +71,8 @@ export default {
     { id: "kimi-k3-1", name: "Kimi-K3" },
     { id: "kimi-k2.8-preview", name: "Kimi-K2.8-Preview" },
     { id: "deepseek-v4-pro", name: "DeepSeek-V4-Pro" },
-    { id: "deepseek-v4.1-flash", name: "DeepSeek-V4.1-Flash" },
+    // The catalog sync retired deepseek-v4-flash; keep saved configs routing to its successor.
+    { id: "deepseek-v4.1-flash", name: "DeepSeek-V4.1-Flash", aliases: ["deepseek-v4-flash"] },
   ],
   oauth: {
     baseUrl: "https://copilot.tencent.com",

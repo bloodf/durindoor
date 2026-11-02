@@ -86,7 +86,7 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
           ? `Credit: ${quota.total.toFixed(2)} ${quota.currency || ""}`.trim()
           : quota.mergeMode === MERGE_MODE.PERCENTAGE
           ? `min across ${quota.accountCount} accounts`
-          : `${quota.used.toLocaleString()} / ${quota.total > 0 ? quota.total.toLocaleString() : "∞"}`;
+          : `${quota.used.toLocaleString()} / ${quota.total > 0 ? quota.total.toLocaleString() : "∞"}${quota.unit ? ` ${quota.unit}` : ""}`;
         return (
           <div className="flex flex-col gap-1">
             {isCreditBalance ? null : (
@@ -108,20 +108,29 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
       label: "Reset",
       render: (quota) => {
         if (quota.notReported) return <span className={`italic text-dd-muted ${compact ? "text-[11px]" : "text-[13px]"}`} title={quota.title}>not reported</span>;
-        const countdown = formatResetTime(quota.resetAt);
-        const resetDisplay = formatResetTimeDisplay(quota.resetAt);
+        // Qoder open-ended plans carry `neverExpires`; return "-" so the branches
+        // below fall to the display text instead of an empty countdown.
+        const countdown = quota.neverExpires ? "-" : formatResetTime(quota.resetAt);
+        // Add-on grants have no per-bucket reset date, only a detail page.
+        const seeDetails = !quota.neverExpires && !quota.resetAt && Boolean(quota.detailUrl);
+        const resetDisplay = quota.neverExpires ? "Never expires" : seeDetails ? "See details" : formatResetTimeDisplay(quota.resetAt);
+        const resetNode = (className) => seeDetails ? (
+          <a href={quota.detailUrl} target="_blank" rel="noopener noreferrer" className={`${className} hover:underline`} title={`Open usage details: ${quota.detailUrl}`} aria-label={`Open usage details for ${quota.name}`}>
+            {resetDisplay}
+          </a>
+        ) : resetDisplay;
         const recurring = quota.recurring !== false;
         const countdownLabel = recurring ? `in ${countdown}` : `expires in ${countdown}`;
         if (countdown === "-" && !resetDisplay) {
           return <span className={`italic text-dd-subtle ${compact ? "text-[11px]" : "text-[13px]"}`}>N/A</span>;
         }
         if (compact) {
-          return <span className="truncate text-[11px] font-medium text-dd-text" title={resetDisplay || ""}>{countdown !== "-" ? countdownLabel : resetDisplay}</span>;
+          return <span className="truncate text-[11px] font-medium text-dd-text" title={resetDisplay || ""}>{countdown !== "-" ? countdownLabel : resetNode("text-[11px]")}</span>;
         }
         return (
           <div className="flex flex-col gap-0.5">
             {countdown !== "-" ? <span className="text-[13px] font-medium text-dd-text">{countdownLabel}</span> : null}
-            {resetDisplay ? <span className="text-xs text-dd-muted">{resetDisplay}</span> : null}
+            {resetDisplay ? <span className="text-xs text-dd-muted">{resetNode("text-xs")}</span> : null}
           </div>
         );
       },

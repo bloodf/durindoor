@@ -20,6 +20,7 @@ import "../translator/registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 function makeLongDiff() {
   const lines = ["diff --git a/foo.js b/foo.js", "index abc..def 100644", "--- a/foo.js", "+++ b/foo.js", "@@ -1,3 +1,200 @@"];
   for (let i = 0; i < 200; i++) lines.push(`+added line ${i} ${"x".repeat(20)}`);
@@ -792,7 +793,8 @@ describe("token-saver aggregate repo (port of 9router #2562)", { timeout: 20000 
     vi.resetModules();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await disposeLoadedRequestDetailsRepo();
     try { global._dbAdapter?.instance?.close?.(); } catch {}
     delete global._dbAdapter;
     delete global._statsEmitTimers;

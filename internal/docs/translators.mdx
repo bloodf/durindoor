@@ -61,6 +61,21 @@ version-after-name, provider prefixes, and date suffixes are covered. The Copilo
 dotted-model and GPT max-effort rules tracked by the same issue are not part of this
 change, and the forced-tool-choice guard is unchanged.
 
+## Non-streaming SSE errors
+
+Port `decolua/9router@56dbf466f10787d284b09bd28e35c0f7171b6d06`
+(#1355) preserves explicit OpenAI-style SSE error envelopes before the fork's
+terminal-coherence aggregation. `createSSEErrorResult` is shared by
+`handleNonStreamingResponse` and the standard `handleForcedSSEToJson` path.
+It accepts integer numeric/string 400–599 statuses, uses 502 otherwise, and
+passes only the selected message to `createErrorResult` for redaction.
+`chatCore` supplies the selected credentials directly to these two buffered
+handlers (not to the shared logging context), so opaque credential values are
+redacted just as they are on the existing HTTP-error path.
+Both paths log FAILED before any success accounting or cleanup callback;
+their existing finally blocks still call `trackDone` once. The existing
+finish-reason error and native Responses conversion contracts are unchanged.
+
 ## Tests
 
 Every test that calls `translateRequest` or `translateResponse` must import `tests/translator/registerAll.js` at the top of the file. That file re-imports every translator module so `register()` runs under Vitest ESM.
@@ -79,3 +94,14 @@ RTK compresses `tool_result` bodies in place. `handleChatCore` calls `compressMe
 It skips Claude blocks with `is_error === true` and Kiro tool results with `status: "error"`. Blobs under 500 bytes are left alone (`MIN_COMPRESS_SIZE`). Filter panics go through `safeApply`, which returns the original text.
 
 Token-saver and Headroom behaviour for operators is on [Compression](../../docs/features/compression.mdx).
+
+## NVIDIA reasoning aliases
+
+Port `decolua/9router@ced0cf6e6c5583e82d7d66e2555712b5dbbf7809` adds an
+assistant-only message rename rule for NVIDIA in `paramSupport.js`. It runs
+before `DefaultExecutor` injects DeepSeek reasoning placeholders. Canonical
+undefined/null/blank-string values can be filled from the alias; other canonical
+values are retained without coercion. A defined alias is removed afterward.
+This intentionally differs from top-level token-parameter renaming, whose
+explicit destination precedence includes zero and is undefined-only (#1394).
+The existing GLM top-level stripping and other vendors' drop rules remain.

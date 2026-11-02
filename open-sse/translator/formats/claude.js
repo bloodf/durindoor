@@ -797,7 +797,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           return {
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: toClaudeInputSchema(tool.function.parameters),
+            input_schema: toClaudeInputSchema(tool.function.parameters, undefined, tool.function.name),
             ...(tool.function.strict !== undefined && { strict: tool.function.strict })
           };
         }

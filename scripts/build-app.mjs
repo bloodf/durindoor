@@ -8,6 +8,104 @@ import { createRequire } from "node:module";
 import { createIsolatedBuildEnvironment } from "./build-environment.mjs";
 
 const require = createRequire(import.meta.url);
+
+/**
+ * Rebuild only traced/runtime packages, never the shared node_modules pool.
+ * NFT can preserve node_modules itself as an external symlink; existsSync then
+ * mistakes every shared package for a bundled one, and later writes escape.
+ * Resolve dependencies at their source location and keep deduplicated links
+ * relative to the artifact so nested versions and relocation remain safe.
+ */
+export function materializeStandaloneDependencies(standaloneDir, distDir, sourceRoot, runtimePackages) {
+  const modules = path.join(standaloneDir, "node_modules");
+  const seeds = new Map();
+  const findPackage = (name, from) => {
+    for (let dir = from; ; dir = path.dirname(dir)) {
+      const candidate = path.join(dir, "node_modules", name);
+      if (fs.existsSync(path.join(candidate, "package.json"))) return fs.realpathSync(candidate);
+      if (path.dirname(dir) === dir) throw new Error(`Cannot locate runtime dependency ${name} from ${from}`);
+    }
+  };
+  const addTrace = (file) => {
+    const marker = `${path.sep}node_modules${path.sep}`;
+    const index = file.indexOf(marker);
+    if (index < 0) return; // A trace of node_modules itself is not the whole pool.
+    const parts = file.slice(index + marker.length).split(path.sep);
+    const name = parts.slice(0, parts[0].startsWith("@") ? 2 : 1).join("/");
+    const root = file.slice(0, index + marker.length) + name;
+    if (fs.existsSync(path.join(root, "package.json"))) seeds.set(name, fs.realpathSync(root));
+  };
+  const visitTraces = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "standalone" || entry.name === "node_modules") continue;
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) visitTraces(file);
+      else if (entry.name.endsWith(".nft.json")) {
+        for (const traced of JSON.parse(fs.readFileSync(file, "utf8")).files) {
+          addTrace(path.resolve(dir, traced));
+        }
+      }
+    }
+  };
+  visitTraces(distDir);
+  for (const name of runtimePackages) seeds.set(name, findPackage(name, sourceRoot));
+
+  // Unlink the output alias before ANY package write. rm does not follow links.
+  // Rebuild traced directories too: their descendants can contain external links.
+  fs.rmSync(modules, { recursive: true, force: true });
+  fs.mkdirSync(modules, { recursive: true });
+  const copied = new Map();
+  const install = (source, dest) => {
+    const previous = copied.get(source);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    if (previous) {
+      if (previous !== dest) fs.symlinkSync(path.relative(path.dirname(dest), previous), dest, "dir");
+      return;
+    }
+    copied.set(source, dest);
+    // Dereference package-local links, but never recursively copy a dependency
+    // pool. Dependencies below are selected from manifests, not devDependencies.
+    fs.cpSync(source, dest, {
+      recursive: true,
+      dereference: true,
+      filter: (file) => {
+        if (file === source) return true;
+        if (path.basename(file) === "node_modules") return false;
+        const real = fs.realpathSync(file);
+        const relative = path.relative(source, real);
+        if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+          || relative.split(path.sep).includes("node_modules")) {
+          throw new Error(`Package link escapes its runtime package: ${file} -> ${real}`);
+        }
+        if (fs.lstatSync(file).isSymbolicLink() && fs.statSync(file).isDirectory()) {
+          // Directory aliases can recurse through ancestor links. Reject them
+          // rather than copying an unbounded tree; file aliases are materialized.
+          throw new Error(`Package directory symlink is not supported: ${file}`);
+        }
+        return true;
+      },
+    });
+    const pkg = JSON.parse(fs.readFileSync(path.join(source, "package.json"), "utf8"));
+    const optional = { ...pkg.optionalDependencies };
+    for (const [name, meta] of Object.entries(pkg.peerDependenciesMeta || {})) {
+      if (meta.optional) optional[name] = pkg.peerDependencies?.[name];
+    }
+    const dependencies = { ...pkg.dependencies, ...pkg.peerDependencies, ...optional };
+    for (const name of Object.keys(dependencies)) {
+      let dependency;
+      try {
+        dependency = findPackage(name, source);
+      } catch (error) {
+        if (Object.hasOwn(optional, name)) continue;
+        throw error;
+      }
+      install(dependency, path.join(dest, "node_modules", name));
+    }
+  };
+  for (const [name, source] of seeds) install(source, path.join(modules, name));
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 const nextBin = require.resolve("next/dist/bin/next");
 const buildRoot = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-build-"));
 
@@ -28,6 +126,13 @@ try {
         .map((name) => path.join(standaloneRoot, name))
         .find((candidate) => fs.existsSync(path.join(candidate, "server.js")));
     if (!standaloneDir) throw new Error(`Standalone server not found under ${standaloneRoot}`);
+    const runtimeManifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+    // Copied open-sse and sidecars load runtime packages outside NFT's graph.
+    const runtimePackages = Object.keys(runtimeManifest.dependencies || {});
+    for (const name of Object.keys(runtimeManifest.optionalDependencies || {})) {
+      if (fs.existsSync(path.join(process.cwd(), "node_modules", name))) runtimePackages.push(name);
+    }
+    materializeStandaloneDependencies(standaloneDir, path.resolve(distDir), process.cwd(), runtimePackages);
 
     // Next's standalone trace includes the server bundle but (with this repo's
     // custom distDir/outputFileTracingRoot setup) does NOT copy the client static
@@ -105,40 +210,6 @@ try {
       path.join(process.cwd(), "src", "shared", "utils", "typeChecks.cjs"),
       path.join(standaloneDir, "src", "shared", "utils", "typeChecks.cjs"),
     );
-    // Ensure `require("ws")` resolves inside the standalone bundle. Next's NFT
-    // typically already traces ws (server-side fetch/WS deps), but a post-build
-    // entry is outside the trace — copy the resolved package if it is missing
-    // so the built entry can boot on a clean machine.
-    const standaloneWs = path.join(standaloneDir, "node_modules", "ws");
-    if (!fs.existsSync(standaloneWs)) {
-      const wsRoot = path.dirname(require.resolve("ws/package.json"));
-      fs.cpSync(wsRoot, standaloneWs, { recursive: true });
-    }
-    // open-sse/utils/proxyFetch.js and outboundUrlGuard.js `import "undici"`.
-    // NFT does not trace it into standalone, and ESM resolution ignores
-    // NODE_PATH, so the shipped bundle fails with ERR_MODULE_NOT_FOUND.
-    // undici has no runtime dependencies, so the package dir is the closure.
-    const standaloneUndici = path.join(standaloneDir, "node_modules", "undici");
-    if (!fs.existsSync(standaloneUndici)) {
-      const undiciRoot = path.dirname(require.resolve("undici/package.json"));
-      fs.cpSync(undiciRoot, standaloneUndici, { recursive: true });
-    }
-    // PxPipe transform runs from the standalone server via dynamic ESM import.
-    // The package is only reachable through its ESM exports and is not a
-    // Next NFT trace target, so copy it explicitly to the standalone node_modules.
-    const standalonePxpipe = path.join(standaloneDir, "node_modules", "pxpipe-proxy");
-    if (!fs.existsSync(standalonePxpipe)) {
-      const pxpipeEntry = fileURLToPath(import.meta.resolve("pxpipe-proxy/transform"));
-      const pxpipeRoot = path.resolve(path.dirname(pxpipeEntry), "../..");
-      fs.cpSync(pxpipeRoot, standalonePxpipe, { recursive: true });
-    }
-    // gpt-tokenizer is pxpipe-proxy's only runtime dependency and is not
-    // traced as a Next server dep. Copy it so the standalone bundle boots.
-    const standaloneGptTokenizer = path.join(standaloneDir, "node_modules", "gpt-tokenizer");
-    if (!fs.existsSync(standaloneGptTokenizer)) {
-      const gptTokenizerRoot = path.dirname(require.resolve("gpt-tokenizer/package.json"));
-      fs.cpSync(gptTokenizerRoot, standaloneGptTokenizer, { recursive: true });
-    }
     // sql.js is the last-resort pure-JS SQLite driver (src/lib/db/driver.js falls
     // back to it when better-sqlite3 and node:sqlite are both unavailable). NFT
     // traces the JS entry but NOT its sibling `sql-wasm.wasm`, which emscripten
@@ -172,3 +243,4 @@ try {
 }
 
 process.exit(status);
+}

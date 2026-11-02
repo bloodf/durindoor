@@ -420,7 +420,7 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         } catch {
           throw new Error(`API key ${r.id} has invalid expiresAt storage`);
         }
-        return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, createdAt: r.createdAt };
+        return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, isAdmin: r.isAdmin === 1 || r.isAdmin === true, createdAt: r.createdAt };
       }),
       apiKeyProviderConnections: db.all(
         `SELECT apiKeyId, connectionId FROM apiKeyProviderConnections ORDER BY apiKeyId ASC, connectionId ASC`
@@ -596,8 +596,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     writeQuotaPortableStateSync(db, quota);
     for (const k of apiKeys) {
       db.run(
-        `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(normalizeApiKeyPolicy(k.policy)), k.expiresAt || null, k.createdAt || new Date().toISOString()]
+        `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, isAdmin, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(normalizeApiKeyPolicy(k.policy)), k.expiresAt || null, k.isAdmin === true ? 1 : 0, k.createdAt || new Date().toISOString()]
       );
     }
     for (const relation of apiKeyProviderConnections) {

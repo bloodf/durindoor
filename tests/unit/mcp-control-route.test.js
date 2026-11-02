@@ -11,11 +11,13 @@ const mocks = vi.hoisted(() => ({
   getConsistentMachineId: vi.fn(),
   getSettings: vi.fn(),
   validateApiKey: vi.fn(),
+  getApiKeyByKey: vi.fn(),
 }));
 
 vi.mock("@/lib/mcp/control/tools", () => ({
   listTools: mocks.listTools,
   callTool: mocks.callTool,
+  TOOLS: { tool_1: {}, write_tool: { writes: true } },
 }));
 
 vi.mock("@/lib/auth/dashboardSession", () => ({
@@ -29,6 +31,7 @@ vi.mock("@/shared/utils/machineId", () => ({
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   validateApiKey: mocks.validateApiKey,
+  getApiKeyByKey: mocks.getApiKeyByKey,
   validateGatewayKey: vi.fn(),
 }));
 
@@ -110,6 +113,43 @@ describe("mcp-control route", () => {
     const body = await res.json();
     expect(body.error.code).toBe(400);
     expect(body.error.message).toBe("Bad request");
+  });
+
+  describe("write tools", () => {
+    function keyedCall(name, headers = {}) {
+      const req = guardRequest("/api/mcp/control", { host: "router.example.com", ...headers });
+      req.json = vi.fn().mockResolvedValue({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name, arguments: {} } });
+      return req;
+    }
+
+    beforeEach(() => {
+      mocks.callTool.mockResolvedValue({ ok: true });
+      mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+      mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+      mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    });
+
+    it("refuses a write tool to an API key without the admin scope", async () => {
+      mocks.validateApiKey.mockResolvedValue(true);
+      mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: false });
+      const body = await (await POST(keyedCall("write_tool", { authorization: "Bearer sk-plain" }))).json();
+      expect(body.error.code).toBe(403);
+      expect(mocks.callTool).not.toHaveBeenCalled();
+      // Read tools stay available to the same key.
+      const read = await (await POST(keyedCall("tool_1", { authorization: "Bearer sk-plain" }))).json();
+      expect(read.result).toBeDefined();
+    });
+
+    it("runs a write tool for an admin-scoped key, a CLI token, or a keyless caller", async () => {
+      mocks.validateApiKey.mockResolvedValue(true);
+      mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+      expect((await (await POST(keyedCall("write_tool", { authorization: "Bearer sk-admin" }))).json()).result).toBeDefined();
+      mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: false });
+      expect((await (await POST(keyedCall("write_tool", { authorization: "Bearer sk-plain", "x-9r-cli-token": "cli-token" }))).json()).result).toBeDefined();
+      mocks.validateApiKey.mockResolvedValue(false);
+      expect((await (await POST(keyedCall("write_tool"))).json()).result).toBeDefined();
+      expect(mocks.callTool).toHaveBeenCalledTimes(3);
+    });
   });
 
   it("returns JSON-RPC error for missing method", async () => {

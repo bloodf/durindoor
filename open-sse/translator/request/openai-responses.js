@@ -86,7 +86,7 @@ function lowerCustomToolHistory(items) {
   return items.map((item) => {
     if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL) {
       const { input, ...rest } = item;
-      const raw = isString(input) ? input : JSON.stringify(input ?? "");
+      const raw = isString(input) ? input : input == null ? "" : JSON.stringify(input);
       return { ...rest, type: RESPONSES_ITEM.FUNCTION_CALL, arguments: JSON.stringify({ input: raw }) };
     }
     if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) return { ...item, type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT };

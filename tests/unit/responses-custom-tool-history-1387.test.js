@@ -52,6 +52,23 @@ describe("#1387 Responses→Chat custom tool history", () => {
     expect(out.messages[1]).toMatchObject({ role: "tool", tool_call_id: "c2", content: "ok" });
   });
 
+  it("lowers a missing custom input to an empty string, not a JSON-quoted one", () => {
+    const out = toChat({ input: [{ type: "custom_tool_call", call_id: "c3", name: "apply_patch" }] });
+    expect(JSON.parse(out.messages[0].tool_calls[0].function.arguments)).toEqual({ input: "" });
+  });
+
+  it("drops a blank-name custom_tool_call and its output like a nameless function_call", () => {
+    const out = toChat({
+      input: [
+        { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+        { type: "custom_tool_call", call_id: "c4", name: "  ", input: PATCH },
+        { type: "custom_tool_call_output", call_id: "c4", output: "Done" },
+      ],
+    });
+    expect(out.messages.some((m) => m.tool_calls?.length)).toBe(false);
+    expect(out.messages.some((m) => m.role === "tool")).toBe(false);
+  });
+
   it("strips an orphaned custom_tool_call_output like a function_call_output", () => {
     const out = toChat({
       input: [

@@ -24,6 +24,7 @@ describe("CLI getLanIp guard (#1408)", () => {
   });
 
   it("prints an explicit unknown-binding warning instead of staying silent", () => {
-    expect(cliSource).toMatch(/lanIp === undefined\)[^\n]*binding address is unknown/);
+    expect(cliSource).toMatch(/lanIp === undefined \? "but the binding address is unknown/);
+    expect(cliSource).toMatch(/but no external IPv4 address was found/);
   });
 });

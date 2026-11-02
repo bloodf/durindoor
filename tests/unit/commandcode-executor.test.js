@@ -175,7 +175,7 @@ describe("CommandCode CLI 1.88.0 identity headers (port of decolua/9router b1eff
       "x-taste-learning": "false",
       "User-Agent": "cli",
     });
-    expect(headers["x-session-id"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(headers["x-session-id"]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
   it("keeps x-session-id stable for a captured client session", () => {
@@ -183,6 +183,7 @@ describe("CommandCode CLI 1.88.0 identity headers (port of decolua/9router b1eff
     const a = ex.buildHeaders({ apiKey: "k", _clientSessionId: "conv-1" })["x-session-id"];
     expect(ex.buildHeaders({ apiKey: "k", _clientSessionId: "conv-1" })["x-session-id"]).toBe(a);
     expect(ex.buildHeaders({ apiKey: "k", _clientSessionId: "conv-2" })["x-session-id"]).not.toBe(a);
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
   it("lists Kimi K3.1 Pro in the Command Code catalog (a3bdaf6d)", async () => {

@@ -292,18 +292,18 @@
     },
     {
       "id": "R08",
-      "template": "/dashboard/endpoint",
-      "entry": "src/app/(dashboard)/dashboard/endpoint/page.js",
+      "template": "/dashboard/keys",
+      "entry": "src/app/(dashboard)/dashboard/keys/page.js",
       "variants": [
         {
-          "url": "/dashboard/endpoint",
-          "predicate": "static, renders EndpointPageClient"
+          "url": "/dashboard/keys",
+          "predicate": "static, renders KeysPageClient"
         },
         {
-          "url": "/dashboard/endpoint",
+          "url": "/dashboard/keys",
           "seedScenario": "empty",
           "expectedText": "No API keys yet",
-          "expectedTextSource": "EndpointPageClient empty API key state",
+          "expectedTextSource": "KeysPageClient empty API key state",
           "predicate": "empty fixture renders API-key empty state",
           "expectedSecondary": []
         }
@@ -311,7 +311,6 @@
       "expectedText": "QA Primary Key",
       "expectedTextSource": "tests/e2e/seeds.mjs key fixture name",
       "expectedSecondary": [
-        "Require API key",
         "API Keys"
       ],
       "fixture": "key",
@@ -893,7 +892,10 @@
       ],
       "expectedText": "Proxy Pools",
       "expectedTextSource": "src/app/(dashboard)/dashboard/proxy-pools/page.js:565 <h1>Proxy Pools</h1>",
-      "expectedSecondary": ["Batch import", "Deploy relay"],
+      "expectedSecondary": [
+        "Batch import",
+        "Deploy relay"
+      ],
       "expectedSecondaryLocator": "button",
       "fixture": "baseline",
       "states": [
@@ -969,7 +971,9 @@
       ],
       "expectedText": "Skills",
       "expectedTextSource": "src/app/(dashboard)/dashboard/skills/page.js:26 PageHeader title",
-      "expectedSecondary": ["Copy instruction"],
+      "expectedSecondary": [
+        "Copy instruction"
+      ],
       "expectedSecondaryLocator": "button",
       "fixture": "key",
       "states": [
@@ -1025,8 +1029,13 @@
       "entry": "src/app/(dashboard)/dashboard/timeline/page.js",
       "variants": [
         {
+          "url": "/dashboard/timeline?view=table",
+          "predicate": "table view renders the Timeline traces caption"
+        },
+        {
           "url": "/dashboard/timeline",
-          "predicate": "static"
+          "predicate": "default swimlane view",
+          "expectedSecondary": []
         }
       ],
       "expectedText": "Timeline",
@@ -1086,7 +1095,9 @@
       ],
       "expectedText": "Token Saver settings",
       "expectedTextSource": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx:484 PageHeader title",
-      "expectedSecondary": ["Minimum chars"],
+      "expectedSecondary": [
+        "Minimum chars"
+      ],
       "expectedSecondaryLocator": "label",
       "fixture": "baseline",
       "states": [
@@ -1299,6 +1310,29 @@
         "redirect"
       ],
       "actions": []
+    },
+    {
+      "id": "R38",
+      "template": "/dashboard/endpoint",
+      "entry": "src/app/(dashboard)/dashboard/endpoint/page.js",
+      "variants": [
+        {
+          "url": "/dashboard/endpoint",
+          "predicate": "static, renders EndpointPageClient"
+        }
+      ],
+      "expectedText": "Endpoint",
+      "expectedTextSource": "EndpointPageClient PageHeader title",
+      "expectedSecondary": [
+        "API Endpoint",
+        "Require API key"
+      ],
+      "fixture": "baseline",
+      "states": [
+        "default"
+      ],
+      "actions": [],
+      "headingLocator": false
     }
   ]
 }

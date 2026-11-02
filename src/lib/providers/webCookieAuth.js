@@ -1,4 +1,7 @@
 import { isString } from "../../shared/utils/typeChecks.js";
+import { stripCookieInputPrefix, extractCookieValue } from "../../shared/utils/cookieValue.js";
+
+export { stripCookieInputPrefix, extractCookieValue };
 
 /**
  * Static browser headers the www.kimi.com web app sends on its model-discovery
@@ -23,41 +26,6 @@ export const KIMI_WEB_DISCOVERY_HEADERS = {
  * All functions are fail-open: invalid/missing input returns an empty string.
  */
 
-/**
- * Strip accidental prefixes from pasted credential blobs.
- * @param {string} rawValue
- * @returns {string}
- */
-export function stripCookieInputPrefix(rawValue) {
-  const trimmed = (rawValue || "").trim();
-  if (!trimmed) return "";
-
-  const withoutBearer = trimmed.replace(/^bearer\s+/i, "");
-  return withoutBearer.replace(/^cookie:/i, "").trim();
-}
-
-/**
- * Extract the value of a single named cookie from a pasted blob.
- * Handles bare values, single pairs, and full DevTools cookie strings.
- * @param {string} rawValue
- * @param {string} cookieName
- * @returns {string}
- */
-export function extractCookieValue(rawValue, cookieName) {
-  const trimmed = stripCookieInputPrefix(rawValue);
-  if (!trimmed) return "";
-
-  if (trimmed.includes(";")) {
-    const escaped = cookieName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = trimmed.match(new RegExp("(?:^|;\\s*)" + escaped + "=([^;\\s]+)"));
-    return match ? match[1] : "";
-  }
-
-  const prefix = `${cookieName}=`;
-  if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length);
-
-  return "";
-}
 
 const JWT_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 

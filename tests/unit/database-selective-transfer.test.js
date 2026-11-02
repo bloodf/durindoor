@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 // NOTE: `src/lib/db/driver.js` caches its adapter on `global._dbAdapter` and
 // captures that object in a module-scope `const state` at import time. A
 // single static top-level import of the DB module graph would therefore
@@ -28,7 +29,8 @@ beforeEach(() => {
   routeMocks.body.mockReset().mockImplementation(async () => ({}));
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });

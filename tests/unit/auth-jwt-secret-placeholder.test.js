@@ -12,6 +12,7 @@ import { scanDocExamples } from "../utils/docExamples.js";
 import { SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 function forge(secret) {
@@ -42,12 +43,13 @@ describe("placeholder JWT_SECRET", () => {
     warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     warnSpy.mockRestore();
     delete process.env.JWT_SECRET;
     vi.doUnmock("@/lib/dataDir");
     vi.doUnmock("@/lib/localDb");
     vi.resetModules();
+    await disposeLoadedRequestDetailsRepo();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 

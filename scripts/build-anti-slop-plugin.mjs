@@ -2,7 +2,7 @@
 /**
  * Bundle the vendored TypeScript anti-slop oxlint plugin to plain ESM JavaScript.
  *
- * Node 20.20.x (CI pin) does not support `--experimental-strip-types`, so oxlint
+ * The plugin is pre-bundled so oxlint does not depend on Node type stripping; it
  * loads `./tools/oxlint/anti-slop/index.bundle.js` instead of `index.ts`.
  *
  * @see internal/docs/local-development.mdx

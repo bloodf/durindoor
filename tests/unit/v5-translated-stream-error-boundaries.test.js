@@ -91,8 +91,14 @@ async function runStream(sourceFormat, chunks) {
     body,
     stream: true,
   };
+  // chatCore passes the same selected credentials to both (#1342).
+  const credentials = {
+    apiKey: "opaque-e06-selected",
+    providerSpecificData: { sessionToken: "opaque-e06-session" },
+  };
   const completion = buildOnStreamComplete({
     ...common,
+    credentials,
     onRequestSuccess,
     onEmptyStream,
     getProviderAttemptStartedAt: () => 1234,
@@ -138,10 +144,7 @@ async function runStream(sourceFormat, chunks) {
           onStreamComplete,
           sourceFormat,
           targetFormat: FORMATS.OPENAI,
-          credentials: {
-            apiKey: "opaque-e06-selected",
-            providerSpecificData: { sessionToken: "opaque-e06-session" },
-          },
+          credentials,
           streamController,
           providerResponse: new Response(upstream, {
             status: 200,
@@ -213,7 +216,10 @@ function expectFailure(result, format, upstreamError, requestScoped = true) {
   expect(result.onStreamComplete.mock.calls[0][0].upstreamError).toEqual(upstreamError);
   expect(result.onRequestSuccess).not.toHaveBeenCalled();
   expect(result.detail.status).toBe("error");
-  expect(result.detail.response.error).toEqual(upstreamError);
+  // The persisted copy keeps the fields but never the credentials or diagnostics (#1342).
+  expect(Object.keys(result.detail.response.error).sort()).toEqual(Object.keys(upstreamError).sort());
+  for (const token of forbidden) expect(JSON.stringify(result.detail)).not.toContain(token);
+  expect(JSON.stringify(result.detail)).not.toMatch(/Bearer\s+(?!\[redacted\])\S/);
   if (requestScoped) expect(result.onEmptyStream).not.toHaveBeenCalled();
   expect(successes(result)).toEqual([]);
   const failed = failures(result);

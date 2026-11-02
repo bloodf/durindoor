@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { getModelLifecycleDecision } from "../../open-sse/services/modelLifecycle.js";
 import { PROVIDER_MODELS, getModelsByProviderId, getModelTargetFormat, getModelType, getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 
 describe("MiniMax-M3 model registration", () => {
@@ -36,6 +37,7 @@ describe("MiniMax-M3 model registration", () => {
   it("routes MiniMax M3 family through OpenAI format via getModelTargetFormat (#2533)", () => {
     for (const provider of ["minimax", "minimax-cn"]) {
       expect(getModelTargetFormat(provider, "MiniMax-M3")).toBe("openai");
+      expect(getModelTargetFormat(provider, "MiniMax-M3.1-Flash")).toBe("openai");
       expect(getModelTargetFormat(provider, "MiniMax-M3.1-Flash-Preview")).toBe("openai");
       expect(getModelTargetFormat(provider, "MiniMax-M2.7")).toBeNull();
     }
@@ -46,6 +48,28 @@ describe("MiniMax-M3 model registration", () => {
     expect(getModelTargetFormat("xai", alias)).toBe("openai-responses");
     expect(getModelType("xai", alias)).toBeNull();
     expect(getModelUpstreamId("xai", alias)).toBe("grok-4.20-multi-agent-0309");
+  });
+
+  it("lists GA M3.1 Flash on minimax only and keeps deprecated entries flagged", () => {
+    const intl = PROVIDER_MODELS.minimax;
+    const cn = PROVIDER_MODELS["minimax-cn"];
+    expect(intl.find((m) => m.id === "MiniMax-M3.1-Flash")).toMatchObject({ contextLength: 1000000 });
+    expect(cn.some((m) => m.id === "MiniMax-M3.1-Flash")).toBe(false);
+    expect(intl.find((m) => m.id === "MiniMax-M3.1-Flash-Preview").deprecated).toBe(true);
+    expect(cn.find((m) => m.id === "MiniMax-M3.1-Flash-Preview").deprecated).not.toBe(true);
+    for (const models of [intl, cn]) {
+            expect(models.find((m) => m.id === "MiniMax-M2.7").deprecated).toBe(true);
+      expect(models.find((m) => m.id === "MiniMax-M2.1").deprecated).toBe(true);
+      expect(models.find((m) => m.id === "MiniMax-M3.1-Flash")?.deprecated).not.toBe(true);
+    }
+  });
+
+  it("schedules M2.5/M2.7 shutdown on 2026-11-18 with M3.1 Flash as replacement", () => {
+    const d = getModelLifecycleDecision("minimax", "MiniMax-M2.7", new Date("2026-11-01T00:00:00.000Z"));
+    expect(d).toMatchObject({ status: "deprecated", shutdownAt: "2026-11-18" });
+    expect(d.replacement.model).toBe("MiniMax-M3.1-Flash");
+    expect(getModelLifecycleDecision("minimax", "MiniMax-M2.5", new Date("2026-11-19T00:00:00.000Z")).status).toBe("shutdown");
+    expect(getModelLifecycleDecision("minimax", "MiniMax-M3.1-Flash", new Date("2026-11-19T00:00:00.000Z")).status).toBe("untracked");
   });
 
   it("exposes MiniMax-M3 through getModelsByProviderId for both provider IDs", () => {

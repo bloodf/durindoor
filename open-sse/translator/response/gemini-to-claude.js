@@ -3,6 +3,7 @@ import { FORMATS } from "../formats.js";
 import { GEMINI_ERROR_FINISH_REASONS } from "../schema/finishReasons.js";
 import { buildGeminiThoughtSignatureKey, storeGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function restoreToolName(name, toolNameMap) {
@@ -17,7 +18,14 @@ export function geminiToClaudeResponse(chunk, state) {
   if (!chunk) return null;
   const response = chunk.response || chunk;
   const candidate = response?.candidates?.[0];
-  if (!candidate) return null;
+  if (!candidate) {
+    // Candidate-less error (incl. one nested in promptFeedback): end with a Claude
+    // error event, never a silent stream or a content filter (#1342).
+    const error = response?.error || chunk.error || response?.promptFeedback?.error;
+    if (!error) return null;
+    const message = sanitizeErrorMessage(isString(error) ? error : error.message || "Upstream provider error");
+    return [{ type: "error", error: { type: "api_error", message } }];
+  }
   if (!Array.isArray(state.standaloneSignatureQueue)) state.standaloneSignatureQueue = [];
   const results = [];
   if (!state.messageId) {

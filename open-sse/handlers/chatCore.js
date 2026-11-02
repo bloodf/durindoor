@@ -1739,7 +1739,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     try {
-      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog, signal: providerSignal, credentials });
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);

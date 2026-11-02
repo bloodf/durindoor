@@ -190,7 +190,7 @@ describe("OpenCode <env> system-prompt marker (ce060c79)", () => {
     expect(applyEnvFingerprint(body, "chat")).toBe(true);
     expect(body.messages[0].content).toMatch(/^You are helpful\.\n\nHere is some useful information about the environment/);
     expect(body.messages[0].content).toContain("<env>\n  Working directory: /workspace");
-    expect(body.messages[0].content).toContain(`  Platform: ${process.platform}`);
+    expect(body.messages[0].content).toContain("  Platform: linux");
     expect(body.messages[0].content).toMatch(/<\/env>$/);
     expect(body.messages).toHaveLength(2);
   });

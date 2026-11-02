@@ -216,7 +216,8 @@ function noteUnavailableTools(body, format, names) {
 // Upstream's gate reads the text only: a foreign system prompt plus this block
 // passes, so it is appended to the caller's prompt, never replacing it.
 // Upstream fills the paths from the gateway host (process.cwd(), os.tmpdir());
-// fixed neutral paths keep the host's directory layout out of the request.
+// fixed neutral values (Linux, matching the `shell` definition) keep the
+// host's directory layout and OS out of the request.
 const ENV_TAG = "<env>";
 const ENV_FINGERPRINT_PROMPT = [
   "Here is some useful information about the environment you are running in:",
@@ -224,7 +225,7 @@ const ENV_FINGERPRINT_PROMPT = [
   "  Working directory: /workspace",
   "  Workspace root folder: /workspace",
   "  Is directory a git repo: no",
-  `  Platform: ${process.platform}`,
+  "  Platform: linux",
   "  Prefer /tmp/opencode over generic system temporary directories such as /tmp; it is pre-created and approved for external access.",
   "</env>",
 ].join("\n");

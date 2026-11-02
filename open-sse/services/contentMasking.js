@@ -144,6 +144,12 @@ function maskItem(item, ctx) {
   if (isString(item)) return maskText(item, ctx.opts, ctx.counts);
   if (!item || !isObject(item)) return item;
   let out = item;
+  // Bare text blocks as list items: Claude `system: [{type:"text",text}]`,
+  // Responses top-level `input: [{type:"input_text",text}]`.
+  if (TEXT_PART_TYPES.has(item.type) && isString(item.text)) {
+    const t = maskText(item.text, ctx.opts, ctx.counts);
+    if (t !== item.text) out = { ...out, text: t };
+  }
   if ("content" in item) {
     const c = maskContent(item.content, ctx);
     if (c !== item.content) out = { ...out, content: c };
@@ -175,8 +181,14 @@ function maskList(list, ctx) {
  * @param {{mode?: string, credentials?: boolean, pii?: boolean}} [config]
  * @returns {{body: object, counts: Record<string, number>, total: number}}
  */
+/** Case-insensitive mode; null when the value is not a known mode. */
+export function normalizeMaskingMode(mode) {
+  const m = isString(mode) ? mode.trim().toLowerCase() : "";
+  return MASKING_MODES.includes(m) ? m : null;
+}
+
 export function maskRequestContent(body, config = {}) {
-  const mode = MASKING_MODES.includes(config?.mode) ? config.mode : "off";
+  const mode = normalizeMaskingMode(config?.mode) ?? "off";
   if (mode === "off" || !body || !isObject(body)) return { body, counts: {}, total: 0 };
   const ctx = {
     counts: {},

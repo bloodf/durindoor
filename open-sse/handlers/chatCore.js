@@ -58,7 +58,7 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
-import { maskRequestContent } from "../services/contentMasking.js";
+import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
@@ -528,8 +528,40 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     clientPrefersSSE
   });
 
+  // Opt-in PII / credential masking (#1112) on the source body, before request
+  // logging and any translation, so neither disk logs nor any provider format
+  // see the originals. Logs counts per type only, never the matched values.
+  // Not affected by the token-saver bypass header: it is a data-protection
+  // control, not a saver. Mask mode fails CLOSED: if masking throws, the
+  // request is rejected rather than sent unmasked; warn mode fails open.
+  const maskingMode = normalizeMaskingMode(contentMasking?.mode);
+  if (contentMasking?.mode && !maskingMode) {
+    log?.warn?.("MASKING", "unknown contentMasking.mode; masking is off (use off, warn or mask)");
+  }
+  let clientLogBody = clientRawRequest?.body;
+  if (maskingMode === "warn" || maskingMode === "mask") {
+    try {
+      const maskingConfig = { ...contentMasking, mode: maskingMode };
+      const masked = maskRequestContent(body, maskingConfig);
+      if (masked.total > 0) {
+        body = masked.body;
+        const summary = Object.entries(masked.counts).map(([k, n]) => `${k}:${n}`).join(",");
+        log?.warn?.("MASKING", `${maskingMode === "mask" ? "masked" : "detected"} ${masked.total} (${summary})`);
+      }
+      if (maskingMode === "mask" && clientLogBody && isObject(clientLogBody)) {
+        clientLogBody = maskRequestContent(clientLogBody, maskingConfig).body;
+      }
+    } catch (e) {
+      log?.warn?.("MASKING", `failed: ${sanitizeErrorMessage(e?.message)}`);
+      if (maskingMode === "mask") {
+        finishTimeline("error", "error", "content masking failed");
+        return createErrorResult(500, "Content masking failed; request not sent");
+      }
+    }
+  }
+
   const reqLogger = await createRequestLogger(sourceFormat, targetFormat, cleanModel);
-  if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
+  if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientLogBody, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
 
@@ -586,23 +618,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // targetFormat lets a target that validates its own tool-call arguments
   // (e.g. CommandCode) keep rejecting malformed JSON instead of having it
   // silently coerced to "{}" before its own translator ever sees it.
-  // Opt-in PII / credential masking (#1112) on the source body, before any
-  // translation, so every provider format sees the masked text. Logs counts
-  // per type only, never the matched values. Not affected by the token-saver
-  // bypass header: it is a data-protection control, not a saver.
-  if (contentMasking?.mode === "warn" || contentMasking?.mode === "mask") {
-    try {
-      const masked = maskRequestContent(body, contentMasking);
-      if (masked.total > 0) {
-        body = masked.body;
-        const summary = Object.entries(masked.counts).map(([k, n]) => `${k}:${n}`).join(",");
-        log?.warn?.("MASKING", `${contentMasking.mode === "mask" ? "masked" : "detected"} ${masked.total} (${summary})`);
-      }
-    } catch (e) {
-      log?.warn?.("MASKING", `skipped: ${sanitizeErrorMessage(e?.message)}`);
-    }
-  }
-
   ensureToolCallIds(body, targetFormat);
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);

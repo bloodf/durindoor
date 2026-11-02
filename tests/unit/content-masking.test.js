@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 import { maskRequestContent, maskText } from "../../open-sse/services/contentMasking.js";
 
-const mocks = vi.hoisted(() => ({ execute: vi.fn(), handleNonStreamingResponse: vi.fn() }));
+const mocks = vi.hoisted(() => ({ execute: vi.fn(), handleNonStreamingResponse: vi.fn(), logClientRawRequest: vi.fn(), logRawRequest: vi.fn() }));
 vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: vi.fn(() => ({ noAuth: true, execute: mocks.execute })) }));
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({
   createRequestLogger: vi.fn(async () => ({
-    logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(),
+    logClientRawRequest: mocks.logClientRawRequest, logRawRequest: mocks.logRawRequest, logTargetRequest: vi.fn(),
     logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn(),
   })),
 }));
@@ -132,6 +132,19 @@ describe("maskRequestContent", () => {
     expect(res.body.contents[0].parts[1]).toBe(body.contents[0].parts[1]);
   });
 
+  it("masks bare text blocks in Claude system arrays and Responses input lists", () => {
+    const body = {
+      system: [{ type: "text", text: `bob@example.com ${KEY}` }],
+      input: [{ type: "input_text", text: "bob@example.com" }, { type: "function_call", call_id: "bob@example.com", arguments: "{}" }],
+    };
+    const res = maskRequestContent(body, { mode: "mask" });
+    expect(JSON.stringify(res.body.system)).not.toContain("bob@example.com");
+    expect(JSON.stringify(res.body.system)).not.toContain(KEY);
+    expect(res.body.input[0].text).not.toContain("bob@example.com");
+    expect(res.body.input[1]).toBe(body.input[1]);
+    expect(res.total).toBe(3);
+  });
+
   it("can limit masking to credentials only", () => {
     const res = maskRequestContent({ messages: [{ role: "user", content: `a@b.co ${KEY}` }] }, { mode: "mask", pii: false });
     expect(res.body.messages[0].content).toBe("a@b.co [REDACTED:anthropic]");
@@ -150,17 +163,43 @@ describe("chatCore wiring", () => {
 
   const run = async (contentMasking) => {
     const warn = vi.fn();
-    await handleChatCore({
+    const result = await handleChatCore({
       body: { ...chatBody(), stream: false },
       modelInfo: { provider: "openai", model: "gpt-4o" },
       credentials: { apiKey: "k", providerSpecificData: {} },
       log: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn(), line: vi.fn() },
       connectionId: "c",
       contentMasking,
-      clientRawRequest: { endpoint: "/v1/chat/completions", body: {}, headers: { accept: "application/json" } },
+      clientRawRequest: { endpoint: "/v1/chat/completions", body: { ...chatBody(), stream: false }, headers: { accept: "application/json" } },
     });
-    return { sent: JSON.stringify(mocks.execute.mock.calls.at(-1)[0].body), warn };
+    const call = mocks.execute.mock.calls.at(-1);
+    return { result, sent: call ? JSON.stringify(call[0].body) : null, warn };
   };
+
+  it("request logs never see unmasked content in mask mode", async () => {
+    await run({ mode: "mask" });
+    const logged = JSON.stringify([mocks.logClientRawRequest.mock.calls, mocks.logRawRequest.mock.calls]);
+    expect(logged).toContain("[REDACTED:anthropic]");
+    // Tool arguments are never rewritten (they carry KEY by design); text is.
+    expect(logged).not.toContain(`My key is ${KEY}`);
+    expect(logged).not.toContain("admin@corp.example");
+  });
+
+  it("mask mode fails closed when masking throws; warn mode fails open", async () => {
+    const throwing = (mode) => ({ mode, get credentials() { throw new Error("boom"); } });
+    const closed = await run(throwing("mask"));
+    expect(closed.sent).toBeNull();
+    expect(closed.result).toMatchObject({ success: false, status: 500 });
+    const open = await run(throwing("warn"));
+    expect(open.sent).toContain(`My key is ${KEY}`);
+  });
+
+  it("accepts mode case-insensitively and warns on unknown modes", async () => {
+    expect((await run({ mode: "MASK" })).sent).not.toContain(`My key is ${KEY}`);
+    const typo = await run({ mode: "masked" });
+    expect(typo.sent).toContain(`My key is ${KEY}`);
+    expect(typo.warn.mock.calls.map((c) => c.join(" ")).join("\n")).toMatch(/unknown contentMasking\.mode/);
+  });
 
   it("mask mode sends masked text upstream and logs counts only", async () => {
     const { sent, warn } = await run({ mode: "mask" });

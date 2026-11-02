@@ -38,3 +38,10 @@ These rules keep false positives down:
 Masking reads message text, system and instruction text, and tool results. That includes Claude `tool_result` content nested in user turns, OpenAI Responses `function_call_output` and `custom_tool_call_output`, and Gemini text parts. It runs once, before format translation, so every provider gets the masked text.
 
 Provider responses are not masked.
+
+## Scope and failure behavior
+
+- Masking covers chat requests that go through the chat pipeline: Chat Completions, Responses and Messages. Embeddings, media and search routes are not masked.
+- Masking runs before request logging. With `ENABLE_REQUEST_LOGS=true`, logged request bodies are the masked ones in `mask` mode.
+- In `mask` mode, a masking error rejects the request with HTTP 500 instead of sending it unmasked. In `warn` mode an error only logs a warning.
+- The mode is case-insensitive. An unknown value turns masking off and logs a warning.

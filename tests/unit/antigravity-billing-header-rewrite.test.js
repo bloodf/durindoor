@@ -50,6 +50,15 @@ describe("Antigravity strips the Claude Code billing header from system prompts"
     expect(systemTextSentToAntigravity(`${line} Use tools.`)).toBe("You are an AI assistant. Use tools.");
   });
 
+  it.each([
+    "You are Claude Code, Anthropic's official CLI for Claude. Be concise.",
+    "You are a coding assistant. Hermes is the name of a file.",
+    "You are Hermione, an AI assistant.",
+    "We use Hermes Agent tooling created by Nous Research in this repo.",
+  ])("leaves non-Hermes-identity system text untouched: %j", (text) => {
+    expect(systemTextSentToAntigravity(text)).toBe(text);
+  });
+
   it("leaves unrelated system content untouched by the Hermes rewrite", () => {
     const text = systemTextSentToAntigravity("You are a helpful assistant named Hermes.");
     expect(text).toBe("You are a helpful assistant named Hermes.");

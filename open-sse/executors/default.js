@@ -4,7 +4,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas } from "../providers/shared.js";
+import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -558,6 +558,13 @@ export class DefaultExecutor extends BaseExecutor {
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
     applyAuth(headers, desc, credentials);
 
+    // Claude Code OAuth Messages send `oauth-2025-04-20` (+ extended-cache-ttl);
+    // the API-key path keeps the plain first-party pin (#1383).
+    if (this.provider === "claude" && !credentials.apiKey && credentials.accessToken) {
+      const betaKey = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
+      headers[betaKey] = buildClaudeOAuthAnthropicBeta(headers[betaKey]);
+    }
+
     /** Emit only client-provided session identity, never generated fallback affinity. */
     if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
       delete headers["x-claude-code-session-id"];
@@ -582,11 +589,14 @@ export class DefaultExecutor extends BaseExecutor {
     // claudeOverlay live-header merge — so this block only covers
     // anthropic-compatible-* nodes.)
     const isClaudeModel = isString(model) && /^claude-/.test(model);
+    const compatBaseUrl = credentials?.providerSpecificData?.baseUrl || "";
+    // `claude` always targets api.anthropic.com; compat nodes only when their host is official.
+    const firstPartyHost = this.provider === "claude" || compatBaseUrl === "" || isOfficialAnthropicBaseUrl(compatBaseUrl);
     if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
-      headers["Anthropic-Beta"] = selectAnthropicBeta(model);
+      headers["Anthropic-Beta"] = selectAnthropicBeta(model, { firstParty: firstPartyHost });
     }
     if (this.provider === "claude" || (this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel)) {
-      mergeForwardableClientBetas(headers, requestContext?.clientHeaders);
+      mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams

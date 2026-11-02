@@ -44,6 +44,10 @@ const PUBLIC_API_PATHS = [
 // A prefix match here would let an attacker reach an unrelated route by
 // nesting it under a trusted public prefix.
 const PUBLIC_API_EXACT_PATHS = [
+  // Orchestrator probes (Kubernetes liveness/readiness). Both answer only
+  // {"ok":true}; exact match so nothing can be nested under them.
+  "/api/livez",
+  "/api/readyz",
   "/api/auth/oidc/start",
   "/api/auth/oidc/callback",
   // One-time password-change proof recipient. Only valid proofs can drive

@@ -1352,3 +1352,29 @@ describe("OIDC secret probe management boundary", () => {
     }, "POST"))).status).toBe(403);
   });
 });
+
+describe("orchestrator probe paths (#1146)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+  });
+
+  it("lets unauthenticated remote probes reach /api/livez and /api/readyz", async () => {
+    for (const path of ["/api/livez", "/api/readyz"]) {
+      const response = await proxy(request(path, { host: "10.0.0.7:20128" }));
+      expect(response, path).toBe(mocks.nextResponse);
+    }
+  });
+
+  it("matches the probe paths exactly (no nested routes)", async () => {
+    for (const path of ["/api/livez/x", "/api/readyz/../settings", "/api/readyzz"]) {
+      const response = await proxy(request(path, { host: "router.example.com" }));
+      expect(response, path).not.toBe(mocks.nextResponse);
+    }
+  });
+
+});

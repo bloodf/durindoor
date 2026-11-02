@@ -1,0 +1,16 @@
+# ClusterIP only. Expose it through your ingress or gateway with TLS; see
+# docs/operations/security.mdx before making the dashboard reachable.
+apiVersion: v1
+kind: Service
+metadata:
+  name: durindoor
+  labels:
+    app.kubernetes.io/name: durindoor
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: durindoor
+  ports:
+    - name: http
+      port: 20128
+      targetPort: http

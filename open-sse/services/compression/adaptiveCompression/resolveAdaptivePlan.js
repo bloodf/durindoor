@@ -28,7 +28,7 @@ export function resolveAdaptivePlan(input) {
   const headroomBefore = target - estimatedTokens;
 
   // replace-autotrigger only acts on a bare Default/off base plan; an explicit choice wins.
-  const baseRank = aggressivenessOf(basePlan.mode);
+  const baseRank = planRank(basePlan);
   if (config.mode === "replace-autotrigger" && baseRank > aggressivenessOf("off")) {
     return {
       plan: basePlan,
@@ -62,7 +62,8 @@ export function resolveAdaptivePlan(input) {
   const ladder =
     config.ladderOverride && config.ladderOverride.length > 0 ? config.ladderOverride : DEFAULT_LADDER;
   const startTier = config.mode === "floor" ? baseRank : aggressivenessOf("off");
-  const stages = ladder.filter((s) => aggressivenessOf(s.engine) > startTier && isAvailable(s.engine));
+  const inBase = new Set((basePlan.stackedPipeline || []).map((s) => s.engine));
+  const stages = ladder.filter((s) => aggressivenessOf(s.engine) > startTier && !inBase.has(s.engine) && isAvailable(s.engine));
 
   let current = estimatedTokens;
   const applied = [];
@@ -85,6 +86,17 @@ export function resolveAdaptivePlan(input) {
       fit,
     },
   };
+}
+
+/**
+ * Aggressiveness of a base plan. A stacked plan ranks at its most aggressive
+ * engine, so `floor` can still escalate beyond an explicit lossless stack.
+ */
+function planRank(basePlan) {
+  if (basePlan.mode === "stacked" && Array.isArray(basePlan.stackedPipeline) && basePlan.stackedPipeline.length > 0) {
+    return Math.max(...basePlan.stackedPipeline.map((s) => aggressivenessOf(s.engine)));
+  }
+  return aggressivenessOf(basePlan.mode);
 }
 
 /**

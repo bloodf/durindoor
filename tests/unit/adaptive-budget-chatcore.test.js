@@ -61,6 +61,14 @@ describe("chatCore adaptive budget wiring", () => {
     expect(reserveCtx.modelCapabilities.contextWindow).toBe(64_000);
   });
 
+  it("applyOpts keeps both the budget and rtkApplied (no second RTK pass in the stack)", async () => {
+    await handleChatCore(args({ rtkEnabled: true }));
+    expect(runCompressionSeam.mock.calls[0][2].applyOpts).toMatchObject({ mode: "floor", policy: "percentage", rtkApplied: true });
+    runCompressionSeam.mockClear();
+    await handleChatCore(args({ rtkEnabled: false }));
+    expect(runCompressionSeam.mock.calls[0][2].applyOpts.rtkApplied).toBe(false);
+  });
+
   it("defaults to adaptive off when the setting is absent", async () => {
     await handleChatCore(args({ compressionAdaptive: undefined }));
     expect(runCompressionSeam.mock.calls[0][2].adaptive.mode).toBe("off");

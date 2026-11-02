@@ -42,6 +42,8 @@ export function normalizeContextBudgetConfig(raw) {
     pct: Number.isFinite(cfg.pct) && cfg.pct > 0 && cfg.pct <= 1 ? cfg.pct : DEFAULT_CONTEXT_BUDGET.pct,
     absoluteBudget: nonNegative(cfg.absoluteBudget) ? Math.floor(cfg.absoluteBudget) : DEFAULT_CONTEXT_BUDGET.absoluteBudget,
   };
+  // An absolute policy needs a positive budget; 0 would escalate every request.
+  if (out.policy === "absolute" && out.absoluteBudget <= 0) out.policy = DEFAULT_CONTEXT_BUDGET.policy;
   if (Array.isArray(cfg.ladderOverride)) {
     const ladder = cfg.ladderOverride.filter((s) => s && isString(s.engine) &&
       (s.intensity === undefined || isString(s.intensity))).

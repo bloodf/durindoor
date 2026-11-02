@@ -107,7 +107,16 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       estimatedTokens: adaptive.estimatedTokens ?? 0,
       modelContextLimit: adaptive.modelContextLimit ?? 0,
       requestMaxTokens: adaptive.requestMaxTokens ?? 0,
-      config
+      config,
+      // Credit only engines that will actually do work on this request: an
+      // unconfigured engine (headroom without a proxy URL) or RTK that already
+      // ran at its dedicated position would otherwise claim a fit for free.
+      isAvailable: (id) => {
+        if (!isEngineAvailable(id)) return false;
+        if (id === "rtk" && cfg.applyOpts?.rtkApplied === true) return false;
+        const engine = getEngine(id);
+        return engine.isConfigured?.({ config: cfg.applyOpts || {}, stepConfig: engineStepOptions(engine, cfg.engines?.[id]) }) ?? true;
+      }
     });
     const plan = resolved?.plan ?? resolved ?? basePlan;
     const t = resolved?.telemetry;

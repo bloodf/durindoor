@@ -63,14 +63,31 @@ describe("plan precedence in the seam", () => {
     expect(engineList(out)).toBe("caveman");
   });
 
-  it("floor escalates beyond the explicit stack, but only into dispatchable engines", async () => {
+  it("floor ranks a stacked plan by its most aggressive engine and escalates beyond it", async () => {
     const lines = [];
     const out = await seam({ "session-dedup": { enabled: true } }, { ...overflow, mode: "floor" }, { debug: (...a) => lines.push(a.join(" ")) });
-    // A stacked base plan sits at the prose tier; only aggressive/ultra lie
-    // beyond it and both are catalog placeholders, so nothing is added and the
-    // resolver reports fit=false instead of crediting engines that cannot run.
-    expect(engineList(out)).toBe("session-dedup");
-    expect(lines.join("\n")).toMatch(/stages=none fit=false/);
+    const engines = engineList(out).split(",");
+    expect(engines[0]).toBe("session-dedup");
+    expect(engines).toContain("caveman");
+    expect(lines.join("\n")).not.toMatch(/stages=[^ ]*session-dedup/); // never re-added
+  });
+
+  it("does not credit unconfigured headroom or RTK that already ran", async () => {
+    const lines = [];
+    await runCompressionSeam(body(), undefined, {
+      enabled: true, engines: {}, applyOpts: { rtkApplied: true },
+      adaptive: { estimatedTokens: 10_000, requestMaxTokens: null, ...overflow },
+      log: { debug: (...a) => lines.push(a.join(" ")) },
+    });
+    const stages = lines.join("\n").match(/stages=(\S+)/)[1].split(",");
+    expect(stages).not.toContain("headroom");
+    expect(stages).not.toContain("rtk");
+    expect(stages).toContain("lite");
+  });
+
+  it("absolute policy without a positive budget falls back to reserve-output", () => {
+    expect(normalizeContextBudgetConfig({ policy: "absolute", absoluteBudget: 0 }).policy).toBe("reserve-output");
+    expect(normalizeContextBudgetConfig({ policy: "absolute", absoluteBudget: 5000 }).policy).toBe("absolute");
   });
 
   it("never escalates when the request already fits", async () => {

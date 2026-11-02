@@ -1265,6 +1265,12 @@
     },
     "format": "openai"
   },
+  "meganova-ai": {
+    "baseUrl": "https://api.meganova.ai/v1/chat/completions",
+    "validateUrl": "https://api.meganova.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "meta-llama": {
     "baseUrl": "https://api.llama.com/compat/v1/chat/completions",
     "validateUrl": "https://api.llama.com/compat/v1/models",
@@ -1416,6 +1422,12 @@
     },
     "format": "openai"
   },
+  "mixlayer": {
+    "baseUrl": "https://models.mixlayer.ai/v1/chat/completions",
+    "validateUrl": "https://models.mixlayer.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "mmf": {
     "baseUrl": "https://api.xiaomimimo.com/api/free-ai/openai/chat",
     "noAuth": true,
@@ -1427,10 +1439,22 @@
     "executor": "muse-spark-web",
     "authType": "cookie"
   },
+  "naga-ac": {
+    "baseUrl": "https://api.naga.ac/v1/chat/completions",
+    "validateUrl": "https://api.naga.ac/v1/models",
+    "format": "openai",
+    "authType": "optional"
+  },
   "nanobanana": {
     "baseUrl": "https://api.nanobananaapi.ai/v1/chat/completions",
     "validateUrl": "https://api.nanobananaapi.ai/v1/models",
     "format": "openai"
+  },
+  "nara": {
+    "baseUrl": "https://router.bynara.id/v1/chat/completions",
+    "validateUrl": "https://router.bynara.id/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "nebius": {
     "baseUrl": "https://api.studio.nebius.ai/v1/chat/completions",

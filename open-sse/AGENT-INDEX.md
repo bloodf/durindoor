@@ -240,20 +240,24 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `local-whisper` |  | apikey | `` |
 | `longcat` |  | apikey | `https://api.longcat.chat/openai/v1/chat/completions` |
 | `maritalk` |  | apikey | `https://chat.maritaca.ai/api/chat/completions` |
+| `meganova-ai` |  | apikey | `https://api.meganova.ai/v1/chat/completions` |
 | `meta-llama` |  | apikey | `https://api.llama.com/compat/v1/chat/completions` |
 | `mimo-free` |  | free | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
 | `mimocode` | openai | free | `https://api.xiaomimimo.com` |
 | `minimax` | claude | apikey | `https://api.minimax.io/anthropic/v1/messages` |
 | `minimax-cn` | claude | apikey | `https://api.minimax.cn/anthropic/v1/messages` |
 | `mistral` |  | apikey | `https://api.mistral.ai/v1/chat/completions` |
+| `mixlayer` |  | apikey | `https://models.mixlayer.ai/v1/chat/completions` |
 | `mmf` |  | apikey | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
 | `modal` | openai | apikey | `https://api.modal.ai/v1/chat/completions` |
 | `modelscope` | openai | apikey | `https://api-inference.modelscope.cn/v1/chat/completions` |
 | `morph` |  | apikey | `https://api.morphllm.com/v1/chat/completions` |
 | `muse-code` | openai-responses | oauth | `https://api.meta.ai/v1/responses` |
 | `muse-spark-web` | openai | webCookie | `https://www.meta.ai/api/graphql` |
+| `naga-ac` |  | apikey | `https://api.naga.ac/v1/chat/completions` |
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nanogpt` | openai | apikey | `https://nano-gpt.com/api/v1/chat/completions` |
+| `nara` |  | apikey | `https://router.bynara.id/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
 | `nimble` |  | apikey | `` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |

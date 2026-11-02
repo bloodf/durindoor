@@ -162,11 +162,14 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `doubao` |  | apikey | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` |
 | `duckduckgo-web` | openai | free | `https://duckduckgo.com/duckchat/v1/chat` |
 | `edge-tts` |  | freeTier | `` |
+| `electronhub` |  | apikey | `https://api.electronhub.ai/v1/chat/completions` |
 | `elevenlabs` |  | apikey | `` |
 | `empower` |  | apikey | `https://app.empower.dev/api/v1/chat/completions` |
+| `eurouter` |  | apikey | `https://api.eurouter.ai/v1/chat/completions` |
 | `exa` |  | apikey | `` |
 | `factory` |  | apikey | `https://api.factory.ai/v1/chat/completions` |
 | `fal-ai` |  | apikey | `` |
+| `fastrouter` |  | apikey | `https://api.fastrouter.ai/api/v1/chat/completions` |
 | `featherless-ai` |  | apikey | `https://api.featherless.ai/v1/chat/completions` |
 | `fenayai` |  | apikey | `https://api.fenayai.com/v1/chat/completions` |
 | `firecrawl` |  | apikey | `` |
@@ -174,6 +177,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `fireworks` |  | apikey | `https://api.fireworks.ai/inference/v1/chat/completions` |
 | `fish-audio` |  | apikey | `` |
 | `freeaiapikey` |  | apikey | `https://api.freeaiapikey.com/v1/chat/completions` |
+| `freeinference` |  | apikey | `https://freeinference.org/v1/chat/completions` |
 | `freemodel-dev` |  | apikey | `https://api.freemodel.dev/v1/chat/completions` |
 | `friendliai` |  | apikey | `https://api.friendli.ai/serverless/v1/chat/completions` |
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |

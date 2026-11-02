@@ -39,6 +39,14 @@ Send `cu/<model>` from `GET /v1/models`. `cu/default` selects Cursor Auto. The i
 
 Send a short prompt and find the account on **Usage**. Import validates token and machine-ID format, not a live Cursor request. A 401 after import can mean the session expired. Reimport after signing in to the IDE again.
 
+## AgentService transport
+
+Requests with only text, MCP tool schemas, tool calls and tool results go to Cursor's AgentService (`agent.api5.cursor.sh`, `agent.v1.AgentService/Run`) over Node's built-in `http2`. Other request shapes (for example image parts) keep using the legacy ChatService path. Set `CURSOR_AGENT_SERVICE=off` to force every request onto the legacy path.
+
+- Editor-only tool requests from Cursor (shell, read, write) are rejected so the model can continue; DurinDoor does not run them.
+- A turn that ends with no output is returned as an error, never as an empty success.
+- **Proxies:** the HTTP/2 stream cannot go through a proxy. When any proxy applies to the connection (connection proxy, pool, strict mode, relay, or `HTTPS_PROXY`-style environment variables), the request fails with a `connection_error` instead of connecting directly.
+
 ## Image input
 
 The current Cursor protobuf transport supports text and tool history, not images. Cursor models (`cursor` / `cu`) advertise `vision: false`, even when the underlying model family supports vision elsewhere.

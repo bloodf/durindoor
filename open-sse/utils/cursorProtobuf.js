@@ -13,7 +13,7 @@ import {
   parseNativeToolCallsFromText,
   getSupportedToolEnumsFromOpenAiTools } from
 "./cursorToolMapping.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isString, isNumber, isBoolean, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const DEBUG = process.env.CURSOR_PROTOBUF_DEBUG === "1";
 const log = (tag, ...args) => DEBUG && console.log(`[PROTOBUF:${tag}]`, ...args);
@@ -964,20 +964,20 @@ export function encodeAgentValue(value) {
   if (value === null || value === undefined) {
     return encodeField(PB_VALUE.NULL, WIRE_TYPE.VARINT, 0);
   }
-  if (typeof value === "boolean") {
+  if (isBoolean(value)) {
     return encodeField(PB_VALUE.BOOL, WIRE_TYPE.VARINT, value ? 1 : 0);
   }
-  if (typeof value === "number") {
+  if (isNumber(value)) {
     return encodeField(PB_VALUE.NUMBER, WIRE_TYPE.FIXED64, value);
   }
-  if (typeof value === "string") {
+  if (isString(value)) {
     return encodeField(PB_VALUE.STRING, WIRE_TYPE.LEN, value);
   }
   if (Array.isArray(value)) {
     const items = value.map((item) => encodeField(PB_LIST_VALUES, WIRE_TYPE.LEN, encodeAgentValue(item)));
     return encodeField(PB_VALUE.LIST, WIRE_TYPE.LEN, concatArrays(...items));
   }
-  if (typeof value === "object") {
+  if (isObject(value)) {
     const entries = Object.entries(value).map(([key, val]) => encodeField(
       PB_STRUCT_FIELDS,
       WIRE_TYPE.LEN,

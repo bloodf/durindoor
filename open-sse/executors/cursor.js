@@ -36,7 +36,7 @@ import { createRequire } from "module";
 import crypto from "crypto";
 
 // Detect cloud environment
-const { isFunction, isObject, isUndefined } = require("../../src/shared/utils/typeChecks.cjs");
+const { isFunction, isObject, isString, isUndefined } = require("../../src/shared/utils/typeChecks.cjs");
 const isCloudEnv = () => {
   const cachesBinding = "caches" in globalThis ? globalThis.caches : undefined;
   if (!isUndefined(cachesBinding) && isObject(cachesBinding)) return true;
@@ -92,17 +92,20 @@ const agentMessage = (field, value) => encodeField(field, PROTOBUF_LEN, value);
 const agentBool = (field, value) => encodeField(field, PROTOBUF_VARINT, value ? 1 : 0);
 
 function textFromContent(content) {
-  if (typeof content === "string") return content;
+  if (isString(content)) return content;
   if (!Array.isArray(content)) return "";
   return content
-    .filter((part) => part?.type === OPENAI_BLOCK.TEXT && typeof part.text === "string")
+    .filter((part) => part?.type === OPENAI_BLOCK.TEXT && isString(part.text))
     .map((part) => part.text)
     .join("\n");
 }
 
 function isTextPart(part) {
-  return !part || part.type === OPENAI_BLOCK.TEXT || typeof part === "string";
+  return !part || part.type === OPENAI_BLOCK.TEXT || isString(part);
 }
+
+// Operator rollback valve: CURSOR_AGENT_SERVICE=off keeps every request on the legacy ChatService path.
+const CURSOR_AGENT_SERVICE_ENABLED = () => String(process.env.CURSOR_AGENT_SERVICE || "").toLowerCase() !== "off";
 
 export function isAgentCapableRequest(body) {
   // ChatService rejects auto/composer and most thinking variants. AgentService
@@ -111,7 +114,7 @@ export function isAgentCapableRequest(body) {
   if (!Array.isArray(body?.messages) || body.messages.length === 0) return false;
   return body.messages.every((message) => {
     if (Array.isArray(message?.content)) return message.content.every(isTextPart);
-    return message?.content == null || typeof message.content === "string";
+    return message?.content == null || isString(message.content);
   });
 }
 
@@ -952,12 +955,9 @@ export class CursorExecutor extends BaseExecutor {
           attemptStartedAt,
         });
       }
-      const message = {
-        role: "assistant",
-        content: content || null,
-        ...(reasoning ? { reasoning_content: reasoning } : {}),
-        ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
-      };
+      const message = { role: "assistant", content: content || null };
+      if (reasoning) message.reasoning_content = reasoning;
+      if (toolCalls.length) message.tool_calls = toolCalls;
       return bindDispatch({
         response: new Response(JSON.stringify({
           id: responseId,
@@ -1029,7 +1029,7 @@ export class CursorExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
     if (signal?.aborted) throw cursorAbortError(signal.reason);
-    if (isAgentCapableRequest(body)) {
+    if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body)) {
       const agentAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
       attemptStartedAt :
       isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();

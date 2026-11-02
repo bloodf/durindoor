@@ -239,6 +239,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `local-device` |  | freeTier | `` |
 | `local-whisper` |  | apikey | `` |
 | `longcat` |  | apikey | `https://api.longcat.chat/openai/v1/chat/completions` |
+| `magnific` |  | apikey | `` |
 | `maritalk` |  | apikey | `https://chat.maritaca.ai/api/chat/completions` |
 | `meta-llama` |  | apikey | `https://api.llama.com/compat/v1/chat/completions` |
 | `mimo-free` |  | free | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |

@@ -219,11 +219,12 @@ function decodeAgentFrames(buffer, onFrame) {
   while (pending.length >= 5) {
     const flags = pending[0];
     const length = pending.readUInt32BE(1);
+    if (length > MAX_PROVIDER_BODY_BYTES) throw cursorBodyLimitError();
     if (pending.length < 5 + length) break;
     let payload = pending.subarray(5, 5 + length);
     pending = pending.subarray(5 + length);
     if (flags & COMPRESS_FLAG.GZIP) {
-      payload = zlib.gunzipSync(payload);
+      payload = zlib.gunzipSync(payload, { maxOutputLength: MAX_PROVIDER_BODY_BYTES });
     }
     if (!(flags & COMPRESS_FLAG.TRAILER)) onFrame(payload);
   }
@@ -714,6 +715,7 @@ export class CursorExecutor extends BaseExecutor {
     let ended = false;
     let streamError = null;
     let req = null;
+    const idleMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
     const wake = (result) => {
       if (!waiting) return;
@@ -765,14 +767,25 @@ export class CursorExecutor extends BaseExecutor {
 
     const responseHeaders = new Promise((resolve, reject) => {
       const onEarlyError = (error) => reject(error);
+      // Abort or stream close before headers must settle the promise, else the
+      // caller waits for the full headers timeout.
+      const onEarlyClose = () => reject(cursorAbortError(signal?.reason));
+      const onEarlyAbort = () => reject(cursorAbortError(signal?.reason));
       client.once("error", onEarlyError);
       req.once("error", onEarlyError);
+      req.once("close", onEarlyClose);
+      signal?.addEventListener?.("abort", onEarlyAbort, { once: true });
+      if (signal?.aborted) onEarlyAbort();
       req.once("response", (hdrs) => {
         client.off("error", onEarlyError);
         req.off("error", onEarlyError);
+        req.off("close", onEarlyClose);
+        signal?.removeEventListener?.("abort", onEarlyAbort);
         resolve(hdrs);
       });
     });
+    // Callers that never await (early throw paths) must not trigger unhandled rejection.
+    responseHeaders.catch(() => {});
 
     return {
       responseHeaders,
@@ -789,7 +802,17 @@ export class CursorExecutor extends BaseExecutor {
           if (streamError) throw streamError;
           return { value: undefined, done: true };
         }
-        const result = await new Promise((resolve) => { waiting = resolve; });
+        // Idle timeout per read: a stalled stream must not hang the turn forever.
+        const idleTimer = setTimeout(() => {
+          fail(new Error("Cursor AgentService stream idle timed out"));
+          close();
+        }, idleMs);
+        let result;
+        try {
+          result = await new Promise((resolve) => { waiting = resolve; });
+        } finally {
+          clearTimeout(idleTimer);
+        }
         if (streamError) throw streamError;
         return result || { value: undefined, done: true };
       },

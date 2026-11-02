@@ -38,7 +38,7 @@ export const ENGINE_CATALOG = {
     stackPriority: 10,
     levels: ["minimal", "standard", "aggressive"],
     isSingleMode: true,
-    available: false,
+    available: true,
     description: "Command-output filtering.",
   },
   headroom: {

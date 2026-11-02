@@ -59,6 +59,7 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
+import { gateStep } from "../services/compression/fidelityGate.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
@@ -98,6 +99,24 @@ FORMATS.CLAUDE]
 );
 
 const COMPRESSION_HEADER = "X-DurinDoor-Compression";
+
+/**
+ * Run RTK in place. With `gate` set (an rtk compression-stack step), a result
+ * that fails the fidelity gate is rolled back in place (same object identity)
+ * and reports no stats.
+ */
+function compressRtkGated(target, enabled, gate, log) {
+  if (!gate || !enabled) return compressMessages(target, enabled);
+  const before = structuredClone(target);
+  const stats = compressMessages(target, enabled);
+  if (!stats?.hits?.length) return stats;
+  const verdict = gateStep(before, target, gate);
+  if (verdict.passed) return stats;
+  log?.warn?.("COMPRESS", `engine rtk failed, step rolled back: fidelity gate rejected step (${verdict.failedInvariant}: ${verdict.detail})`);
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, before);
+  return null;
+}
 
 /**
  * Stamp the X-DurinDoor-Compression response header onto a handler result.
@@ -601,8 +620,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Compress the source-format body here instead, before that rewrite.
   // Every other provider's translator keeps the tool_result shape 1:1, so
   // they stay on the unchanged post-translate pass.
+  // An `rtk` compression-stack step runs here too (#1098): one RTK pass per
+  // request at the dedicated position, so the stack step below is a no-op
+  // (rtkApplied) and accounting matches the standalone toggle.
+  const rtkInStack = compressionEnabled === true && compressionEngines?.rtk?.enabled === true;
+  const runRtk = tokenSaverEnabled && (rtkEnabled || rtkInStack);
+  // A stack rtk step is fidelity-gated like every stack step; the plain RTK
+  // toggle alone keeps its ungated behavior.
+  const rtkGate = rtkInStack ? { textInvariants: compressionFidelityGate === true } : null;
   const preTranslateRtk = provider === "cursor" ?
-  compressMessages(body, tokenSaverEnabled && rtkEnabled) :
+  compressRtkGated(body, runRtk, rtkGate, log) :
   null;
 
   let translatedBody;
@@ -783,7 +810,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // RTK: compress tool_result content. Skipped when already compressed
   // pre-translate above (cursor) so a retry never double-compresses a body.
-  const rtkStats = preTranslateRtk || compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
+  const rtkStats = preTranslateRtk || compressRtkGated(translatedBody, runRtk, rtkGate, log);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? (saved / rtkStats.bytesBefore * 100).toFixed(0) : "0";
@@ -839,7 +866,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
         enabled: true,
         engines: compressionEngines ?? {},
-        applyOpts: COMPRESSION_ADAPTIVE_CONFIG,
+        applyOpts: { ...COMPRESSION_ADAPTIVE_CONFIG, rtkApplied: runRtk },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         adaptive: {
           ...COMPRESSION_ADAPTIVE_CONFIG,

@@ -77,3 +77,42 @@ describe("caveman engine", () => {
     expect(cavemanEngine.validateConfig({ enabled: "yes" }).valid).toBe(false);
   });
 });
+
+describe("caveman leaves unfenced diffs intact (#1468)", () => {
+  const DIFF = [
+    "diff --git a/src/app.js b/src/app.js",
+    "index 1a2b3c4..5d6e7f8 100644",
+    "--- a/src/app.js",
+    "+++ b/src/app.js",
+    "@@ -10,7 +10,8 @@ export function start() {",
+    "   const port = process.env.PORT || 20128;",
+    "-  listen(port);",
+    "+  listen(port, host);",
+    "   return port;",
+    " }",
+    "@@ -40,2 +41,2 @@",
+    "-  the old line",
+    "+  the new line",
+    "\\ No newline at end of file",
+  ].join("\n");
+
+  it("keeps every diff line byte-identical while compressing the prose around it", () => {
+    const content = `${TRIGGER}\n\n${DIFF}\n\nPlease kindly explain whether this is basically safe.`;
+    const result = cavemanCompress(
+      { model: "gpt-4", messages: [{ role: "user", content }] },
+      { enabled: true, intensity: "full" }
+    );
+    const out = result.body.messages[0].content;
+    expect(out).toContain(DIFF);
+    expect(out).not.toContain("Please kindly make sure");
+  });
+
+  it("keeps a bare hunk without file headers", () => {
+    const hunk = DIFF.split("\n").slice(4).join("\n");
+    const result = cavemanCompress(
+      { model: "gpt-4", messages: [{ role: "user", content: `${TRIGGER}\n${hunk}` }] },
+      { enabled: true, intensity: "ultra" }
+    );
+    expect(result.body.messages[0].content).toContain(hunk);
+  });
+});

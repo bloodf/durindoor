@@ -858,7 +858,6 @@ export function createSSEStream(options = {}) {
                   }
                 }
               }
-              if (ensureStreamToolCallIds(parsed, openedToolCalls)) fieldsInjected = true;
 
               // Peel leaked MiniMax thinking markers out of delta.content into
               // reasoning_content before the inline-thinking extractor and content

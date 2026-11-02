@@ -78,6 +78,8 @@ Successful media operations preserve provider USD receipts when available, inclu
 
 Dollar budgets currently compare recorded numeric spend only. Unknown-cost requests count toward successful request and token allowances when reported, but add no amount to dollar totals; a zero total therefore does not prove free usage or enforce a hard spending cap for unpriced work. Failed or denied requests do not consume successful-use allowances. Keep these limits in mind when granting access to models without authoritative prices.
 
+Restoring or importing a database starts a new billing epoch. A request admitted before the restore whose provider call finishes after it is not recorded in the new epoch. Chat usage from such a request is dropped. Media and other non-chat routes fail the response with a usage-accounting error (`USAGE_ACCOUNTING_FAILED`) even though the provider already did the work, and the gateway does not retry the call. Avoid restoring while paid requests are in flight.
+
 
 ## Native-unit rate overrides
 

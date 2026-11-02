@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile, open, link, unlink } from "node:fs/promises";
+import { mkdir, readFile, open, link, unlink } from "node:fs/promises";
 import path from "node:path";
 import { getDataDir } from "@/lib/dataDir.js";
 import { isString } from "../../shared/utils/typeChecks.js";
@@ -25,11 +25,11 @@ export async function readNativeResourceOwner(provider, connectionId, resourceId
     owner.billingEpoch ??= null;
     if (!owner.usageEventId) {
       // Legacy native accounting used this exact provider/account/operation ID.
-      // Preserve it across polls and restarts rather than minting a new charge.
+      // Derive it on every read (deterministic, so stable across polls and
+      // restarts) instead of rewriting the published owner file in place.
       // Ambiguous legacy delimiters cannot safely establish ledger identity.
       if (![provider, connectionId, resourceId].every((value) => value != null && isString(value) && value && !value.includes(":"))) return null;
       owner.usageEventId = `${provider}:${connectionId}:${resourceId}:terminal`;
-      await writeFile(file, JSON.stringify(owner), { encoding: "utf8", mode: 0o600 });
     }
     if (owner.usageEventId == null || !isString(owner.usageEventId) || !owner.usageEventId.trim()) return null;
     return owner;

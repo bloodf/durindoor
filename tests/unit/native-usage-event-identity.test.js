@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe("native resource billing identity", () => {
-  it("persists legacy identity and preserves caller identity without cross-owner replacement", async () => {
+  it("derives legacy identity without rewriting the owner file and preserves caller identity without cross-owner replacement", async () => {
     ownerStorage.directory = fs.mkdtempSync(path.join(os.tmpdir(), "native-identity-"));
     try {
       const owners = await import("@/sse/services/nativeResourceOwners.js");
@@ -50,7 +50,7 @@ describe("native resource billing identity", () => {
       const migrated = await owners.readNativeResourceOwner("openai", "conn-a", "resp-a");
       expect(migrated.usageEventId).toBe("openai:conn-a:resp-a:terminal");
       const filename = createHash("sha256").update("openai\0conn-a\0resp-a").digest("hex") + ".json";
-      expect(JSON.parse(fs.readFileSync(path.join(ownerStorage.directory, "native-resource-owners", filename), "utf8"))).toEqual(migrated);
+      expect(JSON.parse(fs.readFileSync(path.join(ownerStorage.directory, "native-resource-owners", filename), "utf8"))).toEqual(owner);
       await owners.createNativeResourceOwner({ ...owner, ownerId: "creator-b", usageEventId: "other-operation" });
       expect(await owners.readNativeResourceOwner("openai", "conn-a", "resp-a")).toEqual(migrated);
       expect(await owners.readNativeResourceOwner("openai", "conn-b", "resp-a")).toBeNull();

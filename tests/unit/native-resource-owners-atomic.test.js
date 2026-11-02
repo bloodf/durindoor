@@ -104,6 +104,20 @@ describe("createNativeResourceOwner atomic publish", () => {
     });
   });
 
+  it("derives a legacy owner's usage identity without rewriting the published file", async () => {
+    mkdirSync(ownersDir(), { recursive: true, mode: 0o700 });
+    const legacy = { ownerId: "key-legacy", provider: "anthropic", connectionId: "conn-1", resourceId: "file_legacy", model: "claude-haiku-4-5" };
+    const target = ownerFile("anthropic", "conn-1", "file_legacy");
+    writeFileSync(target, JSON.stringify(legacy), { mode: 0o600 });
+    const before = readFileSync(target);
+    for (let read = 0; read < 2; read++) {
+      await expect(readNativeResourceOwner("anthropic", "conn-1", "file_legacy")).resolves.toEqual({
+        ...legacy, billingEpoch: null, usageEventId: "anthropic:conn-1:file_legacy:terminal",
+      });
+    }
+    expect(readFileSync(target)).toEqual(before);
+  });
+
   it("does not leave a durable owner when only a temp sibling exists", async () => {
     mkdirSync(ownersDir(), { recursive: true, mode: 0o700 });
     writeFileSync(path.join(ownersDir(), ".partial.pid.deadbeef.tmp"), '{"ownerId":', { mode: 0o600 });

@@ -48,6 +48,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `mmf` | MimoFreeExecutor | `./mimo-free.js` |
 | `muse-code` | MuseCodeExecutor | `./muse-code.js` |
 | `ollama-local` | OllamaLocalExecutor | `./ollama-local.js` |
+| `oneminai` | OneMinAiExecutor | `./oneminai.js` |
 | `opencode` | OpenCodeExecutor | `./opencode.js` |
 | `opencode-go` | OpenCodeGoExecutor | `./opencode-go.js` |
 | `opencode-zen` | OpenCodeZenExecutor | `./opencode-zen.js` |
@@ -294,6 +295,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `oci` |  | apikey | `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1/chat/completions` |
 | `ollama` | ollama | freeTier | `https://ollama.com/api/chat` |
 | `ollama-local` | ollama | apikey | `http://localhost:11434` |
+| `oneminai` |  | apikey | `https://api.1min.ai/api/chat-with-ai` |
 | `oobabooga` | openai | apikey | `http://localhost:5000/v1` |
 | `openai` |  | apikey | `https://api.openai.com/v1/chat/completions` |
 | `opencode` |  | free | `https://opencode.ai` |

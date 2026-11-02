@@ -135,6 +135,9 @@ const DEFAULT_SETTINGS = {
   compressionEngines: {},
   // Opt-in outbound PII / credential masking (#1112): mode "off" | "warn" | "mask".
   contentMasking: { mode: "off", credentials: true, pii: true },
+  // Opt-in text fidelity gate for stack steps (numbers, URLs, JSON keys,
+  // negations). Protected blocks are always gated; see fidelityGate.js.
+  compressionFidelityGate: false,
   cavemanEnabled: false,
   cavemanLevel: "full",
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,

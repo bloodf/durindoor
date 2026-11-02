@@ -7,11 +7,13 @@ describe("account fallback request-error classification", () => {
       shouldFallback: false,
       cooldownMs: 0,
       scope: null,
+      requestScoped: true,
     });
     expect(checkFallbackError(422, "Failed to deserialize request")).toEqual({
       shouldFallback: false,
       cooldownMs: 0,
       scope: null,
+      requestScoped: true,
     });
   });
 

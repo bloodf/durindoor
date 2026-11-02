@@ -20,11 +20,13 @@ import { coerceResponsesArguments, buildDeclaredToolTypes, resolveDeclaredCustom
  * @param {number} [options.maxLength=64] - Maximum outbound-name length.
  * @param {number} [options.hashLength=12] - Deterministic SHA-256 suffix length.
  * @param {string|null} [options.fallbackName=null] - Name returned for empty input.
+ * @param {Set<string>|null} [options.reservedNames=null] - Complete original namespace, when known before allocation.
  * @returns {{alias: (name: unknown) => unknown, aliases: Map<string,string>, memo: Map<string,string>}} Alias function, changed alias-to-original map, and complete original-to-outbound memo.
  */
-function createToolNameAliaser({ invalidCharacters, validLeadingCharacter = null, maxLength = 64, hashLength = 12, fallbackName = null }) {
+function createToolNameAliaser({ invalidCharacters, validLeadingCharacter = null, maxLength = 64, hashLength = 12, fallbackName = null, reservedNames = null }) {
   const aliases = new Map();
   const memo = new Map();
+  const assigned = new Map();
   const alias = (name) => {
     if (!name) return fallbackName ?? name;
     if (!isString(name)) return name;
@@ -33,12 +35,21 @@ function createToolNameAliaser({ invalidCharacters, validLeadingCharacter = null
     let safe = name.replace(invalidCharacters, "_");
     if (validLeadingCharacter && !validLeadingCharacter.test(safe)) safe = `_${safe}`;
     const changed = safe !== name || safe.length > maxLength;
-    const shortened = changed ?
+    let shortened = changed ?
     `${safe.slice(0, maxLength - hashLength - 1)}_${createHash("sha256").update(name).digest("hex").slice(0, hashLength)}` :
     safe;
+    // A caller can supply an already-valid name equal to another tool's hash
+    // alias. OpenAI callers reserve the complete original namespace first.
+    let attempt = 0;
+    while (reservedNames && shortened !== name &&
+      (reservedNames.has(shortened) || assigned.has(shortened) && assigned.get(shortened) !== name)) {
+      attempt += 1;
+      shortened = `${safe.slice(0, maxLength - hashLength - 1)}_${createHash("sha256").update(`${name}\0${attempt}`).digest("hex").slice(0, hashLength)}`;
+    }
 
     if (shortened !== name) aliases.set(shortened, name);
     memo.set(name, shortened);
+    assigned.set(shortened, name);
     return shortened;
   };
   return { alias, aliases, memo };
@@ -63,7 +74,8 @@ export function createGeminiToolNameAliaser(maxLength = 64) {
  * Normalize function/tool names to the OpenAI naming constraint
  * (`^[a-zA-Z0-9_-]{1,64}$`). Unsupported characters become underscores and
  * overlong names are truncated with a deterministic hash suffix so two names
- * sharing a prefix cannot collide.
+ * sharing a prefix cannot collide. Reserve every original name before alias
+ * allocation so a generated alias cannot steal an already-valid identity.
  *
  * Covers OpenAI tool definitions (`tool.function.name`), Claude/raw
  * definitions (`tool.name`), explicit tool choice, and every name carried in
@@ -77,13 +89,17 @@ export function createGeminiToolNameAliaser(maxLength = 64) {
  */
 const DATA_KEYWORDS = new Set(["default", "const", "examples", "enum"]);
 export function normalizeOpenAIToolNames(body, maxLength = 64) {
-  const { alias, aliases } = createToolNameAliaser({ invalidCharacters: /[^a-zA-Z0-9_-]/g, maxLength });
-  if (!body || !isObject(body)) return aliases;
+  if (!body || !isObject(body)) return new Map();
+  const references = [];
+  const remember = (object, key) => {
+    const name = object?.[key];
+    if (isString(name)) references.push({ object, key, name });
+  };
 
   if (Array.isArray(body.tools)) {
     for (const tool of body.tools) {
-      if (tool?.function?.name) tool.function.name = alias(tool.function.name);
-      if (isString(tool?.name)) tool.name = alias(tool.name);
+      remember(tool?.function, "name");
+      remember(tool, "name");
     }
   }
 
@@ -94,8 +110,8 @@ export function normalizeOpenAIToolNames(body, maxLength = 64) {
       ...(Array.isArray(choice.tools) ? choice.tools : []),
       ...(Array.isArray(choice.allowed_tools?.tools) ? choice.allowed_tools.tools : [])];
     for (const entry of [choice, ...allowed]) {
-      if (entry?.function?.name) entry.function.name = alias(entry.function.name);
-      if (isString(entry?.name)) entry.name = alias(entry.name);
+      remember(entry?.function, "name");
+      remember(entry, "name");
     }
   }
 
@@ -104,18 +120,23 @@ export function normalizeOpenAIToolNames(body, maxLength = 64) {
       if (!message || !isObject(message)) continue;
       if (Array.isArray(message.tool_calls)) {
         for (const call of message.tool_calls) {
-          if (call?.function?.name) call.function.name = alias(call.function.name);
+          remember(call?.function, "name");
         }
       }
       if (Array.isArray(message.content)) {
         for (const block of message.content) {
-          if (block?.type === "tool_use" && block.name) block.name = alias(block.name);
+          if (block?.type === CLAUDE_BLOCK.TOOL_USE) remember(block, "name");
         }
       }
-      if (message.role === "tool" && message.name) message.name = alias(message.name);
+      if (message.role === ROLE.TOOL) remember(message, "name");
     }
   }
 
+  const reservedNames = new Set(references.map(({ name }) => name));
+  const { alias, aliases } = createToolNameAliaser({ invalidCharacters: /[^a-zA-Z0-9_-]/g, maxLength, reservedNames });
+  // Stable allocation is independent of declaration/history traversal order.
+  for (const name of [...reservedNames].sort()) alias(name);
+  for (const { object, key, name } of references) object[key] = alias(name);
   return aliases;
 }
 

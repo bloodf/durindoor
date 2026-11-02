@@ -64,11 +64,16 @@ const REQUEST_SCOPED_STREAM_ERROR_IDS = new Set([
  * @param {unknown} parsed
  * @returns {{type?: string, code?: string, message?: string}|null}
  */
+/** Gemini errors nested in promptFeedback or the Antigravity `response` wrapper (#1342). */
+export function geminiNestedError(parsed) {
+  return parsed?.promptFeedback?.error ?? parsed?.response?.promptFeedback?.error ?? parsed?.response?.error ?? null;
+}
+
 export function extractStreamErrorPayload(parsed) {
   if (!parsed || !isObject(parsed)) return null;
   const raw =
   parsed.type === "response.failed" ? parsed.response?.error :
-  parsed.error ?? (parsed.type === "error" ? parsed : null);
+  parsed.error ?? (parsed.type === "error" ? parsed : null) ?? geminiNestedError(parsed);
   if (!raw) return null;
   if (isString(raw)) return { message: raw };
   if (!isObject(raw)) return null;

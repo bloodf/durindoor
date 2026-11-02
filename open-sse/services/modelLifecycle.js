@@ -61,6 +61,10 @@ function openAiRecord(model, shutdownAt, replacement, kind, notes) {
 
 const NVIDIA_SOURCE = "https://github.com/decolua/9router/pull/3397";
 const KIMI_SOURCE = "https://platform.kimi.ai/docs/models.md";
+const CODEX_SOURCE = "https://github.com/decolua/9router/commit/7878f53b";
+
+/** Codex with ChatGPT sign-in retired gpt-5.5 on 2026-10-14; the backend answers HTTP 400. */
+const CODEX_RETIREMENTS = ["gpt-5.5", "gpt-5.5-review"];
 
 /** NVIDIA's 410 responses provide authoritative per-model retirement timestamps. */
 const NVIDIA_RETIREMENTS = [
@@ -115,6 +119,14 @@ openAiRecord("gpt-4-turbo-preview", "2026-03-26", null, "text"),
   replacement: null,
   kind: "text",
   source: NVIDIA_SOURCE
+})),
+...CODEX_RETIREMENTS.map((model) => ({
+  provider: "codex",
+  model,
+  shutdownAt: "2026-10-14",
+  replacement: { provider: "codex", model: "gpt-6.1-sol" },
+  kind: "text",
+  source: CODEX_SOURCE
 })),
 ...KIMI_K2_RETIREMENTS.map((model) => ({
   provider: "kimi",

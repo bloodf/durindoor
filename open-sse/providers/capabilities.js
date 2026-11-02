@@ -776,6 +776,9 @@ export const PATTERN_CAPABILITIES = [
 
 // Verified GPT-6 families also cover compatible routes and discovered snapshots.
 // Exact provider rows above retain their separate OAuth/reseller contracts.
+// Image variants ("-image" suffix) generate images; first match wins, so they
+// must precede the chat family rows (upstream decolua/9router@fbac1220).
+{ pattern: "*gpt-6*image*", caps: { imageOutput: true } },
 { pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
 { pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },
 { pattern: "*gpt-6-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-sol"] },

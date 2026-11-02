@@ -383,7 +383,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         format: terminalFormat,
         providerBody: finalBody || translatedBody
       });
-      if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      if (!parsed) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      }
       const sseError = createSSEErrorResult(parsed, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });

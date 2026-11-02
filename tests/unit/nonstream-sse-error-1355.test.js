@@ -68,6 +68,14 @@ describe.each([
     expect(opts.trackDone).toHaveBeenCalledOnce();
   });
 
+  it("logs FAILED 502 when the SSE body has no parseable frames", async () => {
+    const opts = options({});
+    opts.providerResponse = new Response("data: [DONE]\n\n", { status: 200, headers: { "content-type": "text/event-stream" } });
+    const result = await handle(opts);
+    expect(result).toMatchObject({ success: false, status: 502 });
+    expect(opts.appendLog).toHaveBeenCalledWith({ status: "FAILED 502" });
+  });
+
   it("uses 502 for an OpenRouter-style envelope with code but no status", async () => {
     const result = await handle(options({ code: 502, message: "Provider returned error" }));
     expect(result).toMatchObject({ success: false, status: 502, error: "Provider returned error" });

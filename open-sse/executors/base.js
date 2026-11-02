@@ -254,7 +254,12 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null, directFetch = null }) {
+    // An executor-chosen no-proxy transport (OpenCode's TLS client), only when set.
+    const withDirectFetch = (init) => {
+      if (directFetch) init.directFetch = directFetch;
+      return init;
+    };
     if (signal?.aborted) throw requestAbortError(signal.reason);
     // Callers (direct execute() calls, tests) may omit requestContext entirely.
     // Allocate a fresh per-call object so executor request-scoped metadata
@@ -420,12 +425,12 @@ export class BaseExecutor {
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
         beginDispatch();
-        let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+        let response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
           method: "POST",
           headers,
           body: bodyStr,
           signal: mergedSignal
-        }, proxyOptions));
+        }), proxyOptions));
         if (response.status === 400) {
           const clone = response.clone?.();
           const errorText = clone ?
@@ -451,12 +456,12 @@ export class BaseExecutor {
             connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
             beginDispatch();
-            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
               method: "POST",
               headers,
               body: bodyStr,
               signal: mergedSignal
-            }, proxyOptions));
+            }), proxyOptions));
           }
         }
         // Relayed SSE (vercel relay): keep the timeout/abort signal live until

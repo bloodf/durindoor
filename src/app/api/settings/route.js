@@ -54,10 +54,12 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
     postgresUrl,
     mfaSecret,
     mfaBackupCodes,
+    operatorWebhooks,
     ...safeSettings
   } = settings;
   void postgresUrl;
   void mfaSecret;
+  void operatorWebhooks;
   safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
   // mfaEnabled is a plain flag (safe to expose); the secret and recovery-code
   // hashes never leave the server. Only a count is exposed so the profile UI

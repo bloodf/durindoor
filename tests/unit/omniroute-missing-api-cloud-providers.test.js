@@ -122,7 +122,7 @@ describe("OmniRoute missing API-key cloud provider ports", () => {
       auth: { header: "x-api-key", scheme: "raw" },
     });
     expect(PROVIDERS["kimi-coding-apikey"].urlSuffix).toBeUndefined();
-    expect(PROVIDERS["kimi-coding-apikey"].transports.map((transport) => transport.format)).toEqual(["openai", "claude"]);
+    expect(PROVIDERS["kimi-coding-apikey"].transports.map((transport) => transport.format)).toEqual(["openai", "claude", "openai-responses"]);
   });
 
   it("ports non-registry OmniRoute provider runtime minimums", () => {

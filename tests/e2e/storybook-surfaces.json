@@ -5302,7 +5302,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -5320,7 +5320,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -5340,7 +5340,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -5361,7 +5361,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -5386,7 +5386,7 @@
             "src/app/(dashboard)/dashboard/console-log/consoleLogEntries.js": "5f27b34f2fc8b282d91ec2e91db4fbb8b6649631b0331a53968e1634c00ccddf",
             "src/app/(dashboard)/dashboard/console-log/parseConsoleLine.js": "21d21032f44ed7b8272ce91c4842b8dec513a0ca0acf433a66b28a2a94dad184",
             "src/app/(dashboard)/dashboard/console-log/consoleLogWindow.js": "11654955de267426feeb4c970bfdbd1f32865c4187617db5239b44a00e18dccd",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -5433,7 +5433,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -5481,7 +5481,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -5530,7 +5530,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.js": "b9e43f41f6ceae50fdf9c79bbc1f0296a5215c51a32d0be2029abd8d2e5765f8",
-            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "ede8e022f11852a0f3efabad870dc53f9127ca6e6e84f78450acb4855e337407",
+            "src/app/(dashboard)/dashboard/console-log/ConsoleLogClient.stories.jsx": "dbe9e821dd3c4976dd1e8a2b839ed13c29db22d767c7f31f023ed5b8b3c0c90c",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "f35a2d0069e521b79fb21169f6ef1e04ff60e79cdbb9030631090038ce3fa376",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
@@ -14753,7 +14753,7 @@
       "id": "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js#PlaygroundPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js",
       "symbol": "PlaygroundPageClient",
-      "sourceSha256": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
+      "sourceSha256": "bf5e2c2c1f526520272609a1eb610f504b44025f108e8df0cdc382ab96de99e2",
       "proposedClassification": "visual",
       "approvedClassification": "visual",
       "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Actual client story.",
@@ -14783,7 +14783,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "bf5e2c2c1f526520272609a1eb610f504b44025f108e8df0cdc382ab96de99e2",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "PlaygroundPageClient.stories.jsx#EmptyConversation",
@@ -14799,7 +14799,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "bf5e2c2c1f526520272609a1eb610f504b44025f108e8df0cdc382ab96de99e2",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "PlaygroundPageClient.stories.jsx#SendsCompletion",
@@ -14815,7 +14815,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "bf5e2c2c1f526520272609a1eb610f504b44025f108e8df0cdc382ab96de99e2",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "Play opens provider/model menu."
@@ -14830,7 +14830,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "bf5e2c2c1f526520272609a1eb610f504b44025f108e8df0cdc382ab96de99e2",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "Play opens history."
@@ -14844,7 +14844,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "d12e59f9c84dd510eaab3655ada56ee007f6d49ddd4ccd0c5b6ce2d8d2628983",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "bf5e2c2c1f526520272609a1eb610f504b44025f108e8df0cdc382ab96de99e2",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "CompletionError fixture returns HTTP503 with error Fixture provider unavailable.; sendMessage sets the sanitized loadError banner and assistant error message. Frozen ff930 screenshot shows both retained texts; the real play asserts the Error status.",
@@ -48697,6 +48697,71 @@
       },
       "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "runtimeStatus": "pending"
+    },
+    {
+      "id": "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.jsx#PlaygroundCompare",
+      "sourcePath": "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.jsx",
+      "symbol": "PlaygroundCompare",
+      "sourceSha256": "961ea6f6c6da7d3b34f6804bfefd0202d903563940f54fe361ee9be16c8ea180",
+      "proposedClassification": "visual",
+      "approvedClassification": null,
+      "proposedCoverageRationale": "Current source and actual CSF ownership proposal. Playground Compare panel (#1137).",
+      "reviewStatus": "pending",
+      "reviewedBy": "pending-independent-source-review",
+      "requiredScenarioIds": [
+        "production-playground-playgroundcompare--two-columns",
+        "production-playground-playgroundcompare--runs-all-columns",
+        "production-playground-playgroundcompare--no-models"
+      ],
+      "approvedScenarioIds": [],
+      "storyScenarios": [
+        {
+          "id": "production-playground-playgroundcompare--two-columns",
+          "storyId": "production-playground-playgroundcompare--two-columns",
+          "runtimeArtifactId": "production-playground-playgroundcompare--two-columns",
+          "axes": [
+            "text",
+            "controls"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.jsx": "961ea6f6c6da7d3b34f6804bfefd0202d903563940f54fe361ee9be16c8ea180",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.stories.jsx": "0b92524e7ce51a98c802cc8cd1cd6a4284b1d6fa8405a31478408d2daa58cbe3"
+          },
+          "proposedSourceEvidence": "PlaygroundCompare.stories.jsx#TwoColumns",
+          "expectedVisibleText": "Run all"
+        },
+        {
+          "id": "production-playground-playgroundcompare--runs-all-columns",
+          "storyId": "production-playground-playgroundcompare--runs-all-columns",
+          "runtimeArtifactId": "production-playground-playgroundcompare--runs-all-columns",
+          "axes": [
+            "send",
+            "streaming",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.jsx": "961ea6f6c6da7d3b34f6804bfefd0202d903563940f54fe361ee9be16c8ea180",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.stories.jsx": "0b92524e7ce51a98c802cc8cd1cd6a4284b1d6fa8405a31478408d2daa58cbe3"
+          },
+          "proposedSourceEvidence": "PlaygroundCompare.stories.jsx#RunsAllColumns",
+          "expectedVisibleText": "Compared answer."
+        },
+        {
+          "id": "production-playground-playgroundcompare--no-models",
+          "storyId": "production-playground-playgroundcompare--no-models",
+          "runtimeArtifactId": "production-playground-playgroundcompare--no-models",
+          "axes": [
+            "empty",
+            "text"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.jsx": "961ea6f6c6da7d3b34f6804bfefd0202d903563940f54fe361ee9be16c8ea180",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundCompare.stories.jsx": "0b92524e7ce51a98c802cc8cd1cd6a4284b1d6fa8405a31478408d2daa58cbe3"
+          },
+          "proposedSourceEvidence": "PlaygroundCompare.stories.jsx#NoModels",
+          "expectedVisibleText": "No models to compare"
+        }
+      ]
     }
   ],
   "referenceStories": [

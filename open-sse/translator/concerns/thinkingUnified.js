@@ -458,6 +458,13 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         // (deepseek-chat/deepseek-reasoner) only accept low/high on the wire.
         const level = toLevel(eff);
         const wantsMax = level === "xhigh" || level === "max";
+        // OpenCode Zen's free deepseek-v4.1-flash publishes low|high|max and
+        // forwards the level verbatim, so collapsing low/max to high would make
+        // them unreachable (upstream 313559f4).
+        if (/deepseek-v4\.1-flash-free/i.test(model || "")) {
+          body.reasoning_effort = wantsMax ? "max" : level === "low" || level === "minimal" ? "low" : "high";
+          break;
+        }
         body.reasoning_effort = wantsMax && isNativeDeepSeekV4(provider, model) ? "max" : "high";
         break;
       }

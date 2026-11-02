@@ -1,5 +1,4 @@
 import { FORMATS } from "../translator/formats.js";
-import { fallbackToolCallId } from "../translator/concerns/toolCall.js";
 import { buildErrorBody } from "./error.js";
 import { SSE_DONE } from "./sseConstants.js";
 
@@ -126,11 +125,13 @@ export function ensureStreamToolCallIds(chunk, seen) {
     if (!Array.isArray(calls)) continue;
     for (const [position, call] of calls.entries()) {
       if (!isObject(call) || call === null) continue;
-      const key = `${choice.index ?? choicePosition}:${call.index ?? position}`;
+      const choiceIndex = choice.index ?? choicePosition;
+      const key = `${choiceIndex}:${call.index ?? position}`;
       if (seen.has(key)) continue;
       seen.add(key);
       if (isString(call.id) && call.id) continue;
-      call.id = fallbackToolCallId(call.index);
+      // Choice index too: n>1 choices opening the same index in one millisecond must not collide.
+      call.id = `call_${choiceIndex}_${call.index ?? position}_${Date.now()}`;
       changed = true;
     }
   }

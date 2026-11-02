@@ -24,11 +24,22 @@ spec:
       securityContext:
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       terminationGracePeriodSeconds: 30
       containers:
         - name: durindoor
           image: ghcr.io/bloodf/durindoor
-          imagePullPolicy: IfNotPresent
+          # Always: the example tag is a moving `latest`; with a pinned
+          # version or digest, IfNotPresent is fine.
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Only what the entrypoint needs: chown DATA_DIR, then su-exec to
+            # the node user.
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE"]
           ports:
             - name: http
               containerPort: 20128
@@ -63,8 +74,8 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
-          # Readiness (same body as /api/health): removes the pod from the
-          # Service while it cannot serve, without restarting it.
+          # Readiness: same handler as /api/health, which answers 200 once the
+          # HTTP server is up. It does not check the database or providers.
           readinessProbe:
             httpGet:
               path: /api/readyz

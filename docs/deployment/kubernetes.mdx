@@ -29,7 +29,7 @@ The PostgreSQL engine moves storage out of the volume, but it does not coordinat
 
 2. Optional: for a fresh install on PostgreSQL, add `DURINDOOR_PG_URL` to the same Secret before the first start. Existing SQLite installs should leave it unset and follow [Postgres](../operations/postgres.mdx) cutover instead.
 
-3. Pin the image. In `deploy/kubernetes/kustomization.yaml`, replace `newTag: latest` with a verified numbered tag such as `X.Y.Z`, or with a digest.
+3. Pin the image. In `deploy/kubernetes/kustomization.yaml`, replace `newTag: latest` with a verified numbered tag such as `X.Y.Z`, or with a digest. The example sets `imagePullPolicy: Always` because `latest` moves; after pinning you can switch to `IfNotPresent`.
 
 4. Check the storage size in `pvc.yaml`, and set a `storageClassName` if your cluster has no default.
 
@@ -46,11 +46,15 @@ Expect `{"ok":true}`, then sign in at `http://localhost:20128/dashboard`. The Se
 
 ## Probes, migrations and shutdown
 
+`/api/livez` and `/api/readyz` are public, so probes work without a session. Both answer only `{"ok":true}`.
+
+The container runs with `allowPrivilegeEscalation: false`, the `RuntimeDefault` seccomp profile, and every capability dropped except `CHOWN`, `SETUID`, `SETGID` and `DAC_OVERRIDE`. The entrypoint needs those to fix volume ownership and then switch to the `node` user.
+
 | Probe | Path | Purpose |
 | --- | --- | --- |
 | startup | `/api/livez` | Allows up to 5 minutes for the first start, while migrations run forward. |
 | liveness | `/api/livez` | Checks that the process is alive. A slow database never restarts the pod. |
-| readiness | `/api/readyz` | Uses the same check as `/api/health`. While not ready, the pod is removed from the Service but not restarted. |
+| readiness | `/api/readyz` | Same handler as `/api/health`. It returns 200 as soon as the HTTP server answers and does not check the database or providers, so it only gates traffic until the server is up. |
 
 Migrations run on startup inside the pod. No separate Job is needed. Startup keeps safety copies under `DATA_DIR`, but those are not backups. Take a backup before every upgrade.
 

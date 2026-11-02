@@ -352,7 +352,7 @@ function collectCommandCodeHeadroomMessages(body) {
     for (const part of message.content) {
       if (part?.type === OPENAI_BLOCK.TEXT) {
         addText(message.role, part, "text");
-      } else if (part?.type === COMMANDCODE_BLOCK.TOOL_RESULT && part.output?.type === OPENAI_BLOCK.TEXT) {
+      } else if (part?.type === COMMANDCODE_BLOCK.TOOL_RESULT && part.isError !== true && part.output?.type === OPENAI_BLOCK.TEXT) {
         addText(ROLE.TOOL, part.output, "value", { tool_call_id: part.toolCallId, name: part.toolName });
       }
     }
@@ -387,7 +387,9 @@ function collectToolOutputText(body, format) {
 
   if (format === FORMATS.OPENAI_RESPONSES && hasUnsafeResponsesInputForCompression(body)) {
     for (const item of body.input) {
-      if (item?.type === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) visit(item, "output");
+      if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) continue;
+      if (item.status === "error" || item.is_error === true) continue;
+      visit(item, "output");
     }
   } else if (GEMINI_FAMILY_FORMATS.has(format)) {
     const contents = body.request?.contents || body.contents;
@@ -395,7 +397,7 @@ function collectToolOutputText(body, format) {
     for (const content of contents) {
       if (!Array.isArray(content?.parts)) continue;
       for (const part of content.parts) {
-        if (part?.functionResponse) visit(part.functionResponse, "response");
+        if (part?.functionResponse && !part.functionResponse.response?.error) visit(part.functionResponse, "response");
       }
     }
   } else {
@@ -527,6 +529,8 @@ function applyProjectedHeadroomMessages(projection, compressedMessages, diagnost
       setDiagnostic(diagnostics, `proxy response missing ${label} text content`);
       return false;
     }
+    // CommandCode: shrink-only per leaf, like applyToolOutputText.
+    if (label === "CommandCode" && !(text.length < projection.targets[i].object[projection.targets[i].key].length)) continue;
     updates.push({ target: projection.targets[i], text });
   }
 

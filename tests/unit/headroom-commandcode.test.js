@@ -134,4 +134,18 @@ describe("Headroom enablement gate for native formats", () => {
     expect(body).toEqual(original);
     expect(diagnostics.reason).toBe("disabled");
   });
+
+  it("does not compress isError tool results and keeps per-leaf shrink-only", async () => {
+    const body = makeBody();
+    body.params.messages[2].content[0].isError = true;
+    const grown = "x".repeat(500);
+    mockProxy((messages) => messages.map((m, i) => ({ ...m, content: m.content ? (m.content === "long file b output" ? grown : `short ${i}`) : "" })));
+
+    body.params.system = "long system instructions ".repeat(100);
+    await compressWithHeadroom(body, options);
+
+    expect(body.params.messages[2].content[0].output.value).toBe("long file a output");
+    expect(body.params.messages[3].content[0].output.value).toBe("long file b output");
+    expect(body.params.system).toBe("short 0");
+  });
 });

@@ -147,4 +147,28 @@ describe("Headroom native tool-output compression", () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(body).toEqual(original);
   });
+
+  it("leaves Gemini functionResponse with an error untouched", async () => {
+    const body = geminiBody();
+    body.contents[1].parts.push({ functionResponse: { id: "call_2", name: "search", response: { error: "boom", content: longText } } });
+    const expected = structuredClone(body);
+    expected.contents[1].parts[0].functionResponse.response.result.content[0].text = "short result";
+    proxy();
+
+    await compressWithHeadroom(body, { ...options, format: "gemini" });
+
+    expect(JSON.parse(fetch.mock.calls[0][1].body).messages).toHaveLength(1);
+    expect(body).toEqual(expected);
+  });
+
+  it("skips Responses function_call_output items flagged as errors", async () => {
+    const body = responsesBody();
+    body.input[2].is_error = true;
+    body.input[3].status = "error";
+    const original = structuredClone(body);
+    proxy();
+
+    expect(await compressWithHeadroom(body, { ...options, format: "openai-responses" })).toBeNull();
+    expect(body).toEqual(original);
+  });
 });

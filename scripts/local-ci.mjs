@@ -79,6 +79,13 @@ export function scopedTestArgs(tests, selected) {
     "--reporter=json", `--outputFile=${path.join(tests, ".scoped-results.json")}`];
 }
 
+/** Real test completion output keeps the silence watchdog informed without weakening it. */
+export function fullTestArgs(tests, selected, reportFile) {
+  return [path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...selected,
+    "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=verbose", "--reporter=json",
+    `--outputFile.json=${reportFile}`];
+}
+
 export function validateTestReport(file, startedAt, exitCode, signal, tests, selected = []) {
   const report = readFreshReport(file, startedAt);
   validateVitestExecution(report, exitCode, signal);
@@ -528,10 +535,8 @@ if (ok(discovery)) {
     for (let i = 0; i < batches.length; i++) {
       const reportFile = path.join(tests, `.full-batch-${i + 1}.json`);
       rmSync(reportFile, { force: true });
-      const step = await run(`vitest-full-batch-${i + 1}`, "vitest", "node", [
-        path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...batches[i],
-        "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=json", `--outputFile=${reportFile}`,
-      ], { cwd: tests, env: testEnv });
+      const step = await run(`vitest-full-batch-${i + 1}`, "vitest", "node",
+        fullTestArgs(tests, batches[i], reportFile), { cwd: tests, env: testEnv });
       if (!ok(step)) throw new Error(`full batch ${i + 1} failed`);
       const report = readFreshReport(reportFile, Date.parse(step.startedAt));
       validateVitestExecution(report, step.exitCode, step.signal);

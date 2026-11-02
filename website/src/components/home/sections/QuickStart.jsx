@@ -3,6 +3,7 @@
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
 import { CopyButton, Magnetic, Reveal, SectionHeader } from "../ui/primitives.jsx";
+import { NATIVE_SETUP } from "../content.js";
 import DeployTabs from "./DeployTabs.jsx";
 
 const CURL = `curl http://localhost:20128/v1/chat/completions \\
@@ -47,13 +48,8 @@ const STEPS = [
     title: "Open the door",
     body: "First run creates DATA_DIR and the database, then serves the dashboard.",
     code: (
-      <Code label="shell" copy="durindoor">
-        <span className="c-dim">$ </span>
-        <span className="c-cmd">durindoor</span>
-        {"\n"}
-        <span className="c-ok">✓</span> <span className="c-dim">dashboard </span> http://localhost:20128/dashboard
-        {"\n"}
-        <span className="c-ok">✓</span> <span className="c-dim">api base  </span> http://localhost:20128/v1
+      <Code label="shell" copy={`${NATIVE_SETUP}\ndurindoor --host 127.0.0.1`}>
+        {NATIVE_SETUP}{"\n"}durindoor --host 127.0.0.1
       </Code>
     ),
   },
@@ -86,9 +82,10 @@ export default function QuickStart() {
           lead={t("Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.")}
         />
         <DeployTabs />
+        <p className="setup-note">{t("Set your own initial password before starting. Keep both signing secrets for later starts.")}</p>
         <ol className="quick-steps">
           {STEPS.map((step, i) => (
-            <Reveal as="li" key={step.n} delay={i * 0.1} className="quick-step">
+            <Reveal as="li" key={step.n} className="quick-step">
               <div className="quick-meta">
                 <span className="quick-n" aria-hidden="true">{step.n}</span>
                 <div>

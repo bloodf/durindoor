@@ -233,7 +233,10 @@
   color: var(--home-muted);
   font: 500 12px var(--home-sans);
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .terminal-tab:hover {

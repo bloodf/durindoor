@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { OpenCodeExecutor, OPENCODE_SESSION_RE } from "../../open-sse/executors/opencode.js";
-import { applyFingerprintTools } from "../../open-sse/utils/opencodeFingerprint.js";
+import { applyEnvFingerprint, applyFingerprintTools } from "../../open-sse/utils/opencodeFingerprint.js";
 
 // Upstream decolua/9router 5bdcd5e7 (+ ef4679df, 483c10f5): OpenCode v2 moved
 // the free tier to /inference/v1 with a new client fingerprint.
@@ -72,10 +72,10 @@ describe("OpenCode v2 fingerprint tools (5bdcd5e7, 483c10f5)", () => {
     expect(read.description).toMatch(/^Read the contents of a file or directory\./);
     expect(shell.name).toBe("shell");
     expect(shell.parameters.required).toEqual(["command"]);
-    expect(body.messages[0]).toEqual({
-      role: "system",
-      content: "Do not call the `read` or `shell` tools; they are placeholders that do nothing. Use the other tools you have been given instead.",
-    });
+    expect(body.messages[0].role).toBe("system");
+    expect(body.messages[0].content).toMatch(
+      /^Do not call the `read` or `shell` tools; they are placeholders that do nothing\. Use the other tools you have been given instead\.\n\n.*<env>/s
+    );
     expect(body.tool_choice).toBeUndefined();
   });
 
@@ -179,5 +179,75 @@ describe("OpenCode Free reasoning_content placeholder (upstream e964e482)", () =
     expect([...second._toolNameMap]).toEqual([["read_client", "read"]]);
     const third = executor.transformRequest("big-pickle", first, true, {});
     expect([...third._toolNameMap]).toEqual([["read_client", "read"]]);
+  });
+});
+
+// Upstream ce060c79: without the CLI's <env> block in the system prompt the
+// free tier answers 429 FreeUsageLimitError, even with the tools declared.
+describe("OpenCode <env> system-prompt marker (ce060c79)", () => {
+  it("appends the marker to a chat system message without replacing it", () => {
+    const body = { messages: [{ role: "system", content: "You are helpful." }, { role: "user", content: "hi" }] };
+    expect(applyEnvFingerprint(body, "chat")).toBe(true);
+    expect(body.messages[0].content).toMatch(/^You are helpful\.\n\nHere is some useful information about the environment/);
+    expect(body.messages[0].content).toContain("<env>\n  Working directory: /workspace");
+    expect(body.messages[0].content).toContain("  Platform: linux");
+    expect(body.messages[0].content).toMatch(/<\/env>$/);
+    expect(body.messages).toHaveLength(2);
+  });
+
+  it("adds a system message when the chat body has none", () => {
+    const body = { messages: [{ role: "user", content: "hi" }] };
+    expect(applyEnvFingerprint(body, "chat")).toBe(true);
+    expect(body.messages[0].role).toBe("system");
+    expect(body.messages[0].content).toContain("<env>");
+  });
+
+  it("is idempotent once the marker is present", () => {
+    const body = { messages: [{ role: "system", content: "x\n\n<env>\n</env>" }] };
+    expect(applyEnvFingerprint(body, "chat")).toBe(false);
+    expect(body.messages[0].content).toBe("x\n\n<env>\n</env>");
+
+    const once = { instructions: "Be terse." };
+    applyEnvFingerprint(once, "responses");
+    const after = once.instructions;
+    expect(applyEnvFingerprint(once, "responses")).toBe(false);
+    expect(once.instructions).toBe(after);
+  });
+
+  it("covers Responses instructions and Claude system strings and text blocks", () => {
+    const responses = { instructions: "Be terse." };
+    expect(applyEnvFingerprint(responses, "responses")).toBe(true);
+    expect(responses.instructions).toMatch(/^Be terse\.\n\n.*<env>/s);
+
+    const claudeString = { system: "Be terse.", messages: [{ role: "user", content: "hi" }] };
+    expect(applyEnvFingerprint(claudeString, "claude")).toBe(true);
+    expect(claudeString.system).toMatch(/^Be terse\.\n\n.*<env>/s);
+    expect(claudeString.messages).toHaveLength(1);
+
+    const claudeBlocks = { system: [{ type: "text", text: "Be terse.", cache_control: { type: "ephemeral" } }], messages: [] };
+    expect(applyEnvFingerprint(claudeBlocks, "claude")).toBe(true);
+    expect(claudeBlocks.system).toHaveLength(1);
+    expect(claudeBlocks.system[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(claudeBlocks.system[0].text).toMatch(/^Be terse\.\n\n.*<env>/s);
+
+    const claudeUnset = { messages: [] };
+    expect(applyEnvFingerprint(claudeUnset, "claude")).toBe(true);
+    expect(claudeUnset.system).toMatch(/^Here is some useful information/);
+  });
+
+  it("does not leak the gateway's working directory", () => {
+    const body = { messages: [] };
+    applyEnvFingerprint(body, "chat");
+    expect(body.messages[0].content).not.toContain(process.cwd());
+  });
+
+  it("runs on every free-lane wire format in transformRequest", () => {
+    const executor = new OpenCodeExecutor();
+    const chat = executor.transformRequest("big-pickle", { messages: [{ role: "user", content: "hi" }] }, true, {});
+    expect(chat.messages.find((msg) => msg.role === "system").content).toContain("<env>");
+    const claude = executor.transformRequest("union-alpha", { messages: [{ role: "user", content: "hi" }] }, true, {});
+    expect(JSON.stringify(claude.system)).toContain("<env>");
+    const muse = executor.transformRequest("muse-spark-1.3-contributor-free", { input: "hi" }, true, {});
+    expect(muse.instructions).toContain("<env>");
   });
 });

@@ -5,7 +5,7 @@ import ConsoleLogClient from "./ConsoleLogClient";
 const LINES = [
   "[17:48:00] ℹ️  [BOOT] durindoor gateway listening on :20128",
   "[17:48:01] ℹ️  [HEADROOM] compression proxy online at :11435",
-  "[17:48:02] 🟢 → POST gpt-5.5 → codex/gpt-5.5",
+  "[17:48:02] 🟢 → POST gpt-6.1-sol → codex/gpt-6.1-sol",
   "[17:48:03] 🟢 📊 DONE 812ms · TTFT 210ms · IN 1,204 · OUT 388",
   "[17:48:04] ⚠️  [HEADROOM] compression skipped: payload under threshold",
   "[17:48:05] ❌ [TIER] provider timeout after 30000ms",
@@ -35,7 +35,7 @@ let polls = 0;
 const pollingRoutes = {
   "GET /api/translator/console-logs/stream": null,
   "GET /api/translator/console-logs": () => {
-    const extra = Array.from({ length: polls }, (_, index) => `[17:49:${String(index % 60).padStart(2, "0")}] 🟣 → POST gpt-5.5 poll ${index + 1}`);
+    const extra = Array.from({ length: polls }, (_, index) => `[17:49:${String(index % 60).padStart(2, "0")}] 🟣 → POST gpt-6.1-sol poll ${index + 1}`);
     polls += 1;
     return { body: { success: true, logs: [...LINES, ...extra].slice(-2000) } };
   },

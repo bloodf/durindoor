@@ -8,6 +8,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
+import { getOpencodeTlsFetch } from "../services/opencodeTlsClient.js";
 
 /**
  * OpenCode free-tier executor (upstream #4041-adjacent cluster: 93837af0 +
@@ -24,8 +25,11 @@ import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
  *    Any `x-opencode-request` header is rejected, so none is sent.
  * 2. A v2 `User-Agent`: `opencode/<channel>/<major>.<minor>.<patch>/<client>`
  *    with major >= 2.
- * 3. OpenCode's own `read` and `shell` tool definitions, verbatim (see
- *    utils/opencodeFingerprint.js), on every request.
+ * 3. OpenCode's own `read` and `shell` tool definitions, verbatim, plus the
+ *    CLI's `<env>` system-prompt block (see utils/opencodeFingerprint.js), on
+ *    every request.
+ * 4. The CLI's TLS ClientHello cipher list (upstream ce060c79), sent through
+ *    services/opencodeTlsClient.js when the optional wreq-js is installed.
  *
  * Session identity is resolved once per request in `prepareRequestCredentials`
  * (called from `execute`) onto a request-local credentials copy: no session
@@ -227,8 +231,14 @@ export class OpenCodeExecutor extends BaseExecutor {
     };
   }
 
+  // The free gate also keys on the TLS ClientHello (upstream ce060c79), so the
+  // no-proxy path goes through the wreq-js transport. Without wreq-js the
+  // request stays on native fetch (logged once in opencodeTlsClient.js).
   async execute(args) {
-    return super.execute({ ...args, credentials: this.prepareRequestCredentials(args) });
+    const request = { ...args, credentials: this.prepareRequestCredentials(args) };
+    const directFetch = await getOpencodeTlsFetch();
+    if (directFetch) request.directFetch = directFetch;
+    return super.execute(request);
   }
 
   transformRequest(model, body, stream, credentials, requestContext = null) {

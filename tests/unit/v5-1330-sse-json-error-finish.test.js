@@ -6,6 +6,7 @@ import { handleForcedSSEToJson } from "../../open-sse/handlers/chatCore/sseToJso
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { OPENAI_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
 import { HTTP_STATUS } from "../../open-sse/config/runtimeConfig.js";
+import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../open-sse/config/errorConfig.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
   appendRequestLog: vi.fn(() => Promise.resolve()),
@@ -16,8 +17,6 @@ vi.mock("@/lib/usageDb.js", () => ({
   buildRequestDetail: vi.fn((args) => args),
   formatDoneLine: vi.fn(() => "📊 done"),
 }));
-
-const INCOHERENT_MESSAGE = "Provider returned an incoherent non-streaming response";
 
 function errorFinishSSE({ content = "partial" } = {}) {
   const chunks = [
@@ -109,11 +108,9 @@ describe("#1330 SSE→JSON error finish → 502 (Claude + Gemini clients)", () =
     const opts = baseOpts({ sourceFormat, providerResponse: errorFinishSSE() });
     const result = await handleForcedSSEToJson(opts);
 
-    expect(result).toMatchObject({
-      success: false,
-      status: HTTP_STATUS.BAD_GATEWAY,
-      error: INCOHERENT_MESSAGE,
-    });
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(HTTP_STATUS.BAD_GATEWAY);
+    expect(result.error).toBe(INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
     expect(result.response.status).toBe(HTTP_STATUS.BAD_GATEWAY);
     expect(opts.onRequestSuccess).not.toHaveBeenCalled();
     expect(opts.trackDone).toHaveBeenCalledOnce();

@@ -1,8 +1,8 @@
 # Issue #1089: OpenAI Chat Completions client matrix
 
-Status counts: already-present 39; failing 27; unsupported-by-contract 0; upstream-pending 0.
+Status counts: already-present 41; failing 17; passing (#1331) 4; repaired (#1335) 3; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
 
-Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing: #<issue> …` reason; no source fixes land in this slice. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance.
+Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing: #<issue> …` reason. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance. The #1330 non-stream error rows assert the live handler 502 contract (Option A), not a Claude/Gemini translator terminal.
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
@@ -36,8 +36,8 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Non-stream | content_filter terminal | Gemini | already-present | `maps non-stream content_filter to Gemini SAFETY` |
 | Non-stream | content_filter → incomplete/content_filter | Responses | passing (#1331) | `maps non-stream content_filter to Responses incomplete with content_filter` |
 | Non-stream | error → failed with error object | Responses | handler-502 (#1348) | `maps non-stream error finish to Responses failed with error object` |
-| Non-stream | error terminal | Claude | failing | `maps non-stream error finish to a Claude error terminal` |
-| Non-stream | error terminal | Gemini | failing | `maps non-stream error finish to a Gemini abort finishReason` |
+| Non-stream | error finish → incoherent 502 (no markSuccess) | Claude | already-present | `returns 502 for non-stream error finish for a Claude client` |
+| Non-stream | error finish → incoherent 502 (no markSuccess) | Gemini | already-present | `returns 502 for non-stream error finish for a Gemini client` |
 | Stream | length terminal | Claude | already-present | `emits Claude stream length as message_delta max_tokens` |
 | Stream | length terminal | Gemini | already-present | `emits Gemini stream length as MAX_TOKENS with text` |
 | Stream | content_filter terminal | Gemini | already-present | `emits Gemini stream content_filter as SAFETY with text` |
@@ -77,7 +77,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 
 1. #1328 — Gemini string `tool_choice` auto/none/required are dropped; only named `{type:function}` is mapped.
 2. #1329 — Chat→Responses never copies `tool_choice`.
-3. #1330 — Chat JSON `finish_reason: error` becomes Claude `end_turn` / Gemini `STOP` instead of an abort terminal.
+3. #1330 — Resolved on main (#1348 / Option A): Chat JSON `finish_reason: error` returns HTTP 502 `Provider returned an incoherent non-streaming response` before Claude/Gemini projection; matrix rows assert that handler contract.
 4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` stays skipped: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so that projector branch is unreachable.
 5. #1332 — Chat→Claude image conversion is repaired by #1356 (data URI and HTTP(S), preserving error flags). Chat→Responses still stringifies image parts into output text; that residual remains open.
 6. #1335 — Cross-turn `tool_call_id` reuse broke current-turn pairing on Claude, Gemini, and Responses (repaired: pair by call id within the current assistant turn; drop strays).

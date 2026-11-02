@@ -5,6 +5,7 @@ const { clearScreen, showStatus, showHeader } = require("../utils/display");
 const { formatDate } = require("../utils/format");
 const { selectModelFromList } = require("../utils/modelSelector");
 const { showMenuWithBack } = require("../utils/menuHelper");
+const { comboModelId } = require("../utils/comboModelId");
 
 /**
  * Format model to string (handle both string and object)
@@ -254,7 +255,7 @@ async function handleCreateCombo() {
 
     if (selectedModels.length > 0) {
       selectedModels.forEach((m, i) => {
-        console.log(`  ${i + 1}. ${m.provider}/${m.model}`);
+        console.log(`  ${i + 1}. ${m}`);
       });
     } else {
       console.log("  (none)");
@@ -296,7 +297,13 @@ async function handleCreateCombo() {
       continue;
     }
 
-    selectedModels.push(availableModels[num - 1]);
+    const modelId = comboModelId(availableModels[num - 1]);
+    if (!modelId) {
+      showStatus("Selected model has no valid identifier", "error");
+      await pause();
+      continue;
+    }
+    selectedModels.push(modelId);
   }
 
   // Create combo

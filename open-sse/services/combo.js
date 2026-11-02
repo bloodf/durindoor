@@ -1497,16 +1497,16 @@ export async function handleComboChat({
 
         // Ignore JSON parse errors
       }
+      // Normalize error text to string (Worker-safe)
+      if (!isString(errorText)) {
+        try {errorText = JSON.stringify(errorText);} catch {errorText = String(errorText);}
+      }
+
       // Track earliest retryAfter across all combo models
       if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
         earliestRetryAfter = retryAfter;
         earliestRetryStatus = result.status;
         earliestRetryError = errorText || String(result.status);
-      }
-
-      // Normalize error text to string (Worker-safe)
-      if (!isString(errorText)) {
-        try {errorText = JSON.stringify(errorText);} catch {errorText = String(errorText);}
       }
 
       // A client-side abort that surfaced without a 499 (bare
@@ -1598,7 +1598,8 @@ export async function handleComboChat({
   // body) instead of the synthesized envelope, so the client sees the real cause.
   // A transient failure with a retry hint wins: another member may serve the
   // request once it recovers, so the client keeps the Retry-After (#1433).
-  if (requestScopedResult && earliestRetryAfter) {
+  // Only a retry hint still in the future beats the request-scoped rejection.
+  if (requestScopedResult && earliestRetryAfter && new Date(earliestRetryAfter).getTime() > Date.now()) {
     const retryHuman = formatRetryAfter(earliestRetryAfter);
     log.warn("COMBO", `No model served the request; returning the retryable failure | ${earliestRetryError} (${retryHuman})`);
     return unavailableResponse(getClientStatusFromError(earliestRetryStatus, earliestRetryError), earliestRetryError, earliestRetryAfter, retryHuman);

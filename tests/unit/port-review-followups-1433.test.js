@@ -131,4 +131,33 @@ describe("#1433 combo keeps a transient retry hint over a request-scoped rejecti
     expect(response.status).toBe(429);
     expect(Number(response.headers.get("Retry-After"))).toBeGreaterThan(0);
   });
+
+  async function runCombo(retryAfter, secondBody) {
+    resetComboRotation();
+    return handleComboChat({
+      body: { model: "combo", stream: false, messages: [{ role: "user", content: "hi" }] },
+      models: ["p1/first", "p2/second"],
+      handleSingleModel: async (_body, model) => model === "p1/first" ?
+        json(400, { error: { message: "unsupported parameter" } }) :
+        json(429, secondBody ?? { error: { message: "rate limited" }, retryAfter }),
+      log,
+      comboName: "retry-hint-test",
+      comboStrategy: "fallback",
+    });
+  }
+
+  it("keeps the request-scoped rejection when the retry hint is already in the past", async () => {
+    const response = await runCombo(new Date(Date.now() - 60_000).toISOString());
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.message).toBe("unsupported parameter");
+  });
+
+  it("uses the normalized string error text for an object-shaped upstream error", async () => {
+    const retryAfter = new Date(Date.now() + 60_000).toISOString();
+    const response = await runCombo(retryAfter, { error: { message: { detail: "rate limited object" } }, retryAfter });
+    expect(response.status).toBe(429);
+    const body = await response.json();
+    expect(typeof body.error.message).toBe("string");
+    expect(body.error.message).toContain("rate limited object");
+  });
 });

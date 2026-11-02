@@ -57,3 +57,26 @@ describe("magnific image provider", () => {
     expect(getImageAdapter("magnific")).toBeTruthy();
   });
 });
+
+describe("magnific review fixes", () => {
+  beforeEach(() => { global.fetch = vi.fn(); });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it("stops polling on an unknown terminal status", async () => {
+    global.fetch
+      .mockResolvedValueOnce(json({ data: { task_id: "t3" } }))
+      .mockResolvedValueOnce(json({ data: { status: "CANCELLED" } }));
+    const result = await run();
+    expect(result.success).toBe(false);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("an unreadable status body fails instead of throwing raw parse errors", async () => {
+    global.fetch
+      .mockResolvedValueOnce(json({ data: { task_id: "t4" } }))
+      .mockResolvedValueOnce(new Response("<html>", { status: 200 }));
+    const result = await run();
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toMatch(/unreadable status/);
+  });
+});

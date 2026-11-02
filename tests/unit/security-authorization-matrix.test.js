@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // #1115: real auth, ownership, model/combo resolution, policy, account selection
 // and handler routing. HTTP rewriting is covered by the separate HTTP runner.
-const fixture = vi.hoisted(() => ({ keys: new Map(), scopes: new Map(), owners: new Map(), connections: [], settings: {}, combo: null, fetch: vi.fn(), core: vi.fn(), writes: [] }));
+const fixture = vi.hoisted(() => ({ keys: new Map(), scopes: new Map(), owners: new Map(), connections: [], settings: {}, combo: null, fetch: vi.fn(), core: vi.fn(), writes: [], trustedPeer: false }));
 vi.mock("@/lib/db/driver.js", () => ({
   getAdapter: () => { throw new Error("Unexpected database access in authorization matrix"); },
   getAdapterSync: () => { throw new Error("Unexpected database access in authorization matrix"); },
@@ -11,7 +11,7 @@ vi.mock("@/lib/apiKeyLimits.js", () => ({ enforceApiKeyLimits: async () => null 
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: async () => "matrix-cli" }));
 vi.mock("@/lib/auth/dashboardSession", () => ({ verifyDashboardAuthToken: async (value) => value === "matrix-session" }));
-vi.mock("@/lib/auth/trustedPeer", () => ({ hasTrustedPeerHeaders: () => false }));
+vi.mock("@/lib/auth/trustedPeer", () => ({ hasTrustedPeerHeaders: () => fixture.trustedPeer }));
 vi.mock("next/server", () => ({ NextResponse: class extends Response {
   static next() { return new Response(null, { headers: { "x-matrix-next": "1" } }); }
   static json(body, init) { return Response.json(body, init); }
@@ -120,7 +120,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network access in authorization matrix"); }));
   resetComboRotation(); resetComboScoring();
-  fixture.keys.clear(); fixture.scopes.clear(); fixture.owners.clear(); fixture.combo = null; fixture.writes = [];
+  fixture.keys.clear(); fixture.scopes.clear(); fixture.owners.clear(); fixture.combo = null; fixture.writes = []; fixture.trustedPeer = false;
   fixture.settings = { requireApiKey: true, requireLogin: true, comboStrategy: "fallback", visionBridgeEnabled: false };
   for (const principal of ["owner", "foreign", "inactive", "expired"]) fixture.keys.set(`matrix-${principal}`, {
     id: principal, key: `matrix-${principal}`, name: principal, isActive: principal !== "inactive",
@@ -282,5 +282,23 @@ describe.each([...principals, "scoped"])("management mutations as %s", (principa
     }
     expect(response.status).toBe(["owner", "foreign", "scoped"].includes(principal) ? 403 : 401);
     expect(fixture.writes).toEqual([]);
+  });
+});
+
+// Loopback peer with requireLogin off is the open local dashboard: an operator
+// without credentials. A presented application key still is not.
+describe.each(["anonymous", "owner"])("management mutations on loopback, login off, as %s", (principal) => {
+  it.each(managementMutations)("%s", async (_label, spec, handler) => {
+    fixture.trustedPeer = true;
+    fixture.settings.requireLogin = false;
+    const [path, method, body] = spec();
+    const response = await guarded(request(path, principal, method, body, { "x-9r-real-ip": "127.0.0.1" }), handler);
+    if (principal === "anonymous") {
+      expect(response.status).toBeLessThan(300);
+      expect(fixture.writes.length).toBeGreaterThan(0);
+    } else {
+      expect(response.status).toBe(403);
+      expect(fixture.writes).toEqual([]);
+    }
   });
 });

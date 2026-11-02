@@ -13,7 +13,10 @@
 //   planToEngineIds(planOrWrapper) -> string[]   (handles stacked + single-mode reverse map)
 //   isEngineAvailable(id) -> boolean
 //   getEngine(id).apply(body, { config, stepConfig }) -> Promise<{ body, compressed, stats }>
-//   Engines NEVER mutate the caller's body; getEngine throws on unknown ids.
+//   Engines NEVER mutate the caller's body (contract): per-step rollback and the
+//   fidelity gate compare against stepInput, so an in-place mutation would defeat
+//   both. The offline eval (eval/runFidelityEval.js) flags "input-mutated".
+//   getEngine throws on unknown ids.
 //
 // Returns { body, headerValue }:
 //   - body: possibly-compressed body; original reference on disabled/no-op.

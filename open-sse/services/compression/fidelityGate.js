@@ -116,6 +116,10 @@ export function bodyToText(body) {
   return parts.join("\n");
 }
 
+// Collect protected items WITHOUT serializing them: nodes by reference, fenced
+// code with the string slot it came from. checkProtectedBlocks serializes only
+// what did not survive by reference, so large unchanged media (base64 images)
+// is never stringified on the hot path.
 function collectProtected(node, out) {
   if (Array.isArray(node)) {
     for (const item of node) collectProtected(item, out);
@@ -123,22 +127,24 @@ function collectProtected(node, out) {
   }
   if (!node || !isObject(node)) return out;
   if (isProtectedNode(node)) {
-    out.push(JSON.stringify(node));
+    out.nodes.add(node);
     return out; // the whole subtree is pinned; no need to descend
   }
+  const addCode = (slot) => {
+    for (const block of findFencedCodeBlocks(slot)) out.code.push({ block, slot });
+  };
   if (TEXT_PART_TYPES.has(node.type) && isString(node.text)) {
-    for (const block of findFencedCodeBlocks(node.text)) out.push(block);
+    addCode(node.text);
     return out;
   }
   for (const value of Object.values(node)) {
-    if (isString(value)) {
-      for (const block of findFencedCodeBlocks(value)) out.push(block);
-    } else {
-      collectProtected(value, out);
-    }
+    if (isString(value)) addCode(value);
+    else collectProtected(value, out);
   }
   return out;
 }
+
+const protectedSets = () => ({ nodes: new Set(), code: [] });
 
 /**
  * Structural protected-block check. Returns the first failing invariant.
@@ -150,30 +156,39 @@ export function checkProtectedBlocks(inputBody, outputBody) {
     if (!outputBody || !isObject(outputBody)) {
       return { passed: false, failedInvariant: "body", detail: "output body is not an object" };
     }
+    const same = (key) => inputBody[key] === outputBody[key] || JSON.stringify(inputBody[key]) === JSON.stringify(outputBody[key]);
     for (const key of SCHEMA_KEYS) {
       if (key === "text" && !isObject(inputBody.text)) continue; // Responses text.format only
-      if (JSON.stringify(inputBody[key]) !== JSON.stringify(outputBody[key])) {
-        return { passed: false, failedInvariant: "tool-schemas", detail: `${key} changed` };
-      }
+      if (!same(key)) return { passed: false, failedInvariant: "tool-schemas", detail: `${key} changed` };
     }
     for (const key of ["system", "instructions", "systemInstruction"]) {
-      if (JSON.stringify(inputBody[key]) !== JSON.stringify(outputBody[key])) {
-        return { passed: false, failedInvariant: "instructions", detail: `${key} changed` };
+      if (!same(key)) return { passed: false, failedInvariant: "instructions", detail: `${key} changed` };
+    }
+    const before = collectProtected(inputBody, protectedSets());
+    if (before.nodes.size === 0 && before.code.length === 0) return { passed: true };
+    const after = collectProtected(outputBody, protectedSets());
+
+    let afterJson = null; // lazily: serialized output nodes that are not shared refs
+    for (const node of before.nodes) {
+      if (after.nodes.has(node)) continue;
+      afterJson ??= new Set(Array.from(after.nodes, (n) => before.nodes.has(n) ? null : JSON.stringify(n)));
+      const json = JSON.stringify(node);
+      if (!afterJson.has(json)) {
+        return { passed: false, failedInvariant: "protected-blocks", detail: `protected block altered: ${json.slice(0, 80)}` };
       }
     }
-    const before = uniq(collectProtected(inputBody, []));
-    if (before.length === 0) return { passed: true };
-    const after = new Set(collectProtected(outputBody, []));
-    const outputText = collectStrings(outputBody, []).join("\n");
-    for (const item of before) {
-      // Fenced code may move between string slots; JSON-pinned nodes must match exactly.
-      const isNode = item.startsWith("{");
-      if (isNode ? !after.has(item) : !outputText.includes(item)) {
-        return {
-          passed: false,
-          failedInvariant: "protected-blocks",
-          detail: `protected ${isNode ? "block" : "code"} altered: ${item.slice(0, 80)}`
-        };
+
+    if (before.code.length > 0) {
+      const outputStrings = collectStrings(outputBody, []);
+      const unchangedSlots = new Set(outputStrings);
+      let outputText = null;
+      for (const { block, slot } of before.code) {
+        if (unchangedSlots.has(slot)) continue; // slot survived verbatim
+        outputText ??= outputStrings.join("\n");
+        // Fenced code may move between string slots; it must survive verbatim somewhere.
+        if (!outputText.includes(block)) {
+          return { passed: false, failedInvariant: "protected-blocks", detail: `protected code altered: ${block.slice(0, 80)}` };
+        }
       }
     }
     return { passed: true };
@@ -182,8 +197,10 @@ export function checkProtectedBlocks(inputBody, outputBody) {
   }
 }
 
+// Counted over unique lines, so dropping a duplicate block (session-dedup)
+// is not mistaken for removing a negation.
 function countNegations(text) {
-  return (text.match(NEGATION_RE) ?? []).length;
+  return (uniq(text.split("\n")).join("\n").match(NEGATION_RE) ?? []).length;
 }
 
 /**
@@ -225,7 +242,8 @@ export function checkFidelity(inputText, outputText, cfg = {}) {
     }
 
     if (cfg.checkNumericIntegrity !== false) {
-      for (const num of uniq(inputText.match(NUMERIC_RE) ?? [])) {
+      // Trailing "." / "," is sentence punctuation, not part of the number.
+      for (const num of uniq((inputText.match(NUMERIC_RE) ?? []).map((n) => n.replace(/[.,]+$/, "")))) {
         if (!outputText.includes(num)) {
           return { passed: false, failedInvariant: "numeric", detail: `number "${num}" missing` };
         }

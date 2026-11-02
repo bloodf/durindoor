@@ -13,6 +13,8 @@ export default {
     baseUrl: "https://api.publicai.co/v1/chat/completions",
     validateUrl: "https://api.publicai.co/v1/models",
   },
+  // Seed snapshot from OmniRoute release/v3.8.52 (61e07fb7). No models endpoint is configured,
+  // so this list is not refreshed automatically.
   models: [
     { id: "swiss-ai/apertus-70b-instruct", name: "swiss-ai/apertus-70b-instruct" },
     { id: "swiss-ai/Apertus-8B-Instruct-2509", name: "swiss-ai/Apertus-8B-Instruct-2509" },

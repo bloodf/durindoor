@@ -894,6 +894,11 @@ export function sanitizeErrorMessage(message) {
   return out.slice(0, 4096) || "Upstream provider error";
 }
 
+/** Selected credential values that must never appear in public or persisted error text. */
+export function credentialErrorSecrets(credentials) {
+  return [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken, credentials?.providerSpecificData?.sessionToken];
+}
+
 /** Redact known credential values before applying generic error sanitization. */
 export function sanitizeErrorMessageWithSecrets(message, secrets = []) {
   let out = String(message || "Upstream provider error");

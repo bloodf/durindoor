@@ -22,7 +22,8 @@ const errorResponse = () => new Response(null, { status: 503 });
 
 describe("reasoning token buffer (#6714)", () => {
   it("resolves only explicit caps in provider, registry, static order", () => {
-    expect(getExplicitModelOutputCap("codebuddy-cn/glm-5.2")).toBe(48000);
+    // Provider row wins over the static glm-5.1 cap (131072).
+    expect(getExplicitModelOutputCap("codebuddy-cn/glm-5.1")).toBe(48000);
     expect(getExplicitModelOutputCap("glmt/glm-5.2")).toBe(131072);
     expect(getExplicitModelOutputCap("charm-hyper/glm-5.2")).toBe(131072);
     expect(getExplicitModelOutputCap("unknown/glm-5.2")).toBe(131072);
@@ -172,12 +173,12 @@ describe("reasoning token buffer (#6714)", () => {
     const attempts = [];
     const handleSingleModel = vi.fn(async (attemptBody, model) => {
       attempts.push(attemptBody);
-      return model === "codebuddy-cn/glm-5.2" ? errorResponse() : okResponse();
+      return model === "codebuddy-cn/glm-5.1" ? errorResponse() : okResponse();
     });
 
     await handleComboChat({
       body,
-      models: ["codebuddy-cn/glm-5.2", "glmt/glm-5.2"],
+      models: ["codebuddy-cn/glm-5.1", "glmt/glm-5.2"],
       handleSingleModel,
       log,
       comboStrategy: "fallback",

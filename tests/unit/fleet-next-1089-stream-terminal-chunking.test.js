@@ -21,12 +21,12 @@ afterEach(() => {
   finally { vi.unstubAllGlobals(); }
 });
 
-async function consume(terminal) {
+async function consume(terminal, { terminated = false } = {}) {
   const text = "café 世界 🚪";
   const frame = (event) => `event: ${event.type}\r\ndata: ${JSON.stringify(event)}\r\n\r\n`;
   const wire = frame({ type: "response.created", response: { id: "resp-chunk-fixture", status: "in_progress" } }) +
     frame({ type: "response.output_text.delta", delta: text }) +
-    frame(terminal).trimEnd();
+    (terminated ? frame(terminal) : frame(terminal).trimEnd());
   const bytes = new TextEncoder().encode(wire);
   let offset = 0;
   const upstream = new ReadableStream({
@@ -96,17 +96,20 @@ describe("#1089 registered Responses terminals across CRLF and UTF-8 byte bounda
     expect(result.onCoherentTerminal).toHaveBeenCalledTimes(1);
   });
 
-  it("retains an unterminated nested response.failed reason and raw error without coherent success", async () => {
+  it.each([
+    ["unterminated", false],
+    ["terminated", true],
+  ])("ends a byte-split %s nested response.failed with the Chat error terminal, not stop content (#1327)", async (_label, terminated) => {
     const error = { type: "server_error", code: "fixture_failure", message: "失敗 café 🚪" };
     const result = await consume({ type: "response.failed", response: {
       id: "resp-chunk-fixture", status: "failed", error,
-    } });
+    } }, { terminated });
     expectSettled(result);
-    const content = result.events.flatMap((event) => event.choices || []).map((choice) => choice.delta?.content || "").join("");
-    // Current registered translator deliberately exposes this nested failure as text plus stop.
-    expect(content).toBe(`${result.text}[Error] ${error.message}`);
-    expect(result.events.flatMap((event) => event.choices || []).filter((choice) => choice.finish_reason != null)
-      .map((choice) => choice.finish_reason)).toEqual([OPENAI_FINISH.STOP]);
+    const choices = result.events.flatMap((event) => event.choices || []);
+    expect(choices.map((choice) => choice.delta?.content || "").join("")).toBe(result.text);
+    expect(choices.filter((choice) => choice.finish_reason != null)).toEqual([]);
+    expect(result.events.filter((event) => event.error)).toEqual([{ error }]);
+    expect(result.output.trimEnd().endsWith("data: [DONE]")).toBe(true);
     expect(result.onStreamComplete.mock.calls[0][0].upstreamError).toEqual(error);
     expect(result.onCoherentTerminal).not.toHaveBeenCalled();
   });

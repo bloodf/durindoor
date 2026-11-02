@@ -407,6 +407,48 @@ export function stripThinkingSuffix(model) {
 }
 
 /**
+ * Anthropic date-suffixed snapshot id, e.g. `claude-sonnet-4-5-20250929`.
+ * Kiro's data plane only accepts the dotted alias (`claude-sonnet-4.5`).
+ */
+const ANTHROPIC_SNAPSHOT_SUFFIX = /-\d{8}$/;
+
+/**
+ * Fold an Anthropic model id onto the Kiro upstream alias.
+ *
+ * Anthropic and Kiro disagree on id spelling: Anthropic ships
+ * `claude-sonnet-4-5-20250929` / `claude-opus-4-5`, while Kiro's
+ * `GenerateAssistantResponse` only accepts `claude-sonnet-4.5` and answers
+ * anything else with `400 INVALID_MODEL_ID`.
+ *
+ * Clients that speak the Anthropic Messages API (Claude Code, cc-switch, …)
+ * send the Anthropic spelling, so the raw id has to be folded onto the Kiro
+ * alias before the request leaves this process. Matching is keyword-based
+ * rather than an exact-id table: snapshot suffixes and future minor revisions
+ * would otherwise fall through and 400 upstream.
+ *
+ * Unknown ids are returned untouched so operators can still pass through
+ * models Kiro adds ahead of this list.
+ *
+ * @param {string} model
+ * @returns {string}
+ */
+export function normalizeKiroUpstreamModelId(model) {
+  if (typeof model !== "string" || model === "") return model;
+
+  const id = model.toLowerCase().replace(ANTHROPIC_SNAPSHOT_SUFFIX, "");
+
+  // Explicit versioned Claude ids only. Ambiguous ids (bare "opus", "claude-3-5-sonnet")
+  // pass through unchanged so Kiro rejects them visibly instead of being silently remapped.
+  const CLAUDE_VERSIONED = /^claude-(sonnet|opus|haiku)-(\d+)(?:[.-](\d+))?$/;
+  const m = id.match(CLAUDE_VERSIONED);
+  if (m) return `claude-${m[1]}-${m[3] ? `${m[2]}.${m[3]}` : m[2]}`;
+  if (id === "claude-fable-5") return "claude-fable-5";
+  // Case-fix for static-catalog ids (e.g. "MiniMax-M2.5") that Kiro only accepts lowercase.
+  if (id === "minimax-m2.5" || id === "minimax-m2.1") return id;
+  return model;
+}
+
+/**
  * Resolve a 9router model id to the real upstream Kiro model id, plus flags
  * describing which behaviours the suffixes implied.
  *
@@ -434,7 +476,7 @@ export function resolveKiroModel(model) {
     thinking = true;
     upstream = stripThinkingSuffix(upstream);
   }
-  return { upstream, agentic, thinking };
+  return { upstream: normalizeKiroUpstreamModelId(upstream), agentic, thinking };
 }
 
 /**

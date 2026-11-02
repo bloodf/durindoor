@@ -249,8 +249,8 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out).not.toHaveProperty("choices");
   });
 
-  // #1089 failing: #1331 Chat→Responses non-stream copies finish_reason "length" into status instead of incomplete/max_output_tokens.
-  it.skip("maps non-stream length to Responses incomplete with max_output_tokens", () => {
+  // #1089 / #1331: Chat→Responses non-stream length → incomplete/max_output_tokens.
+  it("maps non-stream length to Responses incomplete with max_output_tokens", () => {
     const out = nonstream(RESPONSES, OPENAI_FINISH.LENGTH);
     expect(out.status).toBe("incomplete");
     expect(out.incomplete_details).toEqual({ reason: "max_output_tokens" });
@@ -263,15 +263,16 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out.candidates[0].content.parts[0].text).toBe("partial");
   });
 
-  // #1089 failing: #1331 Chat→Responses non-stream copies finish_reason "content_filter" into status instead of incomplete/content_filter.
-  it.skip("maps non-stream content_filter to Responses incomplete with content_filter", () => {
+  // #1089 / #1331: Chat→Responses non-stream content_filter → incomplete/content_filter.
+  it("maps non-stream content_filter to Responses incomplete with content_filter", () => {
     const out = nonstream(RESPONSES, OPENAI_FINISH.CONTENT_FILTER);
     expect(out.status).toBe("incomplete");
     expect(out.incomplete_details).toEqual({ reason: "content_filter" });
     expect(out.output[0].content[0].text).toBe("partial");
   });
 
-  // #1089 failing: #1331 Chat→Responses non-stream copies finish_reason "error" into status instead of failed with an error object.
+  // #1089 / #1331: non-stream error → status "failed" is unreachable from live handlers.
+  // isCoherentOpenAICompletion and SSE→JSON (#1348) both 502 before projection.
   it.skip("maps non-stream error finish to Responses failed with error object", () => {
     const out = nonstream(RESPONSES, OPENAI_FINISH.ERROR);
     expect(out.status).toBe("failed");
@@ -347,8 +348,8 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out.response.candidates[0].content.parts[0].text).toBe("boom");
   });
 
-  // #1089 failing: #1331 Chat→Responses stream flush reports response.completed after finish_reason length.
-  it.skip("emits Responses stream incomplete for Chat length finish", () => {
+  // #1089 / #1331: Chat→Responses stream length → response.incomplete.
+  it("emits Responses stream incomplete for Chat length finish", () => {
     const events = streamTo(RESPONSES, [
       { id: "x", choices: [{ index: 0, delta: { content: "partial" }, finish_reason: OPENAI_FINISH.LENGTH }] },
       null,
@@ -358,8 +359,8 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(events.some((event) => event.event === "response.completed")).toBe(false);
   });
 
-  // #1089 failing: #1331 Chat→Responses stream flush never emits response.failed for finish_reason error.
-  it.skip("emits Responses stream failed for Chat error finish", () => {
+  // #1089 / #1331: Chat→Responses stream error → response.failed.
+  it("emits Responses stream failed for Chat error finish", () => {
     const events = streamTo(RESPONSES, [
       { id: "x", choices: [{ index: 0, delta: { content: "boom" }, finish_reason: OPENAI_FINISH.ERROR }] },
       null,
@@ -529,8 +530,7 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     tools: [{ type: OPENAI_BLOCK.FUNCTION, function: { name: "fetch", parameters: { type: "object" } } }],
   };
 
-  // #1089 failing: #1332 Chat→Claude leaves OpenAI image_url blocks inside tool_result instead of Claude image sources.
-  it.skip("converts tool-result image_url media to Claude image blocks", () => {
+  it("converts tool-result image_url media to Claude image blocks", () => {
     const out = request(CLAUDE, mediaBody);
     const result = out.messages.find((message) =>
       Array.isArray(message.content) && message.content.some((block) => block.type === "tool_result"));
@@ -586,8 +586,8 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     ],
   };
 
-  // #1089 failing: #1335 Chat→Claude synthesizes an empty result for the current call and leaves the real new-result unpaired.
-  it.skip("pairs Claude tool results only within the current assistant turn", () => {
+  // #1335: turn-scoped pairing by call id (stray cross-turn results dropped).
+  it("pairs Claude tool results only within the current assistant turn", () => {
     const out = request(CLAUDE, pairingBody);
     const toolResults = out.messages.flatMap((message) =>
       Array.isArray(message.content) ? message.content.filter((block) => block.type === "tool_result") : []);
@@ -597,8 +597,8 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     expect(JSON.stringify(out.messages)).not.toContain("[No response received]");
   });
 
-  // #1089 failing: #1335 Chat→Gemini drops the current-turn tool result text when a cross-turn id precedes it.
-  it.skip("pairs Gemini tool results only within the current assistant turn", () => {
+  // #1335: turn-scoped pairing by call id (stray cross-turn results dropped).
+  it("pairs Gemini tool results only within the current assistant turn", () => {
     const out = request(GEMINI, pairingBody);
     const responses = out.contents.flatMap((entry) =>
       (entry.parts || []).filter((part) => part.functionResponse).map((part) => part.functionResponse));
@@ -609,8 +609,8 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     expect(JSON.stringify(out.contents)).not.toContain("[No response received]");
   });
 
-  // #1089 failing: #1335 Chat→Responses keeps a cross-turn function_call_output for call_id old.
-  it.skip("pairs Responses tool results only within the current assistant turn", () => {
+  // #1335: turn-scoped pairing by call id (stray cross-turn results dropped).
+  it("pairs Responses tool results only within the current assistant turn", () => {
     const out = request(RESPONSES, pairingBody);
     const outputs = out.input.filter((item) => item.type === "function_call_output");
     expect(outputs.map((item) => [item.call_id, item.output])).toEqual([
@@ -685,12 +685,17 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
   });
 
   it("preserves free-form object schemas on Claude", () => {
+    // #1351/#1352 normalizer adds properties:{} when an object schema omits it.
     const schema = { type: "object", additionalProperties: true };
     const out = request(CLAUDE, chatBody({
       tools: [namespacedTool(false, schema)],
       tool_choice: "auto",
     }));
-    expect(out.tools[0].input_schema).toEqual(schema);
+    expect(out.tools[0].input_schema).toEqual({
+      type: "object",
+      additionalProperties: true,
+      properties: {},
+    });
   });
 
   it("fills empty schemas for Gemini with a reason placeholder", () => {
@@ -726,8 +731,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     }
   });
 
-  // #1089 failing: #1334 string numeric JSON Schema constraints are forwarded as strings instead of numbers.
-  it.skip("coerces string numeric schema constraints for Claude", () => {
+  it("coerces string numeric schema constraints for Claude", () => {
     const schema = { type: "object", properties: { n: { type: "number", minimum: "1", maximum: "10" } } };
     const out = request(CLAUDE, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -736,8 +740,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(out.tools[0].input_schema.properties.n).toEqual({ type: "number", minimum: 1, maximum: 10 });
   });
 
-  // #1089 failing: #1334 string numeric JSON Schema constraints are forwarded as strings instead of numbers.
-  it.skip("coerces string numeric schema constraints for Gemini", () => {
+  it("coerces string numeric schema constraints for Gemini", () => {
     const schema = { type: "object", properties: { n: { type: "number", minimum: "1", maximum: "10" } } };
     const out = request(GEMINI, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -746,8 +749,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(geminiDecl(out).parameters.properties.n).toEqual({ type: "number", minimum: 1, maximum: 10 });
   });
 
-  // #1089 failing: #1334 string numeric JSON Schema constraints are forwarded as strings instead of numbers.
-  it.skip("coerces string numeric schema constraints for Responses", () => {
+  it("coerces string numeric schema constraints for Responses", () => {
     const schema = { type: "object", properties: { n: { type: "number", minimum: "1", maximum: "10" } } };
     const out = request(RESPONSES, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -756,8 +758,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(out.tools[0].parameters.properties.n).toEqual({ type: "number", minimum: 1, maximum: 10 });
   });
 
-  // #1089 failing: #1334 malformed tool schemas are forwarded instead of rejected predictably.
-  it.skip("rejects malformed tool schemas for Claude", () => {
+  it("rejects malformed tool schemas for Claude", () => {
     const schema = { type: "object", properties: { x: null }, required: "not-an-array" };
     expect(() => request(CLAUDE, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -765,8 +766,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     }))).toThrow(/schema|invalid|malformed/i);
   });
 
-  // #1089 failing: #1334 malformed tool schemas are forwarded instead of rejected predictably.
-  it.skip("rejects malformed tool schemas for Gemini", () => {
+  it("rejects malformed tool schemas for Gemini", () => {
     const schema = { type: "object", properties: { x: null }, required: "not-an-array" };
     expect(() => request(GEMINI, chatBody({
       tools: [namespacedTool(false, schema)],
@@ -774,8 +774,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     }))).toThrow(/schema|invalid|malformed/i);
   });
 
-  // #1089 failing: #1334 malformed tool schemas are forwarded instead of rejected predictably.
-  it.skip("rejects malformed tool schemas for Responses", () => {
+  it("rejects malformed tool schemas for Responses", () => {
     const schema = { type: "object", properties: { x: null }, required: "not-an-array" };
     expect(() => request(RESPONSES, chatBody({
       tools: [namespacedTool(false, schema)],

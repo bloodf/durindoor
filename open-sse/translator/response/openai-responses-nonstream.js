@@ -1,4 +1,4 @@
-import { ROLE, CLAUDE_BLOCK, RESPONSES_ITEM, MODEL_FALLBACK } from "../schema/index.js";
+import { ROLE, CLAUDE_BLOCK, GEMINI_FINISH, GEMINI_ROLE, RESPONSES_ITEM, MODEL_FALLBACK } from "../schema/index.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { toResponsesUsage } from "../concerns/usage.js";
 
@@ -117,6 +117,7 @@ function collectResponsesOutput(responseBody) {
       isString(item.arguments) ? item.arguments : JSON.stringify(item.arguments || {});
       toolCalls.push({
         id: item.call_id || item.id || `call_${toolCalls.length}`,
+        hasRealId: Boolean(item.call_id || item.id),
         name: item.name || "",
         arguments: args
       });
@@ -124,12 +125,16 @@ function collectResponsesOutput(responseBody) {
   }
 
   if (!text && isString(responseObject(responseBody)?.output_text)) text = responseObject(responseBody).output_text;
-  return { text, reasoning, refusal, toolCalls, terminal: terminalError(responseBody) };
+  const terminal = terminalError(responseBody);
+  // Policy (#1389): incomplete+content_filter is a refusal, not a length cutoff,
+  // in the OpenAI, Claude and Gemini converters alike.
+  if (terminal?.status === "incomplete" && terminal.detail?.reason === "content_filter") refusal = true;
+  return { text, reasoning, refusal, toolCalls, terminal, truncated: terminal?.status === "incomplete" && !refusal };
 }
 
 export function openAIResponsesBodyToClaude(responseBody) {
   const response = responseObject(responseBody);
-  const { text, reasoning, refusal, toolCalls, terminal } = collectResponsesOutput(responseBody);
+  const { text, reasoning, refusal, toolCalls, terminal, truncated } = collectResponsesOutput(responseBody);
   const usage = usageFromResponses(response?.usage || responseBody?.usage).claude;
   const content = [];
 
@@ -151,7 +156,7 @@ export function openAIResponsesBodyToClaude(responseBody) {
     role: ROLE.ASSISTANT,
     model: response?.model || MODEL_FALLBACK,
     content,
-    stop_reason: terminal?.status === "incomplete" ? "max_tokens" : refusal ? "refusal" : toolCalls.length > 0 ? "tool_use" : "end_turn",
+    stop_reason: truncated ? "max_tokens" : refusal ? "refusal" : toolCalls.length > 0 ? "tool_use" : "end_turn",
     stop_sequence: null,
     usage
   };
@@ -159,7 +164,7 @@ export function openAIResponsesBodyToClaude(responseBody) {
 
 export function openAIResponsesBodyToOpenAI(responseBody) {
   const response = responseObject(responseBody);
-  const { text, reasoning, refusal, toolCalls, terminal } = collectResponsesOutput(responseBody);
+  const { text, reasoning, refusal, toolCalls, terminal, truncated } = collectResponsesOutput(responseBody);
   const terminalText = terminal ? `[Error] ${terminalMessage(terminal)}` : "";
   const content = [text, terminalText].filter(Boolean).join(text && terminalText ? "\n" : "");
   const message = { role: ROLE.ASSISTANT, content };
@@ -182,9 +187,79 @@ export function openAIResponsesBodyToOpenAI(responseBody) {
     choices: [{
       index: 0,
       message,
-      finish_reason: terminal?.status === "incomplete" ? "length" : refusal ? "content_filter" : toolCalls.length > 0 ? "tool_calls" : "stop"
+      finish_reason: truncated ? "length" : refusal ? "content_filter" : toolCalls.length > 0 ? "tool_calls" : "stop"
     }],
     usage: usageFromResponses(response?.usage || responseBody?.usage).openai
+  };
+}
+
+/**
+ * Project a non-stream OpenAI Responses body into native Gemini
+ * `generateContent` shape (top-level candidates / usageMetadata).
+ *
+ * Mirrors {@link openAIResponsesBodyToOpenAI} / Claude converters via
+ * {@link collectResponsesOutput}. Incomplete terminals map to
+ * `MAX_TOKENS` without injecting `[Error]` text so a tool-call-only
+ * incomplete body keeps `functionCall` at `parts[0]` (streaming parity).
+ * Failed/cancelled terminals still surface `[Error] …` text parts.
+ *
+ * @param {object} responseBody
+ * @returns {object}
+ */
+export function openAIResponsesBodyToGemini(responseBody) {
+  const response = responseObject(responseBody);
+  const { text, reasoning, refusal, toolCalls, terminal, truncated } = collectResponsesOutput(responseBody);
+  const rawUsage = toResponsesUsage(response?.usage || responseBody?.usage) || {};
+  const usage = usageFromResponses(response?.usage || responseBody?.usage).openai;
+  const parts = [];
+
+  if (reasoning) parts.push({ text: reasoning, thought: true });
+  if (text) parts.push({ text });
+
+  if (terminal && terminal.status !== "incomplete") {
+    const message = terminalMessage(terminal);
+    if (message) parts.push({ text: `[Error] ${message}` });
+  }
+
+  for (const call of toolCalls) {
+    parts.push({
+      functionCall: {
+        ...(call.hasRealId ? { id: call.id } : null),
+        name: call.name,
+        args: safeJsonParseObject(call.arguments)
+      }
+    });
+  }
+  if (parts.length === 0) parts.push({ text: "" });
+
+  const finishReason = truncated ?
+    GEMINI_FINISH.MAX_TOKENS :
+    refusal ? GEMINI_FINISH.SAFETY : GEMINI_FINISH.STOP;
+
+  const usageMetadata = {
+    promptTokenCount: usage.prompt_tokens || 0,
+    candidatesTokenCount: usage.completion_tokens || 0,
+    totalTokenCount: usage.total_tokens || 0
+  };
+  // Responses output_tokens includes reasoning tokens; Gemini reports them
+  // separately, so candidatesTokenCount excludes thoughtsTokenCount (total unchanged).
+  const reasoningTokens = rawUsage.output_tokens_details?.reasoning_tokens;
+  if (isNumber(reasoningTokens)) {
+    usageMetadata.thoughtsTokenCount = reasoningTokens;
+    usageMetadata.candidatesTokenCount = Math.max(0, usageMetadata.candidatesTokenCount - reasoningTokens);
+  }
+  const cachedTokens = rawUsage.input_tokens_details?.cached_tokens ?? rawUsage.cached_tokens;
+  if (isNumber(cachedTokens)) usageMetadata.cachedContentTokenCount = cachedTokens;
+
+  return {
+    candidates: [{
+      content: { role: GEMINI_ROLE.MODEL, parts },
+      finishReason,
+      index: 0
+    }],
+    usageMetadata,
+    modelVersion: response?.model || MODEL_FALLBACK,
+    responseId: response?.id || `resp_${Date.now()}`
   };
 }
 
@@ -194,4 +269,9 @@ function safeJsonParse(value) {
   } catch {
     return {};
   }
+}
+// Gemini functionCall.args must be an object; null/array/scalar JSON collapses to {}.
+function safeJsonParseObject(value) {
+  const parsed = safeJsonParse(value);
+  return parsed && isObject(parsed) && !Array.isArray(parsed) ? parsed : {};
 }

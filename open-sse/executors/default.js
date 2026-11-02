@@ -187,6 +187,15 @@ function applyExtraHeaders(headers, extraHeaders, credentials) {
 
 // Provider-specific header quirks kept as small hooks (not pure auth).
 const HEADER_HOOKS = {
+  // CodeBuddy: the gateway's channel check rejects requests lacking the plugin's
+  // conversation/request identifiers with 400 / 11128 "request illegal".
+  codebuddyHeaders: (h) => {
+    const requestId = crypto.randomUUID();
+    h["X-Request-ID"] = requestId;
+    h["X-Conversation-ID"] = crypto.randomUUID();
+    h["X-Conversation-Request-ID"] = requestId;
+    h["X-Conversation-Message-ID"] = requestId;
+  },
   kimiHeaders: (h) => Object.assign(h, buildKimiHeaders()),
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken)),
   kilocodeOrg: (h, c) => {if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId;},

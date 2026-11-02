@@ -5,13 +5,13 @@ description: Watch list for unmerged 9router and OmniRoute work, plus the dispat
 
 Unmerged upstream 9router pull requests and deliberately deferred OmniRoute/9router commits live here. Historical per-PR port ledgers are not committed.
 
-Last reviewed sync window: 2026-09-30 through 2026-10-06 (9router snapshot head `a99cf57`, v0.5.95).
+Last reviewed sync window: 2026-10-06 through 2026-10-29 (9router snapshot head `1fe586bb`, v0.5.112).
 
 OmniRoute reviewed sync window: 2026-09-30 through 2026-10-06 (`release/v3.8.52`).
 
 | Source | Reviewed head |
 | --- | --- |
-| `decolua/9router` | `a99cf57239ff778b61e434c2786009d5ed1c412c` |
+| `decolua/9router` | `1fe586bb1cf35e1ed0cb2150a8ef7d1db040b21d` |
 | `diegosouzapw/OmniRoute` | `77bca6f878180006f3a679b53400d55a344fcd83` |
 
 Use those heads as the lower-bound anchors for the next sync review.
@@ -37,6 +37,28 @@ All six approved diffs were fetched individually; the release snapshot was not a
 | [`89ffac5`](https://github.com/decolua/9router/commit/89ffac5) | Covered core behavior; residuals deferred below | `vendorModelCapabilities.js` already publishes supported GPT-6/GPT-5.4+ models at 1,050,000 tokens and mini/nano at 400,000. `resolveModelLimits` accepts provider live metadata over exact entries; `buildModelsList.js` publishes nested, alias-aware combo minimum limits with existing `buildModelsList-static-alias-map.test.js` coverage. The fork does not have upstream's `modelCatalog/sync.js` or `setCatalogSource` pipeline. |
 | [`a99cf57`](https://github.com/decolua/9router/commit/a99cf57) | Release-only diff skipped; catalog residuals deferred below | The actual diff changes only changelog and package versions. GPT-6.1 Sol is already in `registry/codex.js` and the verified vendor table; Sonnet 5.5 is in `registry/anthropic.js`; Meta Muse OAuth is served by the fork's dual-auth `registry/muse-code.js`. Changelog prose is not an implementation diff. |
 
+## 2026-10-29 tracked-commit review
+
+Reviewed through [`1fe586bb`](https://github.com/decolua/9router/commit/1fe586bb) (v0.5.112) on 2026-10-29. Candidates below were filed as planning tickets under epic [#1068](https://github.com/bloodf/durindoor/issues/1068). No upstream diffs were imported in this ledger update. Rows list only upstream SHAs that appear in those issue bodies.
+
+| Upstream commit | Decision | Tracking issue |
+| --- | --- | --- |
+| [`56dbf46`](https://github.com/decolua/9router/commit/56dbf46) | Tracked | [#1355](https://github.com/bloodf/durindoor/issues/1355) — fail non-streaming requests when the upstream SSE carries an error frame |
+| [`9500965`](https://github.com/decolua/9router/commit/9500965) | Tracked | [#1356](https://github.com/bloodf/durindoor/issues/1356) — convert image_url parts inside tool messages to Claude image blocks |
+| [`8db1f4a`](https://github.com/decolua/9router/commit/8db1f4a) | Tracked | [#1357](https://github.com/bloodf/durindoor/issues/1357) — enforce Gemini protobuf type predicates on schema items and properties |
+| [`5a4e812`](https://github.com/decolua/9router/commit/5a4e812) | Tracked | [#1358](https://github.com/bloodf/durindoor/issues/1358) — strip NUL bytes from bound DB strings |
+| [`08ef047`](https://github.com/decolua/9router/commit/08ef047) | Tracked | [#1360](https://github.com/bloodf/durindoor/issues/1360) — bump undici to >=7.30.1 |
+| [`b82f5c4`](https://github.com/decolua/9router/commit/b82f5c4) | Tracked | [#1364](https://github.com/bloodf/durindoor/issues/1364) — treat credit exhaustion as backoff so combos try the next model |
+| [`4662724`](https://github.com/decolua/9router/commit/4662724) | Tracked | [#1365](https://github.com/bloodf/durindoor/issues/1365) — count Ollama prompt_eval_cached_count as cached tokens |
+| [`7c42d8f`](https://github.com/decolua/9router/commit/7c42d8f) | Tracked | [#1366](https://github.com/bloodf/durindoor/issues/1366) — rename max_tokens to max_completion_tokens for OpenAI |
+| [`0ad0a72`](https://github.com/decolua/9router/commit/0ad0a72) | Tracked | [#1367](https://github.com/bloodf/durindoor/issues/1367) — Claude 5.5 / GPT-6 thinking-rule fixes |
+| [`f3e1f71`](https://github.com/decolua/9router/commit/f3e1f71) | Tracked | [#1367](https://github.com/bloodf/durindoor/issues/1367) — Claude 5.5 / GPT-6 thinking-rule fixes |
+| [`763fb68`](https://github.com/decolua/9router/commit/763fb68) | Tracked | [#1367](https://github.com/bloodf/durindoor/issues/1367) — Claude 5.5 / GPT-6 thinking-rule fixes |
+| [`3125ac2`](https://github.com/decolua/9router/commit/3125ac2) | Tracked | [#1368](https://github.com/bloodf/durindoor/issues/1368) — route Responses clients to Kimi Code /responses |
+| [`29fc880`](https://github.com/decolua/9router/commit/29fc880) | Tracked | [#1369](https://github.com/bloodf/durindoor/issues/1369) — Gemini 4 Argon models and request rules |
+| [`eb37301`](https://github.com/decolua/9router/commit/eb37301) | Tracked | [#1369](https://github.com/bloodf/durindoor/issues/1369) — Gemini 4 Argon models and request rules |
+
+Same-window follow-ups under #1068 with no upstream SHA in the ticket body: [#1354](https://github.com/bloodf/durindoor/issues/1354) (Claude Code fingerprint 2.1.312), [#1359](https://github.com/bloodf/durindoor/issues/1359) (Kimi Moonshot models), [#1361](https://github.com/bloodf/durindoor/issues/1361) (MiniMax-M3.1-Flash GA), [#1362](https://github.com/bloodf/durindoor/issues/1362) (OpenAI gpt-6.1-terra), [#1363](https://github.com/bloodf/durindoor/issues/1363) (Anthropic claude-haiku-5-5).
 
 ## Open upstream pull requests
 

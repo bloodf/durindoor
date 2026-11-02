@@ -19,6 +19,8 @@ import {
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { fixMissingToolResponses } from "../concerns/toolCall.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
@@ -75,7 +77,109 @@ function stripOrphanedToolOutputs(input) {
   });
   return stripped.length === 0 ? input : deduped;
 }
+/**
+ * Lower custom (freeform) tool history to function history so it pairs, repairs,
+ * and strips like `function_call` items. The raw `input` rides as `{input}`, the
+ * shape the custom declaration lowers to (#1387, upstream d06e0d26).
+ */
+function lowerCustomToolHistory(items) {
+  if (!Array.isArray(items)) return items;
+  return items.map((item) => {
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL) {
+      const { input, ...rest } = item;
+      const raw = isString(input) ? input : input == null ? "" : JSON.stringify(input);
+      return { ...rest, type: RESPONSES_ITEM.FUNCTION_CALL, arguments: JSON.stringify({ input: raw }) };
+    }
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT) return { ...item, type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT };
+    return item;
+  });
+}
 const MAX_TOOL_NAME_LEN = 128;
+
+/**
+ * Trim and clamp a tool name to the Responses max length. Declarations and
+ * tool_choice must share this so a padded or overlong forced name still matches
+ * `tools[]` after Chat→Responses lowering.
+ */
+function normalizeResponsesToolName(name) {
+  if (!isString(name)) return "";
+  return name.trim().slice(0, MAX_TOOL_NAME_LEN);
+}
+
+/** Responses string tool_choice modes (exact match only). */
+const RESPONSES_STRING_TOOL_CHOICES = new Set(["auto", "none", "required"]);
+/** Responses `allowed_tools.mode` values. */
+const RESPONSES_ALLOWED_TOOLS_MODES = new Set(["auto", "required"]);
+
+/**
+ * Plain object check that excludes `null` and arrays. Shared `isObject` treats
+ * `null` as an object in this codebase, so converters must not use it bare.
+ */
+function isPlainToolChoiceObject(value) {
+  return value !== null && isObject(value) && !Array.isArray(value);
+}
+
+/**
+ * Lower one allowed_tools list entry. Null / array / non-objects drop; Chat
+ * function/custom nestings flatten and normalize; other plain entries with a
+ * non-empty string type (hosted Responses shapes) pass through.
+ */
+function convertChatAllowedToolEntry(entry) {
+  if (!isPlainToolChoiceObject(entry)) return null;
+  if (entry.type === OPENAI_BLOCK.FUNCTION) {
+    const name = normalizeResponsesToolName(entry.function?.name ?? entry.name);
+    return name ? { type: OPENAI_BLOCK.FUNCTION, name } : null;
+  }
+  if (entry.type === "custom") {
+    const name = normalizeResponsesToolName(entry.custom?.name ?? entry.name);
+    return name ? { type: "custom", name } : null;
+  }
+  return isString(entry.type) && entry.type ? entry : null;
+}
+
+/**
+ * Allowlist Chat Completions `tool_choice` into a Responses request value.
+ * Returns a valid Responses `tool_choice`, or `undefined` for anything main
+ * would have dropped / Responses would reject:
+ * - strings exactly `"auto"` | `"none"` | `"required"`
+ * - `{type:"function", name}` (Chat `{function:{name}}` still accepted) with a
+ *   non-blank name after `normalizeResponsesToolName`
+ * - `{type:"custom", name}` with a non-blank normalized name
+ * - `{type:"allowed_tools", mode:"auto"|"required", tools:[...]}` with at least
+ *   one valid entry after skipping null/invalid entries
+ * Everything else → `undefined`. Callers must still omit the field when the
+ * filtered `tools` declaration list is empty.
+ */
+function convertChatToolChoiceToResponses(choice) {
+  if (isString(choice)) {
+    return RESPONSES_STRING_TOOL_CHOICES.has(choice) ? choice : undefined;
+  }
+  if (!isPlainToolChoiceObject(choice)) return undefined;
+
+  if (choice.type === OPENAI_BLOCK.FUNCTION) {
+    const name = normalizeResponsesToolName(choice.function?.name ?? choice.name);
+    return name ? { type: OPENAI_BLOCK.FUNCTION, name } : undefined;
+  }
+
+  if (choice.type === "custom") {
+    const name = normalizeResponsesToolName(choice.custom?.name ?? choice.name);
+    return name ? { type: "custom", name } : undefined;
+  }
+
+  if (choice.type === "allowed_tools") {
+    const nested = isPlainToolChoiceObject(choice.allowed_tools) ? choice.allowed_tools : null;
+    const mode = nested?.mode ?? choice.mode;
+    if (!RESPONSES_ALLOWED_TOOLS_MODES.has(mode)) return undefined;
+    const toolsSrc = Array.isArray(nested?.tools) ?
+      nested.tools :
+      Array.isArray(choice.tools) ? choice.tools : [];
+    const tools = toolsSrc.map(convertChatAllowedToolEntry).filter(Boolean);
+    if (tools.length === 0) return undefined;
+    return { type: "allowed_tools", mode, tools };
+  }
+
+  return undefined;
+}
 
 /**
  * Lower tool-output content parts without serializing away typed media. Native
@@ -148,10 +252,17 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  // True once this pending assistant turn absorbed a Responses `message` item.
+  // A tool-only turn (function_call first) followed by a later assistant
+  // message is a new turn (#1335); trailing text after a message-opened turn
+  // stays same-turn (Codex text → tool → more text).
+  let assistantOpenedByMessage = false;
   // call_ids skipped at FUNCTION_CALL time (nameless, #444) never get a
   // tool_calls entry. Their function_call_output must be dropped too, or the
   // "tool" message that follows references a tool_call_id that does not
   // exist in the assistant turn — OpenAI-shaped APIs reject that pairing.
+  // Also holds call_ids abandoned when a tool-only turn is closed by a later
+  // assistant message before any output arrived (#1335).
   const skippedCallIds = new Set();
 
   // A blank content value carries no text worth keeping: null/undefined, an
@@ -190,7 +301,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // strip below: pairing an id-less function_call_output with the oldest
   // unanswered function_call keeps a legitimate tool result instead of the
   // strip pass discarding it as an orphan.
-  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(normalizeResponsesInput(body.input)));
+  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input))));
   if (!inputItems) return body;
 
   // Declared tool types (custom vs function) on this request, hoisted above
@@ -251,12 +362,14 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     if (currentAssistantMsg.content == null && !currentAssistantMsg.tool_calls) {
       if (!currentAssistantMsg.reasoning_content) {
         currentAssistantMsg = null;
+        assistantOpenedByMessage = false;
         return;
       }
       currentAssistantMsg.content = "";
     }
     result.messages.push(currentAssistantMsg);
     currentAssistantMsg = null;
+    assistantOpenedByMessage = false;
   };
 
   // Images lifted out of tool outputs wait here until the run of tool
@@ -280,12 +393,24 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       item.content;
 
       // Assistant content joins the pending turn instead of starting a second
-      // assistant message (see flushAssistant above).
+      // assistant message (see flushAssistant above) — except a tool-only turn
+      // that never opened with a message: a later assistant message is a new
+      // turn. Flush the tool-only assistant (keep its tool_calls) so a later
+      // function_call_output can still pair by call id (#1335 CTO review).
       if (item.role === ROLE.ASSISTANT) {
         if (currentAssistantMsg) {
-          appendAssistantContent(currentAssistantMsg, content);
+          const openToolCalls = currentAssistantMsg.tool_calls;
+          if (Array.isArray(openToolCalls) && openToolCalls.length > 0 && !assistantOpenedByMessage) {
+            flushAssistant();
+            currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+            assistantOpenedByMessage = true;
+          } else {
+            appendAssistantContent(currentAssistantMsg, content);
+            assistantOpenedByMessage = true;
+          }
         } else {
           currentAssistantMsg = { role: ROLE.ASSISTANT, content, tool_calls: [] };
+          assistantOpenedByMessage = true;
         }
         continue;
       }
@@ -310,6 +435,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           content: null,
           tool_calls: []
         };
+        assistantOpenedByMessage = false;
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
       if (!item.name || !isString(item.name) || item.name.trim() === "") {
@@ -487,6 +613,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   delete result.background;
   delete result.truncation;
 
+  // Relocate late function_call_output items next to their owning tool-call
+  // turn by call id, and synthesize only for ids with no real output anywhere
+  // in this request (#1335 CTO review).
+  fixMissingToolResponses(result);
+
   return result;
 }
 
@@ -505,6 +636,24 @@ function extractInstructionsText(content) {
     }).filter(Boolean).join("\n");
   }
   return "";
+}
+
+/**
+ * Raw freeform input for a Chat custom tool call: `custom.input`, or a
+ * function-shaped call's arguments with the `{input}` wrapper (the shape custom
+ * declarations lower to on Chat) removed. Other argument text passes verbatim.
+ */
+function chatCustomToolInput(tc) {
+  if (isString(tc.custom?.input)) return tc.custom.input;
+  const args = tc.function?.arguments;
+  if (!isString(args)) return args == null ? "" : JSON.stringify(args);
+  try {
+    const parsed = JSON.parse(args);
+    if (isPlainToolChoiceObject(parsed) && isString(parsed.input)) return parsed.input;
+  } catch {
+    // Not JSON: already the raw freeform body.
+  }
+  return args;
 }
 
 /**
@@ -581,10 +730,12 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // Declared tool types on this Chat Completions body, hoisted above the
   // message loop so coerceResponsesArguments never freeform-wraps a name
   // this request declares as an ordinary function (upstream #4208 review,
-  // round 2). Chat Completions tools are always type "function"; there is
-  // no "custom" shape on this path, but a declared "apply_patch" function
-  // must still win over the legacy name fallback.
+  // round 2), and so calls to a declared Chat custom tool
+  // (`{type:"custom", custom:{name}}`) replay as custom_tool_call (#1344).
   const declaredToolTypes = buildDeclaredToolTypes(body.tools);
+  // Call ids replayed as custom_tool_call; their tool results become
+  // custom_tool_call_output so Responses pairs them.
+  const customCallIds = new Set();
 
   for (const msg of messages) {
     if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
@@ -643,8 +794,20 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     if (msg.role === ROLE.ASSISTANT && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
         // Skip nameless calls — strict Responses upstreams reject them (#444)
-        const name = isString(tc.function?.name) ? tc.function.name.trim() : "";
+        const rawName = tc.function?.name ?? tc.custom?.name;
+        const name = isString(rawName) ? rawName.trim() : "";
         if (!name) continue;
+        if (tc.type === "custom" || resolveDeclaredCustom(declaredToolTypes, name) === true) {
+          const callId = clampResponsesCallId(tc.id);
+          customCallIds.add(callId);
+          result.input.push({
+            type: RESPONSES_ITEM.CUSTOM_TOOL_CALL,
+            call_id: callId,
+            name: name.slice(0, MAX_TOOL_NAME_LEN),
+            input: chatCustomToolInput(tc)
+          });
+          continue;
+        }
         result.input.push({
           type: RESPONSES_ITEM.FUNCTION_CALL,
           call_id: clampResponsesCallId(tc.id),
@@ -657,9 +820,10 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     // Convert tool results - output must be a string for Responses API
     if (msg.role === ROLE.TOOL) {
       // Responses has no tool-error flag; retain failure meaning in its output text.
+      const callId = clampResponsesCallId(msg.tool_call_id);
       result.input.push({
-        type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
-        call_id: clampResponsesCallId(msg.tool_call_id),
+        type: customCallIds.has(callId) ? RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT : RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
+        call_id: callId,
         output: `${msg.is_error === true ? "[Tool error]\n" : ""}${coerceResponsesOutput(msg.content)}`
       });
     }
@@ -675,17 +839,24 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     result.tools = body.tools.map((tool) => {
       if (tool.type === OPENAI_BLOCK.FUNCTION) {
         // Strict upstreams reject nameless/overlong tool declarations
-        const name = isString(tool.function?.name) ? tool.function.name.trim() : "";
+        const name = normalizeResponsesToolName(tool.function?.name);
         if (!name) return null;
         return {
           type: OPENAI_BLOCK.FUNCTION,
-          name: name.slice(0, MAX_TOOL_NAME_LEN),
+          name,
           description: String(tool.function.description || ""),
-          parameters: normalizeToolParameters(tool.function.parameters),
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.function.parameters, name)),
           // The Responses API requires `strict` on every function tool; default to
           // false (non-strict) instead of forwarding an undefined field.
           strict: tool.function.strict ?? false
         };
+      }
+      // Chat nests custom tools under `custom`; Responses declares them flat (#1344).
+      if (tool.type === "custom") {
+        const name = normalizeResponsesToolName(tool.custom?.name ?? tool.name);
+        if (!name) return null;
+        const source = isPlainToolChoiceObject(tool.custom) ? tool.custom : tool;
+        return { ...source, type: "custom", name };
       }
       return tool;
     }).filter(Boolean);
@@ -696,6 +867,12 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   if (body.top_p !== undefined) result.top_p = body.top_p;
   // Preserve explicit false: Responses otherwise permits parallel tool calls.
   if (body.parallel_tool_calls !== undefined) result.parallel_tool_calls = body.parallel_tool_calls;
+  // Allowlist converter drops invalid shapes; also omit when no declarations
+  // survived filtering (OpenAI rejects a forced choice with no tools).
+  if (Array.isArray(result.tools) && result.tools.length > 0) {
+    const converted = convertChatToolChoiceToResponses(body.tool_choice);
+    if (converted !== undefined) result.tool_choice = converted;
+  }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
   if (body.reasoning_effort !== undefined) {
     const reasoning = result.reasoning && isObject(result.reasoning) && !Array.isArray(result.reasoning) ? result.reasoning : {};

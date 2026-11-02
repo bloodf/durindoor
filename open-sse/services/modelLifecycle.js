@@ -60,11 +60,30 @@ function openAiRecord(model, shutdownAt, replacement, kind, notes) {
 }
 
 const NVIDIA_SOURCE = "https://github.com/decolua/9router/pull/3397";
+const MINIMAX_SOURCE = "https://platform.minimax.io/docs/faq/models.md";
+const KIMI_SOURCE = "https://platform.kimi.ai/docs/models.md";
 
 /** NVIDIA's 410 responses provide authoritative per-model retirement timestamps. */
 const NVIDIA_RETIREMENTS = [
 ["minimaxai/minimax-m2.7", "2026-07-27"],
 ["deepseek-ai/deepseek-v4-pro", "2026-08-07"]];
+
+/**
+ * Kimi Platform K2 series: unavailable to new users from 2026-10-31; retires by
+ * the end of December 2026. Prefer kimi-k3.1-pro.
+ * https://platform.kimi.ai/docs/models.md
+ */
+const KIMI_K2_RETIREMENTS = [
+"kimi-k2.7-code",
+"kimi-k2.7-code-highspeed",
+"kimi-k2.6"];
+
+/** MiniMax M2.5/M2.7: unavailable to new users from 2026-10-19; retired 2026-11-18. */
+const MINIMAX_M2_RETIREMENTS = [
+"MiniMax-M2.5",
+"MiniMax-M2.5-highspeed",
+"MiniMax-M2.7",
+"MiniMax-M2.7-highspeed"];
 
 /**
  * Source-verified shutdowns. OpenAI's page lists gpt-4-1106-preview with
@@ -104,6 +123,22 @@ openAiRecord("gpt-4-turbo-preview", "2026-03-26", null, "text"),
   replacement: null,
   kind: "text",
   source: NVIDIA_SOURCE
+})),
+...MINIMAX_M2_RETIREMENTS.map((model) => ({
+  provider: "minimax",
+  model,
+  shutdownAt: "2026-11-18",
+  replacement: { provider: "minimax", model: "MiniMax-M3.1-Flash", notes: "M/Token Plan requests are auto-routed to M3.1 Flash" },
+  kind: "text",
+  source: MINIMAX_SOURCE
+})),
+...KIMI_K2_RETIREMENTS.map((model) => ({
+  provider: "kimi",
+  model,
+  shutdownAt: "2026-12-31",
+  replacement: { provider: "kimi", model: "kimi-k3.1-pro", notes: "K2 series retires by end of December 2026" },
+  kind: "text",
+  source: KIMI_SOURCE
 }))]
 );
 

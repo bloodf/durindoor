@@ -152,31 +152,41 @@ export const MODEL_CAPABILITIES = {
   "for-coding-highspeed": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null },
   /** Third-party registries retain the upstream `kimi-k3` ID and its verified 1M context. */
   "kimi-k3": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
+  // https://platform.kimi.ai/docs/models.md — K3.1 Pro / Highspeed share K3 series 1M context + reasoning_effort.
+  // https://platform.kimi.ai/docs/guide/use-reasoning-effort.md — low|high|max (default max); always reasons.
+  // https://platform.kimi.ai/docs/guide/troubleshooting — default output 131072; max = 1048576 - prompt.
+  "kimi-k3.1-pro": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
+  "kimi-k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576 },
+  // https://platform.kimi.ai/docs/guide/kimi-k2-7-code-quickstart — vision+video, thinking always on, 262144 context.
+  "kimi-k2.7-code": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null },
+  "kimi-k2.7-code-highspeed": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null },
+  // https://platform.kimi.ai/docs/models.md — vision (image/video), thinking and non-thinking, 262144 context.
+  "kimi-k2.6": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: null },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
-  "claude-opus-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.7": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-8-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.6": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   // Explicit thinking variants keep the generation's 1M window rather than
   // falling through to the legacy budget-thinking family.
-  "claude-opus-4.6-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-6-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.6-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-6-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   // Kiro's agentic variants retain the verified generation's 1M window.
-  "claude-opus-4.7-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-7-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.7-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-7-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-8-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-4.6": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-5-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-5-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-5-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
 
   /** Z.ai documents GLM-4.6V's 128K-token context and 32,768-token output limit. */
   "glm-4.6v": { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
@@ -438,8 +448,15 @@ export const PROVIDER_CAPABILITIES = {
   // Native K3 defaults to 131072 output tokens but permits up to 1048576.
   // Coding-plan routes have separately scoped, unpublished output limits/defaults.
   // https://platform.kimi.ai/docs/guide/kimi-k3-quickstart#important-limits
+  // https://platform.kimi.ai/docs/api/models-overview — K3.1 Pro shares K3 parameter constraints.
+  // https://platform.kimi.ai/docs/guide/troubleshooting — K3.1 Pro default/ceiling; K2 max = 262144 - prompt.
   kimi: {
+    "kimi-k3.1-pro": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072 },
+    "kimi-k3.1-pro-highspeed": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072 },
     "kimi-k3": { vision: true, videoInput: true, reasoning: true, structuredOutput: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, thinkingEfforts: ["low", "high", "max"], contextWindow: 1048576, maxOutput: 1048576, defaultOutput: 131072 },
+    "kimi-k2.7-code": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null, defaultOutput: 32768 },
+    "kimi-k2.7-code-highspeed": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: null, defaultOutput: 32768 },
+    "kimi-k2.6": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: null },
   },
 
   // Kimi Web (www.kimi.com) consumer chat — OpenAI-shaped transport. The
@@ -541,16 +558,11 @@ export const PROVIDER_CAPABILITIES = {
   // reasoning.canDisableThinking flag — see the note in the codebuddy-cn block
   // below; it is NOT the inverse of onlyReasoning.
   "codebuddy-cn": {
-    "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 48000 },
+    "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 131072 },
     "glm-5.1":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 48000 },
     "glm-5.0":            { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 48000 },
-    // maxOutput 64000 per both the plugin-baked fallback and the live server
-    // table (the old 38000 had no source and truncated output).
-    "glm-5v-turbo":       { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 64000 },
     "glm-4.7":            { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 48000 },
-    "minimax-m3":         { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 128000 },
-    "kimi-k2.7":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 256000, maxOutput: 32000 },
-    "kimi-k2.6":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 256000, maxOutput: 32000 },
+    "minimax-m3":         { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 524288 },
     // Per-model values mirror the server's product-config payload (the plugin
     // fetches it from copilot.tencent.com; the `models[]` entries carry
     // maxInputTokens/maxOutputTokens/supportsImages). contextWindow =
@@ -564,11 +576,17 @@ export const PROVIDER_CAPABILITIES = {
     // hy3: 256K official; 192000 is a deliberate conservative gateway value (fork note, upstream e014cb537).
     "hy3":                { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 192000, maxOutput: 64000 },
     "hy4-preview":        { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 64000 },
-    "glm-5.3":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 48000 },
-    "glm-5.3-flash":      { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 32000 },
-    "kimi-k3-1":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 32000 },
-    "deepseek-v4-pro":    { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 50000 },
-    "deepseek-v4-flash":  { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 50000 },
+    "glm-5.3":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 131072 },
+    "glm-5.3-flash":      { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 131072 },
+    "kimi-k3-1":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 1048576 },
+    // contextWindow is the server's contextWindow.defaultLength (300000), NOT
+    // maxInputTokens: k2.8 publishes supportedLengths [300000, 1000000] and the
+    // gateway only gives 1M when the request opts in (this executor never does).
+    "kimi-k2.8-preview":  { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 300000, maxOutput: 131072 },
+    "deepseek-v4-pro":    { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 393216 },
+    // deepseek-v4.1-flash replaced v4-flash on the server list; the 2026-09-30
+    // snapshot gives it maxOutput 393216 and low/high/max efforts.
+    "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 393216 },
   },
 
   // OpenCode free/stealth ids use the gateway reasoning_effort enum except Ox
@@ -579,6 +597,10 @@ export const PROVIDER_CAPABILITIES = {
     "muse-spark-1.2": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "muse-spark-1.2-contributor-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
+    // The free MiMo route can disable thinking ("none" yields no reasoning,
+    // upstream b8331283); the global *mimo*v2.6* pattern describes Xiaomi's own
+    // always-on API. Limits repeat that pattern.
+    "mimo-v2.6-flash-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 131072 },
     // Union Alpha routes through the Claude Messages wire (see executors/opencode.js
     // MESSAGES_MODELS), not the opencode reasoning_effort enum.
     "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 }
@@ -727,20 +749,26 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
-{ pattern: "*claude*opus-5-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*opus-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*sonnet-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-5-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*sonnet-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 /** Claude 4.6+ variants share the generation's 1M context and 128K output limits. */
-{ pattern: "*claude*opus-4.6*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*opus-4.7*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*opus-4.8*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*sonnet-4.6*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*sonnet-4.7*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4.6*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4.7*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4.8*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*sonnet-4.6*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*sonnet-4.7*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+// PDF input is supported by current Claude families; legacy/generic fallbacks stay conservative.
+// https://platform.claude.com/docs/en/build-with-claude/pdf-support
+{ pattern: "*claude*haiku-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
+{ pattern: "*claude*haiku-4*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
+{ pattern: "*claude*opus-4*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
+{ pattern: "*claude*sonnet-4*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*haiku*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*opus*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*sonnet*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
-{ pattern: "*claude*fable*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*mythos*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*fable*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*mythos*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude-3*", caps: { vision: true } },
 { pattern: "*claude*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 
@@ -759,6 +787,7 @@ export const PATTERN_CAPABILITIES = [
 
 // Verified GPT-6 families also cover compatible routes and discovered snapshots.
 // Exact provider rows above retain their separate OAuth/reseller contracts.
+{ pattern: "*gpt-6.1-terra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-terra"] },
 { pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
 { pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },
 { pattern: "*gpt-6-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-sol"] },
@@ -876,6 +905,7 @@ export const PATTERN_CAPABILITIES = [
 // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
 { pattern: "*minimax*image*", caps: { imageOutput: true } },
 { pattern: "*minimax-m3.1-flash-preview*", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3.1-Flash-Preview"] },
+{ pattern: "*minimax-m3.1-flash", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3.1-Flash"] },
 { pattern: "*minimax-m3", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3"] },
 { pattern: "*minimax-m2.7*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
 { pattern: "*minimax-m2.5*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },

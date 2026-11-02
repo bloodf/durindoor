@@ -65,15 +65,20 @@ const PATTERN_THINKING = [
   // accepts any level you send (probed none/minimal/low/medium/high/xhigh/max
   // → all 200), but values outside a model's supportedEfforts are silently
   // clamped, so the declared set stays authoritative for the picker. Models
-  // that publish no supportedEfforts (glm-5.1 / glm-5v-turbo / kimi-k2.x /
-  // kimi-k3-1 / minimax-m3) fall through to the openai format default. Placed
+  // that publish no supportedEfforts (glm-5.1 / kimi-k3-1 / minimax-m3) fall
+  // through to the openai format default. Placed
   // before broad *kimi-k3* so future CodeBuddy K3 rules are not shadowed
   // (first-match semantics).
-  { provider: "codebuddy-cn", pattern: "glm-5.3*", levels: ["low", "high", "max"] },
+  { provider: "codebuddy-cn", pattern: "glm-5.3", levels: ["low", "high", "max"] },
+  { provider: "codebuddy-cn", pattern: "glm-5.3-flash", levels: ["low", "high", "max"] },
   { provider: "codebuddy-cn", pattern: "glm-5.2", levels: ["high", "xhigh"] },
+  { provider: "codebuddy-cn", pattern: "kimi-k2.8-preview", levels: ["low", "medium", "high"] },
+  { provider: "codebuddy-cn", pattern: "deepseek-v4-pro", levels: ["low", "high", "xhigh"] },
+  { provider: "codebuddy-cn", pattern: "deepseek-v4.1-flash", levels: ["low", "high", "max"] },
+  // Other dotted v4 ids stay on the gateway's set, not the generic DeepSeek one.
   { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
-  { provider: "codebuddy-cn", pattern: "hy3*", levels: ["low", "high"] },
-  { provider: "codebuddy-cn", pattern: "hy4*", levels: ["high"] },
+  { provider: "codebuddy-cn", pattern: "hy3", levels: ["low", "high"] },
+  { provider: "codebuddy-cn", pattern: "hy4-preview", levels: ["high"] },
   // Command Code resolves every DeepSeek id (dotted or not) through its own
   // provider default in capabilities.js (thinkingFormat "commandcode"), so the
   // dotted rule below must not hand it the generic deepseek "none" option —
@@ -88,10 +93,22 @@ const PATTERN_THINKING = [
   // = disable. Placed after the codebuddy-cn/commandcode-scoped deepseek-v4*
   // rules above so those gateways keep their own narrower sets (first-match
   // semantics).
+  // OpenCode's free deepseek-v4.1-flash id publishes low|high|max (upstream
+  // 313559f4); the generic dotted rule below would advertise medium/xhigh,
+  // which it does not serve, so this entry must stay above it.
+  { pattern: "*deepseek-v4.1-flash-free*", levels: ["low", "high", "max"] },
   { pattern: "*deepseek-v4.*", levels: ["none", "low", "medium", "high", "xhigh", "max"] },
+  // K3.1 Pro documents reasoning_effort low|high|max (default max). Placed before
+  // the broad *kimi-k3* rule so third-party K3.1 Pro IDs are not clamped to max-only.
+  // https://platform.kimi.ai/docs/guide/use-reasoning-effort.md
+  { pattern: "*kimi-k3.1-pro*", levels: ["low", "high", "max"] },
   /** Third-party Kimi K3 IDs expose only the supported max thinking level. */
   { pattern: "*kimi-k3*", levels: ["max"] },
   { pattern: "*codex*", levels: ["low", "medium", "high", "xhigh"] }, // codex cannot disable thinking
+  // OpenCode Free's MiMo route takes every effort and "none" really disables
+  // thinking (upstream b8331283, probed live). The lane speaks the gateway
+  // "opencode" enum, so advertise that set instead of Xiaomi's own one below.
+  { provider: "opencode", pattern: "*mimo*v2.6*", levels: L.opencode },
   { pattern: "*mimo*v2.6*", levels: ["none", "low", "medium", "high", "xhigh"] },
   // xAI publishes only low/medium/high/xhigh for Grok 4.5-4.7 and the 4.20
   // multi-agent model; reasoning cannot be disabled. grok-build-latest is a

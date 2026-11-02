@@ -268,7 +268,7 @@ Provider-level CLIProxyAPI routing lives in the `upstreamProxyConfig` settings m
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NEXT_DIST_DIR` | `.next` | Next.js output directory. |
-| `NEXT_TRACING_ROOT_MODE` | project root | `workspace` traces from the parent of the project (CLI packaging). |
+| `NEXT_TRACING_ROOT_MODE` | project root | `workspace` traces from the parent of the project (CLI packaging), except when that parent is `/`. |
 | `NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE` | `128mb` | Next.js proxy client body-size limit for large LLM requests. |
 | `NEXT_PHASE` | set by Next | `phase-production-build` / `phase-export` / `phase-static` skip app bootstrap. |
 | `NEXT_RUNTIME` | set by Next | `nodejs` selects the Node instrumentation file. |

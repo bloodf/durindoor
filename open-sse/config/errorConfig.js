@@ -157,9 +157,27 @@ export const ERROR_RULES = [
 // explicit rule they fall through to the generic 429 backoff and get retried
 // forever against an account that cannot recover without a top-up. Matched
 // before the rate-limit rules so a balance error never looks transient.
+//
+// "insufficient credit" / "credit balance is too low" (9router b82f5c4 /
+// #4713 → DurinDoor #1364) use the same long terminal cooldown so a 402
+// OpenRouter body keeps main's 120s terminal lock instead of a 2s backoff,
+// while HTTP 400 remaps and Anthropic's prepaid-empty message still rotate
+// accounts and advance combos. Allowlist is phrase-exact (case-insensitive
+// substring); unknown 4xx keep the request-scoped no-rotate path.
+// Sources (message text, not invented codes):
+// - "insufficient credit": OpenRouter / credit-reseller bodies such as
+//   "Insufficient credits. Add more using https://openrouter.ai/settings/credits"
+//   (OpenRouter docs: 402 payment_required; also seen remapped to HTTP 400).
+// - "credit balance is too low": Anthropic Messages API HTTP 400
+//   invalid_request_error message
+//   "Your credit balance is too low to access the Anthropic API. Please go to
+//   Plans & Billing to upgrade or purchase credits."
+//   (anthropics/anthropic-sdk-typescript#618; observed wire shape still 400).
 { text: "余额不足", cooldownMs: COOLDOWN.long, terminal: true },
 { text: "insufficient balance", cooldownMs: COOLDOWN.long, terminal: true },
 { text: "请充值", cooldownMs: COOLDOWN.long, terminal: true },
+{ text: "insufficient credit", cooldownMs: COOLDOWN.long, terminal: true },
+{ text: "credit balance is too low", cooldownMs: COOLDOWN.long, terminal: true },
 
 { text: "rate limit", backoff: true },
 { text: "too many requests", backoff: true },

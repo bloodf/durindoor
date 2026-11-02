@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 import {
   allocateBulkConnectionName,
   apiKeyConnectionNames,
@@ -115,7 +116,8 @@ describe("bulk-add repo guard: requireNewName rejects name collision without ove
     vi.resetModules();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await disposeLoadedRequestDetailsRepo();
     try { global._dbAdapter?.instance?.close?.(); } catch {}
     delete global._dbAdapter;
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });

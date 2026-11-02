@@ -56,7 +56,7 @@ For an installed instance, the dashboard is at `http://localhost:20128/dashboard
 
 ## Quick start
 
-Use Node.js `20.20.2` and npm `10.8.2`. The Docker image includes the required runtime.
+Use Node.js `26.13.0` and npm `11.20.0`. The Docker image includes the required runtime.
 
 ### 1. Start the gateway
 

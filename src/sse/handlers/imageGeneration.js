@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
@@ -25,9 +25,13 @@ const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
 
 /**
  * Handle image generation request
+ * Successful operations use request correlation as their ledger identity.
+ * Core accounting preserves receipts and provenance without reading response bodies.
+ * Codex awaits final accounting persistence before its done event. Headers are not success.
  * @param {Request} request
  */
 async function handleImageGenerationHandler(request) {
+  await captureRequestBillingEpoch(request);
   let body;
   try {
     body = await request.json();
@@ -45,6 +49,8 @@ async function handleImageGenerationHandler(request) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
+  // Capture once for combo retries and delayed stream completion, preserving null.
+  const { billingEpoch } = apiKeyAuth;
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -70,7 +76,7 @@ async function handleImageGenerationHandler(request) {
     return handleComboChat({
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId }),
       log,
       ...defaultRouteComboOptions("image")
     });
@@ -96,7 +102,7 @@ async function handleImageGenerationHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId, comboRouting }),
+      handleSingleModel: (b, m) => handleSingleModelImage(b, m, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting }),
       log,
       comboName,
       comboStrategy,
@@ -104,10 +110,10 @@ async function handleImageGenerationHandler(request) {
       comboMembers: combo?.members || []
     });
   }
-  return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { wantsStream, binaryOutput, preferredConnectionId });
+  return handleSingleModelImage(body, modelStr, request, apiKey, apiKeyAuth.apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId });
 }
 
-async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { wantsStream, binaryOutput, preferredConnectionId, comboRouting = null } = {}) {
+async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId, { billingEpoch, wantsStream, binaryOutput, preferredConnectionId, comboRouting = null } = {}) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
@@ -118,7 +124,6 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   // is selected, so a retired model never marks a healthy connection unavailable.
   const lifecycleError = checkModelLifecycle({ provider, canonicalModel: model, log });
   if (lifecycleError) return lifecycleError.response;
-  const estimatedTokens = String(body.prompt || "").length / 4;
   const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};
 
 
@@ -146,7 +151,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       credentials: credentials.connectionId ? credentials : null,
       binaryOutput,
     });
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId ?? null, billingEpoch);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
@@ -188,6 +193,11 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       credentials: refreshedCredentials,
       streamToClient: wantsStream,
       binaryOutput,
+      onStreamComplete: async (outcome, response) => {
+        if (outcome.status === "success") {
+          await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch);
+        }
+      },
       onCredentialsRefreshed: async (newCreds) => {
         await updateProviderCredentials(credentials.connectionId, {
           accessToken: newCreds.accessToken,
@@ -201,7 +211,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       }
     });
 
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId, billingEpoch);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
@@ -219,4 +229,15 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     return result.response;
   }
 }
+async function recordImageUsage(apiKey, result, request, provider, model, connectionId, billingEpoch) {
+  // Streaming commits belong exclusively to the awaited parser callback.
+  if (result.completion || result.accounting?.state !== "complete") return result.response;
+  const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = result.accounting;
+  return recordApiKeyUsageForResponse(apiKey, result.response, {
+    billingEpoch,
+    usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
+    endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+  });
+}
+
 export const handleImageGeneration = withRequestCorrelation(handleImageGenerationHandler);

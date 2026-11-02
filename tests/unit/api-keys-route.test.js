@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   getGroupIdsByApiKey: vi.fn(),
   getGroupIdsForApiKey: vi.fn(),
   canManageAccessConfig: vi.fn(),
+  isOperatorRequest: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -52,7 +53,7 @@ vi.mock("@/lib/localDb", () => ({
   getGroupIdsForApiKey: mocks.getGroupIdsForApiKey,
 }));
 
-vi.mock("@/dashboardGuard", () => ({ canManageAccessConfig: mocks.canManageAccessConfig }));
+vi.mock("@/dashboardGuard", () => ({ canManageAccessConfig: mocks.canManageAccessConfig, isOperatorRequest: mocks.isOperatorRequest }));
 
 vi.mock("@/shared/utils/machineId", () => ({
   getConsistentMachineId: mocks.getConsistentMachineId,
@@ -104,6 +105,7 @@ describe("API keys routes", () => {
     vi.clearAllMocks();
     mocks.getConsistentMachineId.mockResolvedValue("machine-abc");
     mocks.canManageAccessConfig.mockResolvedValue(true);
+    mocks.isOperatorRequest.mockResolvedValue(true);
     mocks.getApiKeys.mockResolvedValue([{ ...storedKey }]);
     mocks.getApiKeyById.mockResolvedValue({ ...storedKey });
     mocks.getComboByName.mockResolvedValue(null);
@@ -149,6 +151,43 @@ describe("API keys routes", () => {
     expect(mocks.createApiKey).not.toHaveBeenCalled();
     expect(mocks.updateApiKey).not.toHaveBeenCalled();
     expect(mocks.deleteApiKey).not.toHaveBeenCalled();
+  });
+
+  it("creates and updates the admin scope only from a boolean", async () => {
+    const collection = await import("@/app/api/keys/route.js");
+    const item = await import("@/app/api/keys/[id]/route.js");
+    const params = { params: Promise.resolve({ id: "key-id" }) };
+    expect((await collection.POST(postRequest({ name: "Admin", isAdmin: "yes" }))).status).toBe(400);
+    expect((await item.PUT(putRequest({ isAdmin: 1 }), params)).status).toBe(400);
+    expect(mocks.createApiKey).not.toHaveBeenCalled();
+    expect(mocks.updateApiKey).not.toHaveBeenCalled();
+
+    expect((await collection.POST(postRequest({ name: "Plain" }))).status).toBe(201);
+    expect(mocks.createApiKey.mock.calls[0][5].isAdmin).toBeUndefined();
+    expect((await collection.POST(postRequest({ name: "Admin", isAdmin: true }))).status).toBe(201);
+    expect(mocks.createApiKey.mock.calls[1][5]).toMatchObject({ isAdmin: true });
+    expect((await item.PUT(putRequest({ isAdmin: true }), params)).status).toBe(200);
+    expect(mocks.updateApiKey.mock.calls[0][1]).toMatchObject({ isAdmin: true });
+  });
+
+  it("lets only an operator grant or change the admin scope", async () => {
+    // An admin-scoped API key passes canManageAccessConfig but is not an operator.
+    mocks.isOperatorRequest.mockResolvedValue(false);
+    const collection = await import("@/app/api/keys/route.js");
+    const item = await import("@/app/api/keys/[id]/route.js");
+    const params = { params: Promise.resolve({ id: "key-id" }) };
+    mocks.getApiKeyById.mockResolvedValue({ ...storedKey, isAdmin: false });
+    expect((await collection.POST(postRequest({ name: "Admin", isAdmin: true }))).status).toBe(403);
+    expect((await item.PUT(putRequest({ isAdmin: true }), params)).status).toBe(403);
+    mocks.getApiKeyById.mockResolvedValue({ ...storedKey, isAdmin: true });
+    expect((await item.PUT(putRequest({ isAdmin: false }), params)).status).toBe(403);
+    expect(mocks.createApiKey).not.toHaveBeenCalled();
+    expect(mocks.updateApiKey).not.toHaveBeenCalled();
+
+    // Unchanged or absent flag stays available to the admin-scoped key.
+    expect((await item.PUT(putRequest({ isAdmin: true, name: "Same" }), params)).status).toBe(200);
+    expect((await collection.POST(postRequest({ name: "Plain", isAdmin: false }))).status).toBe(201);
+    expect((await collection.POST(postRequest({ name: "Plain" }))).status).toBe(201);
   });
 
   it("returns stored secrets only from the one-time creation response", async () => {

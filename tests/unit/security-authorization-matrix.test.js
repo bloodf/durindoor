@@ -7,6 +7,11 @@ vi.mock("@/lib/db/driver.js", () => ({
   getAdapter: () => { throw new Error("Unexpected database access in authorization matrix"); },
   getAdapterSync: () => { throw new Error("Unexpected database access in authorization matrix"); },
 }));
+// Dispatch stamps a billing epoch; every other usage repo access still hits the guard above.
+vi.mock("@/lib/db/repos/usageRepo.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  getBillingEpoch: async () => "matrix-epoch",
+}));
 vi.mock("@/lib/apiKeyLimits.js", () => ({ enforceApiKeyLimits: async () => null }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: async () => "matrix-cli" }));
@@ -100,7 +105,7 @@ async function guarded(req, handler) {
   const gate = await proxy(req);
   return gate.headers.get("x-matrix-next") === "1" ? handler(req) : gate;
 }
-function own(provider, id, ownerId) { fixture.owners.set(`${provider}:${provider}-account:${id}`, { ownerId }); }
+function own(provider, id, ownerId) { fixture.owners.set(`${provider}:${provider}-account:${id}`, { ownerId, billingEpoch: "matrix-epoch", usageEventId: `matrix:${provider}:${id}` }); }
 function nativeRequest(op, principal, extra = {}) {
   const path = op.path.replace(/\{[^}]+\}/g, "resource");
   const model = registry.find((entry) => entry.id === op.provider)?.models[0]?.id;
@@ -256,9 +261,9 @@ it.each(tracked)("rejects cross-provider substitution: $label", async (op) => {
   expect(response.status).toBe(400); expect(fixture.fetch).not.toHaveBeenCalled();
 });
 
-// Key and provider-node management needs an operator principal. Application
-// API keys pass the management gate but not the route, whether or not they
-// carry a policy cap or provider-account scope.
+// Key and provider-node management needs an operator principal or an
+// admin-scoped key. Other application keys are refused (403), whether or not
+// they carry a policy cap or provider-account scope.
 const nodeBody = { name: "Node", prefix: "node", apiType: "chat", baseUrl: "https://node.invalid/v1" };
 const managementMutations = [
   ["POST /api/keys", () => ["/api/keys", "POST", { name: "minted" }], (req) => keysRoute.POST(req)],
@@ -268,14 +273,15 @@ const managementMutations = [
   ["PUT /api/provider-nodes/:id", () => ["/api/provider-nodes/node-1", "PUT", nodeBody], (req) => nodeRoute.PUT(req, { params: Promise.resolve({ id: "node-1" }) })],
   ["DELETE /api/provider-nodes/:id", () => ["/api/provider-nodes/node-1", "DELETE"], (req) => nodeRoute.DELETE(req, { params: Promise.resolve({ id: "node-1" }) })],
 ];
-describe.each([...principals, "scoped"])("management mutations as %s", (principal) => {
+describe.each([...principals, "scoped", "admin"])("management mutations as %s", (principal) => {
   it.each(managementMutations)("%s", async (_label, spec, handler) => {
     fixture.keys.set("matrix-scoped", { id: "scoped", key: "matrix-scoped", name: "scoped", isActive: true, expiresAt: null, policy: { allowedModels: ["openai/gpt-4o"], dailyLimitTokens: 10 } });
     fixture.scopes.set("scoped", ["openai-account"]);
+    fixture.keys.set("matrix-admin", { id: "admin", key: "matrix-admin", name: "admin", isActive: true, expiresAt: null, policy: {}, isAdmin: true });
     const [path, method, body] = spec();
-    const req = request(path, principal, method, body, principal === "scoped" ? { authorization: "Bearer matrix-scoped" } : {});
-    const response = await guarded(req, handler);
-    if (["dashboard", "cli"].includes(principal)) {
+    const extra = ["scoped", "admin"].includes(principal) ? { authorization: `Bearer matrix-${principal}` } : {};
+    const response = await guarded(request(path, principal, method, body, extra), handler);
+    if (["dashboard", "cli", "admin"].includes(principal)) {
       expect(response.status).toBeLessThan(300);
       expect(fixture.writes.length).toBeGreaterThan(0);
       return;

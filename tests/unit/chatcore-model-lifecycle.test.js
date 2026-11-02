@@ -81,7 +81,7 @@ describe("chatCore model lifecycle", () => {
       model: "gpt-5.2-codex",
       api_key_id: null,
       client_format: FORMATS.OPENAI,
-    }));
+    }), expect.objectContaining({})); // second arg: OTel context (#1128)
     expect(mocks.record).toHaveBeenCalledWith("trace-lifecycle", expect.objectContaining({ type: "route" }));
     expect(mocks.record).toHaveBeenCalledWith("trace-lifecycle", expect.objectContaining({ type: "error", summary: "model lifecycle rejected" }));
     expect(mocks.finishTrace).toHaveBeenCalledWith("trace-lifecycle", { status: "error" });

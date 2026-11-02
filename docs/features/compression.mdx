@@ -31,6 +31,20 @@ Stack engines currently available are `session-dedup`, `caveman`, and `headroom`
 
 Headroom processes the source-format chat body before translation. RTK normally processes the translated body; Cursor needs RTK before its translator rewrites tool results. The compression stack follows those steps, then the separate Caveman, Ponytail, and PXPIPE toggles apply. Enabling overlapping options can apply more than one transform, so compare results before using a stack on important traffic.
 
+## Fidelity gate
+
+Every compression-stack step is checked before its output is kept. If a step changes any of these, the stack discards that step's output and continues with its input:
+
+- tool schemas (`tools`, `functions`, `tool_choice`, `response_format`)
+- system and developer instructions (`system`, `instructions`, system or developer messages)
+- images, PDFs and other documents, audio, tool calls, and thinking blocks, plus any block that carries a signature
+- error tool results
+- fenced code blocks
+
+Set `compressionFidelityGate` to `true` in settings to add text checks. With text checks on, a step is also discarded when it drops a number, a URL, a file path or an identifier, a JSON key, a diff hunk header, or a negation word such as "not" or "não". This setting is off by default.
+
+The gate runs locally. It does not call a provider. Repository maintainers keep a pinned offline corpus in `open-sse/services/compression/eval/`. Each stack engine must pass it before it is marked available. That corpus reports estimated token savings, not provider-reported usage or cost.
+
 ## Bypass compression for one request
 
 Send:

@@ -36,6 +36,7 @@ import {
 import { deriveDefaultPlan as realDeriveDefaultPlan } from "../../services/compression/deriveDefaultPlan.js";
 import { resolveAdaptivePlan as realResolveAdaptivePlan } from "../../services/compression/adaptiveCompression/resolveAdaptivePlan.js";
 import { estimateCompressionTokens } from "../../services/compression/stats.js";
+import { gateStep } from "../../services/compression/fidelityGate.js";
 import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 try {
@@ -50,7 +51,11 @@ try {
  * @param {object} body translatedBody (final provider shape)
  * @param {object} [deps] optional DI override { isEngineAvailable, getEngine,
  *        deriveDefaultPlan, resolveAdaptivePlan, planToEngineIds } (tests only)
- * @param {object} cfg  { enabled, engines, applyOpts, adaptive, log }
+ * @param {object} cfg  { enabled, engines, applyOpts, adaptive, fidelityGate, log }
+ *        fidelityGate: { textInvariants?: boolean } — protected blocks (tool
+ *        schemas, media, signatures, error results, instructions, fenced code)
+ *        are always gated per step; textInvariants adds the opt-in number /
+ *        URL / JSON-key / negation checks. A failing step is rolled back.
  * @returns {Promise<{body: object, headerValue: string|null}>}
  */
 export async function runCompressionSeam(body, deps, cfg = {}) {
@@ -114,6 +119,10 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       const res = await getEngine(id).apply(working, opts);
       if (!res || !isObject(res) || !res.body || !isObject(res.body)) {
         throw new Error(`engine ${id} returned malformed result`);
+      }
+      const verdict = gateStep(stepInput, res.body, cfg.fidelityGate);
+      if (!verdict.passed) {
+        throw new Error(`fidelity gate rejected step (${verdict.failedInvariant}: ${verdict.detail})`);
       }
       const stepOutSerialized = JSON.stringify(res.body);
       working = res.body;

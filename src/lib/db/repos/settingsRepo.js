@@ -133,6 +133,9 @@ const DEFAULT_SETTINGS = {
   // Any engine throw fail-opens and restores the body; the loop never throws.
   compressionEnabled: false,
   compressionEngines: {},
+  // Opt-in text fidelity gate for stack steps (numbers, URLs, JSON keys,
+  // negations). Protected blocks are always gated; see fidelityGate.js.
+  compressionFidelityGate: false,
   cavemanEnabled: false,
   cavemanLevel: "full",
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,

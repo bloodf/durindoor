@@ -4,22 +4,13 @@ import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDERS, PROVIDER_MEDIA, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { resolveProviderAlias } from "../../open-sse/services/model.js";
 
-// OmniRoute ports: void-ai (#1245), xkiro (#1248), yolo-auto (#1250), zerolimitai (#1253).
+// OmniRoute ports: void-ai (#1245), yolo-auto (#1250).
 const CASES = [
   {
     "id": "void-ai",
     "alias": "void-ai",
     "chat": "https://api.voidai.app/v1/chat/completions",
     "val": "https://api.voidai.app/v1/models",
-    "models": [],
-    "fetcher": true,
-    "xkey": false
-  },
-  {
-    "id": "xkiro",
-    "alias": "xkiro",
-    "chat": "https://api.xkiro.com/v1/chat/completions",
-    "val": "https://api.xkiro.com/v1/models",
     "models": [],
     "fetcher": true,
     "xkey": false
@@ -32,15 +23,6 @@ const CASES = [
     "models": [
       "qwen3.6-35b-a3b"
     ],
-    "fetcher": true,
-    "xkey": false
-  },
-  {
-    "id": "zerolimitai",
-    "alias": "zerolimitai",
-    "chat": "https://www.zerolimitai.com/api/v1/chat/completions",
-    "val": "https://www.zerolimitai.com/api/v1/models",
-    "models": [],
     "fetcher": true,
     "xkey": false
   }

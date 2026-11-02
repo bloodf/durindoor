@@ -260,16 +260,14 @@ import p257 from "./xiaomi-mimo-token-plan.js";
 import p258 from "./xiaomi-mimo.js";
 import p259 from "./xiaomi-tokenplan.js";
 import p260 from "./xinference.js";
-import p261 from "./xkiro.js";
-import p262 from "./yi.js";
-import p263 from "./yolo-auto.js";
-import p264 from "./youcom.js";
-import p265 from "./yuanbao-web.js";
-import p266 from "./zai.js";
-import p267 from "./zed.js";
-import p268 from "./zenmux-free.js";
-import p269 from "./zenmux.js";
-import p270 from "./zerolimitai.js";
+import p261 from "./yi.js";
+import p262 from "./yolo-auto.js";
+import p263 from "./youcom.js";
+import p264 from "./yuanbao-web.js";
+import p265 from "./zai.js";
+import p266 from "./zed.js";
+import p267 from "./zenmux-free.js";
+import p268 from "./zenmux.js";
 
 export default [
   p0,
@@ -541,6 +539,4 @@ export default [
   p266,
   p267,
   p268,
-  p269,
-  p270,
 ];

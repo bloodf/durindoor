@@ -354,7 +354,6 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xiaomi-mimo-token-plan` | openai | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xiaomi-tokenplan` |  | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xinference` | openai | apikey | `http://localhost:9997/v1` |
-| `xkiro` |  | apikey | `https://api.xkiro.com/v1/chat/completions` |
 | `yi` |  | apikey | `https://api.lingyiwanwu.com/v1/chat/completions` |
 | `yolo-auto` |  | apikey | `https://yolo-auto.com/v1/chat/completions` |
 | `youcom` |  | apikey | `` |
@@ -363,4 +362,3 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `zed` |  | oauth | `` |
 | `zenmux` |  | freeTier | `https://zenmux.ai/api/v1/chat/completions` |
 | `zenmux-free` | openai | webCookie | `https://zenmux.ai/api/anthropic/v1/messages` |
-| `zerolimitai` |  | apikey | `https://www.zerolimitai.com/api/v1/chat/completions` |

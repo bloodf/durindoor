@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 271 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 269 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -286,7 +286,6 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Xiaomi MiMo Token Plan | `xiaomi-mimo-token-plan` | apikey | 2 | [site](https://mimo.mi.com) |
 | Xiaomi MiMo (Token Plan) | `xiaomi-tokenplan` | apikey | 9 | [site](https://mimo.xiaomi.com) |
 | XInference | `xinference` | apikey | 0 | [site](https://inference.readthedocs.io) |
-| xKiro | `xkiro` | apikey | 0 |  |
 | Yi (01.AI) | `yi` | apikey | 1 | [site](https://01.ai) |
 | Yolo-Auto | `yolo-auto` | apikey | 1 |  |
 | You.com Search | `youcom` | apikey | 0 | [site](https://you.com) |
@@ -295,4 +294,3 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Zed IDE | `zed` | oauth | 0 | [site](https://zed.dev) |
 | ZenMux | `zenmux` | freeTier | 9 | [site](https://zenmux.ai) |
 | ZenMux Free | `zenmux-free` | cookie | 11 | [site](https://zenmux.ai) |
-| ZeroLimit AI | `zerolimitai` | apikey | 0 |  |

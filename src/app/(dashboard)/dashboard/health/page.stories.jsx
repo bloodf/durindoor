@@ -25,6 +25,9 @@ export const Default = {
     await expect(within(table).getByText("142ms")).toBeVisible();
     await expect(within(table).getByText("920ms")).toBeVisible();
     await expect(within(table).getByText("Upstream timeout")).toBeVisible();
+    if (document.documentElement.dataset.v5Review === "true") {
+      await expect(canvas.getByRole("combobox", { name: "Rows per page" })).toHaveTextContent("20");
+    }
     const refresh = canvas.getByRole("button", { name: "Refresh" });
     await userEvent.click(refresh);
     await expect(within(table).getByText("OpenAI primary")).toBeVisible();
@@ -47,6 +50,16 @@ export const LoadFailure = {
   parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/health", routes: { ...baseRoutes, "GET /api/health/providers": { status: 500, body: { error: "Health probe unavailable" } } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText("Health probe unavailable")).toBeVisible();
+    await expect(await canvas.findByText(/Health probe unavailable/)).toBeVisible();
+    await expect(canvas.queryByText("No active connections")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Unavailable (fail-open)")).not.toBeInTheDocument();
   },
+};
+
+export const IndependentHeadroomFailure = {
+  parameters: { storyFixture: { routes: { ...baseRoutes, "GET /api/health/providers": { body: health }, "GET /api/headroom/status": { status: 503, body: { error: "Headroom status unavailable" } } } } },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText("OpenAI primary")).toBeVisible(); await expect(await canvas.findByText("Unknown", { exact: true })).toBeVisible(); await expect(canvas.queryByText("Not configured")).not.toBeInTheDocument(); },
+};
+export const SlowInitialHealth = {
+  parameters: { storyFixture: { routes: { "GET /api/health/providers": async () => { await new Promise((resolve) => setTimeout(resolve, 1200)); return { body: health }; }, "GET /api/headroom/status": async () => { await new Promise((resolve) => setTimeout(resolve, 1200)); return { body: headroom }; } } } },
 };

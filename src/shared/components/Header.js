@@ -292,7 +292,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
   };
 
   return (
-    <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-dd-border-subtle bg-dd-surface backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
+    <header data-dashboard-toolbar className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 lg:px-8 pt-3 pb-2 border-b border-dd-border-subtle bg-dd-surface backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none z-20">
       {/* Mobile menu button */}
       <div className="flex items-center gap-3 lg:hidden shrink-0">
         {showMenuButton && (
@@ -308,7 +308,7 @@ export default function Header({ onMenuClick, showMenuButton = true }) {
       </div>
 
       {/* Breadcrumbs get their own mobile row; actions retain their hit areas. */}
-      <div className={`flex min-w-0 flex-1 flex-col ${breadcrumbs.length > 0 ? "order-last basis-full lg:order-none lg:basis-auto" : ""}`}>
+      <div data-dashboard-identity className={`flex min-w-0 flex-1 flex-col ${breadcrumbs.length > 0 ? "order-last basis-full lg:order-none lg:basis-auto" : ""}`}>
         {breadcrumbs.length > 0 ? (
           <nav aria-label="Breadcrumb" className="flex min-w-0 flex-wrap items-center gap-2">
             {breadcrumbs.map((crumb, index) => (

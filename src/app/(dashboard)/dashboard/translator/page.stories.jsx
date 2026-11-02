@@ -97,3 +97,43 @@ export const RTL = {
   args: { initialContents: { 1: clientRequest } },
   decorators: [(Story) => <div dir="rtl" lang="ar">{Story()}</div>],
 };
+
+function SlowProviderStream({ children }) {
+  React.useEffect(() => {
+    const original = globalThis.fetch;
+    let timer;
+    globalThis.fetch = (input, init) => {
+      if (String(input) !== "/api/translator/send") return original(input, init);
+      return Promise.resolve(new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("data: partial response\n\n"));
+          timer = setInterval(() => controller.enqueue(new TextEncoder().encode("data: next token\n\n")), 500);
+        },
+        cancel() { clearInterval(timer); },
+      }), { headers: { "content-type": "text/event-stream" } }));
+    };
+    return () => { clearInterval(timer); globalThis.fetch = original; };
+  }, []);
+  return children;
+}
+export const CancelledResponse = {
+  args: { initialContents: { 4: targetRequest } },
+  decorators: [(Story) => <SlowProviderStream><Story /></SlowProviderStream>],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Expand Target Request" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Send" }));
+    await expect(await canvas.findByText("Streaming")).toBeVisible();
+    await userEvent.click(canvas.getByRole("button", { name: "Stop response" }));
+    await expect(await canvas.findByText("Cancelled. Received content retained.")).toBeVisible();
+    await expect(canvas.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument();
+  },
+};
+export const CaptureSaveFailure = {
+  ...SendsTargetRequest,
+  parameters: { storyFixture: { routes: { ...routes, "POST /api/translator/save": { status: 500, body: { error: "Capture storage unavailable" } } } } },
+  play: async (context) => {
+    await SendsTargetRequest.play(context);
+    await expect(await within(context.canvasElement).findByRole("alert")).toHaveTextContent("saving the capture failed");
+  },
+};

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { disposeLoadedRequestDetailsRepo } from "../../utils/requestDetailsCleanup.js";
 let dir;
 let env;
 let saved;
@@ -14,8 +15,9 @@ beforeEach(async () => {
   vi.resetModules();
   env = await import("@/lib/db/databaseEnvFile.js");
 });
-afterEach(() => {
+afterEach(async () => {
   process.env = saved;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

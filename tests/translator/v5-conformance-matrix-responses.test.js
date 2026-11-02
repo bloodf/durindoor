@@ -678,26 +678,43 @@ describe("#1089 Responses client conformance", () => {
     }, claude), claude)).toEqual({ type: "object", properties: {} });
   });
 
-  // #1089 failing: string numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers. Refs #1334
-  it.skip("coerces string numeric schema constraints to integers for Chat, Claude, and Gemini", () => {
+  // #1089 / #1334: Responses tool declarations coerce numeric-string constraints for every target.
+  it("coerces string numeric schema constraints to integers for Chat, Claude, and Gemini", () => {
     const parameters = {
       type: "object",
-      properties: { q: { type: "string", minLength: "3", maxLength: "10" } },
+      properties: {
+        q: { type: "string", minLength: "3", maxLength: "10" },
+        n: { type: "number", minimum: "1", maximum: "10" },
+      },
     };
     const body = {
       input: "hi",
       tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters }],
     };
     for (const target of [chat, claude, gemini]) {
-      expect(toolParams(request(body, target), target).properties.q).toMatchObject({
-        minLength: 3,
-        maxLength: 10,
-      });
+      const properties = toolParams(request(body, target), target).properties;
+      expect(properties.n).toMatchObject({ minimum: 1, maximum: 10 });
+      // The Gemini/Antigravity schema cleaner deliberately drops string-length
+      // keywords; they must never reach any target as strings.
+      if (target === gemini) expect(properties.q).not.toHaveProperty("minLength");
+      else expect(properties.q).toMatchObject({ minLength: 3, maxLength: 10 });
     }
   });
 
-  // #1089 failing: malformed tool schemas are forwarded instead of rejected with a predictable 400. Refs #1334
-  it.skip("rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini", () => {
+  // #1334: a Chat-shaped tool inside a Responses body gets the same validation.
+  it("validates Chat-shaped tools inside a Responses body", () => {
+    const body = (parameters) => ({
+      input: "hi",
+      tools: [{ type: OPENAI_BLOCK.FUNCTION, function: { name: "lookup", parameters } }],
+    });
+    const coerced = toolParams(request(body({ type: "object", properties: { n: { type: "number", minimum: "1" } } }), chat), chat);
+    expect(coerced.properties.n.minimum).toBe(1);
+    expect(() => request(body({ type: "object", properties: { q: { type: "string" } }, required: "q" }), chat))
+      .toThrow(expect.objectContaining({ statusCode: 400 }));
+  });
+
+  // #1089 / #1334: malformed Responses tool schemas are rejected with HTTP 400 for every target.
+  it("rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini", () => {
     const body = {
       input: "hi",
       tools: [{

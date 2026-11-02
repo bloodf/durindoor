@@ -42,7 +42,7 @@ export default function HealthPage() {
     setLoading(true); setHeadroomLoading(true);
     const read = async (url) => {
       const response = await fetch(url, { cache: "no-store", signal: abort.signal });
-      const body = await response.json();
+      const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Health request failed (${response.status})`);
       return body;
     };

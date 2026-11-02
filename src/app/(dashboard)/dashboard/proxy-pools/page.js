@@ -558,12 +558,12 @@ export default function ProxyPoolsPage() {
     [proxyPools]
   );
 
-  if (loadError && !hasLoaded) return <div role="alert"><p>Proxy pools could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchProxyPools}>Retry</Button></div>;
+  if (loadError && !hasLoaded) return <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger"><p>Proxy pools could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchProxyPools}>Retry</Button></div>;
   if (loading) return <div className="mx-auto max-w-5xl space-y-4"><div className="h-24 animate-pulse rounded-dd-lg bg-dd-surface-2" /><div className="h-72 animate-pulse rounded-dd-lg bg-dd-surface-2" /></div>;
 
   const modalFooter = (onCancel, onSubmit, submitLabel, disabled, pending, pendingLabel = submitLabel) => <><Button variant="secondary" onClick={onCancel} disabled={pending}>Cancel</Button><Button variant="primary" onClick={onSubmit} disabled={disabled} loading={pending}>{pending ? pendingLabel : submitLabel}</Button></>;
   return <div className="mx-auto max-w-5xl space-y-4">
-    {loadError && <div role="alert">Showing last confirmed proxy pools. {loadError}<Button icon="refresh" onClick={fetchProxyPools}>Retry</Button></div>}
+    {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed proxy pools. {loadError}<Button icon="refresh" onClick={fetchProxyPools}>Retry</Button></div>}
     <PageHeader icon="dns" title="Proxy Pools" subtitle="Manage outbound proxy routes and relay deployments" actions={<><Button variant="secondary" icon="upload" onClick={openBatchImportModal}>Batch import</Button><Button variant="primary" icon="add" onClick={openCreateModal}>Add proxy pool</Button></>} />
     <Card padding={false}><CardHeader icon="route" title="Configured pools" subtitle={`${proxyPools.length} total · ${activeCount} active`} actions={<div className="relative" ref={relayMenuRef}><Button variant="secondary" icon="rocket_launch" iconTrailing="expand_more" aria-expanded={showRelayMenu} onClick={() => setShowRelayMenu((open) => !open)}>Deploy relay</Button>{showRelayMenu ? <div className="absolute end-0 z-50 mt-1 w-52 rounded-dd border border-dd-border bg-dd-surface p-1 shadow-dd-elevated"><Button variant="ghost" className="w-full justify-start" icon="cloud" onClick={() => { openCloudflareModal(); setShowRelayMenu(false); }}>Cloudflare relay</Button><Button variant="ghost" className="w-full justify-start" icon="cloud_upload" onClick={() => { openVercelModal(); setShowRelayMenu(false); }}>Vercel relay</Button></div> : null}</div>} />
       <CardContent className="space-y-3">

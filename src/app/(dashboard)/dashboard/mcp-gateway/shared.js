@@ -37,8 +37,9 @@ export function stringifyMaybe(value) {
 /**
  * Load one gateway collection.
  *
- * Failed refreshes retain the last confirmed records with an explicit error.
- * Consumers must block grant edits while that dependency is unavailable.
+ * `notify` surfaces a failed load, and the collection is emptied rather than
+ * left stale: showing instances that a failed refresh can no longer vouch for
+ * is how someone grants a key to something that was deleted.
  *
  * `eager: false` defers the first load until the caller invokes `reload`. The
  * keys page uses this for instances: that list backs the grants picker only,
@@ -66,7 +67,9 @@ export function useGatewayCollection(path, field, { eager = true } = {}) {
     } catch (caught) {
       if (token !== generation.current) return;
       const message = caught instanceof Error ? caught.message : `Failed to load ${field}`;
-      notify({ type: "error", message }); setError(message);
+      notify({ type: "error", message });
+      setError(message);
+      setItems([]);
     } finally {
       if (token === generation.current) setLoading(false);
     }

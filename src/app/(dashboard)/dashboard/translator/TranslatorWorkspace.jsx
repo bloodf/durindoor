@@ -192,8 +192,8 @@ export function TranslatorWorkspace({ initialContents = {}, initialMeta = null }
       const step4 = JSON.parse(raw);
       const provider = step4.provider || meta?.provider;
       const model = step4.model || meta?.model;
-      if (!provider || !model) throw new Error("Missing provider or model. Load a request first.");
       save("4_req_target.json", raw);
+      if (!provider || !model) throw new Error("Missing provider or model. Load a request first.");
       const response = await fetch("/api/translator/send", { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ provider, model, body: step4.body || step4 }) });
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Send failed (${response.status})`);
       setContent(5, ""); openNext(5); setSendStatus("Streaming");

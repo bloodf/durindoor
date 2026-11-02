@@ -60,6 +60,7 @@ export default function MediaProviderKindPage() {
   const [showAddSystemone, setShowAddSystemone] = useState(false);
   const [localEmbeddingProviders, setLocalEmbeddingProviders] = useState([]);
   const [createError, setCreateError] = useState("");
+  const [warning, setWarning] = useState("");
   // webSearch/webFetch listing pages are merged into /web
   useEffect(() => {
     if (kind === "webSearch" || kind === "webFetch") {
@@ -76,15 +77,18 @@ export default function MediaProviderKindPage() {
     if (!kindConfig) return;
     setLoading(true);
     try {
-      const [items, nodes, models, loadedCombos] = await Promise.all([
-        requestCollection("/api/providers", "connections"),
+      const items = await requestCollection("/api/providers", "connections");
+      const optional = await Promise.allSettled([
         isEmbedding || isSystemone ? requestCollection("/api/provider-nodes", "nodes") : [],
         isEmbedding ? requestCollection("/api/v1/models/embedding", "data") : [],
         supportsCombo ? requestCollection("/api/combos", "combos") : [],
       ]);
+      const [nodes, models, loadedCombos] = optional.map((r) => (r.status === "fulfilled" ? r.value : []));
+      const warnings = optional.filter((r) => r.status === "rejected").map((r) => r.reason?.message || "request failed");
       setConnections(items);
       setCustomNodes(nodes.filter((node) => node.type === (isSystemone ? "systemone-compatible" : "custom-embedding")));
       setLocalEmbeddingProviders(isEmbedding ? getLocalEmbeddingProviders(models, items) : []);
+      setWarning(warnings.length ? `Some data could not be loaded: ${warnings.join("; ")}` : "");
       setCombos(loadedCombos); setLoadError(""); setToggleError(null); setLoaded(true);
     } catch (error) { setLoadError(error.message); }
     finally { setLoading(false); }
@@ -138,12 +142,13 @@ export default function MediaProviderKindPage() {
     }
   };
 
-  if (!loaded && loadError) return <div role="alert"><p>Provider configuration could not be loaded. {loadError}</p><Button icon="refresh" onClick={load}>Retry</Button></div>;
+  if (!loaded && loadError) return <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger"><p>Provider configuration could not be loaded. {loadError}</p><Button icon="refresh" onClick={load}>Retry</Button></div>;
   if (!loaded && loading) return <p role="status">Loading provider configuration…</p>;
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      {loadError && <div role="alert">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={load}>Retry</Button></div>}
-      {toggleError && <div role="alert">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
+      {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={load}>Retry</Button></div>}
+      {toggleError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
+      {warning && <p role="status" className="rounded-dd border border-dd-warning/30 px-4 py-3 text-[13px] text-dd-warning">{warning}</p>}
       {createError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{createError}</p>}
       {(isEmbedding || isSystemone || supportsCombo) && (
         <div className="flex flex-wrap justify-end gap-2">

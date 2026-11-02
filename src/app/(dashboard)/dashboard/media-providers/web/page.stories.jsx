@@ -1,4 +1,4 @@
-import { failedReadStory } from "../../providers/workflowStoryFixtures.js";
+import { failedReadStory } from "@/shared/ui/v5/preservation/workflowStoryFixtures.js";
 import React from "react";
 import { expect, userEvent, within } from "storybook/test";
 import WebProvidersPage from "./page.js";

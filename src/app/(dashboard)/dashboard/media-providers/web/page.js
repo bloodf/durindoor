@@ -148,10 +148,10 @@ export default function WebProvidersPage() {
     }
   };
 
-  if (!loaded) return loadError ? <div role="alert"><p>Web providers could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchAll}>Retry</Button></div> : <p role="status">Loading web providers…</p>;
+  if (!loaded) return loadError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger"><p>Web providers could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchAll}>Retry</Button></div> : <p role="status">Loading web providers…</p>;
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
-      {loadError && <div role="alert">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchAll}>Retry</Button></div>}
+      {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchAll}>Retry</Button></div>}
       {createError && <p role="alert" className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{createError}</p>}
       <Section title="Web Search" icon="search" kind="webSearch" providers={searchProviders} connections={connections} combos={searchCombos} onCreateCombo={() => handleCreateCombo("webSearch")} />
       <hr className="border-t border-dd-border-subtle" />

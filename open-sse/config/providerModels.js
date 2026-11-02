@@ -152,15 +152,41 @@ export function resolveRequestedModelTier(thinkingIntent, body = null) {
   return budgetTier(body?.thinking?.budget_tokens);
 }
 
+/**
+ * Provider-level thinking override from dashboard settings, applied only when
+ * the client did not set the matching field. Returns a new body.
+ * on/off -> body.thinking; none strips thinking fields; levels -> reasoning_effort.
+ */
+export function applyProviderThinkingOverride(body, providerThinking) {
+  const mode = providerThinking?.mode;
+  if (!mode || mode === "auto") return body;
+  if (mode === "none") {
+    // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
+    // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
+    const { thinking: _thinking, reasoning_effort: _effort, reasoning: _reasoning, ...rest } = body;
+    return rest;
+  }
+  if (mode === "on") return body.thinking ? body : { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
+  if (mode === "off") return body.thinking ? body : { ...body, thinking: { type: "disabled" } };
+  return body.reasoning_effort ? body : { ...body, reasoning_effort: mode };
+}
+
+/** Upstream id chatCore will dispatch for this request (quota/cooldown keys). */
+export function getDispatchUpstreamModelId(aliasOrId, modelId, body = null, providerThinking = null) {
+  const effectiveBody = body ? applyProviderThinkingOverride(body, providerThinking) : null;
+  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId).override, effectiveBody));
+}
+
 function findUpstreamModel(aliasOrId, modelId, tier) {
   const parsed = parseSuffix(modelId);
   const baseId = parsed.cleanModel;
   const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
   const requestedTier = tier || resolveRequestedModelTier(parsed.override);
-  // Only rows whose upstream id carries a thinking preset are tier variants
-  // (Antigravity today); other `<model>-<level>` ids are distinct models.
+  // `<model>-<tier>` rows are tier variants only in catalogs that use thinking
+  // presets (Antigravity today), including rows there without a preset; in
+  // other catalogs (codex, grok) `<model>-<level>` ids are distinct models.
   const tieredRow = requestedTier && isString(baseId) ? findModel(models, `${baseId}-${requestedTier}`, aliasOrId) : null;
-  const tiered = parseSuffix(tieredRow?.upstreamModelId).override ? tieredRow : null;
+  const tiered = tieredRow && models.some((row) => parseSuffix(row.upstreamModelId).override) ? tieredRow : null;
   return { baseId, found: tiered || findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId) };
 }
 

@@ -55,7 +55,7 @@ import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentia
 import { allocateProviderAttemptTimestamp } from "@/shared/services/providerRateLimitEvidence";
 import {
   getModelQuotaFamily,
-  getModelUpstreamId,
+  getDispatchUpstreamModelId,
   PROVIDER_ID_TO_ALIAS } from
 "open-sse/config/providerModels.js";
 import { resolveProviderId } from "@/shared/constants/providers.js";
@@ -220,7 +220,8 @@ now = Date.now(),
 comboName = null,
 comboStrategy = "fallback",
 dependencies = {},
-comboRouting = null)
+comboRouting = null,
+body = null)
 {
   try {
     const resolveModelInfo = dependencies.getModelInfo || resolveQuotaModelInfo;
@@ -239,7 +240,8 @@ comboRouting = null)
         continue;
       }
       const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
-      const upstreamModel = getModelUpstreamId(providerAlias, model);
+      // Key quota by the tier row chatCore will actually dispatch.
+      const upstreamModel = getDispatchUpstreamModelId(providerAlias, model, body, settings?.providerThinking?.[provider]);
       const quotaFamily = getModelQuotaFamily(providerAlias, model);
       const allConnections = await loadConnections({ provider, isActive: true });
       const connections = comboRouting?.restrictionApplied === true ?
@@ -650,7 +652,8 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         comboName,
         comboStrategy,
         {},
-        comboRouting
+        comboRouting,
+        body
       ),
       jevClassify: true,
       decisionBackend: resolveDecisionBackend,
@@ -861,7 +864,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           comboName,
           comboStrategy,
           {},
-          mergedRouting
+          mergedRouting,
+          body
         ),
         jevClassify: true,
         decisionBackend: resolveDecisionBackend,
@@ -1024,7 +1028,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // sibling pool still returns exactly what the client would have received.
   let earlyEofOriginal = null;
   const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
-  const upstreamModel = getModelUpstreamId(providerAlias, model);
+  // Quota/cooldown keys follow the tier row chatCore will dispatch (client
+  // effort/budget and the provider-level thinking override pick `-<tier>` rows).
+  const quotaSettings = settings || await getSettings();
+  const upstreamModel = getDispatchUpstreamModelId(providerAlias, model, body, quotaSettings?.providerThinking?.[provider]);
   const quotaFamily = getModelQuotaFamily(providerAlias, model);
   const modelCandidates = [...new Set([model, upstreamModel].filter(Boolean))];
   const quotaResourceKeys = buildQuotaResourceKeys({ provider, modelCandidates, quotaFamily });

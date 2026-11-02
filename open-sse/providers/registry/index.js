@@ -290,6 +290,7 @@ import p287 from "./zai.js";
 import p288 from "./zed.js";
 import p289 from "./zenmux-free.js";
 import p290 from "./zenmux.js";
+import p291 from "./zylo-api.js";
 
 export default [
   p0,
@@ -583,4 +584,5 @@ export default [
   p288,
   p289,
   p290,
+  p291,
 ];

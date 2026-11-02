@@ -604,8 +604,13 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Compress the source-format body here instead, before that rewrite.
   // Every other provider's translator keeps the tool_result shape 1:1, so
   // they stay on the unchanged post-translate pass.
+  // An `rtk` compression-stack step runs here too (#1098): one RTK pass per
+  // request at the dedicated position, so the stack step below is a no-op
+  // (rtkApplied) and accounting matches the standalone toggle.
+  const rtkInStack = compressionEnabled === true && compressionEngines?.rtk?.enabled === true;
+  const runRtk = tokenSaverEnabled && (rtkEnabled || rtkInStack);
   const preTranslateRtk = provider === "cursor" ?
-  compressMessages(body, tokenSaverEnabled && rtkEnabled) :
+  compressMessages(body, runRtk) :
   null;
 
   let translatedBody;
@@ -786,7 +791,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // RTK: compress tool_result content. Skipped when already compressed
   // pre-translate above (cursor) so a retry never double-compresses a body.
-  const rtkStats = preTranslateRtk || compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
+  const rtkStats = preTranslateRtk || compressMessages(translatedBody, runRtk);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? (saved / rtkStats.bytesBefore * 100).toFixed(0) : "0";
@@ -842,7 +847,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
         enabled: true,
         engines: compressionEngines ?? {},
-        applyOpts: COMPRESSION_ADAPTIVE_CONFIG,
+        applyOpts: { ...COMPRESSION_ADAPTIVE_CONFIG, rtkApplied: runRtk },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         adaptive: {
           ...COMPRESSION_ADAPTIVE_CONFIG,

@@ -27,7 +27,9 @@ Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/setting
 | Ponytail | Apply its configured prompt treatment and slash commands. |
 | PXPIPE | Apply the bundled image transform where eligible. |
 
-Stack engines currently available are `session-dedup`, `lite`, `caveman`, and `headroom`. Catalog entries `rtk`, `ccr`, `relevance`, `aggressive`, `llmlingua`, and `ultra` are not dispatched as stack engines. The dedicated RTK toggle still works.
+Stack engines currently available are `session-dedup`, `lite`, `rtk`, `caveman`, and `headroom`. Catalog entries `ccr`, `relevance`, `aggressive`, `llmlingua`, and `ultra` are not dispatched as stack engines.
+
+RTK runs at most once per request. If the RTK toggle is on, or the stack includes `rtk`, RTK runs at its dedicated position: before translation for Cursor, after translation for every other provider. The stack's `rtk` step then does nothing, so RTK savings always appear in **Token Saver → Statistics**. They are not listed in the `X-DurinDoor-Compression` header. The `rtk` step does its own work only when RTK has not already run, such as in Test Savers. RTK levels do not change the filters. RTK always skips error tool results.
 
 `lite` cleans up whitespace in user and assistant prose. It collapses three or more blank lines and strips trailing spaces outside fenced code. It also drops exact consecutive duplicate turns that carry no tool calls. It never changes tool outputs, media, or system and developer messages. Truncating older tool results is off by default. Enable it per engine with `compressionEngines.lite = { "enabled": true, "truncateToolResults": true, "maxToolLength": 2000 }`. `maxToolLength` must be from 256 to 1,000,000; out-of-range values fall back to 2000. Truncation cuts at a word boundary and appends `...[truncated]`. It skips error results, JSON, fenced code, and results from the current turn.
 

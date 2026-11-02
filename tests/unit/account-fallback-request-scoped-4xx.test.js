@@ -75,7 +75,7 @@ describe("checkFallbackError — request-scoped vs account-scoped 4xx", () => {
 
   it("does not fall back for an ordinary bad request", () => {
     expect(checkFallbackError(400, "Bad request")).toEqual({
-      shouldFallback: false, cooldownMs: 0, scope: null,
+      shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true,
     });
   });
 
@@ -87,7 +87,7 @@ describe("checkFallbackError — request-scoped vs account-scoped 4xx", () => {
         message: "messages.0: Field required",
       },
     }))).toEqual({
-      shouldFallback: false, cooldownMs: 0, scope: null,
+      shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true,
     });
   });
 

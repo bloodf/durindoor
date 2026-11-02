@@ -144,8 +144,8 @@ describe("#1089 Responses client conformance", () => {
       parallel_tool_calls: false,
     }, chat);
     const [custom, namespaced] = out.tools.map((tool) => tool.function);
+    const map = aliasMap(out);
     expect(custom).toMatchObject({
-      name: "files.patch",
       parameters: {
         type: "object",
         properties: { input: { type: "string" } },
@@ -154,9 +154,13 @@ describe("#1089 Responses client conformance", () => {
       },
     });
     expect(custom.strict).toBeUndefined();
-    expect(namespaced).toMatchObject({ name: "research.search", strict: true, parameters: schema });
+    expect(custom.name.length).toBeLessThanOrEqual(64);
+    expect(map.get(custom.name)).toBe("files.patch");
+    expect(namespaced).toMatchObject({ strict: true, parameters: schema });
+    expect(namespaced.name.length).toBeLessThanOrEqual(64);
+    expect(map.get(namespaced.name)).toBe("research.search");
     expect(out._customToolNames).toEqual(["files.patch"]);
-    expect(out.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: "research.search" } });
+    expect(out.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: namespaced.name } });
     expect(out.parallel_tool_calls).toBe(false);
   });
 
@@ -400,8 +404,7 @@ describe("#1089 Responses client conformance", () => {
     }
   });
 
-  // #1089 failing: Responses→Chat direct route skips normalizeOpenAIToolNames, so names stay >64. Refs #1345
-  it.skip("clamps overlong tool names to 64 chars for Chat with round-trip map", () => {
+  it("clamps overlong tool names to 64 chars for Chat with round-trip map", () => {
     const out = request({
       input: "hi",
       tools: [{ type: OPENAI_BLOCK.FUNCTION, name: longToolName, description: "d", parameters: schema }],

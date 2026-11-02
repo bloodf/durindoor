@@ -84,7 +84,9 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   // text rules before this short-circuit; ordinary invalid_request_error stays
   // request-scoped.
   if (Number(status) === 400 && lowerError.includes("invalid_request_error")) {
-    const billing = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+    // Match only the provider's error message so a quoted billing phrase elsewhere
+    // in the body (e.g. echoed user prompt text) cannot lock a healthy account.
+    const billing = checkFallbackErrorByRules(status, extractErrorMessage(structuredError, errorText).toLowerCase(), backoffLevel);
     if (billing.terminal) return { ...billing, scope: null };
     return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
@@ -159,6 +161,15 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
 
   const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel);
   return { ...generic, scope: null };
+}
+
+function extractErrorMessage(structuredError, errorText) {
+  let body = structuredError;
+  if (!body && isString(errorText)) {
+    try { body = JSON.parse(errorText); } catch { return errorText; } // non-JSON text is the message itself
+  }
+  const message = body?.error?.message ?? body?.message;
+  return isString(message) ? message : "";
 }
 
 function checkFallbackErrorByRules(status, lowerError, backoffLevel) {

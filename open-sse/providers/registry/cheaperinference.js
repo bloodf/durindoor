@@ -16,8 +16,8 @@ import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function forceStatelessResponses(body) {
   if (!body || !isObject(body)) return body;
-  if (Array.isArray(body.input) || isString(body.input)) body.store = false;
-  return body;
+  // Return a copy: never mutate the caller's body.
+  return Array.isArray(body.input) || isString(body.input) ? { ...body, store: false } : body;
 }
 
 export default {

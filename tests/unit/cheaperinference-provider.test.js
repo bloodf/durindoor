@@ -34,6 +34,20 @@ describe("cheaperinference registry", () => {
     expect(out.store).toBe(false);
   });
 
+  it("does not mutate the caller's Responses body", () => {
+    const body = { model: "gpt-5.5", input: "hi", store: true };
+    new DefaultExecutor("cheaperinference").transformRequest("gpt-5.5", body, true, { runtimeTransport: { format: "openai-responses", baseUrl: RESPONSES_URL } });
+    expect(PROVIDERS.cheaperinference.clampRequestBody(body)).not.toBe(body);
+    expect(body.store).toBe(true);
+  });
+
+  it("sends Responses models to /v1/responses and chat models to /v1/chat/completions", () => {
+    const exec = new DefaultExecutor("cheaperinference");
+    const transport = (format) => PROVIDERS.cheaperinference.transports.find((t) => t.format === format);
+    expect(exec.buildUrl("gpt-5.5", true, 0, { runtimeTransport: transport("openai-responses") })).toBe(RESPONSES_URL);
+    expect(exec.buildUrl("claude-haiku-4.5", true, 0, { runtimeTransport: transport("openai") })).toBe(CHAT_URL);
+  });
+
   it("never adds store to Chat Completions bodies", () => {
     const exec = new DefaultExecutor("cheaperinference");
     const out = exec.transformRequest("claude-haiku-4.5", { model: "claude-haiku-4.5", messages: [{ role: "user", content: "hi" }] }, true, {

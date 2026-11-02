@@ -266,6 +266,7 @@ import p263 from "./zai.js";
 import p264 from "./zed.js";
 import p265 from "./zenmux-free.js";
 import p266 from "./zenmux.js";
+import p267 from "./zylo-api.js";
 
 export default [
   p0,
@@ -535,4 +536,5 @@ export default [
   p264,
   p265,
   p266,
+  p267,
 ];

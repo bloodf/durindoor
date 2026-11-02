@@ -61,9 +61,9 @@ async function resolveProjectId(apiKey) {
  * Auth: SA JSON (stored as apiKey) → JWT assertion → Bearer token (via jose)
  * Token is minted/cached in tokenRefresh.js, not here.
  */
-// EU multi-region requires the matching representative host and /locations/eu path.
+// US and EU multi-regions require the matching representative host and /locations/<region> path.
 function vertexLocationBase(projectId, location) {
-  const host = location === "eu" ? "aiplatform.eu.rep.googleapis.com" : "aiplatform.googleapis.com";
+  const host = location === "eu" || location === "us" ? `aiplatform.${location}.rep.googleapis.com` : "aiplatform.googleapis.com";
   return `https://${host}/v1/projects/${projectId}/locations/${location}`;
 }
 

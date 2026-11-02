@@ -55,7 +55,7 @@ describe("Vertex Argon endpoints", () => {
     expect(await vertexUrl("gemini-2.5-flash", { accessToken: "t", providerSpecificData: { projectId: "p" } }))
       .toBe(`${BASE}/projects/p/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent`);
     expect(await vertexUrl("gemini-4-argon", { accessToken: "t", providerSpecificData: { projectId: "p", location: "us" } }))
-      .toBe(`${BASE}/projects/p/locations/us/publishers/google/models/gemini-4-argon:generateContent`);
+      .toBe(`https://aiplatform.us.rep.googleapis.com/v1/projects/p/locations/us/publishers/google/models/gemini-4-argon:generateContent`);
   });
 });
 

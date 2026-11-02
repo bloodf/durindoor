@@ -23,7 +23,7 @@ export default {
     format: "vertex",
   },
   models: [
-    // Argon is served from global/us/eu (plus europe-west2 and asia-southeast1),
+    // Argon is served from global/us/eu,
     // not us-central1 (Google Gemini 4 Argon model page, checked 2026-11-02;
     // upstream 9router 29fc880e). defaultLocation keeps connections without a
     // configured location off us-central1.

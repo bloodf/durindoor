@@ -88,6 +88,10 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       config
     });
     const plan = resolved?.plan ?? resolved ?? basePlan;
+    const t = resolved?.telemetry;
+    if (t) {
+      cfg.log?.debug?.("COMPRESS", `adaptive ${t.policy} target=${t.target} headroom=${t.headroomBefore}->${t.headroomAfter} stages=${t.stagesApplied.join(",") || "none"} fit=${t.fit}`);
+    }
     engineIds = planToEngineIds(plan);
     for (const step of plan?.stackedPipeline || []) {
       if (step && step.engine) stepById[step.engine] = step;

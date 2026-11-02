@@ -1,5 +1,6 @@
 import { DEFAULT_LADDER, aggressivenessOf, expectedReductionFactor } from "./ladder.js";
 import { computeTarget } from "./computeTarget.js";
+import { isEngineAvailable } from "../engineCatalog.js";
 
 const defaultEstimate = (prior, stage) => Math.round(prior * expectedReductionFactor(stage.engine));
 
@@ -14,6 +15,9 @@ const defaultEstimate = (prior, stage) => Math.round(prior * expectedReductionFa
 export function resolveAdaptivePlan(input) {
   const { basePlan, estimatedTokens, modelContextLimit, requestMaxTokens, config } = input;
   const estimate = input.estimate ?? defaultEstimate;
+  // Only dispatchable engines may count toward fit: crediting a catalog
+  // placeholder's reduction factor would claim a fit nothing can deliver.
+  const isAvailable = input.isAvailable ?? isEngineAvailable;
 
   if (config.mode === "off") return { plan: basePlan, telemetry: null };
   if (!modelContextLimit || modelContextLimit <= 0) {
@@ -58,7 +62,7 @@ export function resolveAdaptivePlan(input) {
   const ladder =
     config.ladderOverride && config.ladderOverride.length > 0 ? config.ladderOverride : DEFAULT_LADDER;
   const startTier = config.mode === "floor" ? baseRank : aggressivenessOf("off");
-  const stages = ladder.filter((s) => aggressivenessOf(s.engine) > startTier);
+  const stages = ladder.filter((s) => aggressivenessOf(s.engine) > startTier && isAvailable(s.engine));
 
   let current = estimatedTokens;
   const applied = [];

@@ -45,6 +45,26 @@ Set `compressionFidelityGate` to `true` in settings to add text checks. With tex
 
 The gate runs locally. It does not call a provider. Repository maintainers keep a pinned offline corpus in `open-sse/services/compression/eval/`. Each stack engine must pass it before it is marked available. That corpus reports estimated token savings, not provider-reported usage or cost.
 
+## Plan precedence and context budgets
+
+The stack picks its plan in this order:
+
+1. The per-request bypass, `X-DurinDoor-Token-Saver: off`, disables every token saver.
+2. The explicit stack from settings: `compressionEnabled` plus the `compressionEngines` toggle map.
+3. Adaptive context budgets from `compressionAdaptive`. These are off by default.
+
+DurinDoor has no per-combo or named compression profiles yet. If they are added, they will sit between the bypass and the settings stack.
+
+`compressionAdaptive` takes `{ "mode", "policy", "outputReserve", "safetyMargin", "pct", "absoluteBudget", "ladderOverride" }`. Invalid fields fall back to safe defaults.
+
+| `mode` | Behavior |
+| --- | --- |
+| `off` | Run only the explicit stack. |
+| `replace-autotrigger` | Escalate through the ladder when no explicit stack engine is enabled. Otherwise the explicit stack is used as is. |
+| `floor` | Keep the explicit stack and add more aggressive engines after it. |
+
+Escalation starts only when the estimated prompt exceeds the target. The target is the model context window minus the output reserve and the safety margin. You can also set it as a percentage of the window, or as an absolute budget. The output reserve is what the resolved model will actually generate: the request's own cap clamped to the model maximum, or else the provider default. It falls back to `outputReserve` only when neither is known. When the model's context window is unknown, adaptive escalation is skipped and the request runs the explicit stack. The ladder counts only engines that can actually run. If none of the remaining ladder engines can run, the plan does not change. Escalation never drops content beyond what each engine already does, and the fidelity gate still applies to every step.
+
 ## Bypass compression for one request
 
 Send:

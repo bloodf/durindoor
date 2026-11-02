@@ -466,7 +466,7 @@ function buildRecordDescriptor({ scenario, connections, chatConnection, key, com
     urls: {
       ...URL_REGISTRY,
       provider: connections[0] ? `/dashboard/providers/${connections[0].provider}` : null,
-      apiKeys: "/dashboard/endpoint",
+      apiKeys: "/dashboard/keys",
       combo: combos[0] ? `/dashboard/media-providers/combo/${combos[0].id}` : null,
       trace: traces[0] ? `/dashboard/timeline/${traces[0].id}` : null,
       mediaProvider: providerNodes.find((node) => node.type === "custom-embedding") ? `/dashboard/media-providers/embedding/${providerNodes.find((node) => node.type === "custom-embedding").id}` : null,

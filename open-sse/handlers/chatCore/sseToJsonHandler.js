@@ -13,6 +13,7 @@ import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from 
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
+import { restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
@@ -74,6 +75,10 @@ function aggregateParsedChunks(chunks, fallbackModel, {
   terminalObservations = null,
   synthesizedRawDone = false
 }) {
+  // Preserve an explicit SSE error even after partial content. A failed terminal
+  // is not an empty completion; both non-stream consumers must reject it (#1355).
+  const errorChunk = chunks.find((chunk) => chunk?.error);
+  if (errorChunk) return { error: errorChunk.error };
   const terminal = createUpstreamTerminalTracker({
     format,
     expectedChoiceCount: providerBody?.n,
@@ -236,6 +241,22 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
   return aggregateParsedChunks(chunks, fallbackModel, { format, providerBody, terminalObservations });
 }
 
+/**
+ * Port 9router 56dbf466 through the fork's shared redacting error builder.
+ * Never forward raw envelopes, coerce object/array status fields, or mark an
+ * SSE error as successful usage. Finish-reason errors keep their separate 502.
+ */
+export function createSSEErrorResult(parsed, credentials = null) {
+  if (!parsed?.error) return null;
+  const rawStatus = parsed.error.status;
+  const candidate = isString(rawStatus) ? Number(rawStatus) : rawStatus;
+  const status = Number.isInteger(candidate) && candidate >= 400 && candidate <= 599 ?
+    candidate : HTTP_STATUS.BAD_GATEWAY;
+  const message = isString(parsed.error.message) && parsed.error.message.trim() ?
+    parsed.error.message : "Upstream SSE stream failed";
+  return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
+}
+
 function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap) {
   const state = { toolNameMap };
   const chunks = [];
@@ -259,7 +280,7 @@ function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, too
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -323,6 +344,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
         const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+        // Chat clients get the projection as-is, so restore request-side aliases (#1406).
+        if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
         logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
         const totalLatency = Date.now() - requestStartTime;
@@ -365,6 +388,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         providerBody: finalBody || translatedBody
       });
       if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      const sseError = createSSEErrorResult(parsed, credentials);
+      if (sseError) {
+        appendLog({ status: `FAILED ${sseError.status}` });
+        return sseError;
+      }
 
       const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
       parsed = inlineThinking.responseBody;
@@ -425,6 +453,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
       const resolveToolName = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ? createResponsesToolNameResolver(body, toolNameMap) : undefined;
       const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
+      // Chat clients get the projection as-is, so restore request-side aliases (#1406).
+      if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
       await markSuccess();

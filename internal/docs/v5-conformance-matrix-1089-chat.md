@@ -53,7 +53,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Stream | tool call | Claude | already-present | `streams tool calls to Claude with tool_use stop` |
 | Stream | tool call | Gemini | already-present | `streams tool calls to Gemini with functionCall name and args` |
 | Stream | tool call | Responses | already-present | `streams tool calls to Responses with call identity and completed arguments` |
-| Request | tool-result image media | Claude | failing | `converts tool-result image_url media to Claude image blocks` |
+| Request | tool-result image media | Claude | repaired (#1356) | `converts tool-result image_url media to Claude image blocks` |
 | Request | tool-result image media | Gemini | already-present | `keeps tool-result image URL visible through Gemini functionResponse` |
 | Request | tool-result image media | Responses | failing | `preserves tool-result image media on Chat to Responses` |
 | Request | turn-scoped tool pairing | Claude | repaired (#1335) | `pairs Claude tool results only within the current assistant turn` |
@@ -79,7 +79,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 2. #1329 — Chat→Responses never copies `tool_choice`.
 3. #1330 — Resolved on main (#1348 / Option A): Chat JSON `finish_reason: error` returns HTTP 502 `Provider returned an incoherent non-streaming response` before Claude/Gemini projection; matrix rows assert that handler contract.
 4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` stays skipped: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so that projector branch is unreachable.
-5. #1332 — Chat→Claude leaves OpenAI `image_url` inside `tool_result`; Chat→Responses stringifies image parts into output text.
+5. #1332 — Chat→Claude image conversion is repaired by #1356 (data URI and HTTP(S), preserving error flags). Chat→Responses still stringifies image parts into output text; that residual remains open.
 6. #1335 — Cross-turn `tool_call_id` reuse broke current-turn pairing on Claude, Gemini, and Responses (repaired: pair by call id within the current assistant turn; drop strays).
 7. #1333 — Kiro `description.trim` throws `TypeError` for object/number descriptions.
 8. #1334 — String `minimum`/`maximum` stay strings; malformed schemas are forwarded instead of rejected.

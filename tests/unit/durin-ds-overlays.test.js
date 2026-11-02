@@ -11,7 +11,6 @@ const h = React.createElement;
 const SHIM_MARKER = "overlayDialogShim";
 const originalShowModal = HTMLDialogElement.prototype.showModal;
 const originalClose = HTMLDialogElement.prototype.close;
-const originalOverflowDescriptor = Object.getOwnPropertyDescriptor(document.body.style, "overflow");
 const originalBodyOverflow = document.body.style.overflow;
 const roots = [];
 let showModalBehavior = "ok";
@@ -62,9 +61,6 @@ afterEach(() => {
   showModalBehavior = "ok";
   document.body.innerHTML = "";
   document.body.style.overflow = originalBodyOverflow;
-  if (originalOverflowDescriptor) {
-    Object.defineProperty(document.body.style, "overflow", originalOverflowDescriptor);
-  }
 });
 
 describe("Modal overlay contract", () => {

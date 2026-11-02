@@ -204,6 +204,12 @@ export const MODEL_CAPABILITIES = {
    */
   "glm-5.3": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // OpenCode serves the same weights under this free id from its own inference
+  // service, which rejects the zai `thinking` object (400 unknown field
+  // "thinking") and accepts reasoning_effort (upstream 32c5f30a, probed on both
+  // /inference/v1 and /zen/v1). The opencode lane already emits reasoning_effort
+  // through its registry thinkingFormat; this row fixes opencode-zen.
+  "glm-5.3-flash-free": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   "glm-5.1": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5-turbo": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
@@ -214,6 +220,23 @@ export const MODEL_CAPABILITIES = {
   "glm-4.5": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072, maxOutput: undefined },
   "glm-4.5-air": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072, maxOutput: undefined },
   "glm-4-32b-0414-128k": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+
+  // OpenCode Free ids that models.dev reports as reasoning-capable but no table
+  // covered (upstream 4c58e7f3, #2690): without a row they fall through to
+  // DEFAULT_CAPABILITIES (reasoning: false) and applyThinking() strips the
+  // client's reasoning_effort. Modalities and limits are verbatim from
+  // models.dev. The opencode lane keeps its registry "opencode" effort enum
+  // (resolveFormat prefers it); the format here applies to other lanes such as
+  // opencode-zen. big-pickle and x-preview-f-free already have provider rows.
+  "space-bunny-free": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
+  "space-bunny": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
+  "exo-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "fledge-alpha-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "longcat-2.0": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "longcat-2.0-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "longcat-2.5-preview-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "north-mini-code-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
+  "ring-2.6-1t-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 66000 },
 
   // Qwen plain coder/text (no vision) — registry "vision-model" / "coder-model" aliases
   "vision-model": { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
@@ -603,7 +626,11 @@ export const PROVIDER_CAPABILITIES = {
     "mimo-v2.6-flash-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 131072 },
     // Union Alpha routes through the Claude Messages wire (see executors/opencode.js
     // MESSAGES_MODELS), not the opencode reasoning_effort enum.
-    "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 }
+    "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 },
+    // The free backend rejects prompts above ~330k tokens (upstream 1da5b0d7,
+    // issue #5097). Publishing 1M made clients skip compaction and hard-fail
+    // mid-session with a 400.
+    "deepseek-v4.1-flash-free": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 330000, maxOutput: 128000 }
   },
 
   oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },
@@ -789,6 +816,9 @@ export const PATTERN_CAPABILITIES = [
 
 // Verified GPT-6 families also cover compatible routes and discovered snapshots.
 // Exact provider rows above retain their separate OAuth/reseller contracts.
+// Image variants ("-image" suffix) generate images; first match wins, so they
+// must precede the chat family rows (upstream decolua/9router@fbac1220).
+{ pattern: "*gpt-6*image*", caps: { imageOutput: true } },
 { pattern: "*gpt-6.1-terra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-terra"] },
 { pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
 { pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },

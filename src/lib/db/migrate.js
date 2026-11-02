@@ -264,6 +264,7 @@ function importLegacyDetails(adapter, data) {
 // ─── Main entry ──────────────────────────────────────────────────────────
 export async function runMigrationOnce(adapter) {
   if (_migratedAdapters.has(adapter)) return;
+  const created = adapter.takeFreshDatabase?.() === true;
   if (isPostgres(adapter)) {
     // PG has no sqlite_master / PRAGMA. The parallel migration set is the
     // schema source of truth; additive SQLite sync and the SQLite integrity
@@ -362,12 +363,22 @@ export async function runMigrationOnce(adapter) {
     }
   }
 
-  // 1. Always run versioned migrations chain (skip-version safe)
-  const migInfo = runVersionedMigrations(adapter);
-
-  // 2. Additive sync (auto add missing columns/indexes declared in TABLES)
-  syncSchemaFromTables(adapter);
-  verifyPublishedSchemaLayouts(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
+  // A creation claim is consumed once, before returning an adapter to writers.
+  // Serialize schema creation and the completeness stamp. If another opener
+  // already initialized this file, even an empty ledger is not fresh evidence.
+  // Existing legacy files (including unreadable JSON) disqualify completeness.
+  const initializeSchema = () => {
+    const pristine = created && !Object.values(legacyFiles).some((file) => fs.existsSync(file)) &&
+      !adapter.get("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1");
+    const result = runVersionedMigrations(adapter);
+    syncSchemaFromTables(adapter);
+    verifyPublishedSchemaLayouts(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
+    if (pristine) {
+      adapter.run("INSERT INTO kv(scope, key, value) VALUES('billing', 'receiptsVersion', '1') ON CONFLICT(scope, key) DO NOTHING");
+    }
+    return result;
+  };
+  const migInfo = created ? adapter.transaction(initializeSchema) : initializeSchema();
   if (needsTotalsRepair) backfillApiKeyUsageTotals(adapter);
 
   // 3. One-time legacy JSON import (only if DB was fresh on entry)

@@ -9,6 +9,7 @@
     "data-management",
     "postgres",
     "security",
+    "opentelemetry",
     "api-key-scoping",
     "webhooks"
   ]

@@ -14,6 +14,7 @@ import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, OPENAI_FINISH, MODEL_FALLBACK } from "../schema/index.js";
 import {
@@ -936,9 +937,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     if (error) {
       state.error = error;
       state.finishReasonSent = true;
-      const message = readUpstreamErrorMessage(error) || (
+      // Upstream text is public here: redact credentials like the Chat→Responses
+      // response.failed path does (#1374).
+      const message = sanitizeErrorMessage(readUpstreamErrorMessage(error) || (
         isUpstreamErrorObject(error) ? JSON.stringify(error) : String(error)
-      );
+      ));
 
       // Surface the error as an OpenAI-compatible error chunk
       const errorChunk = buildChunk(

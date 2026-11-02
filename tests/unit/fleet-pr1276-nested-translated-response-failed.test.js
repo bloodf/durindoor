@@ -113,6 +113,16 @@ function expectSecretExcluded(result) {
   expect(result.onCoherentTerminal).not.toHaveBeenCalled();
   expect(result.onComplete).toHaveBeenCalledTimes(1);
   expect(result.onError).not.toHaveBeenCalled();
+  // #1327: the client gets the Chat protocol error terminal (redacted), not [Error] stop content.
+  const events = result.output.split(/\r?\n/)
+    .filter((line) => line.startsWith("data:") && line.trim() !== "data: [DONE]")
+    .map((line) => JSON.parse(line.slice(5).trim()));
+  const terminals = events.filter((event) => event.error);
+  expect(terminals).toHaveLength(1);
+  expect(terminals[0].error).toMatchObject({ type: "server_error", code: "fixture_nested_failure" });
+  expect(terminals[0].error.message).toContain("[redacted]");
+  expect(events.flatMap((event) => event.choices || []).some((choice) => choice.finish_reason === "stop")).toBe(false);
+  expect(result.output.trimEnd().endsWith("data: [DONE]")).toBe(true);
 }
 
 describe("PR #1276 nested response.failed redaction under TRANSLATE", () => {

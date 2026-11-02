@@ -179,7 +179,7 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
   }
 
   function observeGemini(chunk) {
-    if (chunk?.error || chunk?.response?.error) return fail();
+    if (chunk?.error || chunk?.response?.error || geminiPromptFeedbackError(chunk)) return fail();
     const promptBlock = chunk?.promptFeedback?.blockReason || chunk?.response?.promptFeedback?.blockReason;
     if (promptBlock) return succeedApplication("gemini_prompt_block");
     const candidates = geminiCandidates(chunk);
@@ -277,6 +277,11 @@ export function createUpstreamTerminalTracker({ format = null, onCoherentTermina
   };
 }
 
+/** Gemini error nested in promptFeedback: a failure, never a prompt-block success (#1342). */
+function geminiPromptFeedbackError(chunk) {
+  return chunk?.promptFeedback?.error || chunk?.response?.promptFeedback?.error;
+}
+
 function isCoherentOpenAICompletion(chunk) {
   return Array.isArray(chunk?.choices) &&
   chunk.choices.length > 0 &&
@@ -310,6 +315,7 @@ export function isCoherentNonStreamingResponse(chunk, format = FORMATS.OPENAI) {
     chunk.stop_reason.length > 0;
   }
   if ([FORMATS.GEMINI, FORMATS.GEMINI_CLI, FORMATS.VERTEX, FORMATS.ANTIGRAVITY].includes(format)) {
+    if (geminiPromptFeedbackError(chunk)) return false;
     const promptBlock = chunk?.promptFeedback?.blockReason || chunk?.response?.promptFeedback?.blockReason;
     if (promptBlock) return true;
     const candidates = geminiCandidates(chunk);

@@ -827,9 +827,9 @@ export function parseQuotaData(provider, data) {
               unit: quota.unit,
               resetAt: quota.resetAt || null,
               // Open-ended plans: the service flags Qoder's year-9999 sentinel.
-              neverExpires: quota.neverExpires === true,
+              ...(quota.neverExpires === true ? { neverExpires: true } : null),
               // Add-on credits link to Qoder's own usage page (https only).
-              detailUrl: quota.detailUrl || null
+              ...(quota.detailUrl ? { detailUrl: quota.detailUrl } : null)
             });
           });
         }

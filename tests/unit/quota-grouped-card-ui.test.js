@@ -5,7 +5,8 @@ import { createRoot } from "react-dom/client";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard/quota", useSearchParams: () => new URLSearchParams() }));
+const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => navigation, usePathname: () => "/dashboard/quota", useSearchParams: () => new URLSearchParams() }));
 vi.mock("@/shared/utils/latestIntentQueue", () => ({ createLatestIntentQueue: () => ({ hydrate: () => {}, enqueue: async () => {} }) }));
 vi.mock("@/shared/components", () => ({ EditConnectionModal: () => null }));
 // AI_PROVIDERS left empty so connection labels fall back to connection.name and

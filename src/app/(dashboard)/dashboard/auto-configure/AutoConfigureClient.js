@@ -48,7 +48,20 @@ function ResultSummary({ title, services, actions, dryRun, changed }) {
   </CardContent></Card>;
 }
 
-export default function AutoConfigureClient({ status }) {
+export default function AutoConfigureClient({ status: initialStatus, initialError = "" }) {
+  const [status, setStatus] = useState(initialStatus);
+  const [statusError, setStatusError] = useState(initialError);
+  const [statusLoading, setStatusLoading] = useState(false);
+  async function retryStatus() {
+    setStatusLoading(true);
+    try {
+      const res = await fetch("/api/settings/auto-configure");
+      const data = await res.json();
+      if (!res.ok || !data.services) throw new Error(data.error || "Configuration status could not be loaded.");
+      setStatus(data); setStatusError("");
+    } catch (caught) { setStatusError(caught.message); }
+    finally { setStatusLoading(false); }
+  }
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dryRun, setDryRun] = useState(false);
@@ -70,6 +83,7 @@ export default function AutoConfigureClient({ status }) {
   return <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
     <PageHeader icon="auto_fix_high" title="Auto-configure" subtitle="One-click setup for Headroom, PxPipe, Firecrawl, and built-in toggles." />
     <Card padding={false}><CardHeader icon="play_circle" title="Run configuration" subtitle="Preview changes before applying them." /><CardContent className="flex flex-wrap items-center justify-between gap-4"><Checkbox checked={dryRun} onChange={setDryRun} label="Dry run (preview only)" hint="Show planned changes without applying them." /><Button variant="primary" onClick={run} loading={loading} icon="auto_fix_high">{loading ? "Running…" : "Run auto-configure"}</Button></CardContent></Card>
+    {statusError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 p-4"><p>{statusError}</p><Button icon="refresh" loading={statusLoading} onClick={retryStatus}>Retry status</Button></div> : null}
     {error ? <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 p-4 text-[13px] text-dd-danger" role="alert"><span className="whitespace-pre-wrap break-words">{error}</span></div> : null}
     {status && !report ? <ResultSummary title="Status" services={status.services} actions={status.actions} dryRun={true} changed={status.wouldChange} /> : null}
     {report ? <ResultSummary title={report.dryRun ? "Dry run result" : "Result"} services={report.services} actions={report.actions} dryRun={report.dryRun} changed={report.dryRun ? report.wouldChange : report.changed} /> : null}

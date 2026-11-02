@@ -26,7 +26,7 @@ export const AllowListWithSecurityWarning = {
     const warning = await dialog.findByRole("alert");
     await expect(warning).toHaveTextContent(/Rules only apply to requests that send this key/i);
     await expect(warning).toHaveTextContent(/Require API key/i);
-    await expect(dialog.getByText("openai/*")).toBeVisible();
+    await waitFor(() => expect(dialog.getByText("openai/*")).toBeVisible());
   },
 };
 
@@ -58,6 +58,6 @@ export const EmptyBlockList = {
   play: async ({ canvasElement }) => {
     const dialog = within(await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Model access for Build harness" }));
     const emptyState = await dialog.findByText(/empty blocklist blocks nothing/i);
-    await expect(emptyState).toBeVisible();
+    await waitFor(() => expect(emptyState).toBeVisible());
   },
 };

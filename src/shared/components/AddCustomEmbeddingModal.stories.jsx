@@ -49,8 +49,8 @@ export const InvalidEndpoint = {
     await userEvent.type(within(dialog).getByLabelText("API Key"), "sk-invalid");
     await userEvent.type(within(dialog).getByLabelText("Model ID"), "missing-model");
     await userEvent.click(within(dialog).getByRole("button", { name: "Check" }));
-    await expect(within(dialog).findByText("Invalid")).resolves.toBeVisible();
-    expect(within(dialog).getByText("Embedding endpoint rejected this key")).toBeVisible();
+    await waitFor(async () => expect(await within(dialog).findByText("Invalid")).toBeVisible());
+    await waitFor(() => expect(within(dialog).getByText("Embedding endpoint rejected this key")).toBeVisible());
   },
 };
 

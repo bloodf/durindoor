@@ -6,8 +6,9 @@
 //   - session-dedup  (engines/session-dedup/index.js)
 //   - headroom       (engines/headroomAdapter.js -> rtk/headroom.js)
 //   - caveman        (engines/cavemanAdapter.js -> caveman.js)
+//   - lite           (engines/lite.js)
 //
-// All other catalog ids (ccr, lite, rtk, relevance, aggressive, llmlingua,
+// All other catalog ids (ccr, rtk, relevance, aggressive, llmlingua,
 // ultra) are metadata-only placeholders in engineCatalog.js and are NEVER
 // imported here. getEngine(id) on any of them throws "Unknown compression
 // engine: <id>" so callers cannot accidentally dispatch to a stub.
@@ -19,6 +20,7 @@
 import { sessionDedupEngine } from "./engines/session-dedup/index.js";
 import { cavemanEngine } from "./engines/cavemanAdapter.js";
 import { headroomEngine } from "./engines/headroomAdapter.js";
+import { liteEngine } from "./engines/lite.js";
 import { ENGINE_IDS, engineMeta, isEngineAvailable } from "./engineCatalog.js";
 import { SINGLE_MODE_OF } from "./deriveDefaultPlan.js";
 
@@ -47,13 +49,14 @@ function register(engine) {
  * and idempotent. headroomEngine resolves its heavy translator dependency
  * lazily inside apply(), so registering it here does not pull the app alias
  * graph at module load. The catalog's availability flags therefore stay true:
- * getEngine(id) always returns a real engine for the three shipped ids.
+ * getEngine(id) always returns a real engine for every shipped id.
  */
 export function registerBuiltinEngines() {
   if (registered) return;
   register(sessionDedupEngine);
   register(headroomEngine);
   register(cavemanEngine);
+  register(liteEngine);
   registered = true;
 }
 

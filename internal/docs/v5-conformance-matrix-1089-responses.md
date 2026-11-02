@@ -31,8 +31,8 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Request | Tuple `prefixItems` / items (#1091) | OpenAI Chat, Claude, Gemini | already-present | `converts tuple prefixItems to Gemini items while Chat and Claude keep the tuple` |
 | Request | Free-form / empty schemas (#1091) | OpenAI Chat, Claude (`type:"object"`), Gemini | already-present | `coerces free-form and empty object schemas for Gemini and leaves Chat/Claude empty` |
 | Request | Free-form `parameters:{}` → typed empty object schema | Claude | failing | `normalizes Claude free-form parameters {} to a typed empty object schema` |
-| Request | String numeric schema constraints (#1091) | OpenAI Chat, Claude, Gemini | failing | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` |
-| Request | Malformed tool schemas (#1091) | OpenAI Chat, Claude, Gemini | failing | `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` |
+| Request | String numeric schema constraints (#1091) | OpenAI Chat, Claude, Gemini | already-present | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` |
+| Request | Malformed tool schemas (#1091) | OpenAI Chat, Claude, Gemini | already-present | `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` |
 
 ## Failing cases
 
@@ -40,5 +40,6 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 |---|---|
 | `relocates function_call_output after an intervening assistant message by call id` | Repaired (#1335): a tool-only turn is flushed as its own assistant message; late real outputs relocate next to it by call id. |
 | `normalizes Claude free-form parameters {} to a typed empty object schema` | Responses→Claude leaves free-form `parameters:{}` as `input_schema:{}`; Anthropic requires `type:"object"` (Refs #1350). |
-| `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` | String numeric JSON Schema constraints stay strings on Chat/Claude and are stripped on Gemini instead of coerced to integers (Refs #1334). |
-| `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` | Malformed tool schemas are forwarded instead of rejected with a predictable 400 (Refs #1334). |
+
+Note (#1334): Responses tool declarations go through the shared `normalizeToolSchema`. Numeric-string constraints are coerced for every target. The Gemini/Antigravity schema cleaner still drops string-length keywords (`minLength` / `maxLength`) by design.
+Chat-shaped `{type:"function", function:{...}}` tools inside a Responses body are validated too. Responses→Responses passthrough (no translation) does not run this validation.

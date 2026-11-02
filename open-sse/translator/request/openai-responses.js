@@ -522,7 +522,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           function: {
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(subtool.parameters),
+            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name)),
             strict: subtool.strict
           }
         }));
@@ -549,6 +549,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Responses API function tool: { type: "function", name, description, parameters }
       // Only convert when a non-empty name is present; skip hosted tools without one.
+      // Responses clients get the same schema validation/coercion as Chat clients (#1334).
       const name = tool.name;
       if (!name || !isString(name) || name.trim() === "") return null;
       return {
@@ -556,7 +557,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         function: {
           name,
           description: String(tool.description || ""),
-          parameters: normalizeToolParameters(tool.parameters),
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name)),
           strict: tool.strict
         }
       };

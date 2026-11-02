@@ -15,10 +15,16 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { buildErrorBody, readBoundedResponseText } from "../utils/error.js";
+import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 
 export const ONEMINAI_CHAT_URL = "https://api.1min.ai/api/chat-with-ai";
 const MAX_STREAM_ERROR_DATA_CHARS = 64 * 1024;
 const STREAM_ERROR_FALLBACK = "1min.ai upstream stream failed";
+const STREAM_INCOMPLETE = "1min.ai stream ended before completion";
+const STREAM_OVERFLOW = "1min.ai stream event exceeded the size limit";
+// Upper bound on the unparsed SSE buffer (one event must fit).
+export const MAX_STREAM_BUFFER_CHARS = 1024 * 1024;
+const MAX_JSON_BODY_BYTES = 4 * 1024 * 1024;
 const ROLE_LABELS = { system: "System", developer: "System", user: "User", assistant: "Assistant" };
 
 const asRecord = (value) => value && isObject(value) && !Array.isArray(value) ? value : {};
@@ -119,16 +125,16 @@ export function translateOneMinAiStream(upstreamBody, model, id, created) {
     }
     queue(chunk({ content: text }));
   };
-  const emitError = (data) => {
+  const emitError = (data, publicMessage = null) => {
     if (finished) return;
     finished = true;
     cancelUpstream("1min.ai upstream stream error");
     if (!roleEmitted) {
-      queue(sseChunk(buildErrorBody(502, parseStreamErrorMessage(data))));
+      queue(sseChunk(buildErrorBody(502, publicMessage || parseStreamErrorMessage(data))));
       queue("data: [DONE]\n\n");
       return;
     }
-    terminalError = Object.assign(new Error(STREAM_ERROR_FALLBACK), { statusCode: 502 });
+    terminalError = Object.assign(new Error(publicMessage || STREAM_ERROR_FALLBACK), { statusCode: 502 });
   };
 
   const processEvent = (eventText) => {
@@ -152,6 +158,14 @@ export function translateOneMinAiStream(upstreamBody, model, id, created) {
     // "result" repeats the full record already streamed as content events.
   };
 
+  // CRLF and lone CR -> LF. A trailing CR is kept until the next chunk shows
+  // whether it starts a CRLF pair.
+  const normalizeNewlines = (text, final) => {
+    const keepCr = !final && text.endsWith("\r");
+    const body = (keepCr ? text.slice(0, -1) : text).replace(/\r\n?/g, "\n");
+    return keepCr ? `${body}\r` : body;
+  };
+
   const drainBuffer = () => {
     let sep = buffer.indexOf("\n\n");
     while (sep !== -1 && !finished) {
@@ -167,13 +181,17 @@ export function translateOneMinAiStream(upstreamBody, model, id, created) {
         const { done, value } = await reader.read();
         if (cancelled) return;
         if (done) {
-          buffer += decoder.decode();
-          if (buffer.trim()) processEvent(buffer.replace(/\r\n/g, "\n"));
-          finish();
+          buffer = normalizeNewlines(buffer + decoder.decode(), true);
+          if (buffer.trim()) processEvent(buffer);
+          // No `done` event: the upstream stream was cut, not completed.
+          if (!finished) emitError("", STREAM_INCOMPLETE);
           break;
         }
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+        // Append first, then normalize across the whole buffer so a CRLF (or a
+        // blank-line separator) split between network chunks is never lost.
+        buffer = normalizeNewlines(buffer + decoder.decode(value, { stream: true }), false);
         drainBuffer();
+        if (!finished && buffer.length > MAX_STREAM_BUFFER_CHARS) emitError("", STREAM_OVERFLOW);
       }
       if (cancelled) return;
       if (pending.length > 0) controller.enqueue(pending.shift());else
@@ -222,6 +240,9 @@ export class OneMinAiExecutor extends BaseExecutor {
     if (unsupported) {
       return { response: jsonResponse(400, buildErrorBody(400, `1min.ai does not support ${unsupported}`)), url: ONEMINAI_CHAT_URL, headers: {}, transformedBody: body };
     }
+    if (!credentials?.apiKey && !credentials?.accessToken) {
+      return { response: jsonResponse(401, buildErrorBody(401, "1min.ai API key is missing")), url: ONEMINAI_CHAT_URL, headers: {}, transformedBody: body };
+    }
     const url = this.buildUrl(model, stream);
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body);
@@ -231,7 +252,9 @@ export class OneMinAiExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await proxyAwareFetch(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }, proxyOptions);
+      // Quota-bearing dispatch: proxyAwareFetch then refuses redirects (redirect:"error").
+      response = await runQuotaBearingProviderRequest(() =>
+      proxyAwareFetch(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }, proxyOptions));
     } catch (error) {
       if (error?.name === "AbortError" || signal?.aborted) throw error;
       return result(jsonResponse(502, buildErrorBody(502, `1min.ai fetch error: ${error?.message || error}`)));
@@ -257,7 +280,13 @@ export class OneMinAiExecutor extends BaseExecutor {
       }));
     }
 
-    const json = asRecord(await response.json());
+    let json;
+    try {
+      json = asRecord(JSON.parse(await readBoundedResponseText(response, { signal, maxBytes: MAX_JSON_BODY_BYTES, timeoutMs: 30_000, throwOnTimeout: true })));
+    } catch (error) {
+      if (error?.name === "AbortError" || signal?.aborted) throw error;
+      return result(jsonResponse(502, buildErrorBody(502, "1min.ai returned an unreadable response")));
+    }
     const resultObject = asRecord(asRecord(json.aiRecord).aiRecordDetail).resultObject;
     const content = (Array.isArray(resultObject) ? resultObject : []).filter(isString).join("");
     return result(completionResponse(content, model, id, created));

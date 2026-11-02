@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: fetchMock }));
+const quotaMock = vi.hoisted(() => vi.fn((callback) => callback()));
+vi.mock("../../open-sse/services/providerAttemptContext.js", async (orig) => ({ ...(await orig()), runQuotaBearingProviderRequest: quotaMock }));
 
 const { OneMinAiExecutor, buildPrompt, translateOneMinAiStream, ONEMINAI_CHAT_URL } = await import("../../open-sse/executors/oneminai.js");
 const { getExecutor } = await import("../../open-sse/executors/index.js");
@@ -133,5 +135,56 @@ describe("stream errors and cancel", () => {
     const upstream = new ReadableStream({ pull() { return new Promise(() => {}); }, cancel });
     await translateOneMinAiStream(upstream, "m", "id", 1).cancel("client gone");
     expect(cancel).toHaveBeenCalled();
+  });
+});
+
+describe("review fixes", () => {
+  it("handles CRLF framing split across network chunks", async () => {
+    const sse = await readAll(translateOneMinAiStream(streamOf(
+      'event: content\r\ndata: {"content":"A"}\r',
+      '\n\r\nevent: content\r\ndata: {"content":"B"}\r\n\r',
+      "\nevent: done\r\ndata: {}\r\n\r\n",
+    ), "m", "id", 1));
+    expect(deltas(sse).map((c) => c.choices[0].delta.content).filter(Boolean).join("")).toBe("AB");
+    expect(deltas(sse).at(-1).choices[0].finish_reason).toBe("stop");
+  });
+
+  it("handles lone-CR framing", async () => {
+    const sse = await readAll(translateOneMinAiStream(streamOf('event: content\rdata: {"content":"X"}\r\revent: done\rdata: {}\r\r'), "m", "id", 1));
+    expect(deltas(sse).map((c) => c.choices[0].delta.content).filter(Boolean)).toEqual(["X"]);
+  });
+
+  it("a stream without a done event ends with an error, not finish_reason stop", async () => {
+    const reader = translateOneMinAiStream(streamOf('event: content\ndata: {"content":"cut"}\n\n'), "m", "id", 1).getReader();
+    let text = "";
+    await expect((async () => {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        text += new TextDecoder().decode(value);
+      }
+    })()).rejects.toThrow(/ended before completion/);
+    expect(text).not.toContain('"finish_reason":"stop"');
+  });
+
+  it("caps the unparsed buffer", async () => {
+    const huge = "event: content\ndata: " + "x".repeat(1024 * 1024 + 10);
+    const sse = await readAll(translateOneMinAiStream(streamOf(huge), "m", "id", 1));
+    expect(deltas(sse)[0].error.message).toMatch(/size limit/);
+  });
+
+  it("missing API key is a 401 without any upstream call", async () => {
+    fetchMock.mockReset();
+    const { response } = await new OneMinAiExecutor().execute({ model: "m", body: { messages: [{ role: "user", content: "hi" }] }, stream: false, credentials: {}, signal: undefined });
+    expect(response.status).toBe(401);
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).startsWith(ONEMINAI_CHAT_URL))).toHaveLength(0);
+  });
+
+  it("non-stream: unreadable JSON is a 502; dispatch runs as a quota-bearing request", async () => {
+    quotaMock.mockClear();
+    fetchMock.mockImplementation(async (url) => new Response(String(url).startsWith(ONEMINAI_CHAT_URL) ? "<html>oops" : "{}", { status: 200 }));
+    const { response } = await new OneMinAiExecutor().execute({ model: "m", body: { messages: [{ role: "user", content: "hi" }] }, stream: false, credentials: { apiKey: "k" }, signal: undefined });
+    expect(response.status).toBe(502);
+    expect(quotaMock).toHaveBeenCalledTimes(1);
   });
 });

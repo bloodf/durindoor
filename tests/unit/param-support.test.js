@@ -315,8 +315,8 @@ describe("stripUnsupportedParams", () => {
 
 describe("applyParamRenames", () => {
   // Acceptance table for the max_tokens <-> max_completion_tokens normalization
-  // (OmniRoute #6912/#6964). Direction is chosen by the model string alone,
-  // provider-independent; an explicitly set destination field always wins and
+  // (OmniRoute #6912/#6964). Non-OpenAI direction is model-driven;
+  // OpenAI always uses its modern completion-token spelling (#1366); an explicitly set destination field always wins and
   // only one spelling survives. Family set is DurinDoor's dev-parity reasoning set:
   // o1/o3/o4 + the whole gpt-5.x family (matching the pre-port GitHub rule
   // `/gpt-5|o[134]-/i`), NOT the source's narrower exact list.
@@ -344,7 +344,7 @@ describe("applyParamRenames", () => {
     ["volcengine-ark", "DeepSeek-V4-Flash", { max_tokens: 500, max_completion_tokens: 30 }, { max_tokens: 500 }],
     // Reverse rename for any model that supports the legacy field (#6912 else-branch).
     ["volcengine-ark", "DeepSeek-V4-Flash", { max_completion_tokens: 30 }, { max_tokens: 30 }],
-    ["openai", "gpt-4o", { max_completion_tokens: 45 }, { max_tokens: 45 }],
+    ["openai", "gpt-4o", { max_completion_tokens: 45 }, { max_completion_tokens: 45 }],
     // o4 + the whole gpt-5.x family are IN DurinDoor's dev-parity reasoning set
     // (pre-port `/gpt-5|o[134]-/i`), so they forward-rename like the o1/o3 families.
     ["openai", "o4-mini", { max_tokens: 50 }, { max_completion_tokens: 50 }],
@@ -353,15 +353,15 @@ describe("applyParamRenames", () => {
     // Suffix-boundary rejections: no separator after the family token means no
     // match, so these reverse-rename rather than forward-rename. o2 is not a
     // reasoning family member; gpt-5.40 is a gpt-5.x version and forward-renames.
-    ["openai", "o3mini", { max_completion_tokens: 53 }, { max_tokens: 53 }],
-    ["openai", "o2", { max_completion_tokens: 55 }, { max_tokens: 55 }],
+    ["openai-compatible-custom", "o3mini", { max_completion_tokens: 53 }, { max_tokens: 53 }],
+    ["openai-compatible-custom", "o2", { max_completion_tokens: 55 }, { max_tokens: 55 }],
     ["openai", "gpt-5.40", { max_tokens: 54 }, { max_completion_tokens: 54 }],
     // Unrelated control: nonmatching model with only max_tokens is untouched,
     // and substring lookalikes ("v3o1") are not family matches. Hyphen-specific
     // negatives: dashed provider prefix that does not introduce a reasoning family,
     // or a version digit appended without a separator, must not match.
     ["volcengine-ark", "DeepSeek-V4-Flash", { max_tokens: 64000 }, { max_tokens: 64000 }],
-    ["openai", "deepseek-v3o1-chat", { max_tokens: 800 }, { max_tokens: 800 }],
+    ["openai-compatible-custom", "deepseek-v3o1-chat", { max_tokens: 800 }, { max_tokens: 800 }],
     ["databricks", "databricks-gpt-50", { max_completion_tokens: 224 }, { max_tokens: 224 }],
     ["databricks", "databricks-agpt-5", { max_completion_tokens: 225 }, { max_tokens: 225 }],
     ["openai", "gpt-4o", { temperature: 0.7 }, { temperature: 0.7 }],

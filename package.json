@@ -79,9 +79,11 @@
     "zustand": "^5.0.14"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^12.11.1"
+    "better-sqlite3": "^12.11.1",
+    "wreq-js": "3.2.0"
   },
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools \u2014 sql.js is used as fallback at runtime",
+  "comment_wreq_js": "optional prebuilt native TLS client for the OpenCode free tier (open-sse/services/opencodeTlsClient.js); when it is missing, requests fall back to native fetch",
   "comment_pg": "added for the opt-in PostgreSQL engine (see docs/operations/postgres.md); never imported when databaseEngine === 'sqlite'",
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

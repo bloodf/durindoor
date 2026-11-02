@@ -51,7 +51,7 @@ async function getObservabilityConfig() {
 
 let writeBuffer = [];
 let flushTimer = null;
-let isFlushing = false;
+let flushInFlight = null;
 
 
 function generateDetailId(model) {
@@ -82,10 +82,14 @@ function payloadMetadata(value) {
   return metadata;
 }
 
-async function flushToDatabase() {
-  if (isFlushing) return;
-  if (writeBuffer.length === 0) return;
-  isFlushing = true;
+function flushToDatabase() {
+  if (flushInFlight) return flushInFlight;
+  if (writeBuffer.length === 0) return Promise.resolve();
+  flushInFlight = drainWriteBuffer().finally(() => {flushInFlight = null;});
+  return flushInFlight;
+}
+
+async function drainWriteBuffer() {
   try {
     // Drain entire buffer (loop in case more pushed during await)
     while (writeBuffer.length > 0) {
@@ -131,8 +135,6 @@ async function flushToDatabase() {
     }
   } catch (e) {
     console.error("[requestDetailsRepo] Batch write failed:", e);
-  } finally {
-    isFlushing = false;
   }
 }
 
@@ -259,21 +261,47 @@ export async function getDistinctProviders() {
   return rows.map((r) => r.provider);
 }
 
-const _shutdownHandler = async () => {
+const SHUTDOWN_SLOT = Symbol.for("durindoor.requestDetailsRepo.shutdown");
+const SHUTDOWN_EVENTS = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
+
+async function flushPending() {
   if (flushTimer) {clearTimeout(flushTimer);flushTimer = null;}
-  if (writeBuffer.length > 0) await flushToDatabase();
-};
+  if (writeBuffer.length > 0 || flushInFlight) await flushToDatabase();
+}
 
+const _shutdownHandler = () => flushPending();
+const registration = { handler: _shutdownHandler, flush: flushPending };
+
+function removeShutdownListeners(handler) {
+  for (const evt of SHUTDOWN_EVENTS) process.off(evt, handler);
+}
+
+/**
+ * Release this module instance's process listeners and persist buffered rows.
+ * Clears the pending flush timer, awaits any buffered/in-flight writes, removes
+ * only this instance's beforeExit/SIGINT/SIGTERM/exit handlers, and clears the
+ * global registration slot when this instance owns it. Call before closing the
+ * DB adapter or deleting DATA_DIR (e.g. test teardown before vi.resetModules()).
+ * @returns {Promise<void>}
+ */
+export async function disposeRequestDetailsRepo() {
+  removeShutdownListeners(_shutdownHandler);
+  if (globalThis[SHUTDOWN_SLOT] === registration) delete globalThis[SHUTDOWN_SLOT];
+  await flushPending();
+}
+
+// Module reloads (HMR, vi.resetModules) create a new handler identity, so the
+// active registration lives on globalThis: hand off from the previous instance
+// (flush its buffer, drop only its listeners) instead of accumulating handlers.
 function ensureShutdownHandler() {
-  process.off("beforeExit", _shutdownHandler);
-  process.off("SIGINT", _shutdownHandler);
-  process.off("SIGTERM", _shutdownHandler);
-  process.off("exit", _shutdownHandler);
-
-  process.on("beforeExit", _shutdownHandler);
-  process.on("SIGINT", _shutdownHandler);
-  process.on("SIGTERM", _shutdownHandler);
-  process.on("exit", _shutdownHandler);
+  const previous = globalThis[SHUTDOWN_SLOT];
+  if (previous && previous !== registration) {
+    removeShutdownListeners(previous.handler);
+    Promise.resolve().then(previous.flush).catch((e) => console.error("[requestDetailsRepo] previous instance flush err:", e));
+  }
+  removeShutdownListeners(_shutdownHandler);
+  for (const evt of SHUTDOWN_EVENTS) process.on(evt, _shutdownHandler);
+  globalThis[SHUTDOWN_SLOT] = registration;
 }
 
 ensureShutdownHandler();

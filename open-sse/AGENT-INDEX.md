@@ -265,6 +265,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `logfare` |  | apikey | `https://logfare.ai/v1/chat/completions` |
 | `longcat` |  | apikey | `https://api.longcat.chat/openai/v1/chat/completions` |
 | `lyceum` |  | apikey | `https://api.lyceum.technology/openai/v1/chat/completions` |
+| `magnific` |  | apikey | `` |
 | `maritalk` |  | apikey | `https://chat.maritaca.ai/api/chat/completions` |
 | `meganova-ai` |  | apikey | `https://api.meganova.ai/v1/chat/completions` |
 | `meta-llama` |  | apikey | `https://api.llama.com/compat/v1/chat/completions` |

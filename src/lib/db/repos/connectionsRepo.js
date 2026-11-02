@@ -95,7 +95,7 @@ const AUTO_PING_SETTINGS_KEYS = {
 // `enabled`: undefined keeps the reactive flag. `schedule`: undefined keeps the
 // stored schedule, null removes it, an object replaces it. Disabling a
 // connection (enabled false, schedule null) clears both.
-function updateAutoPingEntryInTx(db, provider, connectionId, enabled, schedule = null) {
+function updateAutoPingEntryInTx(db, provider, connectionId, enabled, schedule = undefined) {
   const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
   if (!settingsKey) return null;
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -439,7 +439,7 @@ export async function updateProviderConnection(id, data, {
     }
     const merged = { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: new Date().toISOString() };
     upsert(db, merged);
-    if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
+    if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false, null);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = returnCommitResult ? { applied: true, connection: merged } : merged;
   });
@@ -665,7 +665,7 @@ export async function deleteProviderConnection(id) {
     const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     assertDeletionDoesNotBroadenScopedKeys(db, [id]);
-    updateAutoPingEntryInTx(db, row.provider, id, false);
+    updateAutoPingEntryInTx(db, row.provider, id, false, null);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider);
     ok = true;
@@ -718,7 +718,7 @@ export async function deleteProviderConnectionsByProvider(providerId) {
       });
     }
     assertDeletionDoesNotBroadenScopedKeys(db, rows.map((row) => row.id));
-    for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false);
+    for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false, null);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
     count = rows.length;
   });

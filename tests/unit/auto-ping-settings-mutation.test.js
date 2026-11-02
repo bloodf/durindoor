@@ -132,4 +132,12 @@ describe("connection-scoped auto-ping persistence", () => {
     expect((await db.getSettings()).codexAutoPing.schedules).not.toHaveProperty(kept.id);
     await expect(db.setProviderConnectionAutoPing(disabled.id, undefined, schedule)).rejects.toMatchObject({ code: "AUTO_PING_INELIGIBLE" });
   });
+
+  it("keeps the stored schedule when the flag is toggled without a schedule", async () => {
+    const schedule = { enabled: true, anchor: "09:30", timezone: "UTC", windowHours: 5, slotsPerDay: 3 };
+    const conn = await createOAuth("codex", "schedule-toggle@example.com");
+    await db.setProviderConnectionAutoPing(conn.id, undefined, schedule);
+    await expect(db.setProviderConnectionAutoPing(conn.id, true)).resolves.toMatchObject({ enabled: true, schedule });
+    expect((await db.getSettings()).codexAutoPing.schedules).toHaveProperty(conn.id, schedule);
+  });
 });

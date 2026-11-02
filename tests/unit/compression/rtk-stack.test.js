@@ -164,3 +164,43 @@ describe("rtk stack engine", () => {
     expect(dispatched.messages.find((m) => m.role === "tool").content).toBe(longDiff());
   });
 });
+
+describe("rtk stack step is fidelity-gated at its dedicated position", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.handleNonStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
+    mocks.execute.mockImplementation(async () => ({
+      response: new Response(JSON.stringify({ id: "x", object: "chat.completion", choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop", index: 0 }] }), { status: 200, headers: { "content-type": "application/json" } }),
+      url: "https://example.test", headers: {}, transformedBody: null,
+    }));
+  });
+  const fenced = () => {
+    const b = chatBody();
+    b.messages[2].content = "```diff\n" + longDiff() + "\n```";
+    return b;
+  };
+  const toolText = (r) => r.dispatched.messages.find((m) => m.role === "tool").content;
+
+  it("rolls back RTK that alters fenced code when rtk is a stack step", async () => {
+    const r = await run({ body: fenced(), ...RTK_ONLY_STACK });
+    expect(toolText(r)).toBe(fenced().messages[2].content);
+    expect(r.rtk?.hits ?? 0).toBe(0);
+  });
+
+  it("the plain RTK toggle keeps its ungated behavior", async () => {
+    const r = await run({ body: fenced(), rtkEnabled: true });
+    expect(toolText(r).length).toBeLessThan(fenced().messages[2].content.length);
+  });
+
+  it("text invariants roll back lossy RTK only when compressionFidelityGate is on", async () => {
+    const logBody = () => {
+      const b = chatBody();
+      b.messages[2].content = Array.from({ length: 80 }, (_, i) => `2026-10-31T12:00:${String(i % 60).padStart(2, "0")}Z INFO heartbeat ok`).join("\n");
+      return b;
+    };
+    const off = await run({ body: logBody(), ...RTK_ONLY_STACK });
+    const on = await run({ body: logBody(), ...RTK_ONLY_STACK, compressionFidelityGate: true });
+    expect(toolText(off).length).toBeLessThan(logBody().messages[2].content.length);
+    expect(toolText(on)).toBe(logBody().messages[2].content);
+  });
+});

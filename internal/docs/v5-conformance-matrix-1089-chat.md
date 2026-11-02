@@ -6,8 +6,8 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
-| Request | Namespaced tool, keyword schema, strict false, named choice, parallel false | Chat | already-present | `preserves namespaced tool, keyword schema, strict false, named choice, and parallel false in Chat` |
-| Request | Namespaced tool, keyword schema, named choice | Claude | already-present | `translates namespaced tool, keyword schema, and named choice to Claude` |
+| Request | Namespaced tool, keyword schema, strict false, named choice, parallel false | Chat | already-present | `preserves namespaced tool, keyword schema, strict false, named choice, and parallel false in Chat` (dotted `ns.search` aliased for OpenAI Chat `^[a-zA-Z0-9_-]{1,64}$` with `_toolNameMap` round-trip; Refs #1343) |
+| Request | Namespaced tool, keyword schema, named choice | Claude | already-present | `translates namespaced tool, keyword schema, and named choice to Claude` (dotted `ns.search` aliased for Anthropic `^[a-zA-Z0-9_-]{1,64}$` with `_toolNameMap` round-trip; Refs #1343) |
 | Request | Namespaced tool, keyword schema, named choice | Gemini | already-present | `translates namespaced tool, keyword schema, and named choice to Gemini` |
 | Request | Namespaced tool, strict false | Responses | already-present | `translates namespaced tool and strict false to Responses` |
 | Request | strict true | Claude | already-present | `preserves explicit strict=true through Claude` |

@@ -11,6 +11,7 @@ import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, sav
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
+import { restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToGemini, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
 import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
@@ -306,6 +307,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
           delete message.reasoning;
         }
       }
+      // Same-format Chat skips translateResponse; restore request-side aliases here
+      // so clients never see the upstream-safe rewrite (#1343).
+      restoreOpenAIToolNames(responseBody, options.toolNameMap);
     }
     return responseBody;
   }

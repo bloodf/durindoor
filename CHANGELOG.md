@@ -22,8 +22,10 @@
 
 - chore(runtime): The runtime is now Node.js 26.13.0 LTS / npm 11.20.0 (was Node.js 20.20.2 / npm 10.8.2). The published CLI requires Node.js >=26.13.0, the Docker image uses `node:26.13.0-alpine`, and better-sqlite3 installs from prebuilt binaries instead of compiling from source.
 
+- fix(providers): Route OpenAI Responses clients (Codex) of Kimi Coding API Key to the native `https://api.kimi.com/coding/v1/responses` endpoint instead of translating to Messages; Chat and Claude clients keep their current transport (upstream 9router 3125ac2, #1368).
 - ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
 - fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so after the upgrade they return 403 to all callers, including operators.
+- chore(deps-dev): Update the test package to vitest 4.1.12 (vite 8.3.5, source-map-js 1.2.2) and happy-dom 21.0.4, clearing its `npm audit` advisories (#1412). The earlier happy-dom 20.14 overlay failures came from two tests restoring a `CSSStyleDeclaration` property descriptor that newer happy-dom rejects; those tests now restore only the value.
 
 ## Features
 

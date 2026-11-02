@@ -229,6 +229,12 @@ if (fs.existsSync(betterDir)) {
   fs.rmSync(betterDir, { recursive: true, force: true });
   console.log("✅ Stripped better-sqlite3 (lives in ~/.9router/runtime)");
 }
+// wreq-js ships a per-platform native binding, so the build host's copy is
+// wrong elsewhere. cli/package.json lists it in optionalDependencies, so the
+// global install fetches the user's binding; without it OpenCode uses fetch.
+for (const pkg of ["wreq-js", "@wreq-js"]) {
+  fs.rmSync(path.join(cliAppDir, "node_modules", pkg), { recursive: true, force: true });
+}
 console.log("");
 
 console.log("4️⃣  Copying static files...");

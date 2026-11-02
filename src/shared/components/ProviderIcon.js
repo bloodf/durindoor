@@ -66,6 +66,7 @@ const KNOWN_SVGS = new Set([
 "nube",
 "nvidia",
 "ollama",
+"openadapter",
 "openai",
 "openclaw",
 "opencode",

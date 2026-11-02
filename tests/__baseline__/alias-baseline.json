@@ -175,9 +175,7 @@
     "xai": "xai",
     "xiaomi-mimo": "xiaomi-mimo",
     "xiaomi-tokenplan": "xiaomi-tokenplan",
-    "xkiro": "xkiro",
-    "yolo-auto": "yolo-auto",
-    "zerolimitai": "zerolimitai"
+    "yolo-auto": "yolo-auto"
   },
   "modelKeys": [
     "ag",
@@ -270,8 +268,6 @@
     "xai",
     "xiaomi-mimo",
     "xiaomi-tokenplan",
-    "xkiro",
-    "yolo-auto",
-    "zerolimitai"
+    "yolo-auto"
   ]
 }

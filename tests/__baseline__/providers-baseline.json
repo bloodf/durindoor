@@ -2140,12 +2140,6 @@
     "format": "openai",
     "thinkingFormat": "openai"
   },
-  "xkiro": {
-    "baseUrl": "https://api.xkiro.com/v1/chat/completions",
-    "validateUrl": "https://api.xkiro.com/v1/models",
-    "format": "openai",
-    "authType": "apikey"
-  },
   "yi": {
     "baseUrl": "https://api.lingyiwanwu.com/v1/chat/completions",
     "format": "openai"
@@ -2265,11 +2259,5 @@
     },
     "clientId": "1031625952748946",
     "tokenUrl": "https://auth.meta.com/oidc/device/token/"
-  },
-  "zerolimitai": {
-    "baseUrl": "https://www.zerolimitai.com/api/v1/chat/completions",
-    "validateUrl": "https://www.zerolimitai.com/api/v1/models",
-    "format": "openai",
-    "authType": "apikey"
   }
 }

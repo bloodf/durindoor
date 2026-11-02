@@ -5,6 +5,7 @@ import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeo
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
+import { initState } from "../../translator/index.js";
 import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
 import { extractCompleteSseFrames } from "../../utils/streamHelpers.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -474,7 +475,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
         }
 
-        const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
+        const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model, {
+          chatCustomToolNames: sourceFormat === FORMATS.OPENAI ? initState(FORMATS.OPENAI, body).chatCustomToolNames : new Set(),
+          toolNameMap
+        });
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
         const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).

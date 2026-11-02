@@ -4,6 +4,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const require = createRequire(import.meta.url);
 const { createOwnerAwareHandler } = require("../../custom-server.js");
 const WRAPPER_PEER_TOKEN = "connection-groups-wrapper-peer";
@@ -47,7 +48,8 @@ beforeEach(async () => {
   }
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (originalDataDir === undefined) delete process.env.DATA_DIR;

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const originalDataDir = process.env.DATA_DIR;
 // Anchor mid-afternoon in Los Angeles (23:30 UTC → 16:30 LA) so the fixture sits
 // well inside the LA calendar day. An anchor just after LA midnight leaves only
@@ -40,7 +41,7 @@ beforeAll(async () => {
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
   vi.useRealTimers();
   // Release this file's database so a later file opens its own instead of
   // inheriting a handle onto the temp dir removed below.
@@ -49,6 +50,7 @@ afterAll(() => {
     global._dbAdapter.initPromise = null;
     global._dbAdapter.file = null;
   }
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

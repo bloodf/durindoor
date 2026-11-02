@@ -7,6 +7,7 @@ import migration from "../../src/lib/db/migrations/022-token-saver-daily.js";
 import { backfillTokenSaverDaily } from "../../src/lib/db/migrations/token-saver-daily-schema.js";
 import { getUsageCalendarCutoff, toLocalDateKey, addLocalCalendarDays } from "../../src/lib/usagePeriods.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const now = new Date("2026-09-20T12:00:00.000Z");
 let oldDataDir, oldTZ, dir, repo, db;
 beforeEach(async () => {
@@ -18,12 +19,13 @@ beforeEach(async () => {
   repo = await import("@/lib/db/repos/usageRepo.js");
   db = await (await import("@/lib/db/driver.js")).getAdapter();
 });
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter; delete global._statsEmitTimers;
   if (oldDataDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = oldDataDir;
   if (oldTZ === undefined) delete process.env.TZ; else process.env.TZ = oldTZ;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 const events = [

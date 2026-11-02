@@ -12,7 +12,7 @@ const db = vi.hoisted(() => ({
   getInstanceById: vi.fn(),
   updateInstance: vi.fn(),
 }));
-const control = vi.hoisted(() => ({ callTool: vi.fn(), listTools: vi.fn() }));
+const control = vi.hoisted(() => ({ callTool: vi.fn(), listTools: vi.fn(), TOOLS: {} }));
 
 vi.mock("@/lib/localDb", () => db);
 vi.mock("@/lib/db/repos/connectionsRepo.js", () => ({

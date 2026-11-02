@@ -6,6 +6,7 @@ import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from 
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { isNonAdminApiKeyCaller } from "@/dashboardGuard";
 
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
 
@@ -88,7 +89,7 @@ async function refreshCodexConnection(connection, proxyOptions) {
   }
 }
 
-export async function GET(_request, { params }) {
+export async function GET(request, { params }) {
   let connection;
   try {
     const { connectionId } = await params;
@@ -98,6 +99,10 @@ export async function GET(_request, { params }) {
     const { isOAuth, proxyOptions } = resolved;
 
     if (isOAuth) {
+      // A refresh rewrites stored credentials, so it needs the change principal.
+      if (await isNonAdminApiKeyCaller(request)) {
+        return Response.json({ error: "Refreshing OAuth credentials requires an admin-scoped API key" }, { status: 403 });
+      }
       const refreshed = await refreshCodexConnection(connection, proxyOptions);
       if (refreshed.response) return refreshed.response;
       connection = refreshed.connection;

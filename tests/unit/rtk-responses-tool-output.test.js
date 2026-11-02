@@ -50,6 +50,15 @@ describe("RTK Responses tool outputs", () => {
     expect(b.input).toEqual(failing);
   });
 
+  it("recognizes other exit-status header formats", () => {
+    for (const header of ["exit code: 2", "Exit status 1", "Process exited with code 137", "exited with code=3"]) {
+      const b = body({ type: "function_call_output", call_id: "e", output: `${header}\n${LOG}` });
+      expect(compressMessages(b, true).hits, header).toEqual([]);
+    }
+    const ok = body({ type: "function_call_output", call_id: "ok2", output: `Process exited with code 0\n${LOG}` });
+    expect(compressMessages(ok, true).hits).toHaveLength(1);
+  });
+
   it("still compresses a successful Codex exec output", () => {
     const b = body({ type: "function_call_output", call_id: "ok", output: `Exit code: 0\nWall time: 1 seconds\nOutput:\n${LOG}` });
     expect(compressMessages(b, true).hits).toHaveLength(1);

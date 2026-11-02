@@ -9,8 +9,9 @@ const RESPONSES_TOOL_OUTPUT_LAYOUT = {
   function_call_output: "openai-responses",
   custom_tool_call_output: "openai-responses-custom"
 };
-// Codex exec output header: "Exit code: <n>\nWall time: ...\nOutput:\n...".
-const CODEX_EXIT_CODE_RE = /^Exit code: (-?\d+)\b/;
+// Exit-status headers at the start of a tool output: Codex "Exit code: <n>",
+// and the common "exit code <n>", "exit status <n>", "Process exited with code <n>".
+const CODEX_EXIT_CODE_RE = /^\s*(?:process exited with code|exit(?:ed with)? (?:code|status))[:=]?\s*(-?\d+)\b/i;
 
 function responsesOutputText(output) {
   if (isString(output)) return output;

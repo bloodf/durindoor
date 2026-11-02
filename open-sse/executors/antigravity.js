@@ -7,13 +7,12 @@ import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
+import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore.js";
-import { isGemini4Model } from "../providers/capabilities.js";
 
 /**
  * Preserve common OpenCode casing while rewriting branding at the Antigravity boundary.
@@ -196,15 +195,6 @@ function buildIdeRequestId({ body, request, credentials, model, requestType }) {
   const contentCount = Array.isArray(request?.contents) ? request.contents.length : 1;
   const step = Math.max(1, contentCount * 2 - 1);
   return `agent/${conversationId}/${Date.now()}/${trajectoryId}/${step}`;
-}
-
-// Gemini 4 rejects a user turn whose last part is not a functionResponse.
-function moveFunctionResponsesLast(content) {
-  if (content?.role !== "user" || !content.parts?.some((part) => part?.functionResponse)) return content;
-  return {
-    ...content,
-    parts: [...content.parts.filter((part) => !part?.functionResponse), ...content.parts.filter((part) => part?.functionResponse)]
-  };
 }
 
 export class AntigravityExecutor extends BaseExecutor {
@@ -458,17 +448,12 @@ export class AntigravityExecutor extends BaseExecutor {
     }
     // Gemini 4 request rules apply at the provider boundary so every source
     // format (OpenAI, Claude, native Gemini) is covered (upstream eb373017).
-    const gemini4 = isGemini4Model(model);
-    if (gemini4) {
-      delete generationConfig.temperature;
-      delete generationConfig.topP;
-      delete generationConfig.topK;
-    }
-    const finalContents = gemini4 ? contents.map(moveFunctionResponsesLast) : contents;
+    const { generationConfig: finalGenerationConfig, contents: finalContents } =
+    applyGemini4RequestRules({ generationConfig, contents }, model);
 
     const transformedRequest = {
       ...requestWithoutTools,
-      generationConfig,
+      generationConfig: finalGenerationConfig,
       ...(finalContents.length > 0 && { contents: finalContents }),
       ...(tools && { tools }),
       sessionId,

@@ -25,11 +25,11 @@ describe("Claude Opus 5.5", () => {
     expect(anthropic.models.map((m) => m.id)).toContain("claude-opus-5-5");
   });
 
-  it("spoofs Claude Code 2.1.282, at or above 2.1.280 (the first CLI Anthropic accepts for Opus 5.5)", () => {
-    expect(CLAUDE_CLI_VERSION).toBe("2.1.282");
-    expect(CLAUDE_CLI_SPOOF_HEADERS["User-Agent"]).toBe("claude-cli/2.1.282 (external, sdk-cli)");
+  it("spoofs Claude Code 2.1.312, at or above 2.1.280 (the first CLI Anthropic accepts for Opus 5.5)", () => {
+    expect(CLAUDE_CLI_VERSION).toBe("2.1.312");
+    expect(CLAUDE_CLI_SPOOF_HEADERS["User-Agent"]).toBe("claude-cli/2.1.312 (external, sdk-cli)");
     const body = applyCloaking({ messages: [] }, "sk-ant-oat-test", "session-id");
-    expect(body.system[0].text).toMatch(/^x-anthropic-billing-header: cc_version=2\.1\.282\./);
+    expect(body.system[0].text).toMatch(/^x-anthropic-billing-header: cc_version=2\.1\.312\./);
   });
 
   it("resolves its own price instead of the generic Opus row", () => {
@@ -73,10 +73,10 @@ describe("Claude Opus 5.5", () => {
   });
 
   it("lets CLAUDE_CODE_CLIENT_VERSION override the pin, ignoring unsafe values", () => {
-    expect(resolveClaudeCliVersion({})).toBe("2.1.282");
-    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: " 2.1.300 " })).toBe("2.1.300");
-    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "2.1.300\r\nX-Evil: 1" })).toBe("2.1.282");
-    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "" })).toBe("2.1.282");
+    expect(resolveClaudeCliVersion({})).toBe("2.1.312");
+    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: " 2.1.320 " })).toBe("2.1.320");
+    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "2.1.320\r\nX-Evil: 1" })).toBe("2.1.312");
+    expect(resolveClaudeCliVersion({ CLAUDE_CODE_CLIENT_VERSION: "" })).toBe("2.1.312");
   });
 
   it("drops top_p and top_k, which Opus 5.5 rejects, but keeps them for Opus 5", () => {
@@ -167,6 +167,12 @@ describe("client beta forwarding", () => {
     expect(tokens).toContain("effort-2025-11-24");
     expect(tokens.filter((token) => token === "inline-tools-2026-09-15")).toHaveLength(1);
     expect(tokens.filter((token) => token === "timing-2026-09-09")).toHaveLength(1);
+    // anthropic-compatible-* uses the third-party (pre-PR) pin, not first-party-gated flags.
+    expect(headers["Anthropic-Beta"]).toBe(
+      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01,effort-2025-11-24,inline-tools-2026-09-15,timing-2026-09-09",
+    );
+    expect(headers["Anthropic-Beta"]).not.toContain("thinking-binding-controls-2026-08-01");
+    expect(headers["Anthropic-Beta"]).not.toContain("cache-diagnosis-2026-04-07");
     const otherModel = executor.buildHeaders({ apiKey: "key" }, true, {
       clientHeaders: { "Anthropic-Beta": "inline-tools-2026-09-15" },
     }, "kimi-k3");
@@ -183,7 +189,7 @@ describe("Claude model discovery headers", () => {
       Authorization: "Bearer sk-ant-oat01-abc",
       "Anthropic-Beta": "oauth-2025-04-20",
       "Anthropic-Version": "2023-06-01",
-      "User-Agent": "claude-cli/2.1.282 (external, sdk-cli)",
+      "User-Agent": "claude-cli/2.1.312 (external, sdk-cli)",
     });
     expect(headers["x-api-key"]).toBeUndefined();
   });

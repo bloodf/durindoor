@@ -177,7 +177,8 @@
     "volcengine-ark": "volcengine-ark",
     "xai": "xai",
     "xiaomi-mimo": "xiaomi-mimo",
-    "xiaomi-tokenplan": "xiaomi-tokenplan"
+    "xiaomi-tokenplan": "xiaomi-tokenplan",
+    "zylo-api": "zylo"
   },
   "modelKeys": [
     "ag",
@@ -272,6 +273,7 @@
     "voyage-ai",
     "xai",
     "xiaomi-mimo",
-    "xiaomi-tokenplan"
+    "xiaomi-tokenplan",
+    "zylo"
   ]
 }

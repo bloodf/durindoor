@@ -12,15 +12,18 @@ vi.mock("@/lib/usageDb.js", () => ({
 }));
 
 const frame = (value) => `data: ${JSON.stringify(value)}\n\n`;
-function options(error, partial = false) {
-  const prefix = partial ? frame({
+const completeMessage = frame({
+  id: "done", model: "test", choices: [{ index: 0, delta: { content: "complete text" }, finish_reason: "stop" }],
+});
+function options(error, partial = false, { prefixFrames = "", sourceFormat = FORMATS.OPENAI, targetFormat = FORMATS.OPENAI } = {}) {
+  const prefix = prefixFrames || (partial ? frame({
     id: "partial", model: "test", choices: [{ index: 0, delta: { content: "partial text" }, finish_reason: null }],
-  }) : "";
+  }) : "");
   return {
     providerResponse: new Response(prefix + frame({ error }) + "data: [DONE]\n\n", {
       status: 200, headers: { "content-type": "text/event-stream" },
     }),
-    provider: "openai", model: "test", sourceFormat: FORMATS.OPENAI, targetFormat: FORMATS.OPENAI,
+    provider: "openai", model: "test", sourceFormat, targetFormat,
     body: { messages: [{ role: "user", content: "hello" }] }, stream: false,
     translatedBody: null, finalBody: null, requestStartTime: Date.now(), connectionId: "test-1355",
     onRequestSuccess: vi.fn(async () => {}), trackDone: vi.fn(), appendLog: vi.fn(),
@@ -63,6 +66,27 @@ describe.each([
     expect(opts.onRequestSuccess).not.toHaveBeenCalled();
     expect(saveUsageStats).not.toHaveBeenCalled();
     expect(opts.trackDone).toHaveBeenCalledOnce();
+  });
+
+  it("uses 502 for an OpenRouter-style envelope with code but no status", async () => {
+    const result = await handle(options({ code: 502, message: "Provider returned error" }));
+    expect(result).toMatchObject({ success: false, status: 502, error: "Provider returned error" });
+  });
+
+  it("rejects an error frame that follows a complete message", async () => {
+    const opts = options({ status: 429, message: "late failure" }, false, { prefixFrames: completeMessage });
+    const result = await handle(opts);
+    expect(result).toMatchObject({ success: false, status: 429, error: "late failure" });
+    expect(JSON.stringify(await result.response.json())).not.toContain("complete text");
+    expect(opts.onRequestSuccess).not.toHaveBeenCalled();
+    expect(saveUsageStats).not.toHaveBeenCalled();
+  });
+
+  it("preserves the status for a Claude-source request routed to a KIRO target", async () => {
+    const opts = options({ status: 429, message: "Upstream unavailable" }, false, { sourceFormat: FORMATS.CLAUDE, targetFormat: FORMATS.KIRO });
+    const result = await handle(opts);
+    expect(result).toMatchObject({ success: false, status: 429, error: "Upstream unavailable" });
+    expect(opts.onRequestSuccess).not.toHaveBeenCalled();
   });
 
   it.each([{}, { message: {} }, { message: "" }])("uses a safe fallback for absent/non-string error message %j", async (error) => {

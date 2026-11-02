@@ -6,7 +6,7 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS, CLAUDE_CLI_VERSION } from "../../providers/shared.js";
+import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS, CLAUDE_CLI_VERSION, buildClaudeOAuthAnthropicBeta } from "../../providers/shared.js";
 import { U, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
@@ -67,7 +67,7 @@ function buildOAuthUsageHeaders(accessToken) {
   return {
     "Authorization": `Bearer ${accessToken}`,
     ...CLAUDE_CLI_SPOOF_HEADERS,
-    "Anthropic-Beta": `${CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]},oauth-2025-04-20`,
+    "Anthropic-Beta": buildClaudeOAuthAnthropicBeta(),
     // cedar_ember grant eligibility is gated on this exact UA (see const above).
     "User-Agent": CEDAR_EMBER_USER_AGENT
   };
@@ -375,7 +375,7 @@ export async function consumeClaudeResetGrant(accessToken, grantId, proxyOptions
 
   const headers = {
     "Authorization": `Bearer ${accessToken}`,
-    "Anthropic-Beta": `${CLAUDE_CLI_SPOOF_HEADERS["Anthropic-Beta"]},oauth-2025-04-20`,
+    "Anthropic-Beta": buildClaudeOAuthAnthropicBeta(),
     "Anthropic-Version": CLAUDE_CONFIG.apiVersion,
     "User-Agent": CEDAR_EMBER_USER_AGENT,
     "Content-Type": "application/json"

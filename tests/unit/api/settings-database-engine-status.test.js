@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { disposeLoadedRequestDetailsRepo } from "../../utils/requestDetailsCleanup.js";
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), settings: vi.fn(), activeEngine: vi.fn(), secret: vi.fn(), probe: vi.fn() }));
 vi.mock("@/app/api/settings/database/route", () => ({ requireDatabaseDualAuth: mocks.auth }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: mocks.settings, getSettingsSync: vi.fn(), updateSettings: vi.fn() }));
@@ -34,8 +35,9 @@ beforeEach(async () => {
   route = await import("@/app/api/settings/database/engine/route.js");
   startup = await import("@/app/api/settings/database/startup-env/route.js");
 });
-afterEach(() => {
+afterEach(async () => {
   process.env = savedEnv;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(directory, { recursive: true, force: true });
 });
 

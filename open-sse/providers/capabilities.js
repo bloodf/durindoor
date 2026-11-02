@@ -763,6 +763,8 @@ export const PATTERN_CAPABILITIES = [
 
 // ── Gemini (all 2.0+ multimodal + google_search grounding, 1M ctx) ─
 { pattern: "*gemini*image*", caps: { vision: true, imageOutput: true, contextWindow: 1048576 } },
+// Gemini 4 (Argon): no "minimal" tier and cannot disable thinking (upstream 9router 29fc880e).
+{ pattern: "*gemini-4*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxOutput: 65536 } },
 { pattern: "*gemini-3.8*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65536 } },
 { pattern: "*gemini-3*pro*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65535 } },
 { pattern: "*gemini-3*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65536 } },
@@ -1381,4 +1383,12 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     known: false,
     source: "default"
   });
+}
+
+/**
+ * Gemini 4 (Argon) rejects sampling params and merged user turns whose last
+ * part is not a functionResponse (upstream 9router eb373017 / #4802).
+ */
+export function isGemini4Model(model) {
+  return /(?:^|\/)gemini-4(?:$|[-.])/i.test(String(model || ""));
 }

@@ -9,8 +9,8 @@ import { checkModelLifecycle } from "../../open-sse/handlers/chatCore/modelLifec
 const CURRENT_DATE = new Date("2026-07-26T00:00:00.000Z");
 
 describe("model lifecycle", () => {
-  it("keeps all 29 source-verified lifecycle records", () => {
-    expect(MODEL_LIFECYCLE_RECORDS).toHaveLength(29);
+  it("keeps all 33 source-verified lifecycle records", () => {
+    expect(MODEL_LIFECYCLE_RECORDS).toHaveLength(33);
   });
 
   it("flags Kimi Platform K2 models as deprecated until 2026-12-31", () => {

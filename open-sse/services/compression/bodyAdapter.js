@@ -14,7 +14,8 @@ import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChec
 
 
 
-const RESPONSES_MESSAGE_TYPES = new Set(["message", "function_call_output"]);
+const RESPONSES_MESSAGE_TYPES = new Set(["message", "function_call_output", "custom_tool_call_output"]);
+const RESPONSES_TOOL_OUTPUT_TYPES = new Set(["function_call_output", "custom_tool_call_output"]);
 const COMPRESSION_INPUT_INDEX = Symbol("compressionInputIndex");
 
 // Kiro envelope path back to the original tool-result text inside
@@ -64,7 +65,7 @@ function responsesItemToMessage(item) {
   const type = isString(item.type) ? item.type : "message";
   if (!RESPONSES_MESSAGE_TYPES.has(type)) return null;
 
-  if (type === "function_call_output") {
+  if (RESPONSES_TOOL_OUTPUT_TYPES.has(type)) {
     const rawOutput = item.output ?? item.content;
     // OpenAI Responses shape (Codex): body.input holds Responses items. When
     // output is a JSON object (not a string or content array), serialise it so
@@ -89,7 +90,7 @@ function responsesItemToMessage(item) {
 
 function messageToResponsesItem(message, originalItem) {
   const type = isString(originalItem.type) ? originalItem.type : "message";
-  if (type === "function_call_output") {
+  if (RESPONSES_TOOL_OUTPUT_TYPES.has(type)) {
     return {
       ...originalItem,
       output: fromChatContent(message.content, originalItem.output)

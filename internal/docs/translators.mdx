@@ -61,6 +61,20 @@ version-after-name, provider prefixes, and date suffixes are covered. The Copilo
 dotted-model and GPT max-effort rules tracked by the same issue are not part of this
 change, and the forced-tool-choice guard is unchanged.
 
+## OpenAI token-cap normalization
+
+Port `decolua/9router@7c42d8f87bac934184f633f985c8a944c8c6336e`
+(#1366) adds a provider-scoped `renameParams` rule in `paramSupport.js`.
+Renames run before a matching rule's output ceiling clamp and keep an explicit
+destination value. `DefaultExecutor` calls `applyParamRenames` before
+`stripUnsupportedParams`, so the earlier helper also selects OpenAI's forward
+rename. Otherwise GPT-6's explicit `max_completion_tokens` would be lost to the
+fork's legacy reverse normalization before the final guard runs. Non-OpenAI
+provider/model behavior remains unchanged. Tests cover the Chat executor transform,
+both field spellings, explicit zero, compatibility controls, and clamp order.
+The separate Chat-to-Responses translation is outside this port; native
+Responses `max_output_tokens` remains untouched by these helpers.
+
 ## Non-streaming SSE errors
 
 Port `decolua/9router@56dbf466f10787d284b09bd28e35c0f7171b6d06`
@@ -75,6 +89,27 @@ redacted just as they are on the existing HTTP-error path.
 Both paths log FAILED before any success accounting or cleanup callback;
 their existing finally blocks still call `trackDone` once. The existing
 finish-reason error and native Responses conversion contracts are unchanged.
+
+## Forced SSE with a Claude transport
+
+`handleForcedSSEToJson` buffers the stream when a provider forces SSE and the
+client asked for JSON. For `targetFormat: "claude"` (`kimi-coding`,
+`kimi-coding-apikey`, and `opencode`'s `union-alpha`) it feeds each Anthropic event to
+`claudeToOpenAIResponse`, then aggregates a Chat completion for classification,
+accounting, and non-Claude clients. The terminal tracker sees the raw events with
+format `claude`: a stream without `message_stop` stays a 502, and an `error` event
+is an error even after partial content or a terminal.
+
+Tool input that does not parse is a 502 for every client unless `stop_reason` is
+`max_tokens`; then the incomplete block is dropped and the turn succeeds. A stream
+without `message_start`, or a block event with a non-integer `index`, is a 502. A
+coherent turn with no usable output succeeds and calls `onEmptyStream`, as the
+streaming path does.
+
+Claude clients do not take the Chat hop's content. `foldClaudeEventsToMessage`
+rebuilds the message so thinking signatures, redacted thinking, block order,
+`stop_reason`, `stop_sequence`, and exclusive cache usage survive. A provider that
+answers with Chat chunks on this transport keeps the Chat parser.
 
 ## Tests
 

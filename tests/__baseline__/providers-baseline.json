@@ -1432,6 +1432,12 @@
     "validateUrl": "https://api.nanobananaapi.ai/v1/models",
     "format": "openai"
   },
+  "navy": {
+    "baseUrl": "https://api.navy/v1/chat/completions",
+    "validateUrl": "https://api.navy/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "nebius": {
     "baseUrl": "https://api.studio.nebius.ai/v1/chat/completions",
     "validateUrl": "https://api.studio.nebius.ai/v1/models",
@@ -1455,6 +1461,12 @@
       "dropClientMetadata": true
     },
     "format": "openai"
+  },
+  "ofoxai": {
+    "baseUrl": "https://api.ofox.ai/v1/chat/completions",
+    "validateUrl": "https://api.ofox.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "ollama-local": {
     "baseUrl": "http://localhost:11434",
@@ -1648,6 +1660,18 @@
       "scheme": "bearer"
     },
     "format": "openai"
+  },
+  "onomeo": {
+    "baseUrl": "https://onomeo.com/v1/chat/completions",
+    "validateUrl": "https://onomeo.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "openadapter": {
+    "baseUrl": "https://api.openadapter.in/v1/chat/completions",
+    "validateUrl": "https://api.openadapter.in/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "piapi": {
     "baseUrl": "https://api.piapi.ai/v1/chat/completions",

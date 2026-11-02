@@ -234,6 +234,8 @@ export const MODEL_PRICING = {
   // price. https://developers.openai.com/api/docs/models/gpt-6-sol
   // https://developers.openai.com/api/docs/models/gpt-6-luna
   "gpt-6-sol": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50 },
+  // https://platform.openai.com/docs/models (GPT-6.1 Terra: $1 in / $5 out per MTok; cached/cache-write follow the 6.1 Terra row ported from upstream decolua/9router acb3c080).
+  "gpt-6.1-terra": { input: 1.00, output: 5.00, cached: 0.05, reasoning: 5.00, cache_creation: 1.25 },
   "gpt-6-luna": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125 },
   // Fork-specific exact GPT-5.6 and synthetic tiers retain subscription prices.
   "gpt-5.6": { input: 2.50, output: 15.00, cached: 0.25, reasoning: 15.00, cache_creation: 2.50 },

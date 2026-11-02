@@ -68,7 +68,7 @@ function getOpenCodeZenPassthroughTargetFormat(modelId) {
 // MiniMax M3 and M3.1 Flash Preview tool/vision calls use native OpenAI Chat
 // Completions even for Claude-source clients.
 const OPENAI_FORMAT_MINIMAX_PROVIDERS = new Set(["minimax", "minimax-cn"]);
-const MINIMAX_OPENAI_TOOL_MODELS = new Set(["MiniMax-M3", "MiniMax-M3.1-Flash-Preview"]);
+const MINIMAX_OPENAI_TOOL_MODELS = new Set(["MiniMax-M3", "MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash-Preview"]);
 
 export function getModelTargetFormat(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
@@ -124,22 +124,93 @@ export function getModelType(aliasOrId, modelId) {
 function findModelAlias(models, modelId) {
   return models?.find((model) => model.aliases?.includes(modelId));
 }
-export function getModelUpstreamId(aliasOrId, modelId) {
+const TIER_ALIASES = { xhigh: "high", max: "high", minimal: "low" };
+
+function normalizeTier(level) {
+  if (!isString(level) || !level.trim()) return null;
+  const value = level.trim().toLowerCase();
+  return TIER_ALIASES[value] || value;
+}
+
+function budgetTier(budget) {
+  const value = Number(budget);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value > 16384 ? "high" : value <= 4096 ? "low" : "medium";
+}
+
+/**
+ * Requested catalog tier for `<model>-<tier>` rows (upstream 9router 82aeb907).
+ * Precedence: request suffix intent, then body effort, then thinking budget.
+ * Returns null when nothing names a tier.
+ */
+export function resolveRequestedModelTier(thinkingIntent, body = null) {
+  if (thinkingIntent?.mode === "level") return normalizeTier(thinkingIntent.level);
+  if (thinkingIntent?.mode === "budget") return budgetTier(thinkingIntent.budget);
+  if (thinkingIntent) return null;
+  const effort = body?.reasoning_effort || body?.output_config?.effort || body?.reasoning?.effort;
+  if (isString(effort) && effort.trim()) return normalizeTier(effort);
+  return budgetTier(body?.thinking?.budget_tokens);
+}
+
+/**
+ * Provider-level thinking override from dashboard settings, applied only when
+ * the client did not set the matching field. Returns a new body.
+ * on/off -> body.thinking; none strips thinking fields; levels -> reasoning_effort.
+ */
+export function applyProviderThinkingOverride(body, providerThinking) {
+  const mode = providerThinking?.mode;
+  if (!mode || mode === "auto") return body;
+  if (mode === "none") {
+    // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
+    // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
+    const { thinking: _thinking, reasoning_effort: _effort, reasoning: _reasoning, ...rest } = body;
+    return rest;
+  }
+  if (mode === "on") return body.thinking ? body : { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
+  if (mode === "off") return body.thinking ? body : { ...body, thinking: { type: "disabled" } };
+  return body.reasoning_effort ? body : { ...body, reasoning_effort: mode };
+}
+
+/** Upstream id chatCore will dispatch for this request (quota/cooldown keys). */
+export function getDispatchUpstreamModelId(aliasOrId, modelId, body = null, providerThinking = null) {
+  const effectiveBody = body ? applyProviderThinkingOverride(body, providerThinking) : null;
+  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId).override, effectiveBody));
+}
+
+function findUpstreamModel(aliasOrId, modelId, tier) {
+  const parsed = parseSuffix(modelId);
+  const baseId = parsed.cleanModel;
+  const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
+  const requestedTier = tier || resolveRequestedModelTier(parsed.override);
+  // `<model>-<tier>` rows are tier variants only in catalogs that use thinking
+  // presets (Antigravity today), including rows there without a preset; in
+  // other catalogs (codex, grok) `<model>-<level>` ids are distinct models.
+  const tieredRow = requestedTier && isString(baseId) ? findModel(models, `${baseId}-${requestedTier}`, aliasOrId) : null;
+  const tiered = tieredRow && models.some((row) => parseSuffix(row.upstreamModelId).override) ? tieredRow : null;
+  return { baseId, found: tiered || findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId) };
+}
+
+export function getModelUpstreamId(aliasOrId, modelId, tier = null) {
   // Only recognized request-only thinking controls participate in catalog
   // lookup. Unknown parentheses may be part of a real passthrough/custom model
   // ID and must remain opaque instead of being rewritten through a base alias.
   // The control is never re-appended: provider-facing model IDs are always clean,
   // while thinking intent travels in request-scoped translation context.
-  const parsed = parseSuffix(modelId);
-  const baseId = parsed.cleanModel;
-  const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
-  const found = findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId);
-  if (found?.upstreamModelId) return found.upstreamModelId;
+  // Catalog upstreamModelId presets such as "gemini-3.8-flash-high(high)" are
+  // stripped here too; getModelUpstreamThinkingIntent exposes the preset level.
+  const { baseId, found } = findUpstreamModel(aliasOrId, modelId, tier);
+  if (found?.upstreamModelId) return parseSuffix(found.upstreamModelId).cleanModel;
   if (found?.id) return found.id;
   if (aliasOrId === "cx" && isString(baseId) && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
     return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length);
   }
   return baseId;
+}
+
+/** Thinking preset carried by a catalog upstreamModelId suffix, or null. */
+export function getModelUpstreamThinkingIntent(aliasOrId, modelId, tier = null) {
+  const upstreamModelId = findUpstreamModel(aliasOrId, modelId, tier).found?.upstreamModelId;
+  return parseSuffix(upstreamModelId).override;
 }
 
 export function getCanonicalModelId(aliasOrId, modelId) {

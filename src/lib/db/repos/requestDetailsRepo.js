@@ -53,6 +53,9 @@ let writeBuffer = [];
 let flushTimer = null;
 let flushInFlight = null;
 let disposed = false;
+let failedFlushes = 0;
+const MAX_FLUSH_RETRIES = 3;
+const MAX_BUFFERED_ROWS = 1000;
 
 
 function generateDetailId(model) {
@@ -91,10 +94,11 @@ function flushToDatabase() {
 }
 
 async function drainWriteBuffer() {
+  let items = [];
   try {
     // Drain entire buffer (loop in case more pushed during await)
     while (writeBuffer.length > 0) {
-      const items = writeBuffer.splice(0, writeBuffer.length);
+      items = writeBuffer.splice(0, writeBuffer.length);
       const db = await getAdapter();
       const config = await getObservabilityConfig();
 
@@ -133,9 +137,34 @@ async function drainWriteBuffer() {
           );
         }
       });
+      items = [];
+      failedFlushes = 0;
     }
   } catch (e) {
     console.error("[requestDetailsRepo] Batch write failed:", e);
+    requeueFailedBatch(items);
+  }
+}
+
+// Keep a failed batch for a bounded number of later flushes instead of dropping it
+// silently; the buffer is capped so a dead database cannot grow memory without limit.
+function requeueFailedBatch(items) {
+  failedFlushes += 1;
+  if (failedFlushes > MAX_FLUSH_RETRIES) {
+    console.error(`[requestDetailsRepo] Dropping ${items.length} rows after ${MAX_FLUSH_RETRIES} failed flush retries`);
+    failedFlushes = 0;
+    return;
+  }
+  const room = Math.max(0, MAX_BUFFERED_ROWS - writeBuffer.length);
+  const kept = items.slice(-room);
+  if (kept.length < items.length) console.error(`[requestDetailsRepo] Dropping ${items.length - kept.length} rows over the ${MAX_BUFFERED_ROWS}-row retry cap`);
+  writeBuffer.unshift(...kept);
+  if (!disposed && !flushTimer && writeBuffer.length > 0) {
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      flushToDatabase().catch(() => {});
+    }, DEFAULT_FLUSH_INTERVAL_MS);
+    flushTimer.unref?.();
   }
 }
 

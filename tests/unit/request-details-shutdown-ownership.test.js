@@ -109,4 +109,27 @@ describe("requestDetailsRepo shutdown handler ownership", () => {
     await repo.disposeRequestDetailsRepo();
     expect(insertedIds()).toEqual([]);
   });
+
+  it("keeps rows of a failed batch and persists them on the next flush (#1407)", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const repo = await loadRepo();
+    await repo.saveRequestDetail({ id: "retry-row", model: "m" });
+    let calls = 0;
+    fakeDb.transaction = (fn) => { if (calls++ === 0) throw new Error("db busy"); return fn(); };
+    await repo.disposeRequestDetailsRepo();
+    expect(calls).toBe(2);
+    expect(insertedIds()).toEqual(["retry-row"]);
+    errSpy.mockRestore();
+  });
+
+  it("drops a batch after bounded failed retries and still terminates dispose (#1407)", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    fakeDb.transaction = () => { throw new Error("db down"); };
+    const repo = await loadRepo();
+    await repo.saveRequestDetail({ id: "doomed-row", model: "m" });
+    await repo.disposeRequestDetailsRepo();
+    expect(insertedIds()).toEqual([]);
+    expect(errSpy.mock.calls.flat().join(" ")).toContain("Dropping 1 rows after 3 failed flush retries");
+    errSpy.mockRestore();
+  });
 });

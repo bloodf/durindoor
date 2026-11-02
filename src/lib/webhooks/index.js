@@ -203,6 +203,8 @@ export async function deliverWebhook(hook, payload, { fetcher = fetch, sleep = d
         signal: controller.signal
       }, GUARD, fetcher);
       last = { ok: res.ok, status: res.status, error: res.ok ? null : `HTTP ${res.status}`, attempts: attempt + 1 };
+      // Status is all we need; release the connection instead of leaving the body unread.
+      try { await res.body?.cancel?.(); } catch {}
       if (res.ok || res.status >= 300 && res.status < 500 && res.status !== 429) return last;
     } catch (error) {
       last = { ok: false, status: 0, error: String(error?.message || error).slice(0, 200), attempts: attempt + 1 };

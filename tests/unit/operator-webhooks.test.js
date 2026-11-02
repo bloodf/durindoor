@@ -76,6 +76,14 @@ describe("delivery", () => {
     expect(wh.verifyWebhookSignature("k", init.headers[wh.SIGNATURE_HEADER], init.body, { nowSec: 1_800_000_000 })).toBe(true);
   });
 
+  it("releases the response body after reading the status", async () => {
+    const cancel = vi.fn(async () => {});
+    const fetcher = vi.fn(async () => ({ ok: true, status: 204, body: { cancel } }));
+    const res = await wh.deliverWebhook(hook, payload, { fetcher, sleep: noSleep, nowSec: 1_800_000_000 });
+    expect(res.ok).toBe(true);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it("retries 5xx/429/network errors at most MAX_RETRIES times with backoff", async () => {
     const fetcher = vi.fn()
       .mockRejectedValueOnce(new Error("ECONNRESET"))

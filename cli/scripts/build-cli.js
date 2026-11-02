@@ -38,8 +38,8 @@ function shouldExclude(name) {
 }
 
 // npm pack drops symlinks. Hoist each physical package once, then retain only
-// version conflicts below consumers. Conflict payloads use hard links, not copies;
-// npm/tar can archive them as safe internal hardlink entries; installs need no repair.
+// version conflicts below consumers. Conflict payloads are real copies: pacote drops
+// every *Link tar entry on install, and npm 11's tar can hang packing hard links.
 function copyRuntimeModules(sources, dest, sourceRoot) {
   const packages = new Map();
   const checkedRealpath = (file) => {
@@ -67,7 +67,7 @@ function copyRuntimeModules(sources, dest, sourceRoot) {
         }
         entries.set(name, real);
         if (!packages.has(real)) {
-          const pkg = { dependencies: null, payload: null };
+          const pkg = { dependencies: null };
           packages.set(real, pkg); // Register before following dependency cycles.
           pkg.dependencies = scan(path.join(real, "node_modules"));
         }
@@ -93,7 +93,7 @@ function copyRuntimeModules(sources, dest, sourceRoot) {
         if (fs.existsSync(path.join(candidate, "package.json"))) {
           const dependency = checkedRealpath(candidate);
           if (!packages.has(dependency)) {
-            const child = { dependencies: null, payload: null };
+            const child = { dependencies: null };
             packages.set(dependency, child);
             child.dependencies = scan(path.join(dependency, "node_modules"));
           }
@@ -126,24 +126,7 @@ function copyRuntimeModules(sources, dest, sourceRoot) {
   };
   const place = (real, target) => {
     placements.set(target, real);
-    const pkg = packages.get(real);
-    if (pkg.payload) {
-      // This source is already inside the destination, not the input bundle.
-      const linkPayload = (from, to) => {
-        fs.mkdirSync(to, { recursive: true });
-        for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
-          if (entry.name === "node_modules") continue;
-          const input = path.join(from, entry.name);
-          const output = path.join(to, entry.name);
-          if (entry.isDirectory()) linkPayload(input, output);
-          else fs.linkSync(input, output);
-        }
-      };
-      linkPayload(pkg.payload, target);
-    } else {
-      copyPayload(real, target);
-      pkg.payload = target;
-    }
+    copyPayload(real, target);
   };
   for (const [name, real] of roots) place(real, path.join(dest, name));
   const resolve = (from, name) => {

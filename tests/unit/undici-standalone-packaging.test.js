@@ -7,6 +7,21 @@ import { describe, expect, it } from "vitest";
 import { materializeStandaloneDependencies } from "../../scripts/build-app.mjs";
 const { copyRecursive } = createRequire(import.meta.url)("../../cli/scripts/build-cli.js");
 
+// Install through npm, not tar: pacote drops link entries that plain tar extracts.
+function installPacked(packageDir, temp) {
+  const env = { ...process.env, npm_config_cache: path.join(temp, "npm-cache") };
+  const packed = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json"], {
+    cwd: packageDir, encoding: "utf8", env,
+  }));
+  const installed = path.join(temp, "installed");
+  fs.mkdirSync(installed);
+  fs.writeFileSync(path.join(installed, "package.json"), JSON.stringify({ name: "consumer", version: "1.0.0" }));
+  execFileSync("npm", ["install", "--ignore-scripts", "--offline", "--no-audit", "--no-fund", path.join(packageDir, packed[0].filename)], {
+    cwd: installed, encoding: "utf8", env,
+  });
+  return path.join(installed, "node_modules", packed[0].name, "app");
+}
+
 function snapshot(root) {
   const result = {};
   const visit = (dir) => {
@@ -74,26 +89,22 @@ describe("standalone dependency closure", () => {
       expect(fs.realpathSync(path.join(source, "node_modules"))).toBe(pool);
       expect(fs.existsSync(path.join(modules, "unused"))).toBe(false);
       // npm pack omits symlinks, even when the standalone filesystem resolves.
-      // Exercise the real archive boundary, with both input trees unavailable.
+      // Exercise the real pack and install boundary, with both input trees unavailable.
       const packageDir = path.join(temp, "cli-package");
       const staged = path.join(packageDir, "app");
       copyRecursive(output, staged);
       const stagedModules = path.join(staged, "node_modules");
       expect(fs.lstatSync(path.join(stagedModules, "leaf")).isSymbolicLink()).toBe(false);
-      expect(fs.statSync(path.join(stagedModules, "traced", "node_modules", "leaf", "index.js")).ino)
-        .toBe(fs.statSync(path.join(stagedModules, "second", "node_modules", "leaf", "index.js")).ino);
+      // Hard links never survive npm install, so conflict payloads must be real files.
+      expect(fs.statSync(path.join(stagedModules, "traced", "node_modules", "leaf", "index.js")).nlink).toBe(1);
+      expect(fs.statSync(path.join(stagedModules, "second", "node_modules", "leaf", "index.js")).nlink).toBe(1);
       expect(Object.values(snapshot(staged)).some(value => value && typeof value === "object" && "link" in value)).toBe(false);
       expect(snapshot(path.join(temp, "pool"))).toEqual(before);
       fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify({
         name: "standalone-pack-regression", version: "1.0.0", files: ["app"],
       }));
-      const packed = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json"], {
-        cwd: packageDir, encoding: "utf8", env: { ...process.env, npm_config_cache: path.join(temp, "npm-cache") },
-      }));
-      const installed = path.join(temp, "installed");
-      fs.mkdirSync(installed);
-      execFileSync("tar", ["-xzf", path.join(packageDir, packed[0].filename), "--strip-components=1", "-C", installed]);
-      const relocated = path.join(installed, "app");
+      const installedApp = installPacked(packageDir, temp);
+      const relocated = installedApp;
       fs.renameSync(staged, path.join(temp, "hidden-stage"));
       fs.renameSync(output, path.join(temp, "hidden-standalone"));
       fs.renameSync(path.join(temp, "pool"), path.join(temp, "hidden-pool"));
@@ -139,15 +150,10 @@ describe("standalone dependency closure", () => {
       fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify({
         name: "standalone-overlap-regression", version: "1.0.0", files: ["app"],
       }));
-      const packed = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json"], {
-        cwd: packageDir, encoding: "utf8", env: { ...process.env, npm_config_cache: path.join(temp, "npm-cache") },
-      }));
-      const installed = path.join(temp, "installed");
-      fs.mkdirSync(installed);
-      execFileSync("tar", ["-xzf", path.join(packageDir, packed[0].filename), "--strip-components=1", "-C", installed]);
+      const installedApp = installPacked(packageDir, temp);
       fs.rmSync(standalone, { recursive: true });
       fs.rmSync(staged, { recursive: true });
-      const require = createRequire(path.join(installed, "app", "server.js"));
+      const require = createRequire(path.join(installedApp, "server.js"));
       expect(require("leaf")).toBe("local");
       expect(require("alias")).toBe("local");
       expect(require("local-consumer")).toBe("local");
@@ -158,7 +164,7 @@ describe("standalone dependency closure", () => {
     }
   }, 30_000);
 
-  it("isolates staged hardlink payloads from the source pool", () => {
+  it("isolates staged payloads from the source pool", () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cli-source-isolation-"));
     try {
       const source = path.join(temp, "source");
@@ -177,7 +183,8 @@ describe("standalone dependency closure", () => {
       const stagedRequire = createRequire(path.join(staged, "server.js"));
       expect(sourceRequire("leaf")).toBe("source");
       expect(sourceRequire("alias")).toBe("source");
-      expect(stagedRequire("leaf")).toBe("staged");
+      // Conflict payloads are real copies, so editing an alias reaches neither source nor sibling.
+      expect(stagedRequire("leaf")).toBe("source");
       expect(stagedRequire("alias")).toBe("staged");
     } finally {
       fs.rmSync(temp, { recursive: true, force: true });

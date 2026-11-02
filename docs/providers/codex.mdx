@@ -60,7 +60,7 @@ Model discovery for a Codex connection asks for the catalog with the pinned vers
 
 ## Models
 
-Send `cx/<model>`, for example `cx/gpt-5.5`. The registry lists chat models, `*-review` models that draw from a separate review quota, and image models. `GET /v1/models` is the live list. Image generation needs a paid ChatGPT plan: DurinDoor rejects it with 403 before sending when the connection's plan is `free`, so a combo moves on to the next member.
+Send `cx/<model>`, for example `cx/gpt-6.1-sol`. The registry lists chat models, `*-review` models that draw from a separate review quota, and image models such as `cx/gpt-6-sol-image`. `GET /v1/models` is the live list. Codex retired `gpt-5.5` for ChatGPT sign-in on 2026-10-14; saved `cx/gpt-5.5` and `cx/gpt-5.5-review` configs now get HTTP 410 with `cx/gpt-6.1-sol` as the replacement, and `cx/gpt-5.5-image` gets 410 with `cx/gpt-6-sol-image`. Image generation needs a paid ChatGPT plan: DurinDoor rejects it with 403 before sending when the connection's plan is `free`, so a combo moves on to the next member.
 
 ## Quota
 

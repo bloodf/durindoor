@@ -278,10 +278,10 @@ describe("getWeightedModels deterministic selection", () => {
   });
 });
 
-describe("handleComboChat weighted strategy — terminal 400 unaffected", () => {
+describe("handleComboChat weighted strategy — request-scoped 400", () => {
   const log = { info() {}, warn() {}, debug() {}, error() {} };
 
-  it("a non-fallback error status still returns immediately without trying the next model", async () => {
+  it("a request-scoped 400 tries the next member, then returns the first rejection (upstream 5cdcddf5)", async () => {
     const attempted = [];
     const response = await handleComboChat({
       body: { messages: [{ role: "user", content: "hi" }] },
@@ -295,6 +295,6 @@ describe("handleComboChat weighted strategy — terminal 400 unaffected", () => 
       log,
     });
     expect(response.status).toBe(400);
-    expect(attempted).toHaveLength(1);
+    expect(attempted).toHaveLength(2);
   });
 });

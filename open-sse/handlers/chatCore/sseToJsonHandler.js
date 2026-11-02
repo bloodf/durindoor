@@ -3,6 +3,7 @@ import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConv
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
 import { extractCompleteSseFrames } from "../../utils/streamHelpers.js";
@@ -526,7 +527,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         format: terminalFormat,
         providerBody: finalBody || translatedBody
       });
-      if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      if (!parsed) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      }
       const sseError = createSSEErrorResult(parsed, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
@@ -550,7 +554,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(
           HTTP_STATUS.BAD_GATEWAY,
-          "Provider returned an incoherent non-streaming response"
+          INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE
         );
       }
 

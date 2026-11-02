@@ -4,14 +4,14 @@ import { handleComboChat } from "../../open-sse/services/combo.js";
 /**
  * Reachability through the real combo handler (9router b82f5c4 / #1364):
  * a 400 credit-exhaustion body (terminal long cooldown) must still advance
- * to the next model because shouldFallback stays true; an ordinary 400 bad
- * request must stop on the first member.
+ * to the next model because shouldFallback stays true. An ordinary 400 bad
+ * request also advances, as request-scoped (upstream 5cdcddf5).
  */
 describe("combo credit fallback", () => {
   it.each([
     ["You have insufficient credits to make this request.", true],
     ["Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.", true],
-    ["Bad request", false],
+    ["Bad request", true],
   ])("routes a 400 response correctly: %s", async (message, shouldContinue) => {
     const body = { messages: [{ role: "user", content: "Hello" }] };
     const models = ["cmc/deepseek/deepseek-v4-pro", "mistral/mistral-medium-latest"];

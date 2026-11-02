@@ -1,5 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { extractReasoningText } from "../concerns/reasoning.js";
 import { GEMINI_ROLE, OPENAI_FINISH, GEMINI_FINISH } from "../schema/index.js";
 
 // Convert OpenAI SSE chunk to Antigravity SSE format
@@ -27,9 +28,12 @@ export function openaiToAntigravityResponse(chunk, state) {
 
   const parts = [];
 
-  // Thinking/reasoning → thought part
-  if (delta.reasoning_content) {
-    parts.push({ thought: true, text: delta.reasoning_content });
+  // Thinking/reasoning → thought part, including the vendor aliases
+  // (`reasoning`, `reasoning_details[]`) some lanes stream instead (upstream
+  // b8331283), so an alias-only chunk is not dropped as empty.
+  const reasoningText = extractReasoningText(delta);
+  if (reasoningText) {
+    parts.push({ thought: true, text: reasoningText });
   }
 
   // Text content

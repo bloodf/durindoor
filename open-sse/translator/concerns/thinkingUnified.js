@@ -576,7 +576,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
       }
     } else {
       body.thinking = { type: disabled ? "disabled" : "adaptive" };
-      if (cleanModel === "MiniMax-M3.1-Flash-Preview" && level && level !== "auto") {
+      if ((cleanModel === "MiniMax-M3.1-Flash" || cleanModel === "MiniMax-M3.1-Flash-Preview") && level && level !== "auto") {
         if (targetFormat === FORMATS.CLAUDE) body.output_config = { ...body.output_config, effort: level };
         else body.reasoning_effort = level;
       }

@@ -17,7 +17,7 @@ export default {
     textIcon: "MM",
     website: "https://www.minimax.io",
     notice: {
-      text: "MiniMax-M3.1-Flash-Preview requires M Plan or MiniMax Code. MiniMax-H3 and MiniMax-H3-Max require pay-as-you-go API. Subscription and pay-as-you-go keys are separate.",
+      text: "MiniMax-M3.1-Flash is GA; MiniMax-M3.1-Flash-Preview is deprecated and no longer listed by MiniMax. MiniMax-M2.5 and M2.7 retire 2026-11-18 (M/Token Plan requests auto-route to M3.1 Flash). MiniMax-H3 and MiniMax-H3-Max require pay-as-you-go API. Subscription and pay-as-you-go keys are separate.",
       apiKeyUrl: "https://platform.minimax.io/user-center/basic-information/interface-key",
     },
   },
@@ -29,7 +29,7 @@ export default {
     headers: { ...CLAUDE_API_HEADERS },
     quirks: {
       dropOutputConfig: true,
-      preserveOutputConfigModels: ["MiniMax-M3.1-Flash-Preview"],
+      preserveOutputConfigModels: ["MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash-Preview"],
       requireClaudeToolType: true,
       ensureThinkingSignature: true,
     },
@@ -75,16 +75,18 @@ export default {
     },
   ],
   models: [
-    // M Plan / MiniMax Code only. No published output ceiling.
-    { id: "MiniMax-M3.1-Flash-Preview", name: "MiniMax M3.1 Flash Preview", contextLength: 1000000 },
+    // GA multimodal coding model; 1M context, tunable thinking depth. No published output ceiling.
+    { id: "MiniMax-M3.1-Flash", name: "MiniMax M3.1 Flash", contextLength: 1000000 },
+    // Deprecated: no longer in MiniMax's official list; kept for existing clients.
+    { id: "MiniMax-M3.1-Flash-Preview", name: "MiniMax M3.1 Flash Preview", contextLength: 1000000, deprecated: true },
     { id: "MiniMax-M3", name: "MiniMax M3" },
-    { id: "MiniMax-M2.7", name: "MiniMax M2.7" },
-    { id: "MiniMax-M2.7-highspeed", name: "MiniMax M2.7 Highspeed" },
-    { id: "MiniMax-M2.5", name: "MiniMax M2.5" },
-    { id: "MiniMax-M2.5-highspeed", name: "MiniMax M2.5 Highspeed" },
-    { id: "MiniMax-M2.1", name: "MiniMax M2.1" },
-    { id: "MiniMax-M2.1-highspeed", name: "MiniMax M2.1 Highspeed" },
-    { id: "MiniMax-M2", name: "MiniMax M2" },
+    { id: "MiniMax-M2.7", name: "MiniMax M2.7", deprecated: true },
+    { id: "MiniMax-M2.7-highspeed", name: "MiniMax M2.7 Highspeed", deprecated: true },
+    { id: "MiniMax-M2.5", name: "MiniMax M2.5", deprecated: true },
+    { id: "MiniMax-M2.5-highspeed", name: "MiniMax M2.5 Highspeed", deprecated: true },
+    { id: "MiniMax-M2.1", name: "MiniMax M2.1", deprecated: true },
+    { id: "MiniMax-M2.1-highspeed", name: "MiniMax M2.1 Highspeed", deprecated: true },
+    { id: "MiniMax-M2", name: "MiniMax M2", deprecated: true },
     { id: "M2-her", name: "MiniMax M2 Her", targetFormat: "openai", supportedFormats: ["openai"] },
     { id: "image-01", name: "MiniMax Image-01", params: ["n","size","response_format"], kind: "image" },
     { id: "MiniMax-H3", name: "MiniMax H3", params: ["duration","resolution","aspect_ratio"], kind: "video" },

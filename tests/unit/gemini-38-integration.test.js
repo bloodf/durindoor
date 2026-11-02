@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { getModelUpstreamId } from "../../open-sse/config/providerModels.js";
+import { getModelUpstreamId, getModelUpstreamThinkingIntent } from "../../open-sse/config/providerModels.js";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
-import { applyThinking, stripThinkingSuffix } from "../../open-sse/translator/concerns/thinkingUnified.js";
+import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import gemini from "../../open-sse/providers/registry/gemini.js";
 import { MODEL_PRICING } from "../../open-sse/providers/pricing.js";
 import { MITM_TOOLS } from "../../src/shared/constants/cliTools.js";
@@ -25,24 +25,27 @@ describe("Gemini 3.8 Antigravity tiers", () => {
     "maps the %s tier to the shared upstream model with matching thinking level",
     (tier) => {
       const publicModel = `gemini-3.8-flash-${tier}`;
+      // Fork contract: the wire id is clean and the catalog preset travels as
+      // request-scoped thinking intent (chatCore passes both separately).
       const upstreamModel = getModelUpstreamId("ag", publicModel);
+      const intent = getModelUpstreamThinkingIntent("ag", publicModel);
       const body = {
-        model: stripThinkingSuffix(upstreamModel),
+        model: upstreamModel,
         request: {
           contents: [{ role: "user", parts: [{ text: "hello" }] }],
           generationConfig: {},
         },
       };
 
-      applyThinking("antigravity", upstreamModel, body, "antigravity");
+      applyThinking("antigravity", publicModel, body, "antigravity", intent);
       const finalBody = new AntigravityExecutor().transformRequest(
-        publicModel,
+        upstreamModel,
         body,
         true,
         { projectId: "project", connectionId: "connection" }
       );
 
-      expect(upstreamModel).toBe(`gemini-3.8-flash-${tier}(${tier})`);
+      expect(upstreamModel).toBe(`gemini-3.8-flash-${tier}`);
       expect(finalBody.model).toBe(`gemini-3.8-flash-${tier}`);
       expect(finalBody.request.generationConfig.thinkingConfig).toEqual({
         thinkingLevel: tier,

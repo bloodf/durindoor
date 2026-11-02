@@ -121,6 +121,7 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
       shouldFallback: false,
       cooldownMs: 0,
       scope: null,
+      requestScoped: true,
     });
   });
 

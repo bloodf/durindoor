@@ -40,7 +40,10 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
- * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object, terminal?: boolean }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object, terminal?: boolean, requestScoped?: boolean }}
+ *   `shouldFallback` answers "is the credential at fault?" (account rotation);
+ *   `requestScoped` answers "did this member reject the request itself?"
+ *   (combo rotation, which tries the next member without a cooldown).
  *   `rateLimitEvidence` is present only on an explicit quota-exhausted 429,
  *   so markAccountUnavailable can persist state:"exhausted" instead of an
  *   ordinary cooldown. `terminal` marks a state retrying cannot fix
@@ -85,7 +88,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     // in the body (e.g. echoed user prompt text) cannot lock a healthy account.
     const billing = checkFallbackErrorByRules(status, extractErrorMessage(structuredError, errorText).toLowerCase(), backoffLevel);
     if (billing.terminal) return { ...billing, scope: null };
-    return { shouldFallback: false, cooldownMs: 0, scope: null };
+    return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
 
   // Codex invalid_encrypted_content is a stale-reasoning request issue recovered
@@ -212,8 +215,10 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
   // the same limit. Hand the upstream error back for this request instead.
   // Account-scoped statuses (401/402/403/404/429) already returned above via
   // their ERROR_RULES status match, so they never reach this fallthrough.
+  // `requestScoped` tells combo rotation this member rejected THIS request, so the
+  // next member may still serve it (upstream 9router 5cdcddf5, #5057).
   if (status >= 400 && status < 500) {
-    return { shouldFallback: false, cooldownMs: 0 };
+    return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
   }
 
   // Default: transient cooldown for any unmatched error

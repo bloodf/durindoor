@@ -159,7 +159,15 @@ function openAICompletionToOllama(completion) {
   };
 }
 
-export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
+/**
+ * @param {object} responseBody - collected Responses API body
+ * @param {string} [fallbackModel]
+ * @param {{ chatCustomToolNames?: Set<string>, toolNameMap?: Map<string,string> }} [options] -
+ *   Chat custom tools the client declared (matched after restoring aliases);
+ *   their custom_tool_call items keep the Chat custom shape.
+ *   Other custom calls become function calls with JSON `{input}` arguments (#1469).
+ */
+export function responsesApiToOpenAICompletion(responseBody, fallbackModel, { chatCustomToolNames = new Set(), toolNameMap = null } = {}) {
   // Skip null / non-object slots the same way main's optional chaining did.
   const output = (Array.isArray(responseBody?.output) ? responseBody.output : []).filter(
     (item) => item != null && isObject(item) && !Array.isArray(item)
@@ -178,15 +186,25 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel) {
   map((part) => part?.type === "output_text" || isString(part?.text) ? part.text || "" : "").
   join("");
   const toolCalls = output.
-  filter((item) => item?.type === "function_call").
-  map((item, idx) => ({
-    id: item.call_id || `call_${item.name || "tool"}_${idx}`,
-    type: "function",
-    function: {
-      name: item.name || "",
-      arguments: isString(item.arguments) ? item.arguments : JSON.stringify(item.arguments || {})
+  filter((item) => item?.type === "function_call" || item?.type === "custom_tool_call").
+  map((item, idx) => {
+    const id = item.call_id || `call_${item.name || "tool"}_${idx}`;
+    if (item.type === "custom_tool_call") {
+      const input = isString(item.input) ? item.input : "";
+      const declared = toolNameMap?.get?.(item.name) ?? item.name;
+      return chatCustomToolNames.has(declared) ?
+      { id, type: "custom", custom: { name: declared, input } } :
+      { id, type: "function", function: { name: item.name || "", arguments: JSON.stringify({ input }) } };
     }
-  }));
+    return {
+      id,
+      type: "function",
+      function: {
+        name: item.name || "",
+        arguments: isString(item.arguments) ? item.arguments : JSON.stringify(item.arguments || {})
+      }
+    };
+  });
 
   const usage = toResponsesUsage(responseBody?.usage) || {};
   const inputTokens = usage.input_tokens || 0;

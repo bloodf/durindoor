@@ -37,3 +37,12 @@ describe("settings API custom prompt validation", () => {
     expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ customPromptEnabled: true, customPrompt: "be terse" }));
   });
 });
+
+describe("settings API custom prompt read exposure", () => {
+  it("hides the prompt text from non-operator reads", async () => {
+    mocks.getSettings.mockResolvedValue({ customPromptEnabled: true, customPrompt: "secret instruction" });
+    const response = await settingsRoute.GET({ headers: new Headers(), cookies: { get: () => undefined } });
+    expect(response.body.customPromptEnabled).toBe(true);
+    expect(response.body).not.toHaveProperty("customPrompt");
+  });
+});

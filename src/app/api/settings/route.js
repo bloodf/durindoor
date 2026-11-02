@@ -67,6 +67,8 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
   if (!privileged && safeSettings.outboundProxyUrl) {
     safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);
   }
+  // Operator-authored prompt text; unprivileged readers only learn the enabled flag.
+  if (!privileged) delete safeSettings.customPrompt;
   return { safeSettings, password };
 }
 

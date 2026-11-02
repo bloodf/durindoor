@@ -47,7 +47,7 @@ Requests with only text, MCP tool schemas, tool calls and tool results go to Cur
 - `reasoning_effort` (or `reasoning.effort`) is forwarded as a model parameter. `minimal` maps to `low` and `ultra` to `max`; `none` sends nothing.
 - A turn that ends with no output is returned as an error, never as an empty success. For histories of 80 or more messages, one tail-only retry is attempted. Tune with `CURSOR_TAIL_ONLY_THRESHOLD`, `CURSOR_EMPTY_TURN_MAX_RETRIES` (capped at 1) and `CURSOR_EMPTY_TURN_RETRY_DELAY_MS`.
 - Editor-only tool requests from Cursor (shell, read, write) are rejected so the model can continue; DurinDoor does not run them.
-- **Proxies:** the HTTP/2 stream cannot go through a proxy. When any proxy applies to the connection (connection proxy, pool, strict mode, relay, or `HTTPS_PROXY`-style environment variables), the request fails with a `connection_error` instead of connecting directly.
+- **Proxies:** the HTTP/2 stream cannot go through a proxy. When any proxy applies to the connection (connection proxy, pool, strict mode, relay, or `HTTPS_PROXY`-style environment variables), requests use the legacy ChatService path, which honors the proxy. DurinDoor never connects to AgentService directly while a proxy applies.
 
 ## Image input
 

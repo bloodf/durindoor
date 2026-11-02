@@ -1184,7 +1184,10 @@ export class CursorExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
     if (signal?.aborted) throw cursorAbortError(signal.reason);
-    if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body)) {
+    // The h2 AgentService stream cannot carry a proxy. When any proxy applies,
+    // stay on the legacy ChatService path, which honors it, and never connect directly.
+    const agentUrl = `${PROVIDER_OAUTH.cursor?.agentEndpoint || ""}${AGENT_RUN_PATH}`;
+    if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body) && !shouldUseProxyAwareTransport(agentUrl, proxyOptions)) {
       const agentAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
       attemptStartedAt :
       isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();

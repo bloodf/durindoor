@@ -836,7 +836,6 @@ export function createSSEStream(options = {}) {
                   }
                 }
               }
-              if (ensureStreamToolCallIds(parsed, openedToolCalls)) fieldsInjected = true;
 
               // Peel leaked MiniMax thinking markers out of delta.content into
               // reasoning_content before the inline-thinking extractor and content
@@ -998,6 +997,9 @@ export function createSSEStream(options = {}) {
                 pendingInlineThinkingOutput += `data: ${JSON.stringify(recoveryChunk)}\n\n`;
               }
 
+              // Mark tool calls opened only once the chunk is certain to reach the
+              // client; a dropped opening fragment must not leave later ones id-less (#1433).
+              if (ensureStreamToolCallIds(parsed, openedToolCalls)) fieldsInjected = true;
               recordCompletionData(parsed, { summary: false, trackUsage: false, content: true });
 
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and

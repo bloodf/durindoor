@@ -1334,6 +1334,8 @@ export async function handleComboChat({
     }}
   let lastError = null;
   let earliestRetryAfter = null;
+  let earliestRetryStatus = null;
+  let earliestRetryError = null;
   let lastStatus = null;
   let requestScopedResult = null;
 
@@ -1498,6 +1500,8 @@ export async function handleComboChat({
       // Track earliest retryAfter across all combo models
       if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
         earliestRetryAfter = retryAfter;
+        earliestRetryStatus = result.status;
+        earliestRetryError = errorText || String(result.status);
       }
 
       // Normalize error text to string (Worker-safe)
@@ -1592,6 +1596,13 @@ export async function handleComboChat({
 
   // A member rejected the request itself: return its own response (status and
   // body) instead of the synthesized envelope, so the client sees the real cause.
+  // A transient failure with a retry hint wins: another member may serve the
+  // request once it recovers, so the client keeps the Retry-After (#1433).
+  if (requestScopedResult && earliestRetryAfter) {
+    const retryHuman = formatRetryAfter(earliestRetryAfter);
+    log.warn("COMBO", `No model served the request; returning the retryable failure | ${earliestRetryError} (${retryHuman})`);
+    return unavailableResponse(getClientStatusFromError(earliestRetryStatus, earliestRetryError), earliestRetryError, earliestRetryAfter, retryHuman);
+  }
   if (requestScopedResult) {
     log.warn("COMBO", `No model served the request; returning the first request-scoped failure (${requestScopedResult.status})`);
     return requestScopedResult;

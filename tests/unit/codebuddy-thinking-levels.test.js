@@ -10,8 +10,10 @@ describe("codebuddy-cn thinking levels", () => {
     expect(getThinkingLevels("codebuddy-cn", "glm-5.3-flash")).toEqual(["low", "high", "max"]);
   });
 
-  it("deepseek-v4 family offers low/high/xhigh", () => {
+  it("deepseek-v4 family offers low/high/xhigh; v4.1-flash low/high/max", () => {
     expect(getThinkingLevels("codebuddy-cn", "deepseek-v4-pro")).toEqual(["low", "high", "xhigh"]);
+    expect(getThinkingLevels("codebuddy-cn", "deepseek-v4.1-flash")).toEqual(["low", "high", "max"]);
+    expect(getThinkingLevels("codebuddy-cn", "kimi-k2.8-preview")).toEqual(["low", "medium", "high"]);
   });
 
   it("hy3 offers low/high; hy4-preview is high-only", () => {

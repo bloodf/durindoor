@@ -38,6 +38,7 @@ export default {
     // Latest text/reasoning models. Responses preserves built-in tool support;
     // Chat Completions remains available where documented by OpenAI.
     { id: "gpt-6-astra", name: "GPT-6 Astra", targetFormat: "openai-responses" },
+    { id: "gpt-6.1-terra", name: "GPT-6.1 Terra", targetFormat: "openai-responses" },
     { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", targetFormat: "openai-responses" },
     { id: "gpt-6-sol", name: "GPT-6 Sol", targetFormat: "openai-responses" },
     { id: "gpt-6-luna", name: "GPT-6 Luna", targetFormat: "openai-responses" },
@@ -109,11 +110,11 @@ export default {
 
     { id: "tts-1", name: "TTS-1", kind: "tts" },
     { id: "tts-1-hd", name: "TTS-1 HD", kind: "tts" },
-    { id: "gpt-4o-mini-tts", name: "GPT-4o Mini TTS", kind: "tts" },
+    { id: "gpt-4o-mini-tts", name: "GPT-4o Mini TTS", kind: "tts", deprecated: true },
     { id: "whisper-1", name: "Whisper 1", params: ["language", "response_format", "temperature", "prompt"], kind: "stt" },
     { id: "gpt-transcribe", name: "GPT Transcribe", kind: "stt" },
-    { id: "gpt-4o-transcribe", name: "GPT-4o Transcribe", params: ["language", "response_format", "temperature", "prompt"], kind: "stt" },
-    { id: "gpt-4o-mini-transcribe", name: "GPT-4o Mini Transcribe", params: ["language", "response_format", "temperature", "prompt"], kind: "stt" },
+    { id: "gpt-4o-transcribe", name: "GPT-4o Transcribe", params: ["language", "response_format", "temperature", "prompt"], kind: "stt", deprecated: true },
+    { id: "gpt-4o-mini-transcribe", name: "GPT-4o Mini Transcribe", params: ["language", "response_format", "temperature", "prompt"], kind: "stt", deprecated: true },
     { id: "gpt-4o-transcribe-diarize", name: "GPT-4o Transcribe Diarize", kind: "stt" },
 
     { id: "gpt-image-2.5-sunburst", name: "GPT Image 2.5 Sunburst", kind: "image" },
@@ -138,7 +139,7 @@ export default {
     { id: "gpt-realtime-2", name: "GPT Realtime 2", kind: "realtime" },
     { id: "gpt-realtime-1.5", name: "GPT Realtime 1.5", kind: "realtime" },
     { id: "gpt-realtime", name: "GPT Realtime", kind: "realtime" },
-    { id: "gpt-realtime-mini", name: "GPT Realtime Mini", kind: "realtime" },
+    { id: "gpt-realtime-mini", name: "GPT Realtime Mini", kind: "realtime", deprecated: true },
     { id: "gpt-realtime-translate", name: "GPT Realtime Translate", kind: "realtimeTranslation" },
     { id: "gpt-live-1", name: "GPT Live 1", kind: "live" },
     { id: "gpt-live-transcribe", name: "GPT Live Transcribe", kind: "realtimeTranscription" },

@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { commandCodeToOpenAIResponse } from "../translator/response/commandcode-to-openai.js";
@@ -29,6 +30,14 @@ COMMANDCODE_EVENT.MESSAGE_METADATA]
 const TOOL_INPUT_EVENTS = new Set([COMMANDCODE_EVENT.TOOL_INPUT_START, COMMANDCODE_EVENT.TOOL_INPUT_DELTA]);
 const COMMANDCODE_KEEPALIVE_MS = 15_000;
 
+// Conversation-stable UUID-shaped id (the CLI sends one x-session-id per session).
+export function toCommandCodeSessionUuid(sessionId) {
+  if (!sessionId) return randomUUID();
+  const h = createHash("sha256").update(String(sessionId)).digest("hex");
+  const variant = ((parseInt(h[16], 16) & 0x3) | 0x8).toString(16);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${variant}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
 /**
  * CommandCodeExecutor — talks to https://api.commandcode.ai/alpha/generate
  *
@@ -56,7 +65,8 @@ export class CommandCodeExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       "Content-Type": "application/json",
-      ...(this.config.headers || {})
+      ...(this.config.headers || {}),
+      "x-session-id": toCommandCodeSessionUuid(credentials?._clientSessionId)
     };
 
     const token = credentials?.apiKey || credentials?.accessToken;

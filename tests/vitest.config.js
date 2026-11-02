@@ -24,6 +24,12 @@ export default defineConfig({
     // Number formatting assertions (`2,402 results`, `1.0k`) assume the en-US
     // locale; pin it so a pt-BR or de-DE host does not fail them.
     env: { LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" },
+    // Node 25+ enables the global Web Storage API; without --localstorage-file
+    // its `localStorage` getter is undefined and shadows the DOM environment's
+    // window.localStorage. Disable it where the flag exists (not on Node 20).
+    execArgv: process.allowedNodeEnvironmentFlags.has("--no-experimental-webstorage")
+      ? ["--no-experimental-webstorage"]
+      : [],
     include: ["**/*.test.js"],
     // Don't scan into git worktrees nested under .omc/ or .claude/ — they carry
     // their own copies of the test files but lack an installed node_modules

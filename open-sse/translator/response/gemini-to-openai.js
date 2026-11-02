@@ -65,7 +65,8 @@ export function geminiToOpenAIResponse(chunk, state) {
 
   const results = [];
   const candidate = response.candidates?.[0];
-  const upstreamError = response.error || chunk.error;
+  // An error nested in promptFeedback is a failure, not a content filter (#1342).
+  const upstreamError = response.error || chunk.error || response.promptFeedback?.error;
   const blockReason = response.promptFeedback?.blockReason;
 
   // Candidate-less chunk with nothing to surface: harvest usage from keep-alive

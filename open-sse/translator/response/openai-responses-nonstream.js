@@ -160,10 +160,15 @@ export function openAIResponsesBodyToClaude(responseBody) {
 
 /**
  * @param {object} responseBody
- * @param {{ chatCustomToolNames?: Set<string> }} [options] - Chat custom tools the
- *   client declared; their calls keep the Chat custom shape with raw input (#1436).
+ * @param {{ chatCustomToolNames?: Set<string>, toolNameMap?: Map<string,string> }} [options] -
+ *   Chat custom tools the client declared (matched after restoring aliases);
+ *   their calls keep the Chat custom shape with raw input (#1436).
  */
-export function openAIResponsesBodyToOpenAI(responseBody, { chatCustomToolNames = new Set() } = {}) {
+export function openAIResponsesBodyToOpenAI(responseBody, { chatCustomToolNames = new Set(), toolNameMap = null } = {}) {
+  const declaredCustomName = (name) => {
+    const restored = toolNameMap?.get?.(name) ?? name;
+    return chatCustomToolNames.has(restored) ? restored : null;
+  };
   const response = responseObject(responseBody);
   const { text, reasoning, refusal, toolCalls, terminal } = collectResponsesOutput(responseBody);
   const terminalText = terminal ? `[Error] ${terminalMessage(terminal)}` : "";
@@ -172,10 +177,10 @@ export function openAIResponsesBodyToOpenAI(responseBody, { chatCustomToolNames 
 
   if (reasoning) message.reasoning_content = reasoning;
   if (toolCalls.length > 0) {
-    message.tool_calls = toolCalls.map((call) => isString(call.input) && chatCustomToolNames.has(call.name) ? {
+    message.tool_calls = toolCalls.map((call) => isString(call.input) && declaredCustomName(call.name) ? {
       id: call.id,
       type: "custom",
-      custom: { name: call.name, input: call.input }
+      custom: { name: declaredCustomName(call.name), input: call.input }
     } : {
       id: call.id,
       type: "function",

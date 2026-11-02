@@ -314,6 +314,20 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
               )}
             </div>
           )}
+          {autoPing?.onOpenSchedule && (
+            <Tooltip text={autoPing.scheduleOn
+              ? `Scheduled ping active${autoPing.scheduleSummary ? `: ${autoPing.scheduleSummary}` : ""}. Click to edit.`
+              : "Ping at fixed local times (e.g. 09:30 / 14:30 / 19:30) so the 5h windows match your working hours."}>
+              <button
+                onClick={autoPing.onOpenSchedule}
+                aria-label="Auto-ping schedule"
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-dd-surface-2/5 dark:hover:bg-dd-surface-2/5 ${autoPing.scheduleOn ? "text-dd-accent" : "text-dd-muted hover:text-dd-accent"}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">schedule</span>
+                <span className="text-[10px] leading-tight">Schedule</span>
+              </button>
+            </Tooltip>
+          )}
           {autoPing && (
             <Tooltip text={autoPingTooltip}>
               <button
@@ -402,5 +416,8 @@ ConnectionRow.propTypes = {
     on: PropTypes.bool,
     onToggle: PropTypes.func,
     provider: PropTypes.string,
+    scheduleOn: PropTypes.bool,
+    scheduleSummary: PropTypes.string,
+    onOpenSchedule: PropTypes.func,
   }),
 };

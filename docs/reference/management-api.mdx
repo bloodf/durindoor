@@ -39,7 +39,7 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | POST | `/api/providers/test-batch` | Test several connections in one call | session, CLI, key, loop |
 | POST | `/api/providers/validate` | Probe one provider with a deadline and SSRF guard | session, CLI, key, loop |
 | GET, PUT, PATCH, DELETE | `/api/providers/{id}` | Read, replace, patch, or delete one connection | session, CLI, key, loop |
-| PATCH | `/api/providers/{id}/auto-ping` | Set that connection's quota auto-ping flag | session, CLI, key, loop |
+| PATCH | `/api/providers/{id}/auto-ping` | Set that connection's quota auto-ping flag (`enabled`) and anchored `schedule` (`{ enabled, anchor, timezone, windowHours, slotsPerDay }` or `null`); either may be omitted to keep it | session, CLI, key, loop |
 | GET | `/api/providers/{id}/models` | Discover models for that connection | session, CLI, key, loop |
 | POST | `/api/providers/{id}/test` | Test one connection | session, CLI, key, loop |
 | POST | `/api/providers/{id}/test-models` | Ping models by kind using active connection `{id}`; unavailable pins fail rather than switching accounts | session, CLI, open local dashboard (operator only) |

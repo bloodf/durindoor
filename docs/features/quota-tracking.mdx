@@ -37,6 +37,8 @@ Send a request after refreshing an exhausted account alongside another eligible 
 
 Opt-in per active Claude or Codex OAuth connection. DurinDoor sends a minimal request only when the five-hour session window is ready to restart. Codex also waits when a longer blocking quota is exhausted. API-key connections and other providers are never pinged.
 
+Each connection can also run an anchored schedule: open **Schedule** on the connection row, pick an anchor time, a window length, and pings per day. With anchor 09:30, a five-hour window, and three pings, DurinDoor pings at 09:30, 14:30, and 19:30 in the schedule's timezone (the browser's timezone when you save), then waits for the next anchor. A slot fires once, up to 30 minutes late (for example after a restart); older slots are skipped. A schedule works with or without the on-reset toggle, still skips an exhausted session, and is removed when the connection is disabled or deleted.
+
 The scheduler uses the same snapshots and tracker. A ping counts as success only after a native Claude `message_stop` or a valid Codex Responses terminal. Empty or truncated 200 streams do not update ping metadata. A request already accepted upstream cannot be recalled.
 
 ## Redeem a Claude reset only when intended

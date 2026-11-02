@@ -17,7 +17,7 @@ import {
 
 // SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
 // inside providerConnections.data. All other fields stay plaintext.
-import { isBoolean, isFunction, isNumber, isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
 "accessToken",
 "refreshToken",
@@ -92,7 +92,10 @@ const AUTO_PING_SETTINGS_KEYS = {
   codex: "codexAutoPing"
 };
 
-function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
+// `enabled`: undefined keeps the reactive flag. `schedule`: undefined keeps the
+// stored schedule, null removes it, an object replaces it. Disabling a
+// connection (enabled false, schedule null) clears both.
+function updateAutoPingEntryInTx(db, provider, connectionId, enabled, schedule = null) {
   const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
   if (!settingsKey) return null;
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -100,8 +103,11 @@ function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
   const currentConfig = current[settingsKey] || {};
   const connections = { ...(currentConfig.connections || {}) };
   if (enabled === true) connections[connectionId] = true;else
-  delete connections[connectionId];
-  const config = { ...currentConfig, connections };
+  if (enabled === false) delete connections[connectionId];
+  const schedules = { ...(currentConfig.schedules || {}) };
+  if (schedule) schedules[connectionId] = schedule;else
+  if (schedule === null) delete schedules[connectionId];
+  const config = { ...currentConfig, connections, schedules };
   db.run(
     `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
     [stringifyJson({ ...current, [settingsKey]: config })]
@@ -666,8 +672,13 @@ export async function deleteProviderConnection(id) {
   });
   return ok;
 }
-export async function setProviderConnectionAutoPing(id, enabled) {
-  if (!isBoolean(enabled)) throw new TypeError("enabled must be a boolean");
+export async function setProviderConnectionAutoPing(id, enabled, schedule = undefined) {
+  if (!isBoolean(enabled) && !(enabled === undefined && schedule !== undefined)) {
+    throw new TypeError("enabled must be a boolean");
+  }
+  if (schedule !== undefined && schedule !== null && (!isObject(schedule) || schedule.enabled !== true)) {
+    throw new TypeError("schedule must be an enabled schedule object or null");
+  }
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
@@ -677,16 +688,18 @@ export async function setProviderConnectionAutoPing(id, enabled) {
     );
     if (!row) return;
     const settingsKey = AUTO_PING_SETTINGS_KEYS[row.provider];
-    if (!settingsKey || row.authType !== "oauth" || enabled === true && row.isActive !== 1) {
+    const activating = enabled === true || Boolean(schedule);
+    if (!settingsKey || row.authType !== "oauth" || activating && row.isActive !== 1) {
       const error = new Error("Auto-ping is available only for active Claude or Codex OAuth connections");
       error.code = "AUTO_PING_INELIGIBLE";
       throw error;
     }
-    const updated = updateAutoPingEntryInTx(db, row.provider, id, enabled);
+    const updated = updateAutoPingEntryInTx(db, row.provider, id, enabled, schedule);
     result = {
       connectionId: id,
       provider: row.provider,
-      enabled,
+      enabled: updated.config.connections[id] === true,
+      schedule: updated.config.schedules[id] || null,
       settingsKey,
       config: updated.config
     };

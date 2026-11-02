@@ -1,23 +1,35 @@
 import { NextResponse } from "next/server";
 import { setProviderConnectionAutoPing } from "@/lib/localDb";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
+import { validatePingSchedule } from "@/shared/services/quotaPingSchedule";
 
 // Mutate one connection entry atomically. The provider and settings key are
 // derived from the stored connection so clients cannot write another object's
 // auto-ping map or bypass OAuth/provider eligibility.
-import { isBoolean } from "../../../../../shared/utils/typeChecks.js";
+import { isBoolean, isObject } from "../../../../../shared/utils/typeChecks.js";
 export async function PATCH(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    if (!isBoolean(body?.enabled)) {
+    // `schedule` is optional: omitted keeps the stored anchored schedule. A
+    // schedule-only write may omit `enabled` to keep the reactive flag.
+    const hasSchedule = body !== null && isObject(body) && Object.hasOwn(body, "schedule");
+    if (!isBoolean(body?.enabled) && !(hasSchedule && body.enabled === undefined)) {
       return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
     }
+    let schedule;
+    if (hasSchedule) {
+      const validated = validatePingSchedule(body.schedule);
+      if (validated.error) return NextResponse.json({ error: validated.error }, { status: 400 });
+      schedule = validated.schedule;
+    }
 
-    const result = await setProviderConnectionAutoPing(id, body.enabled);
+    const result = hasSchedule ?
+    await setProviderConnectionAutoPing(id, body.enabled, schedule) :
+    await setProviderConnectionAutoPing(id, body.enabled);
     if (!result) return NextResponse.json({ error: "Connection not found" }, { status: 404 });
 
-    notifyQuotaAutoPingSettingChanged(result.provider, result.connectionId, result.enabled, result.config);
+    notifyQuotaAutoPingSettingChanged(result.provider, result.connectionId, result.enabled || Boolean(result.schedule), result.config);
     return NextResponse.json(result);
   } catch (error) {
     if (error?.code === "AUTO_PING_INELIGIBLE") {

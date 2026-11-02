@@ -1238,4 +1238,105 @@ describe("quota auto-ping", () => {
 
     stopQuotaAutoPing(schedulerState);
   });
+
+  describe("anchored schedule (decolua/9router#4848)", () => {
+    // System time is 2026-01-01T12:00Z, so the 11:55 UTC slot is due.
+    const schedule = { enabled: true, anchor: "11:55", timezone: "UTC", windowHours: 5, slotsPerDay: 1 };
+    const codexConn = (extra = {}) => ({ id: "codex-1", provider: "codex", authType: "oauth", accessToken: "token", ...extra });
+    const stableSession = { quotas: { session: { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T17:00:00.000Z" } } };
+
+    function useCodex(conn = codexConn()) {
+      deps.getProviderConnections.mockImplementation(async ({ provider }) => (provider === "codex" ? [conn] : []));
+      state.resetCache["codex:codex-1"] = "2026-01-01T17:00:00.000Z";
+      getCodexUsage.mockResolvedValue(stableSession);
+    }
+
+    it("pings a schedule-only connection on its due slot without a resetAt slide", async () => {
+      deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: {}, schedules: { "codex-1": schedule } } });
+      useCodex();
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor.mock.results[0].value.execute).toHaveBeenCalledTimes(1);
+      const [, update] = deps.updateProviderConnection.mock.calls[0];
+      expect(update).toMatchObject({ lastPingedSlotKey: "2026-01-01#0" });
+      // The slot must not consume the reset marker of the reactive path.
+      expect(update).not.toHaveProperty("lastPingedResetKey");
+    });
+
+    it("does not ping the same slot twice", async () => {
+      deps.getSettings.mockResolvedValue({ codexAutoPing: { schedules: { "codex-1": schedule } } });
+      useCodex(codexConn({ lastPingedSlotKey: "2026-01-01#0" }));
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.refreshProviderQuota).not.toHaveBeenCalled();
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+    });
+
+    it("does not fire a stale slot or a disabled schedule", async () => {
+      deps.getSettings.mockResolvedValue({ codexAutoPing: { schedules: {
+        "codex-1": { ...schedule, anchor: "09:00" },
+        "codex-2": { ...schedule, enabled: false },
+      } } });
+      useCodex();
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("still skips a scheduled ping while the session quota is exhausted", async () => {
+      deps.getSettings.mockResolvedValue({ codexAutoPing: { schedules: { "codex-1": schedule } } });
+      useCodex();
+      getCodexUsage.mockResolvedValue({ quotas: { session: { used: 100, total: 100, remaining: 0, resetAt: "2026-01-01T17:00:00.000Z" } } });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+    });
+
+    it("re-reads the schedule before the paid ping and aborts when it was disabled", async () => {
+      const enabled = { codexAutoPing: { schedules: { "codex-1": schedule } } };
+      deps.getSettings
+        .mockResolvedValueOnce(enabled)
+        .mockResolvedValueOnce(enabled)
+        .mockResolvedValue({ codexAutoPing: { schedules: {} } });
+      useCodex();
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getSettings).toHaveBeenCalledTimes(3);
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("does not let a schedule authorize a reactive reset ping", async () => {
+      // Reactive flag off, schedule slot already pinged: a resetAt slide must not ping.
+      deps.getSettings.mockResolvedValue({ codexAutoPing: { schedules: { "codex-1": schedule } } });
+      useCodex(codexConn({ lastPingedSlotKey: "2026-01-01#0" }));
+      getCodexUsage.mockResolvedValue({ quotas: { session: { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T17:01:00.000Z" } } });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.getExecutor).not.toHaveBeenCalled();
+    });
+
+    it("counts an enabled schedule as an opt-in and drops it on a disable notification", async () => {
+      vi.useFakeTimers();
+      const schedulerState = { interval: null, running: false, rerunRequested: false, inflightControllers: {}, pingFailureUntil: {} };
+      const settings = { codexAutoPing: { connections: {}, schedules: { x1: schedule } } };
+
+      expect(hasQuotaAutoPingOptIns(settings)).toBe(true);
+      expect(hasQuotaAutoPingOptIns({ codexAutoPing: { schedules: { x1: { ...schedule, enabled: false } } } })).toBe(false);
+      startQuotaAutoPing(settings, schedulerState, { getSettings: vi.fn(), getProviderConnections: vi.fn().mockResolvedValue([]) });
+      expect(vi.getTimerCount()).toBe(1);
+
+      notifyQuotaAutoPingSettingChanged("codex", "x1", false, undefined, schedulerState);
+      expect(schedulerState.scheduleOptIns.codex).not.toHaveProperty("x1");
+      expect(schedulerState.interval).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
 });

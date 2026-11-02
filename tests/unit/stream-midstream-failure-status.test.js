@@ -79,6 +79,19 @@ describe("translate-mode streams hand a mid-stream failure to onStreamComplete",
     expect(onStreamComplete.mock.calls[0][0].upstreamError).toMatchObject({ code: "server_error" });
   });
 
+  it("ends a response.failed without an error object as an error terminal, not stop content", async () => {
+    const { onStreamComplete, clientText } = await runTranslate(
+      FORMATS.OPENAI_RESPONSES,
+      FORMATS.OPENAI,
+      sse([["response.created", CREATED], ["response.failed", { type: "response.failed", response: { id: "resp_1", status: "failed", error: null } }]]),
+    );
+
+    expect(clientText).not.toContain("[Error]");
+    expect(clientText).not.toContain('"finish_reason":"stop"');
+    expect(clientText).toContain('"message":"Upstream response failed"');
+    expect(onStreamComplete.mock.calls[0][0].upstreamError).toMatchObject({ message: "Upstream response failed" });
+  });
+
   it("reports no error for a stream that completes normally", async () => {
     const { onStreamComplete } = await runTranslate(
       FORMATS.OPENAI_RESPONSES,

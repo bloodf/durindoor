@@ -96,7 +96,8 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
 function translatedTerminalError(parsed, sourceFormat) {
   if (parsed?.error) return parsed.error;
   if (parsed?.type !== "response.failed" || sourceFormat === FORMATS.OPENAI_RESPONSES) return null;
-  return parsed.response?.error || null;
+  // A failed status without an error object still ends as an error terminal.
+  return parsed.response?.error || (parsed.response?.status === "failed" ? { message: "Upstream response failed" } : null);
 }
 
 /** Forward executor-side validation failures in the client's SSE format (#2681). */
@@ -1103,6 +1104,7 @@ export function createSSEStream(options = {}) {
         sanitizePublicErrorEnvelope(parsed, errorSecrets);
         const terminalError = translatedTerminalError(parsed, sourceFormat);
         if (terminalError) {
+          streamErrorPayload ??= extractStreamErrorPayload({ error: terminalError });
           clearCompletionFlushTimer();
           const output = formatTranslatedStreamError(terminalError, sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);
@@ -1457,6 +1459,7 @@ export function createSSEStream(options = {}) {
           sanitizePublicErrorEnvelope(tail, errorSecrets);
           const tailError = translatedTerminalError(tail, sourceFormat);
           if (tailError) {
+            streamErrorPayload ??= extractStreamErrorPayload({ error: tailError });
             const output = formatTranslatedStreamError(tailError, sourceFormat, errorSecrets);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));

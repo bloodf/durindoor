@@ -105,35 +105,34 @@ function zonedWallClockToUtcMs({ year, month, day, hour, minute }, timezone) {
   return refinedOffset === offset ? candidate : naive - refinedOffset;
 }
 
-function slotKey(anchorDayMs, timezone, index) {
-  const p = zonedParts(anchorDayMs, timezone);
+function slotKey(schedule, p, index) {
   const date = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-  return `${date}#${index}`;
+  return `${date}#${schedule.anchor}#${index}`;
 }
 
-// All slots belonging to the anchor day that contains `anchorDayMs`.
-function slotsForAnchorDay(schedule, anchorDayMs) {
+// All slots belonging to the calendar date `p` ({year, month, day}) in the schedule timezone.
+function slotsForAnchorDay(schedule, p) {
   const { hour, minute } = parseAnchor(schedule.anchor);
-  const p = zonedParts(anchorDayMs, schedule.timezone);
   const firstAt = zonedWallClockToUtcMs({ year: p.year, month: p.month, day: p.day, hour, minute }, schedule.timezone);
 
   return Array.from({ length: schedule.slotsPerDay }, (_, index) => ({
-    key: slotKey(anchorDayMs, schedule.timezone, index),
+    key: slotKey(schedule, p, index),
     index,
     at: firstAt + index * schedule.windowHours * HOUR_MS,
   }));
 }
 
-// Slots from yesterday + today cover everything that can already be due, since a
-// day's slots never span more than 24h from its anchor.
+// Slots from yesterday + today + tomorrow cover everything that can already be due, since a
+// day's slots never span more than 24h from its anchor. Calendar dates are stepped from the
+// zoned date (noon UTC) so DST days with 23h/25h do not skip or repeat a date.
 export function getScheduleSlots(schedule, nowMs = Date.now()) {
   const normalized = normalizePingSchedule(schedule);
   if (!normalized) return [];
-  return [
-    ...slotsForAnchorDay(normalized, nowMs - DAY_MS),
-    ...slotsForAnchorDay(normalized, nowMs),
-    ...slotsForAnchorDay(normalized, nowMs + DAY_MS),
-  ].sort((a, b) => a.at - b.at);
+  const t = zonedParts(nowMs, normalized.timezone);
+  return [-1, 0, 1].flatMap((delta) => {
+    const d = new Date(Date.UTC(t.year, t.month - 1, t.day + delta, 12));
+    return slotsForAnchorDay(normalized, { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() });
+  }).sort((x, y) => x.at - y.at);
 }
 
 // Most recent slot that is due and still inside the grace window.
@@ -169,8 +168,8 @@ export function validatePingSchedule(raw) {
   if (!parseAnchor(raw.anchor)) return { error: "schedule.anchor must be HH:MM" };
   if (!isValidTimezone(raw.timezone)) return { error: "schedule.timezone must be an IANA timezone" };
   const { windowHours, slotsPerDay } = raw;
-  if (!isNumber(windowHours) || !Number.isFinite(windowHours) || windowHours < 0.5 || windowHours > 24) {
-    return { error: "schedule.windowHours must be between 0.5 and 24" };
+  if (!isNumber(windowHours) || !Number.isFinite(windowHours) || windowHours < 1 || windowHours > 24) {
+    return { error: "schedule.windowHours must be between 1 and 24" };
   }
   if (!Number.isInteger(slotsPerDay) || slotsPerDay < 1 || slotsPerDay > maxSlotsPerDay(windowHours)) {
     return { error: `schedule.slotsPerDay must be an integer between 1 and ${maxSlotsPerDay(windowHours)}` };

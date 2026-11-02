@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   setProviderConnectionAutoPing: vi.fn(),
   notifyQuotaAutoPingSettingChanged: vi.fn(),
+  isOperatorRequest: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -13,6 +14,7 @@ vi.mock("next/server", () => ({
 vi.mock("@/lib/localDb", () => ({
   setProviderConnectionAutoPing: mocks.setProviderConnectionAutoPing,
 }));
+vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: mocks.isOperatorRequest }));
 vi.mock("@/shared/services/quotaAutoPing", () => ({
   notifyQuotaAutoPingSettingChanged: mocks.notifyQuotaAutoPingSettingChanged,
 }));
@@ -24,7 +26,19 @@ function request(body) {
 }
 
 describe("connection auto-ping API", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.isOperatorRequest.mockResolvedValue(true);
+  });
+
+  it("returns 403 for non-operator callers such as inference API keys", async () => {
+    mocks.isOperatorRequest.mockResolvedValue(false);
+
+    const response = await route.PATCH(request({ enabled: true }), { params: Promise.resolve({ id: "conn-1" }) });
+
+    expect(response.status).toBe(403);
+    expect(mocks.setProviderConnectionAutoPing).not.toHaveBeenCalled();
+  });
 
   it.each([undefined, null, 1, "true"])('rejects non-boolean enabled value %j', async (enabled) => {
     const response = await route.PATCH(request({ enabled }), { params: Promise.resolve({ id: "conn-1" }) });
@@ -89,6 +103,7 @@ describe("connection auto-ping API", () => {
     [{ enabled: true, anchor: "25:00", timezone: "UTC", windowHours: 5, slotsPerDay: 1 }, /anchor/],
     [{ enabled: true, anchor: "09:30", timezone: "Mars/Olympus", windowHours: 5, slotsPerDay: 1 }, /timezone/],
     [{ enabled: true, anchor: "09:30", timezone: "UTC", windowHours: 0, slotsPerDay: 1 }, /windowHours/],
+    [{ enabled: true, anchor: "09:30", timezone: "UTC", windowHours: 0.5, slotsPerDay: 1 }, /windowHours/],
     [{ enabled: true, anchor: "09:30", timezone: "UTC", windowHours: 5, slotsPerDay: 5 }, /slotsPerDay/],
     ["on", /schedule must be/],
   ])("rejects an invalid schedule %j", async (schedule, message) => {

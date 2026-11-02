@@ -446,6 +446,25 @@ export async function updateProviderConnection(id, data, {
   return result;
 }
 
+// Atomic compare-and-set on ping markers so two processes cannot both send the
+// same scheduled/reactive ping. Applies `next` only when every `expected` field
+// still matches (missing counts as null). Returns true when claimed.
+export async function claimProviderConnectionPing(id, expected, next) {
+  const db = await getAdapter();
+  let claimed = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Provider ping claim requires an initialized schema");
+    const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+    if (!row) return;
+    const existing = rowToConn(row);
+    if (Object.entries(expected).some(([field, value]) => (existing[field] ?? null) !== (value ?? null))) return;
+    upsert(db, { ...existing, ...next });
+    claimed = true;
+  });
+  return claimed;
+}
+
 const MODEL_STATE_VERSION_PREFIX = "modelStateObserved_";
 
 function boundedModelScope(provider, model, options) {

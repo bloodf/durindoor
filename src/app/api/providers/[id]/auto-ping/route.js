@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { setProviderConnectionAutoPing } from "@/lib/localDb";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
+import { isOperatorRequest } from "@/dashboardGuard";
 import { validatePingSchedule } from "@/shared/services/quotaPingSchedule";
 
 // Mutate one connection entry atomically. The provider and settings key are
@@ -9,6 +10,8 @@ import { validatePingSchedule } from "@/shared/services/quotaPingSchedule";
 import { isBoolean, isObject } from "../../../../../shared/utils/typeChecks.js";
 export async function PATCH(request, { params }) {
   try {
+    // Enabling pings spends upstream quota: operator sessions only, not inference API keys.
+    if (!await isOperatorRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const { id } = await params;
     const body = await request.json();
     // `schedule` is optional: omitted keeps the stored anchored schedule. A

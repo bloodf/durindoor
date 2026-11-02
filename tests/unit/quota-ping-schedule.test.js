@@ -5,6 +5,7 @@ import {
   getDuePingSlot,
   getNextPingSlot,
   getScheduleSlotLabels,
+  getScheduleSlots,
   maxSlotsPerDay,
   normalizePingSchedule,
   validatePingSchedule,
@@ -57,13 +58,13 @@ describe("quota ping schedule", () => {
 
   it("fires the anchor slot right after its local time (09:30 BRT = 12:30 UTC)", () => {
     const slot = getDuePingSlot(BRT, at("2026-08-20T12:31:00.000Z"));
-    expect(slot).toMatchObject({ key: "2026-08-20#0", index: 0 });
+    expect(slot).toMatchObject({ key: "2026-08-20#09:30#0", index: 0 });
     expect(new Date(slot.at).toISOString()).toBe("2026-08-20T12:30:00.000Z");
   });
 
   it("fires the later slots of the same anchor day", () => {
-    expect(getDuePingSlot(BRT, at("2026-08-20T17:30:00.000Z"))).toMatchObject({ key: "2026-08-20#1" });
-    expect(getDuePingSlot(BRT, at("2026-08-20T22:30:00.000Z"))).toMatchObject({ key: "2026-08-20#2" });
+    expect(getDuePingSlot(BRT, at("2026-08-20T17:30:00.000Z"))).toMatchObject({ key: "2026-08-20#09:30#1" });
+    expect(getDuePingSlot(BRT, at("2026-08-20T22:30:00.000Z"))).toMatchObject({ key: "2026-08-20#09:30#2" });
   });
 
   it("does not fire a slot that is already stale", () => {
@@ -80,12 +81,31 @@ describe("quota ping schedule", () => {
   it("keys slots by the local anchor day, not the UTC day", () => {
     // 22:30 BRT on 2026-08-20 is already 2026-08-21 in UTC.
     const slot = getDuePingSlot({ ...BRT, anchor: "22:30", slotsPerDay: 1 }, at("2026-08-21T01:31:00.000Z"));
-    expect(slot.key).toBe("2026-08-20#0");
+    expect(slot.key).toBe("2026-08-20#22:30#0");
+  });
+
+  it("steps calendar dates correctly across New York DST transitions", () => {
+    const ny = { enabled: true, anchor: "09:30", timezone: "America/New_York", windowHours: 5, slotsPerDay: 1 };
+    // Spring forward 2026-03-08 (23h day): 09:30 EDT = 13:30Z.
+    expect(getDuePingSlot(ny, at("2026-03-08T13:31:00.000Z"))).toMatchObject({ key: "2026-03-08#09:30#0" });
+    expect(getNextPingSlot(ny, at("2026-03-08T13:31:00.000Z")).key).toBe("2026-03-09#09:30#0");
+    expect(getNextPingSlot(ny, at("2026-03-07T15:00:00.000Z")).key).toBe("2026-03-08#09:30#0");
+    // Fall back 2026-11-01 (25h day): 09:30 EST = 14:30Z.
+    expect(getDuePingSlot(ny, at("2026-11-01T14:31:00.000Z"))).toMatchObject({ key: "2026-11-01#09:30#0" });
+    expect(getNextPingSlot(ny, at("2026-11-01T14:31:00.000Z")).key).toBe("2026-11-02#09:30#0");
+    expect(getNextPingSlot(ny, at("2026-10-31T14:00:00.000Z")).key).toBe("2026-11-01#09:30#0");
+    // Late-evening now on the DST day must still see that day's slot, not skip a date.
+    const keys = getScheduleSlots(ny, at("2026-11-01T23:00:00.000Z")).map((slot) => slot.key);
+    expect(keys).toEqual(["2026-10-31#09:30#0", "2026-11-01#09:30#0", "2026-11-02#09:30#0"]);
+  });
+
+  it("rejects windowHours below 1 in strict validation", () => {
+    expect(validatePingSchedule({ ...BRT, windowHours: 0.5 }).error).toMatch(/windowHours/);
   });
 
   it("honours a different timezone", () => {
     const utc = { ...BRT, timezone: "UTC" };
-    expect(getDuePingSlot(utc, at("2026-08-20T09:31:00.000Z"))).toMatchObject({ key: "2026-08-20#0" });
+    expect(getDuePingSlot(utc, at("2026-08-20T09:31:00.000Z"))).toMatchObject({ key: "2026-08-20#09:30#0" });
     expect(getDuePingSlot(utc, at("2026-08-20T12:31:00.000Z"))).toBeNull();
   });
 

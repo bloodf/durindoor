@@ -140,4 +140,12 @@ describe("connection-scoped auto-ping persistence", () => {
     await expect(db.setProviderConnectionAutoPing(conn.id, true)).resolves.toMatchObject({ enabled: true, schedule });
     expect((await db.getSettings()).codexAutoPing.schedules).toHaveProperty(conn.id, schedule);
   });
+
+  it("claims a ping marker atomically (compare-and-set)", async () => {
+    const conn = await createOAuth("codex", "claim@example.com");
+    await expect(db.claimProviderConnectionPing(conn.id, { lastPingedSlotKey: undefined }, { lastPingedSlotKey: "k1" })).resolves.toBe(true);
+    await expect(db.claimProviderConnectionPing(conn.id, { lastPingedSlotKey: undefined }, { lastPingedSlotKey: "k1" })).resolves.toBe(false);
+    await expect(db.claimProviderConnectionPing(conn.id, { lastPingedSlotKey: "k1" }, { lastPingedSlotKey: "k2" })).resolves.toBe(true);
+    expect((await db.getProviderConnectionById(conn.id)).lastPingedSlotKey).toBe("k2");
+  });
 });

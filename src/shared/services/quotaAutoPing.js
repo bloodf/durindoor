@@ -5,6 +5,7 @@ import {
   getSettings,
   getProviderConnections,
   updateProviderConnection,
+  claimProviderConnectionPing,
   listProviderQuotaSnapshots,
   getQuotaFetchState } from
 "@/lib/localDb";
@@ -495,6 +496,14 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
     finalNow
   )) return;
 
+  // Claim the slot/reset marker atomically before the paid request so a second
+  // process (or overlapping tick) cannot send the same ping.
+  const claim = slotPending ?
+  { expected: { lastPingedSlotKey: latestConnection.lastPingedSlotKey }, next: { lastPingedSlotKey: dueSlot.key } } :
+  { expected: { lastPingedResetKey: latestConnection.lastPingedResetKey }, next: { lastPingedResetKey: resetKey } };
+  if (!await deps.claimConnectionPing(conn.id, claim.expected, claim.next)) return;
+  signal.throwIfAborted();
+
   const ok = provider === "codex" ?
   await handler.sendPing(latestConnection, providerConfig, pingModel, proxyOptions, deps, signal) :
   await handler.sendPing(latestConnection, providerConfig, proxyOptions, deps, signal);
@@ -502,6 +511,7 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   if (!ok) {
     // Do not mark reset as pinged unless upstream accepted the tiny request.
     state.pingFailureUntil[key] = Date.now() + C.failureCooldownMs;
+    await deps.claimConnectionPing(conn.id, claim.next, claim.expected);
     console.warn(`[AutoPing] ${provider}:${conn.id}: ping failed`);
     return;
   }
@@ -554,6 +564,7 @@ function createDefaultDeps() {
     getSettings,
     getProviderConnections,
     updateProviderConnection,
+    claimConnectionPing: claimProviderConnectionPing,
     resolveConnectionProxyConfig,
     refreshAndUpdateCredentials,
     refreshProviderQuota,

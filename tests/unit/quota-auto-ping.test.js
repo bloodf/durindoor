@@ -6,6 +6,7 @@ vi.mock("@/lib/localDb", () => ({
   getSettings: vi.fn(),
   getProviderConnections: vi.fn(),
   updateProviderConnection: vi.fn(),
+  claimProviderConnectionPing: vi.fn(),
   listProviderQuotaSnapshots: vi.fn(),
   getQuotaFetchState: vi.fn(),
 }));
@@ -161,6 +162,7 @@ describe("quota auto-ping", () => {
       getSettings: vi.fn(),
       getProviderConnections: vi.fn(),
       updateProviderConnection: vi.fn(),
+      claimConnectionPing: vi.fn().mockResolvedValue(true),
       resolveConnectionProxyConfig: vi.fn().mockResolvedValue({}),
       refreshAndUpdateCredentials: vi.fn(async (connection) => ({ connection, refreshed: false })),
       listProviderQuotaSnapshots: vi.fn(async ({ provider, connectionId }) => {
@@ -1259,14 +1261,26 @@ describe("quota auto-ping", () => {
 
       expect(deps.getExecutor.mock.results[0].value.execute).toHaveBeenCalledTimes(1);
       const [, update] = deps.updateProviderConnection.mock.calls[0];
-      expect(update).toMatchObject({ lastPingedSlotKey: "2026-01-01#0" });
+      expect(update).toMatchObject({ lastPingedSlotKey: "2026-01-01#11:55#0" });
       // The slot must not consume the reset marker of the reactive path.
       expect(update).not.toHaveProperty("lastPingedResetKey");
     });
 
+    it("skips the paid request when another process already claimed the slot", async () => {
+      deps.getSettings.mockResolvedValue({ codexAutoPing: { connections: {}, schedules: { "codex-1": schedule } } });
+      deps.claimConnectionPing.mockResolvedValue(false);
+      useCodex();
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.claimConnectionPing).toHaveBeenCalledWith("codex-1", { lastPingedSlotKey: undefined }, { lastPingedSlotKey: "2026-01-01#11:55#0" });
+      expect(deps.getExecutor.mock.results[0]?.value.execute.mock.calls.length ?? 0).toBe(0);
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
     it("does not ping the same slot twice", async () => {
       deps.getSettings.mockResolvedValue({ codexAutoPing: { schedules: { "codex-1": schedule } } });
-      useCodex(codexConn({ lastPingedSlotKey: "2026-01-01#0" }));
+      useCodex(codexConn({ lastPingedSlotKey: "2026-01-01#11:55#0" }));
 
       await runQuotaAutoPingTick(deps, state);
 
@@ -1315,7 +1329,7 @@ describe("quota auto-ping", () => {
     it("does not let a schedule authorize a reactive reset ping", async () => {
       // Reactive flag off, schedule slot already pinged: a resetAt slide must not ping.
       deps.getSettings.mockResolvedValue({ codexAutoPing: { schedules: { "codex-1": schedule } } });
-      useCodex(codexConn({ lastPingedSlotKey: "2026-01-01#0" }));
+      useCodex(codexConn({ lastPingedSlotKey: "2026-01-01#11:55#0" }));
       getCodexUsage.mockResolvedValue({ quotas: { session: { used: 1, total: 100, remaining: 99, resetAt: "2026-01-01T17:01:00.000Z" } } });
 
       await runQuotaAutoPingTick(deps, state);

@@ -1,0 +1,173 @@
+// #1088 acceptance: credential-bearing errors on the real proxy entry point and the
+// real passToken exchange must not reach captured logs.
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const dashboardProxy = vi.hoisted(() => vi.fn(async () => new Response("dashboard", { status: 200 })));
+const canAccessManagementApi = vi.hoisted(() => vi.fn(async () => true));
+const proxyAccountRequest = vi.hoisted(() => vi.fn());
+vi.mock("../../src/dashboardGuard", () => ({ proxy: dashboardProxy, canAccessManagementApi }));
+vi.mock("../../src/lib/mimoLoginSession", async (importOriginal) => ({ ...(await importOriginal()), proxyAccountRequest }));
+// Keep the real account/session helpers, but never dispatch a real transport.
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: (...args) => globalThis.fetch(...args),
+}));
+
+import proxy from "../../src/proxy.js";
+import { SESSION_COOKIE, beginSession, encodeSessionCookie, ensureServiceSession } from "../../src/lib/mimoLoginSession.js";
+import { getMimoAccountCookie } from "../../open-sse/shared/mimoAccount.js";
+
+const SECRET = {
+  token: "FLEET_TOKEN_1088",
+  cookie: "FLEET_COOKIE_1088",
+  code: "FLEET_AUTHCODE_1088",
+};
+let logs;
+
+beforeEach(() => {
+  logs = [];
+  for (const m of ["log", "warn", "error", "info", "debug"]) {
+    vi.spyOn(console, m).mockImplementation((...a) => logs.push(a));
+  }
+  proxyAccountRequest.mockReset();
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function expectNoSecrets() {
+  const captured = JSON.stringify(logs);
+  for (const s of Object.values(SECRET)) expect(captured).not.toContain(s);
+}
+
+function request(pathname, cookieValue) {
+  return {
+    url: `http://localhost:20128${pathname}`,
+    method: "GET",
+    headers: new Headers({ host: "localhost:20128", cookie: `${SESSION_COOKIE}=${cookieValue}` }),
+    nextUrl: { pathname, search: "", protocol: "http:" },
+    cookies: { get: (n) => (n === SESSION_COOKIE ? { value: cookieValue } : undefined) },
+  };
+}
+
+describe("MiMo login credential redaction acceptance (#1088)", () => {
+  it("proxy entry point does not log credential-bearing proxy errors and returns 502", async () => {
+    proxyAccountRequest.mockRejectedValueOnce(new Error(
+      `fetch failed https://account.xiaomi.com/pass?code=${SECRET.code}; Cookie: passToken=${SECRET.token}; ${SECRET.cookie}`,
+    ));
+    const res = await proxy(request("/fe/service/login", encodeSessionCookie(beginSession("sgp"))));
+    expect(res.status).toBe(502);
+    expect(logs).not.toEqual([]); // still diagnosable
+    expectNoSecrets();
+  });
+
+  it("passToken exchange does not log upstream response bodies on handshake failure", async () => {
+    const body = JSON.stringify({
+      code: 70016, location: `https://x/?code=${SECRET.code}`, passToken: SECRET.token, cookie: SECRET.cookie,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200 })));
+    const result = await getMimoAccountCookie({
+      region: "sgp", mimoPassToken: `${crypto.randomUUID()}-${SECRET.token}`, mimoUserId: "1", mimoCUserId: "2",
+    });
+    expect(result).toBeNull();
+    expectNoSecrets();
+  });
+
+  it("passToken exchange does not log credential-bearing transport exception messages", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error(`connect failed https://account.xiaomi.com/pass?code=${SECRET.code} Cookie: ${SECRET.cookie}`);
+    }));
+    const result = await getMimoAccountCookie({
+      region: "sgp", mimoPassToken: `${crypto.randomUUID()}-${SECRET.token}`, mimoUserId: "1", mimoCUserId: "2",
+    });
+    expect(result).toBeNull();
+    expectNoSecrets();
+  });
+});
+
+describe("MiMo login start route error redaction (#1088)", () => {
+  it("does not log credential-bearing redirect paths or request origins on success", async () => {
+    const { POST } = await import("../../src/app/api/oauth/xiaomi-mimo/login/start/route.js");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: `https://account.xiaomi.com/pass/serviceLogin?code=${SECRET.code}` },
+      }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: `/fe/service/login/${SECRET.token}?cookie=${SECRET.cookie}` },
+      })));
+    const res = await POST(new Request(`https://${SECRET.cookie}.example.test/api/oauth/xiaomi-mimo/login/start`, {
+      method: "POST", body: JSON.stringify({ region: "cn" }),
+    }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.pageUrl).toContain(SECRET.token);
+    expect(logs).toContainEqual(["[mimo-login]", expect.objectContaining({
+      event: "start_ready", status: 200, correlation: expect.any(String),
+    })]);
+    const captured = JSON.stringify(logs);
+    for (const value of [...Object.values(SECRET), body.state]) expect(captured).not.toContain(value);
+  });
+
+  it("returns and logs a fixed message when the upstream hop throws credential-bearing errors", async () => {
+    const { POST } = await import("../../src/app/api/oauth/xiaomi-mimo/login/start/route.js");
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error(`fetch failed https://account.xiaomi.com/pass?code=${SECRET.code}; Cookie: passToken=${SECRET.token}; ${SECRET.cookie}`);
+    }));
+    const res = await POST(new Request("http://localhost:20128/api/oauth/xiaomi-mimo/login/start", {
+      method: "POST", headers: { host: "localhost:20128" }, body: JSON.stringify({ region: "cn" }),
+    }));
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(typeof body.error).toBe("string");
+    for (const s of Object.values(SECRET)) expect(JSON.stringify(body)).not.toContain(s);
+    expect(logs).not.toEqual([]);
+    expectNoSecrets();
+  });
+});
+
+describe("real exchange diagnostic correlation (#1088 R2)", () => {
+  it.each(["upstream", "transport"])("correlates concurrent %s failures while sharing only same-account/cluster handshakes", async (failure) => {
+    const token = `${crypto.randomUUID()}-${SECRET.token}`;
+    const makeSession = (region, passToken) => {
+      const sess = beginSession(region);
+      sess.jar.set("passToken|account.xiaomi.com|/", {
+        name: "passToken", value: passToken, domain: "account.xiaomi.com", path: "/",
+      });
+      return sess;
+    };
+    const sessions = [makeSession("sgp", token), makeSession("sgp", token),
+      makeSession("ams", token), makeSession("sgp", `${crypto.randomUUID()}-${SECRET.token}`)];
+    const pending = [];
+    const fetchMock = vi.fn(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+    vi.stubGlobal("fetch", fetchMock);
+    const operations = sessions.map((sess) => ensureServiceSession(sess));
+    // Real helper's dynamic import must finish before releasing the transports.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    for (const request of pending) {
+      if (failure === "upstream") request.resolve(new Response(JSON.stringify({
+        code: 70016, passToken: SECRET.token, cookie: SECRET.cookie,
+        location: `https://account.xiaomi.com/?code=${SECRET.code}`,
+      }), { status: 401 }));
+      else request.reject(Object.assign(new Error(`Cookie: ${SECRET.cookie}; code=${SECRET.code}`), { code: "ECONNRESET" }));
+    }
+    expect(await Promise.all(operations)).toEqual([false, false, false, false]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const diagnostics = logs.map(([, details]) => details).filter((d) => d?.correlation);
+    const starts = diagnostics.filter((d) => d.event === "exchange_start");
+    expect(starts).toHaveLength(4);
+    expect(new Set(starts.map((d) => d.correlation)).size).toBe(4);
+    for (const start of starts) {
+      const events = diagnostics.filter((d) => d.correlation === start.correlation);
+      expect(events.map((d) => d.event)).toEqual([
+        "exchange_start", failure === "upstream" ? "desktop_phase1_failed" : "acquire_error", "exchange_no_service_cookie",
+      ]);
+      expect(events[1]).toEqual(expect.objectContaining(failure === "upstream"
+        ? { status: 401, upstreamCode: 70016 } : { transportCode: "ECONNRESET" }));
+    }
+    expectNoSecrets();
+    for (const sess of sessions) {
+      expect(JSON.stringify(logs)).not.toContain(sess.state);
+      for (const cookie of sess.jar.values()) expect(JSON.stringify(logs)).not.toContain(cookie.value);
+    }
+  });
+});

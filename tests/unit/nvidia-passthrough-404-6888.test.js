@@ -139,6 +139,7 @@ describe("NVIDIA NIM passthrough per-model 404 scoping (#6888)", () => {
     expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
       "or-1",
       expect.objectContaining({ lastError: "fetch failed (ECONNREFUSED)" }),
+      expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );
   });
 

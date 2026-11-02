@@ -4,6 +4,7 @@
 // status (401/402/403/429) is skipped (console.warn + pass).
 //
 //   RUN_REAL=1 npx vitest run --config tests/vitest.config.js tests/translator/real/provider-cases.real.test.js
+import { positiveProviderBody } from "./positive-provider-body.js";
 import { describe, it, expect } from "vitest";
 import { getProviderCredentials } from "../../../src/sse/services/auth.js";
 import { checkAndRefreshToken } from "../../../src/sse/services/tokenRefresh.js";
@@ -53,7 +54,7 @@ async function prepare(providerId) {
 // Run handleChatCore + drain; returns { raw } or null if cred/quota issue (caller skips).
 async function runChat(providerId, prep, body) {
   const result = await handleChatCore({
-    body: { model: `${providerId}/${prep.model}`, ...body },
+    body: positiveProviderBody(providerId, { model: `${providerId}/${prep.model}`, ...body }),
     modelInfo: { provider: providerId, model: prep.model },
     credentials: prep.refreshed,
     connectionId: prep.credentials.connectionId,

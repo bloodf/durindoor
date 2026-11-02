@@ -82,3 +82,38 @@ A static import list is required because Next/webpack cannot analyze a dynamic `
 - `oauth.refreshLeadMs` feeds on-request refresh lead time. See [Architecture](./architecture.mdx).
 - `transport.thinkingFormat` overrides the wire shape `applyThinking` picks for every model behind this provider, ahead of a model's own capability-derived format. Set it to `"openai"` on a strict OpenAI-compatible reseller (Alicode, Baidu, Mistral) that re-hosts third-party reasoning models and rejects their native `thinking`/`enable_thinking`/`thinking_budget` fields.
 - Provider logos are a separate policy: [Provider brand assets](./provider-brand-assets.mdx).
+
+## Revision-bound OmniRoute identity audit
+
+[Recorded matrix](./omniroute-provider-matrix.json) compares the exported registry
+identities at OmniRoute `61e07fb7e0d4e1e76111495d3718c9e4d06d2a62` with the
+DurinDoor revision and registry tree recorded in `localSource`. It is historical
+source evidence, not a current provider-support list or a live-provider test.
+
+Reproduce from this PR's code with a clean checkout of that OmniRoute commit:
+
+```sh
+node scripts/audit-omniroute-providers.mjs --source /path/to/OmniRoute --commit 61e07fb7e0d4e1e76111495d3718c9e4d06d2a62 --format json
+node scripts/audit-omniroute-providers.mjs --source /path/to/OmniRoute --commit 61e07fb7e0d4e1e76111495d3718c9e4d06d2a62 --format markdown
+```
+
+The scanner parses source without importing or executing registry modules. A sparse
+checkout must include `open-sse/config/` and `public/providers/`. Keep output outside
+the upstream checkout; the CLI rejects dirty source trees and mismatched commits.
+Compare `source`, `totals`, `rows`, and `evidence` with the recorded matrix; local
+registry changes intentionally change membership and counts.
+
+The recorded run finds 285 local identities and 289 upstream identities: 183 present,
+106 missing, zero ambiguous. `cheaperinference` has alias `cinf`; its model constant
+`aion-labs.aion-2-0` is not a provider. All 19 entries in the real
+`omniroute-api-cloud.js` grouped array are present in `evidence.localProviders`;
+the container filename is not an identity. `acceptance.groupedExport.ids` lists
+the exact verified members. Existing focused tests cover helpers, arrays, aliases,
+duplicate identities, reexports, collisions, and unsupported source constructs.
+
+Four unresolved exported expressions remain: three interpolated URL constants in
+`poe/index.ts` and a model filter/map in `zcode/index.ts`. Inspect these rather than
+treating the matrix as complete static evaluation. Poe's dynamic `baseUrl` remains
+separate from its known canonical identity, including in Markdown's unsupported
+metadata table. No runtime transport, credentials, quota, or provider availability
+is certified by a `present` row. No live provider call is required or performed.

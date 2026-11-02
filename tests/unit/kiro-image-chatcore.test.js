@@ -1,0 +1,148 @@
+import "../translator/registerAll.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ execute: vi.fn(), fetchImageAsBase64: vi.fn() }));
+
+vi.mock("../../open-sse/translator/concerns/image.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  fetchImageAsBase64: mocks.fetchImageAsBase64,
+}));
+vi.mock("../../open-sse/executors/index.js", () => ({
+  getExecutor: vi.fn(() => ({ noAuth: false, execute: mocks.execute })),
+}));
+vi.mock("../../open-sse/utils/requestLogger.js", () => ({
+  createRequestLogger: vi.fn(async () => ({
+    logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(),
+    logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn(),
+  })),
+  maskSensitiveUrl: vi.fn((url) => url),
+}));
+vi.mock("@/lib/usageDb.js", () => ({
+  trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(),
+  appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}),
+  saveRequestUsage: vi.fn(async () => {}),
+}));
+vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({
+  startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn(),
+}));
+
+const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+const { FORMATS } = await import("../../open-sse/translator/formats.js");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network access"); }));
+});
+afterEach(() => vi.unstubAllGlobals());
+
+describe("Kiro guarded image dispatch (#1079)", () => {
+  it.each([
+    [false, false], [false, true], [true, false], [true, true],
+  ])("returns HTTP 400 without upstream execution (stream: %s, mixed inline: %s)", async (stream, mixedInline) => {
+    const url = "https://example.com/p.png";
+    const controller = new AbortController();
+    mocks.fetchImageAsBase64.mockResolvedValueOnce(null);
+    const body = { model: "claude-sonnet-4", stream, messages: [{ role: "user", content: [
+      { type: "text", text: "see" },
+      ...(mixedInline ? [{ type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2U=" } }] : []),
+      { type: "image_url", image_url: { url } },
+    ] }] };
+    const result = await handleChatCore({
+      body,
+      modelInfo: { provider: "kiro", model: body.model },
+      credentials: {},
+      sourceFormatOverride: FORMATS.OPENAI,
+      modelCapabilities: { vision: true },
+      abortSignal: controller.signal,
+      clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} },
+      rtkEnabled: false, headroomEnabled: false, cavemanEnabled: false,
+      ponytailEnabled: false, pxpipeEnabled: false,
+    });
+    expect(mocks.fetchImageAsBase64).toHaveBeenCalledExactlyOnceWith(url, { signal: controller.signal });
+    expect(result.success).toBe(false);
+    expect(result.response.status).toBe(400);
+    expect(result.response.headers.get("content-type")).toContain("application/json");
+    const error = await result.response.json();
+    expect(error.error.message).toContain("Kiro requires inline image data");
+    expect(error.error.message).toContain("Supply a base64 data URI");
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [false, false], [false, true], [true, false], [true, true],
+  ])("rejects nested Claude URL images before upstream dispatch (stream: %s, tools: %s)", async (stream, withTools) => {
+    const body = {
+      model: "claude-sonnet-4.5", stream,
+      ...(withTools ? { tools: [{ name: "screenshot", description: "Capture screen", input_schema: { type: "object", properties: {} } }] } : {}),
+      messages: [
+        { role: "user", content: "capture" },
+        { role: "assistant", content: [{ type: "tool_use", id: "capture-1", name: "screenshot", input: {} }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "capture-1", content: [
+          { type: "image", source: { type: "url", url: "https://example.com/screenshot.png" } },
+        ] }] },
+      ],
+    };
+    const result = await handleChatCore({
+      body, modelInfo: { provider: "kiro", model: body.model }, credentials: {},
+      sourceFormatOverride: FORMATS.CLAUDE, modelCapabilities: { vision: true },
+      clientRawRequest: { endpoint: "/v1/messages", body, headers: {} },
+      rtkEnabled: false, headroomEnabled: false, cavemanEnabled: false,
+      ponytailEnabled: false, pxpipeEnabled: false,
+    });
+    expect(result.response.status).toBe(400);
+    expect((await result.response.json()).error.message).toContain("Supply a base64 image source");
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [FORMATS.OPENAI, false], [FORMATS.OPENAI, true],
+    [FORMATS.CLAUDE, false], [FORMATS.CLAUDE, true],
+  ])("dispatches native image bytes and returns content (source: %s, stream: %s)", async (format, stream) => {
+    const bytes = "aW1hZ2U=";
+    mocks.fetchImageAsBase64.mockResolvedValueOnce({ url: `data:image/png;base64,${bytes}`, mimeType: "image/png" });
+    const chunk = { id: "image-proof", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "fixture image reply" }, finish_reason: null }] };
+    const stop = { ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
+    mocks.execute.mockResolvedValueOnce({
+      response: new Response(`data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify(stop)}\n\ndata: [DONE]\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      }),
+      url: "https://kiro.example/fixture", headers: {}, transformedBody: null,
+    });
+    const body = { model: "claude-sonnet-4.5", stream, messages: [{ role: "user", content: [
+      { type: "text", text: "describe" },
+      format === FORMATS.CLAUDE
+        ? { type: "image", source: { type: "url", url: "https://example.com/p.png" } }
+        : { type: "image_url", image_url: { url: "https://example.com/p.png" } },
+    ] }] };
+    const result = await handleChatCore({
+      body, modelInfo: { provider: "kiro", model: body.model }, credentials: {},
+      sourceFormatOverride: format, modelCapabilities: { vision: true },
+      clientRawRequest: { endpoint: format === FORMATS.CLAUDE ? "/v1/messages" : "/v1/chat/completions", body, headers: {} },
+      rtkEnabled: false, headroomEnabled: false, cavemanEnabled: false,
+      ponytailEnabled: false, pxpipeEnabled: false,
+    });
+    expect(mocks.execute.mock.calls[0][0].body.conversationState.currentMessage.userInputMessage.images)
+      .toEqual([{ format: "png", source: { bytes } }]);
+    expect(result.success).toBe(true);
+    expect(result.response.status).toBe(200);
+    const responseText = await result.response.text();
+    expect(responseText).toContain("fixture image reply");
+    if (stream) {
+      const events = responseText.split("\n").filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice(6)).filter((data) => data !== "[DONE]").map((data) => JSON.parse(data));
+      expect(events.some((event) => event.error || event.type === "error")).toBe(false);
+      if (format === FORMATS.CLAUDE) {
+        expect(events.some((event) => event.type === "message_stop")).toBe(true);
+      } else {
+        expect(events.some((event) => event.choices?.some((choice) => choice.finish_reason === "stop"))).toBe(true);
+      }
+    } else {
+      const response = JSON.parse(responseText);
+      expect(response.error).toBeUndefined();
+      if (format === FORMATS.CLAUDE) expect(response.stop_reason).toBe("end_turn");
+      else expect(response.choices[0].finish_reason).toBe("stop");
+    }
+  });
+});

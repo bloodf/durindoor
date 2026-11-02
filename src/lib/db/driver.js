@@ -3,11 +3,13 @@ import path from "node:path";
 import { ensureDirs, hardenPermissions, currentDataFile, SECRET_DIR_MODE } from "./paths.js";
 import { wrapCutoverGuard } from "./cutoverLock.js";
 import { applyDatabaseEnvFile } from "./databaseEnvFile.js";
+import { withNullByteSafeParams } from "./helpers/nullBytes.js";
+import { isFunction } from "../../shared/utils/typeChecks.js";
 
 applyDatabaseEnvFile();
 
 // Use global to survive Next.js dev hot-reload (module state resets on reload)
-import { isFunction } from "../../shared/utils/typeChecks.js";if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null, cacheKey: null };
+if (!global._dbAdapter) global._dbAdapter = { instance: null, initPromise: null, logged: false, file: null, cacheKey: null };
 const state = global._dbAdapter;
 
 function liveDataFile() {
@@ -20,7 +22,8 @@ async function initAdapter(engine = "sqlite") {
   let adapter;
   if (engine === "postgres") {
     const { openActiveAdapter } = await import("./postgresFallback.js");
-    adapter = await openActiveAdapter();
+    // Same bind boundary as SQLite: strip NUL from string params once.
+    adapter = withNullByteSafeParams(await openActiveAdapter());
   } else {
     // Order per runtime enforced by the shared openSqliteAdapter:
     //   Bun:  bun:sqlite → sql.js
@@ -123,7 +126,8 @@ export async function openSqliteAdapter(filePath) {
     created = false;
     return result;
   };
-  return adapter;
+  // Shared bind boundary for every SQLite open (main DB + proxy timeline).
+  return withNullByteSafeParams(adapter);
 }
 
 
@@ -222,7 +226,8 @@ export function getActiveEngine() {
 export function setActiveAdapter(adapter) {
   if (!adapter) throw new Error("setActiveAdapter: adapter is required");
   const prev = state.instance;
-  const guarded = wrapCutoverGuard(adapter);
+  // Cutover may hand a fresh PG/SQLite adapter that skipped initAdapter.
+  const guarded = wrapCutoverGuard(withNullByteSafeParams(adapter));
   state.instance = guarded;
   state.initPromise = Promise.resolve(guarded);
   state.file = liveDataFile();

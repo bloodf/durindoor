@@ -15,7 +15,8 @@ async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
   const token = connection.accessToken || connection.apiKey;
   if (!token) return { error: "No valid token found", status: 401 };
 
-  const res = await proxyAwareFetch(`${baseUrl.replace(/\/$/, "")}/v1/models`, {
+  // Stored URLs are API bases (including any /v1), just like native chat URLs.
+  const res = await proxyAwareFetch(`${baseUrl.replace(/\/$/, "")}/models`, {
     method: "GET",
     headers: headersFor(token),
     cache: "no-store"

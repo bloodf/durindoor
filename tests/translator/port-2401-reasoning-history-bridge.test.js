@@ -1,14 +1,14 @@
-// Regression coverage for upstream decolua/9router#2401 — reasoning/thinking
-// history must survive the OpenAI request bridge. The OpenAI Chat Completions
-// wire format has no native thinking field for request *history*, so the bridge
-// carries normal thinking as `reasoning_content` and redacted_thinking blocks
-// as non-serializable metadata on the intermediate assistant message. Once
-// dropped on one hop, thinking content is gone for good on every subsequent hop
-// (combo switch, retry, translation).
+// Regression coverage for upstream decolua/9router#2401: readable reasoning
+// survives the OpenAI bridge, but opaque Claude history must reject with 400.
+// Only compatible native routes can preserve redacted_thinking continuity.
 import { describe, it, expect } from "vitest";
 import "./registerAll.js";
 import { translateRequest, translateResponse } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+import { CLAUDE_BLOCK, ROLE } from "../../open-sse/translator/schema/index.js";
+import { HTTP_STATUS } from "../../open-sse/config/runtimeConfig.js";
+import { normalizeClaudePassthrough } from "../../open-sse/translator/formats/claude.js";
+import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../../open-sse/config/defaultThinkingSignature.js";
 
 // Neutral model id — the bridge logic under test is format-driven, not model-driven.
 const MODEL = "test-model";
@@ -30,7 +30,7 @@ describe("#2401 reasoning/thinking bridge (request)", () => {
     const assistant = mid.messages.find((m) => m.role === "assistant");
     expect(assistant.reasoning_content).toBe("roundtrip reasoning");
 
-    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {}, "anthropic");
+    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {}, "anthropic-compatible");
     const back = final.messages.find((m) => m.role === "assistant");
     const thinkingBlocks = back.content.filter((b) => b.type === "thinking");
     expect(thinkingBlocks).toHaveLength(1);
@@ -40,8 +40,8 @@ describe("#2401 reasoning/thinking bridge (request)", () => {
     expect(back.content.find((b) => b.type === "text").text).toBe("roundtrip answer");
   });
 
-  it("claude -> openai -> claude roundtrip preserves redacted_thinking blocks losslessly", () => {
-    const redacted = { type: "redacted_thinking", data: "opaque-encrypted-payload-AAA" };
+  it("rejects mixed redacted_thinking history instead of using an in-process bridge", () => {
+    const redacted = { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "opaque-encrypted-payload-AAA" };
     const body = {
       system: "sys",
       max_tokens: 100,
@@ -54,31 +54,15 @@ describe("#2401 reasoning/thinking bridge (request)", () => {
         ] },
       ],
     };
-    const mid = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, body, true);
-    const assistant = mid.messages.find((m) => m.role === "assistant");
-
-    // The opaque redacted payload must NOT be flattened into reasoning_content:
-    // that would leak encrypted bytes as plain text and lose the block type.
-    expect(assistant.reasoning_content).toBe("visible reasoning");
-
-    // Redacted metadata is in-process only: serializing the intermediate body
-    // (what an OpenAI-final provider would send) must expose no trace of it.
-    const serialized = JSON.parse(JSON.stringify(mid));
-    const serializedAssistant = serialized.messages.find((m) => m.role === "assistant");
-    expect(JSON.stringify(serializedAssistant)).not.toContain("redacted_thinking");
-    expect(JSON.stringify(serializedAssistant)).not.toContain("opaque-encrypted-payload-AAA");
-
-    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {}, "anthropic");
-    const back = final.messages.find((m) => m.role === "assistant");
-    const redactedBack = back.content.filter((b) => b.type === "redacted_thinking");
-    expect(redactedBack).toHaveLength(1);
-    expect(redactedBack[0]).toEqual({ type: "redacted_thinking", data: "opaque-encrypted-payload-AAA" });
-    // Normal thinking still survives alongside the redacted block.
-    expect(back.content.filter((b) => b.type === "thinking")).toHaveLength(1);
+    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, body, true))
+      .toThrow(expect.objectContaining({
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: expect.stringContaining("redacted_thinking"),
+      }));
   });
 
-  it("redacted_thinking roundtrip holds for an assistant message that also carries tool_calls", () => {
-    const redacted = { type: "redacted_thinking", data: "opaque-encrypted-payload-BBB" };
+  it("rejects redacted_thinking alongside tool calls before bridging", () => {
+    const redacted = { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "opaque-encrypted-payload-BBB" };
     const body = {
       max_tokens: 100,
       messages: [
@@ -90,17 +74,15 @@ describe("#2401 reasoning/thinking bridge (request)", () => {
         { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "ok" }] },
       ],
     };
-    const mid = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, body, true);
-    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {}, "anthropic");
-    const back = final.messages.find((m) => m.role === "assistant");
-    const redactedBack = back.content.filter((b) => b.type === "redacted_thinking");
-    expect(redactedBack).toHaveLength(1);
-    expect(redactedBack[0]).toEqual(redacted);
-    expect(back.content.some((b) => b.type === "tool_use")).toBe(true);
+    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, body, true))
+      .toThrow(expect.objectContaining({
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: expect.stringContaining("redacted_thinking"),
+      }));
   });
 
-  it("claude -> openai -> claude roundtrip keeps a redacted-only assistant turn alive", () => {
-    const redacted = { type: "redacted_thinking", data: "opaque-encrypted-payload-CCC" };
+  it("rejects a redacted-only assistant turn rather than silently dropping it", () => {
+    const redacted = { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "opaque-encrypted-payload-CCC" };
     const body = {
       max_tokens: 100,
       messages: [
@@ -108,22 +90,11 @@ describe("#2401 reasoning/thinking bridge (request)", () => {
         { role: "assistant", content: [redacted] },
       ],
     };
-    const mid = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, body, true);
-    // The intermediate assistant message must exist (not dropped as null) and
-    // must expose nothing about the redacted payload on the wire.
-    const assistant = mid.messages.find((m) => m.role === "assistant");
-    expect(assistant).toBeTruthy();
-    expect(assistant.reasoning_content ?? "").not.toContain("opaque-encrypted-payload-CCC");
-
-    // This case isolates the in-process redacted-thinking carrier. Preserve the
-    // terminal assistant deliberately; default continuation behavior is covered
-    // by the translated/native assistant-prefill-policy regression suite.
-    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {
-      rawHeaders: { "x-9router-assistant-prefill": "preserve" },
-    }, "anthropic");
-    const back = final.messages.find((m) => m.role === "assistant");
-    expect(back).toBeTruthy();
-    expect(back.content).toEqual([{ type: "redacted_thinking", data: "opaque-encrypted-payload-CCC" }]);
+    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, body, true))
+      .toThrow(expect.objectContaining({
+        statusCode: HTTP_STATUS.BAD_REQUEST,
+        message: expect.stringContaining("redacted_thinking"),
+      }));
   });
 
   it("openai -> claude: reasoning_content becomes a leading thinking block (no redacted metadata)", () => {
@@ -134,11 +105,56 @@ describe("#2401 reasoning/thinking bridge (request)", () => {
         { role: "user", content: "u2" },
       ],
     };
-    const out = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, body, true, {}, "anthropic");
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, body, true, {}, "anthropic-compatible");
     const assistant = out.messages.find((m) => m.role === "assistant");
-    expect(assistant.content[0]).toEqual({ type: "thinking", thinking: "r1" });
+    expect(assistant.content[0]).toEqual({ type: "thinking", thinking: "r1", signature: DEFAULT_THINKING_CLAUDE_SIGNATURE });
     expect(assistant.content[1]).toMatchObject({ type: "text", text: "a1" });
     expect(assistant.content.some((b) => b.type === "redacted_thinking")).toBe(false);
+  });
+});
+
+describe.each(["claude", "anthropic-compatible"])("#2401 native opaque history (%s)", (provider) => {
+  describe.each(["claude-sonnet-4-5", "claude-sonnet-4-6"])("model=%s", (model) => {
+    it.each(["translateRequest", "normalizeClaudePassthrough"])("%s preserves opaque order without a thinking placeholder", (route) => {
+      const content = [
+        { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "payload-1" },
+        { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "" },
+        { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "payload-2" },
+        { type: CLAUDE_BLOCK.TOOL_USE, id: "call_1", name: "Read", input: { path: "x" } },
+      ];
+      const body = {
+        model,
+        max_tokens: 4096,
+        thinking: { type: "enabled", budget_tokens: 1024 },
+        messages: [
+          { role: ROLE.USER, content: "read x" },
+          { role: ROLE.ASSISTANT, content: structuredClone(content) },
+          { role: ROLE.USER, content: [{ type: CLAUDE_BLOCK.TOOL_RESULT, tool_use_id: "call_1", content: "ok" }] },
+        ],
+      };
+      const out = route === "translateRequest"
+        ? translateRequest(FORMATS.CLAUDE, FORMATS.CLAUDE, model, body, true, null, provider)
+        : normalizeClaudePassthrough(body, model, provider);
+      const assistant = out.messages.find((message) => message.role === ROLE.ASSISTANT);
+      expect(assistant.content.map(({ cache_control, ...block }) => block)).toEqual(content);
+    });
+
+    it("keeps readable signature policy separate from opaque history", () => {
+      const opaque = { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "opaque" };
+      const readable = { type: CLAUDE_BLOCK.THINKING, thinking: "unsigned reasoning" };
+      const out = translateRequest(FORMATS.CLAUDE, FORMATS.CLAUDE, model, {
+        model,
+        messages: [
+          { role: ROLE.ASSISTANT, content: [structuredClone(opaque), { ...readable }, { ...opaque, data: "" }] },
+          { role: ROLE.USER, content: "continue" },
+        ],
+      }, true, null, provider);
+      expect(out.messages.find((message) => message.role === ROLE.ASSISTANT).content).toEqual([
+        opaque,
+        ...(provider === "claude" ? [] : [{ ...readable, signature: DEFAULT_THINKING_CLAUDE_SIGNATURE }]),
+        { ...opaque, data: "" },
+      ]);
+    });
   });
 });
 
@@ -176,101 +192,38 @@ describe("#2401 reasoning/thinking bridge (response)", () => {
 });
 
 describe("#2401 redacted_thinking bridge adversarial boundaries", () => {
-  const roundtripAssistant = (assistantContent) => {
-    const body = {
+  it.each([
+    ["empty data", [
+      { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "" },
+      { type: CLAUDE_BLOCK.TEXT, text: "answer" },
+    ]],
+    ["multiple interleaved blocks", [
+      { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "payload-1" },
+      { type: CLAUDE_BLOCK.THINKING, thinking: "some reasoning", signature: "sig" },
+      { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "payload-2" },
+      { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "payload-3" },
+      { type: CLAUDE_BLOCK.TEXT, text: "answer" },
+    ]],
+    ["thinking before redaction", [
+      { type: CLAUDE_BLOCK.THINKING, thinking: "visible reasoning", signature: "sig-mixed" },
+      { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "opaque-mixed" },
+      { type: CLAUDE_BLOCK.TEXT, text: "the answer" },
+    ]],
+    ["opaque wire payload", [
+      { type: CLAUDE_BLOCK.REDACTED_THINKING, data: "opaque-no-leak" },
+      { type: CLAUDE_BLOCK.TEXT, text: "answer" },
+    ]],
+  ])("rejects %s before creating a lossy OpenAI wire body", (_label, content) => {
+    expect(() => translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, {
       max_tokens: 100,
       messages: [
-        { role: "user", content: [{ type: "text", text: "u" }] },
-        { role: "assistant", content: assistantContent },
+        { role: ROLE.USER, content: "u" },
+        { role: ROLE.ASSISTANT, content },
+        { role: ROLE.USER, content: "continue" },
       ],
-    };
-    const mid = translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI, MODEL, body, true);
-    const final = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, MODEL, mid, true, {}, "anthropic");
-    return { mid, back: final.messages.find((m) => m.role === "assistant") };
-  };
-
-  it("roundtrips a redacted_thinking block with an empty data string losslessly", () => {
-    const { mid, back } = roundtripAssistant([
-      { type: "redacted_thinking", data: "" },
-      { type: "text", text: "answer" },
-    ]);
-    // Empty data is still a well-formed block (typeof data === "string"): it
-    // must survive the bridge, not be silently dropped.
-    expect(mid.messages.some((m) => m.role === "assistant")).toBe(true);
-    expect(back).toBeTruthy();
-    expect(back.content.filter((b) => b.type === "redacted_thinking")).toEqual([
-      { type: "redacted_thinking", data: "" },
-    ]);
-    expect(back.content.some((b) => b.type === "text" && b.text === "answer")).toBe(true);
-    // Redacted block restored before the text block.
-    const types = back.content.map((b) => b.type);
-    expect(types.indexOf("redacted_thinking")).toBeLessThan(types.indexOf("text"));
-  });
-
-  it("preserves the relative order of multiple redacted_thinking blocks in one turn", () => {
-    const { back } = roundtripAssistant([
-      { type: "redacted_thinking", data: "payload-1" },
-      { type: "thinking", thinking: "some reasoning", signature: "sig" },
-      { type: "redacted_thinking", data: "payload-2" },
-      { type: "redacted_thinking", data: "payload-3" },
-      { type: "text", text: "answer" },
-    ]);
-    const redactedBack = back.content.filter((b) => b.type === "redacted_thinking");
-    expect(redactedBack).toEqual([
-      { type: "redacted_thinking", data: "payload-1" },
-      { type: "redacted_thinking", data: "payload-2" },
-      { type: "redacted_thinking", data: "payload-3" },
-    ]);
-    // Original interleaving with the thinking block is intentionally NOT
-    // preserved (see ponytail note on CLAUDE_REDACTED_THINKING_BLOCKS in
-    // open-sse/translator/schema/blocks.js): all redacted blocks are restored
-    // ahead of the thinking block rebuilt from reasoning_content.
-    const types = back.content.map((b) => b.type);
-    expect(types.indexOf("thinking")).toBeGreaterThan(types.lastIndexOf("redacted_thinking"));
-  });
-
-  it("restores redacted blocks ahead of the rebuilt thinking block in a mixed turn", () => {
-    const { back } = roundtripAssistant([
-      { type: "thinking", thinking: "visible reasoning", signature: "sig-mixed" },
-      { type: "redacted_thinking", data: "opaque-mixed" },
-      { type: "text", text: "the answer" },
-    ]);
-    expect(back.content.filter((b) => b.type === "redacted_thinking")).toEqual([
-      { type: "redacted_thinking", data: "opaque-mixed" },
-    ]);
-    expect(back.content.filter((b) => b.type === "thinking")).toEqual([
-      { type: "thinking", thinking: "visible reasoning" },
-    ]);
-    expect(back.content.some((b) => b.type === "text" && b.text === "the answer")).toBe(true);
-    // Restore order: redacted prepended, then rebuilt thinking, then text.
-    const types = back.content.map((b) => b.type);
-    expect(types).toEqual(["redacted_thinking", "thinking", "text"]);
-  });
-
-  it("never leaks the symbol carrier onto the wire (JSON, spread, and own-key checks)", () => {
-    const { mid } = roundtripAssistant([
-      { type: "redacted_thinking", data: "opaque-no-leak" },
-      { type: "text", text: "answer" },
-    ]);
-    const assistant = mid.messages.find((m) => m.role === "assistant");
-    expect(assistant).toBeTruthy();
-
-    // JSON.stringify of the intermediate message (what an OpenAI-final
-    // provider would send) must contain no trace of the stashed payload.
-    const json = JSON.stringify(assistant);
-    expect(json).not.toContain("opaque-no-leak");
-    expect(json).not.toContain("redacted_thinking");
-
-    // The carrier must not appear in any string-keyed enumeration path.
-    expect(Object.keys(assistant)).not.toContain("claudeRedactedThinkingBlocks");
-    expect(Object.getOwnPropertyNames(assistant)).toEqual(
-      expect.not.arrayContaining(["claudeRedactedThinkingBlocks"]),
-    );
-
-    // A spread copy ({ ...msg }) drops symbol-keyed non-enumerable props, so
-    // a downstream spread cannot smuggle the payload into a wire body either.
-    const spread = { ...assistant };
-    expect(JSON.stringify(spread)).not.toContain("opaque-no-leak");
-    expect(JSON.parse(JSON.stringify(spread))).toEqual(JSON.parse(json));
+    }, true)).toThrow(expect.objectContaining({
+      statusCode: HTTP_STATUS.BAD_REQUEST,
+      message: expect.stringContaining("redacted_thinking"),
+    }));
   });
 });

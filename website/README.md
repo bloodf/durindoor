@@ -134,3 +134,15 @@ The quick start sets dashboard credentials before the first boot. The first-requ
 The root Vitest suite also exercises website components. Install dependencies in the root, `website/`, and `tests/` before running that suite; its website tests use the website’s React runtime. The test workflow installs all three packages.
 
 The docs navigation uses the canonical `durindoor-mark.svg` from the shared brand kit. Root asset filenames retained for existing consumers are generated from the same emblem, outlined wordmarks, and social image. Fork acknowledgment appears in the root README.
+
+### Visant design repairs, October 2026
+
+Marketing coverage counts are derived on the server from visible provider registry entries. The registry stays outside the client bundle. The public installation examples now include signing secrets, a user-chosen initial password and explicit loopback binding. Keep those secrets stable for later starts; the docs explain this before the first run.
+
+Clipboard actions show failure feedback and allow another attempt. The model-resolution examples support keyboard tabs and a Pause action; manual selection displays the complete example. The integration marquee pauses through its control, hover or keyboard focus. Reduced motion keeps the static gate and stops decorative animation. Short mobile navigation scrolls inside its available viewport height, and language menus close when keyboard focus leaves them.
+
+Docs retain their existing parchment and forest reading themes. A mobile theme action remains available in the header while the sidebar is closed. English guides declare English even when the marketing locale differs. Canonical links and social cards use `NEXT_PUBLIC_SITE_URL`, defaulting to the deployed DurinDoor site. The sitemap includes only the homepage and public MDX collection; simulated dashboard, login and preview routes declare noindex.
+
+The sample dashboard entry shows a recoverable error with Retry and Docs actions if the browser-local sample session cannot initialize. It does not contact a provider. Tests for these changes live in `tests/unit/visant-marketing-docs.test.js` and `website/tests/marketing.spec.mjs`. Run the browser suite against a production build with `DOCS_BASE_URL=http://127.0.0.1:3100`; `WEBSITE_CHROMIUM_EXECUTABLE` optionally selects an installed headless Chromium binary.
+
+The shared endpoint provider-health table has a named keyboard-focusable horizontal scroll region. This single semantic accessibility change is the only production component adjustment required by the marketing review; the demo still imports the production component directly.

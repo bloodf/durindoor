@@ -17,6 +17,7 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
 import { encodeDataUri, parseDataUri } from "../concerns/image.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 
 function flattenText(content) {
   if (content == null) return "";
@@ -142,7 +143,8 @@ function convertMessages(messages = []) {
           type: "tool-result",
           toolCallId,
           toolName,
-          output: { type: "text", value }
+          // Consume bridge metadata using CommandCode's native error output type.
+          output: { type: m.is_error === true ? "error-text" : "text", value }
         }]
       });
       continue;
@@ -194,13 +196,13 @@ function convertTools(tools) {
       result.push({
         name: t.function.name,
         description: t.function.description,
-        input_schema: t.function.parameters || { type: "object" }
+        input_schema: toClaudeInputSchema(t.function.parameters)
       });
     } else if (t.name && (t.input_schema || t.parameters)) {
       result.push({
         name: t.name,
         description: t.description,
-        input_schema: t.input_schema || t.parameters
+        input_schema: toClaudeInputSchema(t.input_schema, t.parameters)
       });
     }
   }

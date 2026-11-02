@@ -2,6 +2,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../../config/defaultThinkingSignature.js";
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
+import { usesClaudeRequestFormat } from "../validate.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { getGeminiThoughtSignatureSync } from "../../services/thoughtSignatureStore.js";
 function generateUUID() {
@@ -24,6 +25,13 @@ import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { decodeToolCallId } from "../concerns/signatureTransport.js";
+
+/** Own-key map: OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode. */
+const OPENAI_TOOL_CHOICE_TO_GEMINI_MODE = new Map([
+  ["auto", "AUTO"],
+  ["none", "NONE"],
+  ["required", "ANY"],
+]);
 
 /**
  * Keep Gemini history legal by isolating function responses and ensuring a
@@ -176,7 +184,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
         const count = responseOccurrences.get(rawId) || 0;
         responseOccurrences.set(rawId, count + 1);
         const uniqueId = callIds.get(rawId)?.[count];
-        if (uniqueId !== undefined) toolResponses[uniqueId] = msg.content;
+        if (uniqueId !== undefined) {
+          // Gemini consumes result text rather than the internal bridge error flag.
+          toolResponses[uniqueId] = msg.is_error === true
+            ? `[Tool error]\n${isString(msg.content) ? msg.content : Array.isArray(msg.content) ? extractTextContent(msg.content) : JSON.stringify(msg.content) ?? ""}`
+            : msg.content;
+        }
       }
     }
   }
@@ -346,13 +359,20 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       result.tools = [{ functionDeclarations }];
     }
   }
-  if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
+  const hasFunctionDeclarations = result.tools?.[0]?.functionDeclarations?.length > 0;
+  // OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode (#1328 / #1339).
+  // auto→AUTO, none→NONE, required→ANY. Named {type:function} stays ANY + allowedFunctionNames.
+  // Map lookup avoids prototype keys (e.g. "toString") resolving to non-mode values.
+  // Only emit mode when declarations exist — Gemini rejects ANY/AUTO with an empty tools list.
+  if (isString(body.tool_choice)) {
+    const mode = OPENAI_TOOL_CHOICE_TO_GEMINI_MODE.get(body.tool_choice);
+    if (mode && hasFunctionDeclarations) result.toolConfig = { functionCallingConfig: { mode } };
+  } else if (body.tool_choice?.type === OPENAI_BLOCK.FUNCTION && body.tool_choice.function?.name) {
     result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(body.tool_choice.function.name)] } };
   }
   if (toolNameMap.size) result._toolNameMap = toolNameMap;
 
   const responseSchema = body.response_format?.json_schema?.schema;
-  const hasFunctionDeclarations = result.tools?.[0]?.functionDeclarations?.length > 0;
   if (body.response_format?.type === "json_schema" && isObject(responseSchema) &&
     (!hasFunctionDeclarations || /^gemini-3(?:[.-]|$)/i.test(model))) {
     result.generationConfig.responseMimeType = "application/json";
@@ -557,6 +577,8 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
               }
               content = textItems.join("\n");
             }
+            // Preserve the restored Claude error flag in the existing result text.
+            if (block.is_error === true) content = `[Tool error]\n${content ?? ""}`;
             // Resolve the original tool name from the id — Gemini requires it to match the functionCall name.
             // Pair FIFO against the oldest unmatched tool_use with this raw id so a
             // reused id across turns doesn't resolve to a later turn's name/id.
@@ -642,15 +664,9 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
   return envelope;
 }
 
-// Detect if model should use Claude backend in Antigravity
-// Claude models have specific ID patterns — more reliable than caps at routing level
-function isClaudeModel(model) {
-  return model.toLowerCase().includes("claude");
-}
-
 // OpenAI -> Antigravity (Sandbox Cloud Code with wrapper)
 export function openaiToAntigravityRequest(model, body, stream, credentials = null) {
-  if (isClaudeModel(model)) {
+  if (usesClaudeRequestFormat(FORMATS.ANTIGRAVITY, model)) {
     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
     return wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
   }

@@ -1,4 +1,4 @@
-import streamJson from "stream-json";
+import { parserStream } from "stream-json";
 import { getApiKeyByKey, getApiKeyUsageLimitStatus } from "@/lib/localDb";
 import { API_KEY_LIMIT_FIELDS } from "@/lib/db/helpers/apiKeyPolicy.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "./apiKeyPolicy.js";
@@ -114,7 +114,8 @@ export async function recordNativeUsage({ apiKey, provider, model, connectionId,
 // Select only declared envelope metadata and usage. Output/tool objects must not
 // replace the response id or inject usage, and large strings are never retained.
 function createJsonCollector() {
-  const parser = streamJson.parser({ packKeys: true, packStrings: false, streamStrings: true, packNumbers: true, streamNumbers: false });
+  // stream-json v3 exposes the Node Duplex adapter separately from its generator.
+  const parser = parserStream({ packKeys: true, packStrings: false, streamStrings: true, packNumbers: true, streamNumbers: false });
   const frames = [];
   const result = {};
   let capture = null;
@@ -187,6 +188,7 @@ function createJsonCollector() {
       if (error) throw error;
       await new Promise((resolve, reject) => parser.write(chunk, (cause) => cause ? reject(cause) : resolve()));
       if (error) throw error;
+      return result;
     },
     async finish() {
       if (error) throw error;
@@ -354,7 +356,11 @@ export function observeNativeResponse(response, details) {
   const stream = new TransformStream({
     async transform(chunk, controller) {
       if (sse) await collector.write(decoder.decode(chunk, { stream: true }));
-      else if (json) await collector.write(chunk);
+      else if (json) {
+        const value = await collector.write(chunk);
+        // Persist captured creation IDs before releasing their bytes, not at EOF.
+        await details.onValue?.(value);
+      }
       controller.enqueue(chunk);
     },
     async flush() {

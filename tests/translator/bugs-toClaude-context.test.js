@@ -4,17 +4,82 @@ import "./registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { prepareClaudeRequest } from "../../open-sse/translator/formats/claude.js";
+import { CLAUDE_SYSTEM_PROMPT } from "../../open-sse/config/appConstants.js";
+import { openaiToClaudeRequestForAntigravity } from "../../open-sse/translator/request/openai-to-claude.js";
 
 // anthropic-compatible provider so prepareClaudeRequest runs the openai→claude path
 const T = (body) =>
   translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "m", body, true, null, "anthropic-compatible-x");
 
 describe("OpenAI → Claude context mapping", () => {
-  // openai-to-claude.js:124-134 — always injects CLAUDE_SYSTEM_PROMPT ("You are Claude Code")
-  // KNOWN BUG: pollutes requests for non-official Claude-compatible providers
-  it.fails("does not inject Claude Code system prompt for compatible providers", () => {
-    const out = T({ messages: [{ role: "user", content: "hi" }] });
-    expect(JSON.stringify(out.system), "Claude Code prompt injected").not.toContain("Claude Code");
+  describe.each([true, false])("system instructions (stream=%s)", (stream) => {
+    it.each(["anthropic-compatible-x", "minimax", "deepseek", null])(
+      "does not inject Claude Code system prompt for compatible providers (%s)",
+      (provider) => {
+        const out = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "claude-sonnet-4", {
+          provider: "claude",
+          messages: [{ role: "user", content: "hi" }],
+        }, stream, null, provider);
+        expect(out.system).toBeUndefined();
+        expect(out.stream).toBe(stream);
+      },
+    );
+
+    it.each(["claude", "anthropic-compatible-x", "minimax", "deepseek", null])(
+      "preserves client instructions and limits branding to the intended provider (%s)",
+      (provider) => {
+        const instructions = "You are a translation assistant, not a coding assistant.";
+        const out = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "claude-sonnet-4", {
+          messages: [
+            { role: "system", content: instructions },
+            { role: "system", content: [{ type: "text", text: "Reply only in French." }] },
+            { role: "user", content: "hi" },
+          ],
+        }, stream, null, provider);
+        const clientText = `${instructions}\nReply only in French.`;
+        expect(out.system.map((block) => block.text)).toEqual(
+          provider === "claude" ? [CLAUDE_SYSTEM_PROMPT, clientText] : [clientText],
+        );
+        expect(out.stream).toBe(stream);
+      },
+    );
+
+    it("retains official-client branding without client system instructions", () => {
+      const out = translateRequest(FORMATS.OPENAI, FORMATS.CLAUDE, "claude-sonnet-4", {
+        messages: [{ role: "user", content: "hi" }],
+      }, stream, null, "claude");
+      expect(out.system.map((block) => block.text)).toEqual([CLAUDE_SYSTEM_PROMPT]);
+      expect(out.stream).toBe(stream);
+    });
+
+    it.each(["claude", "anthropic-compatible-x"])(
+      "does not add branding to same-format requests (%s)",
+      (provider) => {
+        for (const system of [undefined, "Keep my identity.", [{ type: "text", text: "Keep my identity." }]]) {
+          const out = translateRequest(FORMATS.CLAUDE, FORMATS.CLAUDE, "claude-sonnet-4", {
+            model: "claude-sonnet-4",
+            stream,
+            ...(system !== undefined && { system }),
+            messages: [{ role: "user", content: "hi" }],
+          }, stream, null, provider);
+          expect(Array.isArray(out.system) ? out.system.map((block) => block.text) : out.system)
+            .toEqual(Array.isArray(system) ? system.map((block) => block.text) : system);
+          expect(out.stream).toBe(stream);
+        }
+      },
+    );
+
+    it("preserves client-authored Claude Code text on the Antigravity bridge", () => {
+      const instructions = "You are Claude Code in this fictional dialogue. Translate it verbatim.";
+      const out = openaiToClaudeRequestForAntigravity("claude-sonnet-4", {
+        messages: [
+          { role: "system", content: instructions },
+          { role: "user", content: "hi" },
+        ],
+      }, stream);
+      expect(out.system.map((block) => block.text)).toEqual([instructions]);
+      expect(out.stream).toBe(stream);
+    });
   });
 
   it("assistant reasoning_content becomes a thinking block", () => {
@@ -43,16 +108,52 @@ describe("OpenAI → Claude context mapping", () => {
     expect(out.tool_choice?.type).toBe("none");
   });
 
-  // getContentBlocksFromMessage — no input_audio branch → audio dropped
-  // KNOWN BUG
-  it.fails("input_audio content is preserved", () => {
-    const out = T({
-      messages: [{ role: "user", content: [
-        { type: "text", text: "transcribe" },
-        { type: "input_audio", input_audio: { data: "AUDIO_B64", format: "wav" } },
-      ] }],
+  describe.each([false, true])("input_audio rejection (stream=%s)", (stream) => {
+    const translate = (body, target = FORMATS.CLAUDE) =>
+      translateRequest(FORMATS.OPENAI, target, "m", body, stream, null, "anthropic-compatible-x");
+    const audio = { type: "input_audio", input_audio: { data: "AUDIO_B64", format: "wav" } };
+
+    it.each([
+      ["audio-only", [audio]],
+      ["mixed text/audio", [{ type: "text", text: "transcribe" }, audio]],
+      ["missing audio payload", [{ type: "input_audio" }]],
+    ])("rejects %s with a client error instead of dropping content", (_label, content) => {
+      const body = { messages: [{ role: "user", content }] };
+      const original = structuredClone(body);
+      expect(() => translate(body)).toThrow(expect.objectContaining({
+        statusCode: 400,
+        message: expect.stringMatching(/input_audio.*not supported.*Claude/),
+      }));
+      expect(body).toEqual(original);
     });
-    expect(JSON.stringify(out), "audio dropped").toContain("AUDIO_B64");
+
+    it.each(["system", "assistant"])("rejects audio in %s history before extraction", (role) => {
+      expect(() => translate({ messages: [
+        { role, content: [audio] },
+        { role: "user", content: "continue" },
+      ] })).toThrow(expect.objectContaining({ statusCode: 400 }));
+    });
+
+    it("preserves supported text and images without audio", () => {
+      const out = translate({ messages: [{ role: "user", content: [
+        { type: "text", text: "describe these images" },
+        { type: "image_url", image_url: { url: "https://example.com/pic.png" } },
+        { type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2U=" } },
+      ] }] });
+      expect(out.messages).toEqual([{ role: "user", content: [
+        { type: "text", text: "describe these images" },
+        { type: "image", source: { type: "url", url: "https://example.com/pic.png" } },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+      ] }]);
+      expect(out.stream).toBe(stream);
+    });
+
+    it("does not reject audio on the same-format OpenAI path", () => {
+      const messages = [{ role: "user", content: [audio] }];
+      const out = translate({ messages, stream }, FORMATS.OPENAI);
+      expect(out.messages).toEqual(messages);
+      expect(out.stream).toBe(stream);
+    });
   });
 
   // openai-to-claude.js:235-251 — remote http image_url is kept (regression guard)

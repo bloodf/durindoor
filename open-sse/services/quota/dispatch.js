@@ -10,6 +10,11 @@ export class QuotaDispatchUnavailableError extends Error {
   }
 }
 
+/** Unknown or hostile transport errors are not local quota failures. */
 export function isQuotaDispatchUnavailable(error) {
-  return error?.code === "QUOTA_DISPATCH_UNAVAILABLE";
+  try {
+    return error?.code === "QUOTA_DISPATCH_UNAVAILABLE";
+  } catch {
+    return false;
+  }
 }

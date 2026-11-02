@@ -47,21 +47,6 @@ export const VALID_OPENAI_CONTENT_TYPES = [
   OPENAI_BLOCK.TEXT, OPENAI_BLOCK.IMAGE_URL, OPENAI_BLOCK.IMAGE, OPENAI_BLOCK.INPUT_AUDIO, OPENAI_BLOCK.AUDIO_URL, OPENAI_BLOCK.FILE,
 ];
 
-// In-process carrier for Claude `redacted_thinking` blocks while a request
-// pivots through the OpenAI intermediate format. The OpenAI Chat Completions
-// wire format has no field that can hold Anthropic's opaque encrypted redacted
-// payloads, so translators stash them under this symbol as a non-enumerable
-// property on the intermediate assistant message: JSON.stringify (what an
-// OpenAI-final provider sends) drops symbol-keyed non-enumerable properties,
-// so nothing leaks onto the wire, while a second pivot back to Claude can
-// restore every redacted block (type + opaque payload) intact. Pure data —
-// the request translators own the attach/consume semantics.
-// ponytail: restored blocks are prepended ahead of the thinking block rebuilt
-// from reasoning_content, so original thinking/redacted interleaving order is
-// not preserved. Upgrade path: store per-entry order/length metadata alongside
-// the redacted blocks and re-slice reasoning_content on restore.
-export const CLAUDE_REDACTED_THINKING_BLOCKS = Symbol("claudeRedactedThinkingBlocks");
-
 // Non-enumerable in-process carriers for native Claude-only request data during
 // a Claude → OpenAI → Claude pivot. They never enter an OpenAI wire body.
 export const CLAUDE_NATIVE_BLOCKS = Symbol("claudeNativeBlocks");

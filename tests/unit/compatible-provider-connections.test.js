@@ -27,6 +27,8 @@ async function setupTestContext(nodeData) {
     getProviderConnections,
   } = await import("@/models/index.js");
 
+  const { disposeRequestDetailsRepo } = await import("@/lib/db/repos/requestDetailsRepo.js");
+
   const node = await createProviderNode(nodeData);
 
   return {
@@ -34,7 +36,10 @@ async function setupTestContext(nodeData) {
     POST,
     PUT,
     getProviderConnections,
-    cleanup() {
+    async cleanup() {
+      await disposeRequestDetailsRepo();
+      try { await global._dbAdapter?.instance?.close?.(); } catch {}
+      delete global._dbAdapter;
       fs.rmSync(tempDir, { recursive: true, force: true });
     },
   };
@@ -79,12 +84,12 @@ describe("compatible provider connections API", () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await cleanup();
+    cleanup = () => {};
     vi.doUnmock("next/server");
     vi.resetModules();
     vi.clearAllMocks();
-    cleanup();
-    cleanup = () => {};
     if (originalDataDir === undefined) delete process.env.DATA_DIR;
     else process.env.DATA_DIR = originalDataDir;
   });

@@ -6,6 +6,7 @@ import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { v4 as uuidv4 } from "uuid";
 import { resolveSessionId } from "../../utils/sessionManager.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
   resolveKiroModel,
   resolveKiroThinkingBudget,
@@ -30,12 +31,12 @@ function toolCallToText(name, input) {
   return `[Tool call: ${name || "unknown"}(${argStr})]`;
 }
 
-/** Render a tool result (string or content-block array) as a text line. */
-function toolResultToText(content) {
+/** Preserve error meaning when tool results must be salvaged as plain text. */
+function toolResultToText(content, isError = false) {
   const text = Array.isArray(content) ?
   content.map((c) => isString(c) ? c : c.text || "").join("\n") :
   isString(content) ? content : "";
-  return `[Tool result: ${text}]`;
+  return `[Tool ${isError ? "error" : "result"}: ${text}]`;
 }
 
 /**
@@ -62,7 +63,7 @@ function flattenToolInteractions(messages) {
   for (const msg of messages) {
     // OpenAI tool-result message → user text line
     if (msg.role === ROLE.TOOL) {
-      out.push({ role: ROLE.USER, content: toolResultToText(msg.content) });
+      out.push({ role: ROLE.USER, content: toolResultToText(msg.content, msg.is_error === true) });
       continue;
     }
 
@@ -90,7 +91,7 @@ function flattenToolInteractions(messages) {
     if (msg.role === ROLE.USER && Array.isArray(msg.content)) {
       const newContent = msg.content.map((c) =>
       c.type === CLAUDE_BLOCK.TOOL_RESULT ?
-      { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content) } :
+      { type: OPENAI_BLOCK.TEXT, text: toolResultToText(c.content, c.is_error === true) } :
       c
       );
       out.push({ ...msg, content: newContent });
@@ -142,7 +143,7 @@ function reconcileOrphanedToolResults(history, currentMessage) {
       if (validIds.has(tr.toolUseId)) {
         kept.push(tr);
       } else {
-        salvaged.push(toolResultToText(tr.content));
+        salvaged.push(toolResultToText(tr.content, tr.status === "error"));
       }
     }
 
@@ -320,15 +321,17 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
           if (c.type === OPENAI_BLOCK.TEXT || c.text) {
             textParts.push(c.text || "");
           } else if (c.type === OPENAI_BLOCK.IMAGE_URL) {
-            // OpenAI format: image_url.url with data URI
-            const url = c.image_url?.url || "";
+            // chatCore prefetches remote URLs through the guarded image resolver.
+            const url = isString(c.image_url) ? c.image_url : c.image_url?.url || "";
             const parsed = parseDataUri(url);
             if (parsed) {
               const format = parsed.mimeType.split("/")[1] || parsed.mimeType;
               pendingImages.push({ format, source: { bytes: parsed.base64 } });
             } else if (url.startsWith("http://") || url.startsWith("https://")) {
-              // Kiro only supports base64 — fallback to URL text
-              textParts.push(`[Image: ${url}]`);
+              // Synchronous callers and failed prefetches must not lose vision input.
+              const error = new Error("Kiro requires inline image data; remote image resolution failed or was not run. Supply a base64 data URI.");
+              error.statusCode = HTTP_STATUS.BAD_REQUEST;
+              throw error;
             }
           } else if (c.type === CLAUDE_BLOCK.IMAGE) {
             // Claude format: source.type = "base64", source.media_type, source.data
@@ -351,7 +354,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
 
             pendingToolResults.push({
               toolUseId: block.tool_use_id,
-              status: "success",
+              status: block.is_error === true ? "error" : "success",
               content: [{ text: text }]
             });
           });
@@ -363,7 +366,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
         const toolContent = isString(msg.content) ? msg.content : "";
         pendingToolResults.push({
           toolUseId: msg.tool_call_id,
-          status: "success",
+          status: msg.is_error === true ? "error" : "success",
           content: [{ text: toolContent }]
         });
       } else if (content) {
@@ -527,8 +530,29 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
   return { history: mergedHistory, currentMessage };
 }
 
+/** Reject explicit output ceilings on either translated Kiro request route. */
+export function validateKiroOutputLimit(body) {
+  const requestedMaxTokens = body.max_tokens ?? body.max_completion_tokens;
+  if (requestedMaxTokens != null) {
+    const field = body.max_tokens != null ? "max_tokens" : "max_completion_tokens";
+    const valid = Number.isFinite(requestedMaxTokens) &&
+      Number.isInteger(requestedMaxTokens) && requestedMaxTokens > 0;
+    const error = new Error(valid
+      ? `Kiro cannot enforce ${field} output ceilings; omit the limit or choose a provider that supports it.`
+      : `${field} must be a finite positive integer.`);
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
+}
+
 /**
  * Build Kiro payload from OpenAI format
+ *
+ * Explicit output ceilings are rejected: Kiro enforcement of inferenceConfig
+ * maxTokens is not verified. max_tokens takes precedence over
+ * max_completion_tokens via nullish fallback, matching the OpenAI gateway.
+ * The legacy 32000 value remains only for requests without a ceiling; it is
+ * not a guaranteed output limit. Native same-format requests bypass this adapter.
  *
  * Two 9router-specific behaviours implemented here:
  *
@@ -545,6 +569,7 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
  *    name hints.
  */
 export function openaiToKiroRequest(model, body, stream, credentials, translationContext = null) {
+  validateKiroOutputLimit(body);
   const messages = body.messages || [];
   const tools = body.tools || [];
   const maxTokens = 32000;

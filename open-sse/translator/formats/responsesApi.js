@@ -1,5 +1,17 @@
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+
+/** Lower image references only when a URL is available; scoped file IDs need native Responses. */
+export function responsesImageUrl(part) {
+  if (part.image_url) return part.image_url;
+  if (part.file_id) {
+    const error = new Error("input_image.file_id is not supported for this provider; send image_url (URL or data: base64) instead");
+    error.statusCode = HTTP_STATUS.BAD_REQUEST;
+    throw error;
+  }
+  return "";
+}
 
 const STORED_ITEM_REFERENCE_PATTERN = /^(?:at|msg|amsg|rs|lsh|fc|tsc|fco|ctc|ctco|tso|ws|ig|cmp|resp)_/;
 const STATELESS_CALL_ITEM_TYPES = new Set([
@@ -298,7 +310,7 @@ export function convertResponsesApiFormat(body) {
         if (c.type === RESPONSES_ITEM.INPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
         if (c.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
         if (c.type === RESPONSES_ITEM.INPUT_IMAGE) {
-          const url = c.image_url || c.file_id || "";
+          const url = responsesImageUrl(c);
           return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
         }
         return c;
@@ -337,6 +349,13 @@ export function convertResponsesApiFormat(body) {
       // a genuine orphan (no call to answer) and is dropped rather than emitting
       // an unpairable tool message.
       if (item.call_id) {
+        // This worker converter keeps its existing tool-output serialization,
+        // but scoped image IDs must fail before their block type becomes text.
+        if (Array.isArray(item.output)) {
+          for (const part of item.output) {
+            if (part?.type === RESPONSES_ITEM.INPUT_IMAGE) responsesImageUrl(part);
+          }
+        }
         pendingToolResults.push({
           role: ROLE.TOOL,
           tool_call_id: item.call_id,

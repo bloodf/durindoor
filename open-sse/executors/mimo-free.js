@@ -144,7 +144,8 @@ export class MimoFreeExecutor extends BaseExecutor {
     const url = this.buildUrl();
     const transformedBody = this.clampCustomMaxOutput(this.transformRequest(model, body), requestContext);
     const headers = { ...this.buildHeaders(credentials, stream), "Authorization": `Bearer ${jwt}` };
-    const bodyStr = JSON.stringify(transformedBody);
+    // Reuse the cleaned wire payload on retry without changing internal tool results.
+    const bodyStr = JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody));
     log?.debug?.("FETCH", `MIMO-FREE → ${url} | body=${bodyStr.length}B`);
 
     const response = await proxyAwareFetch(url, { method: "POST", headers, body: bodyStr, signal }, proxyOptions);

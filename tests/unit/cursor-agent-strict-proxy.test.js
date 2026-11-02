@@ -73,21 +73,53 @@ describe("Cursor AgentService proxy enforcement (h2 duplex cannot carry a proxy)
     expect(connect).toHaveBeenCalledTimes(1);
   });
 
-  it("execute() routes the failure through its connection_error envelope", async () => {
+  for (const [label, proxyOptions] of proxied) {
+    it(`execute() routes text requests to the proxy-honoring legacy path: ${label}`, async () => {
+      const executor = new CursorExecutor();
+      const { connect } = stubSession(executor);
+      const fetchSpy = vi.spyOn(executor, "makeFetchRequest").mockResolvedValue({ status: 500, headers: {}, body: Buffer.alloc(0) });
+      const h2Spy = vi.spyOn(executor, "makeHttp2Request");
+      await executor.execute({
+        model: "gpt-5.2",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials,
+        proxyOptions,
+      });
+      expect(connect).not.toHaveBeenCalled();
+      expect(h2Spy).not.toHaveBeenCalled();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy.mock.calls[0][4]).toBe(proxyOptions);
+    });
+  }
+
+  it("execute() uses legacy fetch when only an environment proxy applies", async () => {
+    vi.stubEnv("HTTPS_PROXY", "http://127.0.0.1:9");
     const executor = new CursorExecutor();
     const { connect } = stubSession(executor);
-    const result = await executor.execute({
+    const fetchSpy = vi.spyOn(executor, "makeFetchRequest").mockResolvedValue({ status: 500, headers: {}, body: Buffer.alloc(0) });
+    await executor.execute({
       model: "gpt-5.2",
       body: { messages: [{ role: "user", content: "hi" }] },
       stream: false,
       credentials,
-      proxyOptions: { strictProxy: true, proxyPoolId: "pool-1" },
+      proxyOptions: null,
     });
-    expect(result.response.status).toBeGreaterThanOrEqual(500);
-    const payload = await result.response.json();
-    expect(payload.error.message).toMatch(/proxy/u);
-    expect(payload.error.type).toBe("connection_error");
     expect(connect).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("execute() without a proxy still uses the AgentService h2 path", async () => {
+    const executor = new CursorExecutor();
+    const { connect } = stubSession(executor);
+    await executor.execute({
+      model: "gpt-5.2",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials,
+      proxyOptions: { disableEnvProxy: true },
+    });
+    expect(connect).toHaveBeenCalledTimes(1);
   });
 
   it("CURSOR_AGENT_SERVICE=off keeps text requests off the h2 AgentService path", async () => {

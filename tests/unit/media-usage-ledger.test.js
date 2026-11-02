@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Shared contract for #1085; these are normalized caller inputs, not
 // guessed provider response fields. All writers must use saveRequestUsage's
@@ -42,6 +42,36 @@ let adapter;
 let database;
 let policy;
 
+// Transforming the DB and policy graph is the slow part. Warm it once so beforeEach
+// keeps the default hook timeout and a real hang still fails on the first test.
+beforeAll(async () => {
+  const listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+  const env = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL"].map((name) => [name, process.env[name]]));
+  const warmDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-media-ledger-warm-"));
+  process.env.DATA_DIR = warmDirectory;
+  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  delete process.env.DURINDOOR_PG_URL;
+  delete global._dbAdapter;
+  try {
+    await import("@/lib/db/index.js");
+    await import("@/lib/db/driver.js");
+    await import("@/sse/services/apiKeyPolicy.js");
+  } finally {
+    await global._dbAdapter?.instance?.close?.();
+    delete global._dbAdapter;
+    for (const signal of signals) {
+      for (const listener of process.listeners(signal)) {
+        if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);
+      }
+    }
+    for (const [name, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    fs.rmSync(warmDirectory, { recursive: true, force: true });
+  }
+}, 60_000);
+
 beforeEach(async () => {
   processListeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
   originalEnv = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL"].map((name) => [name, process.env[name]]));
@@ -61,7 +91,7 @@ beforeEach(async () => {
     [keyId, secret, "Media ledger fixture", timestamp],
   );
   policy = await import("@/sse/services/apiKeyPolicy.js");
-}, 60_000); // vi.resetModules makes the first import transform the whole DB and policy graph.
+});
 
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();

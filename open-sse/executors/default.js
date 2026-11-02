@@ -187,6 +187,15 @@ function applyExtraHeaders(headers, extraHeaders, credentials) {
 
 // Provider-specific header quirks kept as small hooks (not pure auth).
 const HEADER_HOOKS = {
+  // CodeBuddy: the gateway's channel check rejects requests lacking the plugin's
+  // conversation/request identifiers with 400 / 11128 "request illegal".
+  codebuddyHeaders: (h) => {
+    const requestId = crypto.randomUUID();
+    h["X-Request-ID"] = requestId;
+    h["X-Conversation-ID"] = crypto.randomUUID();
+    h["X-Conversation-Request-ID"] = requestId;
+    h["X-Conversation-Message-ID"] = requestId;
+  },
   kimiHeaders: (h) => Object.assign(h, buildKimiHeaders()),
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken)),
   kilocodeOrg: (h, c) => {if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId;},
@@ -303,7 +312,9 @@ export class DefaultExecutor extends BaseExecutor {
     this.applyRequestDefaults(body);
     // Provider-specific request hook (e.g. SenseNova Token Plan clamps
     // max_tokens / max_completion_tokens above its 65536 ceiling).
-    this.config?.clampRequestBody?.(body);
+    // The hook may return a new body (non-mutating hooks) or the same one.
+    const clamped = this.config?.clampRequestBody?.(body);
+    if (clamped && isObject(clamped) && !Array.isArray(clamped)) body = clamped;
     applyGlmtModelAlias(this.provider, model, body);
     let transformed = this.applyJsonSchemaFallback(body);
 

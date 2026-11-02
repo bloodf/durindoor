@@ -299,6 +299,9 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
 }
 
 export const ANTIGRAVITY_QUOTA_MODELS = [
+'gemini-4-argon-high',
+'gemini-4-argon-medium',
+'gemini-4-argon-low',
 'gemini-3.8-flash-high',
 'gemini-3.8-flash-medium',
 'gemini-3.8-flash-low',
@@ -311,8 +314,17 @@ export const ANTIGRAVITY_QUOTA_MODELS = [
 'gemini-3-flash-agent',
 'gemini-3.5-flash-low',
 'gemini-3.5-flash-extra-low',
+'gemini-3.1-pro-high',
 'gemini-pro-agent',
 'gemini-3.1-pro-low',
+'claude-sonnet-5-5-high',
+'claude-sonnet-5-5-medium',
+'claude-sonnet-5-5-low',
+'claude-sonnet-5-5',
+'claude-opus-5-5-high',
+'claude-opus-5-5-medium',
+'claude-opus-5-5-low',
+'claude-opus-5-5',
 'claude-sonnet-4-6',
 'claude-opus-4-6-thinking',
 'gpt-oss-120b-medium',

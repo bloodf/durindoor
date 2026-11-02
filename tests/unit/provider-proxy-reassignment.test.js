@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const originalDataDir = process.env.DATA_DIR;
 const principal = { operator: true };
 
@@ -18,12 +19,13 @@ function updateRequest(body) {
 describe("provider proxy reassignment", () => {
   let tempDir = null;
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.doUnmock("next/server");
     vi.doUnmock("@/shared/services/quotaAutoPing");
     vi.doUnmock("@/dashboardGuard");
     principal.operator = true;
     vi.resetModules();
+    await disposeLoadedRequestDetailsRepo();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = null;
     if (originalDataDir === undefined) delete process.env.DATA_DIR;

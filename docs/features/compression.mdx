@@ -20,7 +20,7 @@ Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/setting
 
 | Option | Behavior |
 | --- | --- |
-| RTK | Compress eligible tool-result content. Skip explicit error results. |
+| RTK | Compress eligible tool-result content. Skip explicit error results. For OpenAI Responses, cover `function_call_output` and `custom_tool_call_output` text only. Keep call IDs and media parts. Skip error outputs (flagged items and Codex `Exit code: <non-zero>`), JSON documents, and fenced code. |
 | Headroom | Call the optional Python proxy. Follow [Headroom setup](./headroom.mdx). |
 | Session dedup | Remove eligible repeated blocks across turns in the compression stack. |
 | Caveman | Inject the selected output-style instruction into eligible text-only requests; settings preview shows the exact instruction block. |
@@ -30,6 +30,10 @@ Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/setting
 Stack engines currently available are `session-dedup`, `caveman`, and `headroom`. Catalog entries `rtk`, `lite`, `ccr`, `relevance`, `aggressive`, `llmlingua`, and `ultra` are not dispatched as stack engines. The dedicated RTK toggle still works.
 
 Headroom processes the source-format chat body before translation. RTK normally processes the translated body; Cursor needs RTK before its translator rewrites tool results. The compression stack follows those steps, then the separate Caveman, Ponytail, and PXPIPE toggles apply. Enabling overlapping options can apply more than one transform, so compare results before using a stack on important traffic.
+
+## Custom system prompt
+
+**Dashboard → Token Saver → Settings** has a **Custom system prompt** toggle and text box (`customPromptEnabled`, default false; `customPrompt`, default empty, at most 8000 characters). When enabled and non-blank, the text is appended to the system prompt of every request after the savers above, for every provider and model, and is sent upstream as written. It does not depend on Caveman or Ponytail, but `X-DurinDoor-Token-Saver: off` skips it for that request. A blank prompt injects nothing, and injecting the same text twice is a no-op.
 
 ## Bypass compression for one request
 

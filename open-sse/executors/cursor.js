@@ -502,7 +502,7 @@ const CURSOR_EMPTY_TURN_RETRY_DELAY_MS = (() => {
 export function tailOnlyCursorMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return messages || [];
   const systemMessages = messages.filter(
-    (message) => message?.role === ROLE.SYSTEM && !String(message?.content || "").includes("[9router]"),
+    (message) => message?.role === ROLE.SYSTEM && !/\[(durindoor|9router)\] Long session/.test(String(message?.content || "")),
   );
   const chatMessages = messages.filter((message) => message?.role !== ROLE.SYSTEM);
   let anchor = chatMessages.length - 1;
@@ -516,7 +516,7 @@ export function tailOnlyCursorMessages(messages) {
   const tail = chatMessages.slice(Math.max(0, tailStart));
   const note = {
     role: ROLE.SYSTEM,
-    content: `[9router] Long session: ${messages.length} messages trimmed to the latest turn. Answer the current request; re-read files if needed.`,
+    content: `[durindoor] Long session: ${messages.length} messages trimmed to the latest turn. Answer the current request; re-read files if needed.`,
   };
   return [...systemMessages, note, ...tail];
 }
@@ -1071,16 +1071,18 @@ export class CursorExecutor extends BaseExecutor {
           attempt++;
           log?.info?.("CURSOR", `empty_turn on ${originalMessages.length}-message session; retry ${attempt}/${CURSOR_EMPTY_TURN_MAX_RETRIES} with tail-only frame`);
           workingMessages = tailOnlyCursorMessages(originalMessages);
-          session = openAgentSession(workingMessages);
           let retryHeaders;
           try {
-            retryHeaders = await withCursorTimeout(
-              session.responseHeaders,
-              headersTimeoutMs,
-              "Cursor AgentService response headers timed out"
-            );
+            retryHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
+              session = openAgentSession(workingMessages);
+              return withCursorTimeout(
+                session.responseHeaders,
+                headersTimeoutMs,
+                "Cursor AgentService response headers timed out"
+              );
+            }));
           } catch (error) {
-            try { session.close(); } catch {}
+            try { session?.close(); } catch {}
             throw error;
           }
           const retryStatus = Number(retryHeaders[":status"] || 0);

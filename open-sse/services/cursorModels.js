@@ -15,6 +15,7 @@ import { shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const NEGATIVE_CACHE_TTL_MS = 60 * 1000;
 
 // agent.v1.ModelDetails protobuf field numbers.
 const MODEL_ID_FIELD = 1;
@@ -35,6 +36,7 @@ const AVAILABLE_MODEL_IS_HIDDEN_FIELD = 35;
 
 /** @type {Map<string, { expiresAt: number, models: { id: string, name: string }[] }>} */
 const catalogCache = new Map();
+const negativeCache = new Map();
 
 function getCursorModelsUrl() {
   const config = PROVIDER_OAUTH.cursor;
@@ -103,12 +105,14 @@ async function http2PostProto(url, headers, body, signal, timeoutMs) {
     const chunks = [];
     let responseHeaders = {};
     let settled = false;
+    let req;
 
     const finish = (fn) => (...args) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
-      try { client.close(); } catch {}
+      try { req?.destroy(); } catch {}
+      try { client.destroy(); } catch {}
       fn(...args);
     };
 
@@ -118,7 +122,7 @@ async function http2PostProto(url, headers, body, signal, timeoutMs) {
 
     client.on("error", finish(reject));
 
-    const req = client.request({
+    req = client.request({
       ":method": "POST",
       ":path": urlObj.pathname,
       ":authority": urlObj.host,
@@ -251,14 +255,21 @@ export async function resolveCursorModels(credentials, options = {}) {
   if (!options.forceRefresh) {
     const cached = catalogCache.get(key);
     if (cached?.expiresAt > now) return { models: cached.models };
+    // Failed lookups are cached briefly so /v1/models does not re-dial Cursor on every request.
+    if (negativeCache.get(key) > now) return null;
   }
 
   try {
     const models = await fetchCursorCatalog(credentials, options.signal, options.proxyOptions);
-    if (!models?.length) return null;
+    if (!models?.length) {
+      negativeCache.set(key, now + NEGATIVE_CACHE_TTL_MS);
+      return null;
+    }
+    negativeCache.delete(key);
     catalogCache.set(key, { expiresAt: now + CACHE_TTL_MS, models });
     return { models };
   } catch (error) {
+    if (!options.signal?.aborted) negativeCache.set(key, now + NEGATIVE_CACHE_TTL_MS);
     options.log?.warn?.("CURSOR_MODELS", `Live model fetch failed: ${error?.message || error}`);
     return null;
   }
@@ -266,4 +277,5 @@ export async function resolveCursorModels(credentials, options = {}) {
 
 export function clearCursorModelCache() {
   catalogCache.clear();
+  negativeCache.clear();
 }

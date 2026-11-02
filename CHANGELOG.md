@@ -18,7 +18,7 @@
 
 # Unreleased
 
-- fix(providers): Route OpenAI Responses clients (Codex) of Kimi Coding and Kimi Coding API Key to the native `https://api.kimi.com/coding/v1/responses` endpoint instead of translating to Messages; Chat and Claude clients keep their current transport (upstream 9router 3125ac2, #1368).
+- fix(providers): Route OpenAI Responses clients (Codex) of Kimi Coding API Key to the native `https://api.kimi.com/coding/v1/responses` endpoint instead of translating to Messages; Chat and Claude clients keep their current transport (upstream 9router 3125ac2, #1368).
 - ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
 - fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so after the upgrade they return 403 to all callers, including operators.
 

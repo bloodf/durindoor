@@ -103,11 +103,16 @@ describe("requestDetailsRepo shutdown handler ownership", () => {
   });
 
   it("ignores saves after dispose so no timer touches a closed adapter (#1407)", async () => {
-    const repo = await loadRepo();
-    await repo.disposeRequestDetailsRepo();
-    await repo.saveRequestDetail({ id: "late-row", model: "m" });
-    await repo.disposeRequestDetailsRepo();
-    expect(insertedIds()).toEqual([]);
+    vi.useFakeTimers();
+    try {
+      const repo = await loadRepo();
+      await repo.disposeRequestDetailsRepo();
+      await repo.saveRequestDetail({ id: "late-row", model: "m" });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(insertedIds()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps rows of a failed batch and persists them on the next flush (#1407)", async () => {

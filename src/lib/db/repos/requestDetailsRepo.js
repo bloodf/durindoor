@@ -171,7 +171,7 @@ function requeueFailedBatch(items) {
 export async function saveRequestDetail(detail) {
   if (disposed) return;
   const config = await getObservabilityConfig();
-  if (!config.enabled) return;
+  if (!config.enabled || disposed) return;
 
   writeBuffer.push(detail);
 

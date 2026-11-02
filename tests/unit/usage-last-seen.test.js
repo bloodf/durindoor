@@ -5,6 +5,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import migration from "../../src/lib/db/migrations/021-usage-last-seen.js";
 import { getUsageCalendarCutoff } from "../../src/lib/usagePeriods.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const now = new Date("2026-09-20T12:00:00.000Z");
 let dir, oldDataDir, repo, db;
 beforeEach(async () => {
@@ -18,11 +19,12 @@ beforeEach(async () => {
   db = await (await import("@/lib/db/driver.js")).getAdapter();
   vi.useFakeTimers(); vi.setSystemTime(now);
 });
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks(); vi.useRealTimers();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter; delete global._statsEmitTimers;
   if (oldDataDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = oldDataDir;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 const entry = (timestamp, extra = {}) => ({ timestamp, provider: "provider", model: "model", tokens: { prompt_tokens: 2, completion_tokens: 3, cached_tokens: 4, reasoning_tokens: 5, cache_creation_input_tokens: 6 }, ...extra });

@@ -105,9 +105,12 @@ export async function handleImageGenerationCore({
         })
       };
     } catch (error) {
-      const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+      // Executor adapters may tag the upstream status and quota reset.
+      const tagged = Number(error?.status);
+      const status = Number.isInteger(tagged) && tagged >= 400 && tagged <= 599 ? tagged : HTTP_STATUS.BAD_GATEWAY;
+      const errMsg = formatProviderError(error, provider, model, status);
       log?.debug?.("IMAGE", `Executor error: ${errMsg}`);
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+      return createErrorResult(status, errMsg, Number.isFinite(error?.resetsAtMs) ? error.resetsAtMs : undefined);
     }
   }
 

@@ -13,16 +13,16 @@ Store the secret when `POST /api/keys` returns it. List and detail views mask it
 
 ## Mint a key for automation
 
-Dashboard path: **API Keys → Create**. Or POST:
+Dashboard path: **API Keys → Create**. Or POST with an operator credential (dashboard session or the machine-bound CLI token). An existing DurinDoor API key gets 403 here:
 
 ```bash
 curl http://localhost:20128/api/keys \
-  -H "Authorization: Bearer EXISTING_DURINDOOR_API_KEY" \
+  -H "x-9r-cli-token: YOUR_CLI_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"ci-bot"}'
 ```
 
-The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` returns `maskedKey`. First-time minting from the dashboard is easier if you have no key yet: the session cookie is enough.
+The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` returns `maskedKey`. Minting from the dashboard is easier: the session cookie is enough.
 
 Give this key a name you can revoke later. Optional `allowedCombos`, `policy.allowedModels`, `policy.maxTokens`, `policy.maxCostUsd`, `dailyLimitTokens`, `expiresAt`, and `providerConnectionIds`. Empty means unrestricted for that mechanism. Key groups are labels only. Shapes and expiry presets: [API keys](./api-keys.mdx).
 
@@ -74,7 +74,7 @@ On loopback with `requireApiKey` off, the MCP client may omit the header. Remote
 
 ## Rotate and scope the key
 
-There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `PUT /api/keys/{id}` with `"isActive": false`. Delete removes the key and its account-scope assignments.
+There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `PUT /api/keys/{id}` with `"isActive": false`. Delete removes the key and its account-scope assignments. Both need an operator credential, like minting.
 
 Restrict the key's inference access before giving the secret to CI. These limits do not restrict the entire management API:
 
@@ -92,6 +92,8 @@ Account scoping details: [API key scoping](../operations/api-key-scoping.mdx).
 Do not put these on the automation key:
 
 - `GET /api/keys/{id}/reveal` and gateway-key reveal (`?reveal=1` included)
+- `POST /api/keys`, `PUT`/`DELETE /api/keys/{id}` (mint, edit, or delete keys)
+- `POST /api/provider-nodes`, `PUT`/`DELETE /api/provider-nodes/{id}`
 - `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`
 - `/api/settings/database` and cutover/rollback/import
 - `PATCH /api/settings` keys that change login, API-key enforcement, OIDC, outbound proxy, tunnel dashboard access, or observability

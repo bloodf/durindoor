@@ -24,6 +24,7 @@
 
 - ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
 - fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so after the upgrade they return 403 to all callers, including operators.
+- chore(deps-dev): Update the test package to vitest 4.1.12 (vite 8.3.5, source-map-js 1.2.2) and happy-dom 21.0.4, clearing its `npm audit` advisories (#1412). The earlier happy-dom 20.14 overlay failures came from two tests restoring a `CSSStyleDeclaration` property descriptor that newer happy-dom rejects; those tests now restore only the value.
 
 ## Features
 
@@ -35,6 +36,7 @@
 
 ## Fixes
 
+- fix(translator): Parse Anthropic SSE when a provider that forces SSE on a Claude transport (Kimi Coding, Kimi Coding API Key, OpenCode Free `union-alpha`) serves a non-streaming request, instead of failing with 502 and a 30s cooldown on each failure. Claude clients keep signed thinking, tool_use, stop_reason, and cache usage.
 - fix(deps): clear runtime `npm audit` high findings: `undici` floor ^7.30.1 with an override (#1360, upstream 08ef047), `node-forge` 1.4.0→1.4.2 in root and CLI, `body-parser` 2.3.0→2.4.0, `qs` 6.16.0→6.17.1, and dev `zod` 4.4.3→4.6.7, CLI `brace-expansion` 5.0.7→5.0.12, Storybook 10.6.2→10.6.5 (#1302, #1310). The `tests/` lockfile is unchanged because happy-dom 20.14 previously regressed the full suite.
 - **DB**: strip NUL bytes from bound strings at the shared driver bind boundary so a value carrying raw binary no longer aborts the write on better-sqlite3 ("String contains null byte"), gets silently truncated at the first NUL on node:sqlite, or is rejected by PostgreSQL TEXT. Credential and other stored secrets are unchanged except that any embedded NUL is removed (#1358 / upstream 5a4e812).
 - Support explicit PostgreSQL-only startup without SQLite configuration reads or outage fallback, including PostgreSQL proxy timeline storage and an atomic sidecar migration helper.

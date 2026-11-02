@@ -36,16 +36,24 @@ function normalizeNode(node, toolName, path) {
     out[key] = NUMERIC_KEYWORDS.has(key) ? numericValue(value) : value;
   }
 
+  // Draft-3 / OpenAPI-converted schemas mark a property itself `required: true`;
+  // lift that into the parent's `required` list instead of rejecting it.
+  if (isBoolean(out.required)) delete out.required;
+
   // `properties: null` stays "missing" (#1350 treats it as an empty map).
   if (out.properties !== undefined && out.properties !== null) {
     if (!isPlainObject(out.properties)) throw invalidToolSchemaError(toolName, `${path}.properties must be an object`);
+    const lifted = [];
     out.properties = Object.fromEntries(Object.entries(out.properties).map(([name, child]) => {
       if (!isSubschema(child)) throw invalidToolSchemaError(toolName, `${path}.properties.${name} must be a schema object`);
+      if (child?.required === true) lifted.push(name);
       return [name, normalizeNode(child, toolName, `${path}.properties.${name}`)];
     }));
-  }
-  if (out.required !== undefined && !(Array.isArray(out.required) && out.required.every(isString))) {
-    throw invalidToolSchemaError(toolName, `${path}.required must be an array of strings`);
+    // `required` must name properties, so it is enforced only where properties exist.
+    if (out.required !== undefined && !(Array.isArray(out.required) && out.required.every(isString))) {
+      throw invalidToolSchemaError(toolName, `${path}.required must be an array of strings`);
+    }
+    if (lifted.length > 0) out.required = [...new Set([...(out.required || []), ...lifted])];
   }
   if (out.items !== undefined) {
     out.items = Array.isArray(out.items) ?

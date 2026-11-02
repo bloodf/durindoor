@@ -29,6 +29,23 @@ describe("#1353 non-object tool schemas on Claude-bound paths", () => {
     }
   });
 
+  it.each([
+    ["type null (Codex)", { type: null, properties: { q: { type: "string" } } }],
+    ["type [object, null]", { type: ["object", "null"], properties: { q: { type: "string" } } }],
+    ["type [object]", { type: ["object"], properties: { q: { type: "string" } } }],
+  ])("treats a root %s as an object schema", (_label, schema) => {
+    for (const run of [toClaude, toCommandCode, responsesToClaude]) {
+      const out = run(schema);
+      const tools = out.tools ?? out.params.tools; // CommandCode nests the body under `params`
+      expect(tools[0].input_schema).toEqual({ type: "object", properties: { q: { type: "string" } } });
+    }
+  });
+
+  it("does not reject a typeless combinator root", () => {
+    const schema = { anyOf: [{ type: "object", properties: { a: { type: "string" } } }, { type: "object", properties: { b: { type: "number" } } }] };
+    expect(toClaude(schema).tools[0].input_schema.anyOf).toEqual(schema.anyOf);
+  });
+
   it("still lowers a missing-type schema with properties to an object", () => {
     const schema = { properties: { q: { type: "string" } } };
     expect(toClaude(schema).tools[0].input_schema).toEqual({ type: "object", properties: { q: { type: "string" } } });
@@ -65,6 +82,36 @@ describe("#1334 normalizeToolSchema", () => {
     ["nested null property", { type: "object", properties: { o: { type: "object", properties: { y: null } } } }],
   ])("rejects %s with a 400 naming the tool", (_label, schema) => {
     expect(() => normalizeToolSchema(schema, "lookup")).toThrowError(rejection);
+  });
+
+  it("lifts draft-3 nested required:true into the parent required list", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        path: { type: "string", required: true },
+        mode: { type: "string", required: false },
+        opts: { type: "object", properties: { deep: { type: "boolean", required: true } } },
+      },
+      required: ["mode"],
+    };
+    expect(normalizeToolSchema(schema, "lookup")).toEqual({
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        mode: { type: "string" },
+        opts: { type: "object", properties: { deep: { type: "boolean" } }, required: ["deep"] },
+      },
+      required: ["mode", "path"],
+    });
+  });
+
+  it("accepts draft-3 nested required:true on Claude, Gemini, and Responses", () => {
+    const parameters = { type: "object", properties: { path: { type: "string", required: true } } };
+    const body = { messages: [{ role: "user", content: "hi" }], tools: [chatTool(parameters)] };
+    for (const [target, model] of [[FORMATS.CLAUDE, "claude-sonnet-4-5"], [FORMATS.GEMINI, "gemini-2.5-pro"], [FORMATS.OPENAI_RESPONSES, "m"]]) {
+      expect(() => translateRequest(FORMATS.OPENAI, target, model, structuredClone(body), false)).not.toThrow();
+    }
+    expect(toClaude(parameters).tools[0].input_schema.required).toEqual(["path"]);
   });
 
   it("keeps properties:null and boolean subschemas", () => {

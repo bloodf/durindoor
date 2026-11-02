@@ -14,8 +14,10 @@ import { runCompressionSeam } from "../../../open-sse/handlers/chatCore/compress
 // the gate below can require ZERO failures for every engine not listed here,
 // and so a fix or a new regression in a listed engine both fail this test.
 // caveman rewrites unfenced diffs ("index 1a2b3c4..5d6e7f8" -> "Index 1a2b3c4.5d6e7f8").
+// rtk (lossy by design) collapses repeated log lines, dropping heartbeat timestamps.
 const EXISTING_ENGINE_BASELINE = {
   caveman: ["diff-hunks:numeric"],
+  rtk: ["responses-tool-output:numeric"],
   "session-dedup": [],
   headroom: [],
 };
@@ -195,5 +197,45 @@ describe("seam per-step gate", () => {
     const on = await runCompressionSeam(clone(body), deps(apply), { enabled: true, fidelityGate: { textInvariants: true } });
     expect(on.headerValue).toBeNull();
     expect(on.body.messages[0].content).toBe(body.messages[0].content);
+  });
+});
+
+describe("gate review fixes", () => {
+  it("does not serialize protected nodes that survive by reference", () => {
+    const body = structuredClone(FIDELITY_CORPUS.find((c) => c.id === "images-and-pdf").body);
+    // Engine-style output: new message objects, same part references.
+    const output = { ...body, messages: body.messages.map((m) => ({ ...m, content: [...m.content] })) };
+    const image = body.messages[0].content[0];
+    const spy = { calls: 0 };
+    const original = JSON.stringify;
+    JSON.stringify = (v, ...rest) => {
+      if (v === image) spy.calls++;
+      return original(v, ...rest);
+    };
+    try {
+      expect(checkProtectedBlocks(body, output).passed).toBe(true);
+    } finally {
+      JSON.stringify = original;
+    }
+    expect(spy.calls).toBe(0);
+  });
+
+  it("still catches a cloned-but-altered protected node", () => {
+    const body = structuredClone(FIDELITY_CORPUS.find((c) => c.id === "images-and-pdf").body);
+    const output = structuredClone(body);
+    output.messages[0].content[0].source.data = "AAAA";
+    expect(checkProtectedBlocks(body, output).failedInvariant).toBe("protected-blocks");
+    expect(checkProtectedBlocks(body, structuredClone(body)).passed).toBe(true);
+  });
+
+  it("dropping a duplicate block with a negation is not a negation loss", () => {
+    const block = "Do not restart the workers.\nNo exceptions apply here.";
+    expect(checkFidelity(`${block}\n${block}`, `${block}\n[dedup:ref]`).passed).toBe(true);
+    expect(checkFidelity(block, "Restart the workers.\nExceptions apply here.").failedInvariant).toBe("negation");
+  });
+
+  it("ignores trailing sentence punctuation on numbers", () => {
+    expect(checkFidelity("Retry 3. Then wait 10, maybe 2.5.", "Retry 3 then wait 10 maybe 2.5").passed).toBe(true);
+    expect(checkFidelity("Retry 3 times.", "Retry times.").failedInvariant).toBe("numeric");
   });
 });

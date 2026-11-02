@@ -13,7 +13,10 @@
 //   planToEngineIds(planOrWrapper) -> string[]   (handles stacked + single-mode reverse map)
 //   isEngineAvailable(id) -> boolean
 //   getEngine(id).apply(body, { config, stepConfig }) -> Promise<{ body, compressed, stats }>
-//   Engines NEVER mutate the caller's body; getEngine throws on unknown ids.
+//   Engines NEVER mutate the caller's body (contract): per-step rollback and the
+//   fidelity gate compare against stepInput, so an in-place mutation would defeat
+//   both. The offline eval (eval/runFidelityEval.js) flags "input-mutated".
+//   getEngine throws on unknown ids.
 //
 // Returns { body, headerValue }:
 //   - body: possibly-compressed body; original reference on disabled/no-op.
@@ -45,6 +48,25 @@ try {
 
   // Registration must never break module load; getEngine self-registers on demand too.
 }
+/**
+ * Per-engine options from the compressionEngines toggle map (e.g. lite
+ * truncateToolResults / maxToolLength). Only keys the engine declares in
+ * getConfigSchema() are forwarded (never `enabled`), and the result must pass
+ * the engine's validateConfig(); invalid options are dropped with a warning.
+ */
+function engineStepOptions(engine, entry, log) {
+  if (!isObject(entry) || !entry) return {};
+  const declared = new Set((engine.getConfigSchema?.() ?? []).map((f) => f?.key).filter((k) => k && k !== "enabled"));
+  const options = Object.fromEntries(Object.entries(entry).filter(([key]) => declared.has(key)));
+  if (Object.keys(options).length === 0) return {};
+  const verdict = engine.validateConfig?.(options);
+  if (verdict && verdict.valid === false) {
+    log?.warn?.("COMPRESS", `engine ${engine.id} options ignored: ${(verdict.errors || []).join("; ")}`);
+    return {};
+  }
+  return options;
+}
+
 /**
  * Run the compression engine loop.
  *
@@ -118,9 +140,10 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       // Always forward stepConfig per contract {config, stepConfig}. Stacked steps
       // carry the real planner step (with intensity); single-mode plans have an
       // empty stackedPipeline, so synthesize a minimal {engine} step.
-      const step = stepById[id] ?? { engine: id };
+      const engine = getEngine(id);
+      const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
       const opts = { config: cfg.applyOpts || {}, stepConfig: step };
-      const res = await getEngine(id).apply(working, opts);
+      const res = await engine.apply(working, opts);
       if (!res || !isObject(res) || !res.body || !isObject(res.body)) {
         throw new Error(`engine ${id} returned malformed result`);
       }

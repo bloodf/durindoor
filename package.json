@@ -3,10 +3,10 @@
   "version": "4.11.0",
   "description": "DurinDoor AI Gateway",
   "private": true,
-  "packageManager": "npm@10.8.2",
+  "packageManager": "npm@11.20.0",
   "engines": {
-    "node": "20.20.2",
-    "npm": "10.8.2"
+    "node": "26.13.0",
+    "npm": "11.20.0"
   },
   "scripts": {
     "dev": "node scripts/next-owner-server.cjs --dev --port 20127",

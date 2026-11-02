@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 267 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 271 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -107,6 +107,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Fish Audio | `fish-audio` | apikey | 0 | [site](https://fish.audio) |
 | FreeAIAPIKey | `freeaiapikey` | apikey | 7 | [site](https://freeaiapikey.com) |
 | FreeModel.dev | `freemodel-dev` | apikey | 4 | [site](https://freemodel.dev) |
+| FreeTheAi | `freetheai` | apikey | 2 |  |
 | FriendliAI | `friendliai` | apikey | 2 | [site](https://friendli.ai) |
 | Galadriel | `galadriel` | apikey | 1 | [site](https://galadriel.ai) |
 | Gemini | `gemini` | freeTier | 30 | [site](https://ai.google.dev) |
@@ -126,12 +127,14 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | GLM T | `glmt` | apikey | 13 | [site](https://z.ai) |
 | Google PSE | `google-pse` | apikey | 0 | [site](https://programmablesearchengine.google.com) |
 | Google TTS | `google-tts` | none | 60 |  |
+| GreenPT | `greenpt` | apikey | 0 |  |
 | Grok CLI (Grok Build) | `grok-cli` | oauth | 16 | [site](https://x.ai) |
 | Grok Web (Subscription) | `grok-web` | cookie | 12 | [site](https://grok.com) |
 | Groq | `groq` | apikey | 14 | [site](https://groq.com) |
 | Hack Club AI | `hackclub` | apikey | 3 | [site](https://ai.hackclub.com) |
 | Haiper | `haiper` | apikey | 0 | [site](https://haiper.ai) |
 | Huancheng Public API | `hcnsec` | apikey | 0 | [site](https://api.hcnsec.cn) |
+| HelixMind | `helixmind` | apikey | 0 |  |
 | Heroku Inference | `heroku` | apikey | 12 | [site](https://www.heroku.com/ai) |
 | HuggingChat | `huggingchat` | cookie | 24 | [site](https://huggingface.co/chat) |
 | HuggingFace | `huggingface` | apikey | 25 | [site](https://huggingface.co) |
@@ -163,6 +166,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Leonardo.Ai | `leonardo` | apikey | 2 | [site](https://leonardo.ai) |
 | Linkup | `linkup` | apikey | 0 | [site](https://linkup.so) |
 | Liquid AI | `liquid` | apikey | 1 | [site](https://www.liquid.ai) |
+| LiteRouter | `literouter` | apikey | 0 |  |
 | llama.cpp | `llama-cpp` | apikey | 0 | [site](https://github.com/ggml-org/llama.cpp) |
 | Llamafile | `llamafile` | apikey | 0 | [site](https://github.com/Mozilla-Ocho/llamafile) |
 | LlamaGate | `llamagate` | apikey | 3 | [site](https://llamagate.ai) |

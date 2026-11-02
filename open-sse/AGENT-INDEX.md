@@ -175,6 +175,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `fish-audio` |  | apikey | `` |
 | `freeaiapikey` |  | apikey | `https://api.freeaiapikey.com/v1/chat/completions` |
 | `freemodel-dev` |  | apikey | `https://api.freemodel.dev/v1/chat/completions` |
+| `freetheai` |  | apikey | `https://api.freetheai.org/v1/chat/completions` |
 | `friendliai` |  | apikey | `https://api.friendli.ai/serverless/v1/chat/completions` |
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |
 | `gemini` | gemini | freeTier | `https://generativelanguage.googleapis.com/v1beta/models` |
@@ -194,12 +195,14 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `glmt` |  | apikey | `https://api.z.ai/api/coding/paas/v4/chat/completions` |
 | `google-pse` |  | apikey | `` |
 | `google-tts` |  | freeTier | `` |
+| `greenpt` |  | apikey | `https://api.greenpt.ai/v1/chat/completions` |
 | `grok-cli` | openai-responses | oauth | `https://cli-chat-proxy.grok.com/v1/responses` |
 | `grok-web` | grok-web | webCookie | `https://grok.com/rest/app-chat/conversations/new` |
 | `groq` |  | apikey | `https://api.groq.com/openai/v1/chat/completions` |
 | `hackclub` |  | apikey | `https://ai.hackclub.com/proxy/v1/chat/completions` |
 | `haiper` |  | apikey | `https://api.haiper.ai/v1` |
 | `hcnsec` | openai | apikey | `https://api.hcnsec.cn/v1/chat/completions` |
+| `helixmind` |  | apikey | `https://helixmind.online/v1/chat/completions` |
 | `heroku` |  | apikey | `https://us.inference.heroku.com/v1/chat/completions` |
 | `huggingchat` | openai | webCookie | `https://huggingface.co/chat/conversation` |
 | `huggingface` |  | apikey | `` |
@@ -231,6 +234,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `leonardo` |  | apikey | `` |
 | `linkup` |  | apikey | `` |
 | `liquid` |  | apikey | `https://api.liquid.ai/v1/chat/completions` |
+| `literouter` |  | apikey | `https://api.literouter.com/v1/chat/completions` |
 | `llama-cpp` | openai | apikey | `http://127.0.0.1:8080/v1` |
 | `llamafile` | openai | apikey | `http://127.0.0.1:8080/v1` |
 | `llamagate` |  | apikey | `https://llamagate.ai/v1/chat/completions` |

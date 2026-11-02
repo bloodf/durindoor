@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 let tempDir;
 let originalDataDir;
 let originalHome;
@@ -18,7 +19,8 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (originalDataDir === undefined) delete process.env.DATA_DIR;

@@ -10,6 +10,7 @@ import m008 from "../../src/lib/db/migrations/008-quota-reservations.js";
 import { QUOTA_V8_TABLES, buildQuotaV8TableSql } from "../../src/lib/db/migrations/quota-v8-schema.js";
 import { verifyQuotaStorageLayouts } from "../../src/lib/db/helpers/schemaVerifier.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 let tempDir;
 const originalDataDir = process.env.DATA_DIR;
 
@@ -43,7 +44,8 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   vi.resetModules();

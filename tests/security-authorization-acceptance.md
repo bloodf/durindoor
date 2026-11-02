@@ -69,6 +69,10 @@ HTTP proof runs the actual Next application and real SQLite driver against a pri
 
 The final verifier checked its 13-source and 12-harness freeze before and after execution. Actual seed, driver, app and runner wrapper records show UID/GID maps `0 1001 1`, zero capability sets, `NoNewPrivs: 1`, and read-only protected source/dependency/harness/runtime roots. These are same-PID pre-exec measurements followed by `os.execve` and passing identity checks, not independently remeasured post-exec capability masks. Genuine journal peers are `192.0.2.1`; the relay serves local fixture responses without upstream forwarding. The launcher was reaped. This proves the retained child boundary and fixture contract, not E12 success, live upstream availability or live subscription quota.
 
+## Key and provider-node management principals
+
+`unit/security-authorization-matrix.test.js` "management mutations as %s" runs the real middleware gate and route handler for `POST /api/keys`, `PUT`/`DELETE /api/keys/:id`, `POST /api/provider-nodes`, and `PUT`/`DELETE /api/provider-nodes/:id` across the seven principals plus a scoped, capped key. Dashboard session and CLI token reach the write (2xx). Owner, foreign and scoped application keys pass the gate and get 403 from the handler with no write. Inactive, expired and anonymous callers get 401 at the gate. Loopback open-dashboard operator access is covered by `unit/dashboard-guard.test.js` `isOperatorRequest`.
+
 ## Closure gate
 
 **Criterion 3: COVERED.** Independently re-run failing-before / pass-after evidence for this PR's authorization and ownership tests.

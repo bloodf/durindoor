@@ -37,6 +37,7 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { MimocodeExecutor } from "./mimocode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
+import { OneMinAiExecutor } from "./oneminai.js";
 import { GrokCliExecutor } from "./grok-cli.js";
 import { GitlabExecutor } from "./gitlab.js";
 import { TraeExecutor } from "./trae.js";
@@ -110,6 +111,7 @@ const executors = {
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
+  oneminai: new OneMinAiExecutor(),
   "grok-cli": new GrokCliExecutor(),
   "gitlab-duo": new GitlabExecutor("gitlab-duo"),
   trae: new TraeExecutor(),
@@ -216,6 +218,7 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { MimocodeExecutor } from "./mimocode.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
+export { OneMinAiExecutor } from "./oneminai.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { GitlabExecutor } from "./gitlab.js";
 export { TraeExecutor } from "./trae.js";

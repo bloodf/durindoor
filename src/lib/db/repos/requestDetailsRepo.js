@@ -52,6 +52,10 @@ async function getObservabilityConfig() {
 let writeBuffer = [];
 let flushTimer = null;
 let flushInFlight = null;
+let disposed = false;
+let failedFlushes = 0;
+const MAX_FLUSH_RETRIES = 3;
+const MAX_BUFFERED_ROWS = 1000;
 
 
 function generateDetailId(model) {
@@ -90,10 +94,11 @@ function flushToDatabase() {
 }
 
 async function drainWriteBuffer() {
+  let items = [];
   try {
     // Drain entire buffer (loop in case more pushed during await)
     while (writeBuffer.length > 0) {
-      const items = writeBuffer.splice(0, writeBuffer.length);
+      items = writeBuffer.splice(0, writeBuffer.length);
       const db = await getAdapter();
       const config = await getObservabilityConfig();
 
@@ -132,17 +137,51 @@ async function drainWriteBuffer() {
           );
         }
       });
+      items = [];
+      failedFlushes = 0;
     }
   } catch (e) {
     console.error("[requestDetailsRepo] Batch write failed:", e);
+    requeueFailedBatch(items);
+  }
+}
+
+// Keep a failed batch for a bounded number of later flushes instead of dropping it
+// silently; the buffer is capped so a dead database cannot grow memory without limit.
+function requeueFailedBatch(items) {
+  failedFlushes += 1;
+  if (failedFlushes > MAX_FLUSH_RETRIES) {
+    console.error(`[requestDetailsRepo] Dropping ${items.length} rows after ${MAX_FLUSH_RETRIES} failed flush retries`);
+    failedFlushes = 0;
+    return;
+  }
+  const room = Math.max(0, MAX_BUFFERED_ROWS - writeBuffer.length);
+  const kept = items.slice(-room);
+  if (kept.length < items.length) console.error(`[requestDetailsRepo] Dropping ${items.length - kept.length} rows over the ${MAX_BUFFERED_ROWS}-row retry cap`);
+  writeBuffer.unshift(...kept);
+  if (!disposed && !flushTimer && writeBuffer.length > 0) {
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      flushToDatabase().catch(() => {});
+    }, DEFAULT_FLUSH_INTERVAL_MS);
+    flushTimer.unref?.();
   }
 }
 
 export async function saveRequestDetail(detail) {
+  if (disposed) return;
   const config = await getObservabilityConfig();
-  if (!config.enabled) return;
+  if (!config.enabled || disposed) return;
 
   writeBuffer.push(detail);
+
+  // A superseded instance (reload handoff) no longer owns exit/signal listeners,
+  // so buffered rows would be lost on exit: persist right away.
+  if (globalThis[SHUTDOWN_SLOT] !== registration) {
+    if (flushTimer) {clearTimeout(flushTimer);flushTimer = null;}
+    flushToDatabase().catch((e) => console.error("[requestDetailsRepo] flush err:", e));
+    return;
+  }
 
   // Trigger immediate flush if batch threshold reached.
   // flushToDatabase() drains entire buffer in a loop, so all pushes during await are persisted.
@@ -266,7 +305,7 @@ const SHUTDOWN_EVENTS = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
 
 async function flushPending() {
   if (flushTimer) {clearTimeout(flushTimer);flushTimer = null;}
-  if (writeBuffer.length > 0 || flushInFlight) await flushToDatabase();
+  while (writeBuffer.length > 0 || flushInFlight) await flushToDatabase();
 }
 
 const _shutdownHandler = () => flushPending();
@@ -285,6 +324,7 @@ function removeShutdownListeners(handler) {
  * @returns {Promise<void>}
  */
 export async function disposeRequestDetailsRepo() {
+  disposed = true;
   removeShutdownListeners(_shutdownHandler);
   if (globalThis[SHUTDOWN_SLOT] === registration) delete globalThis[SHUTDOWN_SLOT];
   await flushPending();

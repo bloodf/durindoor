@@ -28,20 +28,20 @@ describe("OpenCodeExecutor CLI identity synthesis", () => {
     const headers = new OpenCodeExecutor().buildHeaders({}, true, {
       clientHeaders: { "user-agent": "curl/8.5.0" },
     });
-    // Zen free tier 403s bare "opencode" and versions < 1.17.0 (FreeTierError).
+    // The v2 free tier 403s anything but the v2 UA shape (FreeTierError).
     expect(headers["User-Agent"]).toBe(OPENCODE_UA);
   });
 
-  it("preserves a valid versioned opencode/<x.y.z> client UA as-is", () => {
+  it("preserves a valid v2 opencode/<channel>/<x.y.z>/<client> UA as-is", () => {
     const headers = new OpenCodeExecutor().buildHeaders({}, true, {
-      clientHeaders: { "user-agent": "opencode/1.18.31 ai-sdk/provider-utils/4.0.40" },
+      clientHeaders: { "user-agent": "opencode/latest/2.0.26/desktop" },
     });
-    expect(headers["User-Agent"]).toBe("opencode/1.18.31 ai-sdk/provider-utils/4.0.40");
+    expect(headers["User-Agent"]).toBe("opencode/latest/2.0.26/desktop");
   });
 
-  it("overrides an outdated opencode/<version> client UA (< 1.17.0)", () => {
+  it("overrides a v1 opencode/<version> client UA", () => {
     const headers = new OpenCodeExecutor().buildHeaders({}, true, {
-      clientHeaders: { "user-agent": "opencode/1.15.0" },
+      clientHeaders: { "user-agent": "opencode/1.18.31 ai-sdk/provider-utils/4.0.40" },
     });
     expect(headers["User-Agent"]).toBe(OPENCODE_UA);
   });

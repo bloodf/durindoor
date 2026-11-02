@@ -83,7 +83,7 @@ export const DEPLOYMENTS = [
   {
     id: "npm",
     label: "npm",
-    note: "Requires Node.js 20.20.2 and npm 10.8.2. Serves on port 20128.",
+    note: "Requires Node.js 26.13.0 and npm 11.20.0. Serves on port 20128.",
     command: `npm install -g durindoor
 ${NATIVE_SETUP}
 durindoor --host 127.0.0.1`,

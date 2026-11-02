@@ -566,3 +566,23 @@ describe("#1331 Chat→Responses robustness (main-compatible edges)", () => {
     expect(incomplete).not.toHaveProperty("error");
   });
 });
+
+describe("#1374 Responses→Chat [Error] delta redacts upstream text", () => {
+  it.each([
+    ["error", (error) => ({ type: "error", error })],
+    ["response.failed", (error) => ({ type: "response.failed", response: { status: "failed", error } })],
+  ])("redacts credential-like text from a %s event", (event, build) => {
+    const state = initState(CHAT);
+    const chunks = translateResponse(
+      RESPONSES,
+      CHAT,
+      { event, data: build({ message: `${CREDENTIAL_UPSTREAM} and auth Bearer fixture-bearer-1374` }) },
+      state,
+    );
+    const content = chunks[0].choices[0].delta.content;
+    expect(content).not.toContain(CREDENTIAL_SENTINEL);
+    expect(content).not.toContain("fixture-bearer-1374");
+    expect(content).toContain("[redacted]");
+    expect(content.startsWith(`[Error] ${CREDENTIAL_REDACTED}`)).toBe(true);
+  });
+});

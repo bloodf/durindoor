@@ -38,13 +38,15 @@ describe("#1089 registered mixed custom/namespace strict and parallel boundary",
     expect(namespaced).toMatchObject({ strict, parameters: schema });
     expect(chat.parallel_tool_calls).toBe(parallel);
     expect(chat.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: namespaced.name } });
-    expect(custom.name).toBe("files.patch");
-    expect(namespaced.name).toBe("research.search");
+    expect(custom.name.length).toBeLessThanOrEqual(64);
+    expect(namespaced.name.length).toBeLessThanOrEqual(64);
+    expect(chat._toolNameMap.get(custom.name)).toBe("files.patch");
+    expect(chat._toolNameMap.get(namespaced.name)).toBe("research.search");
     expect(new Set([custom.name, namespaced.name]).size).toBe(2);
 
     const [customAlias, namespaceAlias] = claude.tools.map((tool) => tool.name);
-    expect(claude._toolNameMap.get(customAlias)).toBe(custom.name);
-    expect(claude._toolNameMap.get(namespaceAlias)).toBe(namespaced.name);
+    expect(claude._toolNameMap.get(customAlias)).toBe("files.patch");
+    expect(claude._toolNameMap.get(namespaceAlias)).toBe("research.search");
     expect(new Set([customAlias, namespaceAlias]).size).toBe(2);
     expect(claude.tools[0]).toMatchObject({ input_schema: custom.parameters });
     expect(claude.tools[0].strict).toBeUndefined();

@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
@@ -27,7 +27,7 @@ import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "
  *
  * @param {Request} request
  */
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../shared/utils/typeChecks.js";
 async function handleSearchHandler(request) {
   let body;
   try {
@@ -72,13 +72,16 @@ async function handleSearchHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
   }
 
+  // Keep the admission epoch unchanged across combo and account fallback attempts.
+  const usageContext = { billingEpoch: apiKeyAuth.billingEpoch, usageEventId: `${getRequestId(request)}:${url.pathname}`, endpoint: url.pathname, comboId: null, comboName: null };
   if (wantsDefaultRoute(providerInput)) {
     const route = await resolveMediaRoute("webSearch", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
+    usageContext.comboName = defaultRouteComboOptions("webSearch").comboName;
     return handleComboChat({
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, settings),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings),
       log,
       ...defaultRouteComboOptions("webSearch")
     });
@@ -112,6 +115,8 @@ async function handleSearchHandler(request) {
   if (comboModels) {
     const combo = isAutoComboId(providerInput) ? null : await getComboForModel(providerInput);
     const comboName = combo?.name || providerInput;
+    usageContext.comboId = combo?.id || null;
+    usageContext.comboName = comboName;
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
     const comboSpecificStrategy = isAutoComboId(providerInput) ?
@@ -124,7 +129,7 @@ async function handleSearchHandler(request) {
     return handleComboChat({
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, apiKeyAuth.apiKeyId, settings, comboRouting),
+      handleSingleModel: (b, m) => handleSingleProviderSearch(b, normalizeSearchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings, comboRouting),
       log,
       comboName,
       comboStrategy,
@@ -132,10 +137,10 @@ async function handleSearchHandler(request) {
       comboMembers: combo?.members || []
     });
   }
-  return handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, settings);
+  return handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings);
 }
 
-async function handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyId, settings, comboRouting = null) {
+async function handleSingleProviderSearch(body, providerInput, request, apiKey, apiKeyId, usageContext, settings, comboRouting = null) {
   const query = body.query;
   const providerId = resolveProviderId(providerInput);
   const resolvedProvider = AI_PROVIDERS[providerId];
@@ -177,6 +182,29 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     provider_options: body.provider_options
   };
 
+  /** Preserve the raw receipt; estimate only evidenced operations without a receipt. */
+  const recordSuccess = (result, credentials) => {
+    const accounting = result.accounting;
+    const rate = providerConfig?.costPerQuery;
+    const operations = accounting.nativeUnits.operations;
+    const cost = rate * operations;
+    const priced = accounting.costStatus === "unknown" &&
+      !accounting.meta?.providerUsage && !accounting.meta?.providerCost && !accounting.meta?.providerMetadata &&
+      isNumber(rate) && Number.isFinite(rate) && rate >= 0 &&
+      isNumber(operations) && Number.isFinite(operations) && operations > 0 && Number.isFinite(cost);
+    return recordApiKeyUsageForResponse(apiKey, result.response, {
+      ...accounting,
+      ...usageContext,
+      provider: providerId,
+      model: result.data?.answer?.model || "search",
+      connectionId: credentials.connectionId || null,
+      modality: "webSearch",
+      cost: priced ? cost : accounting.cost,
+      costStatus: priced ? "estimated" : accounting.costStatus,
+      costSource: priced ? "pricing" : accounting.costSource
+    });
+  };
+
   // No-auth execution still resolves provider-account scope first.
   if (resolvedProvider.noAuth) {
     const credentials = await getNoAuthProviderCredentials(providerId, null, {
@@ -201,13 +229,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       credentials: credentials.connectionId ? credentials : null,
       log
     });
-    if (result.success) {
-      const usage = result.data?.usage || {};
-      return recordApiKeyUsageForResponse(apiKey, result.response, {
-        tokens: Number(usage.llm_tokens) || String(query).length / 4,
-        cost: Number(usage.search_cost_usd) || 0
-      });
-    }
+    if (result.success) return recordSuccess(result, credentials);
     return result.response;
   }
 
@@ -269,13 +291,7 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
       }
     });
 
-    if (result.success) {
-      const usage = result.data?.usage || {};
-      return recordApiKeyUsageForResponse(apiKey, result.response, {
-        tokens: Number(usage.llm_tokens) || String(query).length / 4,
-        cost: Number(usage.search_cost_usd) || 0
-      });
-    }
+    if (result.success) return recordSuccess(result, credentials);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId, searchLockKey, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, webSearch: true });
 

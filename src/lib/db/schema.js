@@ -6,8 +6,6 @@ import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-// 26 is left free for the usage-unknown-cost migration proposed separately;
-// 27 is the API-key admin scope.
 export const SCHEMA_VERSION = 27;
 
 export const PRAGMA_SQL = `
@@ -138,6 +136,7 @@ export const TABLES = {
       totalTokens: "INTEGER NOT NULL DEFAULT 0",
       totalCost: "REAL NOT NULL DEFAULT 0",
       totalRequests: "INTEGER NOT NULL DEFAULT 0",
+      unknownCostRequests: "INTEGER NOT NULL DEFAULT 0",
       updatedAt: "TEXT",
     },
   },

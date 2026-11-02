@@ -438,6 +438,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     log.warn("AUTH", "Invalid API key");
     return authErrorResponse(clientRawRequest.endpoint, "Invalid API key");
   }
+  // Keep admission identity across retries, nested combos, and fusion callbacks.
+  // An import during upstream work must not turn old usage into new-generation usage.
+  const billingEpoch = apiKeyAuth.billingEpoch;
 
   // Retain the authenticated record so local commands can expose only this
   // key's own lifetime totals. Combo ACL runs after Claude model decoding.
@@ -596,7 +599,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, comboRouting }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting }
           );
         },
         log,
@@ -632,7 +635,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, comboRouting }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting }
         );
       },
       log,
@@ -677,6 +680,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         allowVisionBridge: true,
         apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
         apiKeyId: apiKeyAuth.apiKeyId,
+        billingEpoch,
       }),
     { signal: request?.signal || undefined, source: "single-model" }
   );
@@ -758,7 +762,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, comboRouting = null } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -808,7 +812,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, comboRouting: mergedRouting }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting }
             );
           },
           log,
@@ -843,7 +847,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, comboRouting: mergedRouting }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting }
           );
         },
         log,
@@ -933,7 +937,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             attemptSignal,
             tokenSaverCollector,
-            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName, apiKeyId }
+            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName, apiKeyId, billingEpoch }
           );
         }
         // Invalid reroute target: fall through to original model.
@@ -1218,6 +1222,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         userAgent,
         apiKey,
         apiKeyName,
+        billingEpoch,
         abortSignal: requestSignal,
         // #747: outer-combo attribution; nested merge narrowed eligibility
         // (comboRouting.allowedConnectionIds) without changing attribution.

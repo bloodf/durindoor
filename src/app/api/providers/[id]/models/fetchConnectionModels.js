@@ -2,6 +2,8 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
+import { PROVIDERS } from "open-sse/config/providers.js";
+import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
@@ -30,8 +32,9 @@ async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
 }
 
 async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
-  const headers = { "Content-Type": "application/json" };
-  if (connection.apiKey) headers.Authorization = `Bearer ${connection.apiKey}`;
+  // Same auth scheme and pinned headers (X-API-Key, User-Agent, ...) the
+  // connection test uses, so discovery cannot fail where validation passes.
+  const headers = buildProviderProbeHeaders(PROVIDERS[connection.provider] || {}, connection.apiKey);
   try {
     const response = await proxyAwareFetch(fetcher.url, {
       method: "GET",

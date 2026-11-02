@@ -7,6 +7,11 @@ vi.mock("@/lib/db/driver.js", () => ({
   getAdapter: () => { throw new Error("Unexpected database access in authorization matrix"); },
   getAdapterSync: () => { throw new Error("Unexpected database access in authorization matrix"); },
 }));
+// Dispatch stamps a billing epoch; every other usage repo access still hits the guard above.
+vi.mock("@/lib/db/repos/usageRepo.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  getBillingEpoch: async () => "matrix-epoch",
+}));
 vi.mock("@/lib/apiKeyLimits.js", () => ({ enforceApiKeyLimits: async () => null }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: async () => ({}) }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: async () => "matrix-cli" }));
@@ -100,7 +105,7 @@ async function guarded(req, handler) {
   const gate = await proxy(req);
   return gate.headers.get("x-matrix-next") === "1" ? handler(req) : gate;
 }
-function own(provider, id, ownerId) { fixture.owners.set(`${provider}:${provider}-account:${id}`, { ownerId }); }
+function own(provider, id, ownerId) { fixture.owners.set(`${provider}:${provider}-account:${id}`, { ownerId, billingEpoch: "matrix-epoch", usageEventId: `matrix:${provider}:${id}` }); }
 function nativeRequest(op, principal, extra = {}) {
   const path = op.path.replace(/\{[^}]+\}/g, "resource");
   const model = registry.find((entry) => entry.id === op.provider)?.models[0]?.id;

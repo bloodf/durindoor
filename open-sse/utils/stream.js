@@ -28,7 +28,7 @@ import {
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
-import { sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
+import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -74,6 +74,15 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
   // isObject(null) is true here, so a bare `data: null` frame would pass and then throw
   // on the property read below.
   if (!isObject(parsed) || parsed === null) return false;
+  if (parsed.type !== "response.failed" && parsed.error == null && parsed.type !== "error") {
+    // Gemini nested errors reach translators as public text: redact in place (#1342).
+    const holder = parsed.promptFeedback?.error ? parsed.promptFeedback :
+    parsed.response?.promptFeedback?.error ? parsed.response.promptFeedback :
+    parsed.response?.error ? parsed.response : null;
+    if (!holder || (!isObject(holder.error) && !isString(holder.error))) return false;
+    holder.error = sanitizeStructuredErrorBody(holder.error, secrets);
+    return true;
+  }
   const error = parsed.type === "response.failed" ? parsed.response?.error :
   parsed.error ?? (parsed.type === "error" ? parsed : null);
   if (error === null || (!isObject(error) && !isString(error))) return false;
@@ -161,7 +170,7 @@ export function createSSEStream(options = {}) {
   } = options;
 
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
-  const errorSecrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken, credentials?.providerSpecificData?.sessionToken];
+  const errorSecrets = credentialErrorSecrets(credentials);
   let buffer = "";
   // Passthrough tool-call (choice, index) keys already opened on the client wire.
   const openedToolCalls = new Set();

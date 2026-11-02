@@ -182,3 +182,14 @@ describe("failure isolation and bounds", () => {
     expect(otel.getOtelStats().buffered).toBe(0);
   });
 });
+
+describe("review fixes", () => {
+  it("abandoned OTel-only ids are bounded by the active-span cap", () => {
+    for (let i = 0; i < 2100; i++) timeline.startTrace(FIELDS); // never finished (throw paths)
+    expect(otel.getOtelStats().active).toBeLessThanOrEqual(2000);
+  });
+
+  it("otelFirstByte never throws", () => {
+    expect(() => otel.otelFirstByte(undefined)).not.toThrow();
+  });
+});

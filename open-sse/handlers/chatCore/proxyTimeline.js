@@ -5,11 +5,11 @@ import {
   startTrace as startTraceRepo,
 } from "@/lib/db/repos/proxyTimelineRepo.js";
 import { createClientFrameFramer } from "./proxyTimelineFrame.js";
-import { isOtelEnabled, otelEvent, otelFinish, otelFirstByte, otelStart } from "../../services/otelTracing.js";
+import { isOtelEnabled, isOtelOnlySpan, otelEvent, otelFinish, otelFirstByte, otelStart } from "../../services/otelTracing.js";
 
-// Ids that exist only for OpenTelemetry (timeline persistence disabled). The
-// repo ignores them; the frame tap skips SSE framing for them.
-const otelOnlyIds = new Set();
+// OTel-only ids (timeline persistence disabled) are flagged on the bounded
+// active-span map in otelTracing.js (MAX_ACTIVE_SPANS), so an id abandoned by a
+// throw path can never grow an unbounded set here. The repo ignores unknown ids.
 
 /**
  * Start a proxy-timeline trace and, when OTLP export is configured, a routing
@@ -20,24 +20,24 @@ export function startTrace(fields, ctx = {}) {
   const repoId = startTraceRepo(fields);
   if (!isOtelEnabled()) return repoId;
   const id = repoId || randomUUID();
-  if (!repoId) otelOnlyIds.add(id);
-  otelStart(id, fields, ctx);
+  otelStart(id, fields, { ...ctx, otelOnly: !repoId });
   return id;
 }
 
 export const record = (traceId, event) => {
+  const otelOnly = isOtelOnlySpan(traceId);
   otelEvent(traceId, event);
-  if (!otelOnlyIds.has(traceId)) recordRepo(traceId, event);
+  if (!otelOnly) recordRepo(traceId, event);
 };
 
 export const finishTrace = (traceId, fields) => {
+  const otelOnly = isOtelOnlySpan(traceId);
   otelFinish(traceId, fields);
-  if (otelOnlyIds.delete(traceId)) return;
-  finishTraceRepo(traceId, fields);
+  if (!otelOnly) finishTraceRepo(traceId, fields);
 };
 
 export function attachClientFrameTap(traceId, format) {
-  if (otelOnlyIds.has(traceId)) {
+  if (isOtelOnlySpan(traceId)) {
     return { onClientBytes() { otelFirstByte(traceId); }, onClientEnd() {}, onClientAbort() {} };
   }
   const framer = createClientFrameFramer({

@@ -113,6 +113,7 @@ export function otelStart(id, fields = {}, ctx = {}) {
       stats.dropped++;
     }
     active.set(id, {
+      otelOnly: ctx.otelOnly === true,
       traceId: traceIdFor(ctx.requestId),
       spanId: hex(8),
       start: nowNs(),
@@ -146,8 +147,15 @@ export function otelEvent(id, event = {}) {
 
 /** Mark first output byte without the timeline frame tap. */
 export function otelFirstByte(id) {
-  const span = active.get(id);
-  if (span && span.firstByte === null) span.firstByte = nowNs();
+  try {
+    const span = active.get(id);
+    if (span && span.firstByte === null) span.firstByte = nowNs();
+  } catch {/* fail-open */}
+}
+
+/** True while `id` is an active span that has no proxy-timeline row. */
+export function isOtelOnlySpan(id) {
+  return active.get(id)?.otelOnly === true;
 }
 
 export function otelFinish(id, fields = {}) {

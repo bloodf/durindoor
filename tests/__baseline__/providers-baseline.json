@@ -2254,5 +2254,11 @@
     },
     "clientId": "1031625952748946",
     "tokenUrl": "https://auth.meta.com/oidc/device/token/"
+  },
+  "zylo-api": {
+    "baseUrl": "https://api.zyloai.net/v1/chat/completions",
+    "validateUrl": "https://api.zyloai.net/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   }
 }

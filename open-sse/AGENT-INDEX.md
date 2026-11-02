@@ -384,3 +384,4 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `zed` |  | oauth | `` |
 | `zenmux` |  | freeTier | `https://zenmux.ai/api/v1/chat/completions` |
 | `zenmux-free` | openai | webCookie | `https://zenmux.ai/api/anthropic/v1/messages` |
+| `zylo-api` |  | apikey | `https://api.zyloai.net/v1/chat/completions` |

@@ -140,3 +140,7 @@ Tool-output lowering retains this integration's strict non-text validation.
 `tests/unit/responses-file-id-handler.test.js` covers both stream settings at the
 worker boundary; `responses-file-id-chatcore.test.js` retains the public POST cases.
 These changes do not establish a full checkpoint or complete #1089 acceptance.
+
+## Responses non-stream to Gemini parity (#1389)
+
+`openAIResponsesBodyToGemini` carries `call_id` into `functionCall.id` (the Antigravity stream projector does the same), always emits object `functionCall.args` (null, array, scalar and malformed JSON become `{}`), maps `reasoning_tokens` to `thoughtsTokenCount` with `candidatesTokenCount = output_tokens - reasoning_tokens` (floor 0, total unchanged), and emits `cachedContentTokenCount: 0` for an explicit zero. Policy: `incomplete` with `incomplete_details.reason: content_filter` is a refusal in the OpenAI (`content_filter`), Claude (`refusal`) and Gemini (`SAFETY`) converters; other `incomplete` stays length (`max_tokens` / `MAX_TOKENS`). Failed/cancelled terminals keep their tool-call parts unchanged.

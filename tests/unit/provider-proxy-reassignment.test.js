@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const originalDataDir = process.env.DATA_DIR;
+const principal = { operator: true };
 
 function updateRequest(body) {
   return new Request("https://durindoor.local/api/providers/connection-id", {
@@ -20,6 +21,8 @@ describe("provider proxy reassignment", () => {
   afterEach(() => {
     vi.doUnmock("next/server");
     vi.doUnmock("@/shared/services/quotaAutoPing");
+    vi.doUnmock("@/dashboardGuard");
+    principal.operator = true;
     vi.resetModules();
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
     tempDir = null;
@@ -43,6 +46,10 @@ describe("provider proxy reassignment", () => {
     }));
     vi.doMock("@/shared/services/quotaAutoPing", () => ({
       notifyQuotaAutoPingSettingChanged: vi.fn(),
+    }));
+    vi.doMock("@/dashboardGuard", async (original) => ({
+      ...(await original()),
+      canManageAccessConfig: async () => principal.operator,
     }));
 
     const {
@@ -77,6 +84,17 @@ describe("provider proxy reassignment", () => {
       type: "http",
       isActive: true,
     });
+
+    // A non-operator may not change where the stored credential is sent, but
+    // unrelated edits and no-op round-trips of the stored values still work.
+    principal.operator = false;
+    const params = { params: Promise.resolve({ id: connection.id }) };
+    expect((await PUT(updateRequest({ proxyPoolId: "new-pool" }), params)).status).toBe(403);
+    expect((await PUT(updateRequest({ connectionProxyEnabled: true, connectionProxyUrl: "http://127.0.0.1:9" }), params)).status).toBe(403);
+    expect((await PUT(updateRequest({ providerSpecificData: { baseUrl: "https://elsewhere.invalid/v1" } }), params)).status).toBe(403);
+    expect((await PUT(updateRequest({ providerSpecificData: { accountId: "account-1", proxyPoolId: "old-pool" } }), params)).status).toBe(200);
+    expect((await getProviderConnectionById(connection.id)).providerSpecificData).toMatchObject({ proxyPoolId: "old-pool" });
+    principal.operator = true;
 
     const assignResponse = await PUT(updateRequest({ proxyPoolId: "new-pool" }), {
       params: Promise.resolve({ id: connection.id }),

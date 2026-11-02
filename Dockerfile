@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG NODE_IMAGE=node:20.20.2-alpine
+ARG NODE_IMAGE=node:26.13.0-alpine
 ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
 ARG APP_VERSION=unknown
 

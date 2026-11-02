@@ -530,8 +530,7 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     tools: [{ type: OPENAI_BLOCK.FUNCTION, function: { name: "fetch", parameters: { type: "object" } } }],
   };
 
-  // #1089 failing: #1332 Chat→Claude leaves OpenAI image_url blocks inside tool_result instead of Claude image sources.
-  it.skip("converts tool-result image_url media to Claude image blocks", () => {
+  it("converts tool-result image_url media to Claude image blocks", () => {
     const out = request(CLAUDE, mediaBody);
     const result = out.messages.find((message) =>
       Array.isArray(message.content) && message.content.some((block) => block.type === "tool_result"));

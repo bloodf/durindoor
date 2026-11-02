@@ -1,3 +1,26 @@
+import { extractReasoningText } from "../../translator/concerns/reasoning.js";
+import { isObject } from "../../../src/shared/utils/typeChecks.js";
+
+// The free lane's MiMo route streams thinking as `reasoning` +
+// `reasoning_details[]`, not reasoning_content (upstream b8331283). Add the
+// canonical field (the aliases stay) so OpenAI-shaped clients, thinking
+// accumulation and usage see it. Other models already emit reasoning_content,
+// so this is a no-op for them.
+function liftReasoningAliases(parsed) {
+  if (!Array.isArray(parsed?.choices)) return false;
+  let changed = false;
+  for (const choice of parsed.choices) {
+    const delta = choice?.delta;
+    if (!delta || !isObject(delta) || delta.reasoning_content) continue;
+    const text = extractReasoningText(delta);
+    if (text) {
+      delta.reasoning_content = text;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export default {
   id: "opencode",
   priority: 40,
@@ -36,6 +59,7 @@ export default {
     // OpenCode Free 400s the Muse Spark contributor models when tool_choice is
     // anything but "auto" (port of decolua/9router aa14ef72; 1.2 added by
     // upstream #4165, which found the same constraint on that model).
+    normalizeStreamChunk: liftReasoningAliases,
     quirks: {
       forceAutoToolChoiceModels: [
         "muse-spark-1.2-contributor-free",

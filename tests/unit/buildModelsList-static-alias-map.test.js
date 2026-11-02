@@ -58,11 +58,11 @@ describe("buildModelsList — static alias-to-provider mapping", () => {
     const models = await buildModelsList([LLM_KIND]);
     const combo = models.find((m) => m.id === "codebuddy-combo");
     expect(combo).toBeDefined();
-    // CodeBuddy-cn specific override (1M context, 48k output), not generic GLM.
+    // CodeBuddy-cn specific override (1M context, 131072 output per the 2026-09-30 server snapshot), not generic GLM.
     expect(combo.capabilities.contextWindow).toBe(1000000);
-    expect(combo.capabilities.maxOutput).toBe(48000);
+    expect(combo.capabilities.maxOutput).toBe(131072);
     expect(combo.context_length).toBe(1000000);
-    expect(combo.max_completion_tokens).toBe(48000);
+    expect(combo.max_completion_tokens).toBe(131072);
   });
 
   it("uses custom prefix caps while preserving the static alias", async () => {
@@ -88,9 +88,9 @@ describe("buildModelsList — static alias-to-provider mapping", () => {
     const combo = models.find((m) => m.id === "custom-prefix-combo");
     expect(combo).toBeDefined();
     expect(combo.capabilities.contextWindow).toBe(1000000);
-    expect(combo.capabilities.maxOutput).toBe(48000);
+    expect(combo.capabilities.maxOutput).toBe(131072);
     expect(combo.context_length).toBe(1000000);
-    expect(combo.max_completion_tokens).toBe(48000);
+    expect(combo.max_completion_tokens).toBe(131072);
   });
 
   it("falls back to static alias caps when there are no active connections", async () => {
@@ -105,9 +105,9 @@ describe("buildModelsList — static alias-to-provider mapping", () => {
     const combo = models.find((m) => m.id === "static-combo");
     expect(combo).toBeDefined();
     expect(combo.capabilities.contextWindow).toBe(1000000);
-    expect(combo.capabilities.maxOutput).toBe(48000);
+    expect(combo.capabilities.maxOutput).toBe(131072);
     expect(combo.context_length).toBe(1000000);
-    expect(combo.max_completion_tokens).toBe(48000);
+    expect(combo.max_completion_tokens).toBe(131072);
     // Upstream #3267: a healthy DB with zero connections no longer publishes
     // built-in rows; combo aggregation still resolves their static metadata.
     expect(models.find((m) => m.id === "cbcn/glm-5.2")).toBeUndefined();
@@ -150,7 +150,7 @@ describe("buildModelsList — static alias-to-provider mapping", () => {
     const mixed = models.find((model) => model.id === "mixed-known-combo");
     const unknown = models.find((model) => model.id === "gpt-5.6-sol");
 
-    expect(mixed).toMatchObject({ context_length: 1_000_000, max_completion_tokens: 48_000 });
+    expect(mixed).toMatchObject({ context_length: 1_000_000, max_completion_tokens: 131_072 });
     expect(unknown.context_length).toBeUndefined();
     expect(unknown.max_completion_tokens).toBeUndefined();
   });

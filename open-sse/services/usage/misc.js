@@ -323,29 +323,57 @@ export async function getQoderUsage(accessToken, proxyOptions = null, providerId
     // siblings so the dashboard parser doesn't try to render them as rows.
     const userQuota = body.userQuota || {};
     const orgQuota = body.orgResourcePackage || {};
+    // Add-on credits (free grants / promos). Qoder emits this block only when
+    // the account holds a grant, so gate on total > 0 to keep the no-grant
+    // shape unchanged.
+    const addOnQuota = body.addOnQuota || {};
+    const addOnTotal = Number(addOnQuota.total) || 0;
     // Qoder publishes a single absolute reset timestamp (`expiresAt` in ms);
     // surface it on every quota record as ISO so the table can render
-    // "resets at" alongside used/total.
+    // "resets at" alongside used/total. 253402214400000 (9999-12-31T00:00:00Z)
+    // is Qoder's "never expires" sentinel for open-ended plans.
     const expiresAtMs = Number.isFinite(Number(body.expiresAt)) && Number(body.expiresAt) > 0 ?
     Number(body.expiresAt) :
     null;
-    const resetAt = expiresAtMs ? new Date(expiresAtMs).toISOString() : null;
+    const NO_RESET_SENTINEL_MS = 253402214400000;
+    const neverExpires = expiresAtMs === NO_RESET_SENTINEL_MS;
+    const resetAt = expiresAtMs && !neverExpires ? new Date(expiresAtMs).toISOString() : null;
     const quotas = {
       user: {
         total: Number(userQuota.total) || 0,
         used: Number(userQuota.used) || 0,
         remaining: Number(userQuota.remaining) || 0,
         unit: userQuota.unit || "credits",
-        resetAt
+        resetAt,
+        neverExpires
       },
       organization: {
         total: Number(orgQuota.total) || 0,
         used: Number(orgQuota.used) || 0,
         remaining: Number(orgQuota.remaining) || 0,
         unit: orgQuota.unit || "credits",
-        resetAt
+        resetAt,
+        neverExpires
       }
     };
+    if (addOnTotal > 0) {
+      // The add-on block has no expiry of its own; the account-level `expiresAt`
+      // describes the plan, not the grants, so leave resetAt unset and link to
+      // Qoder's usage page. detailUrl is provider-controlled and rendered as an
+      // href, so accept only https URLs.
+      const detailUrl = isString(addOnQuota.detailUrl) && /^https:\/\//i.test(addOnQuota.detailUrl.trim()) ?
+      addOnQuota.detailUrl.trim() :
+      null;
+      quotas.addOn = {
+        total: addOnTotal,
+        used: Number(addOnQuota.used) || 0,
+        remaining: Number(addOnQuota.remaining) || 0,
+        unit: addOnQuota.unit || "credits",
+        resetAt: null,
+        neverExpires: false,
+        detailUrl
+      };
+    }
     return {
       quotas,
       totalUsagePercentage: Number(body.totalUsagePercentage) || 0,

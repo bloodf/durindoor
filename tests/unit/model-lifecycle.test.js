@@ -9,8 +9,8 @@ import { checkModelLifecycle } from "../../open-sse/handlers/chatCore/modelLifec
 const CURRENT_DATE = new Date("2026-07-26T00:00:00.000Z");
 
 describe("model lifecycle", () => {
-  it("keeps all 32 source-verified lifecycle records", () => {
-    expect(MODEL_LIFECYCLE_RECORDS).toHaveLength(32);
+  it("keeps all 36 source-verified lifecycle records", () => {
+    expect(MODEL_LIFECYCLE_RECORDS).toHaveLength(36);
   });
 
   it("rejects retired Codex gpt-5.5 ids with a gpt-6.1-sol replacement", () => {

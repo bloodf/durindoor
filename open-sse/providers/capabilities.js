@@ -597,6 +597,10 @@ export const PROVIDER_CAPABILITIES = {
     "muse-spark-1.2": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "muse-spark-1.2-contributor-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 1048576, maxOutput: 131072 },
     "mimo-v2.5-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", contextWindow: 200000, maxOutput: 32000 },
+    // The free MiMo route can disable thinking ("none" yields no reasoning,
+    // upstream b8331283); the global *mimo*v2.6* pattern describes Xiaomi's own
+    // always-on API. Limits repeat that pattern.
+    "mimo-v2.6-flash-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 131072 },
     // Union Alpha routes through the Claude Messages wire (see executors/opencode.js
     // MESSAGES_MODELS), not the opencode reasoning_effort enum.
     "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 }
@@ -777,6 +781,7 @@ export const PATTERN_CAPABILITIES = [
 
 // Verified GPT-6 families also cover compatible routes and discovered snapshots.
 // Exact provider rows above retain their separate OAuth/reseller contracts.
+{ pattern: "*gpt-6.1-terra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-terra"] },
 { pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
 { pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },
 { pattern: "*gpt-6-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-sol"] },
@@ -894,6 +899,7 @@ export const PATTERN_CAPABILITIES = [
 // ── MiniMax (M3 = adaptive; M2.x cannot disable) ─────────────────
 { pattern: "*minimax*image*", caps: { imageOutput: true } },
 { pattern: "*minimax-m3.1-flash-preview*", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3.1-Flash-Preview"] },
+{ pattern: "*minimax-m3.1-flash", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3.1-Flash"] },
 { pattern: "*minimax-m3", caps: AUDITED_PROVIDER_CAPABILITIES.minimax["MiniMax-M3"] },
 { pattern: "*minimax-m2.7*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },
 { pattern: "*minimax-m2.5*", caps: { vision: false, reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 204800, maxOutput: undefined } },

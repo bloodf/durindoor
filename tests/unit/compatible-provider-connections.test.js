@@ -38,7 +38,7 @@ async function setupTestContext(nodeData) {
     getProviderConnections,
     async cleanup() {
       await disposeRequestDetailsRepo();
-      try { await global._dbAdapter?.instance?.close?.(); } catch {}
+      try { await global._dbAdapter?.instance?.close?.(); } catch (e) { console.error("[test cleanup] adapter close failed:", e); }
       delete global._dbAdapter;
       fs.rmSync(tempDir, { recursive: true, force: true });
     },

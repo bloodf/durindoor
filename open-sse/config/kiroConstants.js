@@ -411,6 +411,7 @@ export function stripThinkingSuffix(model) {
  * Kiro's data plane only accepts the dotted alias (`claude-sonnet-4.5`).
  */
 const ANTHROPIC_SNAPSHOT_SUFFIX = /-\d{8}$/;
+const CLAUDE_VERSIONED = /^claude-(sonnet|opus|haiku)-(\d+)(?:[.-](\d+))?$/;
 
 /**
  * Fold an Anthropic model id onto the Kiro upstream alias.
@@ -439,7 +440,6 @@ export function normalizeKiroUpstreamModelId(model) {
 
   // Explicit versioned Claude ids only. Ambiguous ids (bare "opus", "claude-3-5-sonnet")
   // pass through unchanged so Kiro rejects them visibly instead of being silently remapped.
-  const CLAUDE_VERSIONED = /^claude-(sonnet|opus|haiku)-(\d+)(?:[.-](\d+))?$/;
   const m = id.match(CLAUDE_VERSIONED);
   if (m) return `claude-${m[1]}-${m[3] ? `${m[2]}.${m[3]}` : m[2]}`;
   if (id === "claude-fable-5") return "claude-fable-5";

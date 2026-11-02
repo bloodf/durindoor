@@ -64,8 +64,8 @@ export default {
     { id: "gpt-6.1-sol", name: "GPT 6.1 Sol" },
     { id: "gpt-6-sol", name: "GPT 6 Sol" },
     { id: "gpt-6-luna", name: "GPT 6 Luna" },
-    { id: "gpt-5.5", name: "GPT 5.5" },
-    { id: "gpt-5.5-review", name: "GPT 5.5 Review", upstreamModelId: "gpt-5.5", quotaFamily: "review" },
+    // gpt-5.5 / gpt-5.5-review / gpt-5.5-image removed: retired for Codex with ChatGPT sign-in on
+    // 2026-10-14 (HTTP 400). Saved configs get a 410 with a replacement from modelLifecycle.js.
     { id: "gpt-5.4", name: "GPT 5.4" },
     { id: "gpt-5.4-review", name: "GPT 5.4 Review", upstreamModelId: "gpt-5.4", quotaFamily: "review" },
     { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
@@ -84,10 +84,10 @@ export default {
     { id: "gpt-5.3-codex-none-review", name: "GPT 5.3 Codex (None) Review", upstreamModelId: "gpt-5.3-codex-none", quotaFamily: "review" },
     { id: "gpt-5.3-codex-spark", name: "GPT 5.3 Codex Spark" },
     { id: "gpt-5.3-codex-spark-review", name: "GPT 5.3 Codex Spark Review", upstreamModelId: "gpt-5.3-codex-spark", quotaFamily: "review" },
+    { id: "gpt-6-sol-image", name: "GPT 6 Sol Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.6-sol-image", name: "GPT 5.6 Sol Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.6-terra-image", name: "GPT 5.6 Terra Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.6-luna-image", name: "GPT 5.6 Luna Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
-    { id: "gpt-5.5-image", name: "GPT 5.5 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.4-image", name: "GPT 5.4 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.3-image", name: "GPT 5.3 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },

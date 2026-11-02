@@ -54,6 +54,8 @@ A key can carry several independent restrictions. Empty means unrestricted for t
 
 In the Edit dialog's committed usage display, empty lifetime token/cost fields mean unlimited and show only the amount used, not a false “Limit reached”. An explicit `0` remains a real lifetime limit; this differs from the windowed-limit convention below.
 
+`isAdmin` (default `false`, including for every key created before this field existed) is the admin scope. Without it a key can read management APIs and run inference, but any management change is refused with HTTP 403: `POST`, `PUT`, `PATCH`, or `DELETE` on a management route, `/api/oauth/*` and `/api/mcp-gateway/oauth/*` actions (even over `GET`), and mutating [MCP control](../features/mcp-control.mdx) tools. Turn it on with **Admin scope** in the Create or Edit dialog, or send `"isAdmin": true` to `POST /api/keys` or `PUT /api/keys/{id}`. Only an operator (dashboard session, CLI token, or loopback with `requireLogin` off) can grant, change, or remove it; an admin-scoped key gets HTTP 403 when it sends an `isAdmin` value that differs from the stored one. The admin scope counts only when the key arrives in a header, never through `?key=`.
+
 Key groups are labels only. Membership never changes what a key can call.
 
 ## Model access rules

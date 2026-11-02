@@ -5,14 +5,15 @@
 // COUNT(*) matches. Identifiers are quoted so camelCase columns survive
 // PG's lowercase fold. Each table is TRUNCATEd first so a retry cannot
 // keep leftover rows. Serial sequences are advanced after explicit id
-// inserts. `_meta` is copied except `schemaVersion` (the PG migration
-// runner owns that key).
+// inserts. `_meta` is copied except `schemaVersion` and `appliedMigrations`
+// (the PG migration runner owns those keys; the PG set has its own versions).
 
 import { TABLES } from "../../schema.js";
 import { quoteIdent } from "./dmlRewrite.js";
 import { isNumber } from "../../../../shared/utils/typeChecks.js";
 
 const DEFAULT_CHUNK = 500;
+const RUNNER_META_KEYS = ["schemaVersion", "appliedMigrations"];
 const SKIP_TABLES = new Set(["requestDetails"]);
 const SERIAL_TABLES = new Map([
   ["usageHistory", "id"],
@@ -90,7 +91,7 @@ export async function runMirror(sqlite, pg, options = {}) {
 
     if (sourceCount === 0) {
       if (tableName === "_meta") {
-        // Keep PG schemaVersion; nothing else to copy.
+        // Keep the PG runner keys; nothing else to copy.
       }
       perTable[tableName] = { rows: 0, ok: true };
       tablesMigrated += 1;
@@ -117,7 +118,7 @@ export async function runMirror(sqlite, pg, options = {}) {
       try {
         await Promise.resolve(pg.transaction(() => {
           for (const row of sourceRows) {
-            if (tableName === "_meta" && row.key === "schemaVersion") continue;
+            if (tableName === "_meta" && RUNNER_META_KEYS.includes(row.key)) continue;
             const values = cols.map((c) => (row[c] === undefined ? null : row[c]));
             if (tableName === "_meta") {
               pg.run(
@@ -143,14 +144,14 @@ export async function runMirror(sqlite, pg, options = {}) {
     }
 
     const targetCount = await countRows(pg, tableName);
-    // `_meta` keeps PG schemaVersion and copies every other key. Compare
-    // non-schemaVersion keys only.
+    // `_meta` keeps the PG runner keys and copies every other key. Compare
+    // the copied keys only.
     if (tableName === "_meta") {
       const srcKeys = await Promise.resolve(
-        sqlite.all(`SELECT key FROM ${quoteIdent("_meta")} WHERE key <> ?`, ["schemaVersion"])
+        sqlite.all(`SELECT key FROM ${quoteIdent("_meta")} WHERE key NOT IN (?, ?)`, RUNNER_META_KEYS)
       );
       const dstKeys = await Promise.resolve(
-        pg.all(`SELECT key FROM ${quoteIdent("_meta")} WHERE key <> ?`, ["schemaVersion"])
+        pg.all(`SELECT key FROM ${quoteIdent("_meta")} WHERE key NOT IN (?, ?)`, RUNNER_META_KEYS)
       );
       const srcSet = new Set((srcKeys || []).map((r) => r.key));
       const dstSet = new Set((dstKeys || []).map((r) => r.key));

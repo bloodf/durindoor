@@ -1,6 +1,8 @@
 // Port of upstream 9router 161e3493 (#4981): Gemini image reference inputs and
 // Antigravity image error status / quota reset propagation.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveImageInput } from "../../open-sse/handlers/imageProviders/_base.js";
+import { MAX_IMAGE_BYTES } from "../../open-sse/config/mediaConfig.js";
 
 const mocks = vi.hoisted(() => ({ execute: vi.fn() }));
 vi.mock("../../open-sse/executors/index.js", () => ({
@@ -40,6 +42,21 @@ describe("Gemini image reference input", () => {
   it("ignores URL references and keeps text-only prompts", async () => {
     await generate("gemini", "gemini-image-preview", { images: ["https://example.com/a.png"] });
     expect(JSON.parse(global.fetch.mock.calls[0][1].body).contents[0].parts).toEqual([{ text: "Edit this" }]);
+  });
+});
+
+describe("resolveImageInput validation", () => {
+  it("accepts raw base64 only with the full base64 charset", () => {
+    const raw = "A".repeat(120) + "==";
+    expect(resolveImageInput(raw)).toEqual({ inlineData: { mimeType: "image/png", data: raw } });
+    expect(resolveImageInput("A".repeat(120) + " not base64!")).toBeNull();
+    expect(resolveImageInput("A".repeat(120) + "-_")).toBeNull();
+  });
+
+  it("rejects payloads over MAX_IMAGE_BYTES decoded", () => {
+    const tooBig = "A".repeat(Math.ceil((MAX_IMAGE_BYTES + 3) / 3) * 4);
+    expect(resolveImageInput(tooBig)).toBeNull();
+    expect(resolveImageInput(`data:image/png;base64,${tooBig}`)).toBeNull();
   });
 });
 

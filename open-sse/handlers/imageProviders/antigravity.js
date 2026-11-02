@@ -30,7 +30,7 @@ export default {
 
     // Build parts: text prompt + optional input image for editing
     const parts = [{ text: body.prompt }];
-    const imageInput = body.image || Array.isArray(body.images) && body.images[0];
+    const imageInput = body.image || (Array.isArray(body.images) && body.images[0]);
     if (imageInput) {
       const inlineData = resolveImageInput(imageInput);
       if (inlineData) parts.unshift(inlineData);

@@ -1,5 +1,6 @@
 // Shared helpers for image provider adapters
 import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 
 export const POLL_INTERVAL_MS = 1500;
 export const POLL_TIMEOUT_MS = 120000;
@@ -31,16 +32,24 @@ export function nowSec() {
   return Math.floor(Date.now() / 1000);
 }
 
-// Convert image input (data URI or raw base64) to Gemini inlineData part
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function decodedBase64Bytes(data) {
+  return Math.floor(data.length * 3 / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
+}
+
+// Convert image input (data URI or raw base64) to Gemini inlineData part.
+// Payloads over MAX_IMAGE_BYTES decoded are rejected (null) like other media inputs.
 export function resolveImageInput(input) {
   if (!input || !isString(input)) return null;
   // data:image/png;base64,... format
   const dataUriMatch = input.match(/^data:(image\/[^;]+);base64,(.+)$/);
   if (dataUriMatch) {
+    if (decodedBase64Bytes(dataUriMatch[2]) > MAX_IMAGE_BYTES) return null;
     return { inlineData: { mimeType: dataUriMatch[1], data: dataUriMatch[2] } };
   }
-  // Raw base64 string (assume PNG)
-  if (/^[A-Za-z0-9+/]/.test(input) && input.length > 100 && !input.startsWith("http")) {
+  // Raw base64 string (assume PNG): full charset only, never URLs or other text
+  if (input.length > 100 && BASE64_RE.test(input) && decodedBase64Bytes(input) <= MAX_IMAGE_BYTES) {
     return { inlineData: { mimeType: "image/png", data: input } };
   }
   return null;

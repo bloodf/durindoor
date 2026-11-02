@@ -124,6 +124,27 @@ describe("sanitizeErrorMessage", () => {
     expect(out).toContain("[redacted]");
   });
 
+  it.each(["token", "access_token", "api_key", "authorization", "password"])(
+    "redacts an upstream-clipped quoted %s value below the sanitizer cap",
+    (key) => {
+      const body = JSON.stringify({ [key]: "synthetic-clipped-value ".repeat(20) });
+      expect(body.slice(0, 200)).toContain("synthetic-clipped-value");
+      const diagnostic = `upstream 500 for fixture: ${body.slice(0, 200)}`;
+      const safe = sanitizeErrorMessage(diagnostic);
+      expect(safe.includes("synthetic-clipped-")).toBe(false);
+      expect(safe).toContain(`[redacted]`);
+      expect(safe).toContain("upstream 500 for fixture:");
+    }
+  );
+
+  it.each([
+    'upstream 500: {"message":"ordinary clipped diagnostic',
+    'upstream 500: {"token_count":"ordinary clipped diagnostic',
+    'upstream 500: {"token":"[redacted]","message":"ordinary clipped diagnostic',
+  ])("preserves ordinary quoted text after upstream clipping %#", (diagnostic) => {
+    expect(sanitizeErrorMessage(diagnostic)).toBe(diagnostic);
+  });
+
   it("redacts URL userinfo whose @ was cut by the 4096 cap (P1)", () => {
     const pad = "p".repeat(4000);
     const msg = `connect ${pad} http://user:supersecretpassword-that-keeps-going-past-the-cap-boundary@proxy.local:8080 failed`;

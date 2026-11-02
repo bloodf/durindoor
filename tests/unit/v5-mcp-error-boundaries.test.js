@@ -89,7 +89,7 @@ async function gateway(body) {
   return handleJsonRpc(request, await request.json());
 }
 
-function installUpstream(target, failure = null) {
+function installUpstream(target, failure = null, httpBody = null) {
   globalThis.fetch.mockImplementation(async (url, options) => {
     const frame = JSON.parse(options.body);
     const headers = new Headers(options.headers);
@@ -119,7 +119,7 @@ function installUpstream(target, failure = null) {
       response = new Response(null, { status: 202 });
     } else if (frame.method === target) {
       response = failure === "http"
-        ? new Response(`${target} failed: ${SECRET} at ${PRIVATE_PATH}`, {
+        ? new Response(httpBody ?? `${target} failed: ${SECRET} at ${PRIVATE_PATH}`, {
           status: 500,
           headers: { "content-type": "text/plain; charset=utf-8" },
         })
@@ -247,6 +247,27 @@ describe("MCP gateway error boundaries through real HTTP client and retry", () =
     }
     expect(errors).not.toHaveBeenCalled();
   }, 10_000);
+
+  it.each(["tools/call", "tools/list"])("%s redacts JSON credentials clipped by the HTTP body limit", async (method) => {
+    const body = JSON.stringify({ token: "synthetic-clipped-value ".repeat(20) });
+    expect(body.slice(0, 200)).toContain("synthetic-clipped-value");
+    installUpstream(method, "http", body);
+    await initializeGateway();
+    // Suppress the diagnostic until its privacy assertions have passed.
+    const logs = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const response = await gateway(toolFrame(method));
+    assertTrace(method, 3, 500);
+    expect(JSON.stringify(response).includes("synthetic-clipped-")).toBe(false);
+    expect(logs).toHaveBeenCalledTimes(2);
+    expect(warnings).toHaveBeenCalledTimes(method === "tools/list" ? 1 : 0);
+    for (const args of [...logs.mock.calls, ...warnings.mock.calls]) {
+      expect(args).toEqual([expect.any(String)]);
+      expect(args[0].includes("synthetic-clipped-")).toBe(false);
+      expect(args[0]).toContain("[redacted]");
+      expect(args[0]).toContain(`upstream 500 for ${instance.slug}`);
+    }
+  });
 
   it("preserves JSON-RPC error code and client id without leaking upstream message", async () => {
     installUpstream("tools/call", "rpc");

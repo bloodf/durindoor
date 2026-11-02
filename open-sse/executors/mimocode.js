@@ -288,7 +288,7 @@ export class MimocodeExecutor extends BaseExecutor {
         const headers = { ...this.buildHeaders(credentials, stream), Authorization: `Bearer ${jwt}` };
         let response = await this.fetchWithProxy(
           url,
-          { method: "POST", headers, body: JSON.stringify(transformedBody), signal: signal ?? undefined },
+          { method: "POST", headers, body: JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody)), signal: signal ?? undefined },
           account.fingerprint
         );
 
@@ -300,7 +300,7 @@ export class MimocodeExecutor extends BaseExecutor {
           headers.Authorization = `Bearer ${await this.getJwtForAccount(account, signal)}`;
           response = await this.fetchWithProxy(
             url,
-            { method: "POST", headers, body: JSON.stringify(transformedBody), signal: signal ?? undefined },
+            { method: "POST", headers, body: JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody)), signal: signal ?? undefined },
             account.fingerprint
           );
         }

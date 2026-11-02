@@ -2,7 +2,7 @@
 
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { QUOTA_SAMPLE } from "../content.js";
 import ThreeStage from "../threeui/ThreeStage.jsx";
 import Icon from "../ui/Icon.jsx";
@@ -11,11 +11,12 @@ import { CountUp, DocsCta, Reveal, SectionHeader } from "../ui/primitives.jsx";
 const R = 52;
 const CIRCUMFERENCE = 2 * Math.PI * R;
 
-function Gauge({ account, index }) {
+function Gauge({ account }) {
+  const reduce = useReducedMotion();
   const { t } = useHomeLocale();
   const tone = account.used > 0.75 ? "is-hot" : account.used > 0.4 ? "is-warm" : "is-cool";
   return (
-    <Reveal as="li" delay={index * 0.1} className={`gauge ${tone}`}>
+    <Reveal as="li" className={`gauge ${tone}`}>
       <div className="gauge-dial">
         <svg viewBox="0 0 128 128" aria-hidden="true">
           <circle cx="64" cy="64" r={R} className="gauge-track" />
@@ -25,10 +26,11 @@ function Gauge({ account, index }) {
             r={R}
             className="gauge-fill"
             strokeDasharray={CIRCUMFERENCE}
-            initial={{ strokeDashoffset: CIRCUMFERENCE }}
+            strokeDashoffset={CIRCUMFERENCE * (1 - account.used)}
+            initial={reduce ? false : { strokeDashoffset: CIRCUMFERENCE }}
             whileInView={{ strokeDashoffset: CIRCUMFERENCE * (1 - account.used) }}
             viewport={{ once: true, margin: "-10% 0px" }}
-            transition={{ duration: 1.6, delay: 0.2 + index * 0.15, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: reduce ? 0 : 1.6, ease: [0.16, 1, 0.3, 1] }}
           />
         </svg>
         <span className="gauge-value">
@@ -73,12 +75,12 @@ export default function QuotaUsage() {
           <div className="gauges-wrap">
             <span className="sample-tag">{t("Sample data")}</span>
             <ul className="gauges" aria-label={t("Example quota usage")}>
-              {QUOTA_SAMPLE.map((account, i) => (
-                <Gauge key={account.name} account={account} index={i} />
+              {QUOTA_SAMPLE.map((account) => (
+                <Gauge key={account.name} account={account} />
               ))}
             </ul>
           </div>
-          <Reveal className="quota-ledger" delay={0.2}>
+          <Reveal className="quota-ledger">
             <p className="quota-ledger-title">{t("In the dashboard")}</p>
             <ul>
               {LEDGER.map((item) => (

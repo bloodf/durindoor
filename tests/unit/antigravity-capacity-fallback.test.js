@@ -88,6 +88,7 @@ describe("Antigravity capacity fallback", () => {
         testStatus: "unavailable",
         errorCode: 503,
       }),
+      expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );
   });
 
@@ -120,6 +121,7 @@ describe("Antigravity capacity fallback", () => {
       expect.objectContaining({
         "modelLock_gpt-5.4": expect.any(String),
       }),
+      expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );
     const persistedReset = new Date(
       mocks.updateProviderConnection.mock.calls.at(-1)[1]["modelLock_gpt-5.4"],
@@ -223,6 +225,7 @@ describe("Antigravity secondary-account quota fallback (U-16 #2514)", () => {
         errorCode: 429,
         [`modelLock_${model}`]: expect.anything(),
       }),
+      expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );
     // #6731 combined semantics: the explicit quota body persists
     // state:"exhausted" while the caller-supplied reset drives the window.

@@ -2,7 +2,6 @@ import { Readable } from "node:stream";
 import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
 import { MEMORY_CONFIG, PROXY_FETCH_POOL_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
-import { sanitizeErrorMessage } from "./error.js";
 import {
   assertGuardedProbeDispatcherAddressAllowed,
   isGuardedProbeDispatcher,
@@ -175,8 +174,21 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
-function safeTransportError(error) {
-  return sanitizeErrorMessage(error?.message || error);
+const TRANSPORT_CODES = new Set([
+  "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN",
+  "EPIPE", "ENETUNREACH", "EHOSTUNREACH", "ECONNABORTED",
+  "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET", "ERR_PROXY_CONNECTION_FAILED",
+]);
+
+/** Emit only local events and exact allowlisted codes; never text, URLs or hosts. */
+function logTransportDiagnostic(log, event, error) {
+  const details = { event };
+  try {
+    const code = error?.code;
+    if (isString(code) && TRANSPORT_CODES.has(code)) details.transportCode = code;
+  } catch { /* Untrusted code getters must not interrupt direct fallback. */ }
+  log("[ProxyFetch]", details);
 }
 
 function signalAbortError(signal) {
@@ -212,11 +224,11 @@ function raceWithSignal(promise, signal) {
 
 /** Resolve every IPv4 answer through Google DNS (bypass system DNS). */
 async function resolveRealIPs(hostname) {
-  if (realIpResolverForTesting) return realIpResolverForTesting(hostname);
   const cached = DNS_CACHE.get(hostname);
   if (cached && Date.now() < cached.expiry) return cached.ips;
 
   try {
+    if (realIpResolverForTesting) return await realIpResolverForTesting(hostname);
     const dns = await import("dns");
     const { promisify } = await import("util");
     const resolver = new dns.Resolver();
@@ -226,7 +238,7 @@ async function resolveRealIPs(hostname) {
     DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
     return addresses;
   } catch (error) {
-    console.warn(`[ProxyFetch] DNS resolve failed for ${hostname}:`, safeTransportError(error));
+    logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
     return [];
   }
 }
@@ -828,7 +840,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         if (proxyOptions?.strictProxy === true) {
           throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
         }
-        console.debug(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${safeTransportError(proxyError)}`);
+        logTransportDiagnostic(console.debug, "proxy_direct_bypass_fallback", proxyError);
       }
     }
     // No proxy — manually resolve real IP to bypass DNS spoof. A guarded probe
@@ -854,7 +866,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (error instanceof OutboundUrlGuardError) throw error;
       if (isQuotaDispatchUnavailable(error)) throw error;
       rethrowTransportAbort(error, options.signal);
-      console.warn(`[ProxyFetch] MITM bypass failed: ${safeTransportError(error)}`);
+      logTransportDiagnostic(console.warn, "mitm_bypass_failed", error);
     }
   }
 
@@ -869,7 +881,7 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
       if (proxyOptions?.strictProxy === true) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
       }
-      console.debug(`[ProxyFetch] Proxy failed, falling back to direct: ${safeTransportError(proxyError)}`);
+      logTransportDiagnostic(console.debug, "proxy_direct_fallback", proxyError);
       return directFetch(url, options);
     }
   }

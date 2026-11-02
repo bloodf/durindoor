@@ -75,8 +75,14 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   }
 
   // Anthropic 400 invalid_request_error is a client-side request schema failure;
-  // switching accounts will not fix it, so do not fall back.
+  // switching accounts will not fix it, so do not fall back — unless the body is
+  // prepaid credit exhaustion still typed as invalid_request_error on the wire
+  // (#1364 / anthropics/anthropic-sdk-typescript#618). Honor terminal billing
+  // text rules before this short-circuit; ordinary invalid_request_error stays
+  // request-scoped.
   if (Number(status) === 400 && lowerError.includes("invalid_request_error")) {
+    const billing = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+    if (billing.terminal) return { ...billing, scope: null };
     return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 

@@ -86,6 +86,8 @@ Every media endpoint on this page, plus web search, web fetch, and embeddings be
 
 Image generation accepts JSON `{ model, prompt }`, optional `Accept: text/event-stream`, and `?response_format=binary`. Image edits accept multipart or provider-native JSON on supported models. xAI accepts `image: { url }` or `image: { file_id }`, or up to five sources in `images`; the adapter preserves `storage_options` and converts multipart `n` to a number. `sdwebui` and `comfyui` need no stored key.
 
+Responses `input_image` accepts `image_url` (URL or `data:` base64). A bare `file_id` is not resolved when either the registered Responses translator or worker converter converts a request to Chat Completions; it returns HTTP 400 instead of being sent as an image URL. This applies to message images and images inside `function_call_output`, with either stream setting. When both references are present, `image_url` takes precedence. The file reference is preserved on native-compatible, same-format Responses transports, while gateway normalizations still apply.
+
 TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
 
 STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path. Only OpenAI-format STT providers (OpenAI, Groq, Local Whisper) have one; the others return 400. The transcription and translation handlers declare a maximum route duration of 300 seconds. This is a server execution setting, not a 300-second audio-file limit.
@@ -129,9 +131,13 @@ Built-in native HTTP operations require a registered model or its canonical alia
 | xAI | Responses, image generation/edits, video generation/edits/extensions/polling, TTS and STT |
 | Cohere | Embed, Rerank, multipart Audio Transcriptions, image-only Parse |
 
-For account-bound operations, send `x-connection-id` with the account returned in the creation response's `x-9router-connection-id`. Missing pins return 400; unavailable pins fail instead of switching accounts. Tracked OpenAI Responses and MiniMax/xAI resource operations require the creator key, or local operator access. Completion polling uses the creation model and creator key, and repeated terminal usage does not charge twice. Deleted creator keys cannot redirect charges to the polling key.
+For account-bound operations, send `x-connection-id` with the account returned in the creation response's `x-9router-connection-id`. Missing pins return 400; unavailable pins fail instead of switching accounts. Tracked OpenAI Responses, Anthropic Files and Message Batches, and MiniMax/xAI resource operations require the creator key or authenticated operator access. Completion polling uses the creation model and creator key, and repeated terminal usage does not charge twice. Deleted creator keys cannot redirect charges to the polling key.
 
-Native Anthropic file/batch lists and MiniMax voice-category lists expose the selected account's resources. Share those accounts only with trusted clients. MiniMax `POST /v1/get_voice` takes `voice_type`, not an individual `voice_id`; see the [vendor schema](https://platform.minimax.io/docs/api-reference/voice-management-get.md).
+Native Anthropic file and Message Batch lists include only resources with a recorded gateway owner on the pinned account. API keys see their own resources; authenticated operators may see resources recorded for other owners. Resources without a recorded owner are omitted even for operators, and individual requests for them return HTTP 403 before dispatching the vendor operation. List boundary IDs and `has_more` reflect only visible resources. On a shared upstream account where most entries belong to other API keys, owned-list calls can stop after scanning 10 upstream pages and return HTTP 502 rather than a partial page when visibility cannot be resolved safely.
+
+Native Anthropic file and batch list cursors (`after_id` and `before_id`) must reference a recorded resource owned by the accepted API key. Operators may use recorded resources across owners; unknown cursors are rejected. Repeated or empty cursor parameters return 400.
+
+MiniMax and MiniMax CN voice-category lists retain account-wide semantics. Share those accounts only with clients you trust with their voices. MiniMax `POST /v1/get_voice` takes `voice_type`, not an individual `voice_id`; see the [vendor schema](https://platform.minimax.io/docs/api-reference/voice-management-get.md).
 
 Native background and batch inference require keys without usage/rate caps: the gateway cannot meter work after a client leaves. Direct ephemeral sessions have the same restriction. Gateway-relayed native WebSockets remain available to scoped keys; see [Realtime](../features/realtime.mdx).
 

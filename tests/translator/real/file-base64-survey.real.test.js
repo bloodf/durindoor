@@ -4,6 +4,7 @@
 // reject DOCX. Survey-only: logs a grouped table, never asserts on accept/reject outcome.
 //
 //   RUN_REAL=1 npx vitest run --config tests/vitest.config.js tests/translator/real/file-base64-survey.real.test.js
+import { positiveProviderBody } from "./positive-provider-body.js";
 import { describe, it, expect, afterAll } from "vitest";
 import { getProviderCredentials } from "../../../src/sse/services/auth.js";
 import { checkAndRefreshToken } from "../../../src/sse/services/tokenRefresh.js";
@@ -125,7 +126,7 @@ describe.skipIf(!RUN_REAL)("REAL file base64 survey", () => {
         const refreshed = await checkAndRefreshToken(providerId, credentials);
 
         const result = await handleChatCore({
-          body: { ...body, model: `${providerId}/${model}` },
+          body: positiveProviderBody(providerId, { ...body, model: `${providerId}/${model}` }),
           modelInfo: { provider: providerId, model },
           credentials: refreshed,
           connectionId: credentials.connectionId,

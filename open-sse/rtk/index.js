@@ -43,6 +43,8 @@ export function compressMessages(body, enabled) {
       }
 
       // Shape 1: OpenAI tool message — { role:"tool", content: "string" }
+      // Tool messages flagged is_error:true (bridged from Claude tool_result) keep error traces intact.
+      if (msg.role === "tool" && msg.is_error === true) continue;
       if (msg.role === "tool" && isString(msg.content)) {
         msg.content = compressText(msg.content, stats, "openai-tool");
         continue;

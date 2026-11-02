@@ -55,7 +55,8 @@ vi.mock("../../open-sse/services/tokenRefresh.js", () => ({
   refreshWithRetry: vi.fn(),
 }));
 
-vi.mock("../../open-sse/providers/capabilities.js", () => ({
+vi.mock("../../open-sse/providers/capabilities.js", async (importOriginal) => ({
+  ...(await importOriginal()),
   getCapabilitiesForModel: vi.fn(() => ({})),
   // Unknown limits: the preflight must stay out of the way of these tests.
   resolveModelLimits: vi.fn(() => ({ contextWindow: 0, maxOutput: 0, known: false, source: "default" })),
@@ -98,6 +99,8 @@ vi.mock("@/lib/usageDb.js", () => ({
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 const { validateOutboundPayload } = await import("../../open-sse/translator/validate.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
+const { HTTP_STATUS } = await import("../../open-sse/config/runtimeConfig.js");
+const { ROLE } = await import("../../open-sse/translator/schema/index.js");
 
 function chatCoreOptions(messages) {
   const body = { model: "commandcode/deepseek/deepseek-v4-flash", stream: true, messages };
@@ -145,6 +148,23 @@ describe("Command Code outbound validation in chatCore", () => {
 
     expect(result).toMatchObject({ success: false, status: 400 });
     expect(result.error).toContain("invalid arguments");
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("returns 400 before dispatching a capped Kiro request (stream=%s)", async (stream) => {
+    const options = chatCoreOptions([{ role: ROLE.USER, content: "hi" }]);
+    options.modelInfo = { provider: "kiro", model: "claude-sonnet-4.5" };
+    options.body.model = "kiro/claude-sonnet-4.5";
+    options.body.stream = stream;
+    options.body.max_completion_tokens = 100;
+
+    const result = await handleChatCore(options);
+
+    expect(result).toMatchObject({
+      success: false,
+      status: HTTP_STATUS.BAD_REQUEST,
+      error: expect.stringContaining("Kiro cannot enforce max_completion_tokens"),
+    });
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 

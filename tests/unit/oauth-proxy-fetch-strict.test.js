@@ -137,9 +137,11 @@ describe("OAuth strict proxy transport", () => {
     expect(failure?.message).not.toContain("raw-token");
   });
 
-  it("redacts a best-effort proxy failure before debug logging and falling back", async () => {
-    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("keeps best-effort fallback usable without disclosing proxy credentials", async () => {
+    const logs = [];
+    for (const method of ["log", "debug", "warn", "error", "info"]) {
+      vi.spyOn(console, method).mockImplementation((...args) => logs.push(args));
+    }
     const proxyUrl = "http://alice:proxy-secret@proxy.example.test:8080";
     __setProxyDispatcherForTesting(proxyUrl, { close: vi.fn().mockResolvedValue() });
     fetchMock
@@ -155,9 +157,9 @@ describe("OAuth strict proxy transport", () => {
     );
 
     expect(await response.text()).toBe("direct");
-    const output = debug.mock.calls.flat().join(" ");
-    expect(warn).not.toHaveBeenCalled();
-    expect(output).toContain("[redacted]");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1].dispatcher).not.toBe(fetchMock.mock.calls[1][1].dispatcher);
+    const output = JSON.stringify(logs);
     expect(output).not.toContain("proxy-secret");
     expect(output).not.toContain("raw-token");
   });

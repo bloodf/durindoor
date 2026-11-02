@@ -4,6 +4,9 @@
  */
 
 import { handleChatCore } from "./chatCore.js";
+import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
+import { createErrorResult } from "../utils/error.js";
+import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { recordTokenSaverEvent } from "@/lib/usageDb.js";
 import { convertResponsesApiFormat } from "../translator/formats/responsesApi.js";
 import { createResponsesApiTransformStream } from "../transformer/responsesTransformer.js";
@@ -36,8 +39,25 @@ export async function handleResponsesCore({ body, modelInfo, credentials, log, o
   });
   if (ponytailResponse) return ponytailResponse;
 
-  // Convert Responses API format to Chat Completions format
-  const convertedBody = convertResponsesApiFormat(body);
+  // Conversion stringifies tool-output arrays and removes input, so validate
+  // Cursor images while their protocol block types are still available.
+  if (modelInfo?.provider === "cursor" || modelInfo?.provider === "cu") {
+    try {
+      validateCursorImages(body);
+    } catch (error) {
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
+  }
+
+  // Keep converter validation failures inside the same HTTP result contract as chatCore.
+  let convertedBody;
+  try {
+    convertedBody = convertResponsesApiFormat(body);
+  } catch (error) {
+    if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+  }
 
   // Preserve client's stream preference (matches OpenClaw behavior)
   // Default to false if omitted: Boolean(undefined) = false

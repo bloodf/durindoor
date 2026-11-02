@@ -175,7 +175,9 @@ export class VertexExecutor extends BaseExecutor {
     const response = await proxyAwareFetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify(transformedBody),
+      // Only the partner endpoint speaks Chat Completions; Gemini stays native.
+      body: JSON.stringify(this.provider === "vertex-partner" ?
+        this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody),
       signal
     }, proxyOptions);
 

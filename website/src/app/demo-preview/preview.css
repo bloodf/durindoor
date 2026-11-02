@@ -1,0 +1,32 @@
+.demo-entry-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 100svh;
+  max-width: 560px;
+  margin-inline: auto;
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--dd-text);
+}
+.demo-entry-state > svg { color: var(--dd-accent); }
+.demo-entry-state h1 { font-size: 24px; line-height: 1.3; font-weight: 600; }
+.demo-entry-state p { color: var(--dd-text-muted); line-height: 1.6; }
+.demo-entry-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.demo-entry-actions :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--dd-border);
+  border-radius: var(--dd-radius);
+  color: var(--dd-text);
+  background: var(--dd-surface);
+  cursor: pointer;
+}
+.demo-entry-actions button { background: var(--dd-accent); color: var(--dd-on-accent); }
+.demo-entry-actions :focus-visible { outline: 2px solid var(--dd-focus-ring); outline-offset: 3px; }

@@ -7,7 +7,7 @@ import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { cleanJSONSchemaForAntigravity } from "../translator/formats/gemini.js";
+import { cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
@@ -311,6 +311,16 @@ export class AntigravityExecutor extends BaseExecutor {
       // In parallel function calls, only the first call needs a signature; siblings stay unsigned.
       let firstFunctionCallSeen = false;
       const modifiedParts = parts?.map(p => {
+        // Native requests bypass the translator's function-response payload sanitizer.
+        if (p.functionResponse) {
+          return {
+            ...p,
+            functionResponse: {
+              ...p.functionResponse,
+              response: sanitizeFunctionResponseResult(p.functionResponse.response)
+            }
+          };
+        }
         if (!p.functionCall) return p;
         const callId = p.functionCall.id;
         const cachedSig = callId ? getGeminiThoughtSignatureSync(callId, sessionId, body.model || model) : null;

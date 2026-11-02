@@ -1,12 +1,19 @@
 // Homepage copy. Keys are source messages; missing translations never fall back.
 const messages = {
+  "Copy failed. Select the command and copy it manually.": "Copy failed. Select the command and copy it manually.",
+  "Set your own initial password before starting. Keep both signing secrets for later starts.": "Set your own initial password before starting. Keep both signing secrets for later starts.",
+  "Pause examples": "Pause examples",
+  "Play examples": "Play examples",
+  "Pause motion": "Pause motion",
+  "Play motion": "Play motion",
+
   "Speak, friend, and enter.": "Speak, friend, and enter.",
   "You choose the fallback order": "You choose the fallback order",
   "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.": "A combo gives your client one model name. DurinDoor tries its configured members in order, retrying eligible accounts before moving to the next model.",
   "Example configuration": "Example configuration",
   "This order is an example, not a built-in subscription, API, or local-model priority.": "This order is an example, not a built-in subscription, API, or local-model priority.",
 
-  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.": "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models — connected on your terms.",
+  "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models, connected on your terms.": "Your AI providers. One gateway. OpenAI and Anthropic APIs, subscriptions, and local models, connected on your terms.",
   "Close the door": "Close the door",
   "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.": "Connect a provider, choose a model, and configure your client for OpenAI or Anthropic APIs.",
 
@@ -91,7 +98,7 @@ const messages = {
   "Your tools speak OpenAI. Your providers speak whatever they like. DurinDoor stands between them, holds the keys, and keeps the ledger.": "Your tools speak OpenAI. Your providers speak whatever they like. DurinDoor stands between them, holds the keys, and keeps the ledger.",
   "model resolution": "model resolution",
   "Model string shapes": "Model string shapes",
-  "Open source · MIT · Self-hosted AI gateway": "Open source · MIT · Self-hosted AI gateway",
+  "Open source. MIT. Self-hosted AI gateway": "Open source. MIT. Self-hosted AI gateway",
   "enter.": "enter.",
   "One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.": "One guarded gateway for every AI provider. Add credentials once, point every OpenAI-compatible tool at a single local endpoint.",
   "Install command": "Install command",
@@ -252,7 +259,7 @@ const messages = {
   "standing by": "standing by",
   "trying": "trying",
   "Language": "Language",
-  "DurinDoor. Speak, friend, and enter": "DurinDoor. Speak, friend, and enter",
+  "DurinDoor | Self-hosted AI gateway": "DurinDoor | Self-hosted AI gateway",
   "Ancient stone door glowing emerald in dark ruins": "Ancient stone door glowing emerald in dark ruins",
   "GitHub": "GitHub",
   "npm": "npm",

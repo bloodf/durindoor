@@ -29,6 +29,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
+            website/package-lock.json
             tests/package-lock.json
 
       - name: "📌 Pin npm"

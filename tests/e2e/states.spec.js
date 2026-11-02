@@ -85,7 +85,7 @@ test("R08 endpoint error injection stays on exact keys collection path", async (
   await page.route("**/*", handler);
   try {
     await qa.authenticate(page);
-    await page.goto(`${qa.baseURL}/dashboard/endpoint`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${qa.baseURL}/dashboard/keys`, { waitUntil: "domcontentloaded" });
     await expect(page.getByText("injected", { exact: false }).first()).toBeVisible();
     await qa.assertNoExternalEffects();
   } finally {

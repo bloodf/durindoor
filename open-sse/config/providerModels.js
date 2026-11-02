@@ -112,6 +112,11 @@ export function getModelForceNonStreaming(aliasOrId, modelId) {
   return modelForceNonStreaming(findModel(PROVIDER_MODELS[aliasOrId], modelId, aliasOrId));
 }
 
+/** Raw registry row for a model (suffix-aware), for per-model executor hints such as defaultLocation. */
+export function getModelMeta(aliasOrId, modelId) {
+  return findModel(PROVIDER_MODELS[aliasOrId], modelId, aliasOrId) || null;
+}
+
 export function getModelType(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;

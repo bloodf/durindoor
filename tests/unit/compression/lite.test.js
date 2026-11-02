@@ -183,3 +183,29 @@ describe("lite in the compression seam", () => {
     expect(out.headerValue).toBeNull();
   });
 });
+
+describe("review fixes", () => {
+  it("keeps same-content turns from different named participants", () => {
+    const body = { messages: [
+      { role: "user", name: "alice", content: "approve" },
+      { role: "user", name: "bob", content: "approve" },
+    ] };
+    expect(applyLiteCompression(body).compressed).toBe(false);
+  });
+
+  it("forwards only schema-declared, valid engine options to the step", async () => {
+    const seen = [];
+    const fake = {
+      id: "lite",
+      getConfigSchema: () => [{ key: "enabled" }, { key: "maxToolLength" }],
+      validateConfig: (c) => ({ valid: c.maxToolLength !== 1, errors: ["bad"] }),
+      apply: async (b, opts) => { seen.push(opts.stepConfig); return { body: b, compressed: false }; },
+    };
+    const deps = { isEngineAvailable: () => true, getEngine: () => fake, planToEngineIds: () => ["lite"] };
+    const run = (entry) => runCompressionSeam({ messages: [] }, deps, { enabled: true, engines: { lite: entry } });
+    await run({ enabled: true, maxToolLength: 300, url: "http://evil", truncateToolResults: true });
+    await run({ enabled: true, maxToolLength: 1 });
+    expect(seen[0]).toEqual({ maxToolLength: 300, engine: "lite" });
+    expect(seen[1]).toEqual({ engine: "lite" });
+  });
+});

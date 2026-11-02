@@ -104,6 +104,7 @@ function removeRedundantContent(messages, preserveSystem) {
     !msg?.tool_calls &&
     !prev?.tool_calls &&
     prev?.role === msg?.role &&
+    prev?.name === msg?.name &&
     isString(msg?.content) &&
     msg.content.length > 0 &&
     prev.content === msg.content;

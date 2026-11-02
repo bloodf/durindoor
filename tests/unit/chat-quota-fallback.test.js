@@ -251,6 +251,20 @@ describe("chat combo quota preview", () => {
     expect(ordered).toEqual(["b/model", "a/model"]);
   });
 
+  it("keys combo quota by the Antigravity tier row the request will dispatch", async () => {
+    const seen = [];
+    const deps = comboDependencies({ connections: new Map(), decisions: new Map() });
+    deps.inspectProviderQuota = async (rows, { resourceKeys }) => { seen.push(resourceKeys); return new Map(); };
+    const models = ["antigravity/gemini-3.8-flash"];
+    await rankComboModelsByQuota(models, {}, Date.now(), "combo", "fallback", deps, null, { reasoning_effort: "high" });
+    await rankComboModelsByQuota(models, { providerThinking: { antigravity: { mode: "low" } } }, Date.now(), "combo", "fallback", deps, null, {});
+    await rankComboModelsByQuota(models, {}, Date.now(), "combo", "fallback", deps);
+    expect(seen[0].join(",")).toContain("gemini-3.8-flash-high");
+    expect(seen[1].join(",")).toContain("gemini-3.8-flash-low");
+    expect(seen[2].join(",")).toContain("gemini-3.8-flash-medium");
+    expect(seen[0].join(",")).not.toContain("medium");
+  });
+
   it("mirrors fixed-slot untracked and legacy-lock account selection", async () => {
     const b = connection("b-1", "b");
     const aUntracked = connection("a-untracked", "a", 1);

@@ -10,7 +10,7 @@ import {
 "@/lib/localDb";
 import { getExecutor } from "open-sse/executors/index.js";
 import { getCodexModels } from "open-sse/services/usage/codex.js";
-import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
+import { CLAUDE_CLI_SPOOF_HEADERS, buildClaudeOAuthAnthropicBeta } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
@@ -132,6 +132,7 @@ async function sendClaudePing(connection, providerConfig, proxyOptions, deps, si
     method: "POST",
     headers: {
       ...CLAUDE_CLI_SPOOF_HEADERS,
+      "Anthropic-Beta": buildClaudeOAuthAnthropicBeta(),
       "Authorization": `Bearer ${connection.accessToken}`,
       "content-type": "application/json",
       "accept": "text/event-stream"

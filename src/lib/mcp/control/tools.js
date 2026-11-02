@@ -161,6 +161,7 @@ const TOOLS = {
   },
 
   toggle_connection_active: {
+    writes: true,
     description: "Enable or disable a single provider connection by ID",
     inputSchema: {
       type: "object",
@@ -188,6 +189,7 @@ const TOOLS = {
   },
 
   toggle_provider_active: {
+    writes: true,
     description: "Enable or disable every connection for a provider ID",
     inputSchema: {
       type: "object",
@@ -305,6 +307,7 @@ const TOOLS = {
   },
 
   create_combo: {
+    writes: true,
     description: "Create a combo from a name plus its models, members, kind, capabilities and connection allowlist",
     inputSchema: {
       type: "object",
@@ -325,6 +328,7 @@ const TOOLS = {
   },
 
   update_combo: {
+    writes: true,
     description: "Update a combo; omitted fields keep their stored value",
     inputSchema: {
       type: "object",
@@ -347,6 +351,7 @@ const TOOLS = {
   },
 
   delete_combo: {
+    writes: true,
     description: "Delete a combo by ID",
     inputSchema: {
       type: "object",
@@ -386,6 +391,7 @@ const TOOLS = {
   },
 
   refresh_quota: {
+    writes: true,
     description: "Force a live quota refresh for one connection and return the resulting snapshots",
     inputSchema: {
       type: "object",
@@ -437,6 +443,7 @@ const TOOLS = {
   },
 
   update_settings: {
+    writes: true,
     description: "Update non-secret, non-auth-critical DurinDoor settings",
     inputSchema: {
       type: "object",
@@ -473,7 +480,7 @@ export function listTools() {
 }
 
 export async function callTool(name, args) {
-  const tool = TOOLS[name];
+  const tool = Object.hasOwn(TOOLS, name) ? TOOLS[name] : undefined;
   if (!tool) {
     const err = new Error(`Unknown tool: ${name}`);
     err.status = 404;

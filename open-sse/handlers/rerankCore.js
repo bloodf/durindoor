@@ -5,6 +5,7 @@ import { PROVIDERS, PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { mediaAccounting } from "./mediaAccounting.js";
 
 function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);
@@ -30,6 +31,7 @@ export function deriveRerankUrl(transportCfg, mediaCfg) {
  * Core rerank handler — generic passthrough for Cohere/Jina/Voyage-style /rerank.
  * Forwards { model, query, documents, top_n, ... } verbatim; the provider's native
  * response shape is returned unchanged.
+ * Raw receipt accounting is returned separately from the unchanged response body.
  *
  * @param {object} options
  * @param {object} options.body - Request body { model, query, documents, top_n, ... }
@@ -76,9 +78,13 @@ export async function handleRerankCore({
   if (onRequestSuccess) await onRequestSuccess();
 
   const text = await res.text();
+  let raw;
+  try { raw = JSON.parse(text); } catch { /* Preserve opaque successful responses. */ }
+  const accounting = mediaAccounting(raw, provider, "rerank");
   return {
     success: true,
     status: res.status,
+    accounting,
     response: new Response(text, {
       status: 200,
       headers: {

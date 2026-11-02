@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  isNonAdminApiKeyCaller: vi.fn(),
   getProviderConnectionById: vi.fn(),
   getUsageHistory: vi.fn(),
   getUsageForProvider: vi.fn(),
@@ -10,6 +11,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("open-sse/index.js", () => ({}));
+
+vi.mock("@/dashboardGuard", () => ({ isNonAdminApiKeyCaller: mocks.isNonAdminApiKeyCaller }));
 vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: mocks.getProviderConnectionById }));
 vi.mock("@/lib/db/repos/usageRepo.js", () => ({ getUsageHistory: mocks.getUsageHistory }));
 vi.mock("open-sse/services/usage.js", () => ({ getUsageForProvider: mocks.getUsageForProvider }));
@@ -27,6 +30,7 @@ describe("provider usage route credential service integration", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.resolveConnectionProxyConfig.mockResolvedValue({});
+    mocks.isNonAdminApiKeyCaller.mockResolvedValue(false);
   });
 
   it("uses the refreshed OAuth connection and retries one forced refresh after an auth-expired result", async () => {
@@ -109,5 +113,15 @@ describe("provider usage route credential service integration", () => {
     } finally {
       errorLog.mockRestore();
     }
+  });
+  it("refuses an OAuth credential refresh to an API key without the admin scope", async () => {
+    mocks.isNonAdminApiKeyCaller.mockResolvedValue(true);
+    mocks.getProviderConnectionById.mockResolvedValue({ id: "conn-1", provider: "github", authType: "oauth", accessToken: "t", refreshToken: "r", providerSpecificData: {} });
+    const { GET } = await import("../../src/app/api/usage/[connectionId]/route.js");
+    const response = await GET(new Request("http://localhost/api/usage/conn-1"), {
+      params: Promise.resolve({ connectionId: "conn-1" }),
+    });
+    expect(response.status).toBe(403);
+    expect(mocks.refreshAndUpdateCredentials).not.toHaveBeenCalled();
   });
 });

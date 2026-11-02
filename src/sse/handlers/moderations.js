@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
@@ -14,7 +14,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
+import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
@@ -54,15 +54,17 @@ async function handleModerationsHandler(request) {
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
 
+  // Model and account fallbacks retain the original admission epoch.
+  const usageContext = { billingEpoch: apiKeyAuth.billingEpoch, usageEventId: `${getRequestId(request)}:${url.pathname}`, endpoint: url.pathname };
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelModeration(m, body, request, apiKey, apiKeyAuth.apiKeyId),
+    (m) => handleSingleModelModeration(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext),
     log
   );
 }
 
-async function handleSingleModelModeration(modelStr, body, request, apiKey, apiKeyId) {
+async function handleSingleModelModeration(modelStr, body, request, apiKey, apiKeyId, usageContext) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("MODERATION", "Invalid model format", { model: modelStr });
@@ -72,7 +74,15 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
-  const estimatedTokens = JSON.stringify(body.input).length / 4;
+  /** Record the core receipt without consuming the response or assuming free service. */
+  const recordSuccess = (result, credentials) => recordApiKeyUsageForResponse(apiKey, result.response, {
+    ...result.accounting,
+    ...usageContext,
+    provider,
+    model,
+    connectionId: credentials.connectionId || null,
+    modality: "moderation"
+  });
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -94,11 +104,8 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const result = toCoreResult(
-      await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log }),
-      "Moderation failed",
-    );
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    const result = await handleModerationsCore({ body, modelInfo: { provider, model }, credentials, log });
+    if (result.success) return recordSuccess(result, credentials);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Moderation failed");
   }
 
@@ -132,20 +139,17 @@ async function handleSingleModelModeration(modelStr, body, request, apiKey, apiK
 
     const refreshedCredentials = await checkAndRefreshToken(provider, { ...credentials });
 
-    const result = toCoreResult(
-      await handleModerationsCore({
-        body,
-        modelInfo: { provider, model },
-        credentials: toExecutorCredentials(refreshedCredentials),
-        log,
-        onRequestSuccess: async () => {
-          await clearAccountError(credentials.connectionId, credentials, model);
-        },
-      }),
-      "Moderation failed",
-    );
+    const result = await handleModerationsCore({
+      body,
+      modelInfo: { provider, model },
+      credentials: toExecutorCredentials(refreshedCredentials),
+      log,
+      onRequestSuccess: async () => {
+        await clearAccountError(credentials.connectionId, credentials, model);
+      },
+    });
 
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) return recordSuccess(result, credentials);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null });
 

@@ -50,6 +50,14 @@ Import them from `open-sse/translator/schema/index.js`.
 
 Endpoint detection (`detectFormatByEndpoint`): `/v1/responses` is `openai-responses`, `/v1/messages` is `claude`. `/v1/chat/completions` with an `input[]` body still counts as OpenAI (Cursor CLI).
 
+OpenAI tool-name normalization reserves all original names from declarations,
+choices, and history before allocating aliases. Allocation order is sorted and
+collision retries are deterministic; a valid original that happens to equal a
+generated hash alias retains its identity. Successive provider-specific alias
+maps still compose back to the client's original names. Chat-to-Claude OAuth
+requests reserve room for the final configured tool suffix before the direct
+translation, so suffixing does not exceed the 64-character wire limit.
+
 ## OpenAI token-cap normalization
 
 Port `decolua/9router@7c42d8f87bac934184f633f985c8a944c8c6336e`

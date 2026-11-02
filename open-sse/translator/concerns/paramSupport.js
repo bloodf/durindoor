@@ -44,6 +44,13 @@ const STRIP_RULES = [
 { provider: "groq", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 { provider: "mistral", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 { provider: "cerebras", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
+// OpenCode Go's relay rejects `response_format` (json_schema and json_object)
+// for its deepseek family with HTTP 400 and a body that names neither the field
+// nor the reason, while other models on the same relay accept it. Measured
+// upstream 2026-10-13: 12/12 structured calls 400, 4/4 without the field 200
+// (decolua/9router 468aa7d9).
+{ provider: "opencode-go", match: /^deepseek/i, drop: ["response_format"] },
+
 // 9router ced0cf6: NIM treats these as aliases and rejects duplicate fields.
 { provider: "nvidia", renameMessageFields: { reasoning: "reasoning_content" } },
 // Mistral's OpenAI-compatible API validates the body strictly and rejects the

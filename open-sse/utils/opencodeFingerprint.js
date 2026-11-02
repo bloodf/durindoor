@@ -15,6 +15,10 @@
  *   map (alias -> original) lets the response path restore the caller's name.
  * Case variants such as `Read` are preserved; upstream accepts them alongside
  * `read`.
+ *
+ * The system prompt must also carry the CLI's `<env>` block (upstream
+ * ce060c79): without it, or without the tools, upstream answers 429
+ * FreeUsageLimitError regardless of headers. See `applyEnvFingerprint`.
  */
 
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -209,6 +213,75 @@ function noteUnavailableTools(body, format, names) {
     [{ role: "system", content: note }, ...body.messages];
 }
 
+// Upstream's gate reads the text only: a foreign system prompt plus this block
+// passes, so it is appended to the caller's prompt, never replacing it.
+// Upstream fills the paths from the gateway host (process.cwd(), os.tmpdir());
+// fixed neutral values (Linux, matching the `shell` definition) keep the
+// host's directory layout and OS out of the request.
+const ENV_TAG = "<env>";
+const ENV_FINGERPRINT_PROMPT = [
+  "Here is some useful information about the environment you are running in:",
+  ENV_TAG,
+  "  Working directory: /workspace",
+  "  Workspace root folder: /workspace",
+  "  Is directory a git repo: no",
+  "  Platform: linux",
+  "  Prefer /tmp/opencode over generic system temporary directories such as /tmp; it is pre-created and approved for external access.",
+  "</env>",
+].join("\n");
+
+function carriesEnv(system) {
+  if (isString(system)) return system.includes(ENV_TAG);
+  return Array.isArray(system) && system.some((block) => isString(block?.text) && block.text.includes(ENV_TAG));
+}
+
+// Append to a system prompt held as a string, text blocks, or unset.
+function appendSystemText(system, text) {
+  if (system === undefined || system === null) return text;
+  if (isString(system)) return system.trim() ? `${system}\n\n${text}` : text;
+  const blocks = Array.isArray(system) ? system : [];
+  const last = blocks.findLastIndex((block) => isString(block?.text));
+  if (last < 0) return [...blocks, { type: "text", text }];
+  return blocks.map((block, i) => i === last ?
+    { ...block, text: block.text.trim() ? `${block.text}\n\n${text}` : text } :
+    block);
+}
+
+/**
+ * Append the CLI's `<env>` marker to the system prompt of a Responses
+ * (`instructions`), Claude (`system`) or chat (`messages[]` system) body.
+ * A body that already carries the marker is left alone. Mutates `body`.
+ *
+ * @param {object} body
+ * @param {"chat"|"responses"|"claude"} format
+ * @returns {boolean} true when the marker was added
+ */
+export function applyEnvFingerprint(body, format) {
+  if (!isRecord(body)) return false;
+  if (format === "responses") {
+    if (body.instructions !== undefined && !isString(body.instructions)) return false;
+    if (carriesEnv(body.instructions)) return false;
+    body.instructions = appendSystemText(body.instructions, ENV_FINGERPRINT_PROMPT);
+    return true;
+  }
+  if (format === "claude") {
+    if (carriesEnv(body.system)) return false;
+    body.system = appendSystemText(body.system, ENV_FINGERPRINT_PROMPT);
+    return true;
+  }
+  if (!Array.isArray(body.messages)) return false;
+  const idx = body.messages.findIndex((msg) => msg?.role === "system");
+  if (idx < 0) {
+    body.messages = [{ role: "system", content: ENV_FINGERPRINT_PROMPT }, ...body.messages];
+    return true;
+  }
+  const target = body.messages[idx];
+  if (carriesEnv(target.content)) return false;
+  const content = appendSystemText(target.content, ENV_FINGERPRINT_PROMPT);
+  body.messages = body.messages.map((msg, i) => i === idx ? { ...msg, content } : msg);
+  return true;
+}
+
 /**
  * Request-side pass: normalize or alias caller tools that collide with a
  * fingerprint name, append OpenCode's definitions for the missing ones and
@@ -230,6 +303,7 @@ export function applyFingerprintTools(body, format) {
     aliasHistoryToolCalls(body, aliases);
   }
   if (appended.length) noteUnavailableTools(body, format, appended);
+  applyEnvFingerprint(body, format);
   // Responses keeps its explicit auto default. Never default to "none":
   // upstream answers tool_choice "none" with 403 FreeTierError.
   if (format === "responses" && !body.tool_choice) body.tool_choice = "auto";

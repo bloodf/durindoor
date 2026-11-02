@@ -18,6 +18,7 @@ import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
+import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
@@ -119,6 +120,10 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  // Shut-down image ids answer 410 with their replacement before any account
+  // is selected, so a retired model never marks a healthy connection unavailable.
+  const lifecycleError = checkModelLifecycle({ provider, canonicalModel: model, log });
+  if (lifecycleError) return lifecycleError.response;
   const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};
 
 

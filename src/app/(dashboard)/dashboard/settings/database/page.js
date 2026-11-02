@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { isString } from "@/shared/utils/typeChecks.js";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
@@ -20,6 +21,11 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
   const [showCutoverConfirm, setShowCutoverConfirm] = useState(false);
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [error, setError] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const refreshRequest = useRef(0);
+  const refreshBusy = useRef(false);
+  const refreshController = useRef(null);
+  const [refreshing, setRefreshing] = useState(false);
   // The /api/settings/database/* routes require the dashboard password
   // via the `x-9r-password` header (same dual-factor contract as the
   // export/import routes). The password is collected once through a
@@ -29,12 +35,18 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
   const [password, setPassword] = useState(initialPassword);
   const [passwordError, setPasswordError] = useState("");
 
-  const refresh = useCallback(async () => {
-    if (!password) return;
+  const refresh = useCallback(async ({ force = false } = {}) => {
+    if (!password || refreshBusy.current && !force) return;
+    if (force) refreshController.current?.abort();
+    const controller = new AbortController(); refreshController.current = controller;
+    refreshBusy.current = true; setRefreshing(true);
+    const request = ++refreshRequest.current;
     try {
       const res = await fetch("/api/settings/database/engine", {
         headers: { "x-9r-password": password },
+        signal: controller.signal,
       });
+      if (request !== refreshRequest.current) return;
       if (res.status === 401) {
         setPassword("");
         setPasswordError("Password rejected — try again.");
@@ -44,18 +56,23 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
         setError(`Failed to load (${res.status})`);
         return;
       }
-      setStatus(await res.json());
+      const snapshot = await res.json();
+      if (request !== refreshRequest.current) return;
+      if (!snapshot || !isString(snapshot.activeEngine)) throw new Error("Database status response is incomplete.");
+      setStatus(snapshot);
+      setLastRefresh(new Date());
+      setError(null);
     } catch (err) {
-      setError(err.message);
+      if (request === refreshRequest.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (request === refreshRequest.current) { refreshBusy.current = false; setLoading(false); setRefreshing(false); }
     }
   }, [password]);
 
   useEffect(() => {
     refresh();
     const t = setInterval(refresh, REFRESH_MS);
-    return () => clearInterval(t);
+    return () => { clearInterval(t); refreshRequest.current++; refreshBusy.current = false; refreshController.current?.abort(); };
   }, [refresh]);
 
 
@@ -74,8 +91,9 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
       if (!res.ok || !body.ok) {
         setError(body.error || `Cutover failed (${res.status})`);
       } else {
-        await refresh();
+        await refresh({ force: true });
       }
+    } catch (caught) { setError(caught.message || "Cutover failed.");
     } finally {
       setCutoverBusy(false);
       setShowCutoverConfirm(false);
@@ -96,8 +114,9 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
       if (!res.ok || !body.ok) {
         setError(body.error || `Rollback failed (${res.status})`);
       } else {
-        await refresh();
+        await refresh({ force: true });
       }
+    } catch (caught) { setError(caught.message || "Rollback failed.");
     } finally {
       setShowRollbackConfirm(false);
     }
@@ -140,7 +159,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
         subtitle="Choose between the local SQLite engine and an opt-in PostgreSQL cluster."
         actions={
           <span className="text-xs text-dd-muted">
-            Last refresh: {new Date().toLocaleTimeString()}
+            Last successful refresh: {lastRefresh ? lastRefresh.toLocaleTimeString() : "Not loaded"}
           </span>
         }
       />
@@ -148,14 +167,15 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
       {error ? (
         <Card padding={false}>
           <CardContent>
-            <p className="text-[13px] text-dd-danger">{error}</p>
+            <p role="alert" className="text-[13px] text-dd-danger">{error}{status ? " Showing the last successful snapshot." : " Database status is unknown."}</p><Button icon="refresh" variant="secondary" loading={refreshing} onClick={refresh}>Retry status</Button>
           </CardContent>
         </Card>
       ) : null}
 
+      {status && <>
       <section aria-label="Engine status" className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Engine" value={status?.activeEngine || "sqlite"} hint="Active engine" />
-        <StatCard label="Cluster version" value={String(status?.databasePgVersion || 18)} hint="Operator cap" />
+        <StatCard label="Engine" value={status?.activeEngine || "Unknown"} hint="Active engine" />
+        <StatCard label="Cluster version" value={String(status?.databasePgVersion ?? "Unknown")} hint="Operator cap" />
         <StatCard
           label="Last cutover"
           value={status?.databaseCutoverAt ? new Date(status.databaseCutoverAt).toLocaleString() : "never"}
@@ -205,7 +225,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
           setPassword("");
           setPasswordError("Password rejected — try again.");
         }}
-        onPersisted={refresh}
+        onPersisted={() => refresh({ force: true })}
       />
 
       <CapabilityMatrix features={status?.databasePgFeatures || {}} effective={status?.effectiveCapabilities || {}} />
@@ -232,6 +252,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
         </CardContent>
       </Card>
 
+      </>}
       {showCutoverConfirm ? (
         <ConfirmDialog
           open

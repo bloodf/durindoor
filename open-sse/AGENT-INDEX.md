@@ -93,11 +93,14 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `ant-ling` | openai | apikey | `https://api.ant-ling.com/v1/chat/completions` |
 | `anthropic` | claude | apikey | `https://api.anthropic.com/v1/messages` |
 | `antigravity` | antigravity | oauth | `` |
+| `anyapi` |  | apikey | `https://api.anyapi.ai/v1/chat/completions` |
 | `anysearch` |  | apikey | `` |
 | `api-airforce` |  | apikey | `https://api.airforce/v1/chat/completions` |
+| `apmix` |  | apikey | `https://api.apmix.ai/v1/chat/completions` |
 | `arcee-ai` |  | apikey | `https://conductor.arcee.ai/v1/chat/completions` |
 | `assemblyai` |  | apikey | `https://api.assemblyai.com/v1/audio/transcriptions` |
 | `auggie` | openai | free | `auggie://cli/stdio` |
+| `auriko` |  | apikey | `https://api.auriko.ai/v1/chat/completions` |
 | `auto` |  | system | `` |
 | `aws-polly` |  | apikey | `` |
 | `azure` |  | apikey | `` |
@@ -109,6 +112,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `bailian-coding-plan` | claude | apikey | `https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages` |
 | `baseten` |  | apikey | `https://inference.baseten.co/v1/chat/completions` |
 | `bazaarlink` |  | apikey | `https://bazaarlink.ai/api/v1/chat/completions` |
+| `beatapi` |  | apikey | `https://api.beatapi.io/v1/chat/completions` |
 | `bedrock` | openai | apikey | `https://bedrock-runtime.us-east-1.amazonaws.com` |
 | `bigmodel` |  | apikey | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
 | `black-forest-labs` |  | apikey | `` |

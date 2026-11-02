@@ -215,6 +215,9 @@ export function mergeForwardableClientBetas(headers, clientHeaders, { firstParty
 // Kimi Code single-source endpoints and documented membership display names.
 export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
 export const KIMI_CODING_OPENAI_URL = "https://api.kimi.com/coding/v1/chat/completions";
+// Kimi Code natively serves the OpenAI Responses API (Codex `wire_api = "responses"`):
+// https://www.kimi.com/code/docs/en/third-party-tools/codex.html (upstream 9router 3125ac2).
+export const KIMI_CODING_RESPONSES_URL = "https://api.kimi.com/coding/v1/responses";
 export const KIMI_CODING_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
 export const KIMI_CODING_MODELS_URL = "https://api.kimi.com/coding/v1/models";
 export const KIMI_PLATFORM_CHAT_URL = "https://api.moonshot.ai/v1/chat/completions";

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
+import { getApiKeyByKey, getSettings, validateApiKey, validateGatewayKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
@@ -228,6 +228,44 @@ async function hasValidApiKey(request) {
   return false;
 }
 
+/**
+ * True when the request presents an active, unexpired application API key
+ * that carries the explicit admin scope. Fails closed on lookup errors.
+ *
+ * @param {Request} request
+ * @returns {Promise<boolean>}
+ */
+export async function isAdminScopedKey(request) {
+  if (!request || !isFunction(request.headers?.get)) return false;
+  try {
+    for (const apiKey of extractApiKeyCandidates(request)) {
+      if (!(await validateApiKey(apiKey))) continue;
+      if ((await getApiKeyByKey(apiKey))?.isAdmin === true) return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function isSafeMethod(request) {
+  return ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
+}
+
+// OAuth actions start, poll, and stop credential flows even over GET.
+const OAUTH_ACTION_PREFIXES = ["/api/oauth/", "/api/mcp-gateway/oauth/"];
+
+/**
+ * True when a management request changes state: any unsafe method, or an
+ * OAuth action. Malformed encoding counts as a change, failing closed.
+ */
+function isManagementChange(request) {
+  if (!isSafeMethod(request)) return true;
+  const decodedPathname = decodePathname(request.nextUrl.pathname);
+  if (decodedPathname === null) return true;
+  return OAUTH_ACTION_PREFIXES.some((p) => decodedPathname.startsWith(p));
+}
+
 async function hasValidGatewayKey(request) {
   const apiKey = extractApiKey(request);
   if (!apiKey) return false;
@@ -439,15 +477,16 @@ export async function isOperatorRequest(request) {
 }
 
 /**
- * Principal check shared by API-key and provider-node mutations
- * (`/api/keys`, `/api/provider-nodes`). Only operators qualify today; a later
- * admin scope on API keys is meant to widen this one helper.
+ * Principal check for management changes: an operator (see
+ * {@link isOperatorRequest}) or an admin-scoped application API key. Used by
+ * the management gate for unsafe methods, by key, provider-node and connection
+ * routing writes, and by MCP control write tools.
  *
  * @param {Request} request
  * @returns {Promise<boolean>}
  */
 export async function canManageAccessConfig(request) {
-  return isOperatorRequest(request);
+  return (await isOperatorRequest(request)) || (await isAdminScopedKey(request));
 }
 
 /**
@@ -459,19 +498,46 @@ export async function canManageAccessConfig(request) {
 export async function canAccessManagementApi(request) {
   if (await hasValidCliToken(request)) return true;
   if (hasForeignRequestOrigin(request)) {
-    return !isSecretRevealRequest(request) && (await hasValidApiKey(request));
+    return !isSecretRevealRequest(request) && (await canUseApiKeyForManagement(request));
   }
   if (await hasValidToken(request)) return true;
-  // Full programmatic control with the application API key — except raw secret
+  // Programmatic control with the application API key — except raw secret
   // reveal, which stays JWT/CLI-only so a leaked LLM key cannot dump every
-  // other credential. The loopback branch below is unchanged, so an open
-  // dashboard on the host keeps its existing reveal behavior.
-  if (!isSecretRevealRequest(request) && (await hasValidApiKey(request))) return true;
+  // other credential. Reads accept any active key; changes need the admin
+  // scope, and a presented key without it is decisive (no loopback fallback).
+  // The loopback branch below is unchanged, so an open dashboard on the host
+  // keeps its existing reveal behavior.
+  if (!isSecretRevealRequest(request) && (await hasValidApiKey(request))) {
+    return await canUseApiKeyForManagement(request);
+  }
   if (isLocalRequest(request)) {
     const settings = await loadSettings();
     if (settings && settings.requireLogin === false) return true;
   }
   return false;
+}
+
+/**
+ * True when the caller's only management credential is an application API key
+ * without the admin scope. Callers the gate admitted without a key (CLI token,
+ * session, credential-free local agent) are not affected.
+ *
+ * @param {Request} request
+ * @returns {Promise<boolean>}
+ */
+export async function isNonAdminApiKeyCaller(request) {
+  if (!request || !isFunction(request.headers?.get)) return false;
+  try {
+    if (!(await hasValidApiKey(request))) return false;
+    return !(await canManageAccessConfig(request));
+  } catch {
+    return true;
+  }
+}
+
+async function canUseApiKeyForManagement(request) {
+  if (!(await hasValidApiKey(request))) return false;
+  return !isManagementChange(request) || (await isAdminScopedKey(request));
 }
 
 function isPxpipePath(pathname) {
@@ -643,6 +709,9 @@ export async function proxy(request) {
     if (isPublicApi(routePath)) return NextResponse.next();
     if (isManagementApi(routePath)) {
       if (await canAccessManagementApi(request)) return NextResponse.next();
+      if (isManagementChange(request) && (await hasValidApiKey(request))) {
+        return NextResponse.json({ error: "This API key lacks the admin scope required for management changes" }, { status: 403 });
+      }
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     // The open-dashboard policy (requireLogin=false) applies to loopback peers

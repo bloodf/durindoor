@@ -12,7 +12,7 @@ import {
   updateApiKey,
   getGroupIdsForApiKey
 } from "@/lib/localDb";
-import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 function validateProviderConnectionScope(body, availableIds) {
   if (!("providerConnectionIds" in body)) return undefined;
@@ -69,6 +69,10 @@ export async function PUT(request, { params }) {
       updateData.name = trimmedName;
     }
     if (body.isActive !== undefined) updateData.isActive = body.isActive;
+    if ("isAdmin" in body) {
+      if (!isBoolean(body.isAdmin)) return NextResponse.json({ error: "isAdmin must be a boolean" }, { status: 400 });
+      updateData.isAdmin = body.isAdmin;
+    }
     if (body.allowedCombos !== undefined) updateData.allowedCombos = body.allowedCombos;
     if ("dailyLimitTokens" in body) updateData.dailyLimitTokens = body.dailyLimitTokens;
     if ("expiresAt" in body) updateData.expiresAt = body.expiresAt;

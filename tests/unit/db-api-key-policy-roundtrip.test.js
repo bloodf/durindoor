@@ -300,3 +300,28 @@ describe("exportDb / importDb round-trip of apiKeys.policy + expiresAt", () => {
     expect(back.expiresAt).toBe("2031-01-01T00:00:00.000Z");
   });
 });
+
+describe("apiKeys.isAdmin", () => {
+  it("defaults to false, persists updates, and round-trips through export/import", async () => {
+    const sqliteDb = await import("@/lib/db/index.js");
+    await sqliteDb.initDb();
+
+    const plain = await sqliteDb.createApiKey("plain", "machine-1");
+    const admin = await sqliteDb.createApiKey("admin", "machine-1", [], null, null, { isAdmin: true });
+    expect((await sqliteDb.getApiKeyById(plain.id)).isAdmin).toBe(false);
+    expect((await sqliteDb.getApiKeyById(admin.id)).isAdmin).toBe(true);
+    await sqliteDb.updateApiKey(plain.id, { isAdmin: true });
+    await sqliteDb.updateApiKey(admin.id, { name: "renamed" });
+    expect((await sqliteDb.getApiKeyById(plain.id)).isAdmin).toBe(true);
+    expect((await sqliteDb.getApiKeyById(admin.id)).isAdmin).toBe(true);
+    await sqliteDb.updateApiKey(admin.id, { isAdmin: false });
+
+    const snap = await sqliteDb.exportDb();
+    expect(snap.apiKeys.find((k) => k.id === plain.id).isAdmin).toBe(true);
+    const db = await (await import("@/lib/db/driver.js")).getAdapter();
+    db.run(`DELETE FROM apiKeys`);
+    await sqliteDb.importDb(snap);
+    expect((await sqliteDb.getApiKeyById(plain.id)).isAdmin).toBe(true);
+    expect((await sqliteDb.getApiKeyById(admin.id)).isAdmin).toBe(false);
+  });
+});

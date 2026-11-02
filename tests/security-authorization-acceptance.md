@@ -71,7 +71,7 @@ The final verifier checked its 13-source and 12-harness freeze before and after 
 
 ## Key and provider-node management principals
 
-`unit/security-authorization-matrix.test.js` "management mutations as %s" runs the real middleware gate and route handler for `POST /api/keys`, `PUT`/`DELETE /api/keys/:id`, `POST /api/provider-nodes`, and `PUT`/`DELETE /api/provider-nodes/:id` across the seven principals plus a scoped, capped key. Dashboard session and CLI token reach the write (2xx). Owner, foreign and scoped application keys pass the gate and get 403 from the handler with no write. Inactive, expired and anonymous callers get 401 at the gate. Loopback open-dashboard operator access is covered by `unit/dashboard-guard.test.js` `isOperatorRequest`.
+`unit/security-authorization-matrix.test.js` "management mutations as %s" runs the real middleware gate and route handler for `POST /api/keys`, `PUT`/`DELETE /api/keys/:id`, `POST /api/provider-nodes`, and `PUT`/`DELETE /api/provider-nodes/:id` across the seven principals plus a scoped, capped key. Dashboard session, CLI token and an admin-scoped key (`isAdmin: true`) reach the write (2xx). Owner, foreign and scoped application keys without the admin scope get 403 from the management gate with no write. Inactive, expired and anonymous callers get 401 at the gate. Loopback open-dashboard operator access is covered by `unit/dashboard-guard.test.js` `isOperatorRequest`.
 
 ## Closure gate
 

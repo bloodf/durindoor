@@ -13,7 +13,7 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
 import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
 import { isApiKeyPolicyInputError, resolveApiKeyPolicyInput } from "@/shared/utils/apiKeyPolicyManagement";
-import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +93,11 @@ export async function POST(request) {
       const availableIds = (await getProviderConnections()).map((connection) => connection.id);
       providerConnectionIds = validateProviderConnectionScope(body, availableIds);
     }
+    if ("isAdmin" in body && !isBoolean(body.isAdmin)) {
+      return NextResponse.json({ error: "isAdmin must be a boolean" }, { status: 400 });
+    }
     const options = { policy: policyInput.value };
+    if (body.isAdmin === true) options.isAdmin = true;
     if (providerConnectionIds !== undefined) options.providerConnectionIds = providerConnectionIds;
     const apiKey = await createApiKey(
       trimmedName,
@@ -111,6 +115,7 @@ export async function POST(request) {
       allowedCombos: apiKey.allowedCombos,
       dailyLimitTokens: apiKey.dailyLimitTokens,
       policy: apiKey.policy,
+      isAdmin: apiKey.isAdmin === true,
       providerConnectionIds: providerConnectionIds || [],
       usage: { totalTokens: 0, totalCost: 0, totalRequests: 0, updatedAt: null },
       expiresAt: apiKey.expiresAt

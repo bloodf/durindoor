@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { isNonAdminApiKeyCaller } from "@/dashboardGuard";
 
 /**
  * POST /api/mcp/control
@@ -57,7 +58,10 @@ export async function POST(request) {
       return jsonRpcError(id, -32602, "Invalid params: tools/call requires name");
     }
     try {
-      const { callTool } = await import("@/lib/mcp/control/tools");
+      const { callTool, TOOLS } = await import("@/lib/mcp/control/tools");
+      if (TOOLS[params.name]?.writes && (await isNonAdminApiKeyCaller(request))) {
+        return jsonRpcError(id, 403, "This API key lacks the admin scope required for management changes");
+      }
       const result = await callTool(params.name, params.arguments ?? {});
       return NextResponse.json({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] } });
     } catch (error) {

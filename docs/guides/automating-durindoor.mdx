@@ -3,7 +3,7 @@ title: Automating DurinDoor
 description: Mint a key, script providers and combos with curl or MCP, then rotate and scope that key.
 ---
 
-Use a dedicated DurinDoor key for permitted management routes and `/v1` requests. Management access includes provider and combo changes; inference scopes do not turn the key into a read-only management credential. An MCP client can do the same work through `POST /api/mcp/control`. Route tables and exclusions: [Management API](../reference/management-api.mdx). Tools and auth: [MCP control](../features/mcp-control.mdx).
+Use a dedicated DurinDoor key for management routes and `/v1` requests. Any active key can read management APIs. Provider, combo, key, and other management changes need the key's admin scope (`isAdmin`); inference scopes do not grant or limit it. An MCP client can do the same work through `POST /api/mcp/control`. Route tables and exclusions: [Management API](../reference/management-api.mdx). Tools and auth: [MCP control](../features/mcp-control.mdx).
 
 Production listens on port `20128`. Replace the host if you use a tunnel.
 
@@ -13,13 +13,13 @@ Store the secret when `POST /api/keys` returns it. List and detail views mask it
 
 ## Mint a key for automation
 
-Dashboard path: **API Keys → Create**. Or POST with an operator credential (dashboard session or the machine-bound CLI token). An existing DurinDoor API key gets 403 here:
+Dashboard path: **API Keys → Create**. Or POST with an operator credential (dashboard session or the machine-bound CLI token) or an admin-scoped key. A key without the admin scope gets 403 here. Add `"isAdmin": true` only if this key will change configuration:
 
 ```bash
 curl http://localhost:20128/api/keys \
   -H "x-9r-cli-token: YOUR_CLI_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"ci-bot"}'
+  -d '{"name":"ci-bot","isAdmin":true}'
 ```
 
 The 201 body includes `key`, `id`, `expiresAt`, `policy`, and `providerConnectionIds`. Later `GET /api/keys` returns `maskedKey`. Minting from the dashboard is easier: the session cookie is enough.
@@ -74,7 +74,7 @@ On loopback with `requireApiKey` off, the MCP client may omit the header. Remote
 
 ## Rotate and scope the key
 
-There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `PUT /api/keys/{id}` with `"isActive": false`. Delete removes the key and its account-scope assignments. Both need an operator credential, like minting.
+There is no rotate endpoint. Create a new key, point the client at the new secret, then pause or delete the old row. Pause is `PUT /api/keys/{id}` with `"isActive": false`. Delete removes the key and its account-scope assignments. Both need an operator credential or an admin-scoped key, like minting.
 
 Restrict the key's inference access before giving the secret to CI. These limits do not restrict the entire management API:
 
@@ -92,8 +92,6 @@ Account scoping details: [API key scoping](../operations/api-key-scoping.mdx).
 Do not put these on the automation key:
 
 - `GET /api/keys/{id}/reveal` and gateway-key reveal (`?reveal=1` included)
-- `POST /api/keys`, `PUT`/`DELETE /api/keys/{id}` (mint, edit, or delete keys)
-- `POST /api/provider-nodes`, `PUT`/`DELETE /api/provider-nodes/{id}`
 - `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`
 - `/api/settings/database` and cutover/rollback/import
 - `PATCH /api/settings` keys that change login, API-key enforcement, OIDC, outbound proxy, tunnel dashboard access, or observability

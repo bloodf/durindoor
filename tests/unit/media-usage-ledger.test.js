@@ -61,7 +61,7 @@ beforeEach(async () => {
     [keyId, secret, "Media ledger fixture", timestamp],
   );
   policy = await import("@/sse/services/apiKeyPolicy.js");
-});
+}, 60_000); // vi.resetModules makes the first import transform the whole DB and policy graph.
 
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();

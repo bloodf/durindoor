@@ -233,18 +233,40 @@ describe("#1329 Chat tool_choice to Responses", () => {
     expect(toResponses(chat({ tool_choice: "auto", parallel_tool_calls: true })).parallel_tool_calls).toBe(true);
   });
 
-  // Custom declaration lowering is follow-up #1344; this PR must not change it.
-  it("passes Chat custom tool declarations through unchanged", () => {
-    const customTool = {
-      type: "custom",
-      custom: { name: "code_exec", description: "Run code", format: { type: "text" } },
-    };
+  // #1344: Chat nests custom tools under `custom`; Responses declares them flat.
+  it("lowers Chat custom tool declarations to the flat Responses shape", () => {
     const out = toResponses({
       messages: [{ role: ROLE.USER, content: "Run" }],
-      tools: [customTool],
+      tools: [{
+        type: "custom",
+        custom: { name: "code_exec", description: "Run code", format: { type: "text" } },
+      }],
       tool_choice: "auto",
     });
-    expect(out.tools).toEqual([customTool]);
+    expect(out.tools).toEqual([{ type: "custom", name: "code_exec", description: "Run code", format: { type: "text" } }]);
     expect(out.tool_choice).toBe("auto");
+  });
+
+  it.each([
+    ["padded", "  code_exec  "],
+    ["overlong", `exec_${"y".repeat(140)}`],
+  ])("forced custom choice matches its lowered declaration (%s name)", (_label, name) => {
+    const out = toResponses({
+      messages: [{ role: ROLE.USER, content: "Run" }],
+      tools: [{ type: "custom", custom: { name, description: "Run code" } }],
+      tool_choice: { type: "custom", custom: { name } },
+    });
+    expect(out.tools[0]).toMatchObject({ type: "custom", description: "Run code" });
+    expect(out.tools[0]).not.toHaveProperty("custom");
+    expect(out.tools[0].name.length).toBeLessThanOrEqual(128);
+    expect(out.tool_choice).toEqual({ type: "custom", name: out.tools[0].name });
+  });
+
+  it("drops a Chat custom tool declaration with a blank name", () => {
+    const out = toResponses({
+      messages: [{ role: ROLE.USER, content: "Run" }],
+      tools: [...baseTools, { type: "custom", custom: { name: "  " } }],
+    });
+    expect(out.tools.map((t) => t.type)).toEqual([OPENAI_BLOCK.FUNCTION]);
   });
 });

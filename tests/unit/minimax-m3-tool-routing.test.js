@@ -82,6 +82,7 @@ describe("MiniMax M3 native tool-call routing (#2533)", () => {
 
   it.each(PROVIDERS)("%s: forces M3 family to the openai target format", (provider) => {
     expect(getModelTargetFormat(provider, "MiniMax-M3")).toBe(FORMATS.OPENAI);
+    expect(getModelTargetFormat(provider, "MiniMax-M3.1-Flash")).toBe(FORMATS.OPENAI);
     expect(getModelTargetFormat(provider, "MiniMax-M3.1-Flash-Preview")).toBe(FORMATS.OPENAI);
   });
 

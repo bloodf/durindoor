@@ -20,7 +20,7 @@ Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/setting
 
 | Option | Behavior |
 | --- | --- |
-| RTK | Compress eligible tool-result content. Skip explicit error results. |
+| RTK | Compress eligible tool-result content. Skip explicit error results. For OpenAI Responses, cover `function_call_output` and `custom_tool_call_output` text only. Keep call IDs and media parts. Skip error outputs (flagged items and Codex `Exit code: <non-zero>`), JSON documents, and fenced code. |
 | Headroom | Call the optional Python proxy. Follow [Headroom setup](./headroom.mdx). |
 | Session dedup | Remove eligible repeated blocks across turns in the compression stack. |
 | Caveman | Inject the selected output-style instruction into eligible text-only requests; settings preview shows the exact instruction block. |
@@ -68,6 +68,10 @@ DurinDoor has no per-combo or named compression profiles yet. If they are added,
 | `floor` | Keep the explicit stack and add more aggressive engines after it. |
 
 Escalation starts only when the estimated prompt exceeds the target. The target is the model context window minus the output reserve and the safety margin. You can also set it as a percentage of the window, or as an absolute budget. The output reserve is what the resolved model will actually generate: the request's own cap clamped to the model maximum, or else the provider default. It falls back to `outputReserve` only when neither is known. When the model's context window is unknown, adaptive escalation is skipped and the request runs the explicit stack. The ladder counts only engines that will do work on this request. Catalog placeholders, Headroom without a proxy URL, and RTK that already ran at its dedicated position are skipped. With `floor`, an explicit stack ranks at its most aggressive engine, and escalation adds only engines that are not already in it. An `absolute` policy needs an `absoluteBudget` above 0; otherwise `reserve-output` is used. If none of the remaining ladder engines can run, the plan does not change. Escalation never drops content beyond what each engine already does, and the fidelity gate still applies to every step.
+
+## Custom system prompt
+
+**Dashboard → Token Saver → Settings** has a **Custom system prompt** toggle and text box (`customPromptEnabled`, default false; `customPrompt`, default empty, at most 8000 characters). When enabled and non-blank, the text is appended to the system prompt of every request after the savers above, for every provider and model, and is sent upstream as written. It does not depend on Caveman or Ponytail, but `X-DurinDoor-Token-Saver: off` skips it for that request. A blank prompt injects nothing, and injecting the same text twice is a no-op.
 
 ## Bypass compression for one request
 

@@ -465,7 +465,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     endpoint: clientRawRequest?.endpoint,
     client_format: sourceFormat,
     provider_format: targetFormat,
-  });
+  }, { requestId: clientRawRequest?.requestId });
   const finishTimeline = (status, type, summary) => {
     if (!timelineTraceId) return;
     try {

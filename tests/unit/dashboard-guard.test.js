@@ -59,7 +59,7 @@ vi.mock("@/lib/auth/oidc", () => ({
   getPublicOrigin: () => "https://gateway.example",
 }));
 
-const { proxy, __test__, isOperatorRequest, canManageAccessConfig } = await import("../../src/dashboardGuard.js");
+const { proxy, __test__, isOperatorRequest, canManageAccessConfig, isAdminScopedKey } = await import("../../src/dashboardGuard.js");
 const { POST: testOidcConfiguration } = await import("../../src/app/api/auth/oidc/test/route.js");
 
 function request(pathname, headers = {}, method = "GET") {
@@ -1158,6 +1158,15 @@ describe("dashboard guard API-key admin scope", () => {
     expect(await proxy(request("/api/combos", { host: "router.example.com", "x-9r-cli-token": "cli-token" }, "POST"))).toBe(mocks.nextResponse);
     mocks.validateApiKey.mockResolvedValue(false);
     expect(await proxy(request("/api/combos", { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1" }, "POST"))).toBe(mocks.nextResponse);
+  });
+
+  it("never grants the admin scope through a ?key= query credential", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+    const queryKey = (method) => request("/api/combos?key=sk-valid", { host: "router.example.com" }, method);
+    expect(await isAdminScopedKey(queryKey("POST"))).toBe(false);
+    expect(await canManageAccessConfig(queryKey("POST"))).toBe(false);
+    expect((await proxy(queryKey("POST"))).status).toBe(403);
+    expect(await proxy(queryKey("GET"))).toBe(mocks.nextResponse);
   });
 
   it("canManageAccessConfig accepts operators and admin-scoped keys only", async () => {

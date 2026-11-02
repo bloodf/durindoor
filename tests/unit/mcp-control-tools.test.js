@@ -576,4 +576,9 @@ describe("mcp-control tools", () => {
     await expect(callTool("update_settings", { settings: ["requireApiKey"] }))
       .rejects.toThrow("Invalid settings: expected object");
   });
+  it("treats inherited object properties as unknown tools", async () => {
+    for (const name of ["toString", "constructor", "__proto__"]) {
+      await expect(callTool(name, {})).rejects.toMatchObject({ status: 404 });
+    }
+  });
 });

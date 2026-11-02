@@ -207,8 +207,12 @@ function extractApiKey(request) {
   return extractApiKeyCandidates(request)[0] || null;
 }
 
-/** Collect distinct credentials presented by this request in precedence order. */
-function extractApiKeyCandidates(request) {
+/**
+ * Collect distinct credentials presented by this request in precedence order.
+ * `includeQuery: false` skips the `?key=` query credential (URLs leak into
+ * logs and history, so it never carries the admin scope).
+ */
+function extractApiKeyCandidates(request, { includeQuery = true } = {}) {
   const candidates = [];
   const add = (value) => {
     if (value && !candidates.includes(value)) candidates.push(value);
@@ -217,7 +221,7 @@ function extractApiKeyCandidates(request) {
   if (authHeader?.startsWith("Bearer ")) add(authHeader.slice(7));
   add(request.headers.get("x-api-key"));
   add(request.headers.get("x-goog-api-key"));
-  add(request.nextUrl.searchParams?.get("key"));
+  if (includeQuery) add(request.nextUrl?.searchParams?.get("key"));
   return candidates;
 }
 
@@ -230,7 +234,8 @@ async function hasValidApiKey(request) {
 
 /**
  * True when the request presents an active, unexpired application API key
- * that carries the explicit admin scope. Fails closed on lookup errors.
+ * that carries the explicit admin scope in a header (`?key=` never counts).
+ * Fails closed on lookup errors.
  *
  * @param {Request} request
  * @returns {Promise<boolean>}
@@ -238,7 +243,7 @@ async function hasValidApiKey(request) {
 export async function isAdminScopedKey(request) {
   if (!request || !isFunction(request.headers?.get)) return false;
   try {
-    for (const apiKey of extractApiKeyCandidates(request)) {
+    for (const apiKey of extractApiKeyCandidates(request, { includeQuery: false })) {
       if (!(await validateApiKey(apiKey))) continue;
       if ((await getApiKeyByKey(apiKey))?.isAdmin === true) return true;
     }

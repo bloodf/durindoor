@@ -1,6 +1,8 @@
 // Migration registry — append new entries when schema changes.
 // Each migration: { version: number, name: string, up(db): void }
-// Versions MUST be unique and monotonically increasing.
+// Versions MUST be unique. The runner applies every version missing from the
+// recorded `appliedMigrations` set, so a lower version merged later still runs;
+// keep each `up` safe to run after higher versions.
 import m001 from "./001-initial.js";
 import m002 from "./002-mcp-gateway.js";
 import m003 from "./003-mcp-grant-tools.js";

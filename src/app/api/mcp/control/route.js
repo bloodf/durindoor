@@ -59,7 +59,7 @@ export async function POST(request) {
     }
     try {
       const { callTool, TOOLS } = await import("@/lib/mcp/control/tools");
-      if (TOOLS[params.name]?.writes && (await isNonAdminApiKeyCaller(request))) {
+      if (Object.hasOwn(TOOLS, params.name) && TOOLS[params.name].writes && (await isNonAdminApiKeyCaller(request))) {
         return jsonRpcError(id, 403, "This API key lacks the admin scope required for management changes");
       }
       const result = await callTool(params.name, params.arguments ?? {});

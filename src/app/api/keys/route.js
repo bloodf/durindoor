@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canManageAccessConfig } from "@/dashboardGuard";
+import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
 import {
   getAllApiKeyUsageTotals,
   getApiKeys,
@@ -95,6 +95,9 @@ export async function POST(request) {
     }
     if ("isAdmin" in body && !isBoolean(body.isAdmin)) {
       return NextResponse.json({ error: "isAdmin must be a boolean" }, { status: 400 });
+    }
+    if (body.isAdmin === true && !(await isOperatorRequest(request))) {
+      return NextResponse.json({ error: "Granting the admin scope requires an operator session" }, { status: 403 });
     }
     const options = { policy: policyInput.value };
     if (body.isAdmin === true) options.isAdmin = true;

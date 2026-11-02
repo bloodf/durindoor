@@ -477,7 +477,7 @@ export function listTools() {
 }
 
 export async function callTool(name, args) {
-  const tool = TOOLS[name];
+  const tool = Object.hasOwn(TOOLS, name) ? TOOLS[name] : undefined;
   if (!tool) {
     const err = new Error(`Unknown tool: ${name}`);
     err.status = 404;

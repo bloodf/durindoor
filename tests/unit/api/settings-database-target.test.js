@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { disposeLoadedRequestDetailsRepo } from "../../utils/requestDetailsCleanup.js";
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), probe: vi.fn() }));
 vi.mock("@/app/api/settings/database/route", () => ({ requireDatabaseDualAuth: mocks.auth }));
 vi.mock("@/lib/db/cutover", () => ({ testConnection: mocks.probe }));
@@ -36,6 +37,7 @@ afterEach(async () => {
   await adapter?.close?.();
   global._dbAdapter = savedAdapter;
   process.env = savedEnv;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

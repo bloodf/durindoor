@@ -25,7 +25,7 @@ describe("OpenCode Muse Responses routing", () => {
   it.each(["muse-spark-1.2", "MUSE-SPARK-1.2-CONTRIBUTOR-FREE"])(
     "routes case-insensitive Muse id %s through Responses",
     (model) => {
-      expect(new OpenCodeExecutor().buildUrl(model)).toBe("https://opencode.ai/zen/v1/responses");
+      expect(new OpenCodeExecutor().buildUrl(model)).toBe("https://opencode.ai/inference/v1/responses");
       const request = {
         provider: "opencode",
         alias: "oc",
@@ -38,7 +38,7 @@ describe("OpenCode Muse Responses routing", () => {
   );
 
   it("keeps non-Muse and non-free-provider models on their existing routes", () => {
-    expect(new OpenCodeExecutor().buildUrl("big-pickle")).toBe("https://opencode.ai/zen/v1/chat/completions");
+    expect(new OpenCodeExecutor().buildUrl("big-pickle")).toBe("https://opencode.ai/inference/v1/chat/completions");
     expect(resolveRequestTransport({
       provider: "opencode-go",
       alias: "ocg",

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { canManageAccessConfig } from "@/dashboardGuard";
 import { isApiKeyExpiryValidationError } from "@/shared/utils/apiKeyExpiry";
 import { toApiKeyManagementView } from "@/shared/utils/apiKeyManagement";
 import { isApiKeyPolicyInputError, resolveApiKeyPolicyInput } from "@/shared/utils/apiKeyPolicyManagement";
@@ -43,6 +44,10 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
+  if (!(await canManageAccessConfig(request))) {
+    return NextResponse.json({ error: "Updating an API key requires an operator session" }, { status: 403 });
+  }
+
   let body;
   try {
     body = await request.json();
@@ -97,6 +102,10 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  if (!(await canManageAccessConfig(request))) {
+    return NextResponse.json({ error: "Deleting an API key requires an operator session" }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
     const deleted = await deleteApiKey(id);

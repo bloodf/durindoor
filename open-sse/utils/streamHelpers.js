@@ -1,4 +1,5 @@
 import { FORMATS } from "../translator/formats.js";
+import { fallbackToolCallId } from "../translator/concerns/toolCall.js";
 import { buildErrorBody } from "./error.js";
 import { SSE_DONE } from "./sseConstants.js";
 
@@ -105,6 +106,35 @@ export function hasValuableContent(chunk, format) {
   }
 
   return true; // Other formats: keep all chunks
+}
+
+/**
+ * Mint an id for a streamed OpenAI tool-call fragment that opens a new
+ * (choice, tool-call index) without one. Strict OpenAI-compatible clients
+ * (@ai-sdk/openai-compatible) abort the turn on "Expected 'id' to be a string"
+ * (upstream 9router 95c9d03e, #4992). Continuation fragments of an index
+ * already seen are left as-is, per the OpenAI streaming contract.
+ * @param {object} chunk - parsed chat.completion.chunk, mutated in place
+ * @param {Set<string>} seen - per-stream keys of indices already opened
+ * @returns {boolean} true when an id was added
+ */
+export function ensureStreamToolCallIds(chunk, seen) {
+  if (!Array.isArray(chunk?.choices)) return false;
+  let changed = false;
+  for (const [choicePosition, choice] of chunk.choices.entries()) {
+    const calls = choice?.delta?.tool_calls;
+    if (!Array.isArray(calls)) continue;
+    for (const [position, call] of calls.entries()) {
+      if (!isObject(call) || call === null) continue;
+      const key = `${choice.index ?? choicePosition}:${call.index ?? position}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (isString(call.id) && call.id) continue;
+      call.id = fallbackToolCallId(call.index);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 // Fix invalid id (generic or too short)

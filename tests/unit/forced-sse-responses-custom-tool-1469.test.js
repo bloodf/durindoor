@@ -24,9 +24,9 @@ function responsesSse() {
   return frames.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join("");
 }
 
-async function run(sourceFormat, tools) {
+async function run(sourceFormat, tools, { raw = responsesSse(), toolNameMap = null } = {}) {
   const result = await handleForcedSSEToJson({
-    providerResponse: new Response(responsesSse(), { headers: { "content-type": "text/event-stream" } }),
+    providerResponse: new Response(raw, { headers: { "content-type": "text/event-stream" } }),
     sourceFormat,
     targetFormat: FORMATS.OPENAI_RESPONSES,
     provider: "codex",
@@ -45,6 +45,7 @@ async function run(sourceFormat, tools) {
     log: { line: vi.fn(), debug: vi.fn() },
     usageEventId: "event-test",
     terminalProvenance: "upstream",
+    toolNameMap,
   });
   return result.response.json();
 }
@@ -78,5 +79,13 @@ describe("#1469 forced-SSE Responses path keeps custom_tool_call", () => {
       ["get_weather", { city: "x" }],
     ]);
     expect(body.stop_reason).toBe("tool_use");
+  });
+
+  it("matches an aliased upstream custom tool name to the declared Chat custom tool", async () => {
+    const raw = responsesSse().replace('"name":"apply_patch"', '"name":"apply_patch_alias"');
+    const body = await run(FORMATS.OPENAI, [{ type: "custom", custom: { name: "apply_patch" } }, fnDecl], {
+      raw, toolNameMap: new Map([["apply_patch_alias", "apply_patch"]]),
+    });
+    expect(body.choices[0].message.tool_calls[0]).toEqual({ id: "call_1", type: "custom", custom: { name: "apply_patch", input: RAW } });
   });
 });

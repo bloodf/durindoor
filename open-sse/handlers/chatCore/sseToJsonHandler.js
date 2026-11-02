@@ -321,7 +321,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         }
 
         const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model, {
-          chatCustomToolNames: sourceFormat === FORMATS.OPENAI ? initState(FORMATS.OPENAI, body).chatCustomToolNames : new Set()
+          chatCustomToolNames: sourceFormat === FORMATS.OPENAI ? initState(FORMATS.OPENAI, body).chatCustomToolNames : new Set(),
+          toolNameMap
         });
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
         const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });

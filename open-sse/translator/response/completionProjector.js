@@ -162,11 +162,12 @@ function openAICompletionToOllama(completion) {
 /**
  * @param {object} responseBody - collected Responses API body
  * @param {string} [fallbackModel]
- * @param {{ chatCustomToolNames?: Set<string> }} [options] - Chat custom tools the
- *   client declared; their custom_tool_call items keep the Chat custom shape.
+ * @param {{ chatCustomToolNames?: Set<string>, toolNameMap?: Map<string,string> }} [options] -
+ *   Chat custom tools the client declared (matched after restoring aliases);
+ *   their custom_tool_call items keep the Chat custom shape.
  *   Other custom calls become function calls with JSON `{input}` arguments (#1469).
  */
-export function responsesApiToOpenAICompletion(responseBody, fallbackModel, { chatCustomToolNames = new Set() } = {}) {
+export function responsesApiToOpenAICompletion(responseBody, fallbackModel, { chatCustomToolNames = new Set(), toolNameMap = null } = {}) {
   // Skip null / non-object slots the same way main's optional chaining did.
   const output = (Array.isArray(responseBody?.output) ? responseBody.output : []).filter(
     (item) => item != null && isObject(item) && !Array.isArray(item)
@@ -190,8 +191,9 @@ export function responsesApiToOpenAICompletion(responseBody, fallbackModel, { ch
     const id = item.call_id || `call_${item.name || "tool"}_${idx}`;
     if (item.type === "custom_tool_call") {
       const input = isString(item.input) ? item.input : "";
-      return chatCustomToolNames.has(item.name) ?
-      { id, type: "custom", custom: { name: item.name, input } } :
+      const declared = toolNameMap?.get?.(item.name) ?? item.name;
+      return chatCustomToolNames.has(declared) ?
+      { id, type: "custom", custom: { name: declared, input } } :
       { id, type: "function", function: { name: item.name || "", arguments: JSON.stringify({ input }) } };
     }
     return {

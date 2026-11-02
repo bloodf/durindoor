@@ -119,7 +119,8 @@ function collectResponsesOutput(responseBody) {
         id: item.call_id || item.id || `call_${toolCalls.length}`,
         hasRealId: Boolean(item.call_id || item.id),
         name: item.name || "",
-        arguments: args
+        arguments: args,
+        ...(item?.type === "custom_tool_call" && isString(item.input) ? { input: item.input } : null)
       });
     }
   }
@@ -162,7 +163,17 @@ export function openAIResponsesBodyToClaude(responseBody) {
   };
 }
 
-export function openAIResponsesBodyToOpenAI(responseBody) {
+/**
+ * @param {object} responseBody
+ * @param {{ chatCustomToolNames?: Set<string>, toolNameMap?: Map<string,string> }} [options] -
+ *   Chat custom tools the client declared (matched after restoring aliases);
+ *   their calls keep the Chat custom shape with raw input (#1436).
+ */
+export function openAIResponsesBodyToOpenAI(responseBody, { chatCustomToolNames = new Set(), toolNameMap = null } = {}) {
+  const declaredCustomName = (name) => {
+    const restored = toolNameMap?.get?.(name) ?? name;
+    return chatCustomToolNames.has(restored) ? restored : null;
+  };
   const response = responseObject(responseBody);
   const { text, reasoning, refusal, toolCalls, terminal, truncated } = collectResponsesOutput(responseBody);
   const terminalText = terminal ? `[Error] ${terminalMessage(terminal)}` : "";
@@ -171,11 +182,15 @@ export function openAIResponsesBodyToOpenAI(responseBody) {
 
   if (reasoning) message.reasoning_content = reasoning;
   if (toolCalls.length > 0) {
-    message.tool_calls = toolCalls.map((call) => ({
+    message.tool_calls = toolCalls.map((call) => isString(call.input) && declaredCustomName(call.name) ? {
+      id: call.id,
+      type: "custom",
+      custom: { name: declaredCustomName(call.name), input: call.input }
+    } : {
       id: call.id,
       type: "function",
       function: { name: call.name, arguments: call.arguments }
-    }));
+    });
     if (!text && !terminalText) message.content = null;
   }
 

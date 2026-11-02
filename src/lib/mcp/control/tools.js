@@ -76,7 +76,10 @@ function toolError(message, status) {
  * application API key, which is never an operator session.
  */
 function sanitizeSettings(settings) {
-  const { password, passwordSessionEpoch, oidcClientSecret, mitmSudoEncrypted, ...safe } = settings ?? {};
+  // SECRET_SETTING_KEYS is the single source of truth (passwords, MFA secret
+  // and backup codes, Postgres URL, webhook signing secrets, ...).
+  const safe = { ...(settings ?? {}) };
+  for (const key of [...SECRET_SETTING_KEYS, "oidcClientSecret"]) delete safe[key];
   if (safe.outboundProxyUrl) {
     safe.outboundProxyUrl = redactProxyUrlCredentials(safe.outboundProxyUrl);
   }

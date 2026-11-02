@@ -14,6 +14,7 @@ import cloudflareAi from "./cloudflareAi.js";
 import antigravity from "./antigravity.js";
 import minimax from "./minimax.js";
 import together from "./together.js";
+import magnific from "./magnific.js";
 
 const ADAPTERS = {
   openai: createOpenAIAdapter("openai"),
@@ -37,6 +38,7 @@ const ADAPTERS = {
   "stability-ai": stabilityAi,
   "black-forest-labs": blackForestLabs,
   runwayml,
+  magnific,
   "cloudflare-ai": cloudflareAi,
 };
 

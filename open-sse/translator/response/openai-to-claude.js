@@ -4,6 +4,7 @@ import { ROLE, CLAUDE_BLOCK, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/ind
 import { fromOpenAIFinish } from "../concerns/finishReason.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
 
 // Legacy "proxy_" prefix used by older request translators. Response strips it
@@ -359,7 +360,9 @@ export function openaiToClaudeResponse(chunk, state) {
       // object embedded in a 200 stream). A clean end_turn here makes the client
       // treat a broken turn as a finished answer; a mid-stream error event is
       // retryable by Anthropic clients.
-      const message = state.upstreamError?.message ||
+      // Upstream text is public here: redact credentials (#1342).
+      const message = state.upstreamError?.message ?
+      sanitizeErrorMessage(state.upstreamError.message) :
       "Upstream aborted the response (malformed function call or empty candidate)";
       results.push({
         type: "error",

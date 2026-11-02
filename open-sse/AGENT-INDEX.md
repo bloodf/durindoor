@@ -125,6 +125,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cartesia` |  | apikey | `` |
 | `cerebras` |  | apikey | `https://api.cerebras.ai/v1/chat/completions` |
 | `charm-hyper` |  | apikey | `https://hyper.charm.land/v1/chat/completions` |
+| `chatanywhere` |  | apikey | `https://api.chatanywhere.org/v1/chat/completions` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
 | `chenzk` | openai | apikey | `https://chenzk.top/v1/chat/completions` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |
@@ -134,6 +135,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `cline` |  | oauth | `https://api.cline.bot/api/v1/chat/completions` |
 | `clinepass` |  | oauth | `https://api.cline.bot/api/v1/chat/completions` |
 | `cliproxyapi` |  | apikey | `http://127.0.0.1:8317/v1/chat/completions` |
+| `cloudcode-one` |  | apikey | `https://api.cloudcode.one/v1/chat/completions` |
 | `cloudflare-ai` |  | freeTier | `https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1/chat/completions` |
 | `clova-studio` | openai | apikey | `https://clovastudio.stream.ntruss.com/v1/openai/chat/completions` |
 | `codebuddy-cn` |  | oauth | `https://copilot.tencent.com/v2/chat/completions` |
@@ -151,6 +153,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `coze` | openai | apikey | `https://api.coze.com/v1/chat/completions` |
 | `crof` |  | apikey | `https://crof.ai/v1/chat/completions` |
 | `cursor` | cursor | oauth | `https://api2.cursor.sh` |
+| `dahl` |  | apikey | `https://inference.dahl.global/v1/chat/completions` |
 | `databricks` |  | apikey | `https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints` |
 | `datarobot` |  | apikey | `https://app.datarobot.com/api/v2/genai/llmgw/chat/completions/` |
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
@@ -165,6 +168,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `docker-model-runner` | openai | apikey | `http://localhost:12434/v1` |
 | `doubao` |  | apikey | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` |
 | `duckduckgo-web` | openai | free | `https://duckduckgo.com/duckchat/v1/chat` |
+| `dxnt` |  | apikey | `https://www.dxnt.com/v1/chat/completions` |
 | `edge-tts` |  | freeTier | `` |
 | `electronhub` |  | apikey | `https://api.electronhub.ai/v1/chat/completions` |
 | `elevenlabs` |  | apikey | `` |

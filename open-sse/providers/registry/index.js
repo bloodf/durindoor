@@ -244,28 +244,32 @@ import p241 from "./vercel-ai-gateway.js";
 import p242 from "./vertex-partner.js";
 import p243 from "./vertex.js";
 import p244 from "./vllm.js";
-import p245 from "./volcengine-agent-plan.js";
-import p246 from "./volcengine-ark.js";
-import p247 from "./volcengine-coding-plan.js";
-import p248 from "./volcengine.js";
-import p249 from "./voyage-ai.js";
-import p250 from "./wafer.js";
-import p251 from "./wandb.js";
-import p252 from "./windsurf.js";
-import p253 from "./writer.js";
-import p254 from "./x5lab.js";
-import p255 from "./xai.js";
-import p256 from "./xiaomi-mimo-token-plan.js";
-import p257 from "./xiaomi-mimo.js";
-import p258 from "./xiaomi-tokenplan.js";
-import p259 from "./xinference.js";
-import p260 from "./yi.js";
-import p261 from "./youcom.js";
-import p262 from "./yuanbao-web.js";
-import p263 from "./zai.js";
-import p264 from "./zed.js";
-import p265 from "./zenmux-free.js";
-import p266 from "./zenmux.js";
+import p245 from "./void-ai.js";
+import p246 from "./volcengine-agent-plan.js";
+import p247 from "./volcengine-ark.js";
+import p248 from "./volcengine-coding-plan.js";
+import p249 from "./volcengine.js";
+import p250 from "./voyage-ai.js";
+import p251 from "./wafer.js";
+import p252 from "./wandb.js";
+import p253 from "./windsurf.js";
+import p254 from "./writer.js";
+import p255 from "./x5lab.js";
+import p256 from "./xai.js";
+import p257 from "./xiaomi-mimo-token-plan.js";
+import p258 from "./xiaomi-mimo.js";
+import p259 from "./xiaomi-tokenplan.js";
+import p260 from "./xinference.js";
+import p261 from "./xkiro.js";
+import p262 from "./yi.js";
+import p263 from "./yolo-auto.js";
+import p264 from "./youcom.js";
+import p265 from "./yuanbao-web.js";
+import p266 from "./zai.js";
+import p267 from "./zed.js";
+import p268 from "./zenmux-free.js";
+import p269 from "./zenmux.js";
+import p270 from "./zerolimitai.js";
 
 export default [
   p0,
@@ -535,4 +539,8 @@ export default [
   p264,
   p265,
   p266,
+  p267,
+  p268,
+  p269,
+  p270,
 ];

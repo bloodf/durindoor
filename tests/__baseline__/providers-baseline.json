@@ -1693,6 +1693,12 @@
     },
     "format": "openai"
   },
+  "void-ai": {
+    "baseUrl": "https://api.voidai.app/v1/chat/completions",
+    "validateUrl": "https://api.voidai.app/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "watsonx": {
     "baseUrl": "https://ca-tor.ml.cloud.ibm.com/ml/gateway/v1/chat/completions",
     "validateUrl": "https://ca-tor.ml.cloud.ibm.com/ml/gateway/v1/models",
@@ -2134,9 +2140,21 @@
     "format": "openai",
     "thinkingFormat": "openai"
   },
+  "xkiro": {
+    "baseUrl": "https://api.xkiro.com/v1/chat/completions",
+    "validateUrl": "https://api.xkiro.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "yi": {
     "baseUrl": "https://api.lingyiwanwu.com/v1/chat/completions",
     "format": "openai"
+  },
+  "yolo-auto": {
+    "baseUrl": "https://yolo-auto.com/v1/chat/completions",
+    "validateUrl": "https://yolo-auto.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "yuanbao-web": {
     "baseUrl": "https://yuanbao.tencent.com/api/chat",
@@ -2247,5 +2265,11 @@
     },
     "clientId": "1031625952748946",
     "tokenUrl": "https://auth.meta.com/oidc/device/token/"
+  },
+  "zerolimitai": {
+    "baseUrl": "https://www.zerolimitai.com/api/v1/chat/completions",
+    "validateUrl": "https://www.zerolimitai.com/api/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   }
 }

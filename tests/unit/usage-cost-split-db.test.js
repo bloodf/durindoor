@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { calculateCostBreakdown, getPricingForModel } from "open-sse/providers/pricing.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const originalDataDir = process.env.DATA_DIR;
 const now = new Date(2026, 6, 10, 12, 0, 0, 0);
 // Built-in rates: 2x input and 1.5x output above 272k input tokens.
@@ -48,8 +49,9 @@ beforeAll(async () => {
   }
 });
 
-afterAll(() => {
+afterAll(async () => {
   vi.useRealTimers();
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 /**
  * Narrow audit of recordProviderConnectionFallbackState's reauth write guard.
  * Production callers of that function (aside from re-exports) are only
@@ -39,6 +40,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   if (root) {
+    await disposeLoadedRequestDetailsRepo();
     fs.rmSync(root, { recursive: true, force: true });
     root = undefined;
   }

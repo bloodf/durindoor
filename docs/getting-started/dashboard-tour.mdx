@@ -16,6 +16,8 @@ Open `http://localhost:20128/dashboard` after signing in. The dashboard opens **
 
 **Timeline** (`/dashboard/timeline`) shows proxy traces as provider or connection swimlanes, with a Table toggle and live updates. Open a trace for its hop waterfall and SSE history.
 
+**Playground → Compare** sends the composer prompt, with its attached images and reasoning effort, to two to four models side by side. Each column has its own model and, for providers with several accounts, its own connection. Each column also has Run, Stop, and Copy controls and its own scroll area. Its footer shows latency, time to first token, token counts, and an estimated cost when pricing exists for that model. At most two requests run at once, and the rest wait in a queue. Requests are sent only when you press Run or Run all, and each one is billed like any other gateway request. On small screens the columns stack.
+
 The client key belongs in your tools. The provider credential stays on the provider connection. See [First request](./first-request.mdx) for a test outside the dashboard.
 
 ## Find a page
@@ -27,7 +29,7 @@ The client key belongs in your tools. The provider credential stays on the provi
 | Monitor | Quota Tracker | Inspect provider limits, cooldowns, and reset hints |
 | Monitor | Health | Check provider connection state |
 | Monitor | Console Log | Read recent process logs |
-| Build | Playground | Send chat requests through the gateway |
+| Build | Playground | Send chat requests through the gateway, or compare models side by side |
 | Build | Combos | Configure a model name with fallback members |
 | Build | Providers | Manage provider accounts and models |
 | Build | Endpoint | Copy local, tunnel, or Tailscale URLs and configure client authentication |

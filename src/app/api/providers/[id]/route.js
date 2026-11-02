@@ -14,7 +14,7 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
-import { isOperatorRequest } from "@/dashboardGuard";
+import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { AI_PROVIDERS, isSystemoneCompatibleProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
@@ -108,6 +108,26 @@ function normalizeProxyConfig(body = {}) {
     connectionProxyUrl: url,
     connectionNoProxy: noProxy
   };
+}
+
+// Connection fields that choose where a stored credential is sent: base and
+// endpoint URLs, relays, and proxy settings. Changing them needs an operator.
+const ROUTING_FIELD = /(url|endpoint)$|proxy|relay/i;
+const TOP_LEVEL_ROUTING_FIELDS = ["connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy", "proxyPoolId"];
+
+function routingValue(key, value) {
+  if (key === "proxyPoolId" && (value === "" || value === "__none__")) return null;
+  if (isString(value)) return value.trim();
+  return value ?? null;
+}
+
+function changesUpstreamRouting(body, existing) {
+  const stored = existing.providerSpecificData || {};
+  const differs = (key, value) =>
+    JSON.stringify(routingValue(key, value)) !== JSON.stringify(routingValue(key, stored[key]));
+  if (TOP_LEVEL_ROUTING_FIELDS.some((key) => Object.hasOwn(body, key) && differs(key, body[key]))) return true;
+  const incoming = isObject(body.providerSpecificData) ? body.providerSpecificData : {};
+  return Object.keys(incoming).some((key) => ROUTING_FIELD.test(key) && differs(key, incoming[key]));
 }
 
 async function normalizeProxyPoolUpdate(proxyPoolIdInput) {
@@ -248,6 +268,10 @@ export async function PUT(request, { params }) {
     const existing = await getProviderConnectionById(id);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+
+    if (changesUpstreamRouting(body, existing) && !(await canManageAccessConfig(request))) {
+      return NextResponse.json({ error: "Changing a connection's URL or proxy settings requires an operator session" }, { status: 403 });
     }
 
     const usesAwsCredentials = AI_PROVIDERS[existing.provider]?.credentialForm === "aws";

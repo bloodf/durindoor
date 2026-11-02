@@ -16,6 +16,7 @@ import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { stripNullBytes, withNullByteSafeParams } from "@/lib/db/helpers/nullBytes.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 // Built at runtime so the source file itself holds no literal NUL byte.
 const NUL = String.fromCharCode(0);
 const DIRTY = `before${NUL}after`;
@@ -33,7 +34,8 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });

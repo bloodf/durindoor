@@ -68,6 +68,27 @@ describe("fetchClaudeProfile", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("sends the OAuth beta and Anthropic API version on the profile request", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => PROFILE,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchClaudeProfile("tok", "https://example.test/profile")).resolves.toEqual(PROFILE);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.test/profile",
+      expect.objectContaining({
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bearer tok",
+          "anthropic-beta": "oauth-2025-04-20",
+          "anthropic-version": "2023-06-01",
+        },
+      }),
+    );
+  });
+
   // A strict proxy pool is a security boundary: a transport failure must abort
   // rather than silently fall back to a direct egress, matching fetchKiroProfileArn.
   it("propagates a failure when a strict proxy pool is selected", async () => {

@@ -68,7 +68,7 @@ function getOpenCodeZenPassthroughTargetFormat(modelId) {
 // MiniMax M3 and M3.1 Flash Preview tool/vision calls use native OpenAI Chat
 // Completions even for Claude-source clients.
 const OPENAI_FORMAT_MINIMAX_PROVIDERS = new Set(["minimax", "minimax-cn"]);
-const MINIMAX_OPENAI_TOOL_MODELS = new Set(["MiniMax-M3", "MiniMax-M3.1-Flash-Preview"]);
+const MINIMAX_OPENAI_TOOL_MODELS = new Set(["MiniMax-M3", "MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash-Preview"]);
 
 export function getModelTargetFormat(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];

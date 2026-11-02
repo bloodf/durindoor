@@ -185,8 +185,9 @@ describe("Chat to Responses: declaration survives name padding (#4208 review rou
         },
       ],
     });
-    const call = result.input.find((i) => i.type === "function_call");
-    expect(call.arguments).toBe(JSON.stringify({ input: "remember to feed the cat" }));
+    // A declared custom tool now replays as custom_tool_call with its raw body (#1419 review).
+    const call = result.input.find((i) => i.type === "custom_tool_call");
+    expect(call).toMatchObject({ call_id: "call_note", name: "draft_note", input: "remember to feed the cat" });
   });
 });
 

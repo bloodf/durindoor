@@ -11,7 +11,7 @@ export const OPENAI_MODEL_DEPRECATIONS_URL =
 /**
  * @typedef {"untracked" | "deprecated" | "shutdown"} ModelLifecycleStatus
  * @typedef {"allow" | "warn" | "reject"} ModelLifecycleAction
- * @typedef {"audio" | "computer-use" | "deep-research" | "realtime" | "search" | "speech" | "text"} ModelLifecycleKind
+ * @typedef {"audio" | "computer-use" | "deep-research" | "image" | "realtime" | "search" | "speech" | "text"} ModelLifecycleKind
  *
  * @typedef {Object} ModelLifecycleReplacement
  * @property {string} provider
@@ -64,7 +64,10 @@ const KIMI_SOURCE = "https://platform.kimi.ai/docs/models.md";
 const CODEX_SOURCE = "https://github.com/decolua/9router/commit/7878f53b";
 
 /** Codex with ChatGPT sign-in retired gpt-5.5 on 2026-10-14; the backend answers HTTP 400. */
-const CODEX_RETIREMENTS = ["gpt-5.5", "gpt-5.5-review"];
+const CODEX_RETIREMENTS = [
+["gpt-5.5", "gpt-6.1-sol", "text"],
+["gpt-5.5-review", "gpt-6.1-sol", "text"],
+["gpt-5.5-image", "gpt-6-sol-image", "image"]];
 
 /** NVIDIA's 410 responses provide authoritative per-model retirement timestamps. */
 const NVIDIA_RETIREMENTS = [
@@ -120,12 +123,12 @@ openAiRecord("gpt-4-turbo-preview", "2026-03-26", null, "text"),
   kind: "text",
   source: NVIDIA_SOURCE
 })),
-...CODEX_RETIREMENTS.map((model) => ({
+...CODEX_RETIREMENTS.map(([model, replacement, kind]) => ({
   provider: "codex",
   model,
   shutdownAt: "2026-10-14",
-  replacement: { provider: "codex", model: "gpt-6.1-sol" },
-  kind: "text",
+  replacement: { provider: "codex", model: replacement },
+  kind,
   source: CODEX_SOURCE
 })),
 ...KIMI_K2_RETIREMENTS.map((model) => ({

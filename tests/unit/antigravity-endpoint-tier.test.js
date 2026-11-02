@@ -105,6 +105,8 @@ const {
   getModelUpstreamId,
   getModelUpstreamThinkingIntent,
   resolveRequestedModelTier,
+  applyProviderThinkingOverride,
+  getDispatchUpstreamModelId,
 } = await import("../../open-sse/config/providerModels.js");
 
 const DAILY = "https://daily-cloudcode-pa.googleapis.com/";
@@ -119,7 +121,7 @@ function okResult() {
   };
 }
 
-async function dispatch(provider, model, extra = {}) {
+async function dispatch(provider, model, extra = {}, providerThinking = undefined) {
   mocks.execute.mockResolvedValue(okResult());
   const body = { model: `${provider}/${model}`, stream: false, messages: [{ role: "user", content: "hi" }], ...extra };
   await handleChatCore({
@@ -128,6 +130,7 @@ async function dispatch(provider, model, extra = {}) {
     credentials: { accessToken: "tok", refreshToken: "ref", connectionId: `${provider}-conn`, providerSpecificData: {} },
     clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} },
     connectionId: `${provider}-conn`,
+    providerThinking,
     log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   });
   const call = mocks.execute.mock.calls.at(-1)[0];
@@ -176,6 +179,28 @@ describe("tiered catalog resolution", () => {
     expect(getModelUpstreamThinkingIntent(alias, "claude-sonnet-4-6")).toBeNull();
   });
 
+  it("treats preset-catalog rows without a preset as tier variants", () => {
+    expect(getModelUpstreamId("ag", "gemini-3.5-flash", "low")).toBe("gemini-3.5-flash-low");
+  });
+
+  it("applies the provider thinking override without mutating the body", () => {
+    const body = { reasoning_effort: "low", thinking: { type: "enabled" }, reasoning: { effort: "low" } };
+    expect(applyProviderThinkingOverride(body, { mode: "none" })).toEqual({});
+    expect(body.reasoning_effort).toBe("low");
+    expect(applyProviderThinkingOverride({}, { mode: "high" })).toEqual({ reasoning_effort: "high" });
+    expect(applyProviderThinkingOverride(body, { mode: "high" })).toBe(body);
+    expect(applyProviderThinkingOverride({}, { mode: "on" }).thinking.budget_tokens).toBe(10000);
+    expect(applyProviderThinkingOverride({}, { mode: "auto" })).toEqual({});
+  });
+
+  it("resolves the dispatched upstream id for quota keys", () => {
+    expect(getDispatchUpstreamModelId("ag", "gemini-3.8-flash", { reasoning_effort: "high" })).toBe("gemini-3.8-flash-high");
+    expect(getDispatchUpstreamModelId("ag", "gemini-3.8-flash", {}, { mode: "low" })).toBe("gemini-3.8-flash-low");
+    expect(getDispatchUpstreamModelId("ag", "gemini-3.8-flash", { reasoning_effort: "high" }, { mode: "low" })).toBe("gemini-3.8-flash-high");
+    expect(getDispatchUpstreamModelId("ag", "gemini-3.8-flash(low)", { reasoning_effort: "high" })).toBe("gemini-3.8-flash-low");
+    expect(getDispatchUpstreamModelId("ag", "gemini-3.8-flash")).toBe("gemini-3.8-flash-medium");
+  });
+
   it("does not re-route non-Antigravity `<model>-<level>` ids by effort", () => {
     for (const [alias, model] of [["gemini", "gemini-3.8-flash"], ["cx", "gpt-5.3-codex"]]) {
       expect(getModelUpstreamId(alias, model, "high")).toBe(getModelUpstreamId(alias, model));
@@ -197,6 +222,19 @@ describe("chatCore dispatch of tiered Antigravity models", () => {
     const { model, body } = await dispatch(provider, "gemini-3.8-flash", { reasoning_effort: "high" });
     expect(model).toBe("gemini-3.8-flash-high");
     expect(body.request.generationConfig.thinkingConfig.thinkingLevel).toBe("high");
+  });
+
+  it("provider-level thinking selects the tier row", async () => {
+    const { model, body } = await dispatch("antigravity", "gemini-3.8-flash", {}, { mode: "high" });
+    expect(model).toBe("gemini-3.8-flash-high");
+    expect(body.request.generationConfig.thinkingConfig.thinkingLevel).toBe("high");
+  });
+
+  it.each(["none", "off"])("provider-level thinking %s is not overridden by the catalog preset", async (mode) => {
+    const preset = await dispatch("antigravity", "gemini-3.8-flash-high", {});
+    expect(preset.body.request.generationConfig.thinkingConfig.thinkingLevel).toBe("high");
+    const { body } = await dispatch("antigravity", "gemini-3.8-flash-high", {}, { mode });
+    expect(body.request.generationConfig.thinkingConfig?.thinkingLevel).not.toBe("high");
   });
 
   it("request suffix beats body effort", async () => {

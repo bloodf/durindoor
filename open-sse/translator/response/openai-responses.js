@@ -750,10 +750,22 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     if (itemKey) state.respToolChatIndex.set(itemKey, idx);
     state.respToolChatIndex.set(state.currentToolCallId, idx);
 
+    // A custom_tool_call carries raw (non-JSON) input. A Chat client that
+    // declared the tool gets the Chat custom shape; any other client gets a
+    // function call whose arguments are wrapped as JSON `{input}` once complete (#1436).
+    if (item.type === "custom_tool_call") {
+      (state.respCustomToolKinds ??= new Map()).set(idx, state.chatCustomToolNames?.has(item.name) ? "custom" : "wrapped");
+    }
+    const kind = state.respCustomToolKinds?.get(idx);
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
       {
-        tool_calls: [{
+        tool_calls: [kind === "custom" ? {
+          index: idx,
+          id: state.currentToolCallId,
+          type: "custom",
+          custom: { name: item.name || "", input: "" }
+        } : {
           index: idx,
           id: state.currentToolCallId,
           type: OPENAI_BLOCK.FUNCTION,
@@ -779,11 +791,17 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     (strippedItemId !== rawItemId ? state.respToolChatIndex?.get(strippedItemId) : undefined) ??
     (state.currentToolCallId ? state.respToolChatIndex?.get(state.currentToolCallId) : undefined);
     const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
+    const kind = state.respCustomToolKinds?.get(idx);
+    if (kind === "wrapped") {
+      // Raw input becomes JSON only when complete; buffer until the item is done.
+      (state.respCustomToolInput ??= new Map()).set(idx, (state.respCustomToolInput.get(idx) || "") + argsDelta);
+      return null;
+    }
     state.respToolArgsEmitted ??= new Set();
     state.respToolArgsEmitted.add(idx);
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { tool_calls: [{ index: idx, function: { arguments: argsDelta } }] }
+      { tool_calls: [kind === "custom" ? { index: idx, custom: { input: argsDelta } } : { index: idx, function: { arguments: argsDelta } }] }
     );
   }
 
@@ -796,6 +814,25 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
     (doneItem?.call_id ? state.respToolChatIndex?.get(doneItem.call_id) : undefined) ??
     Math.max(0, (state.toolCallIndex || 1) - 1);
+    const kind = state.respCustomToolKinds?.get(idx);
+    if (kind === "wrapped") {
+      const buffered = state.respCustomToolInput?.get(idx);
+      const input = buffered ?? (isString(doneItem?.input) ? doneItem.input : "");
+      if (state.respToolArgsEmitted?.has(idx)) return null;
+      (state.respToolArgsEmitted ??= new Set()).add(idx);
+      return buildChunk(
+        { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+        { tool_calls: [{ index: idx, function: { arguments: JSON.stringify({ input }) } }] }
+      );
+    }
+    if (kind === "custom") {
+      if (state.respToolArgsEmitted?.has(idx) || !isString(doneItem?.input) || !doneItem.input) return null;
+      state.respToolArgsEmitted.add(idx);
+      return buildChunk(
+        { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+        { tool_calls: [{ index: idx, custom: { input: doneItem.input } }] }
+      );
+    }
     const fullArgs = doneItem?.arguments;
     if (isString(fullArgs) && fullArgs) {
       state.respToolArgsEmitted ??= new Set();

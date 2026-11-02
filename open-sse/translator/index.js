@@ -381,13 +381,17 @@ export function initState(sourceFormat, requestBody) {
   const toolNamespaces = {};
   const flatToolNamespaces = new Map();
   const plainToolNames = new Set();
+  // Chat Completions custom tools ({type:"custom", custom:{name}}) the client declared (#1436).
+  const chatCustomToolNames = new Set();
   if (Array.isArray(requestBody?.tools)) {
     for (const tool of requestBody.tools) {
       const type = isString(tool?.type) ? tool.type : "";
       const name = isString(tool?.function?.name) ?
       tool.function.name :
+      isString(tool?.custom?.name) ? tool.custom.name :
       isString(tool?.name) ? tool.name : "";
       if (name && type) toolTypes[name] = type;
+      if (type === "custom" && name && sourceFormat === FORMATS.OPENAI) chatCustomToolNames.add(name);
       if (type === "namespace" && name && Array.isArray(tool.tools)) {
         for (const subtool of tool.tools) {
           if (isString(subtool?.name) && subtool.name) {
@@ -426,6 +430,7 @@ export function initState(sourceFormat, requestBody) {
     usage: null,
     contentBlockIndex: -1,
     toolTypes,
+    chatCustomToolNames,
     toolNamespaces
   };
 

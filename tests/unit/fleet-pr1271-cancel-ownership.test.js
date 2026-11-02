@@ -129,7 +129,7 @@ function creationFixture(id, holdEof) {
 }
 
 function owner(id) { return readNativeResourceOwner("anthropic", connectionId, id); }
-function expectedOwner(id) { return { ownerId: "creator", provider: "anthropic", model, connectionId, resourceId: id }; }
+function expectedOwner(id) { return { ownerId: "creator", provider: "anthropic", model, connectionId, resourceId: id, billingEpoch: null, usageEventId: expect.any(String) }; }
 
 describe("shared JSON ownership byte boundary", () => {
   it("waits for persistence before releasing a split ID and completes exactly once without reframing bytes", async () => {

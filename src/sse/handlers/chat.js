@@ -1246,6 +1246,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         cavemanLevel: chatSettings.cavemanLevel || "full",
         ponytailEnabled: !!chatSettings.ponytailEnabled,
         ponytailLevel: chatSettings.ponytailLevel || "full",
+        customPromptEnabled: !!chatSettings.customPromptEnabled,
+        customPrompt: chatSettings.customPrompt || "",
         pxpipeMinChars: chatSettings.pxpipeMinChars,
         pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
         pxpipeTransform,

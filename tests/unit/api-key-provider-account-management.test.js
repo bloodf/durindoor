@@ -12,6 +12,7 @@ async function setup() {
   vi.doMock("next/server", () => ({
     NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }) }
   }));
+  vi.doMock("@/dashboardGuard", () => ({ isOperatorRequest: async () => true, canManageAccessConfig: async () => true }));
   const keys = await import("@/app/api/keys/route.js");
   const key = await import("@/app/api/keys/[id]/route.js");
   const provider = await import("@/app/api/providers/[id]/route.js");

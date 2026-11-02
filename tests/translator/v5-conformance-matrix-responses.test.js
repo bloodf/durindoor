@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import "./registerAll.js";
 import { initState, translateRequest, translateResponse } from "../../open-sse/translator/index.js";
+import { DEFAULT_THINKING_AG_SIGNATURE } from "../../open-sse/config/defaultThinkingSignature.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { translateNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import {
   CLAUDE_BLOCK,
   CLAUDE_STOP,
   GEMINI_FINISH,
+  GEMINI_ROLE,
   OPENAI_BLOCK,
   OPENAI_FINISH,
   RESPONSES_ITEM,
@@ -144,8 +146,8 @@ describe("#1089 Responses client conformance", () => {
       parallel_tool_calls: false,
     }, chat);
     const [custom, namespaced] = out.tools.map((tool) => tool.function);
+    const map = aliasMap(out);
     expect(custom).toMatchObject({
-      name: "files.patch",
       parameters: {
         type: "object",
         properties: { input: { type: "string" } },
@@ -154,9 +156,13 @@ describe("#1089 Responses client conformance", () => {
       },
     });
     expect(custom.strict).toBeUndefined();
-    expect(namespaced).toMatchObject({ name: "research.search", strict: true, parameters: schema });
+    expect(custom.name.length).toBeLessThanOrEqual(64);
+    expect(map.get(custom.name)).toBe("files.patch");
+    expect(namespaced).toMatchObject({ strict: true, parameters: schema });
+    expect(namespaced.name.length).toBeLessThanOrEqual(64);
+    expect(map.get(namespaced.name)).toBe("research.search");
     expect(out._customToolNames).toEqual(["files.patch"]);
-    expect(out.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: "research.search" } });
+    expect(out.tool_choice).toEqual({ type: OPENAI_BLOCK.FUNCTION, function: { name: namespaced.name } });
     expect(out.parallel_tool_calls).toBe(false);
   });
 
@@ -278,6 +284,14 @@ describe("#1089 Responses client conformance", () => {
       .find((block) => block.type === CLAUDE_BLOCK.TOOL_RESULT);
     expect(claudeResult).toMatchObject({ tool_use_id: "c1", content: "first\nsecond" });
     const geminiContents = request(body, gemini).contents;
+    expect(geminiContents).toHaveLength(2);
+    expect(geminiContents[0]).toEqual({
+      role: GEMINI_ROLE.MODEL,
+      parts: [{
+        functionCall: { id: "c1", name: "fetch", args: {} },
+        thoughtSignature: DEFAULT_THINKING_AG_SIGNATURE,
+      }],
+    });
     expect(geminiContents[1]).toEqual({
       role: ROLE.USER,
       parts: [{
@@ -400,8 +414,7 @@ describe("#1089 Responses client conformance", () => {
     }
   });
 
-  // #1089 failing: Responses→Chat direct route skips normalizeOpenAIToolNames, so names stay >64. Refs #1345
-  it.skip("clamps overlong tool names to 64 chars for Chat with round-trip map", () => {
+  it("clamps overlong tool names to 64 chars for Chat with round-trip map", () => {
     const out = request({
       input: "hi",
       tools: [{ type: OPENAI_BLOCK.FUNCTION, name: longToolName, description: "d", parameters: schema }],
@@ -442,7 +455,12 @@ describe("#1089 Responses client conformance", () => {
     ];
     const toChat = streamTo(events, chat);
     expect(toChat).toHaveLength(3);
-    expect(toChat[0].object).toBe("chat.completion.chunk");
+    for (const chunk of toChat) {
+      expect(chunk.object).toBe("chat.completion.chunk");
+      expect(chunk.id).toBe(toChat[0].id);
+      expect(chunk.id).toMatch(/^chatcmpl-/);
+      expect(chunk.model).toBe("unknown");
+    }
     expect(toChat[0].choices[0]).toEqual({
       index: 0,
       delta: {
@@ -487,8 +505,11 @@ describe("#1089 Responses client conformance", () => {
       index: 0,
       delta: { type: "input_json_delta", partial_json: "{\"q\":\"a\"}" },
     });
-    expect(toClaude.find((event) => event.type === "message_delta").delta.stop_reason)
-      .toBe(CLAUDE_STOP.MAX_TOKENS);
+    expect(toClaude.find((event) => event.type === "message_delta")).toEqual({
+      type: "message_delta",
+      delta: { stop_reason: CLAUDE_STOP.MAX_TOKENS },
+      usage: { input_tokens: 0, output_tokens: 0 },
+    });
 
     const toGemini = streamTo(events, gemini);
     const last = toGemini.at(-1).response.candidates[0];

@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 287 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 291 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -11,11 +11,15 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | 9router | `9router` | apikey | 1 | [site](https://www.npmjs.com/package/9router) |
 | Adapta Web | `adapta-web` | cookie | 7 | [site](https://agent.adapta.one) |
 | AgentRouter | `agentrouter` | apikey | 4 | [site](https://agentrouter.org) |
+| Agnes | `agnes` | apikey | 3 |  |
+| Agnes (China) | `agnes-cn` | apikey | 3 |  |
 | Antigravity CLI | `agy` | oauth | 33 | [site](https://antigravity.google) |
 | AI21 Labs | `ai21` | apikey | 2 | [site](https://www.ai21.com) |
 | AI Horde | `aihorde` | apikey | 0 | [site](https://aihorde.net) |
 | AI/ML API | `aimlapi` | apikey | 6 | [site](https://aimlapi.com) |
+| AINative Studio | `ainative` | apikey | 0 |  |
 | ainetcafe | `ainetcafe` | apikey | 4 | [site](https://ainetcafe.com/k3/) |
+| Aion Labs | `aion` | apikey | 0 | [site](https://aionlabs.ai) |
 | Alibaba | `alibaba` | apikey | 13 | [site](https://bailian.console.alibabacloud.com/) |
 | Alibaba DashScope CN | `alibaba-cn` | apikey | 12 | [site](https://dashscope.aliyuncs.com) |
 | Alibaba | `alicode` | apikey | 8 | [site](https://bailian.console.aliyun.com) |

@@ -52,6 +52,7 @@ async function getObservabilityConfig() {
 let writeBuffer = [];
 let flushTimer = null;
 let flushInFlight = null;
+let disposed = false;
 
 
 function generateDetailId(model) {
@@ -139,10 +140,19 @@ async function drainWriteBuffer() {
 }
 
 export async function saveRequestDetail(detail) {
+  if (disposed) return;
   const config = await getObservabilityConfig();
   if (!config.enabled) return;
 
   writeBuffer.push(detail);
+
+  // A superseded instance (reload handoff) no longer owns exit/signal listeners,
+  // so buffered rows would be lost on exit: persist right away.
+  if (globalThis[SHUTDOWN_SLOT] !== registration) {
+    if (flushTimer) {clearTimeout(flushTimer);flushTimer = null;}
+    flushToDatabase().catch((e) => console.error("[requestDetailsRepo] flush err:", e));
+    return;
+  }
 
   // Trigger immediate flush if batch threshold reached.
   // flushToDatabase() drains entire buffer in a loop, so all pushes during await are persisted.
@@ -266,7 +276,7 @@ const SHUTDOWN_EVENTS = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
 
 async function flushPending() {
   if (flushTimer) {clearTimeout(flushTimer);flushTimer = null;}
-  if (writeBuffer.length > 0 || flushInFlight) await flushToDatabase();
+  while (writeBuffer.length > 0 || flushInFlight) await flushToDatabase();
 }
 
 const _shutdownHandler = () => flushPending();
@@ -285,6 +295,7 @@ function removeShutdownListeners(handler) {
  * @returns {Promise<void>}
  */
 export async function disposeRequestDetailsRepo() {
+  disposed = true;
   removeShutdownListeners(_shutdownHandler);
   if (globalThis[SHUTDOWN_SLOT] === registration) delete globalThis[SHUTDOWN_SLOT];
   await flushPending();

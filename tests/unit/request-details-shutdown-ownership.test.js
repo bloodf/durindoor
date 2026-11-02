@@ -94,4 +94,19 @@ describe("requestDetailsRepo shutdown handler ownership", () => {
     await repo.disposeRequestDetailsRepo();
     expect(insertedIds()).toEqual(["pending-row"]);
   });
+
+  it("flushes immediately from a superseded instance that no longer owns listeners (#1407)", async () => {
+    const first = await loadRepo();
+    await loadRepo();
+    await first.saveRequestDetail({ id: "stale-row", model: "m" });
+    await vi.waitFor(() => expect(insertedIds()).toEqual(["stale-row"]));
+  });
+
+  it("ignores saves after dispose so no timer touches a closed adapter (#1407)", async () => {
+    const repo = await loadRepo();
+    await repo.disposeRequestDetailsRepo();
+    await repo.saveRequestDetail({ id: "late-row", model: "m" });
+    await repo.disposeRequestDetailsRepo();
+    expect(insertedIds()).toEqual([]);
+  });
 });

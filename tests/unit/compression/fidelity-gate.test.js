@@ -14,8 +14,10 @@ import { runCompressionSeam } from "../../../open-sse/handlers/chatCore/compress
 // the gate below can require ZERO failures for every engine not listed here,
 // and so a fix or a new regression in a listed engine both fail this test.
 // caveman rewrites unfenced diffs ("index 1a2b3c4..5d6e7f8" -> "Index 1a2b3c4.5d6e7f8").
+// rtk (lossy by design) collapses repeated log lines, dropping heartbeat timestamps.
 const EXISTING_ENGINE_BASELINE = {
   caveman: ["diff-hunks:numeric"],
+  rtk: ["responses-tool-output:numeric"],
   "session-dedup": [],
   headroom: [],
 };

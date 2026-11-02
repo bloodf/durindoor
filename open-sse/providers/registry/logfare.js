@@ -19,7 +19,7 @@ export default {
     validateUrl: "https://logfare.ai/v1/models",
   },
   models: [],
-  modelsFetcher: { url: "https://logfare.ai/v1/models", type: "openai" },
+  modelsFetcher: { url: "https://logfare.ai/v1/models", type: "openai", excludeIdPattern: "whisper|embed|tts|speech" },
   passthroughModels: true,
   serviceKinds: ["llm"],
 };

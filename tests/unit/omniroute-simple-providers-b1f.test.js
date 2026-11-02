@@ -10,7 +10,7 @@ const CASES = [
     id: "llm-kiwi",
     alias: "llmkiwi",
     base: "https://api.llm.kiwi/v1",
-    models: ["auto","hrLLM"],
+    models: [],
     fetcher: true,
     extraFormats: [],
     notice: false,
@@ -63,9 +63,8 @@ describe.each(CASES)("$id provider", ({ id, alias, base, models, fetcher, extraF
   it("seeds only sourced models", () => {
     expect((PROVIDER_MODELS[alias] ?? []).map((m) => m.id)).toEqual(models);
     expect(PROVIDER_MEDIA[id].serviceKinds).toEqual(["llm"]);
-    expect(PROVIDER_MEDIA[id].modelsFetcher ?? null).toEqual(
-      fetcher ? { url: `${base}/models`, type: "openai" } : null,
-    );
+    const f = PROVIDER_MEDIA[id].modelsFetcher ?? null;
+    expect(f).toEqual(fetcher ? expect.objectContaining({ url: `${base}/models`, type: "openai" }) : null);
   });
 
   it("resolves its alias", () => {

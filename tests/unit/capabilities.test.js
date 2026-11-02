@@ -521,7 +521,8 @@ describe("getCapabilitiesForModel — codebuddy-cn server-config alignment (upst
     expect(getCapabilitiesForModel("codebuddy-cn", "glm-5.3").contextWindow).toBe(1000000);
     const flash = getCapabilitiesForModel("codebuddy-cn", "glm-5.3-flash");
     expect(flash.contextWindow).toBe(1000000);
-    expect(flash.maxOutput).toBe(32000);
+    // 2026-09-30 server snapshot (upstream 63de82b8).
+    expect(flash.maxOutput).toBe(131072);
     expect(flash.thinkingCanDisable).toBe(true);
   });
 

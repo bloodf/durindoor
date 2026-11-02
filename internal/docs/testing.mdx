@@ -7,7 +7,7 @@ The suite lives in `tests/`, its own npm package (`9router-tests`). Root `packag
 
 ## Setup
 
-Node at the repo root is `20.20.2`. The tests package accepts `^20.19.0 || >=22.12.0` and npm `10.8.2`.
+Node at the repo root is `26.13.0`. The tests package accepts `^20.19.0 || >=22.12.0` and npm `11.20.0`.
 
 ```bash
 npm ci --no-audit --no-fund
@@ -41,7 +41,7 @@ Docs-only Markdown paths use lint/docs/baseline checks without pretending tests 
 
 Evidence binds exact base/head, head tree, changed paths, policy, runner, selection, lockfiles, Node/npm/ABI/platform, command exit codes, log hashes and fresh report hashes. `evidence.sha256` hashes the final receipt. Independently validate receipt age (default one hour), required commands and on-disk hashes against the frozen review and live base/head before publication. Never self-approve a candidate gate. The trusted integration process alone publishes `V5 Local CI`; tests never receive GitHub or provider credentials. Full checkpoint failure blocks merges.
 
-Each command has a five-minute ceiling and emits progress. No output for three minutes fails the command. Snapshots, reports, npm/Vite caches, HOME and DATA_DIR stay private. Shared Node 20.20.2 dependencies require matching lockfiles, ABI and platform; never install or rebuild through their symlinks. Run ownership-map/toolchain/isolation checks in the same approved unprivileged invocation as bootstrap. If real root-owned shells appear as UID 65534, report the environmental blocker; do not change production trusted-shell checks, skip tests, use root/sudo or escape session permissions.
+Each command has a five-minute ceiling and emits progress. No output for three minutes fails the command. Snapshots, reports, npm/Vite caches, HOME and DATA_DIR stay private. Shared Node 26.13.0 dependencies require matching lockfiles, ABI and platform; never install or rebuild through their symlinks. Run ownership-map/toolchain/isolation checks in the same approved unprivileged invocation as bootstrap. If real root-owned shells appear as UID 65534, report the environmental blocker; do not change production trusted-shell checks, skip tests, use root/sudo or escape session permissions.
 
 Full mode executes the complete configured Vitest inventory in four sequential batches. Each batch is a separately supervised command with the same five-minute ceiling, at most four fork workers, and per-file isolation enabled. Discovery must include every eligible tracked head suite; batch reports must contain exactly their assigned files, without omissions or duplicates. All batches must pass before JSON/JUnit aggregation and receipt acceptance. This changes command boundaries, not test coverage or failure policy. The independently reviewed runner and its imported batch helper must be frozen together; candidate code cannot approve this amendment.
 

@@ -140,6 +140,9 @@ const DEFAULT_SETTINGS = {
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
+  // User-authored system prompt, injected independently of the built-in savers.
+  customPromptEnabled: false,
+  customPrompt: "",
   // Default: free no-auth providers remain enabled unless the user explicitly
   // disables them via Settings > Providers.
   disabledFreeProviders: [],

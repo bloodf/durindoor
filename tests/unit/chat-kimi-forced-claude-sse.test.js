@@ -125,6 +125,23 @@ describe("chatCore with a forced-SSE upstream", () => {
     expect(text).toContain("input_json_delta");
   });
 
+  it("passes the empty-output callback to the forced SSE handler", async () => {
+    const onEmptyStream = vi.fn(async () => {});
+    mocks.execute.mockImplementation(async ({ body }) => upstream(
+      "event:message_start\ndata:{\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"usage\":{\"input_tokens\":3,\"output_tokens\":0}}}\n\n" +
+      "event:message_stop\ndata:{\"type\":\"message_stop\"}\n\n",
+      body,
+    ));
+    const result = await handleChatCore(request({
+      model: "kimi-for-coding",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+    }, "/v1/chat/completions", { onEmptyStream }));
+
+    expect(result.success).toBe(true);
+    expect(onEmptyStream).toHaveBeenCalledOnce();
+  });
+
   it("hands the request-side tool aliases to the forced SSE handler", async () => {
     const original = "mcp.server/read";
     mocks.execute.mockImplementation(async ({ body }) => upstream([

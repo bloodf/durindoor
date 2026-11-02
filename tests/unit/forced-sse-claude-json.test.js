@@ -66,6 +66,7 @@ function run(raw, overrides = {}) {
     apiKey: null,
     clientRawRequest: { endpoint: "/v1/messages" },
     onRequestSuccess: vi.fn(async () => {}),
+    onEmptyStream: vi.fn(async () => {}),
     trackDone: vi.fn(),
     appendLog: vi.fn(),
     log: { line: vi.fn(), debug: vi.fn() },
@@ -130,11 +131,146 @@ describe("forced SSE to JSON with an Anthropic upstream", () => {
     expect(body.content).toEqual([{ type: "text", text: "Hello" }]);
   });
 
-  it("rejects unparseable tool input for Claude clients instead of sending empty arguments", async () => {
-    const { result, context } = await run(sse([messageStart, ...toolBlock(0, "toolu_1", "Read", "{\"path\":"), ...end("tool_use")]));
+  const clients = [["Claude", {}], ["Chat", chat]];
+  const partialTool = (stopReason) => [messageStart, ...textBlock(0, "Reading"), ...toolBlock(1, "toolu_1", "Read", "{\"path\":"), ...end(stopReason)];
+
+  it("drops an incomplete tool block for Claude clients on max_tokens", async () => {
+    const { result, context } = await run(sse(partialTool("max_tokens")));
+    expect(result.success).toBe(true);
+    const body = await result.response.json();
+    expect(body.stop_reason).toBe("max_tokens");
+    expect(body.content).toEqual([{ type: "text", text: "Reading" }]);
+    expect(context.onRequestSuccess).toHaveBeenCalledOnce();
+    expect(context.onEmptyStream).not.toHaveBeenCalled();
+  });
+
+  it("drops an incomplete tool block for Chat clients on max_tokens", async () => {
+    const { result, context } = await run(sse(partialTool("max_tokens")), chat);
+    expect(result.success).toBe(true);
+    const body = await result.response.json();
+    expect(body.choices[0].finish_reason).toBe("length");
+    expect(body.choices[0].message.content).toBe("Reading");
+    expect(body.choices[0].message.tool_calls).toBeUndefined();
+    expect(context.onRequestSuccess).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a complete tool block next to a dropped one on max_tokens", async () => {
+    const events = [messageStart, ...toolBlock(0, "toolu_1", "Read", "{\"path\":\"/a\"}"), ...toolBlock(1, "toolu_2", "Read", "{\"pa"), ...end("max_tokens")];
+    const claude = await (await run(sse(events))).result.response.json();
+    expect(claude.content).toEqual([{ type: "tool_use", id: "toolu_1", name: "Read", input: { path: "/a" } }]);
+    const openai = await (await run(sse(events), chat)).result.response.json();
+    expect(openai.choices[0].message.tool_calls.map((call) => call.id)).toEqual(["toolu_1"]);
+  });
+
+  it.each(clients.flatMap(([label, overrides]) => ["tool_use", "end_turn"].map((stopReason) => [label, stopReason, overrides])))(
+    "rejects unparseable tool input for %s clients on %s", async (_label, stopReason, overrides) => {
+      const { result, context } = await run(sse(partialTool(stopReason)), overrides);
+      expect(result.success).toBe(false);
+      expect(result.status).toBe(502);
+      expect(saveRequestDetail).not.toHaveBeenCalled();
+      expect(context.onRequestSuccess).not.toHaveBeenCalled();
+    });
+
+  it.each(clients)("rejects a bare message_stop for %s clients", async (_label, overrides) => {
+    const { result, context } = await run(sse([{ type: "message_stop" }]), overrides);
     expect(result.success).toBe(false);
     expect(result.status).toBe(502);
     expect(context.onRequestSuccess).not.toHaveBeenCalled();
+    expect(context.onEmptyStream).not.toHaveBeenCalled();
+  });
+
+  it("reports empty output for Claude clients the way the streaming path does", async () => {
+    const { result, context } = await run(sse([messageStart, { type: "message_stop" }]));
+    expect(result.success).toBe(true);
+    const body = await result.response.json();
+    expect(body.id).toBe("msg_kimi1");
+    expect(body.content).toEqual([{ type: "text", text: "" }]);
+    expect(context.onRequestSuccess).toHaveBeenCalledOnce();
+    expect(context.onEmptyStream).toHaveBeenCalledOnce();
+  });
+
+  it("reports empty output for Chat clients despite the synthetic whitespace", async () => {
+    const { result, context } = await run(sse([messageStart, { type: "message_stop" }]), chat);
+    expect(result.success).toBe(true);
+    expect((await result.response.json()).choices[0].message.content).toBe(" ");
+    expect(context.onEmptyStream).toHaveBeenCalledOnce();
+  });
+
+  it("survives a failing empty-output callback", async () => {
+    const { result } = await run(sse([messageStart, { type: "message_stop" }]), {
+      onEmptyStream: vi.fn(async () => { throw new Error("db down"); }),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it.each([
+    ["a refusal", [messageStart, ...end("refusal", 0)]],
+    ["a tool-only turn", [messageStart, ...toolBlock(0, "toolu_1", "Read", "{}"), ...end("tool_use", 0)]],
+    ["a thinking-only turn", [messageStart, ...thinkingBlocks, ...end("end_turn", 0)]],
+    ["text", [messageStart, ...textBlock(0, "Hi"), ...end("end_turn", 0)]],
+    ["output tokens alone", [messageStart, ...end("end_turn", 3)]],
+  ])("does not report empty output for %s", async (_label, events) => {
+    const { result, context } = await run(sse(events));
+    expect(result.success).toBe(true);
+    expect(context.onEmptyStream).not.toHaveBeenCalled();
+  });
+
+  it("falls back to projected usage when the upstream sends none", async () => {
+    const { usage: _usage, ...noUsage } = messageStart.message;
+    const { result } = await run(sse([
+      { type: "message_start", message: noUsage },
+      ...textBlock(0, "Hi"),
+      { type: "message_delta", delta: { stop_reason: "end_turn" } },
+      { type: "message_stop" },
+    ]));
+    const { usage } = await result.response.json();
+    expect(usage).toMatchObject({ input_tokens: 0, output_tokens: 0 });
+  });
+
+  it.each(clients.flatMap(([label, overrides]) => [["a string", "0"], ["a missing", undefined]].map(([kind, index]) => [label, kind, index, overrides])))(
+    "rejects %s client streams with %s block index", async (_label, _kind, index, overrides) => {
+      const { result, context } = await run(sse([
+        messageStart,
+        { type: "content_block_start", index, content_block: { type: "text", text: "" } },
+        { type: "content_block_delta", index, delta: { type: "text_delta", text: "Hi" } },
+        { type: "content_block_stop", index },
+        ...end("end_turn"),
+      ]), overrides);
+      expect(result.status).toBe(502);
+      expect(context.onRequestSuccess).not.toHaveBeenCalled();
+    });
+
+  it.each(clients)("parses CRLF line endings for %s clients", async (label, overrides) => {
+    const raw = thinkingAndText.map((event) => `event: ${event.type}\r\ndata: ${JSON.stringify(event)}\r\n\r\n`).join("");
+    const { result } = await run(raw, overrides);
+    expect(result.success).toBe(true);
+    const body = await result.response.json();
+    if (label === "Claude") expect(body.content[1].text).toBe("Hello");
+    else expect(body.choices[0].message.content).toBe("Hello");
+  });
+
+  const interleaved = (() => {
+    const [startA, deltaA1, deltaA2, stopA] = toolBlock(0, "toolu_a", "Read", "{\"a\":", "1}");
+    const [startB, deltaB1, deltaB2, stopB] = toolBlock(1, "toolu_b", "Write", "{\"b\":", "2}");
+    return [messageStart, startA, startB, deltaB1, deltaA1, deltaA2, deltaB2, stopB, stopA, ...end("tool_use")];
+  })();
+
+  it("keeps interleaved tool blocks apart for Claude clients", async () => {
+    const { result } = await run(sse(interleaved));
+    const body = await result.response.json();
+    expect(body.content).toEqual([
+      { type: "tool_use", id: "toolu_a", name: "Read", input: { a: 1 } },
+      { type: "tool_use", id: "toolu_b", name: "Write", input: { b: 2 } },
+    ]);
+  });
+
+  it("keeps interleaved tool blocks apart for Chat clients", async () => {
+    const { result } = await run(sse(interleaved), chat);
+    const body = await result.response.json();
+    expect(body.choices[0].message.tool_calls).toEqual([
+      { id: "toolu_a", type: "function", function: { name: "Read", arguments: "{\"a\":1}" } },
+      { id: "toolu_b", type: "function", function: { name: "Write", arguments: "{\"b\":2}" } },
+    ]);
   });
 
   it("gives Chat clients reasoning_content, finish_reason and cache-inclusive usage", async () => {

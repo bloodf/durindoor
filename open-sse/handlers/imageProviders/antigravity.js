@@ -1,22 +1,18 @@
 // Antigravity image adapter - delegates to the executor for correct request
 // envelope (project, model, requestType, sessionId) and auth headers.
-import { nowSec } from "./_base.js";
+import { nowSec, resolveImageInput } from "./_base.js";
 import { getExecutor } from "../../executors/index.js";
 
-// Convert image input (data URI or raw base64) to Gemini inlineData part
-import { isString } from "../../../src/shared/utils/typeChecks.js";
-function resolveImageInput(input) {
-  if (!input || !isString(input)) return null;
-  // data:image/png;base64,... format
-  const dataUriMatch = input.match(/^data:(image\/[^;]+);base64,(.+)$/);
-  if (dataUriMatch) {
-    return { inlineData: { mimeType: dataUriMatch[1], data: dataUriMatch[2] } };
+function parseQuotaResetMs(text) {
+  try {
+    for (const detail of JSON.parse(text)?.error?.details || []) {
+      const ms = new Date(detail?.metadata?.quotaResetTimeStamp).getTime();
+      if (ms > Date.now()) return ms;
+    }
+  } catch {
+    // Non-JSON error bodies carry no reset time.
   }
-  // Raw base64 string (assume PNG)
-  if (/^[A-Za-z0-9+/]/.test(input) && input.length > 100 && !input.startsWith("http")) {
-    return { inlineData: { mimeType: "image/png", data: input } };
-  }
-  return null;
+  return undefined;
 }
 
 export default {
@@ -55,7 +51,12 @@ export default {
 
     if (!result.response.ok) {
       const text = await result.response.text();
-      throw new Error(text || `HTTP ${result.response.status}`);
+      const error = new Error(text || `HTTP ${result.response.status}`);
+      // Keep the upstream status and quota reset so image accounts get the real
+      // cooldown instead of a flat 502 (upstream 9router 161e3493).
+      error.status = result.response.status;
+      error.resetsAtMs = parseQuotaResetMs(text);
+      throw error;
     }
 
     return result.response.json();

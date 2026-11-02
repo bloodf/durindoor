@@ -30,3 +30,18 @@ export async function urlToBase64(url) {
 export function nowSec() {
   return Math.floor(Date.now() / 1000);
 }
+
+// Convert image input (data URI or raw base64) to Gemini inlineData part
+export function resolveImageInput(input) {
+  if (!input || !isString(input)) return null;
+  // data:image/png;base64,... format
+  const dataUriMatch = input.match(/^data:(image\/[^;]+);base64,(.+)$/);
+  if (dataUriMatch) {
+    return { inlineData: { mimeType: dataUriMatch[1], data: dataUriMatch[2] } };
+  }
+  // Raw base64 string (assume PNG)
+  if (/^[A-Za-z0-9+/]/.test(input) && input.length > 100 && !input.startsWith("http")) {
+    return { inlineData: { mimeType: "image/png", data: input } };
+  }
+  return null;
+}

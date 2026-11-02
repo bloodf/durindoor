@@ -1,4 +1,4 @@
-import { CLAUDE_CLI_SPOOF_HEADERS } from "../shared.js";
+import { CLAUDE_COMPAT_SPOOF_HEADERS } from "../shared.js";
 
 export default {
   id: "agentrouter",
@@ -18,7 +18,7 @@ export default {
     baseUrl: "https://agentrouter.org/v1/messages",
     format: "claude",
     urlSuffix: "?beta=true",
-    headers: { ...CLAUDE_CLI_SPOOF_HEADERS },
+    headers: { ...CLAUDE_COMPAT_SPOOF_HEADERS },
     defaultContextLength: 128000,
     auth: {
       combined: true,
@@ -42,7 +42,7 @@ export default {
       format: "claude",
       baseUrl: "https://agentrouter.org/v1/messages",
       urlSuffix: "?beta=true",
-      headers: { ...CLAUDE_CLI_SPOOF_HEADERS },
+      headers: { ...CLAUDE_COMPAT_SPOOF_HEADERS },
       auth: {
         combined: true,
         header: "x-api-key",

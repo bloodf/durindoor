@@ -91,7 +91,8 @@ function normalizeToolNameKey(name) {
 
 // Build a name -> declared tool type ("custom", "function", ...) lookup from
 // a request's declared tools[]. Mirrors initState's toolTypes resolution
-// (translator/index.js) exactly: `function.name` wins over a flat `name`
+// (translator/index.js), plus Chat's nested `custom.name`: `function.name` /
+// `custom.name` win over a flat `name`
 // regardless of `type` — a Responses "custom" tool can still nest its name
 // under `function` ({type:"custom", function:{name}}, see
 // tests/translator/port-6937-responses-toolcall-shape.test.js). Optional
@@ -105,7 +106,9 @@ export function buildDeclaredToolTypes(tools) {
   for (const tool of tools) {
     if (!tool) continue;
     const type = isString(tool.type) ? tool.type : "";
-    const name = normalizeToolNameKey(isString(tool.function?.name) ? tool.function.name : tool.name);
+    // Chat nests custom tools as {type:"custom", custom:{name}} (#1419 review).
+    const nested = isString(tool.function?.name) ? tool.function.name : tool.custom?.name;
+    const name = normalizeToolNameKey(isString(nested) ? nested : tool.name);
     if (name && type) declared.set(name, type);
   }
   return declared;

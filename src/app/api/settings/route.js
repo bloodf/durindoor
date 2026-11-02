@@ -20,6 +20,7 @@ import {
 import { isBoolean, isNumber, isObject, isString } from "@/shared/utils/typeChecks.js";
 import { normalizeMediaRoutes } from "@/shared/constants/mediaRoutes.js";
 import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
+import { MAX_CUSTOM_PROMPT_CHARS } from "@/shared/constants/customPrompt.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { resolveObservabilityEnabled } from "@/lib/db/repos/requestDetailsRepo";
 import { validateModelAutoSyncSettingsPatch } from "@/lib/modelAutoSync/catalog.js";
@@ -66,6 +67,8 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
   if (!privileged && safeSettings.outboundProxyUrl) {
     safeSettings.outboundProxyUrl = redactProxyUrlCredentials(safeSettings.outboundProxyUrl);
   }
+  // Operator-authored prompt text; unprivileged readers only learn the enabled flag.
+  if (!privileged) delete safeSettings.customPrompt;
   return { safeSettings, password };
 }
 
@@ -349,6 +352,14 @@ export async function PATCH(request) {
       if (!Number.isInteger(v) || v < 1 || v > 3650) {
         return NextResponse.json({ error: "Invalid dataRetentionDays" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "customPromptEnabled") && !isBoolean(body.customPromptEnabled)) {
+      return NextResponse.json({ error: "Invalid customPromptEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "customPrompt")
+        && (!isString(body.customPrompt) || body.customPrompt.length > MAX_CUSTOM_PROMPT_CHARS)) {
+      return NextResponse.json({ error: "Invalid customPrompt" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
 
     const modelAutoSyncError = validateModelAutoSyncSettingsPatch(body);

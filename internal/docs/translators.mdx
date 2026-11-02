@@ -65,6 +65,27 @@ Both paths log FAILED before any success accounting or cleanup callback;
 their existing finally blocks still call `trackDone` once. The existing
 finish-reason error and native Responses conversion contracts are unchanged.
 
+## Forced SSE with a Claude transport
+
+`handleForcedSSEToJson` buffers the stream when a provider forces SSE and the
+client asked for JSON. For `targetFormat: "claude"` (`kimi-coding`,
+`kimi-coding-apikey`, and `opencode`'s `union-alpha`) it feeds each Anthropic event to
+`claudeToOpenAIResponse`, then aggregates a Chat completion for classification,
+accounting, and non-Claude clients. The terminal tracker sees the raw events with
+format `claude`: a stream without `message_stop` stays a 502, and an `error` event
+is an error even after partial content or a terminal.
+
+Tool input that does not parse is a 502 for every client unless `stop_reason` is
+`max_tokens`; then the incomplete block is dropped and the turn succeeds. A stream
+without `message_start`, or a block event with a non-integer `index`, is a 502. A
+coherent turn with no usable output succeeds and calls `onEmptyStream`, as the
+streaming path does.
+
+Claude clients do not take the Chat hop's content. `foldClaudeEventsToMessage`
+rebuilds the message so thinking signatures, redacted thinking, block order,
+`stop_reason`, `stop_sequence`, and exclusive cache usage survive. A provider that
+answers with Chat chunks on this transport keeps the Chat parser.
+
 ## Tests
 
 Every test that calls `translateRequest` or `translateResponse` must import `tests/translator/registerAll.js` at the top of the file. That file re-imports every translator module so `register()` runs under Vitest ESM.

@@ -533,6 +533,24 @@ describe("mcp-control tools", () => {
     expect(result.settings).not.toHaveProperty("mitmSudoEncrypted");
   });
 
+  it("get_settings withholds every SECRET_SETTING_KEYS entry (webhook secrets, MFA)", async () => {
+    mocks.getSettings.mockResolvedValue({
+      requireApiKey: true,
+      operatorWebhooks: [{ id: "w1", url: "https://hooks.example.com/x", secret: "whsec-leak" }],
+      mfaSecret: "JBSWY3DPEHPK3PXP",
+      mfaBackupCodes: ["code-1"],
+      postgresUrl: "postgres://u:p@h/db",
+    });
+
+    const result = await callTool("get_settings", {});
+
+    expect(result.settings.requireApiKey).toBe(true);
+    for (const key of ["operatorWebhooks", "mfaSecret", "mfaBackupCodes", "postgresUrl"]) {
+      expect(result.settings).not.toHaveProperty(key);
+    }
+    expect(JSON.stringify(result)).not.toContain("whsec-leak");
+  });
+
   it("get_settings redacts proxy credentials but keeps the endpoint readable", async () => {
     // outboundProxyUrl is operational config an agent legitimately inspects,
     // but its userinfo is a live credential and the MCP surface authenticates

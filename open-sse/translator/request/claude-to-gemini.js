@@ -1,6 +1,6 @@
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult } from "../formats/gemini.js";
+import { applyGemini4RequestRules, DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -104,7 +104,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   }
 
   result._toolNameMap = new Map([...toolNameMemo].flatMap(([original, outbound]) => outbound.toLowerCase() === outbound ? [[outbound, original]] : [[outbound, original], [outbound.toLowerCase(), original]]));
-  return result;
+  return applyGemini4RequestRules(result, model);
 }
 
 register(FORMATS.CLAUDE, FORMATS.GEMINI, claudeToGeminiRequest, null);

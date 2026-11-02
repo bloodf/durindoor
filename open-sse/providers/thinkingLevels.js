@@ -75,6 +75,8 @@ const PATTERN_THINKING = [
   { provider: "codebuddy-cn", pattern: "kimi-k2.8-preview", levels: ["low", "medium", "high"] },
   { provider: "codebuddy-cn", pattern: "deepseek-v4-pro", levels: ["low", "high", "xhigh"] },
   { provider: "codebuddy-cn", pattern: "deepseek-v4.1-flash", levels: ["low", "high", "max"] },
+  // Other dotted v4 ids stay on the gateway's set, not the generic DeepSeek one.
+  { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
   { provider: "codebuddy-cn", pattern: "hy3", levels: ["low", "high"] },
   { provider: "codebuddy-cn", pattern: "hy4-preview", levels: ["high"] },
   // Command Code resolves every DeepSeek id (dotted or not) through its own

@@ -11,11 +11,7 @@ const CASES = [
     "alias": "ofa",
     "chat": "https://api.openference.com/v1/chat/completions",
     "val": "https://api.openference.com/v1/models",
-    "models": [
-      "GLM-5.2",
-      "Qwen3.8 27b",
-      "Llama 3.2 3B"
-    ],
+    "models": [],
     "fetcher": true,
     "xkey": false
   },
@@ -24,17 +20,7 @@ const CASES = [
     "alias": "openvecta",
     "chat": "https://api.openvecta.com/v1/chat/completions",
     "val": "https://api.openvecta.com/v1/models",
-    "models": [
-      "glm-4.7-flash",
-      "claude-sonnet-4.6",
-      "deepseek-v4-flash",
-      "gpt-oss-120b",
-      "gemma-4-31b",
-      "kimi-k2.6",
-      "llama-3.3-70b-instruct",
-      "llama-4-maverick",
-      "nemotron-3-super-120b"
-    ],
+    "models": [],
     "fetcher": true,
     "xkey": false
   },

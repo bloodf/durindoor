@@ -270,7 +270,10 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `opencode` |  | free | `https://opencode.ai` |
 | `opencode-go` |  | apikey | `https://opencode.ai/zen/go/v1/chat/completions` |
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
+| `openference-api` |  | apikey | `https://api.openference.com/v1/chat/completions` |
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
+| `openvecta` |  | apikey | `https://api.openvecta.com/v1/chat/completions` |
+| `opper` |  | apikey | `https://api.opper.ai/v3/compat/chat/completions` |
 | `orcarouter` | openai | oauth | `https://api.orcarouter.ai/v1/chat/completions` |
 | `ovhcloud` | openai | apikey | `https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions` |
 | `perplexity` |  | apikey | `https://api.perplexity.ai/chat/completions` |
@@ -280,6 +283,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `plamo` | openai | apikey | `https://api.platform.preferredai.jp/v1/chat/completions` |
 | `playht` |  | apikey | `` |
 | `poe` |  | apikey | `https://api.poe.com/v1/chat/completions` |
+| `poixe-ai` |  | apikey | `https://api.poixe.com/v1/chat/completions` |
 | `pollinations` | openai | free | `https://gen.pollinations.ai/v1/chat/completions` |
 | `poolside` |  | freeTier | `https://inference.poolside.ai/v1/chat/completions` |
 | `puter` | openai | apikey | `https://api.puter.com/puterai/openai/v1/chat/completions` |

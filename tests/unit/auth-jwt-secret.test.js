@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const SECRET_FILE_BASENAME = "jwt-secret";
 
 /** Fingerprint of the fail-closed resolution contract (env unless placeholder → legacy file → throw). */
@@ -41,12 +42,13 @@ describe("dashboardSession JWT secret resolution (GHSA-jphh)", () => {
     resetEnv();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     warnSpy.mockRestore();
     resetEnv();
     vi.doUnmock("@/lib/dataDir");
     vi.doUnmock("@/lib/localDb");
     vi.resetModules();
+    await disposeLoadedRequestDetailsRepo();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 

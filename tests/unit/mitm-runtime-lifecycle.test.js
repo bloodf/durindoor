@@ -86,7 +86,7 @@ describe("MITM runtime lifecycle packaging", () => {
     expect(cli).toContain("owner-aware custom-server.js is missing");
     expect(cli).not.toContain(": path.join(standaloneDir, \"server.js\")");
     expect(cli).toContain('stdio: "ignore"');
-    expect(JSON.parse(fs.readFileSync(path.join(repoRoot, "cli/package.json"), "utf8")).engines.node).toBe("20.20.2");
+    expect(JSON.parse(fs.readFileSync(path.join(repoRoot, "cli/package.json"), "utf8")).engines.node).toBe(">=26.13.0");
     expect(buildMitm).toContain('target: "node20"');
   });
 

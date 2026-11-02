@@ -26,6 +26,7 @@ import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { decodeToolCallId } from "../concerns/signatureTransport.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
 /** Own-key map: OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode. */
 const OPENAI_TOOL_CHOICE_TO_GEMINI_MODE = new Map([
@@ -337,7 +338,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     for (const t of body.tools) {
       // Check if already in Anthropic/Claude format (no type field, direct name/description/input_schema)
       if (t.name && t.input_schema) {
-        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(t.input_schema || { type: "object", properties: {} }));
+        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeToolSchema(t.input_schema, t.name) || { type: "object", properties: {} }));
         functionDeclarations.push({
           name: sanitizeToolName(t.name),
           description: t.description || "",
@@ -347,7 +348,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       // OpenAI format
       else if (t.type === OPENAI_BLOCK.FUNCTION && t.function) {
         const fn = t.function;
-        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(fn.parameters || { type: "object", properties: {} }));
+        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeToolSchema(fn.parameters, fn.name) || { type: "object", properties: {} }));
         functionDeclarations.push({
           name: sanitizeToolName(fn.name),
           description: fn.description || "",
@@ -617,7 +618,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
     const functionDeclarations = [];
     for (const tool of claudeRequest.tools) {
       if (tool.name && tool.input_schema) {
-        const cleanedSchema = cleanJSONSchemaForAntigravity(tool.input_schema);
+        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(tool.input_schema));
         functionDeclarations.push({
           name: sanitizeToolName(tool.name),
           description: tool.description || "",

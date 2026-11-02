@@ -14,6 +14,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const require = createRequire(import.meta.url);
 const { getAppDataDir } = require("../../cli/src/cli/appDataDir.js");
 
@@ -30,7 +31,8 @@ describePosix("CLI default data dir permissions (appDataDir.js)", () => {
     tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-appdatadir-"));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await disposeLoadedRequestDetailsRepo();
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
 

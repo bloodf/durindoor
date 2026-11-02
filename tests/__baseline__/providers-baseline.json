@@ -402,7 +402,10 @@
     "auth": {
       "combined": true,
       "header": "Authorization",
-      "scheme": "bearer"
+      "scheme": "bearer",
+      "hooks": [
+        "codebuddyHeaders"
+      ]
     },
     "usage": {
       "url": "https://copilot.tencent.com/v2/billing/meter/get-user-resource"
@@ -447,8 +450,10 @@
     "validationModelId": "deepseek/deepseek-v4-flash",
     "forceStream": true,
     "headers": {
-      "x-command-code-version": "1.54.2",
+      "x-command-code-version": "1.88.0",
       "x-cli-environment": "production",
+      "x-cli-surface": "cli",
+      "x-taste-learning": "false",
       "User-Agent": "cli"
     }
   },
@@ -458,8 +463,10 @@
     "validationModelId": "deepseek/deepseek-v4-flash",
     "forceStream": true,
     "headers": {
-      "x-command-code-version": "1.54.2",
+      "x-command-code-version": "1.88.0",
       "x-cli-environment": "production",
+      "x-cli-surface": "cli",
+      "x-taste-learning": "false",
       "User-Agent": "cli"
     }
   },

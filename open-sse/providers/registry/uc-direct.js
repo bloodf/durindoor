@@ -7,7 +7,7 @@ export default {
     color: "#DC2626",
     textIcon: "UC",
     notice: {
-      text: "Metered uncensored.com Developer API that resells third-party models; authenticates with an X-API-Key (uai_sk_live_...) header. Review the provider's terms before use.",
+      text: "Third-party gateway; review the provider's terms before use.",
     },
   },
   category: "apikey",

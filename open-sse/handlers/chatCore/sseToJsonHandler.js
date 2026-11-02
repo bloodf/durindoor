@@ -74,6 +74,10 @@ function aggregateParsedChunks(chunks, fallbackModel, {
   terminalObservations = null,
   synthesizedRawDone = false
 }) {
+  // Preserve an explicit SSE error even after partial content. A failed terminal
+  // is not an empty completion; both non-stream consumers must reject it (#1355).
+  const errorChunk = chunks.find((chunk) => chunk?.error);
+  if (errorChunk) return { error: errorChunk.error };
   const terminal = createUpstreamTerminalTracker({
     format,
     expectedChoiceCount: providerBody?.n,
@@ -236,6 +240,22 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel, {
   return aggregateParsedChunks(chunks, fallbackModel, { format, providerBody, terminalObservations });
 }
 
+/**
+ * Port 9router 56dbf466 through the fork's shared redacting error builder.
+ * Never forward raw envelopes, coerce object/array status fields, or mark an
+ * SSE error as successful usage. Finish-reason errors keep their separate 502.
+ */
+export function createSSEErrorResult(parsed, credentials = null) {
+  if (!parsed?.error) return null;
+  const rawStatus = parsed.error.status;
+  const candidate = isString(rawStatus) ? Number(rawStatus) : rawStatus;
+  const status = Number.isInteger(candidate) && candidate >= 400 && candidate <= 599 ?
+    candidate : HTTP_STATUS.BAD_GATEWAY;
+  const message = isString(parsed.error.message) && parsed.error.message.trim() ?
+    parsed.error.message : "Upstream SSE stream failed";
+  return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
+}
+
 function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap) {
   const state = { toolNameMap };
   const chunks = [];
@@ -259,7 +279,7 @@ function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, too
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -367,6 +387,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         providerBody: finalBody || translatedBody
       });
       if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      const sseError = createSSEErrorResult(parsed, credentials);
+      if (sseError) {
+        appendLog({ status: `FAILED ${sseError.status}` });
+        return sseError;
+      }
 
       const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
       parsed = inlineThinking.responseBody;

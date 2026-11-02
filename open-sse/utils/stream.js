@@ -28,7 +28,7 @@ import {
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
-import { sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
+import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -74,6 +74,15 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
   // isObject(null) is true here, so a bare `data: null` frame would pass and then throw
   // on the property read below.
   if (!isObject(parsed) || parsed === null) return false;
+  if (parsed.type !== "response.failed" && parsed.error == null && parsed.type !== "error") {
+    // Gemini nested errors reach translators as public text: redact in place (#1342).
+    const holder = parsed.promptFeedback?.error ? parsed.promptFeedback :
+    parsed.response?.promptFeedback?.error ? parsed.response.promptFeedback :
+    parsed.response?.error ? parsed.response : null;
+    if (!holder || (!isObject(holder.error) && !isString(holder.error))) return false;
+    holder.error = sanitizeStructuredErrorBody(holder.error, secrets);
+    return true;
+  }
   const error = parsed.type === "response.failed" ? parsed.response?.error :
   parsed.error ?? (parsed.type === "error" ? parsed : null);
   if (error === null || (!isObject(error) && !isString(error))) return false;
@@ -85,6 +94,19 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
   else if (parsed.error != null) parsed.error = safe;
   else Object.assign(parsed, safe);
   return true;
+}
+
+/**
+ * Error that ends a translated stream with the client's protocol error terminal.
+ * A nested Responses `response.failed` counts like a top-level `error` when the
+ * client speaks another format, so it never reaches the client as `[Error]`
+ * stop content (#1327). Same-format Responses keeps the upstream failed event.
+ */
+function translatedTerminalError(parsed, sourceFormat) {
+  if (parsed?.error) return parsed.error;
+  if (parsed?.type !== "response.failed" || sourceFormat === FORMATS.OPENAI_RESPONSES) return null;
+  // A failed status without an error object still ends as an error terminal.
+  return parsed.response?.error || (parsed.response?.status === "failed" ? { message: "Upstream response failed" } : null);
 }
 
 /** Forward executor-side validation failures in the client's SSE format (#2681). */
@@ -148,7 +170,7 @@ export function createSSEStream(options = {}) {
   } = options;
 
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
-  const errorSecrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken, credentials?.providerSpecificData?.sessionToken];
+  const errorSecrets = credentialErrorSecrets(credentials);
   let buffer = "";
   // Passthrough tool-call (choice, index) keys already opened on the client wire.
   const openedToolCalls = new Set();
@@ -836,6 +858,7 @@ export function createSSEStream(options = {}) {
                   }
                 }
               }
+              if (ensureStreamToolCallIds(parsed, openedToolCalls)) fieldsInjected = true;
 
               // Peel leaked MiniMax thinking markers out of delta.content into
               // reasoning_content before the inline-thinking extractor and content
@@ -1094,9 +1117,11 @@ export function createSSEStream(options = {}) {
         // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
         sanitizePublicErrorEnvelope(parsed, errorSecrets);
-        if (parsed.error) {
+        const terminalError = translatedTerminalError(parsed, sourceFormat);
+        if (terminalError) {
+          streamErrorPayload ??= extractStreamErrorPayload({ error: terminalError });
           clearCompletionFlushTimer();
-          const output = formatTranslatedStreamError(parsed.error, sourceFormat, errorSecrets);
+          const output = formatTranslatedStreamError(terminalError, sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           upstreamErrorForwarded = true;
@@ -1447,8 +1472,10 @@ export function createSSEStream(options = {}) {
           // client-facing translation or formatted error terminal.
           streamErrorPayload ??= extractStreamErrorPayload(tail);
           sanitizePublicErrorEnvelope(tail, errorSecrets);
-          if (tail?.error) {
-            const output = formatTranslatedStreamError(tail.error, sourceFormat, errorSecrets);
+          const tailError = translatedTerminalError(tail, sourceFormat);
+          if (tailError) {
+            streamErrorPayload ??= extractStreamErrorPayload({ error: tailError });
+            const output = formatTranslatedStreamError(tailError, sourceFormat, errorSecrets);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             upstreamErrorForwarded = true;

@@ -355,7 +355,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
       return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
     }
     if (sourceFormat === FORMATS.OPENAI) {
-      return openAIResponsesBodyToOpenAI(responseBody, { chatCustomToolNames: initState(FORMATS.OPENAI, options.requestBody).chatCustomToolNames });
+      return openAIResponsesBodyToOpenAI(responseBody, { chatCustomToolNames: initState(FORMATS.OPENAI, options.requestBody).chatCustomToolNames, toolNameMap: options.toolNameMap });
     }
     // Native Gemini uses top-level candidates; Antigravity / gemini-cli keep the
     // { response } envelope that their stream translators emit.

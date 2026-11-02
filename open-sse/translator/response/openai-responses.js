@@ -516,6 +516,16 @@ function emitToolCall(state, emit, tc) {
   }
 }
 /**
+ * The Chat client's declared custom tool name for an upstream (possibly aliased)
+ * call name, or null when the client did not declare it as custom (#1436).
+ */
+function declaredChatCustomToolName(state, name) {
+  if (!state.chatCustomToolNames?.size || !isString(name)) return null;
+  const restored = resolveResponsesToolName(state, state.toolNameMap?.get?.(name) ?? name).name;
+  return state.chatCustomToolNames.has(restored) ? restored : null;
+}
+
+/**
  * Emit the JSON `{input}` arguments of wrapped custom tool calls whose item never
  * reached output_item.done (truncated or failed stream), so their input is not lost (#1436).
  */
@@ -705,7 +715,9 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       finalChunk.usage = state.usage;
     }
 
-    return finalChunk;
+    // A stream that ends with no terminal event still owes buffered custom input.
+    const pending = flushWrappedCustomToolInputs(state);
+    return pending.length ? [...pending, finalChunk] : finalChunk;
   }
 
   // Handle different event types from Responses API
@@ -775,8 +787,9 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // A custom_tool_call carries raw (non-JSON) input. A Chat client that
     // declared the tool gets the Chat custom shape; any other client gets a
     // function call whose arguments are wrapped as JSON `{input}` once complete (#1436).
+    const customName = item.type === "custom_tool_call" ? declaredChatCustomToolName(state, item.name) : null;
     if (item.type === "custom_tool_call") {
-      (state.respCustomToolKinds ??= new Map()).set(idx, state.chatCustomToolNames?.has(item.name) ? "custom" : "wrapped");
+      (state.respCustomToolKinds ??= new Map()).set(idx, customName ? "custom" : "wrapped");
     }
     const kind = state.respCustomToolKinds?.get(idx);
     return buildChunk(
@@ -786,7 +799,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
           index: idx,
           id: state.currentToolCallId,
           type: "custom",
-          custom: { name: item.name || "", input: "" }
+          custom: { name: customName, input: "" }
         } : {
           index: idx,
           id: state.currentToolCallId,

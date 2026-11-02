@@ -154,3 +154,38 @@ describe("#1436 review follow-ups", () => {
     expect(JSON.parse(json)).toEqual({ input: RAW });
   });
 });
+
+describe("#1436 second review", () => {
+  it("flushes buffered wrapped input when the stream ends with no terminal event", () => {
+    const state = initState(FORMATS.OPENAI, { messages: [], tools: [fnDecl] });
+    const chunks = [
+      ["response.created", { type: "response.created", response: { id: "resp_1" } }],
+      ["response.output_item.added", { type: "response.output_item.added", item: { type: "custom_tool_call", id: "ctc_b", call_id: "call_b", name: "shell", input: "" } }],
+      ["response.custom_tool_call_input.delta", { type: "response.custom_tool_call_input.delta", item_id: "ctc_b", delta: "ls -la" }],
+    ].flatMap(([event, data]) => translateResponse(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, { event, data }, state) || [])
+      .concat(translateResponse(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, null, state) || [])
+      .filter(Boolean);
+    const argsAt = chunks.findIndex((chunk) => chunk.choices?.[0]?.delta?.tool_calls?.[0]?.function?.arguments);
+    const finishAt = chunks.findIndex((chunk) => chunk.choices?.[0]?.finish_reason);
+    expect(JSON.parse(chunks[argsAt].choices[0].delta.tool_calls[0].function.arguments)).toEqual({ input: "ls -la" });
+    expect(argsAt).toBeLessThan(finishAt);
+  });
+
+  it("matches an aliased upstream name to the declared custom tool (stream and non-stream)", () => {
+    const toolNameMap = new Map([["apply_patch_alias", "apply_patch"]]);
+    const state = { ...initState(FORMATS.OPENAI, { messages: [], tools: [customDecl] }), toolNameMap };
+    const calls = [
+      ["response.created", { type: "response.created", response: { id: "resp_1" } }],
+      ["response.output_item.added", { type: "response.output_item.added", item: { type: "custom_tool_call", id: "ctc_1", call_id: "call_1", name: "apply_patch_alias", input: "" } }],
+    ].flatMap(([event, data]) => translateResponse(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, { event, data }, state) || [])
+      .filter(Boolean).flatMap((chunk) => chunk.choices?.[0]?.delta?.tool_calls || []);
+    expect(calls[0]).toMatchObject({ type: "custom", custom: { name: "apply_patch" } });
+
+    const out = translateNonStreamingResponse({
+      id: "resp_1", object: "response", status: "completed",
+      output: [{ type: "custom_tool_call", id: "ctc_1", call_id: "call_1", name: "apply_patch_alias", input: RAW }],
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    }, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, { requestBody: { messages: [], tools: [customDecl] }, toolNameMap });
+    expect(out.choices[0].message.tool_calls[0]).toEqual({ id: "call_1", type: "custom", custom: { name: "apply_patch", input: RAW } });
+  });
+});

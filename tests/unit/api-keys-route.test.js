@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   getApiKeyGroups: vi.fn(),
   getGroupIdsByApiKey: vi.fn(),
   getGroupIdsForApiKey: vi.fn(),
+  canManageAccessConfig: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({
@@ -50,6 +51,8 @@ vi.mock("@/lib/localDb", () => ({
   getGroupIdsByApiKey: mocks.getGroupIdsByApiKey,
   getGroupIdsForApiKey: mocks.getGroupIdsForApiKey,
 }));
+
+vi.mock("@/dashboardGuard", () => ({ canManageAccessConfig: mocks.canManageAccessConfig }));
 
 vi.mock("@/shared/utils/machineId", () => ({
   getConsistentMachineId: mocks.getConsistentMachineId,
@@ -100,6 +103,7 @@ describe("API keys routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getConsistentMachineId.mockResolvedValue("machine-abc");
+    mocks.canManageAccessConfig.mockResolvedValue(true);
     mocks.getApiKeys.mockResolvedValue([{ ...storedKey }]);
     mocks.getApiKeyById.mockResolvedValue({ ...storedKey });
     mocks.getComboByName.mockResolvedValue(null);
@@ -129,6 +133,22 @@ describe("API keys routes", () => {
         ? normalizeApiKeyExpiresAt(changes.expiresAt)
         : storedKey.expiresAt,
     }));
+  });
+
+  it("requires an operator principal to create, update, or delete keys", async () => {
+    mocks.canManageAccessConfig.mockResolvedValue(false);
+    const collection = await import("@/app/api/keys/route.js");
+    const item = await import("@/app/api/keys/[id]/route.js");
+    const params = { params: Promise.resolve({ id: "key-id" }) };
+    const responses = [
+      await collection.POST(postRequest({ name: "Unrestricted" })),
+      await item.PUT(putRequest({ dailyLimitTokens: null, policy: null }), params),
+      await item.DELETE(new Request("https://durindoor.local/api/keys/key-id", { method: "DELETE" }), params),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([403, 403, 403]);
+    expect(mocks.createApiKey).not.toHaveBeenCalled();
+    expect(mocks.updateApiKey).not.toHaveBeenCalled();
+    expect(mocks.deleteApiKey).not.toHaveBeenCalled();
   });
 
   it("returns stored secrets only from the one-time creation response", async () => {

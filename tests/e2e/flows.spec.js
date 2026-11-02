@@ -9,7 +9,7 @@ authSensitiveTest("R08 real backend workflow creates, reveals, reloads, and disp
   const createdIds = [];
   try {
     await qa.authenticate(page);
-    await page.goto(`${qa.baseURL}/dashboard/endpoint`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${qa.baseURL}/dashboard/keys`, { waitUntil: "domcontentloaded" });
     const name = `qa-${Date.now()}`;
     await page.getByRole("button", { name: "Create Key", exact: true }).first().click();
     const createSection = modalSection(page, "Create API Key");

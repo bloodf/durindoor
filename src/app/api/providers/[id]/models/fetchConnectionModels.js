@@ -2,6 +2,8 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS
 import { PROVIDER_MODELS_CONFIG, resolveQwenModelsUrl, resolveKimiWebModelsUrl, parseOpenAIStyleModels } from "./modelsConfig.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
+import { PROVIDERS } from "open-sse/config/providers.js";
+import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
@@ -30,8 +32,9 @@ async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
 }
 
 async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
-  const headers = { "Content-Type": "application/json" };
-  if (connection.apiKey) headers.Authorization = `Bearer ${connection.apiKey}`;
+  // Same auth scheme and pinned headers (X-API-Key, User-Agent, ...) the
+  // connection test uses, so discovery cannot fail where validation passes.
+  const headers = buildProviderProbeHeaders(PROVIDERS[connection.provider] || {}, connection.apiKey);
   try {
     const response = await proxyAwareFetch(fetcher.url, {
       method: "GET",
@@ -44,7 +47,10 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
       return { error: `Failed to fetch models: ${response.status}`, status: response.status };
     }
     const data = await response.json();
-    return { provider: connection.provider, connectionId: connection.id, models: parseOpenAIStyleModels(data) };
+    // Optional `excludeIdPattern` drops non-chat entries (whisper, embeddings, tts) from mixed catalogs.
+    const exclude = isString(fetcher.excludeIdPattern) ? new RegExp(fetcher.excludeIdPattern, "i") : null;
+    const models = parseOpenAIStyleModels(data).filter((model) => !exclude || !exclude.test(String(model?.id ?? "")));
+    return { provider: connection.provider, connectionId: connection.id, models };
   } catch (error) {
     console.log(`Error fetching models from ${connection.provider}:`, sanitizeErrorMessage(error?.message));
     return { error: "Failed to fetch models", status: 500 };

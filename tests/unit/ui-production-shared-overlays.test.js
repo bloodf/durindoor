@@ -13,7 +13,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const h = React.createElement;
 const originalShowModal = HTMLDialogElement.prototype.showModal;
 const originalClose = HTMLDialogElement.prototype.close;
-const originalOverflowDescriptor = Object.getOwnPropertyDescriptor(document.body.style, "overflow");
 const originalBodyOverflow = document.body.style.overflow;
 const roots = [];
 
@@ -53,9 +52,6 @@ afterEach(() => {
   HTMLDialogElement.prototype.close = originalClose;
   document.body.innerHTML = "";
   document.body.style.overflow = originalBodyOverflow;
-  if (originalOverflowDescriptor) {
-    Object.defineProperty(document.body.style, "overflow", originalOverflowDescriptor);
-  }
 });
 
 describe("Modal legacy compatibility", () => {

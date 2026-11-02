@@ -3,6 +3,7 @@ import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConv
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
 import { extractCompleteSseFrames } from "../../utils/streamHelpers.js";
@@ -16,6 +17,9 @@ import { restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
+import { claudeToOpenAIResponse } from "../../translator/response/claude-to-openai.js";
+import { decloakToolNames } from "../../utils/claudeCloaking.js";
+import { CLAUDE_BLOCK, CLAUDE_STOP } from "../../translator/schema/index.js";
 
 // Responses-API providers (e.g. codex) may emit SSE without content-type + use Responses output shape
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -275,11 +279,141 @@ function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, too
   });
 }
 
+const CLAUDE_TEXT_DELTA_FIELDS = { text_delta: "text", thinking_delta: "thinking", signature_delta: "signature" };
+
+/**
+ * Rebuild the Anthropic message from its stream events for Claude clients. The
+ * Chat hop has no room for signatures, redacted thinking, block order,
+ * stop_sequence or exclusive cache usage. Tool input was validated by the caller.
+ */
+function foldClaudeEventsToMessage(events) {
+  let message = {};
+  const blocks = new Map();
+  const toolJson = new Map();
+
+  for (const event of events) {
+    if (event.type === "message_start") {
+      message = event.message || {};
+    } else if (event.type === "content_block_start") {
+      blocks.set(event.index, event.content_block);
+    } else if (event.type === "content_block_delta" && blocks.has(event.index)) {
+      const block = blocks.get(event.index);
+      const { type, partial_json: partialJson, citation } = event.delta || {};
+      const field = CLAUDE_TEXT_DELTA_FIELDS[type];
+      if (field) blocks.set(event.index, { ...block, [field]: (block[field] || "") + (event.delta[field] || "") });
+      if (type === "citations_delta") blocks.set(event.index, { ...block, citations: [...(block.citations || []), citation] });
+      if (type === "input_json_delta") toolJson.set(event.index, (toolJson.get(event.index) || "") + (partialJson || ""));
+    } else if (event.type === "message_delta") {
+      message = { ...message, ...event.delta, usage: { ...message.usage, ...event.usage } };
+    }
+  }
+
+  const content = [];
+  for (const index of [...blocks.keys()].sort((left, right) => left - right)) {
+    const json = toolJson.get(index);
+    let block = blocks.get(index);
+    if (json) block = { ...block, input: JSON.parse(json) };
+    content.push(block);
+  }
+  return { ...message, content };
+}
+
+/** Indexes of the blocks whose streamed tool input does not parse. */
+function findIncompleteToolBlocks(events) {
+  const toolJson = new Map();
+  for (const { type, index, delta } of events) {
+    if (type === "content_block_delta" && delta?.type === "input_json_delta") {
+      toolJson.set(index, (toolJson.get(index) || "") + (delta.partial_json || ""));
+    }
+  }
+  const incomplete = new Set();
+  for (const [index, json] of toolJson) {
+    if (!json) continue;
+    try {JSON.parse(json);} catch {incomplete.add(index);}
+  }
+  return incomplete;
+}
+
+const isClaudeBlockEvent = (event) => ["content_block_start", "content_block_delta", "content_block_stop"].includes(event.type);
+
+/**
+ * Anthropic SSE from a Claude transport. Chunks go through the same converter as
+ * streaming; the raw events drive the terminal check, so a missing message_stop
+ * stays a 502. `completion` is null on failure, and the whole return is null when
+ * the provider answered with Chat chunks despite its Claude transport.
+ */
+function parseClaudeSSE(rawSSE, fallbackModel, { providerBody, toolNameMap, nativeMessage }) {
+  const parsedEvents = [];
+
+  for (const { eventName, data, done } of parseSseEvents(rawSSE)) {
+    if (done) continue;
+    let event;
+    try {event = JSON.parse(data);} catch {return { completion: null };}
+    if (Array.isArray(event?.choices)) return null;
+    if (eventName === "error" || event?.type === "error" || event?.error) {
+      return { completion: { error: event?.error || {} } };
+    }
+    parsedEvents.push({ chunk: event, eventName });
+  }
+
+  const rawEvents = parsedEvents.map(({ chunk }) => chunk);
+  const malformed = !rawEvents.some((event) => event.type === "message_start") ||
+    rawEvents.some((event) => isClaudeBlockEvent(event) && !Number.isInteger(event.index));
+  if (malformed) return { completion: null };
+
+  const stopReason = rawEvents.findLast((event) => event.type === "message_delta" && event.delta?.stop_reason)?.delta.stop_reason;
+  // Output cut off by max_tokens legitimately ends inside a tool's JSON. Any other
+  // stop reason with unparseable input is a broken response.
+  const incomplete = findIncompleteToolBlocks(rawEvents);
+  if (incomplete.size > 0 && stopReason !== CLAUDE_STOP.MAX_TOKENS) return { completion: null };
+  const terminalObservations = parsedEvents.filter(({ chunk }) => !(isClaudeBlockEvent(chunk) && incomplete.has(chunk.index)));
+
+  const state = { toolCalls: new Map(), toolNameMap };
+  const chunks = [];
+  for (const { chunk } of terminalObservations) {
+    // The converter keeps growing the tool_call it already emitted. A stream
+    // serializes each chunk right away; buffering must snapshot it or the
+    // arguments are counted twice.
+    const translated = claudeToOpenAIResponse(chunk, state);
+    if (translated) chunks.push(...structuredClone(translated));
+  }
+
+  const completion = aggregateParsedChunks(chunks, fallbackModel, { format: FORMATS.CLAUDE, providerBody, terminalObservations });
+  if (!completion || !nativeMessage) return { completion, stopReason };
+  const message = foldClaudeEventsToMessage(terminalObservations.map(({ chunk }) => chunk));
+  return { completion, stopReason, message: decloakToolNames(message, toolNameMap) };
+}
+
+/** Same test as the streaming path's onEmptyStream gate. The Chat hop's synthetic " " does not count. */
+function isEmptyClaudeCompletion(completion, stopReason) {
+  const message = completion.choices?.[0]?.message;
+  return stopReason !== CLAUDE_STOP.REFUSAL &&
+    !message?.content?.trim?.() &&
+    !message?.tool_calls?.length &&
+    !message?.reasoning_content?.trim?.() &&
+    !(Number(completion.usage?.completion_tokens) > 0);
+}
+
+/** Overlay what the Chat hop loses onto the projected Claude response. */
+function withNativeClaudeFields(projected, message, claudeCompat) {
+  const hidden = [CLAUDE_BLOCK.THINKING, CLAUDE_BLOCK.REDACTED_THINKING];
+  const content = claudeCompat ? message.content.filter((block) => !hidden.includes(block?.type)) : message.content;
+  return {
+    ...message,
+    ...projected,
+    id: message.id || projected.id,
+    content: content.length > 0 ? content : [{ type: CLAUDE_BLOCK.TEXT, text: "" }],
+    stop_reason: message.stop_reason || projected.stop_reason,
+    stop_sequence: message.stop_sequence ?? null,
+    usage: { ...projected.usage, ...message.usage }
+  };
+}
+
 /**
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -380,13 +514,23 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat) ?
       targetFormat :
       FORMATS.OPENAI;
-      let parsed = isGeminiFamily ?
+      const claudeSSE = targetFormat === FORMATS.CLAUDE ?
+      parseClaudeSSE(sseText, model, {
+        providerBody: finalBody || translatedBody,
+        toolNameMap,
+        nativeMessage: sourceFormat === FORMATS.CLAUDE
+      }) :
+      null;
+      let parsed = claudeSSE ? claudeSSE.completion : isGeminiFamily ?
       parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap) :
       parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
         providerBody: finalBody || translatedBody
       });
-      if (!parsed) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      if (!parsed) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+      }
       const sseError = createSSEErrorResult(parsed, credentials);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
@@ -410,10 +554,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(
           HTTP_STATUS.BAD_GATEWAY,
-          "Provider returned an incoherent non-streaming response"
+          INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE
         );
       }
 
+      const emptyOutput = claudeSSE && isEmptyClaudeCompletion(parsed, claudeSSE.stopReason);
       const usage = parsed.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
       saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
@@ -451,12 +596,18 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
       const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
       const resolveToolName = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ? createResponsesToolNameResolver(body, toolNameMap) : undefined;
-      const finalResp = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
+      const projected = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
+      const finalResp = claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
       // Chat clients get the projection as-is, so restore request-side aliases (#1406).
       if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
       await markSuccess();
+      if (emptyOutput && onEmptyStream) {
+        log?.warn?.("CHATCORE", `${provider}/${model} stream completed with no usable output`);
+        try {Promise.resolve(onEmptyStream()).catch(() => console.error("[ChatCore] empty-stream cooldown failed"));}
+        catch {console.error("[ChatCore] empty-stream cooldown failed");}
+      }
       return { success: true, response: new Response(JSON.stringify(finalResp), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
     } catch (err) {
       console.error(`[ChatCore] Chat Completions SSE→JSON failed: ${err?.name || "Error"}`);

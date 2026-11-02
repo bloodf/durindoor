@@ -516,6 +516,33 @@ function emitToolCall(state, emit, tc) {
     }
   }
 }
+/**
+ * The Chat client's declared custom tool name for an upstream (possibly aliased)
+ * call name, or null when the client did not declare it as custom (#1436).
+ */
+function declaredChatCustomToolName(state, name) {
+  if (!state.chatCustomToolNames?.size || !isString(name)) return null;
+  const restored = resolveResponsesToolName(state, state.toolNameMap?.get?.(name) ?? name).name;
+  return state.chatCustomToolNames.has(restored) ? restored : null;
+}
+
+/**
+ * Emit the JSON `{input}` arguments of wrapped custom tool calls whose item never
+ * reached output_item.done (truncated or failed stream), so their input is not lost (#1436).
+ */
+function flushWrappedCustomToolInputs(state) {
+  const chunks = [];
+  for (const [idx, kind] of state.respCustomToolKinds || []) {
+    if (kind !== "wrapped" || state.respToolArgsEmitted?.has(idx)) continue;
+    (state.respToolArgsEmitted ??= new Set()).add(idx);
+    chunks.push(buildChunk(
+      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+      { tool_calls: [{ index: idx, function: { arguments: JSON.stringify({ input: state.respCustomToolInput?.get(idx) || "" }) } }] }
+    ));
+  }
+  return chunks;
+}
+
 function isCustomToolByState(state, tcIdx, funcName) {
   // Classify by the resolved name so an injected prefix (`functions.apply_patch`)
   // frames the same way the buffered projector does.
@@ -689,7 +716,9 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       finalChunk.usage = state.usage;
     }
 
-    return finalChunk;
+    // A stream that ends with no terminal event still owes buffered custom input.
+    const pending = flushWrappedCustomToolInputs(state);
+    return pending.length ? [...pending, finalChunk] : finalChunk;
   }
 
   // Handle different event types from Responses API
@@ -710,6 +739,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     state.respToolChatIndex ??= new Map();
     // Indices that already received argument deltas (guards done-with-args).
     state.respToolArgsEmitted ??= new Set();
+  }
+  // A new response starts with no custom-tool framing or buffered input (#1436).
+  if (eventType === "response.created") {
+    state.respCustomToolKinds?.clear();
+    state.respCustomToolInput?.clear();
   }
 
   // Text content delta
@@ -751,10 +785,23 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     if (itemKey) state.respToolChatIndex.set(itemKey, idx);
     state.respToolChatIndex.set(state.currentToolCallId, idx);
 
+    // A custom_tool_call carries raw (non-JSON) input. A Chat client that
+    // declared the tool gets the Chat custom shape; any other client gets a
+    // function call whose arguments are wrapped as JSON `{input}` once complete (#1436).
+    const customName = item.type === "custom_tool_call" ? declaredChatCustomToolName(state, item.name) : null;
+    if (item.type === "custom_tool_call") {
+      (state.respCustomToolKinds ??= new Map()).set(idx, customName ? "custom" : "wrapped");
+    }
+    const kind = state.respCustomToolKinds?.get(idx);
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
       {
-        tool_calls: [{
+        tool_calls: [kind === "custom" ? {
+          index: idx,
+          id: state.currentToolCallId,
+          type: "custom",
+          custom: { name: customName, input: "" }
+        } : {
           index: idx,
           id: state.currentToolCallId,
           type: OPENAI_BLOCK.FUNCTION,
@@ -780,11 +827,17 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     (strippedItemId !== rawItemId ? state.respToolChatIndex?.get(strippedItemId) : undefined) ??
     (state.currentToolCallId ? state.respToolChatIndex?.get(state.currentToolCallId) : undefined);
     const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
+    const kind = state.respCustomToolKinds?.get(idx);
+    if (kind === "wrapped") {
+      // Raw input becomes JSON only when complete; buffer until the item is done.
+      (state.respCustomToolInput ??= new Map()).set(idx, (state.respCustomToolInput.get(idx) || "") + argsDelta);
+      return null;
+    }
     state.respToolArgsEmitted ??= new Set();
     state.respToolArgsEmitted.add(idx);
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { tool_calls: [{ index: idx, function: { arguments: argsDelta } }] }
+      { tool_calls: [kind === "custom" ? { index: idx, custom: { input: argsDelta } } : { index: idx, function: { arguments: argsDelta } }] }
     );
   }
 
@@ -797,6 +850,25 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
     (doneItem?.call_id ? state.respToolChatIndex?.get(doneItem.call_id) : undefined) ??
     Math.max(0, (state.toolCallIndex || 1) - 1);
+    const kind = state.respCustomToolKinds?.get(idx);
+    if (kind === "wrapped") {
+      const buffered = state.respCustomToolInput?.get(idx);
+      const input = buffered ?? (isString(doneItem?.input) ? doneItem.input : "");
+      if (state.respToolArgsEmitted?.has(idx)) return null;
+      (state.respToolArgsEmitted ??= new Set()).add(idx);
+      return buildChunk(
+        { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+        { tool_calls: [{ index: idx, function: { arguments: JSON.stringify({ input }) } }] }
+      );
+    }
+    if (kind === "custom") {
+      if (state.respToolArgsEmitted?.has(idx) || !isString(doneItem?.input) || !doneItem.input) return null;
+      state.respToolArgsEmitted.add(idx);
+      return buildChunk(
+        { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+        { tool_calls: [{ index: idx, custom: { input: doneItem.input } }] }
+      );
+    }
     const fullArgs = doneItem?.arguments;
     if (isString(fullArgs) && fullArgs) {
       state.respToolArgsEmitted ??= new Set();
@@ -848,9 +920,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         finalChunk.usage = state.usage;
       }
 
-      return finalChunk;
+      const pending = flushWrappedCustomToolInputs(state);
+      return pending.length ? [...pending, finalChunk] : finalChunk;
     }
-    return null;
+    const pending = flushWrappedCustomToolInputs(state);
+    return pending.length ? pending : null;
   }
 
   // Error events from Responses API (e.g. model_not_found)
@@ -870,11 +944,13 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       ));
 
       // Surface the error as an OpenAI-compatible error chunk
-      return buildChunk(
+      const errorChunk = buildChunk(
         { id: state.chatId || `chatcmpl-${Date.now()}`, created: state.created || Math.floor(Date.now() / 1000), model: state.model || MODEL_FALLBACK },
         { content: `[Error] ${message}` },
         OPENAI_FINISH.STOP
       );
+      const pending = flushWrappedCustomToolInputs(state);
+      return pending.length ? [...pending, errorChunk] : errorChunk;
     }
     return null;
   }

@@ -234,7 +234,8 @@ describe("Responses trailing usage", () => {
     expect(toolStart.choices[0].delta.tool_calls[0].function.name).toBe("apply_patch");
     expect(toolStart.choices[0].delta.tool_calls[0].id).toBe("call_1");
     const argDelta = out.find((chunk) => chunk.choices?.[0]?.delta?.tool_calls?.[0]?.function?.arguments);
-    expect(argDelta.choices[0].delta.tool_calls[0].function.arguments).toBe("*** Begin Patch");
+    // #1436: an undeclared custom tool's raw input is wrapped as JSON {input}.
+    expect(JSON.parse(argDelta.choices[0].delta.tool_calls[0].function.arguments)).toEqual({ input: "*** Begin Patch" });
     const finish = out.find((chunk) => chunk.choices?.[0]?.finish_reason);
     expect(finish.choices[0].finish_reason).toBe("tool_calls");
   });

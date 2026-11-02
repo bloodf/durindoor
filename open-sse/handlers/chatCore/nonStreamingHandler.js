@@ -5,7 +5,7 @@ import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, filterUsageForF
 import { createErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
-import { EMPTY_CONTENT_COOLDOWN_MS } from "../../config/errorConfig.js";
+import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { parseSSEToOpenAIResponse, createSSEErrorResult } from "./sseToJsonHandler.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
@@ -354,7 +354,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
       const claudeMsg = openAIResponsesBodyToClaude(responseBody);
       return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
     }
-    if (sourceFormat === FORMATS.OPENAI) return openAIResponsesBodyToOpenAI(responseBody);
+    if (sourceFormat === FORMATS.OPENAI) {
+      return openAIResponsesBodyToOpenAI(responseBody, { chatCustomToolNames: initState(FORMATS.OPENAI, options.requestBody).chatCustomToolNames, toolNameMap: options.toolNameMap });
+    }
     // Native Gemini uses top-level candidates; Antigravity / gemini-cli keep the
     // { response } envelope that their stream translators emit.
     if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) {
@@ -588,7 +590,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     }
     if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider returned an incoherent non-streaming response");
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
     }
 
     // Provider-specific non-stream normalization (e.g. SenseNova maps

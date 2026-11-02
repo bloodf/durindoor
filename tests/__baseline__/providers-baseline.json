@@ -1680,6 +1680,24 @@
     },
     "format": "openai"
   },
+  "openference-api": {
+    "baseUrl": "https://api.openference.com/v1/chat/completions",
+    "validateUrl": "https://api.openference.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "openvecta": {
+    "baseUrl": "https://api.openvecta.com/v1/chat/completions",
+    "validateUrl": "https://api.openvecta.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "opper": {
+    "baseUrl": "https://api.opper.ai/v3/compat/chat/completions",
+    "validateUrl": "https://api.opper.ai/v3/compat/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "piapi": {
     "baseUrl": "https://api.piapi.ai/v1/chat/completions",
     "validateUrl": "https://api.piapi.ai/v1/models",
@@ -1701,6 +1719,12 @@
       "scheme": "bearer"
     },
     "format": "openai"
+  },
+  "poixe-ai": {
+    "baseUrl": "https://api.poixe.com/v1/chat/completions",
+    "validateUrl": "https://api.poixe.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "sap": {
     "baseUrl": "https://example-aicore.cfapps.eu10.hana.ondemand.com/v2/lm/deployments/example-deployment/chat/completions",

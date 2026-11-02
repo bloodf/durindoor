@@ -14,4 +14,10 @@ describe("TUI combo model identifiers", () => {
     expect(comboModelId({ provider: "ag", model: "gemini-3.8-flash" })).toBe("ag/gemini-3.8-flash");
     expect(comboModelId({ provider: "ag" })).toBeNull();
   });
+
+  it("rejects empty provider or model parts", () => {
+    expect(comboModelId({ provider: "", model: "x" })).toBeNull();
+    expect(comboModelId({ provider: "ag", model: "" })).toBeNull();
+    expect(comboModelId("")).toBeNull();
+  });
 });

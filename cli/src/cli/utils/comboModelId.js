@@ -1,7 +1,13 @@
+const { isString } = require("../../../../src/shared/utils/typeChecks.cjs");
+
+function nonEmpty(value) {
+  return isString(value) && value !== "";
+}
+
 function comboModelId(model) {
-  if (typeof model === "string") return model;
-  if (typeof model?.fullModel === "string" && model.fullModel) return model.fullModel;
-  if (typeof model?.provider === "string" && typeof model?.model === "string") {
+  if (nonEmpty(model)) return model;
+  if (nonEmpty(model?.fullModel)) return model.fullModel;
+  if (nonEmpty(model?.provider) && nonEmpty(model?.model)) {
     return `${model.provider}/${model.model}`;
   }
   return null;

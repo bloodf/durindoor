@@ -46,6 +46,19 @@ describe("#1382 first-party-gated betas", () => {
     expect(value).toContain("context-management-2025-06-27");
   });
 
+  it("does not forward a client's first-party-only beta to a third-party gateway", () => {
+    const clientHeaders = { "anthropic-beta": "thinking-binding-controls-2026-08-01,timing-2026-09-09" };
+    const credentials = (baseUrl) => ({ apiKey: "k", providerSpecificData: { baseUrl } });
+    const headersFor = (baseUrl) => new DefaultExecutor("anthropic-compatible-x")
+      .buildHeaders(credentials(baseUrl), true, { clientHeaders }, "claude-sonnet-5-5");
+    const third = headersFor("https://gateway.example.com/v1")["Anthropic-Beta"];
+    expect(third).toContain("timing-2026-09-09");
+    expect(third).not.toContain("thinking-binding-controls-2026-08-01");
+    expect(headersFor("https://api.anthropic.com/v1")["Anthropic-Beta"]).toContain("thinking-binding-controls-2026-08-01");
+    const claude = new DefaultExecutor("claude").buildHeaders({ apiKey: "k" }, true, { clientHeaders }, "claude-sonnet-5-5");
+    expect(claude["Anthropic-Beta"] ?? claude["anthropic-beta"]).toContain("thinking-binding-controls-2026-08-01");
+  });
+
   it.each([
     ["default base URL", {}],
     ["api.anthropic.com", { baseUrl: "https://api.anthropic.com/v1" }],

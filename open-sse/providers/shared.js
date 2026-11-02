@@ -193,14 +193,17 @@ export const FORWARDABLE_CLIENT_BETAS = new Set([
 
 /**
  * Add the allowlisted betas the calling client sent to the outbound Anthropic-Beta header.
- * Other client betas are ignored. Mutates and returns `headers`.
+ * Other client betas are ignored, and first-party-only betas are dropped unless
+ * `firstParty` (the upstream is api.anthropic.com, #1382). Mutates and returns `headers`.
  * @param {Record<string, string>} headers outbound headers
  * @param {Record<string, string>|null|undefined} clientHeaders inbound request headers
+ * @param {{ firstParty?: boolean }} [options]
  */
-export function mergeForwardableClientBetas(headers, clientHeaders) {
+export function mergeForwardableClientBetas(headers, clientHeaders, { firstParty = true } = {}) {
   const raw = clientHeaders?.["anthropic-beta"] ?? clientHeaders?.["Anthropic-Beta"];
   if (!isString(raw)) return headers;
-  const wanted = raw.split(",").map((f) => f.trim()).filter((f) => FORWARDABLE_CLIENT_BETAS.has(f));
+  const wanted = raw.split(",").map((f) => f.trim()).
+  filter((f) => FORWARDABLE_CLIENT_BETAS.has(f) && (firstParty || !CLAUDE_FIRST_PARTY_ONLY_BETAS.includes(f)));
   if (wanted.length === 0) return headers;
   const key = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
   const flags = new Set((headers[key] || "").split(",").map((f) => f.trim()).filter(Boolean));

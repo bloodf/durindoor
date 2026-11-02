@@ -578,12 +578,14 @@ export class DefaultExecutor extends BaseExecutor {
     // claudeOverlay live-header merge — so this block only covers
     // anthropic-compatible-* nodes.)
     const isClaudeModel = isString(model) && /^claude-/.test(model);
+    const compatBaseUrl = credentials?.providerSpecificData?.baseUrl || "";
+    // `claude` always targets api.anthropic.com; compat nodes only when their host is official.
+    const firstPartyHost = this.provider === "claude" || compatBaseUrl === "" || isOfficialAnthropicBaseUrl(compatBaseUrl);
     if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
-      const compatBaseUrl = credentials?.providerSpecificData?.baseUrl || "";
-      headers["Anthropic-Beta"] = selectAnthropicBeta(model, { firstParty: compatBaseUrl === "" || isOfficialAnthropicBaseUrl(compatBaseUrl) });
+      headers["Anthropic-Beta"] = selectAnthropicBeta(model, { firstParty: firstPartyHost });
     }
     if (this.provider === "claude" || (this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel)) {
-      mergeForwardableClientBetas(headers, requestContext?.clientHeaders);
+      mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams

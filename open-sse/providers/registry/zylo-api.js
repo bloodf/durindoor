@@ -7,7 +7,7 @@ export default {
     color: "#7C2D12",
     textIcon: "ZY",
     notice: {
-      text: "Public /v1/models uses a non-standard {text:[...]} shape; no model fetcher is configured.",
+      text: "Models are accepted by id; automatic model discovery is not available for this provider.",
     },
   },
   category: "apikey",

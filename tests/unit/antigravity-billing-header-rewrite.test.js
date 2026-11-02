@@ -38,8 +38,16 @@ describe("Antigravity strips the Claude Code billing header from system prompts"
 
   it("rewrites the Hermes Agent identity line without touching the rest of the prompt", () => {
     const text = systemTextSentToAntigravity("You are Hermes Agent, an intelligent AI assistant created by Nous Research. Be concise.");
-    expect(text).toContain("You are Hermes Agent. You are an intelligent AI assistant.");
-    expect(text).toContain("Be concise.");
+    expect(text).toBe("You are an AI assistant. Be concise.");
+  });
+
+  it.each([
+    "You are Hermes Agent, an AI agent built by Nous Research.",
+    "You are Hermes, an AI assistant created by Nous Research.",
+    "You are Hermes Agent.",
+    "You are Hermes created by Nous Research.",
+  ])("rewrites the Hermes identity variant %j (upstream a61fc6a0)", (line) => {
+    expect(systemTextSentToAntigravity(`${line} Use tools.`)).toBe("You are an AI assistant. Use tools.");
   });
 
   it("leaves unrelated system content untouched by the Hermes rewrite", () => {

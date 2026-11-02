@@ -515,6 +515,23 @@ function emitToolCall(state, emit, tc) {
     }
   }
 }
+/**
+ * Emit the JSON `{input}` arguments of wrapped custom tool calls whose item never
+ * reached output_item.done (truncated or failed stream), so their input is not lost (#1436).
+ */
+function flushWrappedCustomToolInputs(state) {
+  const chunks = [];
+  for (const [idx, kind] of state.respCustomToolKinds || []) {
+    if (kind !== "wrapped" || state.respToolArgsEmitted?.has(idx)) continue;
+    (state.respToolArgsEmitted ??= new Set()).add(idx);
+    chunks.push(buildChunk(
+      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+      { tool_calls: [{ index: idx, function: { arguments: JSON.stringify({ input: state.respCustomToolInput?.get(idx) || "" }) } }] }
+    ));
+  }
+  return chunks;
+}
+
 function isCustomToolByState(state, tcIdx, funcName) {
   // Classify by the resolved name so an injected prefix (`functions.apply_patch`)
   // frames the same way the buffered projector does.
@@ -710,6 +727,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     // Indices that already received argument deltas (guards done-with-args).
     state.respToolArgsEmitted ??= new Set();
   }
+  // A new response starts with no custom-tool framing or buffered input (#1436).
+  if (eventType === "response.created") {
+    state.respCustomToolKinds?.clear();
+    state.respCustomToolInput?.clear();
+  }
 
   // Text content delta
   if (eventType === "response.output_text.delta") {
@@ -884,9 +906,11 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
         finalChunk.usage = state.usage;
       }
 
-      return finalChunk;
+      const pending = flushWrappedCustomToolInputs(state);
+      return pending.length ? [...pending, finalChunk] : finalChunk;
     }
-    return null;
+    const pending = flushWrappedCustomToolInputs(state);
+    return pending.length ? pending : null;
   }
 
   // Error events from Responses API (e.g. model_not_found)
@@ -904,11 +928,13 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       );
 
       // Surface the error as an OpenAI-compatible error chunk
-      return buildChunk(
+      const errorChunk = buildChunk(
         { id: state.chatId || `chatcmpl-${Date.now()}`, created: state.created || Math.floor(Date.now() / 1000), model: state.model || MODEL_FALLBACK },
         { content: `[Error] ${message}` },
         OPENAI_FINISH.STOP
       );
+      const pending = flushWrappedCustomToolInputs(state);
+      return pending.length ? [...pending, errorChunk] : errorChunk;
     }
     return null;
   }

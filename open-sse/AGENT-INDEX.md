@@ -93,11 +93,14 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `ant-ling` | openai | apikey | `https://api.ant-ling.com/v1/chat/completions` |
 | `anthropic` | claude | apikey | `https://api.anthropic.com/v1/messages` |
 | `antigravity` | antigravity | oauth | `` |
+| `anyapi` |  | apikey | `https://api.anyapi.ai/v1/chat/completions` |
 | `anysearch` |  | apikey | `` |
 | `api-airforce` |  | apikey | `https://api.airforce/v1/chat/completions` |
+| `apmix` |  | apikey | `https://api.apmix.ai/v1/chat/completions` |
 | `arcee-ai` |  | apikey | `https://conductor.arcee.ai/v1/chat/completions` |
 | `assemblyai` |  | apikey | `https://api.assemblyai.com/v1/audio/transcriptions` |
 | `auggie` | openai | free | `auggie://cli/stdio` |
+| `auriko` |  | apikey | `https://api.auriko.ai/v1/chat/completions` |
 | `auto` |  | system | `` |
 | `aws-polly` |  | apikey | `` |
 | `azure` |  | apikey | `` |
@@ -109,6 +112,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `bailian-coding-plan` | claude | apikey | `https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1/messages` |
 | `baseten` |  | apikey | `https://inference.baseten.co/v1/chat/completions` |
 | `bazaarlink` |  | apikey | `https://bazaarlink.ai/api/v1/chat/completions` |
+| `beatapi` |  | apikey | `https://api.beatapi.io/v1/chat/completions` |
 | `bedrock` | openai | apikey | `https://bedrock-runtime.us-east-1.amazonaws.com` |
 | `bigmodel` |  | apikey | `https://open.bigmodel.cn/api/paas/v4/chat/completions` |
 | `black-forest-labs` |  | apikey | `` |
@@ -166,11 +170,14 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `duckduckgo-web` | openai | free | `https://duckduckgo.com/duckchat/v1/chat` |
 | `dxnt` |  | apikey | `https://www.dxnt.com/v1/chat/completions` |
 | `edge-tts` |  | freeTier | `` |
+| `electronhub` |  | apikey | `https://api.electronhub.ai/v1/chat/completions` |
 | `elevenlabs` |  | apikey | `` |
 | `empower` |  | apikey | `https://app.empower.dev/api/v1/chat/completions` |
+| `eurouter` |  | apikey | `https://api.eurouter.ai/v1/chat/completions` |
 | `exa` |  | apikey | `` |
 | `factory` |  | apikey | `https://api.factory.ai/v1/chat/completions` |
 | `fal-ai` |  | apikey | `` |
+| `fastrouter` |  | apikey | `https://api.fastrouter.ai/api/v1/chat/completions` |
 | `featherless-ai` |  | apikey | `https://api.featherless.ai/v1/chat/completions` |
 | `fenayai` |  | apikey | `https://api.fenayai.com/v1/chat/completions` |
 | `firecrawl` |  | apikey | `` |
@@ -178,6 +185,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `fireworks` |  | apikey | `https://api.fireworks.ai/inference/v1/chat/completions` |
 | `fish-audio` |  | apikey | `` |
 | `freeaiapikey` |  | apikey | `https://api.freeaiapikey.com/v1/chat/completions` |
+| `freeinference` |  | apikey | `https://freeinference.org/v1/chat/completions` |
 | `freemodel-dev` |  | apikey | `https://api.freemodel.dev/v1/chat/completions` |
 | `friendliai` |  | apikey | `https://api.friendli.ai/serverless/v1/chat/completions` |
 | `galadriel` |  | apikey | `https://api.galadriel.com/v1/verified/chat/completions` |

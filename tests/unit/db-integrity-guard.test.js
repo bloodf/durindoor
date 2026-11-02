@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 let tempDir;
 const originalDataDir = process.env.DATA_DIR;
 
@@ -14,11 +15,12 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
   try {
     global._dbAdapter?.instance?.close?.();
   } catch {}
   delete global._dbAdapter;
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

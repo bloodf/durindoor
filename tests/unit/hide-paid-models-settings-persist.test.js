@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 // #6495 / F-4 — settings persistence. The `hidePaidModels` toggle must survive
 // a real API round-trip against the real repository: PATCH /api/settings flips
 // it, GET /api/settings reads the same value back from the persisted sqlite
@@ -35,7 +36,8 @@ beforeAll(async () => {
   settingsRoute = await import("../../src/app/api/settings/route.js");
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

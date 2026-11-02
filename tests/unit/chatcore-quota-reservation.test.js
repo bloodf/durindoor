@@ -122,6 +122,32 @@ describe("chatCore quota reservation boundary", () => {
     activeSessions.clear();
   });
 
+  it.each(["openai", "groq"])("redacts opaque SSE-error credentials through the %s buffered dispatch (#1355)", async (provider) => {
+    const secret = "opaque-selected-buffered-1355";
+    const onRequestSuccess = vi.fn();
+    const quota = reservation();
+    executeMock.mockResolvedValue({
+      response: new Response(`data: ${JSON.stringify({ error: { status: 401, message: `Rejected ${secret}` } })}\n\ndata: [DONE]\n\n`, {
+        status: 200, headers: { "content-type": "text/event-stream" },
+      }),
+      url: "https://provider.invalid/chat/completions", headers: {}, transformedBody: null,
+      terminalProvenance: "upstream",
+    });
+    const result = await handleChatCore(args(quota, {
+      modelInfo: { provider, model: "gpt-4o" },
+      credentials: { apiKey: secret }, onRequestSuccess,
+    }));
+    expect(executeMock).toHaveBeenCalledOnce();
+    expect(result.success).toBe(false);
+    expect(result.response.status).toBe(401);
+    expect(result.error).toContain("[redacted]");
+    expect(result.error).not.toContain(secret);
+    expect(await result.response.text()).not.toContain(secret);
+    expect(onRequestSuccess).not.toHaveBeenCalled();
+    expect(quota.settle).toHaveBeenCalledOnce();
+    expect(quota.settle).toHaveBeenCalledWith({ success: false, reason: "stream_error" });
+  });
+
   it("fails locally before dispatch when atomic capacity cannot be acquired", async () => {
     const error = Object.assign(new Error("Provider quota capacity unavailable"), {
       code: "QUOTA_DISPATCH_UNAVAILABLE",

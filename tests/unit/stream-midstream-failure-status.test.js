@@ -72,10 +72,24 @@ describe("translate-mode streams hand a mid-stream failure to onStreamComplete",
       sse([["response.created", CREATED], ["response.failed", FAILED_RESPONSE]]),
     );
 
-    // The client still gets the translator's error chunk, unchanged.
-    expect(clientText).toContain("[Error] An error occurred while processing your request.");
+    // #1327: the client gets the Chat protocol error terminal, not [Error] stop content.
+    expect(clientText).not.toContain("[Error]");
+    expect(clientText).toContain(`data: ${JSON.stringify({ error: { message: "An error occurred while processing your request.", type: "server_error", code: "server_error" } })}`);
     expect(onStreamComplete).toHaveBeenCalledTimes(1);
     expect(onStreamComplete.mock.calls[0][0].upstreamError).toMatchObject({ code: "server_error" });
+  });
+
+  it("ends a response.failed without an error object as an error terminal, not stop content", async () => {
+    const { onStreamComplete, clientText } = await runTranslate(
+      FORMATS.OPENAI_RESPONSES,
+      FORMATS.OPENAI,
+      sse([["response.created", CREATED], ["response.failed", { type: "response.failed", response: { id: "resp_1", status: "failed", error: null } }]]),
+    );
+
+    expect(clientText).not.toContain("[Error]");
+    expect(clientText).not.toContain('"finish_reason":"stop"');
+    expect(clientText).toContain('"message":"Upstream response failed"');
+    expect(onStreamComplete.mock.calls[0][0].upstreamError).toMatchObject({ message: "Upstream response failed" });
   });
 
   it("reports no error for a stream that completes normally", async () => {

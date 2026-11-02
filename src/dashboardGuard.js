@@ -439,6 +439,18 @@ export async function isOperatorRequest(request) {
 }
 
 /**
+ * Principal check shared by API-key and provider-node mutations
+ * (`/api/keys`, `/api/provider-nodes`). Only operators qualify today; a later
+ * admin scope on API keys is meant to widen this one helper.
+ *
+ * @param {Request} request
+ * @returns {Promise<boolean>}
+ */
+export async function canManageAccessConfig(request) {
+  return isOperatorRequest(request);
+}
+
+/**
  * Management routes (providers, usage, keys, settings, …) must not trust the
  * global requireLogin=false bypass for remote callers. JWT and CLI token always
  * qualify; a valid DurinDoor application API key grants full programmatic
@@ -633,7 +645,11 @@ export async function proxy(request) {
       if (await canAccessManagementApi(request)) return NextResponse.next();
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (await hasValidCliToken(request) || await isAuthenticated(request))
+    // The open-dashboard policy (requireLogin=false) applies to loopback peers
+    // only; remote callers need a CLI token or a dashboard session.
+    if (await hasValidCliToken(request) || await hasValidToken(request))
+      return NextResponse.next();
+    if (isLocalRequest(request) && await isAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

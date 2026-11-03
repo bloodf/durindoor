@@ -1,5 +1,5 @@
 // NanoBanana API — async submit + poll record-info
-import { sleep, nowSec, sizeToAspectRatio, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, fetchJobStatus, jobOutcomeUnknown } from "./_base.js";
+import { sleep, nowSec, sizeToAspectRatio, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, fetchJobStatus, jobOutcomeUnknown, readJobBody } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const IMG_CFG = PROVIDER_MEDIA["nanobanana"]?.imageConfig || {};
@@ -44,7 +44,7 @@ export default {
     while (Date.now() < deadline) {
       await sleep(POLL_INTERVAL_MS, signal);
       const r = await fetchJobStatus(pollUrl, { headers, signal }, "NanoBanana");
-      const s = await r.json();
+      const s = await readJobBody(() => r.json(), signal);
       const flag = s.data?.successFlag;
       if (flag === 1) return s.data;
       if (flag === 2 || flag === 3) throw new Error(s.data?.errorMessage || "NanoBanana generation failed");

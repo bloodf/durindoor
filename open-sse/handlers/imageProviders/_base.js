@@ -32,6 +32,17 @@ export async function fetchJobStatus(url, init, label) {
   return response;
 }
 
+// Read an accepted job's status or result body. An abort stays an abort; an unreadable
+// body loses sight of the job, so it is a lost observation, not a reported failure.
+export async function readJobBody(read, signal) {
+  try {
+    return await read();
+  } catch (error) {
+    if (error?.jobOutcomeUnknown || signal?.aborted || error?.name === "AbortError") throw error;
+    throw jobOutcomeUnknown(error?.message || String(error));
+  }
+}
+
 // Map OpenAI size to provider-specific aspect ratio
 export function sizeToAspectRatio(size) {
   if (!size || !isString(size)) return "1:1";

@@ -1,5 +1,5 @@
 // Runway ML — async submit + /tasks/{id} polling
-import { sleep, nowSec, sizeToAspectRatio, fetchJobStatus, jobOutcomeUnknown, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
+import { sleep, nowSec, sizeToAspectRatio, fetchJobStatus, jobOutcomeUnknown, readJobBody, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const BASE_URL = PROVIDER_MEDIA["runwayml"]?.imageConfig?.baseUrl;
@@ -34,7 +34,7 @@ export default {
     while (Date.now() < deadline) {
       await sleep(POLL_INTERVAL_MS, signal);
       const r = await fetchJobStatus(taskUrl, { headers, signal }, "Runway");
-      const s = await r.json();
+      const s = await readJobBody(() => r.json(), signal);
       if (s.status === "SUCCEEDED") return s;
       if (s.status === "FAILED" || s.status === "CANCELLED") throw new Error(s.failure || "Runway task failed");
     }

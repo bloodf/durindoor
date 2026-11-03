@@ -1,5 +1,5 @@
 // Black Forest Labs (FLUX) — async submit + polling_url
-import { sleep, nowSec, fetchJobStatus, jobOutcomeUnknown, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
+import { sleep, nowSec, fetchJobStatus, jobOutcomeUnknown, readJobBody, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const BASE_URL = PROVIDER_MEDIA["black-forest-labs"]?.imageConfig?.baseUrl;
@@ -29,7 +29,7 @@ export default {
     while (Date.now() < deadline) {
       await sleep(POLL_INTERVAL_MS, signal);
       const r = await fetchJobStatus(pollingUrl, { headers: { "x-key": headers["x-key"], "Accept": "application/json" }, signal }, "BFL");
-      const s = await r.json();
+      const s = await readJobBody(() => r.json(), signal);
       if (s.status === "Ready") return s;
       if (s.status === "Error" || s.status === "Failed") throw new Error(s.error || "BFL generation failed");
     }

@@ -217,16 +217,24 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
 
     if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId, billingEpoch);
 
-    if (result.acceptedJob) await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
-
     // Client abort: no account cooldown and no fallthrough to other accounts.
-    if (request.signal?.aborted) return result.response;
+    if (request.signal?.aborted) {
+      if (result.acceptedJob) await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
+      return result.response;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
       usedCredential: credentials.accessToken || credentials.apiKey || null
     });
+
+    // The provider may still run and bill the accepted job, so another account would
+    // be a second billable job. The account health update above still applies.
+    if (result.acceptedJob) {
+      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
+      return result.response;
+    }
 
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);

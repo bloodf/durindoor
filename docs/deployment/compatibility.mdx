@@ -47,10 +47,9 @@ No other Node version is tested. The packages that DurinDoor depends on may list
 
 ## Known gaps
 
-- `tests/package.json` still declares `node: ^20.19.0 || >=22.12.0` for the test package, while CI runs it on 26.13.0.
-- `cli/hooks/sqliteRuntime.js` pins `better-sqlite3` `12.10.1` for the CLI runtime copy, while the app depends on `^12.11.1`. Both have Node 26 prebuilt binaries.
-- `tests/unit/node-version-alignment.test.js` keeps the table above honest for the app, CLI, Dockerfile and workflows. It does not cover the two gaps above.
+- `tests/unit/node-version-alignment.test.js` keeps the Node table above honest for the app, test package, CLI, Dockerfile and workflows. It also checks that the `better-sqlite3` and `sql.js` versions the CLI installs into `DATA_DIR/runtime` satisfy the app's ranges.
 - There is no required CI job that runs the standalone artifact on macOS or Windows, or the server on `sql.js`, `node:sqlite` or a live PostgreSQL server.
+- The CLI runtime pins exact versions rather than the app's ranges, because npm runs through a shell on Windows that mangles `^`. They must be bumped together with `package.json`.
 
 ## Move to a new Node, machine or platform
 

@@ -13,7 +13,7 @@ import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { handleComboChat } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
@@ -219,8 +219,9 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
 
     // Client abort: no account cooldown and no fallthrough to other accounts.
     if (request.signal?.aborted) {
-      if (result.acceptedJob) await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
-      return result.response;
+      if (!result.acceptedJob) return result.response;
+      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
+      return markAcceptedJob(result.response);
     }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
@@ -233,7 +234,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     // be a second billable job. The account health update above still applies.
     if (result.acceptedJob) {
       await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
-      return result.response;
+      return markAcceptedJob(result.response);
     }
 
     if (shouldFallback) {
@@ -255,6 +256,13 @@ async function recordImageUsage(apiKey, result, request, provider, model, connec
     usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
     endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
   });
+}
+
+/** Tell a combo not to try the next member: the accepted job may still bill. */
+function markAcceptedJob(response) {
+  const headers = new Headers(response.headers);
+  headers.set(ACCEPTED_JOB_HEADER, "1");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 /** The request already ended without a result, so a ledger failure is logged and never replaces that outcome. */

@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 // never sees its terminal state. Real handler, core, adapter, policy and SQLite;
 // only credentials, model parsing and the provider HTTP transport are synthetic.
 
-const state = vi.hoisted(() => ({ credentials: vi.fn(), markUnavailable: vi.fn() }));
+const state = vi.hoisted(() => ({ credentials: vi.fn(), markUnavailable: vi.fn(), combo: null }));
 vi.mock("@/sse/services/auth.js", () => ({
   resolveClientApiKey: async () => ({ apiKey: "job-secret", auth: { ok: true, apiKeyId: "job-key" } }),
   hasValidCliToken: async () => false,
@@ -19,8 +19,8 @@ vi.mock("@/sse/services/auth.js", () => ({
 }));
 vi.mock("@/sse/services/model.js", () => ({
   getModelInfo: async (value) => { const [provider, ...model] = value.split("/"); return { provider, model: model.join("/") }; },
-  getComboModels: async () => null,
-  getComboCanonicalName: async () => null,
+  getComboModels: async () => state.combo,
+  getComboCanonicalName: async () => (state.combo ? "image-combo" : null),
 }));
 vi.mock("@/sse/services/mediaRoutes.js", () => ({ wantsDefaultRoute: (model) => !model, resolveMediaRoute: vi.fn(), defaultRouteComboOptions: () => ({}) }));
 vi.mock("@/sse/services/tokenRefresh.js", () => ({ checkAndRefreshToken: async (_p, c) => c, updateProviderCredentials: vi.fn() }));
@@ -78,6 +78,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   state.credentials.mockReset().mockResolvedValue({ connectionId: "account-a", apiKey: "provider-secret", connectionName: "A" });
   state.markUnavailable.mockReset().mockResolvedValue({ shouldFallback: false });
+  state.combo = null;
   vi.stubGlobal("fetch", vi.fn());
   database = await import("@/lib/db/index.js");
   adapter = await (await import("@/lib/db/driver.js")).getAdapter();
@@ -203,5 +204,42 @@ describe("accepted async image jobs without a terminal observation", () => {
     fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => { controller.abort(); throw controller.signal.reason; });
     adapter.run("DROP TABLE usageHistory");
     expect((await send(controller)).status).toBe(499);
+  });
+});
+
+describe("combo fallback after an accepted async image job", () => {
+  const comboSend = () => handleImage(new Request("http://localhost/v1/images/generations", {
+    method: "POST", body: JSON.stringify({ model: "image-combo", prompt: "fixture" }),
+  }));
+
+  it("surfaces the timeout instead of starting a job on the next member", async () => {
+    state.combo = ["runwayml/gen4_image", "fal-ai/flux"];
+    const now = Date.now();
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(now + 600_000);
+      return json({ status: "RUNNING" });
+    });
+    const response = await comboSend();
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-durindoor-accepted-job")).toBe("1");
+    expect(await response.text()).toContain("Runway polling timeout");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(state.credentials).toHaveBeenCalledTimes(1);
+    expect(rows()).toHaveLength(1);
+    expectAcceptedUnknown(rows()[0]);
+  });
+
+  it("still moves to the next member when the first refused the submission", async () => {
+    state.combo = ["runwayml/gen4_image", "fal-ai/flux"];
+    fetch
+      .mockResolvedValueOnce(json({ error: { message: "upstream down" } }, 503))
+      .mockResolvedValueOnce(json({ status_url: "https://q.test/s", response_url: "https://q.test/r" }))
+      .mockResolvedValueOnce(json({ status: "COMPLETED" }))
+      .mockResolvedValueOnce(json({ images: [{ url: "https://x.test/i.png" }] }));
+    const response = await comboSend();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-durindoor-accepted-job")).toBeNull();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ provider: "fal-ai", status: "ok" });
   });
 });

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
 import { getAdapter } from "@/lib/db/driver.js";
-import { assertBillingEpochSync } from "@/lib/db/repos/usageRepo.js";
+import { assertBillingEpochSync, retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, resolveClientApiKey } from "../services/auth.js";
@@ -11,7 +11,7 @@ import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import * as log from "../utils/logger.js";
 import { isString } from "@/shared/utils/typeChecks.js";
@@ -31,8 +31,10 @@ async function enforceVideoPolicy(request, provider, model, apiKey) {
   return enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
 }
 
+// Success settles the accepted row from job creation; a provider failure removes it.
 async function recordVideoJobUsage(job, apiKey) {
-  if (job?.terminal?.status !== "succeeded") return;
+  if (!job?.terminal) return;
+  if (job.terminal.status !== "succeeded") return retractAcceptedUsage({ usageEventId: job.usageEventId, billingEpoch: job.billingEpoch });
   const { timestamp, tokens, nativeUnits, cost, costStatus, costSource, meta } = job.terminal;
   await recordApiKeyUsage(apiKey, {
     billingEpoch: job.billingEpoch,
@@ -331,6 +333,11 @@ async function handleVideoCreateHandler(request, action) {
       provider, model, connectionId: credentials.connectionId, resourceId: result.job.resourceId,
       apiKeyId: apiKeyAuth.apiKeyId, usageEventId, endpoint: `/v1/videos/${action}`,
       billingEpoch,
+    });
+    // The provider may bill this job even if nobody polls it again.
+    await recordAcceptedJobUsage(apiKey, {
+      billingEpoch, usageEventId, provider, model, connectionId: credentials.connectionId,
+      endpoint: `/v1/videos/${action}`, modality: "video",
     });
     return withConnectionHeader(result.response, credentials.connectionId);
   }

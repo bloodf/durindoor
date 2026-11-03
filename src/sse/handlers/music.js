@@ -7,7 +7,8 @@ import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore
 import { sanitizeSecrets } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import * as log from "../utils/logger.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
@@ -30,6 +31,7 @@ async function replayMusicJob(job, apiKey) {
     model: job.model, connectionId: job.connectionId, endpoint: job.endpoint, modality: "music",
     billingEpoch: job.billingEpoch,
   });
+  else await retractAcceptedUsage({ usageEventId: job.usageEventId, billingEpoch: job.billingEpoch });
   return connectionResponse(new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }), job.connectionId);
 }
 
@@ -117,8 +119,9 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
     if (result.success) {
       if (result.job) {
         await createMediaJob({ modality: "music", provider, model, connectionId: credentials.connectionId, resourceId: result.job.resourceId, apiKeyId, usageEventId, endpoint, billingEpoch });
-        // Creation never bills asynchronous providers, even if its snapshot
-        // already looks complete. The owned GET lifecycle confirms completion.
+        // Creation records an accepted unknown-cost row, even if its snapshot
+        // already looks complete. The owned GET lifecycle settles or removes it.
+        await recordAcceptedJobUsage(apiKey, { billingEpoch, usageEventId, provider, model, connectionId: credentials.connectionId, endpoint, modality: "music" });
         return connectionResponse(result.response, credentials.connectionId);
       }
       if (!result.deferred && result.accounting?.state === "complete") return recordApiKeyUsageForResponse(apiKey, result.response, usage(result.accounting));
@@ -137,7 +140,7 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
 }
 
 /** GET /v1/music/generations/{request_id}. Poll using the returned connection
- * header and the original caller API key. Submission and unfinished polls cost
+ * header and the original caller API key. Submission records an accepted unknown-cost row; unfinished polls add
  * no usage event; durable terminal evidence replays one idempotent ledger event.
  */
 async function handleMusicGetHandler(request, requestId) {

@@ -385,6 +385,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `vertex` | vertex | freeTier | `https://aiplatform.googleapis.com` |
 | `vertex-partner` |  | apikey | `https://aiplatform.googleapis.com` |
 | `vllm` | openai | apikey | `http://localhost:8000/v1` |
+| `void-ai` |  | apikey | `https://api.voidai.app/v1/chat/completions` |
 | `volcengine` |  | apikey | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` |
 | `volcengine-agent-plan` | openai | apikey | `https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions` |
 | `volcengine-ark` |  | apikey | `https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions` |
@@ -402,6 +403,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `xiaomi-tokenplan` |  | apikey | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` |
 | `xinference` | openai | apikey | `http://localhost:9997/v1` |
 | `yi` |  | apikey | `https://api.lingyiwanwu.com/v1/chat/completions` |
+| `yolo-auto` |  | apikey | `https://yolo-auto.com/v1/chat/completions` |
 | `youcom` |  | apikey | `` |
 | `yuanbao-web` | openai | webCookie | `https://yuanbao.tencent.com/api/chat` |
 | `zai` | claude | apikey | `https://api.z.ai/api/anthropic/v1/messages` |

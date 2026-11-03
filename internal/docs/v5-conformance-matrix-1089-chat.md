@@ -1,6 +1,6 @@
 # Issue #1089: OpenAI Chat Completions client matrix
 
-Status counts: already-present 41; failing 17; passing (#1331) 4; repaired (#1335) 3; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
+Status counts: already-present 41; failing 7; passing (#1331) 4; repaired (#1332) 1; repaired (#1333) 2; repaired (#1334) 6; repaired (#1335) 3; repaired (#1356) 1; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
 
 Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing: #<issue> …` reason. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance. The #1330 non-stream error rows assert the live handler 502 contract (Option A), not a Claude/Gemini translator terminal.
 
@@ -55,12 +55,12 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Stream | tool call | Responses | already-present | `streams tool calls to Responses with call identity and completed arguments` |
 | Request | tool-result image media | Claude | repaired (#1356) | `converts tool-result image_url media to Claude image blocks` |
 | Request | tool-result image media | Gemini | already-present | `keeps tool-result image URL visible through Gemini functionResponse` |
-| Request | tool-result image media | Responses | failing | `preserves tool-result image media on Chat to Responses` |
+| Request | tool-result image media | Responses | repaired (#1332) | `preserves tool-result image media on Chat to Responses` |
 | Request | turn-scoped tool pairing | Claude | repaired (#1335) | `pairs Claude tool results only within the current assistant turn` |
 | Request | turn-scoped tool pairing | Gemini | repaired (#1335) | `pairs Gemini tool results only within the current assistant turn` |
 | Request | turn-scoped tool pairing | Responses | repaired (#1335) | `pairs Responses tool results only within the current assistant turn` |
-| Request | non-string object description (#1091) | Kiro | failing | `coerces object tool descriptions before Kiro trim` |
-| Request | non-string numeric description (#1091) | Kiro | failing | `coerces numeric tool descriptions before Kiro trim` |
+| Request | non-string object description (#1091) | Kiro | repaired (#1333) | `coerces object tool descriptions before Kiro trim` |
+| Request | non-string numeric description (#1091) | Kiro | repaired (#1333) | `coerces numeric tool descriptions before Kiro trim` |
 | Request | empty description fallback (#1091) | Kiro | already-present | `fills empty Kiro descriptions with a Tool: name fallback` |
 | Request | tuple prefixItems (lossy Gemini degradation) (#1091) | Gemini | already-present (known degradation) | `converts Gemini tuple prefixItems into items` |
 | Request | free-form schema (#1091) | Claude | already-present | `preserves free-form object schemas on Claude` |

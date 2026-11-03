@@ -26,15 +26,21 @@ Then configure DurinDoor through the environment. Connection rows cannot set the
 
 | Variable | Meaning |
 | --- | --- |
-| `DURINDOOR_CODEX_APPSERVER_WS` | `ws://` or `wss://` URL, without embedded credentials. Required. |
+| `DURINDOOR_CODEX_APPSERVER_WS` | `ws://` or `wss://` URL, without embedded credentials. Required. A `ws://` URL must point at a loopback host unless the opt-in below is set. |
+| `DURINDOOR_CODEX_APPSERVER_ALLOW_INSECURE_WS` | `true`, `1` or `yes` allows a cleartext `ws://` URL to a non-loopback host. Prefer `wss://`. |
 | `DURINDOOR_CODEX_APPSERVER_WS_TOKEN` | Capability token. |
 | `DURINDOOR_CODEX_APPSERVER_WS_TOKEN_FILE` | File holding the token, used when the variable above is unset. |
 | `DURINDOOR_CODEX_APPSERVER_CWD` | Working directory for `thread/start`. Default `/tmp`. |
-| `DURINDOOR_CODEX_APPSERVER_APPROVAL` | Approval policy. Default `never`, so codex does not wait on its own prompts. |
-| `DURINDOOR_CODEX_APPSERVER_SANDBOX` | Sandbox mode. Default `workspace-write`. |
+| `DURINDOOR_CODEX_APPSERVER_APPROVAL` | Approval policy. Default `on-request`; codex's own prompts are denied unless auto-approve is set. |
+| `DURINDOOR_CODEX_APPSERVER_SANDBOX` | Sandbox mode. Default `read-only`. Write or command execution needs an explicit value such as `workspace-write`. |
+| `DURINDOOR_CODEX_APPSERVER_TURN_TIMEOUT_MS` | Overall limit for one turn. Default `600000`. |
 | `DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE` | `true`, `1` or `yes` approves codex's own command, file and permission prompts. Default is to deny them. |
 
 Add the provider once under **Providers** so a connection row exists; it needs no key. With no URL or token set, requests fail with HTTP 503 `codex_app_server_unconfigured`.
+
+## Isolation
+
+Anyone who can call this gateway can start turns on that app-server, so give it only the access you are willing to share. Run the app-server as a separate OS user or in its own container, with no access to the DurinDoor data directory, its database, or other local credential files. Leave the sandbox read-only unless you need more, and treat `workspace-write`, `never` approvals and auto-approve as deliberate choices for a trusted setup.
 
 ## What it does
 

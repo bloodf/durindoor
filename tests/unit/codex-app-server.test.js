@@ -7,7 +7,8 @@ import REGISTRY from "../../open-sse/providers/registry/index.js";
 const TOKEN = "cap-token-0123456789abcdef";
 const ENV_KEYS = [
   "DURINDOOR_CODEX_APPSERVER_WS", "DURINDOOR_CODEX_APPSERVER_WS_TOKEN", "DURINDOOR_CODEX_APPSERVER_WS_TOKEN_FILE",
-  "DURINDOOR_CODEX_APPSERVER_CWD", "DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE",
+  "DURINDOOR_CODEX_APPSERVER_CWD", "DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE", "DURINDOOR_CODEX_APPSERVER_ALLOW_INSECURE_WS",
+  "DURINDOOR_CODEX_APPSERVER_APPROVAL", "DURINDOOR_CODEX_APPSERVER_SANDBOX", "DURINDOOR_CODEX_APPSERVER_TURN_TIMEOUT_MS",
 ];
 let saved;
 
@@ -51,7 +52,7 @@ async function run(script, body = {}, model = "gpt-5.4", extra = {}) {
 
 beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
-  process.env.DURINDOOR_CODEX_APPSERVER_WS = "ws://codex-app-server:1456";
+  process.env.DURINDOOR_CODEX_APPSERVER_WS = "ws://127.0.0.1:1456";
   process.env.DURINDOOR_CODEX_APPSERVER_WS_TOKEN = TOKEN;
 });
 afterEach(() => {
@@ -95,6 +96,116 @@ describe("codex-app-server config", () => {
   });
 });
 
+const guard = () => {
+  const uncaught = [];
+  const onError = (error) => uncaught.push(error);
+  process.on("uncaughtException", onError);
+  process.on("unhandledRejection", onError);
+  return { uncaught, stop: () => { process.off("uncaughtException", onError); process.off("unhandledRejection", onError); } };
+};
+const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+const turnDone = (io) => io.push({ method: "turn/completed", params: {} });
+
+describe("codex-app-server safe defaults and opt-in", () => {
+  it("defaults to a read-only sandbox with on-request approvals, and honours explicit overrides", async () => {
+    const defaults = await run(basicScript(turnDone));
+    expect(defaults.state.sent[1].params).toMatchObject({ approvalPolicy: "on-request", sandbox: "read-only" });
+    process.env.DURINDOOR_CODEX_APPSERVER_APPROVAL = "never";
+    process.env.DURINDOOR_CODEX_APPSERVER_SANDBOX = "workspace-write";
+    const opted = await run(basicScript(turnDone));
+    expect(opted.state.sent[1].params).toMatchObject({ approvalPolicy: "never", sandbox: "workspace-write" });
+  });
+
+  it("refuses cleartext ws:// to a non-loopback host unless opted in", async () => {
+    process.env.DURINDOOR_CODEX_APPSERVER_WS = "ws://app-server.internal:1456";
+    const { factory, state } = makeFactory(basicScript(() => {}));
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory }).execute({ model: "gpt-5.4", body: {} });
+    expect(out.response.status).toBe(503);
+    expect(state.url).toBeNull();
+    process.env.DURINDOOR_CODEX_APPSERVER_ALLOW_INSECURE_WS = "true";
+    const allowed = await run(basicScript(turnDone));
+    expect(allowed.state.url).toBe("ws://app-server.internal:1456");
+  });
+
+  it("allows wss:// to any host", async () => {
+    process.env.DURINDOOR_CODEX_APPSERVER_WS = "wss://app-server.example:443";
+    const { state } = await run(basicScript(turnDone));
+    expect(state.url).toBe("wss://app-server.example:443");
+  });
+});
+
+describe("codex-app-server lifecycle", () => {
+  it("survives a body cancel followed by an abort", async () => {
+    const g = guard();
+    const { factory } = makeFactory(basicScript(() => {}));
+    const controller = new AbortController();
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory }).execute({
+      model: "gpt-5.4", body: { messages: [{ role: "user", content: "hi" }] }, signal: controller.signal,
+    });
+    await out.response.body.cancel();
+    controller.abort();
+    await settle();
+    g.stop();
+    expect(g.uncaught).toEqual([]);
+  });
+
+  it("survives a cancel during connect", async () => {
+    const g = guard();
+    const { factory } = makeFactory(basicScript(() => {}));
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory }).execute({
+      model: "gpt-5.4", body: { messages: [{ role: "user", content: "hi" }] },
+    });
+    await out.response.body.cancel();
+    await settle();
+    g.stop();
+    expect(g.uncaught).toEqual([]);
+  });
+
+  it("interrupts with the real turn id on abort and never sends an empty id", async () => {
+    const controller = new AbortController();
+    const { factory, state } = makeFactory((message, io) => {
+      if (message.method === "initialize") io.push({ id: message.id, result: {} });
+      else if (message.method === "thread/start") io.push({ id: message.id, result: { thread: { id: "thr_1" } } });
+      else if (message.method === "turn/start") {
+        io.push({ id: message.id, result: { turn: { id: "turn_7", status: "inProgress" } } });
+        setTimeout(() => controller.abort(), 5);
+      }
+    });
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory }).execute({
+      model: "gpt-5.4", body: { messages: [{ role: "user", content: "hi" }] }, signal: controller.signal,
+    });
+    const text = await out.response.text();
+    expect(state.sent.filter((m) => m.method === "turn/interrupt")).toEqual([
+      { jsonrpc: "2.0", method: "turn/interrupt", params: { threadId: "thr_1", turnId: "turn_7" } },
+    ]);
+    expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
+
+  it("handles an abort that arrives before thread/start", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { factory, state } = makeFactory(basicScript(() => {}));
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory }).execute({
+      model: "gpt-5.4", body: { messages: [{ role: "user", content: "hi" }] }, signal: controller.signal,
+    });
+    const text = await out.response.text();
+    const methods = state.sent.map((m) => m.method);
+    expect(methods).not.toContain("thread/start");
+    expect(methods).not.toContain("turn/interrupt");
+    expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
+
+  it("fails an unfinished turn after the overall timeout", async () => {
+    const { factory } = makeFactory(basicScript(() => {}));
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory, turnTimeoutMs: 30 }).execute({
+      model: "gpt-5.4", body: { messages: [{ role: "user", content: "hi" }] },
+    });
+    const text = await out.response.text();
+    expect(text).toMatch(/timed out after 30ms/);
+    expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
+});
+
 describe("codex-app-server turn", () => {
   it("streams a text turn as chat chunks with bearer handshake and hardened defaults", async () => {
     const { chunks, text, state } = await run(basicScript((io) => {
@@ -103,11 +214,11 @@ describe("codex-app-server turn", () => {
       io.push({ method: "item/agentMessage/delta", params: { delta: "lo" } });
       io.push({ method: "turn/completed", params: { turn: { usage: { input_tokens: 3, output_tokens: 2 } } } });
     }), { reasoning_effort: "low" }, "gpt-5.4-high");
-    expect(state.url).toBe("ws://codex-app-server:1456");
+    expect(state.url).toBe("ws://127.0.0.1:1456");
     expect(state.options.headers).toEqual({ Authorization: `Bearer ${TOKEN}` });
     const methods = state.sent.map((m) => m.method);
     expect(methods).toEqual(["initialize", "thread/start", "turn/start"]);
-    expect(state.sent[1].params).toMatchObject({ approvalPolicy: "never", sandbox: "workspace-write", cwd: "/tmp" });
+    expect(state.sent[1].params).toMatchObject({ approvalPolicy: "on-request", sandbox: "read-only", cwd: "/tmp" });
     expect(state.sent[1].params.dynamicTools).toBeUndefined();
     expect(state.sent[2].params).toMatchObject({ threadId: "thr_1", model: "gpt-5.4", effort: "high" });
     expect(state.sent[2].params.input[0].text).toContain("[User]\nhi");

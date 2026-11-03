@@ -102,14 +102,31 @@ export class CodexAppServerExecutor extends BaseExecutor {
     const id = `chatcmpl-cxa-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
 
+    let cancelHook = () => client.close();
     const stream = new ReadableStream({
       start: (controller) => {
         const enc = new TextEncoder();
-        const emit = (delta, finish = null, extra = {}) => controller.enqueue(enc.encode(`data: ${JSON.stringify({
+        // sealed: the stream is closed or cancelled, so nothing may be enqueued any more.
+        let sealed = false;
+        const enqueue = (text) => {
+          if (sealed) return;
+          try {
+            controller.enqueue(enc.encode(text));
+          } catch {
+            sealed = true;
+          }
+        };
+        const emit = (delta, finish = null, extra = {}) => enqueue(`data: ${JSON.stringify({
           id, object: "chat.completion.chunk", created, model,
           choices: [{ index: 0, delta, finish_reason: finish }], ...extra,
-        })}\n\n`));
+        })}\n\n`);
         let done = false;
+        let threadId = "";
+        let turnId = "";
+        let timer = null;
+        const interrupt = () => {
+          if (threadId && turnId) client.notify("turn/interrupt", { threadId, turnId });
+        };
         let toolIndex = 0;
         let started = false;
         const start = () => {
@@ -120,30 +137,60 @@ export class CodexAppServerExecutor extends BaseExecutor {
         const finish = (reason, usage, error) => {
           if (done) return;
           done = true;
+          clearTimeout(timer);
           if (error) {
-            controller.enqueue(enc.encode(`data: ${JSON.stringify({ error: { message: error, type: "provider_error", code: "codex_app_server_turn_failed" } })}\n\n`));
+            enqueue(`data: ${JSON.stringify({ error: { message: error, type: "provider_error", code: "codex_app_server_turn_failed" } })}\n\n`);
           } else {
             start();
             emit({}, reason, usage ? { usage } : {});
           }
-          controller.enqueue(enc.encode("data: [DONE]\n\n"));
+          enqueue("data: [DONE]\n\n");
           client.close();
-          controller.close();
+          if (!sealed) {
+            sealed = true;
+            try {
+              controller.close();
+            } catch {
+              // Already closed by a cancel.
+            }
+          }
+        };
+        const abort = () => {
+          interrupt();
+          finish("stop");
+        };
+        if (signal?.aborted) return abort();
+        signal?.addEventListener("abort", abort, { once: true });
+        const timeoutMs = this.clientOptions.turnTimeoutMs ?? config.turnTimeoutMs;
+        timer = setTimeout(() => {
+          interrupt();
+          finish(null, null, `Codex app-server turn timed out after ${timeoutMs}ms`);
+        }, timeoutMs);
+        cancelHook = () => {
+          done = true;
+          sealed = true;
+          clearTimeout(timer);
+          client.close();
         };
 
         const run = async () => {
           await client.connect(config.url, config.token);
+          if (done) return;
           await client.request("initialize", {
             clientInfo: { name: "durindoor-codex-app-server", title: null, version: "1.0" },
             capabilities: dynamicTools.length ? { experimentalApi: true, requestAttestation: false } : null,
           });
+          if (done) return;
           const threadParams = { cwd: config.cwd, approvalPolicy: policy.approvalPolicy, sandbox: policy.sandbox };
           if (dynamicTools.length) threadParams.dynamicTools = dynamicTools;
           const thread = await client.request("thread/start", threadParams);
-          const threadId = thread?.thread?.id ?? thread?.threadId ?? "";
+          if (done) return;
+          threadId = thread?.thread?.id ?? thread?.threadId ?? "";
           client.onNotification((method, params) => {
             const p = isObject(params) ? params : {};
-            if (method === "item/agentMessage/delta" && isString(p.delta) && p.delta) {
+            if (method === "turn/started" && isString(p.turn?.id)) {
+              turnId = p.turn.id;
+            } else if (method === "item/agentMessage/delta" && isString(p.delta) && p.delta) {
               start();
               emit({ content: p.delta });
             } else if ((method === "item/reasoning/textDelta" || method === "item/reasoning/summaryTextDelta") && isString(p.delta) && p.delta) {
@@ -177,20 +224,17 @@ export class CodexAppServerExecutor extends BaseExecutor {
             });
             finish("tool_calls");
           });
-          signal?.addEventListener("abort", () => {
-            client.notify("turn/interrupt", { threadId, turnId: "" });
-            finish("stop");
-          }, { once: true });
           const turnParams = { threadId, input: [{ type: "text", text: promptText, text_elements: [] }], model: baseModel };
           if (effort) turnParams.effort = effort;
-          await client.request("turn/start", turnParams);
+          const started = await client.request("turn/start", turnParams);
+          if (isString(started?.turn?.id)) turnId = started.turn.id;
         };
         run().catch((error) => {
           log?.warn?.("CODEX-APP-SERVER", clean(error.message));
           finish(null, null, clean(error.message));
         });
       },
-      cancel: () => client.close(),
+      cancel: () => cancelHook(),
     });
 
     return { response: new Response(stream, { status: 200, headers: SSE_HEADERS }), url: config.url, headers: {}, transformedBody: { model: baseModel } };

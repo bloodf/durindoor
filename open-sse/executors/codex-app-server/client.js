@@ -13,7 +13,12 @@ const APPROVAL_METHODS = new Set([
   "execCommandApproval",
 ]);
 
+const LOOPBACK_HOSTS = /^(localhost|127(\.\d{1,3}){3}|\[::1\])$/i;
+const DEFAULT_TURN_TIMEOUT_MS = 600000;
+
 const clean = (value) => (isString(value) && value.trim() ? value.trim() : null);
+
+const isOn = (value) => ["true", "1", "yes"].includes(clean(value));
 
 function readTokenFile(file) {
   try {
@@ -37,6 +42,8 @@ export function resolveAppServerConfig() {
     return null;
   }
   if (parsed.username || parsed.password) return null;
+  // The capability token travels in the handshake; refuse cleartext to a non-loopback host unless opted in.
+  if (parsed.protocol === "ws:" && !LOOPBACK_HOSTS.test(parsed.hostname) && !isOn(ENV.DURINDOOR_CODEX_APPSERVER_ALLOW_INSECURE_WS)) return null;
   const token = clean(ENV.DURINDOOR_CODEX_APPSERVER_WS_TOKEN) ||
     (clean(ENV.DURINDOOR_CODEX_APPSERVER_WS_TOKEN_FILE) && readTokenFile(ENV.DURINDOOR_CODEX_APPSERVER_WS_TOKEN_FILE));
   if (!token) return null;
@@ -46,15 +53,19 @@ export function resolveAppServerConfig() {
     cwd: clean(ENV.DURINDOOR_CODEX_APPSERVER_CWD) || "/tmp",
     approvalPolicy: clean(ENV.DURINDOOR_CODEX_APPSERVER_APPROVAL),
     sandbox: clean(ENV.DURINDOOR_CODEX_APPSERVER_SANDBOX),
-    autoApprove: ["true", "1", "yes"].includes(clean(ENV.DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE)),
+    autoApprove: isOn(ENV.DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE),
+    turnTimeoutMs: Number(ENV.DURINDOOR_CODEX_APPSERVER_TURN_TIMEOUT_MS) > 0
+      ? Number(ENV.DURINDOOR_CODEX_APPSERVER_TURN_TIMEOUT_MS)
+      : DEFAULT_TURN_TIMEOUT_MS,
   };
 }
 
-// Defaults keep codex from blocking on its own approvals while confining its own host execution.
+// Safe defaults: read-only sandbox and on-request approvals, which the client denies unless the
+// operator opts in. Write or exec access needs explicit APPROVAL / SANDBOX / AUTO_APPROVE settings.
 export function resolveTurnPolicy(config) {
   return {
-    approvalPolicy: config.approvalPolicy || "never",
-    sandbox: config.sandbox || "workspace-write",
+    approvalPolicy: config.approvalPolicy || "on-request",
+    sandbox: config.sandbox || "read-only",
     autoApprove: config.autoApprove === true,
   };
 }

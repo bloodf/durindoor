@@ -948,6 +948,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         // Invalid reroute target: fall through to original model.
       }
     }
+    if (vb.toolOutputVision) {
+      log.warn("CHAT", `Vision Bridge could not serve a tool-output image for "${modelStr}"`);
+      return errorResponse(
+        HTTP_STATUS.BAD_REQUEST,
+        `Model '${modelStr}' cannot read images returned by a tool, and no permitted Vision Bridge target is available.`,
+        { code: "capability_unavailable" }
+      );
+    }
     modelCapabilities = singleModelCaps;
   }
 

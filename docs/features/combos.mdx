@@ -155,6 +155,10 @@ Unknown keys and non-positive integers return HTTP 400. Send `null` to clear a s
 
 With capability-aware routing on, a request that carries images, audio, video, or PDF on the current user turn prefers a member that advertises that modality. Unsupported media fields are stripped before translation.
 
+Media returned by a tool on the current turn counts too: images or files in Chat `tool` messages, Claude `tool_result` blocks, Responses `function_call_output` and `custom_tool_call_output` items, and Gemini `functionResponse.parts`. That nested media cannot be stripped, so only members that advertise the modality are tried. Each attempt still applies the API key, connection, and combo allow-list checks, and a denied member never falls back to one that cannot read the output. When no member advertises the modality, the combo returns HTTP 400 with `error.code: "capability_unavailable"`. A model with unknown capabilities counts as unsupported; set the modality in its capability editor under **Dashboard → Providers** to opt in.
+
+On a single-model request with Vision Bridge enabled, a tool-output image that the model cannot read goes to the Vision Bridge target. If no valid target is configured, or the API key may not use it, the request returns the same HTTP 400 `capability_unavailable` error instead of reaching the text-only model.
+
 ## Allow-list
 
 Empty `allowedConnectionIds` is unrestricted: any otherwise eligible active connection may serve a member. A non-empty list is restrictive. Nested combos intersect with the parent list; the inner combo can only narrow eligibility.

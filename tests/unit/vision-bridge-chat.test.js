@@ -191,4 +191,50 @@ describe("Vision Bridge (#6640) chat wiring", () => {
     // No bridge policy check against the vision target.
     expect(mocks.enforceApiKeyModelPolicy).not.toHaveBeenCalledWith(expect.anything(), VISION, "test-key");
   });
+  describe("tool-output images (#1090)", () => {
+    function toolImageRequest() {
+      return new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: NON_VISION,
+          messages: [
+            { role: "user", content: "take a screenshot" },
+            { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "shot", arguments: "{}" } }] },
+            { role: "tool", tool_call_id: "call_1", content: [{ type: "image_url", image_url: { url: "https://example.com/s.png" } }] },
+          ],
+        }),
+      });
+    }
+
+    it("reroutes a tool-output image and keeps the tool call id", async () => {
+      const res = await handleChat(toolImageRequest());
+
+      expect(res.status).toBe(200);
+      const call = mocks.handleChatCore.mock.calls[0][0];
+      expect(call.body.model).toBe(VISION);
+      expect(call.body.messages[2].tool_call_id).toBe("call_1");
+    });
+
+    it("fails closed when the vision target is denied by API key policy", async () => {
+      mocks.enforceApiKeyModelPolicy.mockImplementation(async (_req, modelStr) =>
+        modelStr === VISION ? new Response("denied", { status: 403 }) : null,
+      );
+
+      const res = await handleChat(toolImageRequest());
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.code).toBe("capability_unavailable");
+      expect(mocks.handleChatCore).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when no Vision Bridge target is configured", async () => {
+      mocks.getSettings.mockResolvedValue(baseSettings({ visionBridgeModel: "" }));
+
+      const res = await handleChat(toolImageRequest());
+
+      expect(res.status).toBe(400);
+      expect(mocks.handleChatCore).not.toHaveBeenCalled();
+    });
+  });
 });

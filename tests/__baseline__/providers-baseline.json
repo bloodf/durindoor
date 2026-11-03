@@ -1457,6 +1457,12 @@
     "validateUrl": "https://api.nanobananaapi.ai/v1/models",
     "format": "openai"
   },
+  "navy": {
+    "baseUrl": "https://api.navy/v1/chat/completions",
+    "validateUrl": "https://api.navy/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "nara": {
     "baseUrl": "https://router.bynara.id/v1/chat/completions",
     "validateUrl": "https://router.bynara.id/v1/models",
@@ -1486,6 +1492,12 @@
       "dropClientMetadata": true
     },
     "format": "openai"
+  },
+  "ofoxai": {
+    "baseUrl": "https://api.ofox.ai/v1/chat/completions",
+    "validateUrl": "https://api.ofox.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "ollama-local": {
     "baseUrl": "http://localhost:11434",
@@ -1680,6 +1692,18 @@
     },
     "format": "openai"
   },
+  "onomeo": {
+    "baseUrl": "https://onomeo.com/v1/chat/completions",
+    "validateUrl": "https://onomeo.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "openadapter": {
+    "baseUrl": "https://api.openadapter.in/v1/chat/completions",
+    "validateUrl": "https://api.openadapter.in/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "openference-api": {
     "baseUrl": "https://api.openference.com/v1/chat/completions",
     "validateUrl": "https://api.openference.com/v1/models",
@@ -1720,6 +1744,24 @@
     },
     "format": "openai"
   },
+  "publicai": {
+    "baseUrl": "https://api.publicai.co/v1/chat/completions",
+    "validateUrl": "https://api.publicai.co/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "regolo": {
+    "baseUrl": "https://api.regolo.ai/v1/chat/completions",
+    "validateUrl": "https://api.regolo.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "routeway": {
+    "baseUrl": "https://api.routeway.ai/v1/chat/completions",
+    "validateUrl": "https://api.routeway.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "poixe-ai": {
     "baseUrl": "https://api.poixe.com/v1/chat/completions",
     "validateUrl": "https://api.poixe.com/v1/models",
@@ -1747,6 +1789,12 @@
       "scheme": "bearer"
     },
     "format": "openai"
+  },
+  "token-kiosk": {
+    "baseUrl": "https://agent-router.gaib.ai/v1/chat/completions",
+    "validateUrl": "https://agent-router.gaib.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "tokenreply": {
     "baseUrl": "https://api.tokenreply.com/v1/chat/completions",

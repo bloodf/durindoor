@@ -3,6 +3,7 @@ import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
+import { CLAUDE_TOOL_SUFFIX } from "../config/appConstants.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
@@ -163,6 +164,19 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // pairs like claude:kiro (avoids the claude->openai->kiro double-hop).
     const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
     if (directFn) {
+      /**
+       * Chat→Claude is registered as a direct `openai:claude` route, so it never
+       * enters the Responses pivot clamp below. Alias dotted / overlong names on
+       * the OpenAI-shaped body before conversion so declarations, tool_choice,
+       * and history share one round-trip map (#1343).
+       * Do not widen this to Responses→Chat — that direct route is owned by #1384.
+       */
+      if (sourceFormat === FORMATS.OPENAI && targetFormat === FORMATS.CLAUDE && isObject(result)) {
+        const credential = credentials?.accessToken || credentials?.apiKey;
+        const willSuffixTools = PROVIDERS[provider]?.quirks?.cloakToolsOnOAuth &&
+          isString(credential) && credential.includes("sk-ant-oat");
+        responsesToolAliases = normalizeOpenAIToolNames(result, willSuffixTools ? 64 - CLAUDE_TOOL_SUFFIX.length : 64);
+      }
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
       finalizeTranslatedRequest = directFn.finalize;
       /**
@@ -241,6 +255,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     });
     // Poe rejects image-only user turns with 400; Poe-only, other providers unchanged.
     if (Array.isArray(result?.messages)) result.messages = ensurePoeUserTurnHasText(result.messages, provider);
+    /**
+     * Chat→OpenAI same-format skips the pivot/direct clamps. Alias here so Chat
+     * upstreams reject neither dots nor overlong names (#1343). Scoped to Chat
+     * sources only — Responses→Chat is owned by the pivot / #1384 direct block.
+     */
+    if (sourceFormat === FORMATS.OPENAI && isObject(result)) {
+      responsesToolAliases = normalizeOpenAIToolNames(result);
+    }
   }
 
   // MiniMax-M3's OpenAI transport does not support forced tool_choice values

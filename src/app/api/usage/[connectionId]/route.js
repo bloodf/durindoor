@@ -10,6 +10,7 @@ import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
 import { backfillCursorConnectionIdentity } from "@/lib/oauth/services/cursorLocalStore.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials";
+import { isNonAdminApiKeyCaller } from "@/dashboardGuard";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -66,6 +67,10 @@ export async function GET(request, { params }) {
 
     // Refresh credentials only for OAuth connections (apikey has no token refresh)
     if (isOAuth) {
+      // A refresh rewrites stored credentials, so it needs the change principal.
+      if (await isNonAdminApiKeyCaller(request)) {
+        return Response.json({ error: "Refreshing OAuth usage requires an admin-scoped API key" }, { status: 403 });
+      }
       try {
         const result = await refreshAndUpdateCredentials(connection, false, proxyOptions);
         connection = result.connection;

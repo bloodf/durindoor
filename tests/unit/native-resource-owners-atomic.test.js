@@ -80,6 +80,9 @@ describe("createNativeResourceOwner atomic publish", () => {
       connectionId: "conn-1",
       resourceId: "file_atomic_1",
       model: "claude-haiku-4-5",
+      // Dispatch stamps the operation identity and billing generation.
+      usageEventId: "evt-atomic-1",
+      billingEpoch: null,
     };
     await createNativeResourceOwner(owner);
     await expect(readNativeResourceOwner("anthropic", "conn-1", "file_atomic_1")).resolves.toEqual(owner);
@@ -99,6 +102,20 @@ describe("createNativeResourceOwner atomic publish", () => {
     await expect(readNativeResourceOwner("anthropic", "conn-1", "file_race")).resolves.toMatchObject({
       ownerId: "creator-a",
     });
+  });
+
+  it("derives a legacy owner's usage identity without rewriting the published file", async () => {
+    mkdirSync(ownersDir(), { recursive: true, mode: 0o700 });
+    const legacy = { ownerId: "key-legacy", provider: "anthropic", connectionId: "conn-1", resourceId: "file_legacy", model: "claude-haiku-4-5" };
+    const target = ownerFile("anthropic", "conn-1", "file_legacy");
+    writeFileSync(target, JSON.stringify(legacy), { mode: 0o600 });
+    const before = readFileSync(target);
+    for (let read = 0; read < 2; read++) {
+      await expect(readNativeResourceOwner("anthropic", "conn-1", "file_legacy")).resolves.toEqual({
+        ...legacy, billingEpoch: null, usageEventId: "anthropic:conn-1:file_legacy:terminal",
+      });
+    }
+    expect(readFileSync(target)).toEqual(before);
   });
 
   it("does not leave a durable owner when only a temp sibling exists", async () => {
@@ -143,6 +160,8 @@ describe("createNativeResourceOwner atomic publish", () => {
         connectionId: "conn-1",
         resourceId: "file_fallback_create",
         model: "claude-haiku-4-5",
+        usageEventId: "evt-fallback-create",
+        billingEpoch: null,
       };
       await createNativeResourceOwner(owner);
       await expect(

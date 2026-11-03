@@ -50,6 +50,17 @@ Import them from `open-sse/translator/schema/index.js`.
 
 Endpoint detection (`detectFormatByEndpoint`): `/v1/responses` is `openai-responses`, `/v1/messages` is `claude`. `/v1/chat/completions` with an `input[]` body still counts as OpenAI (Cursor CLI).
 
+Haiku thinking capability is decided once, by `isLegacyHaikuModel` in
+`open-sse/providers/capabilities.js` (9router `0ad0a722`, the Haiku slice of #1367).
+`getCapabilitiesForModel` returns `claude-adaptive` for Haiku 5+ ahead of the
+budget-shaped `*claude*haiku*` pattern, so `applyThinking` emits adaptive thinking on
+the translated path, and `normalizeClaudePassthrough` uses the same helper to decide
+the native downgrade. Exact and provider-specific capability entries still win.
+Haiku 3/4 and unversioned aliases keep budget thinking. Version-before-name,
+version-after-name, provider prefixes, and date suffixes are covered. The Copilot
+dotted-model and GPT max-effort rules tracked by the same issue are not part of this
+change, and the forced-tool-choice guard is unchanged.
+
 OpenAI tool-name normalization reserves all original names from declarations,
 choices, and history before allocating aliases. Allocation order is sorted and
 collision retries are deterministic; a valid original that happens to equal a

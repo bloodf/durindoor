@@ -1,36 +1,43 @@
 import { describe, it, expect } from "vitest";
 import "../translator/registerAll.js";
+import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "../../open-sse/providers/thinkingLevels.js";
 import { applyThinking } from "../../open-sse/translator/concerns/thinkingUnified.js";
 import { stripUnsupportedParams } from "../../open-sse/translator/concerns/paramSupport.js";
 
-const DOTTED_PROVIDERS = ["github", "kiro", "kr", "nanogpt"];
+// Every provider that lists a dotted Claude 5.5 id in its registry, with the exact listed id,
+// so a future provider cannot slip through without a capability row.
+const LISTED = Object.entries(PROVIDER_MODELS).flatMap(([provider, models]) =>
+  models.filter((m) => /claude-(?:opus|sonnet)-5\.5(?:$|-)/.test(m.id)).map((m) => [provider, m.id]));
+const KIRO = ["kiro", "kr"].flatMap((p) => ["claude-opus-5.5", "claude-sonnet-5.5"].map((m) => [p, m]));
 
 describe("dotted Claude 5.5 ids share the dashed thinking rules (#1367)", () => {
-  for (const [dotted, dashed] of [
-    ["claude-opus-5.5", "claude-opus-5-5"],
-    ["claude-sonnet-5.5", "claude-sonnet-5-5"],
-  ]) {
-    describe.each(DOTTED_PROVIDERS)(`${dotted} on %s`, (provider) => {
-      it("resolves like the dashed id", () => {
-        const d = getCapabilitiesForModel(provider, dotted);
-        const s = getCapabilitiesForModel("anthropic", dashed);
-        expect(d.thinkingFormat).toBe(s.thinkingFormat);
-        expect(d.thinkingCanDisable).toBe(false);
-        expect(d.thinkingModes).toEqual(s.thinkingModes);
-        // Kiro-family providers never advertise max/ultra, whatever the model.
-        const dashedLevels = getThinkingLevels("anthropic", dashed).filter((l) => !(provider.startsWith("k") && l === "max"));
-        expect(getThinkingLevels(provider, dotted)).toEqual(dashedLevels);
-        expect(getThinkingLevels(provider, dotted)).not.toContain("none");
-      });
+  it("the registry lists dotted ids on at least github, ghe and nanogpt", () => {
+    const providers = new Set(LISTED.map(([p]) => p));
+    for (const p of ["gh", "ghe", "nanogpt"]) expect(providers.has(p)).toBe(true);
+  });
 
-      it('never receives thinking.type "disabled"', () => {
-        const body = applyThinking("claude", dotted, { model: dotted, reasoning_effort: "none", messages: [] }, provider);
-        expect(body.thinking?.type).not.toBe("disabled");
-      });
+  describe.each([...LISTED, ...KIRO])("%s %s", (provider, id) => {
+    const dashed = id.replace(/^.*?(claude-(?:opus|sonnet))-5\.5.*$/, "$1-5-5");
+
+    it("resolves like the dashed id", () => {
+      const d = getCapabilitiesForModel(provider, id);
+      const s = getCapabilitiesForModel("anthropic", dashed);
+      expect(d.thinkingFormat).toBe(s.thinkingFormat);
+      expect(d.thinkingCanDisable).toBe(false);
+      expect(d.thinkingModes).toEqual(s.thinkingModes);
+      // Kiro-family providers never advertise max/ultra, whatever the model.
+      const dashedLevels = getThinkingLevels("anthropic", dashed).filter((l) => !(provider.startsWith("k") && l === "max"));
+      expect(getThinkingLevels(provider, id)).toEqual(dashedLevels);
+      expect(getThinkingLevels(provider, id)).not.toContain("none");
     });
-  }
+
+    it('never sends thinking.type "disabled" at translator output', () => {
+      const body = applyThinking("claude", id, { model: id, reasoning_effort: "none", messages: [] }, provider);
+      expect(body.thinking?.type).not.toBe("disabled");
+    });
+  });
 
   it("Kiro variant suffixes follow the same rules", () => {
     expect(getCapabilitiesForModel("kiro", "claude-opus-5.5-thinking-agentic").thinkingCanDisable).toBe(false);

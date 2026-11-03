@@ -267,7 +267,7 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
-// Copilot, NanoGPT and Kiro serve Claude 5.5 under dotted ids. Same models as the dashed
+// Copilot (github, GHE), NanoGPT and Kiro serve Claude 5.5 under dotted ids. Same models as the dashed
 // rows (Opus 5.5 / Sonnet 5.5 reject thinking.type "disabled"; Sonnet takes "between_tools"),
 // scoped per provider so other gateways (e.g. OpenRouter) keep their own handling.
 const CLAUDE_5_5_DOTTED_BASE = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 };
@@ -468,7 +468,10 @@ export const PROVIDER_CAPABILITIES = {
   kiro: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
   kr: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
   github: CLAUDE_5_5_DOTTED_CAPS,
-  nanogpt: CLAUDE_5_5_DOTTED_CAPS,
+  "ghe-copilot": CLAUDE_5_5_DOTTED_CAPS,
+  ghe: CLAUDE_5_5_DOTTED_CAPS,
+  // NanoGPT lists the vendor-prefixed id and capability lookup keys on the full registry id.
+  nanogpt: { "anthropic/claude-sonnet-5.5": CLAUDE_5_5_DOTTED_CAPS["claude-sonnet-5.5"] },
   "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,
   aq: KIRO_GPT_5_6_PROVIDER_CAPS,
   // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.

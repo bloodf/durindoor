@@ -13,8 +13,10 @@ import { runCompressionSeam } from "../../../open-sse/handlers/chatCore/compress
 // Failures that already-shipped engines show on the pinned corpus. Recorded so
 // the gate below can require ZERO failures for every engine not listed here,
 // and so a fix or a new regression in a listed engine both fail this test.
+// rtk (lossy by design) collapses repeated log lines, dropping heartbeat timestamps.
 const EXISTING_ENGINE_BASELINE = {
   caveman: [], // #1468 fixed unfenced-diff rewriting
+  rtk: ["responses-tool-output:numeric"],
   "session-dedup": [],
   headroom: [],
 };

@@ -147,3 +147,47 @@ describe("#1089 Gemini client conformance — call id pairing", () => {
     expect(result).toBe(use);
   });
 });
+
+describe("#1089 Gemini client conformance — translator low items", () => {
+  it("keeps every tool and required when ANY names match no declared tool", () => {
+    const out = request(CHAT, { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["missing"] } });
+    expect(out.tools).toHaveLength(1);
+    expect(out.tool_choice).toBe("required");
+  });
+
+  it("gives two idless same-turn calls to one function distinct paired ids", () => {
+    const body = {
+      contents: [
+        { role: "user", parts: [{ text: "hi" }] },
+        { role: "model", parts: [{ functionCall: { name: "w", args: { c: 1 } } }, { functionCall: { name: "w", args: { c: 2 } } }] },
+        { role: "user", parts: [{ functionResponse: { name: "w", response: { result: 1 } } }] },
+        { role: "user", parts: [{ functionResponse: { name: "w", response: { result: 2 } } }] },
+      ],
+    };
+    const out = translateRequest(GEMINI, CHAT, "m", body, false);
+    const callIds = out.messages.find((m) => m.tool_calls).tool_calls.map((c) => c.id);
+    expect(new Set(callIds).size).toBe(2);
+    expect(out.messages.filter((m) => m.role === "tool").map((m) => m.tool_call_id)).toEqual(callIds);
+  });
+});
+
+describe("#1089 Gemini client conformance — call id pairing across turns", () => {
+  const history = {
+    contents: [
+      { role: "user", parts: [{ text: "one" }] },
+      { role: "model", parts: [{ functionCall: { name: "f", args: { n: 1 } } }] },
+      { role: "user", parts: [{ text: "never mind, again" }] },
+      { role: "model", parts: [{ functionCall: { name: "f", args: { n: 2 } } }] },
+      { role: "user", parts: [{ functionResponse: { name: "f", response: { result: "ok" } } }] },
+    ],
+  };
+
+  it("pairs a reply with the call in the turn just before it", () => {
+    const out = translateRequest(GEMINI, CHAT, "m", structuredClone(history), false);
+    const calls = out.messages.filter((m) => m.tool_calls).flatMap((m) => m.tool_calls.map((c) => c.id));
+    const reply = out.messages.find((m) => m.role === "tool").tool_call_id;
+    expect(calls.at(-1)).toBe(reply);
+    expect(calls).toContain(reply);
+    expect(new Set(calls).size).toBe(calls.length);
+  });
+});

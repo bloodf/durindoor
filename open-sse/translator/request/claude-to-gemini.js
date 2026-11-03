@@ -6,6 +6,7 @@ import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from ".
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
 function historicalToolResult(name, content) {
   return `[Historical tool result for ${name}]: ${content}`;
@@ -97,10 +98,16 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     if (parts.length) result.contents.push({ role: message.role === ROLE.ASSISTANT ? GEMINI_ROLE.MODEL : GEMINI_ROLE.USER, parts });
   }
 
-  const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: tool.input_schema }] : []);
+  const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: normalizeToolSchema(tool.input_schema, tool.name) }] : []);
   if (declarations.length) result.tools = [{ functionDeclarations: declarations }];
-  if (body.tool_choice?.type === "tool" && body.tool_choice.name) {
-    result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitize(body.tool_choice.name)] } };
+  const choice = body.tool_choice;
+  if (declarations.length && choice) {
+    if (choice.type === "tool" && choice.name) {
+      result.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitize(choice.name)] } };
+    } else {
+      const mode = { auto: "AUTO", any: "ANY", none: "NONE" }[choice.type];
+      if (mode) result.toolConfig = { functionCallingConfig: { mode } };
+    }
   }
 
   result._toolNameMap = new Map([...toolNameMemo].flatMap(([original, outbound]) => outbound.toLowerCase() === outbound ? [[outbound, original]] : [[outbound, original], [outbound.toLowerCase(), original]]));

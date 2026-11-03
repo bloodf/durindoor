@@ -25,6 +25,7 @@ function serializeRequestBody(requestBody) {
  * @param {object} [options.log] - Logger
  * @param {boolean} [options.streamToClient] - Pipe SSE to client (codex)
  * @param {boolean} [options.binaryOutput] - Return raw image bytes
+ * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
  * @param {function} [options.onStreamComplete] - Awaited once with ({status, accounting, error}, response).
@@ -42,7 +43,8 @@ export async function handleImageGenerationCore({
   binaryOutput = false,
   onCredentialsRefreshed,
   onRequestSuccess,
-  onStreamComplete
+  onStreamComplete,
+  signal
 }) {
   const { provider, model } = modelInfo;
   const proxyOptions = resolveCredentialProxyOptions(credentials);
@@ -141,6 +143,7 @@ export async function handleImageGenerationCore({
       method: "POST",
       headers,
       body: serializeRequestBody(requestBody),
+      signal,
       proxyOptions
     });
   } catch (error) {
@@ -176,6 +179,7 @@ export async function handleImageGenerationCore({
           method: "POST",
           headers: retryHeaders,
           body: serializeRequestBody(retryBody),
+          signal,
           proxyOptions
         });
       } catch {
@@ -206,6 +210,7 @@ export async function handleImageGenerationCore({
         headers,
         credentials,
         log,
+        signal,
         streamToClient,
         onReceipt: (value, prefix) => {
           const receipt = mediaAccounting(value, provider, "image");

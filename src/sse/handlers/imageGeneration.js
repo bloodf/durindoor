@@ -150,6 +150,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       modelInfo: { provider, model },
       credentials: credentials.connectionId ? credentials : null,
       binaryOutput,
+      signal: request.signal,
     });
     if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId ?? null, billingEpoch);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
@@ -193,6 +194,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       credentials: refreshedCredentials,
       streamToClient: wantsStream,
       binaryOutput,
+      signal: request.signal,
       onStreamComplete: async (outcome, response) => {
         if (outcome.status === "success") {
           await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch);

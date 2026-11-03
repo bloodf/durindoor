@@ -78,6 +78,8 @@ The connection uses the Claude subscription Messages endpoint. DurinDoor adds Cl
 
 Use a current Claude Code client when a model requires newer request headers. The gateway preserves required beta flags from compatible clients, but model entitlement still depends on the account.
 
+`cc/claude-haiku-5-5` (Claude Haiku 5.5) is listed alongside the 4.5 Haiku.
+
 Haiku 5-series models use adaptive thinking and `output_config.effort` on both
 native `/v1/messages` requests and translated OpenAI or Responses requests.
 Haiku 3/4 and unversioned Haiku aliases keep budget thinking: native adaptive

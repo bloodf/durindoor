@@ -25,7 +25,7 @@ async function worker(label) {
   workerUrl.searchParams.set('application_name', `dd-accounting-${label}`);
   const child = fork(path.join(repo, 'tests/fixtures/postgres-accounting-worker.mjs'), [], {
     cwd: repo,
-    execArgv: ['--experimental-default-type=module', '--loader', path.join(repo, 'tests/fixtures/postgres-accounting-loader.mjs')],
+    execArgv: ['--experimental-loader', path.join(repo, 'tests/fixtures/postgres-accounting-loader.mjs')],
     env: {
       PATH: process.env.PATH,
       HOME: home,
@@ -318,6 +318,20 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     expect(await b.call('pricing', { fixture: { 'receipt-priced': { native: { unit: 'image', rate: 99 } } } })).toMatchObject({ ok: true });
     for (const result of await Promise.all([a.call('save', batch('a')), b.call('save', batch('b'))])) expect(result).toMatchObject({ ok: true });
     expect(await snapshot()).toEqual(committed);
+  }, 30_000);
+
+  it('commits one accepted unknown-cost job across concurrent writers, even with a native tariff', async () => {
+    const [a, b] = await pair();
+    expect(await a.call('pricing', { fixture: { 'receipt-priced': { native: { unit: 'image', rate: 0.25 } } } })).toMatchObject({ ok: true });
+    const accepted = event('accepted-job', null, { status: 'accepted', costStatus: 'unknown', costSource: 'accepted-job', tokens: {}, nativeUnits: {}, meta: { jobState: 'accepted' } });
+    for (const result of await Promise.all([a.call('save', [accepted]), b.call('save', [accepted])])) expect(result).toMatchObject({ ok: true });
+    const { usageHistory } = await snapshot();
+    expect(usageHistory).toHaveLength(1);
+    expect(usageHistory[0]).toMatchObject({ status: 'accepted', cost: null });
+    expect(JSON.parse(usageHistory[0].meta)).toMatchObject({ costStatus: 'unknown', costSource: 'accepted-job', jobState: 'accepted' });
+    const { totals, window } = (await a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' })).value;
+    expect(totals).toMatchObject({ totalRequests: 1, totalCost: 0, unknownCostRequests: 1 });
+    expect(window.month).toMatchObject({ requests: 1, cost: 0, unknownCostRequests: 1 });
   }, 30_000);
 
   it('rejects in-flight old epochs after cutover and deduplicates new-epoch replay after process reopen', async () => {

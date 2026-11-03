@@ -1,8 +1,8 @@
 # Issue #1089 Gemini client conformance matrix
 
-Counts: already-present 8; repaired 13; failing 0; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 11; repaired 15; repaired (known degradation) 1; failing 0; unsupported-by-contract 0; upstream-pending 0.
 
-Rows 1-7 and 13-16 map to tests in `tests/translator/v5-conformance-matrix-gemini.test.js`; row 17 maps to `v5-conformance-gemini-name-restore.test.js`. Gemini-client reply rows (Chat to Gemini) and the usage rows link existing tests.
+Every request row maps to a test in `tests/translator/v5-conformance-matrix-gemini.test.js` unless another file is named. Gemini-client reply rows (Chat to Gemini) and the usage rows link existing tests. Counts are computed from the rows below.
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
@@ -26,6 +26,14 @@ Rows 1-7 and 13-16 map to tests in `tests/translator/v5-conformance-matrix-gemin
 | Request | `ns.search` and `ns_search` get distinct sanitized call ids | Claude | repaired | `keeps ns.search and ns_search ids distinct and legal` |
 | Request | explicit client ids sanitized on both sides of the pair | Claude | repaired | `sanitizes explicit client ids on both sides of the pair` |
 | Forced SSE to JSON | alias restored (Responses and Chat upstream; GEMINI and GEMINI_CLI) | Gemini | repaired | `tests/unit/forced-sse-gemini-name-restore.test.js` |
+| Request | `toolConfig` ANY naming no declared tool keeps every tool and sends `required` | Chat | repaired | `keeps every tool and required when ANY names match no declared tool` |
+| Request | two idless same-turn calls to one function get distinct paired ids | Chat | repaired | `gives two idless same-turn calls to one function distinct paired ids` |
+| Public route | namespaced tool aliased upstream, `ns.search` restored in the JSON reply (`POST /v1beta/models/*:generateContent` through real `handleChatCore`) | Gemini | already-present | `tests/unit/v1beta-gemini-gateway-conformance-1089.test.js`: `aliases a namespaced tool upstream and restores ns.search in the JSON reply` |
+| Public route | `ns.search` restored in the streamed reply (`:streamGenerateContent`) | Gemini | already-present | `restores ns.search in the streamed reply` |
+| Public route | ANY naming no declared tool keeps every tool (`/v1beta` bridge) | Gemini | repaired | `does not send required with an empty tool list when allowedFunctionNames match nothing` |
+| Public route | two idless same-turn calls get distinct paired ids (`/v1beta` bridge) | Gemini | already-present | `gives two idless same-turn calls to one function distinct paired ids` |
 | Request | Namespaced tool, strict, malformed schema from Chat | Gemini | already-present | see `v5-conformance-matrix-1089-chat.md` |
+
+Gateway rows drive the real `/v1beta` route and `handleChatCore`; only the upstream executor is faked.
 
 Repaired in this change: Gemini-source requests previously ignored `toolConfig` and sent dotted tool names unaliased to Chat, Claude and Responses upstreams.

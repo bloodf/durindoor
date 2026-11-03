@@ -43,8 +43,9 @@ export function geminiToOpenAIRequest(model, body, stream) {
 
   // Convert contents to messages
   if (body.contents && Array.isArray(body.contents)) {
+    const ids = { serialByName: new Map(), queueByName: new Map() };
     for (const content of body.contents) {
-      const converted = convertGeminiContent(content);
+      const converted = convertGeminiContent(content, ids);
       if (converted) {
         result.messages.push(converted);
       }
@@ -78,12 +79,13 @@ export function geminiToOpenAIRequest(model, body, stream) {
     if (fcc.mode === "NONE") result.tool_choice = "none";
     else if (fcc.mode === "AUTO" || fcc.mode === "VALIDATED") result.tool_choice = "auto";
     else if (fcc.mode === "ANY") {
-      if (names?.length === 1) result.tool_choice = { type: OPENAI_BLOCK.FUNCTION, function: { name: names[0] } };
-      else {
-        // Several allowed names: OpenAI has no allow-list, so declare only the allowed tools.
-        if (names?.length) result.tools = result.tools.filter((t) => names.includes(t.function.name));
-        result.tool_choice = "required";
-      }
+      // OpenAI has no allow-list: declare only the allowed tools. Names matching no declared
+      // tool are ignored (keep every tool) so "required" never ships with an empty tool list.
+      const allowed = names?.length ? result.tools.filter((t) => names.includes(t.function.name)) : [];
+      if (allowed.length) result.tools = allowed;
+      result.tool_choice = result.tools.length === 1 && allowed.length
+        ? { type: OPENAI_BLOCK.FUNCTION, function: { name: result.tools[0].function.name } }
+        : "required";
     }
   }
 
@@ -101,8 +103,29 @@ const safeId = (raw) => {
 const generatedCallId = (name) => safeId(`call_${name}`);
 const callId = (id, name) => (id ? safeId(id) : generatedCallId(name));
 
+// Same-turn calls to one function without ids get a serial suffix; idless responses
+// consume the queued ids in order (mirrors the /v1beta bridge).
+function nextCallId({ serialByName, queueByName }, call) {
+  const name = call.name;
+  let id;
+  if (call.id) id = safeId(call.id);
+  else {
+    const serial = (serialByName.get(name) || 0) + 1;
+    serialByName.set(name, serial);
+    id = serial === 1 ? generatedCallId(name) : safeId(`call_${name}_${serial}`);
+  }
+  queueByName.set(name, [...(queueByName.get(name) || []), id]);
+  return id;
+}
+
+function responseCallId({ queueByName }, response) {
+  if (response.id) return safeId(response.id);
+  const queue = queueByName.get(response.name) || [];
+  return queue.shift() ?? generatedCallId(response.name);
+}
+
 // Convert Gemini content to OpenAI message
-function convertGeminiContent(content) {
+function convertGeminiContent(content, ids = { serialByName: new Map(), queueByName: new Map() }) {
   const role = content.role === GEMINI_ROLE.USER ? ROLE.USER : ROLE.ASSISTANT;
 
   if (!content.parts || !Array.isArray(content.parts)) {
@@ -136,7 +159,7 @@ function convertGeminiContent(content) {
       // Gemini lacks a native call id; derive a deterministic one from the name so the
       // matching functionResponse maps to the same tool_call_id (providers require pairing).
       toolCalls.push({
-        id: callId(part.functionCall.id, part.functionCall.name),
+        id: nextCallId(ids, part.functionCall),
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: part.functionCall.name,
@@ -148,7 +171,7 @@ function convertGeminiContent(content) {
     if (part.functionResponse) {
       return {
         role: ROLE.TOOL,
-        tool_call_id: callId(part.functionResponse.id, part.functionResponse.name),
+        tool_call_id: responseCallId(ids, part.functionResponse),
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
       };
     }

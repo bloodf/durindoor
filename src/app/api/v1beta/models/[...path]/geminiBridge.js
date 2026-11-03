@@ -65,9 +65,9 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
       result.tool_choice = "none";
     } else if (mode === "ANY") {
       const allowed = toolConfig?.functionCallingConfig?.allowedFunctionNames;
-      if (Array.isArray(allowed) && allowed.length > 0) {
-        result.tools = tools.filter((t) => allowed.includes(t.function.name));
-      }
+      // Names matching no declared tool are ignored: keep every tool so "required" never ships empty.
+      const matched = Array.isArray(allowed) ? tools.filter((t) => allowed.includes(t.function.name)) : [];
+      if (matched.length > 0) result.tools = matched;
       if (result.tools?.length === 1) {
         result.tool_choice = { type: "function", function: { name: result.tools[0].function.name } };
       } else {

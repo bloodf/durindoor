@@ -5,6 +5,7 @@ import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 function stripAnthropicBillingHeader(text) {
@@ -92,7 +93,7 @@ export function claudeToOpenAIRequest(model, body, stream) {
       const fn = {
         name: tool.name,
         description: String(tool.description || ""),
-        parameters: tool.input_schema || { type: "object", properties: {} }
+        parameters: tool.input_schema ? normalizeToolSchema(tool.input_schema, tool.name) : { type: "object", properties: {} }
       };
       if (isBoolean(tool.strict)) fn.strict = tool.strict;
       return { type: OPENAI_BLOCK.FUNCTION, function: fn };
@@ -102,6 +103,8 @@ export function claudeToOpenAIRequest(model, body, stream) {
   // Tool choice
   if (body.tool_choice) {
     result.tool_choice = convertToolChoice(body.tool_choice);
+    // Anthropic's per-choice parallel ban is OpenAI's request-level flag.
+    if (body.tool_choice.disable_parallel_tool_use === true) result.parallel_tool_calls = false;
   }
 
   if (body.output_config?.effort !== undefined) {
@@ -419,6 +422,7 @@ function convertToolChoice(choice) {
   switch (choice.type) {
     case "auto":return "auto";
     case "any":return "required";
+    case "none":return "none";
     case "tool":return { type: OPENAI_BLOCK.FUNCTION, function: { name: choice.name } };
     default:return "auto";
   }

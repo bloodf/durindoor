@@ -257,7 +257,9 @@ function convertMessages(messages, tools, model, toolNameMap = new Map()) {
           // name the client actually asked for.
           const name = sanitizeKiroToolName(originalName);
           if (name !== originalName) toolNameMap.set(name, originalName);
-          let description = t.function?.description || t.description || "";
+          const rawDescription = t.function?.description || t.description || "";
+          // Clients may send object/number descriptions; Kiro needs a string (#1333).
+          let description = isString(rawDescription) ? rawDescription : JSON.stringify(rawDescription);
 
           if (!description.trim()) {
             description = `Tool: ${name}`;

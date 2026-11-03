@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   })),
   getSettings: vi.fn(),
   validateApiKey: vi.fn(),
+  getApiKeyByKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
   hasTrustedPeerHeaders: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock("next/server", () => {
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   validateApiKey: mocks.validateApiKey,
+  getApiKeyByKey: mocks.getApiKeyByKey,
 }));
 
 vi.mock("@/shared/utils/machineId", () => ({
@@ -57,7 +59,7 @@ vi.mock("@/lib/auth/oidc", () => ({
   getPublicOrigin: () => "https://gateway.example",
 }));
 
-const { proxy, __test__, isOperatorRequest } = await import("../../src/dashboardGuard.js");
+const { proxy, __test__, isOperatorRequest, canManageAccessConfig, isAdminScopedKey } = await import("../../src/dashboardGuard.js");
 const { POST: testOidcConfiguration } = await import("../../src/app/api/auth/oidc/test/route.js");
 
 function request(pathname, headers = {}, method = "GET") {
@@ -909,14 +911,14 @@ describe("dashboard guard management API auth", () => {
     }
   });
 
-  it("lets an API key drive the gateway OAuth connect flow", async () => {
+  it("lets only an admin-scoped API key drive the gateway OAuth connect flow", async () => {
     mocks.validateApiKey.mockResolvedValue(true);
     for (const path of ["/api/mcp-gateway/oauth/i1/authorize", "/api/mcp-gateway/oauth/i1/status"]) {
-      const response = await proxy(request(path, {
-        host: "router.example.com",
-        authorization: "Bearer sk-valid",
-      }));
-      expect(response, `${path} must accept an API key`).toBe(mocks.nextResponse);
+      const headers = { host: "router.example.com", authorization: "Bearer sk-valid" };
+      mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: false });
+      expect((await proxy(request(path, headers))).status, `${path} must need the admin scope`).toBe(403);
+      mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+      expect(await proxy(request(path, headers)), `${path} must accept an admin key`).toBe(mocks.nextResponse);
     }
   });
 
@@ -1106,6 +1108,76 @@ describe("dashboard guard generic API auth", () => {
   });
 });
 
+describe("dashboard guard API-key admin scope", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: false });
+    mocks.validateApiKey.mockResolvedValue(true);
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: false });
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+  });
+
+  const remoteKey = { host: "router.example.com", authorization: "Bearer sk-valid" };
+  const loopbackKey = { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1", authorization: "Bearer sk-valid" };
+  const changes = [
+    ["POST", "/api/combos"], ["PUT", "/api/combos/c1"], ["DELETE", "/api/providers/p1"],
+    ["PATCH", "/api/providers/p1"], ["POST", "/api/proxy-pools"], ["POST", "/api/oauth/codex/authorize"],
+    ["GET", "/api/oauth/codex/authorize"], ["GET", "/api/oauth/codex/device-code"], ["POST", "/api/keys"],
+  ];
+
+  for (const [method, path] of changes) {
+    it(`refuses ${method} ${path} to a key without the admin scope, remote or loopback`, async () => {
+      for (const headers of [remoteKey, loopbackKey]) {
+        const response = await proxy(request(path, headers, method));
+        expect(response.status).toBe(403);
+        expect(response.body.error).toMatch(/admin scope/);
+      }
+    });
+
+    it(`admits ${method} ${path} for an admin-scoped key`, async () => {
+      mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+      expect(await proxy(request(path, remoteKey, method))).toBe(mocks.nextResponse);
+    });
+  }
+
+  it("keeps management reads open to any active key", async () => {
+    for (const path of ["/api/providers", "/api/combos", "/api/keys", "/api/usage/me"]) {
+      expect(await proxy(request(path, remoteKey))).toBe(mocks.nextResponse);
+    }
+  });
+
+  it("rejects an admin flag on an inactive or expired key", async () => {
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+    expect((await proxy(request("/api/combos", remoteKey, "POST"))).status).toBe(401);
+  });
+
+  it("does not change session, CLI, or keyless loopback operators", async () => {
+    expect(await proxy(request("/api/combos", { host: "router.example.com", "x-9r-cli-token": "cli-token" }, "POST"))).toBe(mocks.nextResponse);
+    mocks.validateApiKey.mockResolvedValue(false);
+    expect(await proxy(request("/api/combos", { host: "localhost:20128", "x-9r-real-ip": "127.0.0.1" }, "POST"))).toBe(mocks.nextResponse);
+  });
+
+  it("never grants the admin scope through a ?key= query credential", async () => {
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+    const queryKey = (method) => request("/api/combos?key=sk-valid", { host: "router.example.com" }, method);
+    expect(await isAdminScopedKey(queryKey("POST"))).toBe(false);
+    expect(await canManageAccessConfig(queryKey("POST"))).toBe(false);
+    expect((await proxy(queryKey("POST"))).status).toBe(403);
+    expect(await proxy(queryKey("GET"))).toBe(mocks.nextResponse);
+  });
+
+  it("canManageAccessConfig accepts operators and admin-scoped keys only", async () => {
+    expect(await canManageAccessConfig(request("/api/keys", remoteKey, "POST"))).toBe(false);
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
+    expect(await canManageAccessConfig(request("/api/keys", remoteKey, "POST"))).toBe(true);
+    mocks.getApiKeyByKey.mockRejectedValue(new Error("db down"));
+    expect(await canManageAccessConfig(request("/api/keys", remoteKey, "POST"))).toBe(false);
+  });
+});
+
 describe("dashboard guard helpers", () => {
   it("extracts bearer API keys before x-api-key", () => {
     const apiRequest = request("/v1/chat/completions", {
@@ -1210,6 +1282,8 @@ describe("dashboard cookie cross-origin management isolation", () => {
   it("retains valid API keys without granting foreign-Origin secret reveal", async () => {
     mocks.validateApiKey.mockResolvedValue(true);
     const headers = { ...foreignHeaders, authorization: "Bearer valid-key" };
+    expect((await proxy(request("/api/providers", headers, "POST"))).status).toBe(403);
+    mocks.getApiKeyByKey.mockResolvedValue({ id: "k1", isAdmin: true });
     expect(await proxy(request("/api/providers", headers, "POST"))).toBe(mocks.nextResponse);
     expect((await proxy(request("/api/keys/k1/reveal", headers))).status).toBe(401);
     expect(await isOperatorRequest(request("/api/providers", headers))).toBe(false);

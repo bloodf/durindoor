@@ -164,8 +164,11 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const needsNativeServerTools = Array.isArray(body?.tools) && body.tools.some((tool) =>
     isString(tool?.type) && tool.type !== "function" && tool.type !== "custom" && tool.type !== "tool");
   const nativeMiniMax = provider === "minimax" || provider === "minimax-cn";
+  // Kimi Code's /responses serves Responses clients only; typed server tools from
+  // Chat/Claude clients must stay on their native transport (#1368).
+  const responsesClientsOnly = provider === "kimi-coding-apikey";
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
-    (needsNativeServerTools || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
+    (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model);
@@ -306,6 +309,7 @@ async function cancelResponseBody(response) {
  * @param {object} options.body - Request body
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} options.credentials - Provider credentials
+ * @param {string|null} options.billingEpoch - Original admission epoch; never refresh during retries or completion.
  * @param {object} [options.log] - Unified logger (src/sse/utils/logger.js).
  *   Expected: `tagForSession(seed)`/`nextTag()` to allocate the session tag,
  *   `fmtThink(intent)` for the thinking label, `line(tag, symbol, message)`
@@ -313,7 +317,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -470,7 +474,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     endpoint: clientRawRequest?.endpoint,
     client_format: sourceFormat,
     provider_format: targetFormat,
-  });
+  }, { requestId: clientRawRequest?.requestId });
   const finishTimeline = (status, type, summary) => {
     if (!timelineTraceId) return;
     try {
@@ -1223,6 +1227,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   let terminalProvenance = null;
+  // Most executors return their registry format. Cursor AgentService is an
+  // exception: it is decoded by the executor into OpenAI-compatible output.
+  let providerResponseFormat = targetFormat;
   const captureExecutorToolNameMap = (body) => {
     if (!(body?._toolNameMap instanceof Map)) return;
     toolNameMap = new Map([...(toolNameMap || new Map()), ...body._toolNameMap]);
@@ -1323,6 +1330,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finalBody = result.transformedBody;
     captureExecutorToolNameMap(finalBody);
     terminalProvenance = result.terminalProvenance || null;
+    providerResponseFormat = result.responseFormat || targetFormat;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     if (isQuotaDispatchUnavailable(error)) {
@@ -1448,6 +1456,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           finalBody = retryResult.transformedBody;
           captureExecutorToolNameMap(finalBody);
           terminalProvenance = retryResult.terminalProvenance || null;
+          providerResponseFormat = retryResult.responseFormat || targetFormat;
           if (!providerResponse.ok) parsedError = await parseAndRestateError(providerResponse);
         } catch (error) {
           if (isQuotaDispatchUnavailable(error)) {
@@ -1662,6 +1671,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     comboId,
     comboName,
     apiKey,
+    billingEpoch,
     clientRawRequest,
     traceId: timelineTraceId,
     onRequestSuccess: async (context = {}) => {
@@ -1755,7 +1765,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     try {
-      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
@@ -1768,7 +1778,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
     try {
-      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
+      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
       return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
@@ -1779,7 +1789,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx, credentials });
   abandonStreamingDetail = onStreamAbandoned;
   try {
-    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
+    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
     if (!result?.success) await settleQuota(false, "stream_error");
     return await finalizeResponse(result);
   } catch (error) {

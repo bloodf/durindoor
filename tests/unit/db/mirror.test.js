@@ -17,8 +17,8 @@ function makeMem(seed = {}) {
       const sel = sql.match(/FROM "(\w+)"/);
       if (!sel) return [];
       const rows = tables[sel[1]] || [];
-      if (/WHERE key <>/.test(sql)) {
-        return rows.filter((r) => r.key !== params[0]).map((r) => ({ key: r.key }));
+      if (/WHERE key NOT IN/.test(sql)) {
+        return rows.filter((r) => !params.includes(r.key)).map((r) => ({ key: r.key }));
       }
       const limit = sql.match(/LIMIT \? OFFSET \?/);
       if (limit) {
@@ -72,7 +72,7 @@ describe("postgres mirror", () => {
     expect(pg.tables.providerConnections.some((r) => r.id === "a" && r.isActive === 1)).toBe(true);
   });
 
-  it("copies _meta keys except schemaVersion", async () => {
+  it("copies _meta keys except the migration runner keys", async () => {
     const { TABLES } = await import("@/lib/db/schema.js");
     const sqlite = makeMem({});
     const pg = makeMem({});
@@ -82,15 +82,17 @@ describe("postgres mirror", () => {
     }
     sqlite.tables._meta = [
       { key: "schemaVersion", value: "18" },
+      { key: "appliedMigrations", value: "[1,2,18]" },
       { key: "usageIdentitySalt", value: "salt-from-sqlite" },
     ];
-    pg.tables._meta = [{ key: "schemaVersion", value: "19" }];
+    pg.tables._meta = [{ key: "schemaVersion", value: "19" }, { key: "appliedMigrations", value: "[1,2,18,19]" }];
     const out = await runMirror(sqlite, pg);
     expect(out.ok).toBe(true);
     const salt = pg.tables._meta.find((r) => r.key === "usageIdentitySalt");
     expect(salt?.value).toBe("salt-from-sqlite");
     const ver = pg.tables._meta.find((r) => r.key === "schemaVersion");
     expect(ver?.value).toBe("19");
+    expect(pg.tables._meta.filter((r) => r.key === "appliedMigrations")).toEqual([{ key: "appliedMigrations", value: "[1,2,18,19]" }]);
   });
 
   it("cascades TRUNCATE so a referenced parent table can be emptied", async () => {

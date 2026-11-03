@@ -1,0 +1,707 @@
+"use client";
+
+import { useState, useMemo, useEffect } from "react";
+import Modal from "@/shared/ui/components/Modal.jsx";
+import Input from "@/shared/ui/components/Input.jsx";
+import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
+import EmptyState from "@/shared/ui/components/EmptyState.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
+import Select from "@/shared/ui/components/Select.jsx";
+import CapabilityIcons from "./CapabilityIcons.jsx";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
+import "./combos.css";
+import { useModelCaps } from "@/shared/hooks/useModelCaps";
+import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
+import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
+
+// Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
+import { isString } from "@/shared/utils/typeChecks.js";
+const PROVIDER_ORDER = [
+...Object.keys(OAUTH_PROVIDERS),
+...Object.keys(FREE_PROVIDERS),
+...Object.keys(FREE_TIER_PROVIDERS),
+...Object.keys(APIKEY_PROVIDERS)];
+
+
+/**
+ * No-auth, non-hidden providers from both free categories, deduplicated for combo pickers.
+ * Includes runtime-configured entries such as SearXNG without claiming reachability.
+ * Reuses the registry-backed generic-selection predicate; ported from upstream PR #3280.
+ */
+export const NO_AUTH_PROVIDER_IDS = [...new Set([
+...Object.keys(FREE_PROVIDERS).filter((id) => FREE_PROVIDERS[id].noAuth && !isHiddenProvider(id)),
+...Object.keys(FREE_TIER_PROVIDERS).filter((id) => FREE_TIER_PROVIDERS[id].noAuth && !isHiddenProvider(id))]
+)];
+
+// kindFilter (UI service kind) → /api/v1/models slug. webSearch/webFetch share
+// the `web` slug server-side. null/absent → root LLM list.
+const KIND_TO_SLUG = {
+  image: "image",
+  tts: "tts",
+  stt: "stt",
+  embedding: "embedding",
+  imageToText: "image-to-text",
+  webSearch: "web",
+  webFetch: "web"
+};
+
+// Web provider-as-model rows are routed by providerId but cataloged as
+// `<alias>/search` and `<alias>/fetch`; map the UI kind to its catalog suffix.
+const WEB_KIND_SUFFIX = { webSearch: "search", webFetch: "fetch" };
+
+export default function ModelSelectModal({
+  isOpen,
+  onClose,
+  onSelect,
+  onDeselect,
+  selectedModel,
+  activeProviders = [],
+  title = "Select Model",
+  modelAliases = {},
+  kindFilter = null,
+  addedModelValues = [],
+  closeOnSelect = true
+}) {
+  // Filter activeProviders by active state and serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
+  const filteredActiveProviders = useMemo(() => {
+    const activeOnly = (activeProviders || []).filter((p) => p && p.isActive !== false);
+    if (!kindFilter) return activeOnly;
+    return activeOnly.filter((p) => {
+      const info = AI_PROVIDERS[p.provider];
+      const kinds = info?.serviceKinds || ["llm"];
+      return kinds.includes(kindFilter);
+    });
+  }, [activeProviders, kindFilter]);
+  const { getCaps } = useModelCaps(isOpen);
+  // OrcaRouter: capability-scoped live catalog. `kindFilter` selects the entry
+  // point, so the model list is recomputed whenever the selector changes kind.
+  const orcaCapability = kindFilter === "embedding" ? "embedding" :
+  kindFilter === "image" ? "image" :
+  kindFilter === "video" ? "video" :
+  "chat";
+  const orcaConnectionIds = useMemo(
+    () => (activeProviders || []).filter((p) => p?.provider === "orcarouter" && p.isActive !== false).map((p) => p.id),
+    [activeProviders]
+  );
+  const orcaCatalog = useOrcaRouterCatalog(isOpen, orcaConnectionIds, orcaCapability, null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [catalogError, setCatalogError] = useState("");
+  const [discoveryPending, setDiscoveryPending] = useState(false);
+  const [combos, setCombos] = useState([]);
+  const [providerNodes, setProviderNodes] = useState([]);
+  const [customModels, setCustomModels] = useState([]);
+  const [disabledModels, setDisabledModels] = useState({});
+  const [fetchedModels, setFetchedModels] = useState({});
+  // Effective auto-synced model lists by provider id (/api/models/auto-sync);
+  // a provider listed here shows its synced list instead of the registry.
+  const [syncedModelLists, setSyncedModelLists] = useState({});
+  // #6495 / F-4: ids the server catalog currently exposes. /api/v1/models is
+  // already filtered by the hide-paid toggle server-side, so intersecting the
+  // modal's locally-built entries with this set enforces the toggle without
+  // bundling the pricing catalog into the dashboard chunk. A null set means
+  // "toggle off / not yet checked" → no client filtering. Once the toggle is
+  // confirmed ON the set is seeded EMPTY (fail-closed) and only replaced with
+  // real ids after a valid catalog fetch, so a fetch error or malformed body
+  // hides paid models rather than leaking them. When the toggle is off the
+  // server returns the full catalog and the intersection is a no-op for known
+  // models while still keeping custom/unknown entries visible.
+  const [visibleModelIds, setVisibleModelIds] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // Clear any stale set so a kind/toggle change never filters the freshly
+    // rendered picker with the previous catalog while the new fetch is in
+    // flight; an ignore flag drops a slow prior response from overwriting a
+    // newer one.
+    let ignore = false;
+    setVisibleModelIds(null);
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const settingsRes = await fetch("/api/settings", { signal: controller.signal });
+        if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
+        const settingsData = await settingsRes.json();
+        if (settingsData?.hidePaidModels !== true || ignore) return;
+        // Fail-closed: from this point the toggle is confirmed ON. Hide
+        // everything until a VALID catalog response replaces this set — non-OK
+        // status, thrown fetch, or a malformed `data` payload must NOT fall
+        // back to showing paid ids (A200 leakage fix).
+        setVisibleModelIds(new Set());
+        const slug = kindFilter ? KIND_TO_SLUG[kindFilter] : null;
+        const url = slug ? `/api/v1/models/${slug}` : "/api/v1/models";
+        const modelsRes = await fetch(url, { signal: controller.signal });
+        if (!modelsRes.ok) throw new Error(`models ${modelsRes.status}`);
+        const modelsData = await modelsRes.json();
+        if (!Array.isArray(modelsData?.data) || ignore) return;
+        const ids = modelsData.data.
+        map((m) => m.id).
+        filter((id) => isString(id));
+        setVisibleModelIds(new Set(ids));
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.error("Error fetching visible model ids:", error);
+      }
+    })();
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
+  }, [isOpen, kindFilter]);
+
+  const fetchCombos = async () => {
+    try {
+      const res = await fetch("/api/combos");
+      if (!res.ok) throw new Error(`Failed to fetch combos: ${res.status}`);
+      const data = await res.json();
+      setCombos(data.combos || []);
+    } catch (error) {
+      console.error("Error fetching combos:", error);
+      setCombos([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchCombos();
+  }, [isOpen]);
+
+  const fetchProviderNodes = async () => {
+    setDiscoveryPending(true);
+    setCatalogError("");
+    try {
+      const res = await fetch("/api/provider-nodes");
+      if (!res.ok) throw new Error(`Failed to fetch provider nodes: ${res.status}`);
+      const data = await res.json();
+      setProviderNodes(data.nodes || []);
+    } catch (error) {
+      console.error("Error fetching provider nodes:", error);
+      setProviderNodes([]);
+      setCatalogError("Some provider details could not load. Available models remain selectable. Reopen to retry.");
+    } finally {
+      setDiscoveryPending(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchProviderNodes();
+  }, [isOpen]);
+
+  const fetchCustomModels = async () => {
+    try {
+      const res = await fetch("/api/models/custom");
+      if (!res.ok) throw new Error(`Failed to fetch custom models: ${res.status}`);
+      const data = await res.json();
+      setCustomModels(data.models || []);
+    } catch (error) {
+      console.error("Error fetching custom models:", error);
+      setCustomModels([]);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchCustomModels();
+  }, [isOpen]);
+
+  // Fetch models dynamically from custom provider endpoints
+  const fetchProviderModels = async (providerId) => {
+    try {
+      // Find the connection ID for this provider
+      const connection = activeProviders.find((p) => p.provider === providerId);
+      if (!connection?.id) return null;
+
+      const res = await fetch(`/api/providers/${connection.id}/models`);
+      if (!res.ok) {
+        console.log(`Failed to fetch models for ${providerId}:`, res.status);
+        return null;
+      }
+      const data = await res.json();
+      return data.models || [];
+    } catch (error) {
+      console.error(`Error fetching models for ${providerId}:`, error);
+      return null;
+    }
+  };
+
+  // Fetch models for all custom providers when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const loadCustomProviderModels = async () => {
+      const customProviderIds = activeProviders.
+      filter((p) => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider) || p.provider === "hcnsec").
+      map((p) => p.provider);
+
+      if (customProviderIds.length === 0) return;
+
+      const fetched = {};
+      await Promise.all(
+        customProviderIds.map(async (providerId) => {
+          const models = await fetchProviderModels(providerId);
+          if (models && models.length > 0) {
+            fetched[providerId] = models;
+          }
+        })
+      );
+
+      setFetchedModels(fetched);
+    };
+
+    loadCustomProviderModels();
+  }, [isOpen, activeProviders]);
+
+  const fetchDisabledModels = async () => {
+    try {
+      const res = await fetch("/api/models/disabled");
+      if (!res.ok) throw new Error(`Failed to fetch disabled models: ${res.status}`);
+      const data = await res.json();
+      setDisabledModels(data.disabled || {});
+    } catch (error) {
+      console.error("Error fetching disabled models:", error);
+      setDisabledModels({});
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchDisabledModels();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let ignore = false;
+    fetch("/api/models/auto-sync", { cache: "no-store" }).
+    then((res) => res.ok ? res.json() : null).
+    then((data) => {
+      if (ignore) return;
+      const lists = {};
+      for (const [providerId, status] of Object.entries(data?.providers || {})) {
+        if (Array.isArray(status?.models)) lists[providerId] = status.models;
+      }
+      setSyncedModelLists(lists);
+    }).
+    catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [isOpen]);
+
+  const allProviders = useMemo(() => ({ ...OAUTH_PROVIDERS, ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...APIKEY_PROVIDERS }), []);
+
+  // Group models by provider with priority order
+  const groupedModels = useMemo(() => {
+    const groups = {};
+
+    // Kinds where the provider IS the model (no per-model selection needed)
+    const PROVIDER_AS_MODEL_KINDS = new Set(["webSearch", "webFetch"]);
+    // Kinds that map directly to model.type field
+    const TYPED_KINDS = new Set(["image", "tts", "stt", "embedding", "imageToText"]);
+    // For these kinds, providers without hardcoded models can still be picked (provider-as-model fallback)
+    const ALLOW_PROVIDER_FALLBACK_KINDS = new Set(["tts", "image", "webFetch"]);
+
+    // Filter a models[] array by kindFilter (keep only matching kind)
+    const filterByKind = (models) => {
+      // No kindFilter means the LLM selector. Keep custom models visible because
+      // user-added models may have typed capabilities (for example imageToText)
+      // while still being valid chat/combo targets.
+      if (!kindFilter) return models.filter((m) => m.isPlaceholder || m.isCustom || !getModelKind(m) || getModelKind(m) === "llm");
+      if (!TYPED_KINDS.has(kindFilter)) return models;
+      return models.filter((m) => m.isPlaceholder || getModelKind(m) === kindFilter);
+    };
+
+    // Get all active provider IDs from connections (filtered by kindFilter if set)
+    const activeConnectionIds = filteredActiveProviders.map((p) => p.provider);
+
+    // No-auth providers: filter by kindFilter as well
+    const noAuthIds = kindFilter ?
+    NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter)) :
+    NO_AUTH_PROVIDER_IDS;
+
+    // Show connected providers and no-auth providers. Custom compatible-provider
+    // nodes are covered by activeConnectionIds (connection.provider === node id),
+    // so they appear only with a non-disabled connection — the parent already
+    // filtered disabled connections out of activeProviders (DurinDoor #2526).
+    const providerIdsToShow = new Set([
+    ...activeConnectionIds, // Connected providers (incl. active custom nodes)
+    ...noAuthIds // No-auth providers (kind-filtered)
+    ]);
+
+    // Sort by PROVIDER_ORDER
+    const sortedProviderIds = [...providerIdsToShow].sort((a, b) => {
+      const indexA = PROVIDER_ORDER.indexOf(a);
+      const indexB = PROVIDER_ORDER.indexOf(b);
+      return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+    });
+
+    sortedProviderIds.forEach((providerId) => {
+      const alias = getProviderAlias(providerId);
+      const providerInfo = allProviders[providerId] || { name: providerId };
+      const isCustomProvider = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
+
+      // For provider-as-model kinds (webSearch/webFetch): emit a single entry where value === providerId
+      if (kindFilter && PROVIDER_AS_MODEL_KINDS.has(kindFilter)) {
+        groups[providerId] = {
+          name: providerInfo.name,
+          alias,
+          models: [{ id: providerId, name: providerInfo.name, value: providerId }]
+        };
+        return;
+      }
+
+      // OrcaRouter resolves first: its capability-filtered live catalog is
+      // authoritative and must win over the passthrough branch below, which only
+      // knows locally-registered aliases. An empty slice exposes no options at
+      // all rather than degrading to free text.
+      if (providerId === "orcarouter") {
+        const live = orcaCatalog.models;
+        if (live.length > 0) {
+          groups[providerId] = {
+            name: providerInfo.name,
+            alias,
+            color: providerInfo.color,
+            models: live.map((m) => ({
+              id: m.id,
+              name: m.name || m.id,
+              value: `${alias}/${m.id}`
+            }))
+          };
+        }
+        return;
+      }
+
+      if (providerInfo.passthroughModels) {
+        const aliasModels = Object.entries(modelAliases).
+        filter(([, fullModel]) => isString(fullModel) && fullModel.startsWith(`${alias}/`)).
+        map(([aliasName, fullModel]) => ({
+          id: fullModel.replace(`${alias}/`, ""),
+          name: aliasName,
+          value: fullModel
+        }));
+        const customRegisteredModels = customModels.
+        filter((m) => m.providerAlias === alias).
+        map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          value: `${alias}/${m.id}`,
+          kind: getModelKind(m),
+          isCustom: true
+        }));
+
+        // For typed kinds, only include hardcoded typed models (aliases are typically LLM-only and lack type info)
+        let combined = aliasModels;
+        if (kindFilter && TYPED_KINDS.has(kindFilter)) {
+          const registeredTyped = customRegisteredModels.filter((m) => getModelKind(m) === kindFilter);
+          combined = [
+          ...registeredTyped,
+          ...getModelsByProviderId(providerId).
+          filter((m) => getModelKind(m) === kindFilter).
+          map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })).
+          filter((m) => !registeredTyped.some((registered) => registered.value === m.value))];
+
+          // Fallback: provider-as-model when no hardcoded models match (tts/image/webFetch only)
+          if (combined.length === 0 && ALLOW_PROVIDER_FALLBACK_KINDS.has(kindFilter)) {
+            const supports = (providerInfo.serviceKinds || ["llm"]).includes(kindFilter);
+            if (supports) combined = [{ id: providerId, name: providerInfo.name, value: alias }];
+          }
+          // Augment with live-fetched models of the same kind when available
+          const dynamicModels = fetchedModels[providerId] || [];
+          const dynamicModelEntries = dynamicModels.
+          map((m) => ({
+            id: m.id || m.slug || m.model || m.name,
+            name: m.name || m.displayName || m.id,
+            value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+            kind: getModelKind(m)
+          })).
+          filter((m) => m.id && getModelKind(m) === kindFilter && !combined.some((existing) => existing.value === m.value));
+          combined = [...combined, ...dynamicModelEntries];
+        } else {
+          // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
+          const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
+          const seen = new Set([...aliasModels, ...registeredLlms].map((m) => m.value));
+          const hardcoded = getModelsByProviderId(providerId).
+          filter((m) => !getModelKind(m) || getModelKind(m) === "llm").
+          map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })).
+          filter((m) => !seen.has(m.value));
+          combined = [...registeredLlms, ...aliasModels.filter((m) => !registeredLlms.some((registered) => registered.value === m.value)), ...hardcoded];
+          // Augment with live-fetched LLM models when available
+          const dynamicModels = fetchedModels[providerId] || [];
+          const dynamicModelEntries = dynamicModels.
+          map((m) => ({
+            id: m.id || m.slug || m.model || m.name,
+            name: m.name || m.displayName || m.id,
+            value: `${alias}/${m.id || m.slug || m.model || m.name}`,
+            kind: getModelKind(m)
+          })).
+          filter((m) => {
+            if (!m.id) return false;
+            if (getModelKind(m) && getModelKind(m) !== "llm") return false;
+            return !combined.some((existing) => existing.value === m.value);
+          });
+          combined = [...combined, ...dynamicModelEntries];
+        }
+
+        if (combined.length > 0) {
+          // Check for custom name from providerNodes (for compatible providers)
+          const matchedNode = providerNodes.find((node) => node.id === providerId);
+          const displayName = matchedNode?.name || providerInfo.name;
+
+          groups[providerId] = {
+            name: displayName,
+            alias: alias,
+            models: combined
+          };
+        }
+      } else if (isCustomProvider) {
+        // Custom (openai/anthropic-compatible) providers are LLM-only — skip for typed media kinds
+        if (kindFilter && TYPED_KINDS.has(kindFilter)) return;
+        // Find connection object to get prefix synchronously without waiting for providerNodes fetch
+        const connection = activeProviders.find((p) => p.provider === providerId);
+        const matchedNode = providerNodes.find((node) => node.id === providerId);
+        const displayName = matchedNode?.name || connection?.name || providerInfo.name;
+        const nodePrefix = connection?.providerSpecificData?.prefix || matchedNode?.prefix || providerId;
+
+        // Aliases are stored using the raw providerId as key (e.g. "openai-compatible-chat-<uuid>/glm-4.7"),
+        // so we must filter by providerId, not by the display prefix.
+        const nodeModels = Object.entries(modelAliases).
+        filter(([, fullModel]) => isString(fullModel) && fullModel.startsWith(`${providerId}/`)).
+        map(([aliasName, fullModel]) => ({
+          id: fullModel.replace(`${providerId}/`, ""),
+          name: aliasName,
+          value: `${nodePrefix}/${fullModel.replace(`${providerId}/`, "")}`
+        }));
+
+        // Fetch models dynamically from the provider's upstream API
+        const dynamicModels = fetchedModels[providerId] || [];
+        const dynamicModelEntries = dynamicModels.map((m) => ({
+          id: m.id || m.slug || m.model || m.name,
+          name: m.name || m.displayName || m.id,
+          value: `${nodePrefix}/${m.id || m.slug || m.model || m.name}`,
+          capabilities: m.capabilities,
+          isFetched: true
+        }));
+
+        // Merge custom models registered via /api/models/custom for this provider
+        // providerAlias in DB uses the raw providerId, not the display prefix
+        const registeredCustom = customModels.
+        filter((m) => m.providerAlias === providerId).
+        map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          value: `${nodePrefix}/${m.id}`,
+          capabilities: m.capabilities,
+          isCustom: true
+        }));
+
+        const seenValues = new Set(nodeModels.map((m) => m.value));
+        const mergedCustom = registeredCustom.filter((m) => {
+          if (seenValues.has(m.value)) return false;
+          seenValues.add(m.value);
+          return true;
+        });
+
+        const mergedDynamic = dynamicModelEntries.filter((m) => {
+          if (seenValues.has(m.value)) return false;
+          seenValues.add(m.value);
+          return true;
+        });
+
+        const mergedModels = [...nodeModels, ...mergedCustom, ...mergedDynamic];
+
+        // Always show compatible providers that are connected, even with no aliases or fetched models.
+        // When no models exist, show a placeholder so users know it's available.
+        const modelsToShow = mergedModels.length > 0 ? mergedModels : [{
+          id: `__placeholder__${providerId}`,
+          name: `${nodePrefix}/model-id`,
+          value: `${nodePrefix}/model-id`,
+          isPlaceholder: true
+        }];
+
+        groups[providerId] = {
+          name: displayName,
+          alias: nodePrefix,
+          models: modelsToShow,
+          isCustom: true,
+          hasModels: mergedModels.length > 0
+        };
+      } else {
+        const hardcodedModels = syncedModelLists[providerId] || getModelsByProviderId(providerId);
+        const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
+
+        // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider
+        // Otherwise only show aliases where aliasName === modelId ("Add Model" button pattern)
+        const hasHardcoded = hardcodedModels.length > 0;
+        const customAliasModels = Object.entries(modelAliases).
+        filter(([aliasName, fullModel]) =>
+        isString(fullModel) &&
+        fullModel.startsWith(`${alias}/`) && (
+        hasHardcoded ? aliasName === fullModel.replace(`${alias}/`, "") : true) &&
+        !hardcodedIds.has(fullModel.replace(`${alias}/`, ""))
+        ).
+        map(([aliasName, fullModel]) => {
+          const modelId = fullModel.replace(`${alias}/`, "");
+          return { id: modelId, name: aliasName, value: fullModel, isCustom: true };
+        });
+
+        // Custom models registered via /api/models/custom (provider "Add Model" button)
+        const customAliasIds = new Set(customAliasModels.map((m) => m.id));
+        const customRegisteredModels = customModels.
+        filter((m) => m.providerAlias === alias && !hardcodedIds.has(m.id) && !customAliasIds.has(m.id)).
+        map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, capabilities: m.capabilities, isCustom: true }));
+
+        const merged = [
+        ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m), capabilities: m.capabilities })),
+        ...customAliasModels,
+        ...customRegisteredModels];
+
+        // Dedupe by value (alias may equal hardcoded id, causing React key collision)
+        const seen = new Set();
+        let allModels = filterByKind(merged.filter((m) => {
+          if (seen.has(m.value)) return false;
+          seen.add(m.value);
+          return true;
+        }));
+
+        // Provider-as-model fallback: providers that support the kind but have no hardcoded models
+        // can still be picked (value = providerAlias). Skips embedding (always needs model).
+        if (allModels.length === 0 && kindFilter && ALLOW_PROVIDER_FALLBACK_KINDS.has(kindFilter)) {
+          const supports = (providerInfo.serviceKinds || ["llm"]).includes(kindFilter);
+          if (supports) {
+            allModels = [{ id: providerId, name: providerInfo.name, value: alias }];
+          }
+        }
+
+        if (allModels.length > 0) {
+          groups[providerId] = {
+            name: providerInfo.name,
+            alias: alias,
+            models: allModels
+          };
+        }
+      }
+    });
+
+    // Filter out disabled models per provider (disabled keyed by storage alias OR providerId)
+    Object.entries(groups).forEach(([providerId, group]) => {
+      const aliasKey = getProviderAlias(providerId);
+      const disabledIds = new Set([
+      ...(disabledModels[aliasKey] || []),
+      ...(disabledModels[providerId] || [])]
+      );
+      if (disabledIds.size === 0) return;
+      group.models = group.models.filter((m) => !disabledIds.has(m.id));
+      if (group.models.length === 0) delete groups[providerId];
+    });
+
+    // #6495 / F-4: intersect with the server catalog's visible ids so the
+    // hide-paid toggle (applied server-side) propagates to every picker. A null
+    // set = not loaded / fetch failed → fail open (no filtering). The fetched
+    // catalog matches the current kindFilter (root LLM list for the default
+    // selector, /api/v1/models/{kind} for typed pickers). Synthetic
+    // placeholders are not catalog rows and not evidence of paid status, so
+    // they stay visible. Web provider-as-model rows are routed by providerId
+    // but cataloged as `<alias>/search` / `<alias>/fetch`, so they match
+    // against the cataloged id, not `m.value`.
+    if (visibleModelIds) {
+      const webSuffix = WEB_KIND_SUFFIX[kindFilter];
+      Object.entries(groups).forEach(([providerId, group]) => {
+        group.models = group.models.filter((m) => {
+          if (m.isPlaceholder) return true;
+          if (webSuffix) return visibleModelIds.has(`${group.alias}/${webSuffix}`);
+          return visibleModelIds.has(m.value);
+        });
+        if (group.models.length === 0) delete groups[providerId];
+      });
+    }
+
+    return groups;
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds, orcaCatalog, syncedModelLists]);
+
+  // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
+  const filteredCombos = useMemo(() => {
+    if (kindFilter) return [];
+    // #6495 / F-4: intersect with the server catalog's visible ids. The catalog
+    // already omits all-paid combos and keeps mixed ones (with paid members
+    // filtered), so a combo name present in the set is a visible combo. A null
+    // set = not loaded / fetch failed → fail open (no filtering).
+    let list = combos;
+    if (visibleModelIds) list = list.filter((c) => visibleModelIds.has(c.name));
+    if (!searchQuery.trim()) return list;
+    const query = searchQuery.toLowerCase();
+    return list.filter((c) => c.name.toLowerCase().includes(query));
+  }, [combos, searchQuery, kindFilter, visibleModelIds]);
+
+  // Sort models alphabetically, with added models floated to top
+  const sortModels = (models) => {
+    const added = models.filter((m) => addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
+    const rest = models.filter((m) => !addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
+    return [...added, ...rest];
+  };
+
+  // Filter models by search query
+  const filteredGroups = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    const filtered = {};
+    Object.entries(groupedModels).forEach(([providerId, group]) => {
+      let models = group.models;
+      if (query) {
+        const providerNameMatches = group.name.toLowerCase().includes(query);
+        models = models.filter((m) => providerNameMatches || m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query) || m.value.toLowerCase().includes(query));
+        if (models.length === 0 && !providerNameMatches) return;
+      }
+      filtered[providerId] = {
+        ...group,
+        models: sortModels(models)
+      };
+    });
+
+    return filtered;
+  }, [groupedModels, searchQuery, addedModelValues]);
+
+  const handleSelect = (model) => {
+    const value = model?.value || model?.name || model;
+    const isAdded = addedModelValues.includes(value);
+
+    if (isAdded && onDeselect) {
+      onDeselect(model);
+    } else {
+      onSelect(model);
+    }
+
+    if (closeOnSelect) {
+      onClose();
+      setSearchQuery("");
+    }
+  };
+
+  const catalogGroups = Object.entries(filteredGroups).filter(([providerId]) => providerFilter === "all" || providerFilter === providerId);
+  const availableCombos = providerFilter === "all" || providerFilter === "combos" ? filteredCombos : [];
+  const resultCount = catalogGroups.reduce((total, [, group]) => total + group.models.length, availableCombos.length);
+  const selectedCount = closeOnSelect ? Number(Boolean(selectedModel || addedModelValues.length)) : addedModelValues.length;
+  const closePicker = () => { onClose(); setSearchQuery(""); setProviderFilter("all"); };
+  const renderModel = (model, providerId, group) => {
+    const isAdded = addedModelValues.includes(model.value);
+    const customOverride = customModels.find((m) => m.id === model.id && (m.providerAlias === providerId || m.providerAlias === group?.alias));
+    const caps = { ...getCaps(model.value), ...customOverride?.capabilities };
+    if (model.capabilities && !Array.isArray(model.capabilities)) Object.assign(caps, model.capabilities, customOverride?.capabilities);
+
+    return <button key={model.value} type="button" className="v5-model-picker-row" aria-label={model.name === model.value ? model.name : `${model.name} (${model.value})`} aria-pressed={isAdded || selectedModel === model.value} onClick={() => handleSelect(model)} title={model.isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : model.value}>
+      <span className="v5-model-check" aria-hidden="true">{isAdded || selectedModel === model.value ? <MotionIcon name="check" size={16} /> : null}</span>
+      <ProviderLogo provider={providerId === "combos" ? "combo" : providerId} size={22} />
+      <div className="v5-model-picker-identity"><strong>{model.name}</strong>{model.value !== model.name ? <code>{model.value}</code> : null}<CapabilityIcons caps={caps} />{model.isPlaceholder ? <span>Custom ID</span> : null}</div>
+    </button>;
+  };
+  return <Modal open={isOpen} onClose={closePicker} title={title} subtitle={closeOnSelect ? "Choose a model." : "Select models, then save your combo."} size="xl" surfaceClassName="v5-model-picker" footer={<><span className="mr-auto text-xs text-dd-muted" role="status">{selectedCount} selected</span><Button variant="primary" onClick={closePicker}>Done</Button></>}>
+    {catalogError ? <p role="status" className="text-sm text-dd-warning mb-3">{catalogError}</p> : null}
+    {orcaCatalog.models.length > 0 && orcaCatalog.degraded ? <p role="status" data-testid="orca-catalog-degraded" className="text-xs text-dd-warning mb-3">OrcaRouter live catalog unavailable, showing a verified offline list. Reopen to retry.</p> : null}
+    <div className="v5-model-picker-filters"><Input icon="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search models or providers" aria-label="Search models" /><Select aria-label="Filter provider" value={providerFilter} onChange={setProviderFilter} options={[{ value: "all", label: "All providers" }, ...(kindFilter ? [] : [{ value: "combos", label: "Nested combos" }]), ...Object.entries(groupedModels).map(([value, group]) => ({ value, label: group.name }))]} /></div>
+    <div className={`v5-model-picker-layout ${closeOnSelect ? "v5-model-picker-single" : ""}`}>
+      <div className="v5-model-picker-catalog" role="region" aria-label="Available model catalog" tabIndex={0}>
+        <div className="v5-model-picker-results" role="status">{resultCount} models{discoveryPending ? " · Loading provider details…" : ""}</div>
+        {availableCombos.length > 0 ? <section aria-label="Combos"><h3>Nested combos <span>{availableCombos.length}</span></h3>{availableCombos.map((combo) => renderModel({ id: combo.name, name: combo.name, value: combo.name }, "combos"))}</section> : null}
+        {catalogGroups.map(([providerId, group]) => <section key={providerId} aria-label={group.name}><h3><ProviderLogo provider={providerId} size={18} />{group.name}<span>{group.models.length}</span></h3>{group.models.map((model) => renderModel(model, providerId, group))}</section>)}
+        {resultCount === 0 ? <EmptyState icon="search_off" title="No models found" message="Try another name or provider filter. Connect a provider to add more models." /> : null}
+      </div>
+      {!closeOnSelect ? <aside className={`v5-model-picker-selection ${addedModelValues.length === 0 ? "v5-model-picker-selection-empty" : ""}`} aria-label="Selected models"><h3>Selected <span>{addedModelValues.length}</span></h3>{addedModelValues.length === 0 ? <p>Select models from the catalog.</p> : <ol>{addedModelValues.map((value, index) => <li key={`${value}-${index}`}><span className="text-xs text-dd-muted">{index + 1}</span><code>{value}</code>{onDeselect ? <button type="button" aria-label={`Remove ${value} from selection`} onClick={() => onDeselect({ id: value, name: value, value })}><MotionIcon name="close" size={16} /></button> : null}</li>)}</ol>}</aside> : null}
+    </div>
+  </Modal>;
+}

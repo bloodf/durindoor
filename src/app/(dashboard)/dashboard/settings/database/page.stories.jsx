@@ -57,7 +57,8 @@ export const Default = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: "Database Settings" })).toBeVisible();
-    await expect(canvas.getByText("sqlite")).toBeVisible();
+    const engineStatus = await canvas.findByRole("region", { name: "Engine status" });
+    await expect(within(engineStatus).getByText("sqlite")).toBeVisible();
   },
 };
 
@@ -120,5 +121,17 @@ export const PostgresCutoverTarget = {
     await expect(await canvas.findByText(/Ready for cutover without restarting/)).toBeVisible();
     await expect(canvas.getByLabelText("Target password")).toHaveValue("");
     await expect(canvas.getByRole("radio", { name: "SQLite", exact: true })).toBeChecked();
+  },
+};
+
+export const StatusUnavailable = {
+  args: Default.args,
+  parameters: { storyFixture: { routes: { "GET /api/settings/database/engine": { status: 503, body: { error: "Database unavailable" } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Database status is unknown");
+    await expect(canvas.getByText("Last successful refresh: Not loaded")).toBeVisible();
+    await expect(canvas.queryByRole("region", { name: "Engine status" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Retry status" })).toBeVisible();
   },
 };

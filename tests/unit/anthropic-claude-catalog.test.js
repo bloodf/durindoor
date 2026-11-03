@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import "../translator/registerAll.js";
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
+import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 
 describe("Anthropic and Claude Code model catalogs", () => {
   it("exposes Claude Fable 5.1 while retaining Fable 5 and Opus 5", () => {
@@ -22,9 +24,25 @@ describe("Anthropic and Claude Code model catalogs", () => {
       "claude-sonnet-5",
     ]));
     expect(ccIds).toContain("claude-sonnet-5-5");
+    expect(ccIds).toContain("claude-haiku-5-5");
+    expect(anthropicIds).toContain("claude-haiku-5-5");
+    expect(ccIds).toContain("claude-haiku-4-5-20251001");
+    expect(anthropicIds).toContain("claude-haiku-4-5");
     // Retired on the Claude API (model-deprecations page, 2026-09-29).
     expect(anthropicIds).not.toContain("claude-opus-4-20250514");
     expect(anthropicIds).not.toContain("claude-sonnet-4-20250514");
     expect(anthropicIds).not.toContain("claude-3-5-sonnet-20241022");
+  });
+
+  it("resolves Haiku 5.5 as an adaptive 1M-context model on both catalogs", () => {
+    for (const provider of ["anthropic", "cc"]) {
+      expect(getCapabilitiesForModel(provider, "claude-haiku-5-5")).toMatchObject({
+        thinkingFormat: "claude-adaptive",
+        vision: true,
+        reasoning: true,
+        contextWindow: 1000000,
+        maxOutput: 128000,
+      });
+    }
   });
 });

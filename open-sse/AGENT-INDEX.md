@@ -18,6 +18,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `chipotle` | ChipotleExecutor | `./chipotle.js` |
 | `codebuddy-cn` | CodeBuddyExecutor | `./codebuddy-cn.js` |
 | `codex` | CodexExecutor | `./codex.js` |
+| `codex-app-server` | CodexAppServerExecutor | `./codex-app-server.js` |
 | `command-code` | CommandCodeExecutor | `./commandcode.js` |
 | `commandcode` | CommandCodeExecutor | `./commandcode.js` |
 | `copilot` | CopilotWebExecutor | `./copilot-web.js` |
@@ -25,6 +26,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `copilot-web` | CopilotWebExecutor | `./copilot-web.js` |
 | `cu` | CursorExecutor | `./cursor.js` |
 | `cursor` | CursorExecutor | `./cursor.js` |
+| `cxa` | CodexAppServerExecutor | `./codex-app-server.js` |
 | `ddgw` | DuckDuckGoWebExecutor | `./duckduckgo-web.js` |
 | `devin-cli` | DevinCliExecutor | `./devin-cli.js` |
 | `dify` | DifyExecutor | `./dify.js` |
@@ -147,6 +149,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `codebuddy-cn` |  | oauth | `https://copilot.tencent.com/v2/chat/completions` |
 | `codestral` |  | apikey | `https://codestral.mistral.ai/v1/chat/completions` |
 | `codex` | openai-responses | oauth | `https://chatgpt.com/backend-api/codex/responses` |
+| `codex-app-server` | openai | free | `codex-app-server://cli/websocket` |
 | `codex-cloud` |  | apikey | `` |
 | `cohere` |  | apikey | `https://api.cohere.ai/compatibility/v1/chat/completions` |
 | `comfyui` |  | apikey | `` |

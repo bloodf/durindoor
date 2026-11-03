@@ -2,7 +2,7 @@
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 export const CODEX_REVIEW_SUFFIX = "-review";
-const CODEX_REVIEW_UNSUPPORTED = new Set(["gpt-6.1-sol"]);
+const CODEX_REVIEW_UNSUPPORTED = new Set(["gpt-6.1-sol", "gpt-6.1-terra"]);
 
 export function withCodexReviewModels(models) {
   return models.flatMap((model) => {

@@ -178,6 +178,22 @@ describe("parseBulkKeyRow", () => {
     });
   });
 
+  describe("opaque LLM|id|secret tokens", () => {
+    it.each(["LLM|1412752987604207|PYVRCdb9ZAnsZZk63R", "llm|1412752987604207|PYVRCdb9ZAnsZZk63R"])(
+      "keeps %s whole as the apiKey",
+      (line) => {
+        const result = parseBulkKeyRow(line, { index: 0 });
+        expect(result).toEqual({ ok: true, name: "LLM 1", apiKey: line });
+      }
+    );
+
+    it("still parses name|key|accountId when the provider requires an accountId", () => {
+      const result = parseBulkKeyRow("main|sk-key1|acc123", { index: 0, requiresAccountId: true });
+      expect(result.apiKey).toBe("sk-key1");
+      expect(result.providerSpecificData).toEqual({ accountId: "acc123" });
+    });
+  });
+
   describe("defensive cases", () => {
     it("rejects a non-string input", () => {
       const result = parseBulkKeyRow(undefined, { index: 0 });

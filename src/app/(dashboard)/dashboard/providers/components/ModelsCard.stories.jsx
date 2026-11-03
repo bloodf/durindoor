@@ -55,7 +55,7 @@ export const AddCustomModelOpen = {
     await waitFor(() => expect(dialog).toBeVisible());
     const form = within(dialog);
     const input = form.getByLabelText("Model ID");
-    await expect(input).toBeVisible();
+    await waitFor(() => expect(input).toBeVisible());
     await expect(form.getByRole("button", { name: /^add$/i })).toBeDisabled();
     await userEvent.type(input, "gpt-example");
     await expect(form.getByRole("button", { name: /^add$/i })).toBeEnabled();
@@ -78,6 +78,6 @@ export const BulkTestResults = {
     const row = model.closest("div.group");
     await userEvent.click(within(row).getByRole("checkbox"));
     await userEvent.click(await canvas.findByRole("button", { name: /test selected/i }));
-    await expect(await within(row).findByText("check_circle")).toBeVisible();
+    await waitFor(() => expect(row.querySelector('[data-icon-name="check_circle"]')?.getAttribute("data-icon-name") || row.querySelector(".material-symbols-outlined")?.textContent?.trim()).toBe("check_circle"));
   },
 };

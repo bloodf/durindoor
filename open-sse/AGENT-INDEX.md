@@ -285,6 +285,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nanogpt` | openai | apikey | `https://nano-gpt.com/api/v1/chat/completions` |
 | `nara` |  | apikey | `https://router.bynara.id/v1/chat/completions` |
+| `navy` |  | apikey | `https://api.navy/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
 | `nimble` |  | apikey | `` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
@@ -294,10 +295,13 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nube` |  | apikey | `https://ai.nube.sh/api/v1/chat/completions` |
 | `nvidia` |  | freeTier | `https://integrate.api.nvidia.com/v1/chat/completions` |
 | `oci` |  | apikey | `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1/chat/completions` |
+| `ofoxai` |  | apikey | `https://api.ofox.ai/v1/chat/completions` |
 | `ollama` | ollama | freeTier | `https://ollama.com/api/chat` |
 | `ollama-local` | ollama | apikey | `http://localhost:11434` |
 | `oneminai` |  | apikey | `https://api.1min.ai/api/chat-with-ai` |
+| `onomeo` |  | apikey | `https://onomeo.com/v1/chat/completions` |
 | `oobabooga` | openai | apikey | `http://localhost:5000/v1` |
+| `openadapter` |  | apikey | `https://api.openadapter.in/v1/chat/completions` |
 | `openai` |  | apikey | `https://api.openai.com/v1/chat/completions` |
 | `opencode` |  | free | `https://opencode.ai` |
 | `opencode-go` |  | apikey | `https://opencode.ai/zen/go/v1/chat/completions` |

@@ -56,6 +56,6 @@ export const Overview = {
     await expect(canvas.getByText("Overview")).toBeVisible();
     await expect(canvas.getByText("Gateway")).toBeVisible();
     await expect(canvas.getByText("openai · gpt-5 · Primary")).toBeVisible();
-    await expect(canvas.getByText("OpenAI")).toBeVisible();
+    await expect(within(canvas.getByRole("region", { name: "Recorded provider health" })).getByRole("cell", { name: "OpenAI", exact: true })).toBeVisible();
   },
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardFooter, CardHeader } from "@/shared/ui/components/Card.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
@@ -17,7 +17,7 @@ import { useTheme } from "@/shared/hooks/useTheme";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
-import { isBrowser, isUndefined } from "../../../../shared/utils/typeChecks.js";
+import { isBrowser, isUndefined, isObject } from "../../../../shared/utils/typeChecks.js";
 import SelectiveTransferPanel from "./SelectiveTransferPanel";
 import MfaCard from "./MfaCard.jsx";
 
@@ -68,6 +68,9 @@ export default function ProfilePage() {
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
   // Keep OIDC disclosure unavailable until saved settings settle its layout and draft.
   const [loading, setLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsReady, setSettingsReady] = useState(false);
+  const settingsRequest = useRef(0);
   const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
   const [passStatus, setPassStatus] = useState({ type: "", message: "" });
   const [passLoading, setPassLoading] = useState(false);
@@ -117,10 +120,18 @@ export default function ProfilePage() {
     setLocale(getLocaleFromCookie());
   }, [langOpen]);
 
-  useEffect(() => {
-    fetch("/api/settings").
-    then((res) => res.json()).
+  const loadSettings = useCallback(() => {
+    const request = ++settingsRequest.current;
+    setLoading(true);
+    setSettingsError("");
+    return fetch("/api/settings").
+    then(async (res) => {
+      const data = await res.json();
+      if (!res.ok || !data || !isObject(data) || Array.isArray(data)) throw new Error(data?.error || "Settings could not be loaded.");
+      return data;
+    }).
     then((data) => {
+      if (request !== settingsRequest.current) return;
       setSettings(data);
       setOidcForm({
         authMode: data?.authMode || "password",
@@ -137,13 +148,17 @@ export default function ProfilePage() {
         outboundNoProxy: data?.outboundNoProxy || ""
       });
       setFirecrawlUrl(data?.firecrawlBaseUrl || "");
+      setSettingsReady(true);
       setLoading(false);
     }).
     catch((err) => {
-      console.error("Failed to fetch settings:", err);
+      if (request !== settingsRequest.current) return;
+      setSettingsError(err.message || "Settings could not be loaded.");
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => { loadSettings(); return () => { settingsRequest.current++; }; }, [loadSettings]);
 
   useEffect(() => {
     if (isBrowser()) {
@@ -885,6 +900,11 @@ export default function ProfilePage() {
     { value: "oidc", label: "OIDC only", hint: "Require OIDC for dashboard access." },
     { value: "both", label: "Both", hint: "Allow either password or OIDC." },
   ];
+
+  if (!settingsReady) return <main aria-label="Profile settings" className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-6">
+    <h1 className="text-2xl font-semibold">Settings</h1>
+    {loading ? <p role="status">Loading settings…</p> : <div role="alert" className="space-y-3"><p>{settingsError}</p><Button icon="refresh" onClick={loadSettings}>Retry settings</Button></div>}
+  </main>;
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6 sm:px-6" aria-label="Profile settings">

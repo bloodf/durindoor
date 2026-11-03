@@ -99,3 +99,23 @@ export const Loading = {
     await expect(await within(canvasElement).findByRole("status", { name: "Loading card" })).toBeVisible();
   },
 };
+
+export const DiscoveryUnavailable = {
+  ...scenario("claude"),
+  parameters: { storyFixture: { pathname: "/dashboard/cli-tools/claude", params: { toolId: "claude" }, routes: { ...routes, "GET /api/providers": { status: 503, body: { error: "Providers unavailable" } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Tool configuration could not be loaded");
+    await expect(canvas.getByRole("button", { name: "Retry configuration" })).toBeVisible();
+  },
+};
+
+export const IncompleteDiscovery = {
+  ...DiscoveryUnavailable,
+  parameters: { storyFixture: { pathname: "/dashboard/cli-tools/claude", params: { toolId: "claude" }, routes: { ...routes, "GET /api/tunnel/status": () => ({ body: {} }) } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Tool configuration response is incomplete");
+    await expect(canvas.getByRole("button", { name: "Retry configuration" })).toBeVisible();
+  },
+};

@@ -32,7 +32,8 @@ describe("Cursor executor CJS interop", () => {
     const executor = new CursorExecutor();
     const result = await executor.execute({
       model: "cursor-model",
-      body: { messages: [{ role: "user", content: "hi" }] },
+      // Image parts stay on the legacy ChatService path (AgentService is text/tool only).
+      body: { messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }] },
       stream: false,
       credentials: {
         accessToken: "token",

@@ -59,7 +59,7 @@ export const OpenLLM = {
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: "Select Model" });
     await waitFor(() => {
-      expect(within(dialog).getByText(/^Combos$/)).toBeInTheDocument();
+      expect(within(dialog).getByText(document.documentElement.dataset.v5Review === "true" ? /^Nested combos/ : /^Combos$/)).toBeInTheDocument();
     });
     await userEvent.type(within(dialog).getByRole("textbox", { name: "Search models" }), "claude");
   },
@@ -77,8 +77,11 @@ export const WithSelection = {
   render: (args) => <ModelSelectModal {...args} />,
   play: async () => {
     const dialog = await within(document.body).findByRole("dialog", { name: "Select Model" });
-    const chip = await waitFor(() => within(dialog).getByRole("button", { name: /^Claude Sonnet 4\.5\b/ }));
+    const provider = await within(dialog).findByRole("region", { name: "Anthropic", exact: true });
+    const chip = await waitFor(() => within(provider).getByText("Claude Sonnet 4.5", { exact: true }).closest("button"));
     expect(chip).toHaveAttribute("aria-pressed", "true");
+    const alias = within(provider).getByText("Claude Sonnet 4.5 (alias)", { exact: true }).closest("button");
+    expect(alias).toHaveAttribute("aria-pressed", "false");
   },
 };
 

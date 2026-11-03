@@ -59,6 +59,7 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
+import { gateStep } from "../services/compression/fidelityGate.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
@@ -98,6 +99,24 @@ FORMATS.CLAUDE]
 );
 
 const COMPRESSION_HEADER = "X-DurinDoor-Compression";
+
+/**
+ * Run RTK in place. With `gate` set (an rtk compression-stack step), a result
+ * that fails the fidelity gate is rolled back in place (same object identity)
+ * and reports no stats.
+ */
+function compressRtkGated(target, enabled, gate, log) {
+  if (!gate || !enabled) return compressMessages(target, enabled);
+  const before = structuredClone(target);
+  const stats = compressMessages(target, enabled);
+  if (!stats?.hits?.length) return stats;
+  const verdict = gateStep(before, target, gate);
+  if (verdict.passed) return stats;
+  log?.warn?.("COMPRESS", `engine rtk failed, step rolled back: fidelity gate rejected step (${verdict.failedInvariant}: ${verdict.detail})`);
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, before);
+  return null;
+}
 
 /**
  * Stamp the X-DurinDoor-Compression response header onto a handler result.
@@ -601,8 +620,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Compress the source-format body here instead, before that rewrite.
   // Every other provider's translator keeps the tool_result shape 1:1, so
   // they stay on the unchanged post-translate pass.
+  // An `rtk` compression-stack step runs here too (#1098): one RTK pass per
+  // request at the dedicated position, so the stack step below is a no-op
+  // (rtkApplied) and accounting matches the standalone toggle.
+  const rtkInStack = compressionEnabled === true && compressionEngines?.rtk?.enabled === true;
+  const runRtk = tokenSaverEnabled && (rtkEnabled || rtkInStack);
+  // A stack rtk step is fidelity-gated like every stack step; the plain RTK
+  // toggle alone keeps its ungated behavior.
+  const rtkGate = rtkInStack ? { textInvariants: compressionFidelityGate === true } : null;
   const preTranslateRtk = provider === "cursor" ?
-  compressMessages(body, tokenSaverEnabled && rtkEnabled) :
+  compressRtkGated(body, runRtk, rtkGate, log) :
   null;
 
   let translatedBody;
@@ -783,7 +810,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // RTK: compress tool_result content. Skipped when already compressed
   // pre-translate above (cursor) so a retry never double-compresses a body.
-  const rtkStats = preTranslateRtk || compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
+  const rtkStats = preTranslateRtk || compressRtkGated(translatedBody, runRtk, rtkGate, log);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? (saved / rtkStats.bytesBefore * 100).toFixed(0) : "0";
@@ -839,7 +866,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
         enabled: true,
         engines: compressionEngines ?? {},
-        applyOpts: COMPRESSION_ADAPTIVE_CONFIG,
+        applyOpts: { ...COMPRESSION_ADAPTIVE_CONFIG, rtkApplied: runRtk },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         adaptive: {
           ...COMPRESSION_ADAPTIVE_CONFIG,
@@ -1204,6 +1231,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   let terminalProvenance = null;
+  // Most executors return their registry format. Cursor AgentService is an
+  // exception: it is decoded by the executor into OpenAI-compatible output.
+  let providerResponseFormat = targetFormat;
   const captureExecutorToolNameMap = (body) => {
     if (!(body?._toolNameMap instanceof Map)) return;
     toolNameMap = new Map([...(toolNameMap || new Map()), ...body._toolNameMap]);
@@ -1304,6 +1334,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finalBody = result.transformedBody;
     captureExecutorToolNameMap(finalBody);
     terminalProvenance = result.terminalProvenance || null;
+    providerResponseFormat = result.responseFormat || targetFormat;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     if (isQuotaDispatchUnavailable(error)) {
@@ -1429,6 +1460,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           finalBody = retryResult.transformedBody;
           captureExecutorToolNameMap(finalBody);
           terminalProvenance = retryResult.terminalProvenance || null;
+          providerResponseFormat = retryResult.responseFormat || targetFormat;
           if (!providerResponse.ok) parsedError = await parseAndRestateError(providerResponse);
         } catch (error) {
           if (isQuotaDispatchUnavailable(error)) {
@@ -1737,7 +1769,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     try {
-      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
@@ -1750,7 +1782,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
     try {
-      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
+      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
       return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
@@ -1761,7 +1793,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx, credentials });
   abandonStreamingDetail = onStreamAbandoned;
   try {
-    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
+    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
     if (!result?.success) await settleQuota(false, "stream_error");
     return await finalizeResponse(result);
   } catch (error) {

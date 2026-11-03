@@ -184,8 +184,9 @@ export async function handleNativeProvider(request, provider, path) {
   const pollResourceId = operation.resourceParam ? pathParts[resourceIndex] : operation.resourceQuery ? url.searchParams.get(operation.resourceQuery) : bodyResourceId;
   // Authorize exactly one identifier: a provider's parser may pick a different repeat.
   // Names compare case-insensitively; only a query-ID operation may carry one, under its own name.
-  if (trackedResource) {
-    const idNames = new Set([trackedResource, ...RESOURCE_ID_NAMES].map((name) => name.toLowerCase()));
+  const identifierField = trackedResource || operation.resourceRequestField;
+  if (identifierField) {
+    const idNames = new Set([identifierField, ...RESOURCE_ID_NAMES].map((name) => name.toLowerCase()));
     const queryIds = [...url.searchParams.keys()].filter((name) => idNames.has(name.toLowerCase()));
     if (queryIds.length > (operation.resourceQuery ? 1 : 0) || queryIds.some((name) => name !== operation.resourceQuery)) {
       return fail(HTTP_STATUS.BAD_REQUEST, "Ambiguous native resource ID");

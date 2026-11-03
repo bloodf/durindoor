@@ -593,23 +593,32 @@ describe("#1115 native voices", () => {
   const remove = { ...op("/v1/delete_voice") };
   const model = () => modelFor("minimax");
 
-  it("does not record or transfer ownership through voice cloning", async () => {
+  it("never transfers an owned voice through cloning", async () => {
     await ownNative("minimax", "voice-1", "owner");
     const cloned = await send(`/v1/native/minimax/v1/voice_clone?model=${model()}`, "foreign", { method: "POST", body: JSON.stringify({ voice_id: "voice-1", file_id: 1 }), headers: { "x-connection-id": "minimax-account" } });
-    expect(cloned.status).toBe(200);
-    await cloned.text();
+    expect(cloned.status).toBe(403);
     expect((await readNativeResourceOwner("minimax", "minimax-account", "voice-1")).ownerId).toBe("owner");
-    fixture.fetch.mockClear();
     const denied = await send(nativeTarget(remove, "voice-1"), "foreign", nativeOptions(remove, "voice-1"));
     expect(denied.status).toBe(403);
     expect(fixture.fetch).not.toHaveBeenCalled();
   });
 
-  it("fails closed when deleting a cloned voice with no recorded owner", async () => {
-    const response = await send(nativeTarget(remove, "cloned"), "owner", nativeOptions(remove, "cloned"));
+  it("lets the cloning key, and only it, delete the cloned voice", async () => {
+    fixture.fetch.mockImplementation(async () => Response.json({ base_resp: { status_code: 0 } }));
+    const cloned = await send(`/v1/native/minimax/v1/voice_clone?model=${model()}`, "owner", { method: "POST", body: JSON.stringify({ voice_id: "cloned", file_id: 1 }), headers: { "x-connection-id": "minimax-account" } });
+    expect(cloned.status).toBe(200);
+    await cloned.text();
+    expect(clone.createsResource).toBe(true);
+    expect((await send(nativeTarget(remove, "cloned"), "foreign", nativeOptions(remove, "cloned"))).status).toBe(403);
+    const removed = await send(nativeTarget(remove, "cloned"), "owner", nativeOptions(remove, "cloned"));
+    expect(removed.status).toBe(200);
+    await removed.text();
+  });
+
+  it("fails closed when deleting a voice with no recorded owner", async () => {
+    const response = await send(nativeTarget(remove, "unrecorded"), "owner", nativeOptions(remove, "unrecorded"));
     expect(response.status).toBe(403);
     expect(fixture.fetch).not.toHaveBeenCalled();
-    expect(clone.createsResource).toBeUndefined();
   });
 
   it("binds the account voice list to a pinned account within key scope", async () => {

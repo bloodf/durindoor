@@ -75,6 +75,13 @@ describe("native provider facade", () => {
       expect(mocks.fetch).not.toHaveBeenCalled();
     });
 
+    it.each(["voice_id", "VOICE_ID", "id", "task_id"])("refuses an identifier query parameter %s", async (name) => {
+      mocks.readOwner.mockResolvedValue(null);
+      const result = await handleNativeProvider(request(`http://local/v1/native/minimax/v1/voice_clone?model=minimax/H3&${name}=voice-b`, { voice_id: "voice-a", file_id: 1 }), "minimax", "/v1/voice_clone");
+      expect(result.status).toBe(400);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
     it("lets the operator act on any owner's voice", async () => {
       mocks.resolveOwner.mockResolvedValueOnce({ authorized: true, ownerId: "operator", allowAllOwners: true });
       mocks.readOwner.mockResolvedValueOnce({ ownerId: "other-key", usageEventId: "x" });

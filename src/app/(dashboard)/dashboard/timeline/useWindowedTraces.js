@@ -28,7 +28,7 @@ export function matchesTraceFilters(trace, query) {
  * A serialized queue retains notifications during initial loading and refreshes;
  * no list limit can hide a retained trace's completion or filter transition.
  */
-export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
+export function useWindowedTraces({ enabled, filterQuery, windowMs, live, retry = 0 }) {
   const [traces, setTraces] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -149,7 +149,7 @@ export function useWindowedTraces({ enabled, filterQuery, windowMs, live }) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [enabled, filterQuery, windowMs]);
+  }, [enabled, filterQuery, windowMs, retry]);
 
   useEffect(() => {
     const resuming = !previousLive.current && live;

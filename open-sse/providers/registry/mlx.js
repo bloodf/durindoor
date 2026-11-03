@@ -7,7 +7,7 @@ export default {
     name: "MLX",
     icon: "memory",
     color: "#607D8B",
-    textIcon: "MX",
+    textIcon: "MLX",
     website: "https://github.com/ml-explore/mlx-lm",
   },
   category: "apikey",

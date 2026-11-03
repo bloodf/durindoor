@@ -11,7 +11,7 @@ import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, sav
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
+import { restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToGemini, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
 import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
@@ -637,6 +637,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // Chat clients get the completion as-is, so restore request-side tool-name
     // aliases the way the streaming and forced-SSE paths do (#1433).
     if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(translatedResponse, toolNameMap);
+    // Gemini clients: JSON projection bypasses the streaming translator's alias restore.
+    if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(translatedResponse, toolNameMap);
 
     const usage = extractUsageFromResponse(responseBody);
     appendLog({ tokens: usage, status: "200 OK" });

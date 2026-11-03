@@ -291,20 +291,12 @@ describe("#1089 OpenAI Chat client conformance — terminals", () => {
     expect(out.output[0].content[0].text).toBe("partial");
   });
 
-  // #1089 / #1331: non-stream error → status "failed" is unreachable from live handlers.
-  // isCoherentOpenAICompletion and SSE→JSON (#1348) both 502 before projection.
-  it.skip("maps non-stream error finish to Responses failed with error object", () => {
-    const out = nonstream(RESPONSES, OPENAI_FINISH.ERROR);
-    expect(out.status).toBe("failed");
-    expect(out.error).toEqual(expect.any(Object));
-    expect(out.output[0].content[0].text).toBe("partial");
-  });
-
-  // #1330 / #1089 Option A: non-stream error finish never reaches Claude/Gemini
-  // translators — handleNonStreamingResponse returns the shared incoherent 502.
+  // #1330 / #1089 Option A (#1331 for Responses): non-stream error finish never reaches
+  // Claude/Gemini/Responses translators — handleNonStreamingResponse returns the shared incoherent 502.
   it.each([
     ["Claude", CLAUDE],
     ["Gemini", GEMINI],
+    ["Responses", RESPONSES],
   ])("returns 502 for non-stream error finish for a %s client", async (_label, sourceFormat) => {
     const onRequestSuccess = vi.fn(() => Promise.resolve());
     const appendLog = vi.fn();

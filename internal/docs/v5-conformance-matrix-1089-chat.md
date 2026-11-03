@@ -1,8 +1,8 @@
 # Issue #1089: OpenAI Chat Completions client matrix
 
-Status counts: already-present 41; failing 7; passing (#1331) 4; repaired (#1332) 1; repaired (#1333) 2; repaired (#1334) 6; repaired (#1335) 3; repaired (#1356) 1; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
+Status counts: already-present 48; failing 0; passing (#1331) 4; repaired (#1332) 1; repaired (#1333) 2; repaired (#1334) 6; repaired (#1335) 3; repaired (#1356) 1; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
 
-Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing: #<issue> …` reason. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance. The #1330 non-stream error rows assert the live handler 502 contract (Option A), not a Claude/Gemini translator terminal.
+Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance. The #1330 non-stream error rows assert the live handler 502 contract (Option A), not a Claude/Gemini translator terminal.
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
@@ -35,7 +35,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Non-stream | length → incomplete/max_output_tokens | Responses | passing (#1331) | `maps non-stream length to Responses incomplete with max_output_tokens` |
 | Non-stream | content_filter terminal | Gemini | already-present | `maps non-stream content_filter to Gemini SAFETY` |
 | Non-stream | content_filter → incomplete/content_filter | Responses | passing (#1331) | `maps non-stream content_filter to Responses incomplete with content_filter` |
-| Non-stream | error → failed with error object | Responses | handler-502 (#1348) | `maps non-stream error finish to Responses failed with error object` |
+| Non-stream | error finish → incoherent 502 (no markSuccess) | Responses | handler-502 (#1348) | `returns 502 for non-stream error finish for a Responses client` |
 | Non-stream | error finish → incoherent 502 (no markSuccess) | Claude | already-present | `returns 502 for non-stream error finish for a Claude client` |
 | Non-stream | error finish → incoherent 502 (no markSuccess) | Gemini | already-present | `returns 502 for non-stream error finish for a Gemini client` |
 | Stream | length terminal | Claude | already-present | `emits Claude stream length as message_delta max_tokens` |
@@ -78,7 +78,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 1. #1328 — fixed: Gemini string `tool_choice` auto/none/required map to AUTO/NONE/ANY.
 2. #1329 — fixed (#1336): Chat→Responses preserves `tool_choice`.
 3. #1330 — Resolved on main (#1348 / Option A): Chat JSON `finish_reason: error` returns HTTP 502 `Provider returned an incoherent non-streaming response` before Claude/Gemini projection; matrix rows assert that handler contract.
-4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` stays skipped: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so that projector branch is unreachable.
+4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` is unreachable by contract: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so the row asserts the 502 for a Responses client like Claude/Gemini.
 5. #1332 — Chat→Claude image conversion is repaired by #1356 (data URI and HTTP(S), preserving error flags). Chat→Responses still stringifies image parts into output text; that residual remains open.
 6. #1335 — Cross-turn `tool_call_id` reuse broke current-turn pairing on Claude, Gemini, and Responses (repaired: pair by call id within the current assistant turn; drop strays).
 7. #1333 — Kiro `description.trim` throws `TypeError` for object/number descriptions.

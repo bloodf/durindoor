@@ -1,9 +1,9 @@
 ---
 title: Content masking
-description: Optionally detect or mask credentials and personal data in prompts before they reach a provider.
+description: Optionally detect or mask credentials and personal data in prompts before they reach a provider, and in provider responses before they reach the client.
 ---
 
-Content masking scans outbound chat requests for well-known API keys and secrets, and for common personal data. It is off by default.
+Content masking scans outbound chat requests and provider responses for well-known API keys and secrets, and for common personal data. It is off by default.
 
 ## Modes
 
@@ -16,8 +16,8 @@ Set `contentMasking` in settings:
 | `mode` | Behavior |
 | --- | --- |
 | `off` | Default. Nothing is scanned. |
-| `warn` | Count matches and log the counts. The request is sent unchanged, byte for byte. |
-| `mask` | Replace each match with a typed placeholder, such as `[REDACTED:anthropic]` or `[EMAIL_REDACTED]`, then send the request. |
+| `warn` | Count matches and log the counts. The request and the response are sent unchanged, byte for byte. |
+| `mask` | Replace each match with a typed placeholder, such as `[REDACTED:anthropic]` or `[EMAIL_REDACTED]`, in the request and in the response. |
 
 Set `credentials` or `pii` to `false` to turn either group off.
 
@@ -37,11 +37,18 @@ These rules keep false positives down:
 
 Masking reads message text, system and instruction text, and tool results. That includes Claude `tool_result` content nested in user turns, OpenAI Responses `function_call_output` and `custom_tool_call_output`, and Gemini text parts. It runs once, before format translation, so every provider gets the masked text.
 
-Provider responses are not masked.
+## Responses
+
+The same setting and rules apply to provider responses, after format translation, in the shape the client reads: Chat Completions, Responses, Claude Messages and Gemini, both JSON and streaming. Response matches are logged on their own line, for example `MASKING response masked 1 (anthropic:1)`.
+
+- Only visible answer text is rewritten. Tool calls, tool call IDs, function names, tool arguments, thinking and reasoning blocks, and the JSON structure are never changed.
+- In a stream, the last 128 characters of each text block are held back so a secret split across chunks is still caught. A match that is still in progress can hold more, up to 32 KB per block and 64 KB per stream. Past the block limit, the 128-character tail is still kept unless a match spans it. Past the stream limit, held blocks are masked and sent whole, largest first, never cut inside. `warn` mode holds the same amount, never the whole stream. Held text is sent, masked, before the block ends, when the stream ends, or when the upstream stream fails.
+- For Responses streams, the text in `response.output_text.done`, `response.content_part.done`, `response.output_item.done` and the final `response.completed` snapshot is the same text that the deltas sent.
+- Text in a stream is masked in pieces, so personal data inside a code block that spans several chunks can be masked even though the non-streaming path would leave it.
 
 ## Scope and failure behavior
 
 - Masking covers chat requests that go through the chat pipeline: Chat Completions, Responses and Messages. Embeddings, media and search routes are not masked.
 - Masking runs before request logging. With `ENABLE_REQUEST_LOGS=true`, logged request bodies are the masked ones in `mask` mode.
-- In `mask` mode, a masking error rejects the request with HTTP 500 instead of sending it unmasked. In `warn` mode an error only logs a warning.
+- In `mask` mode, a masking error rejects the request with HTTP 500 instead of sending it unmasked. A response masking error returns HTTP 502, or ends the stream with an error. In `warn` mode an error only logs a warning or stops the counting.
 - The mode is case-insensitive. An unknown value turns masking off and logs a warning.

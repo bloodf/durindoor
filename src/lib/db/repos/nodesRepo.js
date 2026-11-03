@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import REGISTRY from "open-sse/providers/registry/index.js";
 
 function rowToNode(row) {
   if (!row) return null;
@@ -92,7 +93,13 @@ export async function deleteProviderNode(id) {
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
     // customModels keys are `${providerAlias}|${id}|${type}`; the alias is the node id or its prefix.
-    for (const alias of [id, removed.prefix].filter(Boolean)) {
+    // A prefix is not unique for openai-compatible nodes and may equal a built-in alias, so only
+    // prune by prefix when no other node holds it and no built-in provider does.
+    const prefix = removed.prefix;
+    const prefixOwned = !prefix
+      || REGISTRY.some((p) => [p.id, p.alias, p.uiAlias, ...(p.aliases || [])].includes(prefix))
+      || db.all(`SELECT * FROM providerNodes`).some((r) => rowToNode(r).prefix === prefix);
+    for (const alias of [id, prefixOwned ? null : prefix].filter(Boolean)) {
       const head = `${alias}|`;
       db.run(`DELETE FROM kv WHERE scope = 'customModels' AND substr(key, 1, ?) = ?`, [head.length, head]);
     }

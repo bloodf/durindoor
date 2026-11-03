@@ -40,4 +40,27 @@ describe("deleteProviderNode prunes custom models", () => {
     const left = (await db.getCustomModels()).map((m) => m.id).sort();
     expect(left).toEqual(["m3", "m4"]);
   });
+
+  it("keeps prefix-keyed rows another node still uses", async () => {
+    const a = await db.createProviderNode({ type: "openai-compatible", name: "A", prefix: "shared", baseUrl: "https://api.test", apiType: "chat" });
+    const b = await db.createProviderNode({ type: "openai-compatible", name: "B", prefix: "shared", baseUrl: "https://api.test", apiType: "chat" });
+    await db.addCustomModel({ providerAlias: "shared", id: "s1" });
+    await db.addCustomModel({ providerAlias: a.id, id: "s2" });
+
+    await db.deleteProviderNode(a.id);
+    let ids = (await db.getCustomModels()).map((m) => m.id);
+    expect(ids).toContain("s1");
+    expect(ids).not.toContain("s2");
+
+    await db.deleteProviderNode(b.id);
+    ids = (await db.getCustomModels()).map((m) => m.id);
+    expect(ids).not.toContain("s1");
+  });
+
+  it("never prunes rows of a built-in provider alias", async () => {
+    const n = await db.createProviderNode({ type: "openai-compatible", name: "R", prefix: "openai", baseUrl: "https://api.test", apiType: "chat" });
+    await db.addCustomModel({ providerAlias: "openai", id: "builtin-1" });
+    await db.deleteProviderNode(n.id);
+    expect((await db.getCustomModels()).map((m) => m.id)).toContain("builtin-1");
+  });
 });

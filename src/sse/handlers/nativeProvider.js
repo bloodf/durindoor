@@ -184,8 +184,9 @@ export async function handleNativeProvider(request, provider, path) {
   const pollResourceId = operation.resourceParam ? pathParts[resourceIndex] : operation.resourceQuery ? url.searchParams.get(operation.resourceQuery) : bodyResourceId;
   // Authorize exactly one identifier: a provider's parser may pick a different repeat.
   // Names compare case-insensitively; only a query-ID operation may carry one, under its own name.
-  if (trackedResource) {
-    const idNames = new Set([trackedResource, ...RESOURCE_ID_NAMES].map((name) => name.toLowerCase()));
+  const identifierField = trackedResource || operation.resourceRequestField;
+  if (identifierField) {
+    const idNames = new Set([identifierField, ...RESOURCE_ID_NAMES].map((name) => name.toLowerCase()));
     const queryIds = [...url.searchParams.keys()].filter((name) => idNames.has(name.toLowerCase()));
     if (queryIds.length > (operation.resourceQuery ? 1 : 0) || queryIds.some((name) => name !== operation.resourceQuery)) {
       return fail(HTTP_STATUS.BAD_REQUEST, "Ambiguous native resource ID");
@@ -197,6 +198,15 @@ export async function handleNativeProvider(request, provider, path) {
     if (repeats > 1) return fail(HTTP_STATUS.BAD_REQUEST, "Ambiguous native resource ID");
   }
   if (trackedResource && (!isString(pollResourceId) || !pollResourceId)) return fail(HTTP_STATUS.BAD_REQUEST, "Missing native resource ID");
+  // Some creations name their resource in the request; refuse an ID another caller already owns.
+  const requestedResourceId = operation.resourceRequestField ? parsed?.[operation.resourceRequestField] : null;
+  if (operation.resourceRequestField) {
+    const field = operation.resourceRequestField.toLowerCase();
+    const repeats = (jsonTree?.children || []).filter((property) => String(property.children?.[0]?.value).toLowerCase() === field).length;
+    if (!isString(requestedResourceId) || !requestedResourceId || repeats !== 1) return fail(HTTP_STATUS.BAD_REQUEST, "Missing native resource ID");
+    const existing = await readNativeResourceOwner(provider, credentials.connectionId, requestedResourceId);
+    if (existing?.ownerId && !requestOwner.allowAllOwners && existing.ownerId !== requestOwner.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Forbidden");
+  }
   const resourceOwner = trackedResource ? await readNativeResourceOwner(provider, credentials.connectionId, pollResourceId) : null;
   if (trackedResource && !resourceOwner?.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Unknown native resource owner");
   if (resourceOwner && !requestOwner.allowAllOwners && resourceOwner.ownerId !== requestOwner.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Forbidden");
@@ -319,7 +329,12 @@ export async function handleNativeProvider(request, provider, path) {
         await createNativeResourceOwner({ ownerId: requestOwner.ownerId, provider, model, connectionId: credentials.connectionId, resourceId, usageEventId: nativeUsageEventId, billingEpoch });
         createdResourceId = resourceId;
       } : null,
-      onEnd: operation.createsResource ? () => {
+      onEnd: operation.createsResource ? async () => {
+        // A request-named resource is recorded only after a clean, non-error response.
+        if (requestedResourceId) {
+          await createNativeResourceOwner({ ownerId: requestOwner.ownerId, provider, model, connectionId: credentials.connectionId, resourceId: requestedResourceId, usageEventId: nativeUsageEventId, billingEpoch });
+          createdResourceId = requestedResourceId;
+        }
         if (!createdResourceId) throw new Error("Native resource response omitted its ownership ID");
       } : null
     });

@@ -363,6 +363,26 @@ function addBlockCapabilities(b, required) {
   addMimeCapabilities(b.inlineData?.mimeType || b.fileData?.mimeType, required);
 }
 
+const FILE_BLOCK_TYPES = new Set(["file", "document", "input_file"]);
+const PDF_BASE64_PREFIX = "JVBERi0"; // base64 of "%PDF-"
+
+// A tool-output file needs pdf support only when it is actually a PDF: declared
+// application/pdf, a .pdf name/URL, or base64 bytes that start with %PDF-.
+// Text documents and CSVs are forwarded as-is.
+function isPdfFileBlock(b) {
+  const src = isObject(b.source) ? b.source : null;
+  const file = isObject(b.file) ? b.file : b;
+  if (src?.media_type === "application/pdf") return true;
+  const data = [src?.type === "base64" ? src.data : null, file.file_data].find(isString);
+  if (data) {
+    const mime = data.match(/^data:([^;,:]{1,255})/)?.[1];
+    if (mime) return mime === "application/pdf";
+    if (data.startsWith(PDF_BASE64_PREFIX)) return true;
+  }
+  const name = [file.filename, file.file_url, src?.type === "url" ? src.url : null].find(isString);
+  return Boolean(name && /\.pdf(?:$|[?#])/i.test(name));
+}
+
 /**
  * Media modalities carried inside tool outputs on the current turn: Chat
  * `tool`/`function` messages, Claude `tool_result` blocks, Responses
@@ -377,7 +397,14 @@ export function detectToolOutputCapabilities(body) {
   const found = new Set();
   if (!body || !isObject(body)) return found;
   const scan = (blocks) => {
-    if (Array.isArray(blocks)) for (const b of blocks) addBlockCapabilities(b, found);
+    if (!Array.isArray(blocks)) return;
+    for (const b of blocks) {
+      if (FILE_BLOCK_TYPES.has(b?.type)) {
+        if (isPdfFileBlock(b)) found.add("pdf");
+      } else {
+        addBlockCapabilities(b, found);
+      }
+    }
   };
   for (const m of trailingUserItems(body.messages)) {
     if (m?.role === "tool" || m?.role === "function") scan(m.content);

@@ -83,6 +83,49 @@ describe("detectToolOutputCapabilities", () => {
     expect(detectToolOutputCapabilities(body)).toEqual(new Set(["pdf"]));
   });
 
+  it("detects base64 PDF bytes and declared PDF files without a media type", () => {
+    const pdfBytes = Buffer.from("%PDF-1.7\n").toString("base64");
+    expect(detectToolOutputCapabilities({
+      input: [{ type: "function_call_output", call_id: "c", output: [{ type: "input_file", file_data: pdfBytes }] }],
+    })).toEqual(new Set(["pdf"]));
+    expect(detectToolOutputCapabilities({
+      input: [{ type: "function_call_output", call_id: "c", output: [{ type: "input_file", file_data: "data:application/pdf;base64,AA==" }] }],
+    })).toEqual(new Set(["pdf"]));
+    expect(detectToolOutputCapabilities({
+      messages: [{ role: "tool", tool_call_id: "c", content: [{ type: "file", file: { filename: "report.PDF", file_id: "f" } }] }],
+    })).toEqual(new Set(["pdf"]));
+  });
+
+  it("does not require pdf for text documents or CSV files", () => {
+    const csv = Buffer.from("a,b\n1,2\n").toString("base64");
+    const bodies = [
+      { messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: [
+        { type: "document", source: { type: "text", media_type: "text/plain", data: "plain notes" } },
+      ] }] }] },
+      { input: [{ type: "function_call_output", call_id: "c", output: [
+        { type: "input_file", filename: "data.csv", file_data: `data:text/csv;base64,${csv}` },
+      ] }] },
+      { input: [{ type: "function_call_output", call_id: "c", output: [
+        { type: "input_file", filename: "data.csv", file_data: csv },
+      ] }] },
+    ];
+    for (const body of bodies) expect(detectToolOutputCapabilities(body)).toEqual(new Set());
+  });
+
+  it("forwards a CSV tool output through a combo with no pdf member", async () => {
+    const handleSingleModel = vi.fn(async () => new Response("ok", { status: 200 }));
+    const body = { input: [{ type: "function_call_output", call_id: "c", output: [
+      { type: "input_file", filename: "data.csv", file_data: "data:text/csv;base64,YSxiCg==" },
+    ] }] };
+
+    const res = await handleComboChat({
+      body, models: [TEXT], handleSingleModel, log, comboName: "text", comboStrategy: "fallback", capabilitiesMap: caps,
+    });
+
+    expect(res.status).toBe(200);
+    expect(handleSingleModel).toHaveBeenCalledOnce();
+  });
+
   it("ignores tool-output images from completed turns", () => {
     const body = {
       messages: [

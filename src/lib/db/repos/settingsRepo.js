@@ -136,6 +136,9 @@ const DEFAULT_SETTINGS = {
   // Opt-in text fidelity gate for stack steps (numbers, URLs, JSON keys,
   // negations). Protected blocks are always gated; see fidelityGate.js.
   compressionFidelityGate: false,
+  // Context-budget adaptive escalation for the stack (#1100). mode "off" |
+  // "floor" | "replace-autotrigger"; see adaptiveCompression/types.js.
+  compressionAdaptive: { mode: "off" },
   cavemanEnabled: false,
   cavemanLevel: "full",
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,

@@ -19,7 +19,6 @@ import {
   KIRO_DEFAULT_REGION } from
 "../config/kiroRegions.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
 import { getKiroUsage } from "../services/usage/kiro.js";
 import { KIRO_CREDIT_EXHAUSTION_PROBE_MS } from "../config/errorConfig.js";
 import {
@@ -464,7 +463,7 @@ export class KiroExecutor extends BaseExecutor {
   }
 
   /**
-   * Shape a Kiro request for its resolved gateway and stamp session affinity.
+   * Shape a Kiro request for its resolved gateway.
    *
    * The Kiro IDE gateway (`runtime.*.kiro.dev`) rejects top-level
    * `systemPrompt`, while CodeWhisperer/Amazon Q accepts it. The translator
@@ -472,16 +471,12 @@ export class KiroExecutor extends BaseExecutor {
    * incompatible top-level duplicate is removed. `targetUrl` is threaded from
    * BaseExecutor per dispatch attempt rather than stored on this shared executor.
    *
-   * The translators place a resolveSessionId-derived affinity id in
-   * `conversationState.conversationId`. Reusing one `agentContinuationId` per
-   * (scope, connectionId, model, conversationId) tuple lets the upstream keep
-   * serving a direct session from its warm cache across turns, while the
-   * account + model key dimensions prevent cross-account or cross-model replay.
-   * Explicit client sessions use the global cache; generated fallback sessions
-   * are scoped to `requestContext`, which also remains stable across retries.
+   * The deprecated `agentMode`, `agentContinuationId` and `agentTaskType` fields
+   * are no longer sent (upstream decolua/9router#3776, unverified live). Session
+   * affinity now rests on `conversationState.conversationId`, which the translators
+   * derive from resolveSessionId per (scope, connectionId, session).
    */
   transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
-    let transformedBody = body;
     if (
     targetUrl?.includes(".kiro.dev") &&
     body && isObject(
@@ -489,33 +484,10 @@ export class KiroExecutor extends BaseExecutor {
     !Array.isArray(body) &&
     Object.prototype.hasOwnProperty.call(body, "systemPrompt"))
     {
-      transformedBody = { ...body };
-      delete transformedBody.systemPrompt;
+      const { systemPrompt: _systemPrompt, ...rest } = body;
+      return rest;
     }
-
-    const conversationId = transformedBody?.conversationState?.conversationId;
-    if (!conversationId || !isObject(transformedBody?.conversationState)) return transformedBody;
-    const explicitFromContext = extractClientSessionId(requestContext?.clientHeaders, null);
-    const explicitFromCredentials = extractClientSessionId(credentials?.rawHeaders, null);
-    const isGenerated = credentials?._clientSessionIsGenerated ??
-    !(explicitFromContext ?? explicitFromCredentials);
-    const continuationId = resolveContinuationId({
-      sessionId: conversationId,
-      connectionId: credentials?.connectionId,
-      model,
-      scope: "kiro",
-      requestContext,
-      requestScoped: isGenerated
-    });
-    return {
-      ...transformedBody,
-      conversationState: {
-        ...transformedBody.conversationState,
-        agentContinuationId: continuationId,
-        agentTaskType: "vibe"
-      },
-      agentMode: "vibe"
-    };
+    return body;
   }
 
   /**

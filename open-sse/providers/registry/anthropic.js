@@ -43,8 +43,8 @@ export default {
     { id: "claude-sonnet-4-5-20250929", name: "Claude Sonnet 4.5" },
     { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5 (alias)" },
     { id: "claude-haiku-5-5", name: "Claude Haiku 5.5" },
-    { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5" },
-    { id: "claude-haiku-4-5", name: "Claude Haiku 4.5 (alias)" },
+    { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", deprecated: true },
+    { id: "claude-haiku-4-5", name: "Claude Haiku 4.5 (alias)", deprecated: true },
   ],
   serviceKinds: ["llm","imageToText"],
 };

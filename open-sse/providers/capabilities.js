@@ -55,6 +55,7 @@ export const DEFAULT_CAPABILITIES = {
   thinkingEfforts: null,
   thinkingType: null,
   thinkingModes: null,
+  defaultEffort: null, // effort the provider applies when the request names none (documented per model)
   supportedTools: null,
   maxInput: undefined,
   thinkingRange: null, // { min, max } for budget formats; null = no clamp
@@ -1265,7 +1266,7 @@ export function isLegacyHaikuModel(model = "") {
  * Haiku 5+ family caps; overrides the budget-shaped `*claude*haiku*` pattern.
  * Limits are left to defaults/catalog overlays: the global family has no cited source.
  */
-const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" };
+const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", defaultEffort: "medium" };
 
 /**
  * Resolve capabilities for a model using the 4-step fallback chain,

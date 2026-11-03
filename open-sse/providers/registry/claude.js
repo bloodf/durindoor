@@ -56,7 +56,7 @@ export default {
     { id: "claude-opus-4-8", name: "Claude Opus 4.8" },
     { id: "claude-opus-4-7", name: "Claude Opus 4.7" },
     { id: "claude-haiku-5-5", name: "Claude Haiku 5.5" },
-    { id: "claude-haiku-4-5-20251001", name: "Claude 4.5 Haiku" },
+    { id: "claude-haiku-4-5-20251001", name: "Claude 4.5 Haiku", deprecated: true },
   ],
   oauth: {
     clientId: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",

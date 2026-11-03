@@ -63,5 +63,7 @@ export function projectModelPresentation({ model = {}, modelId, providerId, outp
     provider_name: providerName,
     provider_alias: outputAlias,
     gateway_provider: gatewayProvider,
+    // Legacy models stay listed (never removed); registry rows flag them with `deprecated: true`.
+    ...(model.deprecated === true || registryModel?.deprecated === true ? { deprecated: true } : null),
   };
 }

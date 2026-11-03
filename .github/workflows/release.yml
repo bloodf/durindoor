@@ -74,7 +74,18 @@ jobs:
       - name: Install CLI dependencies
         run: npm --prefix cli install --include=dev --no-audit --no-fund
 
+      - name: Smoke standalone artifact
+        run: npm run verify:installed -- "$PWD/.next/standalone/custom-server.js"
+
+      - name: Build, pack and smoke npm tarball
+        run: |
+          npm --prefix cli run build
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm --prefix cli pack --pack-destination "$RUNNER_TEMP/pack"
+          npm run verify:packed -- "$RUNNER_TEMP"/pack/durindoor-*.tgz
+
       - name: Publish CLI
-        run: npm run cli:publish
+        # Publish the exact tarball the smoke installed; tarball publishes run no prepublishOnly rebuild.
+        run: npm publish "$RUNNER_TEMP"/pack/durindoor-*.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

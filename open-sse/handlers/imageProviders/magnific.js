@@ -8,7 +8,7 @@
 // the other async adapters (runwayml) instead of downloading them here, so no
 // upstream-supplied URL is fetched by this adapter.
 import { isString } from "../../../src/shared/utils/typeChecks.js";
-import { sleep, nowSec, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
+import { sleep, nowSec, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, fetchJobStatus, jobOutcomeUnknown, readJobBody } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { readBoundedResponseText } from "../../utils/error.js";
 
@@ -49,9 +49,8 @@ export default {
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
       await sleep(POLL_INTERVAL_MS, signal);
-      const r = await fetch(statusUrl, { headers: { [AUTH_HEADER]: headers[AUTH_HEADER] }, signal });
-      if (!r.ok) throw new Error(`Magnific Mystic status ${r.status}`);
-      const json = await readJson(r, "status");
+      const r = await fetchJobStatus(statusUrl, { headers: { [AUTH_HEADER]: headers[AUTH_HEADER] }, signal }, "Magnific Mystic");
+      const json = await readJobBody(() => readJson(r, "status"), signal);
       const task = json?.data || json;
       const status = isString(task?.status) ? task.status : "IN_PROGRESS";
       if (status === "COMPLETED") return task;
@@ -59,7 +58,7 @@ export default {
         throw new Error(`Magnific Mystic image generation ${status === "FAILED" ? "failed" : `ended with status ${status.slice(0, 32)}`}`);
       }
     }
-    throw Object.assign(new Error("Magnific Mystic image generation timed out"), { status: 504 });
+    throw jobOutcomeUnknown("Magnific Mystic image generation timed out", 504);
   },
   normalize: (task) => {
     const urls = (Array.isArray(task?.generated) ? task.generated : []).filter(isString);

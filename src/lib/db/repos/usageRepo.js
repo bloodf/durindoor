@@ -759,7 +759,8 @@ export async function saveRequestUsage(entry) {
     if (entry.modality && priced.costStatus !== "known") {
       const { resolveNativePricing } = await import("./pricingRepo.js");
       const nativePrice = await resolveNativePricing(entry.provider, entry.model, entry.modality, entry.nativeUnits);
-      if (nativePrice) priced = nativePrice;
+      // Both unknown: keep the caller's source, which says why (e.g. accepted-job).
+      if (nativePrice && !(nativePrice.cost === null && priced.cost === null)) priced = nativePrice;
     }
     entry.cost = priced.cost;
     entry.requests = 1;

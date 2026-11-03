@@ -61,6 +61,7 @@ import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { gateStep } from "../services/compression/fidelityGate.js";
 import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
+import { applyResponseMasking } from "../services/responseMasking.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
@@ -1789,10 +1790,14 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     ? resolveClaudeEchoModel(clientRawRequest) : null;
   const finalizeResponse = async (result) => {
     const codexEchoed = await applyResponseModelEcho(result, responsesEchoModel);
-    return withCompressionHeader(
+    // Response masking (#1479) runs last so it sees the exact client bytes.
+    // Off returns the result untouched; warn passes bytes through unchanged.
+    const masked = await applyResponseMasking(
       applyClaudeResponseModelEcho(codexEchoed, claudeEchoModel),
-      compressionHeaderValue,
+      contentMasking,
+      log,
     );
+    return withCompressionHeader(masked, compressionHeaderValue);
   };
 
   // Provider forced streaming but client wants JSON

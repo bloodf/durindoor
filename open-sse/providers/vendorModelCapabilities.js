@@ -168,7 +168,7 @@ const CODEX_CATALOG_CAPABILITIES = Object.fromEntries([
 }));
 
 const CLAUDE_CODE_CAPABILITIES = {
-  "claude-haiku-5-5": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","structuredOutput":true,"contextWindow":1000000,"maxOutput":128000},
+  "claude-haiku-5-5": {"vision":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","contextWindow":1000000,"maxOutput":128000},
   "claude-sonnet-5-5": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"structuredOutput":true,"contextWindow":1000000,"maxOutput":128000,"thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingModes":["adaptive","between_tools"],"search":true},
   "claude-opus-5-5": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"structuredOutput":true,"contextWindow":1000000,"maxOutput":128000,"thinkingEfforts":["low","medium","high","xhigh","max"]},
   "claude-fable-5-1": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"structuredOutput":true,"contextWindow":1000000,"maxOutput":128000,"thinkingEfforts":["low","medium","high","xhigh","max"]},
@@ -232,7 +232,7 @@ export const AUDITED_PROVIDER_CAPABILITIES = {
   codex: CODEX_CATALOG_CAPABILITIES,
   cx: CODEX_CATALOG_CAPABILITIES,
   anthropic: {
-    "claude-haiku-5-5": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},
+    "claude-haiku-5-5": {"vision":true,"reasoning":true,"thinkingFormat":"claude-adaptive","contextWindow":1000000,"maxOutput":128000},
     "claude-fable-5-1": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},
     "claude-mythos-5-1": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},
     "claude-fable-5": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},

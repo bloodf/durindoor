@@ -557,6 +557,10 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           kept.push(block);
           continue;
         }
+        // Anthropic rejects a thinking block with no visible text (400 "each thinking block must
+        // contain non-whitespace thinking"), even with a valid signature, and a replayed one
+        // would 400 every later turn. Redacted blocks carry `data`, not text, and are exempt.
+        if (block.type === CLAUDE_BLOCK.THINKING && !String(block.thinking ?? "").trim()) continue;
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
           const isAdaptiveModel = isAdaptiveThinkingModel(model);
           const isPlaceholder = block.signature === DEFAULT_THINKING_CLAUDE_SIGNATURE;
@@ -706,6 +710,14 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       const msg = filtered[i];
 
       if (msg.role === ROLE.ASSISTANT && Array.isArray(msg.content)) {
+        // Every Claude-wire provider: a thinking block with no visible text is rejected upstream
+        // (400 "each thinking block must contain non-whitespace thinking"). Redacted blocks carry
+        // `data` and are exempt. A turn left empty is dropped rather than padded.
+        msg.content = msg.content.filter((block) => !(block?.type === CLAUDE_BLOCK.THINKING && !String(block.thinking ?? "").trim()));
+        if (msg.content.length === 0) {
+          filtered.splice(i, 1);
+          continue;
+        }
         // Add cache_control to last non-thinking block of first (from end) assistant with content
         // thinking/redacted_thinking blocks do not support cache_control
         if (allowCacheControl && !lastAssistantProcessed && msg.content.length > 0) {

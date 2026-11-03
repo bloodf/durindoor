@@ -15,7 +15,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
@@ -218,13 +218,23 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId, billingEpoch);
 
     // Client abort: no account cooldown and no fallthrough to other accounts.
-    if (request.signal?.aborted) return result.response;
+    if (request.signal?.aborted) {
+      if (result.acceptedJob) await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
+      return result.response;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key
       // provider can mark exactly the generation that was rejected.
       usedCredential: credentials.accessToken || credentials.apiKey || null
     });
+
+    // The provider may still run and bill the accepted job, so another account would
+    // be a second billable job. The account health update above still applies.
+    if (result.acceptedJob) {
+      await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch);
+      return result.response;
+    }
 
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);
@@ -245,6 +255,20 @@ async function recordImageUsage(apiKey, result, request, provider, model, connec
     usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
     endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
   });
+}
+
+/** The request already ended without a result, so a ledger failure is logged and never replaces that outcome. */
+async function recordAcceptedImageJob(apiKey, accounting, request, provider, model, connectionId, billingEpoch) {
+  const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = accounting;
+  try {
+    await recordApiKeyUsage(apiKey, {
+      billingEpoch, status: "accepted",
+      usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
+      endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+    });
+  } catch (error) {
+    log.error("IMAGE_GENERATION", `[${provider}/${model}] accepted job not recorded: ${error.message}`);
+  }
 }
 
 export const handleImageGeneration = withRequestCorrelation(handleImageGenerationHandler);

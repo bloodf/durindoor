@@ -16,6 +16,7 @@ const trace = {
 
 const defaultRoutes = {
   "GET /api/timeline/trace-001": { body: trace },
+  "GET /api/timeline/trace-002": { body: { ...trace, trace: { ...trace.trace, id: "trace-002", provider: "claude", model: "claude-sonnet-4-5", status: "error" } } },
 };
 
 const loadingRoutes = {

@@ -34,7 +34,7 @@ let container;
 let root;
 
 function emit(message) {
-  act(() => transport.handlers.onEvent(message));
+  act(() => { transport.handlers.onStatus({ state: "streaming" }); transport.handlers.onEvent(message); });
 }
 
 function visibleLabel(element) {

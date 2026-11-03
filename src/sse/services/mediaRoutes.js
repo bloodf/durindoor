@@ -46,7 +46,7 @@ async function scopedProviders(apiKeyId) {
  * working (see keylessAvailability.js).
  */
 // Some catalogs list models of a kind for providers the gateway has no adapter
-// for (e.g. Venice image and embedding rows); those can only return 400.
+// for (live or custom rows the registry does not cover); those can only return 400.
 const KIND_ADAPTER = Object.freeze({
   image: (providerId) => !!getImageAdapter(providerId),
   embedding: (providerId) => !!getEmbeddingAdapter(providerId)

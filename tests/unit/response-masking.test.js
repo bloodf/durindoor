@@ -1,7 +1,7 @@
 // #1479: opt-in PII / credential masking of provider responses, incl. streaming.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
-import { applyResponseMasking, CARRY_CHARS } from "../../open-sse/services/responseMasking.js";
+import { applyResponseMasking, CARRY_CHARS, createIo, MAX_TOTAL_CARRY_CHARS } from "../../open-sse/services/responseMasking.js";
 
 const mocks = vi.hoisted(() => ({ execute: vi.fn() }));
 vi.mock("../../open-sse/executors/index.js", () => ({ getExecutor: vi.fn(() => ({ noAuth: true, execute: mocks.execute })) }));
@@ -231,6 +231,71 @@ describe("mask mode, streaming", () => {
     })()).rejects.toThrow("upstream reset");
     expect(payloads(text).map((p) => p.choices[0].delta.content).join("")).toBe("tail [REDACTED:anthropic]");
     expect(text).not.toContain(KEY);
+  });
+});
+
+describe("carry bounds and stream integrity", () => {
+  const OPTS = { credentials: true, pii: true };
+
+  it("never splits a UTF-16 surrogate pair across deltas", async () => {
+    // The 128-char cut lands between the two halves of the emoji.
+    const content = "x".repeat(10) + "\u{1F600}" + "y".repeat(CARRY_CHARS - 1);
+    const raw = frame({ choices: [{ index: 0, delta: { content } }] }) + frame({ choices: [{ index: 0, delta: { content: "z" } }] });
+    const text = await (await applyResponseMasking(sseResult([raw]), MASK)).response.text();
+    const deltas = payloads(text).map((p) => p.choices[0].delta.content);
+    expect(deltas.join("")).toBe(content + "z");
+    for (const d of deltas) {
+      expect(d).not.toMatch(/[\uD800-\uDBFF]$/);
+      expect(d).not.toMatch(/^[\uDC00-\uDFFF]/);
+    }
+    expect(text).not.toMatch(/\\ud83d"/i);
+  });
+
+  it("warn mode scans in windows and drops text once scanned", () => {
+    const counts = {};
+    const io = createIo({ ...OPTS, replace: false }, counts, false);
+    io.wrap = (p) => p;
+    const pieces = Array.from({ length: 5000 }, (_, i) => `chunk ${i} of plain prose. `);
+    pieces.splice(2500, 0, `key ${KEY.slice(0, 20)}`, `${KEY.slice(20)} done `);
+    let maxHeld = 0;
+    for (const piece of pieces) {
+      expect(io.feed("chat/0/", piece, (t) => ({ t }))).toBe(piece);
+      maxHeld = Math.max(maxHeld, io.held());
+    }
+    io.flush("");
+    expect(maxHeld).toBeLessThanOrEqual(CARRY_CHARS + 64);
+    expect(io.held()).toBe(0);
+    expect(counts).toEqual({ anthropic: 1 });
+  });
+
+  it("mask mode caps the total carry across indexes", () => {
+    const io = createIo({ ...OPTS, replace: true }, {}, true);
+    io.wrap = (p) => p;
+    // An unterminated private key block holds each index (below its own cap).
+    const block = "-----BEGIN PRIVATE KEY-----\n" + "A".repeat(20000);
+    for (let i = 0; i < 10; i++) io.feed(`claude/${i}/`, block, (t) => ({ t }));
+    expect(io.held()).toBeLessThanOrEqual(MAX_TOTAL_CARRY_CHARS + 10 * CARRY_CHARS);
+  });
+
+  it("keeps sent text only for Responses keys", () => {
+    const io = createIo({ ...OPTS, replace: true }, {}, true);
+    io.wrap = (p) => p;
+    for (const key of ["chat/0/", "claude/0/", "gem/0/", "resp/0/0/"]) io.feed(key, "x".repeat(400), (t) => ({ t }));
+    expect(io.emittedKeys()).toEqual(["resp/0/0/"]);
+  });
+
+  it("gives synthesized Responses deltas their own sequence numbers", async () => {
+    const full = `seq ${KEY} end`;
+    const ev = (n, p) => frame({ ...p, sequence_number: n }, p.type);
+    const raw = [
+      ev(0, { type: "response.created", response: { object: "response", output: [] } }),
+      ev(1, { type: "response.output_text.delta", output_index: 0, content_index: 0, delta: full }),
+      ev(2, { type: "response.output_text.done", output_index: 0, content_index: 0, text: full }),
+      ev(3, { type: "response.completed", response: { object: "response", output: [{ type: "message", content: [{ type: "output_text", text: full }] }] } }),
+    ].join("");
+    const events = payloads(await (await applyResponseMasking(sseResult([raw]), MASK)).response.text());
+    expect(events.map((p) => p.sequence_number)).toEqual(events.map((_, i) => i));
+    expect(events.filter((p) => p.type === "response.output_text.delta").map((p) => p.delta).join("")).toBe("seq [REDACTED:anthropic] end");
   });
 });
 

@@ -42,7 +42,7 @@ Masking reads message text, system and instruction text, and tool results. That 
 The same setting and rules apply to provider responses, after format translation, in the shape the client reads: Chat Completions, Responses, Claude Messages and Gemini, both JSON and streaming. Response matches are logged on their own line, for example `MASKING response masked 1 (anthropic:1)`.
 
 - Only visible answer text is rewritten. Tool calls, tool call IDs, function names, tool arguments, thinking and reasoning blocks, and the JSON structure are never changed.
-- In a stream, the last 128 characters of each text block are held back so a secret split across chunks is still caught. A match that is still in progress can hold more, up to 32 KB. Held text is sent, masked, before the block ends, when the stream ends, or when the upstream stream fails.
+- In a stream, the last 128 characters of each text block are held back so a secret split across chunks is still caught. A match that is still in progress can hold more, up to 32 KB per block and 64 KB per stream. `warn` mode holds the same amount, never the whole stream. Held text is sent, masked, before the block ends, when the stream ends, or when the upstream stream fails.
 - For Responses streams, the text in `response.output_text.done`, `response.content_part.done`, `response.output_item.done` and the final `response.completed` snapshot is the same text that the deltas sent.
 - Text in a stream is masked in pieces, so personal data inside a code block that spans several chunks can be masked even though the non-streaming path would leave it.
 

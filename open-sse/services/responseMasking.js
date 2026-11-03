@@ -25,34 +25,63 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 // every rule becomes recognisable; a match still straddling the cut keeps the
 // hold growing until it completes, up to MAX_CARRY_CHARS.
 export const CARRY_CHARS = 128;
-// ponytail: past this a straddling match is cut anyway; raise if a real secret needs more.
+// ponytail: past these a straddling match is cut anyway; raise if a real secret needs more.
 export const MAX_CARRY_CHARS = 32768;
+// Total raw text held across every index of one stream.
+export const MAX_TOTAL_CARRY_CHARS = 65536;
 const KEY_BEGIN_RE = /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/;
 const KEY_END_RE = /-----END (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/;
 const RESPONSES_TERMINAL = new Set(["response.completed", "response.incomplete", "response.failed"]);
 
-/** Length of the raw prefix that can be emitted without splitting a match. */
-function safeCut(raw, opts) {
-  const cut = raw.length - CARRY_CHARS;
-  if (cut <= 0) return 0;
-  if (raw.length > MAX_CARRY_CHARS) return cut;
-  const begin = raw.search(KEY_BEGIN_RE);
-  if (begin !== -1 && begin < cut && !KEY_END_RE.test(raw.slice(begin))) return begin;
-  const probe = {};
-  const whole = maskText(raw, opts, probe);
-  return maskText(raw.slice(0, cut), opts, probe) + maskText(raw.slice(cut), opts, probe) === whole ? cut : 0;
+/** Never cut between the two UTF-16 halves of one character (e.g. an emoji). */
+function keepPair(raw, cut) {
+  const code = raw.charCodeAt(cut - 1);
+  return cut > 0 && code >= 0xd800 && code <= 0xdbff ? cut - 1 : cut;
 }
 
-/** Per-stream carry state. `before` collects synthesized flush frames. */
-function createIo(opts, counts, mask) {
+/**
+ * Length of the raw prefix that can be emitted without splitting a match.
+ * `force` (total cap reached) cuts regardless. Probes always replace, so warn
+ * mode finds the same safe cuts as mask mode.
+ */
+function safeCut(raw, opts, force) {
+  const cut = keepPair(raw, raw.length - CARRY_CHARS);
+  if (cut <= 0) return 0;
+  if (force || raw.length > MAX_CARRY_CHARS) return cut;
+  const begin = raw.search(KEY_BEGIN_RE);
+  if (begin !== -1 && begin < cut && !KEY_END_RE.test(raw.slice(begin))) return begin;
+  const probeOpts = { ...opts, replace: true };
+  const probe = {};
+  const whole = maskText(raw, probeOpts, probe);
+  return maskText(raw.slice(0, cut), probeOpts, probe) + maskText(raw.slice(cut), probeOpts, probe) === whole ? cut : 0;
+}
+
+/**
+ * Per-stream carry state. `before` collects synthesized flush payloads with
+ * their frame serializer. Warn mode scans the same windows as mask mode and
+ * drops text once scanned, so it holds no more than mask mode does.
+ */
+export function createIo(opts, counts, mask) {
   const pending = new Map();
+  // Only Responses done events and snapshots replay sent text, so only
+  // Responses keys keep it; `streamed` marks every key already counted.
   const emitted = new Map();
+  const streamed = new Set();
   const templates = new Map();
   const before = [];
-  const record = (key, text) => emitted.set(key, (emitted.get(key) ?? "") + text);
+  let held = 0;
+  const hold = (key, raw) => {
+    held += raw.length - (pending.get(key)?.length ?? 0);
+    if (raw) pending.set(key, raw);
+    else pending.delete(key);
+  };
+  const record = (key, text) => {
+    streamed.add(key);
+    if (mask && key.startsWith("resp/")) emitted.set(key, (emitted.get(key) ?? "") + text);
+  };
   const take = (key) => {
     const raw = pending.get(key);
-    pending.delete(key);
+    hold(key, "");
     if (!raw) return "";
     const out = maskText(raw, opts, counts);
     record(key, out);
@@ -61,21 +90,19 @@ function createIo(opts, counts, mask) {
   const io = {
     before,
     take,
+    held: () => held,
+    emittedKeys: () => [...emitted.keys()],
     // Set per frame by processFrame: serializes a payload into that frame's lines.
     wrap: null,
     feed(key, text, template) {
       const wrap = io.wrap;
-      templates.set(key, (t) => wrap(template(t)));
+      templates.set(key, (t) => ({ wrap, payload: template(t) }));
       const raw = (pending.get(key) ?? "") + text;
-      if (!mask) {
-        pending.set(key, raw);
-        return text;
-      }
-      const cut = safeCut(raw, opts);
-      pending.set(key, raw.slice(cut));
+      const cut = safeCut(raw, opts, held + text.length > MAX_TOTAL_CARRY_CHARS);
+      hold(key, raw.slice(cut));
       const out = cut ? maskText(raw.slice(0, cut), opts, counts) : "";
       record(key, out);
-      return out;
+      return mask ? out : text;
     },
     flush(prefix) {
       for (const key of [...pending.keys()]) {
@@ -85,9 +112,13 @@ function createIo(opts, counts, mask) {
       }
     },
     final(key, text) {
-      if (emitted.has(key)) return emitted.get(key);
-      return isString(text) ? maskText(text, opts, counts) : text;
-    }
+      if (!streamed.has(key)) return isString(text) ? maskText(text, opts, counts) : text;
+      return mask ? emitted.get(key) ?? "" : text;
+    },
+    // Responses sequence numbers: synthesized frames get their own number and
+    // every later frame shifts by the count inserted so far.
+    seqShift: 0,
+    lastSeq: null
   };
   return io;
 }
@@ -214,16 +245,37 @@ function processFrame(frame, io) {
   io.wrap = withData;
   if (value === "[DONE]") {
     io.flush("");
-  } else {
-    let payload;
-    try {
-      payload = JSON.parse(value);
-    } catch {
-      return [frame];
-    }
-    if (maskEvent(payload, io)) frame = withData(payload);
+    return [...drainBefore(io, null), frame];
   }
-  return [...io.before.splice(0), frame];
+  let payload;
+  try {
+    payload = JSON.parse(value);
+  } catch {
+    return [frame];
+  }
+  let changed = maskEvent(payload, io);
+  const synthesized = drainBefore(io, payload);
+  if (Number.isInteger(payload?.sequence_number)) {
+    const seq = payload.sequence_number + io.seqShift;
+    changed = setField(payload, "sequence_number", seq) || changed;
+    io.lastSeq = seq;
+  }
+  return [...synthesized, changed ? withData(payload) : frame];
+}
+
+/** Serialize pending flush payloads, numbering Responses ones in order. */
+function drainBefore(io, current) {
+  const seqOf = Number.isInteger(current?.sequence_number) ? current.sequence_number + io.seqShift
+    : Number.isInteger(io.lastSeq) ? io.lastSeq + 1 : null;
+  let next = seqOf;
+  return io.before.splice(0).map(({ wrap, payload }) => {
+    if (next !== null && Number.isInteger(payload.sequence_number)) {
+      payload.sequence_number = next++;
+      io.seqShift++;
+      if (!current) io.lastSeq = payload.sequence_number;
+    }
+    return wrap(payload);
+  });
 }
 
 function summarize(counts) {
@@ -252,7 +304,7 @@ function createMaskingStream(source, { opts, counts, mask, report }) {
     const frames = buffer ? processFrame(buffer, io) : [];
     buffer = "";
     io.flush("");
-    return [...frames, ...io.before.splice(0)];
+    return [...frames, ...drainBefore(io, null)];
   });
   const finish = (controller) => {
     const frames = tail();

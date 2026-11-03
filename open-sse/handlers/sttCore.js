@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { transcribeCodex } from "./codexStt.js";
 import { resolveLocalWhisperHost } from "../config/providers.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -282,12 +283,18 @@ export function supportsSttTranslation(cfg, model = null) {
  * Successful results include usageValue and nativeUnits captured at provider decode.
  * @returns {Promise<{success, response, usageValue?, nativeUnits?, status?, error?}>}
  */
-export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription" }) {
+export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription", signal }) {
   const file = formData.get("file");
   if (!file) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
   let cfg = sttConfig;
   if (!cfg) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support STT`);
+
+  // OAuth transcription uses a fixed ChatGPT endpoint; never honor connection URL overrides.
+  if (provider === "codex" && cfg.format === "codex-transcribe") {
+    if (kind === "translation") return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Codex transcription does not support audio translations");
+    return transcribeCodex({ formData, credentials, signal });
+  }
 
   const translate = kind === "translation";
   if (translate && !supportsSttTranslation(cfg, model)) {

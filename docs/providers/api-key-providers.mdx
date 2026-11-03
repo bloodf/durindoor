@@ -103,3 +103,12 @@ existing nonblank canonical value. The alias fills a missing, null or blank
 canonical value before any DeepSeek reasoning-placeholder handling. User,
 system and tool messages are unchanged, as are other providers' existing rules.
 This is field normalization, not validation of arbitrary reasoning value types.
+
+## Pioneer (Fastino)
+
+Pioneer is now Fastino: `api.pioneer.ai` is retired and the API lives at `https://api.fastino.ai/v1`. Create a key at the Fastino dashboard (keys start with `fast_sk_`; legacy `pio_sk_` keys no longer work). The provider lists the decoder models from the Fastino model catalog. GLiNER and GLiDE models need a request `schema` or `/v1/systemone` and are not exposed here.
+
+### Unverified
+
+- No live call was made. Whether `/v1/chat/completions` serves the listed decoder model IDs without a `schema`, and the contents of the authenticated `/v1/models`, are unconfirmed.
+- Model IDs and context windows come from `docs.fastino.ai` only.

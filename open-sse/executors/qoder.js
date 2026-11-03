@@ -41,7 +41,8 @@ import { FORMATS } from "../translator/formats.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import {
   getCurrentProviderAttemptTimestamp,
-  runQuotaBearingProviderRequest } from
+  runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import {
   QODER_MODEL_MAP,
@@ -501,6 +502,8 @@ async function wrapQoderSSE(response, model, options = {}) {
     // Model is out of capacity: answer a retryable 503 (not a billing 403) and
     // tell execute() how long the upstream asked us to wait before replaying.
     await cancelAndReleaseReader(reader, "Qoder model queued");
+    // The refused send is discarded: release its quota ticket now, not after the replay wait.
+    await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
     return Response.json(
       { error: { message: "qoder model is queued; retry shortly", code: "qoder_model_queued", type: "rate_limit_error" } },
       { status: HTTP_STATUS.SERVICE_UNAVAILABLE, headers: { [QODER_QUEUE_DELAY_HEADER]: String(computeQoderQueueDelayMs(peeked.queue)) } }

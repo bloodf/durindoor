@@ -9,6 +9,7 @@ vi.mock("../../open-sse/services/qoderModels.js", () => ({
   resolveQoderModels: vi.fn(),
 }));
 
+const { runWithProviderAttemptContext, runProviderAttemptDispatch } = await import("../../open-sse/services/providerAttemptContext.js");
 const { QoderExecutor } = await import("../../open-sse/executors/qoder.js");
 const { parseQoderQueueInfo, computeQoderQueueDelayMs, qoderQueueMaxWaitMs, QODER_QUEUE_MAX_ATTEMPTS } = await import("../../open-sse/shared/qoder/queue.js");
 const { deriveMachineId } = await import("../../open-sse/shared/qoder/cosy.js");
@@ -75,6 +76,24 @@ describe("QoderExecutor queue replay", () => {
     expect(result.response.headers.get("x-qoder-queue-delay-ms")).toBeNull();
     expect((await result.response.json()).error.code).toBe("qoder_model_queued");
     expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(QODER_QUEUE_MAX_ATTEMPTS);
+  });
+
+  it("settles each queued send's quota ticket as fallback so only the final send stays held", async () => {
+    const tickets = [];
+    const beginQuotaDispatch = async () => {
+      const ticket = { tracked: true, settled: null, settle: vi.fn(async (outcome) => { ticket.settled = outcome; }), release: vi.fn() };
+      tickets.push(ticket);
+      return ticket;
+    };
+    const responses = [queued(2), queued(2), ok()];
+    fetchMock.mockImplementation(() => runProviderAttemptDispatch(async () => responses.shift()));
+    const promise = runWithProviderAttemptContext(() => {}, () => new QoderExecutor().execute(request()), { beginQuotaDispatch });
+    await vi.runAllTimersAsync();
+    const result = await promise;
+    expect(result.response.status).toBe(200);
+    expect(tickets).toHaveLength(3);
+    expect(tickets.slice(0, 2).map((t) => t.settled)).toEqual([{ success: false, reason: "fallback" }, { success: false, reason: "fallback" }]);
+    expect(tickets[2].settle).not.toHaveBeenCalled(); // left for the caller to commit once the stream ends
   });
 
   it("does not replay a real billing block", async () => {

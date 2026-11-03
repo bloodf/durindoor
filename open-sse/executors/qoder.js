@@ -21,7 +21,13 @@
  */
 
 import { qoderEncodeBody } from "../shared/qoder/encoding.js";
-import { buildCosyHeaders } from "../shared/qoder/cosy.js";
+import { buildCosyHeaders, deriveMachineId } from "../shared/qoder/cosy.js";
+import {
+  QODER_QUEUE_MAX_ATTEMPTS,
+  computeQoderQueueDelayMs,
+  parseQoderQueueInfo,
+  qoderQueueMaxWaitMs } from
+"../shared/qoder/queue.js";
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
 
@@ -310,9 +316,10 @@ export function isQoderQuotaExhaustedBody(body) {
 }
 
 // Signatures: code 110 (billing daily count exceeded), code 112 (quota
-// exhausted, handled by isQoderQuotaExhaustedBody), code 10605 (queue
-// throttle), or a pricingUrl field. Code is compared as a string so both
-// numeric and string upstream shapes match.
+// exhausted, handled by isQoderQuotaExhaustedBody), or a pricingUrl field.
+// Code 10605 (model queue throttle) is deliberately NOT here: it is a transient
+// capacity signal handled by the queue replay in execute(). Code is compared as
+// a string so both numeric and string upstream shapes match.
 function isBillingBlock(body) {
   if (!isString(body) || !body) return false;
   try {
@@ -320,10 +327,22 @@ function isBillingBlock(body) {
     if (isQoderQuotaExhaustedBody(parsed)) return true;
     if (!(parsed && isObject(parsed) && !Array.isArray(parsed))) return false;
     const code = String(parsed.code ?? "");
-    return code === "110" || code === "10605" || Object.hasOwn(parsed, "pricingUrl");
+    return code === "110" || Object.hasOwn(parsed, "pricingUrl");
   } catch {
     return false;
   }
+}
+
+const QODER_QUEUE_DELAY_HEADER = "x-qoder-queue-delay-ms";
+
+/** Sleep that rejects as soon as the caller's signal aborts, so a hang-up releases the request. */
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const onAbort = () => {clearTimeout(timer);reject(signal.reason);};
+    const timer = setTimeout(() => {signal?.removeEventListener("abort", onAbort);resolve();}, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function releaseReader(reader) {
@@ -397,6 +416,9 @@ async function peekQoderBillingFrame(reader, timeoutMs) {
           envelope.body :
           envelope.body != null ? JSON.stringify(envelope.body) : "";
           if (status !== 200 && isBillingBlock(body)) return { chunks, done: false, billing: { status, body } };
+          // A real billing signature wins above; otherwise a queue signal is retryable.
+          const queue = status !== 200 ? parseQoderQueueInfo(body) : null;
+          if (queue) return { chunks, done: false, queue };
         } catch {
 
           // Malformed frames remain existing stream-transform failures.
@@ -473,6 +495,15 @@ async function wrapQoderSSE(response, model, options = {}) {
     return Response.json(
       { error: { message: peeked.billing.body, code: HTTP_STATUS.FORBIDDEN } },
       { status: HTTP_STATUS.FORBIDDEN }
+    );
+  }
+  if (peeked.queue) {
+    // Model is out of capacity: answer a retryable 503 (not a billing 403) and
+    // tell execute() how long the upstream asked us to wait before replaying.
+    await cancelAndReleaseReader(reader, "Qoder model queued");
+    return Response.json(
+      { error: { message: "qoder model is queued; retry shortly", code: "qoder_model_queued", type: "rate_limit_error" } },
+      { status: HTTP_STATUS.SERVICE_UNAVAILABLE, headers: { [QODER_QUEUE_DELAY_HEADER]: String(computeQoderQueueDelayMs(peeked.queue)) } }
     );
   }
   const body = replayQoderBody(reader, peeked.chunks, peeked.done);
@@ -767,86 +798,110 @@ export class QoderExecutor extends BaseExecutor {
       return { response: fakeResp, url, headers: {}, transformedBody: body };
     }
 
-    // normalizeMessages spreads tool fields into payload.messages. Consume the
-    // bridge flag before encoding/signing, without changing the internal payload.
-    const plainBody = Buffer.from(JSON.stringify(this.prepareOpenAIToolMessagesForWire(payload)), "utf8");
-    const encodedBodyStr = qoderEncodeBody(plainBody);
-    const encodedBodyBuf = Buffer.from(encodedBodyStr, "latin1");
-
-    let cosyHeaders;
-    try {
-      cosyHeaders = buildCosyHeaders(
-        encodedBodyBuf,
-        url,
-        {
-          userId: psd.userId,
-          authToken: credentials.accessToken,
-          name: credentials.displayName || "",
-          email: credentials.email || "",
-          machineId: psd.machineId || ""
-        }
-      );
-    } catch (err) {
-      // cosy.js throws synchronously on missing userId/authToken — surface
-      // as 401 so chatCore prompts re-auth instead of returning a 500.
-      const fakeResp = new Response(
-        JSON.stringify({ error: { message: `qoder cosy signing failed: ${err.message}` } }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      );
-      return { response: fakeResp, url, headers: {}, transformedBody: body };
-    }
-
-    const modelSource = payload.model_config && payload.model_config.source || "system";
-    const headers = {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      "Cache-Control": "no-cache",
-      "X-Model-Key": qoderKey,
-      "X-Model-Source": modelSource,
-      // gzip triggers signature validation on Qoder's CDN; force identity.
-      "Accept-Encoding": "identity",
-      ...cosyHeaders
-    };
-
-    // Abort if upstream doesn't return response headers within connect timeout.
+    // COSY signs the body, so every send (including each queue replay) is signed
+    // afresh: reusing a signature reuses its requestId and upstream answers 403/code 103.
+    // The payload, and so request_id/request_set_id, is kept across replays.
     const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-    const connectCtrl = new AbortController();
-    const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
-    const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+    const sendOnce = async () => {
+      // normalizeMessages spreads tool fields into payload.messages. Consume the
+      // bridge flag before encoding/signing, without changing the internal payload.
+      const plainBody = Buffer.from(JSON.stringify(this.prepareOpenAIToolMessagesForWire(payload)), "utf8");
+      const encodedBodyBuf = Buffer.from(qoderEncodeBody(plainBody), "latin1");
 
-    let response;
-    try {
-      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(
+      let cosyHeaders;
+      try {
+        cosyHeaders = buildCosyHeaders(
+          encodedBodyBuf,
+          url,
+          {
+            userId: psd.userId,
+            authToken: credentials.accessToken,
+            name: credentials.displayName || "",
+            email: credentials.email || "",
+            // A stable id keeps queue position; a random one per request rejoins the back.
+            machineId: psd.machineId || deriveMachineId(psd.userId)
+          }
+        );
+      } catch (err) {
+        // cosy.js throws synchronously on missing userId/authToken — surface
+        // as 401 so chatCore prompts re-auth instead of returning a 500.
+        const fakeResp = new Response(
+          JSON.stringify({ error: { message: `qoder cosy signing failed: ${err.message}` } }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+        return { response: fakeResp, url, headers: {}, transformedBody: body };
+      }
+
+      const modelSource = payload.model_config && payload.model_config.source || "system";
+      const headers = {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        "Cache-Control": "no-cache",
+        "X-Model-Key": qoderKey,
+        "X-Model-Source": modelSource,
+        // gzip triggers signature validation on Qoder's CDN; force identity.
+        "Accept-Encoding": "identity",
+        ...cosyHeaders
+      };
+
+      // Abort if upstream doesn't return response headers within connect timeout.
+      const connectCtrl = new AbortController();
+      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
+      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+
+      let response;
+      try {
+        response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(
+          url,
+          { method: "POST", headers, body: encodedBodyBuf, signal: mergedSignal },
+          // A failed proxy request may already have reached Qoder. Replaying
+          // the same COSY signature directly (fallback-to-direct) reuses its
+          // requestId and returns 403/code 103 "Duplicate request". Force a
+          // hard failure instead of a silent direct retry — the caller retries
+          // through execute() with fresh signing.
+          { ...proxyOptions, strictProxy: true }
+        ));
+      } catch (err) {
+        // strictProxy wraps transport errors; retain caller cancellation semantics.
+        if (mergedSignal.aborted) throw mergedSignal.reason;
+        throw err;
+      } finally {
+        clearTimeout(connectTimer);
+      }
+
+      if (!response.ok) {
+        // Pass error response through unchanged so chatCore can capture it.
+        return { response, url, headers, transformedBody: payload };
+      }
+      const wrapped = await wrapQoderSSE(response, `${this.provider}/${qoderKey}`, { timeoutMs });
+      return {
+        response: wrapped,
         url,
-        { method: "POST", headers, body: encodedBodyBuf, signal: mergedSignal },
-        // A failed proxy request may already have reached Qoder. Replaying
-        // the same COSY signature directly (fallback-to-direct) reuses its
-        // requestId and returns 403/code 103 "Duplicate request". Force a
-        // hard failure instead of a silent direct retry — the caller retries
-        // through execute() with fresh signing.
-        { ...proxyOptions, strictProxy: true }
-      ));
-    } catch (err) {
-      // strictProxy wraps transport errors; retain caller cancellation semantics.
-      if (mergedSignal.aborted) throw mergedSignal.reason;
-      throw err;
-    } finally {
-      clearTimeout(connectTimer);
-    }
-
-    if (!response.ok) {
-      // Pass error response through unchanged so chatCore can capture it.
-      return { response, url, headers, transformedBody: payload };
-    }
-    const wrapped = await wrapQoderSSE(response, `${this.provider}/${qoderKey}`, { timeoutMs });
-    return {
-      response: wrapped,
-      url,
-      headers,
-      transformedBody: payload,
-      attemptStartedAt: getCurrentProviderAttemptTimestamp(),
-      terminalProvenance: "validated"
+        headers,
+        transformedBody: payload,
+        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+        terminalProvenance: "validated"
+      };
     };
+
+    // 10605 (model queue) is transient: replay after the server's hint, bounded by
+    // both an attempt cap and a wall-clock budget, then return a retryable 503.
+    const maxWaitMs = qoderQueueMaxWaitMs();
+    const startedAt = Date.now();
+    for (let attempt = 1;; attempt += 1) {
+      const result = await sendOnce();
+      const delayHeader = result.response.headers.get(QODER_QUEUE_DELAY_HEADER);
+      if (delayHeader === null) return result;
+
+      const delayMs = Number(delayHeader);
+      const elapsedMs = Date.now() - startedAt;
+      if (attempt >= QODER_QUEUE_MAX_ATTEMPTS || elapsedMs + delayMs > maxWaitMs) {
+        log?.warn?.("QODER", `model queue still busy after ${attempt} attempt(s) / ${Math.round(elapsedMs / 1000)}s for ${this.provider}/${qoderKey}`);
+        return { ...result, response: Response.json(await result.response.json(), { status: HTTP_STATUS.SERVICE_UNAVAILABLE }) };
+      }
+      log?.info?.("QODER", `model queued; replaying ${this.provider}/${qoderKey} in ${Math.round(delayMs / 1000)}s (attempt ${attempt}/${QODER_QUEUE_MAX_ATTEMPTS})`);
+      await sleep(delayMs, signal);
+    }
   }
 
   // Qoder device tokens don't refresh through OAuth — the upstream returns

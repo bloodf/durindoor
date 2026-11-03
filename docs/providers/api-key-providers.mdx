@@ -103,3 +103,11 @@ existing nonblank canonical value. The alias fills a missing, null or blank
 canonical value before any DeepSeek reasoning-placeholder handling. User,
 system and tool messages are unchanged, as are other providers' existing rules.
 This is field normalization, not validation of arbitrary reasoning value types.
+
+## Qoder model queue
+
+When Qoder reports code `10605` (a model queue, not a billing block), DurinDoor holds the request and replays it with a fresh signature after the delay Qoder asks for (15 to 60 seconds). It stops after 6 attempts or `QODER_MODEL_QUEUE_MAX_WAIT_MS` milliseconds (default 180000), whichever comes first, and then returns a retryable `503` with code `qoder_model_queued` so a combo can move on. Billing signatures (`110`, `112`, `pricingUrl`) still return `403` immediately and are never replayed. A closed client connection ends the wait.
+
+### Unverified
+
+- No live Qoder call was made. The `10605` payload shape and queue timings come from upstream commit text. Upstream also polls a queue-status endpoint; that is not ported.

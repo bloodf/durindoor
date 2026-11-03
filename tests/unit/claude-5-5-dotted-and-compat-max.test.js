@@ -19,8 +19,8 @@ describe("Copilot dotted Claude 5.5 ids share the dashed thinking rules (#1367)"
       expect(getThinkingLevels("github", dotted)).not.toContain("none");
     });
 
-    it(`${dotted} never receives thinking.type "disabled"`, () => {
-      const body = applyThinking("claude", dotted, { model: dotted, reasoning_effort: "none", messages: [] }, "github");
+    it.each(["github", "kiro", "kr"])(`${dotted} never receives thinking.type "disabled" on %s`, (provider) => {
+      const body = applyThinking("claude", dotted, { model: dotted, reasoning_effort: "none", messages: [] }, provider);
       expect(body.thinking?.type).not.toBe("disabled");
     });
   }

@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { loader } from "@monaco-editor/react";
 
-import "material-symbols/outlined.css";
+import "./material-symbols.css";
 import "../src/shared/ui/tokens.css";
 import "../src/app/globals.css";
 import "./preview.css";
@@ -11,6 +11,7 @@ import useThemeStore from "../src/store/themeStore.js";
 import { THEME_CONFIG } from "../src/shared/constants/config.js";
 import { useTheme as useAppTheme } from "../src/shared/hooks/useTheme.js";
 import { setupStoryScope } from "./decorators.jsx";
+import { installReviewInteractions } from "./review-interactions.js";
 
 // Serve the real editor and workers locally; offline QA never uses a CDN.
 loader.config({ paths: { vs: "/monaco/vs" } });
@@ -86,6 +87,14 @@ export function setupStoryThemeScope(context) {
 export async function setupStoryLifecycle(context) {
   const cleanups = [];
   try {
+    const previousReview = document.documentElement.getAttribute("data-v5-review");
+    if (context.parameters.v5Review) document.documentElement.dataset.v5Review = "true";
+    else document.documentElement.removeAttribute("data-v5-review");
+    cleanups.push(() => {
+      if (previousReview === null) document.documentElement.removeAttribute("data-v5-review");
+      else document.documentElement.setAttribute("data-v5-review", previousReview);
+    });
+    if (context.parameters.v5Review) cleanups.push(installReviewInteractions());
     const teardownTheme = setupStoryThemeScope(context);
     cleanups.push(teardownTheme);
     const teardownScope = await setupStoryScope(context);

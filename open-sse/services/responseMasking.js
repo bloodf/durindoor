@@ -42,19 +42,24 @@ function keepPair(raw, cut) {
 
 /**
  * Length of the raw prefix that can be emitted without splitting a match.
- * Over the per-index cap the whole text goes out, masked as one piece. Probes
- * always replace, so warn mode finds the same safe cuts as mask mode.
+ * Past the per-index cap the unclosed-key hold is dropped and the normal
+ * straddle check keeps a 128-char tail; only if a match still straddles that
+ * cut is the whole text sent, masked as one piece. Probes always replace, so
+ * warn mode finds the same safe cuts as mask mode.
  */
 function safeCut(raw, opts) {
-  if (raw.length > MAX_CARRY_CHARS) return raw.length;
   const cut = keepPair(raw, raw.length - CARRY_CHARS);
   if (cut <= 0) return 0;
-  const begin = raw.search(KEY_BEGIN_RE);
-  if (begin !== -1 && begin < cut && !KEY_END_RE.test(raw.slice(begin))) return begin;
+  const over = raw.length > MAX_CARRY_CHARS;
+  if (!over) {
+    const begin = raw.search(KEY_BEGIN_RE);
+    if (begin !== -1 && begin < cut && !KEY_END_RE.test(raw.slice(begin))) return begin;
+  }
   const probeOpts = { ...opts, replace: true };
   const probe = {};
   const whole = maskText(raw, probeOpts, probe);
-  return maskText(raw.slice(0, cut), probeOpts, probe) + maskText(raw.slice(cut), probeOpts, probe) === whole ? cut : 0;
+  if (maskText(raw.slice(0, cut), probeOpts, probe) + maskText(raw.slice(cut), probeOpts, probe) === whole) return cut;
+  return over ? raw.length : 0;
 }
 
 /**

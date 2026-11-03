@@ -296,6 +296,18 @@ describe("carry bounds and stream integrity", () => {
     expect(sent).toBe(`${"p".repeat(200)} [REDACTED:anthropic] ${"q".repeat(100)}`);
   });
 
+  it("past the per-block cap keeps a tail so a key split across deltas is still masked", async () => {
+    // Unclosed private key header, then more than 32 KB, then a key split by the delta boundary.
+    const head = "-----BEGIN PRIVATE KEY-----\n" + "B".repeat(33000) + ` ${KEY.slice(0, 20)}`;
+    const delta = (text) => frame({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } }, "content_block_delta");
+    const raw = delta(head) + delta(`${KEY.slice(20)} end`) + frame({ type: "content_block_stop", index: 0 }, "content_block_stop");
+    const text = await (await applyResponseMasking(sseResult([raw]), MASK)).response.text();
+    expect(text).not.toContain("sk-ant-");
+    const sent = payloads(text).filter((p) => p.delta?.type === "text_delta").map((p) => p.delta.text).join("");
+    expect(sent.endsWith(" [REDACTED:anthropic] end")).toBe(true);
+    expect(sent.length).toBe(head.length - 20 + " [REDACTED:anthropic] end".length - 1);
+  });
+
   it("keeps sent text only for Responses keys", () => {
     const io = createIo({ ...OPTS, replace: true }, {}, true);
     io.wrap = (p) => p;

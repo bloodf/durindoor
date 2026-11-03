@@ -149,6 +149,11 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
   const inlineParts = remainingParts.
   filter((part) => part.inlineData?.data).
   map((part) => ({ type: "image_url", image_url: { url: encodeDataUri(part.inlineData.mimeType, part.inlineData.data) } }));
+  // A reply pairs with the calls of the turn just before it: each model turn with calls starts afresh.
+  if (remainingParts.some((part) => part.functionCall)) {
+    serialByName.clear();
+    queueByName.clear();
+  }
   const toolCalls = remainingParts.
   filter((part) => part.functionCall).
   map((part) => {

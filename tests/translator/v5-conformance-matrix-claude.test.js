@@ -109,6 +109,8 @@ describe("#1089 Claude Messages client requests to Chat, Responses and Gemini", 
     expect(fromClaude(CHAT, { tool_choice }).parallel_tool_calls).toBe(false);
     expect(fromClaude(RESPONSES, { tool_choice }).parallel_tool_calls).toBe(false);
     expect(fromClaude(CHAT, { tool_choice: { type: "auto" } }).parallel_tool_calls).toBeUndefined();
+    // OpenAI rejects parallel_tool_calls without tools.
+    expect(fromClaude(CHAT, { tools: undefined, tool_choice }).parallel_tool_calls).toBeUndefined();
   });
 
   it("pairs tool_result with tool_use for Chat, Responses and Gemini", () => {

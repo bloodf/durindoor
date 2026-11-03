@@ -170,3 +170,23 @@ describe("#1089 Gemini client conformance — translator low items", () => {
     expect(out.messages.filter((m) => m.role === "tool").map((m) => m.tool_call_id)).toEqual(callIds);
   });
 });
+
+describe("#1089 Gemini client conformance — call id pairing across turns", () => {
+  const history = {
+    contents: [
+      { role: "user", parts: [{ text: "one" }] },
+      { role: "model", parts: [{ functionCall: { name: "f", args: { n: 1 } } }] },
+      { role: "user", parts: [{ text: "never mind, again" }] },
+      { role: "model", parts: [{ functionCall: { name: "f", args: { n: 2 } } }] },
+      { role: "user", parts: [{ functionResponse: { name: "f", response: { result: "ok" } } }] },
+    ],
+  };
+
+  it("pairs a reply with the call in the turn just before it", () => {
+    const out = translateRequest(GEMINI, CHAT, "m", structuredClone(history), false);
+    const calls = out.messages.filter((m) => m.tool_calls).flatMap((m) => m.tool_calls.map((c) => c.id));
+    const reply = out.messages.find((m) => m.role === "tool").tool_call_id;
+    expect(calls.at(-1)).toBe(reply);
+    expect(calls).toContain(reply);
+  });
+});

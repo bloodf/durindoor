@@ -126,6 +126,11 @@ function responseCallId({ queueByName }, response) {
 
 // Convert Gemini content to OpenAI message
 function convertGeminiContent(content, ids = { serialByName: new Map(), queueByName: new Map() }) {
+  // A reply pairs with the calls of the turn just before it: each model turn with calls starts afresh.
+  if (content?.parts?.some?.((part) => part?.functionCall)) {
+    ids.serialByName.clear();
+    ids.queueByName.clear();
+  }
   const role = content.role === GEMINI_ROLE.USER ? ROLE.USER : ROLE.ASSISTANT;
 
   if (!content.parts || !Array.isArray(content.parts)) {

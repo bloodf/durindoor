@@ -123,4 +123,21 @@ describe("#1089 Gemini public route through handleChatCore", () => {
     expect(new Set(callIds).size).toBe(2);
     expect(resultIds).toEqual(callIds);
   });
+
+  it("pairs a reply with the call in the turn just before it after an unanswered call", async () => {
+    mocks.execute.mockImplementation(upstream);
+    await post("generateContent", {
+      contents: [
+        { role: "user", parts: [{ text: "one" }] },
+        { role: "model", parts: [{ functionCall: { name: "w", args: { n: 1 } } }] },
+        { role: "user", parts: [{ text: "again" }] },
+        { role: "model", parts: [{ functionCall: { name: "w", args: { n: 2 } } }] },
+        { role: "user", parts: [{ functionResponse: { name: "w", response: { result: "ok" } } }] },
+      ],
+      tools: [{ functionDeclarations: [decl("w")] }],
+    });
+    const msgs = outbound().messages;
+    const lastCall = msgs.filter((m) => m.tool_calls).at(-1).tool_calls[0].id;
+    expect(msgs.find((m) => m.role === "tool").tool_call_id).toBe(lastCall);
+  });
 });

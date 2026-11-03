@@ -25,7 +25,8 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 // every rule becomes recognisable; a match still straddling the cut keeps the
 // hold growing until it completes, up to MAX_CARRY_CHARS.
 export const CARRY_CHARS = 128;
-// ponytail: past these a straddling match is cut anyway; raise if a real secret needs more.
+// Past these, held text is masked and sent whole (never cut inside), so a
+// match that is still arriving at the very end may be split; raise if needed.
 export const MAX_CARRY_CHARS = 32768;
 // Total raw text held across every index of one stream.
 export const MAX_TOTAL_CARRY_CHARS = 65536;
@@ -41,13 +42,13 @@ function keepPair(raw, cut) {
 
 /**
  * Length of the raw prefix that can be emitted without splitting a match.
- * `force` (total cap reached) cuts regardless. Probes always replace, so warn
- * mode finds the same safe cuts as mask mode.
+ * Over the per-index cap the whole text goes out, masked as one piece. Probes
+ * always replace, so warn mode finds the same safe cuts as mask mode.
  */
-function safeCut(raw, opts, force) {
+function safeCut(raw, opts) {
+  if (raw.length > MAX_CARRY_CHARS) return raw.length;
   const cut = keepPair(raw, raw.length - CARRY_CHARS);
   if (cut <= 0) return 0;
-  if (force || raw.length > MAX_CARRY_CHARS) return cut;
   const begin = raw.search(KEY_BEGIN_RE);
   if (begin !== -1 && begin < cut && !KEY_END_RE.test(raw.slice(begin))) return begin;
   const probeOpts = { ...opts, replace: true };
@@ -98,15 +99,23 @@ export function createIo(opts, counts, mask) {
       const wrap = io.wrap;
       templates.set(key, (t) => ({ wrap, payload: template(t) }));
       const raw = (pending.get(key) ?? "") + text;
-      const cut = safeCut(raw, opts, held + text.length > MAX_TOTAL_CARRY_CHARS);
+      const cut = safeCut(raw, opts);
       hold(key, raw.slice(cut));
-      const out = cut ? maskText(raw.slice(0, cut), opts, counts) : "";
+      let out = cut ? maskText(raw.slice(0, cut), opts, counts) : "";
       record(key, out);
+      // Over the stream cap: send whole held keys, largest first, each masked
+      // as one piece so no match is cut inside held text.
+      while (held > MAX_TOTAL_CARRY_CHARS) {
+        let largest = null;
+        for (const [k, v] of pending) if (!largest || v.length > pending.get(largest).length) largest = k;
+        if (largest === key) out += take(key);
+        else io.flush(largest, true);
+      }
       return mask ? out : text;
     },
-    flush(prefix) {
+    flush(prefix, exact = false) {
       for (const key of [...pending.keys()]) {
-        if (!key.startsWith(prefix)) continue;
+        if (exact ? key !== prefix : !key.startsWith(prefix)) continue;
         const out = take(key);
         if (out) before.push(templates.get(key)(out));
       }

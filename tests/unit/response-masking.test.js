@@ -268,13 +268,32 @@ describe("carry bounds and stream integrity", () => {
     expect(counts).toEqual({ anthropic: 1 });
   });
 
-  it("mask mode caps the total carry across indexes", () => {
+  it("mask mode keeps total held text at or below the cap across many indexes", () => {
     const io = createIo({ ...OPTS, replace: true }, {}, true);
     io.wrap = (p) => p;
     // An unterminated private key block holds each index (below its own cap).
     const block = "-----BEGIN PRIVATE KEY-----\n" + "A".repeat(20000);
-    for (let i = 0; i < 10; i++) io.feed(`claude/${i}/`, block, (t) => ({ t }));
-    expect(io.held()).toBeLessThanOrEqual(MAX_TOTAL_CARRY_CHARS + 10 * CARRY_CHARS);
+    for (let i = 0; i < 10; i++) {
+      io.feed(`claude/${i}/`, block, (t) => ({ t }));
+      expect(io.held()).toBeLessThanOrEqual(MAX_TOTAL_CARRY_CHARS);
+    }
+    // Many small indexes, each keeping its 128-char tail.
+    for (let i = 0; i < 2000; i++) {
+      io.feed(`chat/${i}/`, "x".repeat(400), (t) => ({ t }));
+      expect(io.held()).toBeLessThanOrEqual(MAX_TOTAL_CARRY_CHARS);
+    }
+  });
+
+  it("never sends a key in clear when the stream cap forces a flush", async () => {
+    const block = "-----BEGIN PRIVATE KEY-----\n" + "A".repeat(16300);
+    const raw = [0, 1, 2, 3].map((i) => frame({ type: "content_block_delta", index: i, delta: { type: "text_delta", text: block } }, "content_block_delta")).join("") +
+      // The key straddles the 128-char cut of this delta, and this delta pushes the stream over the cap.
+      frame({ type: "content_block_delta", index: 9, delta: { type: "text_delta", text: `${"p".repeat(200)} ${KEY} ${"q".repeat(100)}` } }, "content_block_delta") +
+      frame({ type: "message_stop" }, "message_stop");
+    const text = await (await applyResponseMasking(sseResult([raw]), MASK)).response.text();
+    expect(text).not.toContain("sk-ant-");
+    const sent = payloads(text).filter((p) => p.index === 9).map((p) => p.delta.text).join("");
+    expect(sent).toBe(`${"p".repeat(200)} [REDACTED:anthropic] ${"q".repeat(100)}`);
   });
 
   it("keeps sent text only for Responses keys", () => {

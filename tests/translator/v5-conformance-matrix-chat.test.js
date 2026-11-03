@@ -597,8 +597,7 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     expect(response.parts[0].functionResponse.name).toBe("fetch");
   });
 
-  // #1089 failing: #1332 Chat→Responses stringifies tool-result image parts into output text instead of media items.
-  it.skip("preserves tool-result image media on Chat to Responses", () => {
+  it("preserves tool-result image media on Chat to Responses", () => {
     const out = request(RESPONSES, mediaBody);
     const output = out.input.find((item) => item.type === "function_call_output" && item.call_id === "c1");
     expect(output.output).toEqual(expect.arrayContaining([
@@ -667,8 +666,7 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
 });
 
 describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
-  // #1089 failing: #1333 Kiro calls description.trim on non-string object descriptions and throws TypeError.
-  it.skip("coerces object tool descriptions before Kiro trim", () => {
+  it("coerces object tool descriptions before Kiro trim", () => {
     const out = request(KIRO, chatBody({
       tools: [{
         type: OPENAI_BLOCK.FUNCTION,
@@ -683,8 +681,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(kiroTool(out).toolSpecification.description.length).toBeGreaterThan(0);
   });
 
-  // #1089 failing: #1333 Kiro calls description.trim on numeric descriptions and throws TypeError.
-  it.skip("coerces numeric tool descriptions before Kiro trim", () => {
+  it("coerces numeric tool descriptions before Kiro trim", () => {
     const out = request(KIRO, chatBody({
       tools: [{
         type: OPENAI_BLOCK.FUNCTION,

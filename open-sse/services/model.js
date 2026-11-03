@@ -1,5 +1,5 @@
 import REGISTRY from "../providers/registry/index.js";
-import { detectRequiredCapabilities } from "./combo.js";
+import { detectRequiredCapabilities, detectToolOutputCapabilities } from "./combo.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 
 // Alias→id derived from registry single-source: id→id, alias→id, aliases[]→id.
@@ -199,7 +199,7 @@ function validateVisionTarget(target, targetCapabilities = null) {
  * @param {object} args.body        parsed request body (mutated copy returned)
  * @param {string} args.modelStr    current "provider/model" or combo/alias name
  * @param {object} [args.settings]  settings snapshot from getSettings()
- * @returns {{ body: object, modelStr: string, rerouted: boolean, fromModel?: string, toModel?: string }}
+ * @returns {{ body: object, modelStr: string, rerouted: boolean, fromModel?: string, toModel?: string, toolOutputVision?: boolean }}
  */
 export function applyVisionBridgeReroute({ body, modelStr, settings, capabilities = null, targetCapabilities = null } = {}) {
   if (!body || !isObject(body) || !isString(modelStr)) {
@@ -231,16 +231,19 @@ export function applyVisionBridgeReroute({ body, modelStr, settings, capabilitie
   // hand the request to a provider with no active connection and break it. An
   // empty/missing/invalid target therefore PASSTHROUGHS (request stays on the
   // original non-vision model) rather than guessing.
+  // A tool-output image cannot be stripped, so the caller must fail closed
+  // when this reroute does not happen or is later denied.
+  const toolOutputVision = detectToolOutputCapabilities(body).has("vision");
   const target = validateVisionTarget(settings?.visionBridgeModel, targetCapabilities);
-  if (!target) return { body, modelStr, rerouted: false };
-  if (target === `${parsed.provider}/${parsed.model}`) {
-    return { body, modelStr, rerouted: false };
+  if (!target || target === `${parsed.provider}/${parsed.model}`) {
+    return { body, modelStr, rerouted: false, toolOutputVision };
   }
   return {
     body: { ...body, model: target },
     modelStr: target,
     rerouted: true,
     fromModel: modelStr,
-    toModel: target
+    toModel: target,
+    toolOutputVision
   };
 }

@@ -19,6 +19,7 @@ export default {
     deprecated: true,
     deprecationNotice: "RISK_NOTICE",
     kindNotice: {
+      stt: "Uses the same Codex OAuth connection as chat, not an OpenAI API key. Requires ffmpeg on the server; maximum 25 MiB and 120 seconds. Returns json or text only; language, prompt and timestamps are unsupported. This internal ChatGPT endpoint may change without notice.",
       image: "Requires a ChatGPT Plus (or higher) account. Free accounts are not supported for image generation.",
     },
   },
@@ -90,6 +91,7 @@ export default {
     { id: "gpt-5.6-luna-image", name: "GPT 5.6 Luna Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.4-image", name: "GPT 5.4 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
     { id: "gpt-5.3-image", name: "GPT 5.3 Image", capabilities: ["text2img","edit"], params: ["size","quality","background","image_detail","output_format"], kind: "image" },
+    { id: "transcribe", name: "Codex Transcription", kind: "stt", params: ["response_format"], responseFormats: ["json", "text"] },
     { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },
     { id: "gpt-5.6-sol-review", name: "GPT 5.6 Sol Review", upstreamModelId: "gpt-5.6-sol", quotaFamily: "review" },
     { id: "gpt-5.6-terra", name: "GPT 5.6 Terra" },
@@ -97,7 +99,13 @@ export default {
     { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
     { id: "gpt-5.6-luna-review", name: "GPT 5.6 Luna Review", upstreamModelId: "gpt-5.6-luna", quotaFamily: "review" },
   ],
-  serviceKinds: ["llm","image"],
+  serviceKinds: ["llm","image","stt"],
+  // Fixed ChatGPT endpoint; reuses the Codex OAuth connection. Unverified live.
+  sttConfig: {
+    baseUrl: "https://chatgpt.com/backend-api/transcribe",
+    authType: "oauth",
+    format: "codex-transcribe",
+  },
   oauth: {
     clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
     authorizeUrl: "https://auth.openai.com/oauth/authorize",

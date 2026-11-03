@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 317 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 320 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -77,7 +77,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Naver CLOVA Studio | `clova-studio` | apikey | 3 | [site](https://api.ncloud-docs.com/docs/en/ai-naver-clovastudio-summary) |
 | CodeBuddy CN | `codebuddy-cn` | oauth, apikey | 11 | [site](https://copilot.tencent.com) |
 | Codestral | `codestral` | apikey | 2 | [site](https://mistral.ai) |
-| OpenAI Codex | `codex` | oauth | 33 | [site](https://chatgpt.com/codex) |
+| OpenAI Codex | `codex` | oauth | 34 | [site](https://chatgpt.com/codex) |
 | Codex Cloud | `codex-cloud` | apikey | 0 | [site](https://openai.com/codex) |
 | Cohere | `cohere` | apikey | 24 | [site](https://cohere.com) |
 | ComfyUI | `comfyui` | apikey | 2 | [site](https://github.com/comfyanonymous/ComfyUI) |
@@ -93,6 +93,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Dahl | `dahl` | apikey | 0 |  |
 | Databricks | `databricks` | apikey | 4 | [site](https://www.databricks.com) |
 | DataRobot | `datarobot` | apikey | 0 | [site](https://docs.datarobot.com) |
+| DeepAI | `deepai` | apikey | 1 | [site](https://deepai.org/docs) |
 | Deepgram | `deepgram` | apikey | 4 | [site](https://deepgram.com) |
 | DeepInfra | `deepinfra` | apikey | 0 | [site](https://deepinfra.com) |
 | DeepSeek | `deepseek` | apikey | 4 | [site](https://deepseek.com) |
@@ -121,6 +122,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Firecrawl (Custom/Local) | `firecrawl_custom` | none | 0 | [site](https://firecrawl.dev) |
 | Fireworks AI | `fireworks` | apikey | 17 | [site](https://fireworks.ai) |
 | Fish Audio | `fish-audio` | apikey | 0 | [site](https://fish.audio) |
+| Free.ai | `free-ai` | apikey | 0 | [site](https://free.ai) |
 | FreeAIAPIKey | `freeaiapikey` | apikey | 7 | [site](https://freeaiapikey.com) |
 | FreeInference | `freeinference` | apikey | 0 |  |
 | FreeModel.dev | `freemodel-dev` | apikey | 4 | [site](https://freemodel.dev) |
@@ -247,6 +249,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Perplexity Agent | `perplexity-agent` | apikey | 11 | [site](https://www.perplexity.ai) |
 | Perplexity Web (Pro/Max) | `perplexity-web` | cookie | 7 | [site](https://www.perplexity.ai) |
 | PiAPI | `piapi` | apikey | 0 | [site](https://piapi.ai) |
+| Pioneer (Fastino) | `pioneer` | apikey | 3 | [site](https://docs.fastino.ai) |
 | PLaMo | `plamo` | apikey | 1 | [site](https://plamo.preferredai.jp/api) |
 | PlayHT | `playht` | apikey | 0 | [site](https://play.ht) |
 | Poe | `poe` | apikey | 0 | [site](https://creator.poe.com/api-reference) |

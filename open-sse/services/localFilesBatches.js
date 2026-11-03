@@ -15,6 +15,7 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { getDataDir } from "../../src/lib/dataDir.js";
 
 const APP_DIRNAME = ".9router";
 
@@ -27,7 +28,15 @@ const batches = new Map(); // process-lifetime registry
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 const newId = (prefix) => `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
-const resolveRoot = (filesRoot) => filesRoot || path.join(os.homedir(), APP_DIRNAME, "files");
+// New files go under DATA_DIR. Files from the earlier home location stay readable
+// in place: never moved or copied, only removed when their owner deletes them.
+const resolveRoot = (filesRoot) => filesRoot || path.join(getDataDir(), "files");
+function readRoots(filesRoot) {
+  const legacy = path.join(os.homedir(), APP_DIRNAME, "files");
+  const primary = resolveRoot(filesRoot);
+  return filesRoot || path.resolve(legacy) === path.resolve(primary) ? [primary] : [primary, legacy];
+}
+const rootFor = (filesRoot, id) => readRoots(filesRoot).find((root) => fs.existsSync(metaPath(root, id))) ?? resolveRoot(filesRoot);
 
 function assertSafeId(id) {
   if (!isString(id) || !SAFE_ID.test(id)) {
@@ -99,13 +108,13 @@ export async function uploadFile({ filename, bytes, purpose }, { filesRoot, owne
 
 export async function getFile(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
-  const meta = readMeta(resolveRoot(filesRoot), id);
+  const meta = readMeta(rootFor(filesRoot, id), id);
   return meta && canAccessOwner(meta.ownerId, ownerId, allowAllOwners) ? publicFileMeta(meta) : null;
 }
 
 export async function getFileContent(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
-  const root = resolveRoot(filesRoot);
+  const root = rootFor(filesRoot, id);
   const meta = readMeta(root, id);
   if (!meta || !canAccessOwner(meta.ownerId, ownerId, allowAllOwners)) return null;
   let buffer;
@@ -118,18 +127,21 @@ export async function getFileContent(id, { filesRoot, ownerId = null, allowAllOw
 }
 
 export async function listFiles({ filesRoot, ownerId = null, allowAllOwners = false } = {}) {
-  const root = resolveRoot(filesRoot);
-  let entries = [];
-  try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    return { object: "list", data: [] };
-  }
   const data = [];
-  for (const e of entries) {
-    if (!e.isDirectory() || !SAFE_ID.test(e.name)) continue;
-    const m = readMeta(root, e.name);
-    if (m && canAccessOwner(m.ownerId, ownerId, allowAllOwners)) data.push(publicFileMeta(m));
+  const seen = new Set();
+  for (const root of readRoots(filesRoot)) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory() || !SAFE_ID.test(e.name) || seen.has(e.name)) continue;
+      seen.add(e.name);
+      const m = readMeta(root, e.name);
+      if (m && canAccessOwner(m.ownerId, ownerId, allowAllOwners)) data.push(publicFileMeta(m));
+    }
   }
   data.sort((a, b) => b.created_at - a.created_at);
   return { object: "list", data };
@@ -137,7 +149,7 @@ export async function listFiles({ filesRoot, ownerId = null, allowAllOwners = fa
 
 export async function deleteFile(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(id);
-  const root = resolveRoot(filesRoot);
+  const root = rootFor(filesRoot, id);
   const meta = readMeta(root, id);
   if (!meta || !canAccessOwner(meta.ownerId, ownerId, allowAllOwners)) return null;
   try {

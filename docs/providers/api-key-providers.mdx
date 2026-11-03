@@ -111,3 +111,23 @@ When Qoder reports code `10605` (a model queue, not a billing block), DurinDoor 
 ### Unverified
 
 - No live Qoder call was made. The `10605` payload shape and queue timings come from upstream commit text. Upstream also polls a queue-status endpoint; that is not ported.
+
+## DeepAI
+
+`deepai` is image-only; DeepAI has no chat endpoint. Requests to `/v1/images/generations` with model `text2img` are sent to `https://api.deepai.org/api/text2img` with the `api-key` header and return the `output_url` image link. Optional `size` (`WIDTHxHEIGHT`, 128 to 1536 in multiples of 32) and `negative_prompt` are forwarded.
+
+API access requires your own DeepAI Pro subscription; DurinDoor does not provide one. DeepAI's asynchronous video routes are not supported yet.
+
+### Unverified
+
+- No live call was made. Requests are sent as multipart/form-data per the DeepAI guide (its JavaScript example sends JSON instead); response and error bodies follow `deepai.org/docs` only.
+- DeepAI's resale and redistribution terms were not reviewed. Use your own key for your own requests.
+
+## Pioneer (Fastino)
+
+Pioneer is now Fastino: `api.pioneer.ai` is retired and the API lives at `https://api.fastino.ai/v1`. Create a key at the Fastino dashboard (keys start with `fast_sk_`; legacy `pio_sk_` keys no longer work). The provider lists the decoder models from the Fastino model catalog. GLiNER and GLiDE models need a request `schema` or `/v1/systemone` and are not exposed here.
+
+### Unverified
+
+- No live call was made. Whether `/v1/chat/completions` serves the listed decoder model IDs without a `schema`, and the contents of the authenticated `/v1/models`, are unconfirmed.
+- Model IDs and context windows come from `docs.fastino.ai` only.

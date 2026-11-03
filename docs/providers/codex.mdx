@@ -62,6 +62,31 @@ Model discovery for a Codex connection asks for the catalog with the pinned vers
 
 Send `cx/<model>`, for example `cx/gpt-6.1-sol`. The registry lists chat models, `*-review` models that draw from a separate review quota, and image models such as `cx/gpt-6-sol-image`. `GET /v1/models` is the live list. Codex retired `gpt-5.5` for ChatGPT sign-in on 2026-10-14; saved `cx/gpt-5.5` and `cx/gpt-5.5-review` configs now get HTTP 410 with `cx/gpt-6.1-sol` as the replacement, and `cx/gpt-5.5-image` gets 410 with `cx/gpt-6-sol-image`. Image generation needs a paid ChatGPT plan: DurinDoor rejects it with 403 before sending when the connection's plan is `free`, so a combo moves on to the next member.
 
+## Speech to text
+
+`cx/transcribe` (also `codex/transcribe`) reuses a connected Codex OAuth account for `/v1/audio/transcriptions`; an OpenAI API key does not work for it.
+
+```sh
+curl http://localhost:20128/v1/audio/transcriptions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_KEY" \
+  -F "model=cx/transcribe" \
+  -F "file=@audio.wav" \
+  -F "response_format=json"
+```
+
+Responses are `{"text":"..."}` (`json`, the default) or plain `text`. Language, prompt, temperature, timestamps and subtitle formats are rejected, as are translations. Audio is converted locally to mono 24 kHz PCM16 WAV and uploaded to ChatGPT's internal transcription endpoint. Limits: 25 MiB input, 120 seconds of decoded audio, two concurrent conversions per process, 15 seconds for conversion and 60 seconds per upstream attempt. Usage is recorded as audio seconds with unknown cost, because the endpoint reports no usage.
+
+### ffmpeg requirement
+
+Conversion needs `ffmpeg` on the server `PATH`. The Docker image includes it (about 100 MiB more than before). For npm and standalone installs, install it yourself, for example `brew install ffmpeg`, `apt install ffmpeg` or `apk add ffmpeg`. Without it the route returns HTTP 503 with a message naming ffmpeg; that error does not cool down or rotate your account. Bad audio, unsupported options and capacity errors behave the same way.
+
+The endpoint is internal and undocumented, not the supported OpenAI audio API, and can change without notice. Audio leaves your server for the selected ChatGPT account, so use it only with appropriate consent.
+
+### Unverified
+
+- No live call to the ChatGPT transcription endpoint was made. Its request shape, response shape and eligibility rules come from upstream 9router commit 421f2262.
+- Conversion was checked only against the ffmpeg flags, not against real provider audio.
+
 ## Quota
 
 The [Quota Tracker](../features/quota-tracking.mdx) reads ChatGPT's usage endpoint and shows a session window and a weekly window, plus a review family when your plan reports one. Preflight picks the most specific bucket that exists: the exact model, then its family, then the account.

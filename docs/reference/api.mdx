@@ -107,7 +107,7 @@ Responses `input_image` accepts `image_url` (URL or `data:` base64). A bare `fil
 
 When Chat Completions requests are routed to Responses, a tool message whose content includes `image_url` parts becomes a `function_call_output` whose `output` is an `input_text` / `input_image` array, keeping `detail` and the `[Tool error]` marker. Text-only and string tool results stay strings.
 
-TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
+TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`. Account-backed voice lists use only the provider accounts a scoped key may call; admin-scoped keys sent in a header see every account.
 
 STT and translation are multipart: `model`, `file`. Translation forwards to the provider `/audio/translations` path. Only OpenAI-format STT providers (OpenAI, Groq, Local Whisper) have one; the others return 400. The transcription and translation handlers declare a maximum route duration of 300 seconds. This is a server execution setting, not a 300-second audio-file limit.
 
@@ -150,7 +150,7 @@ Built-in native HTTP operations require a registered model or its canonical alia
 | xAI | Responses, image generation/edits, video generation/edits/extensions/polling, TTS and STT |
 | Cohere | Embed, Rerank, multipart Audio Transcriptions, image-only Parse |
 
-For account-bound operations, send `x-connection-id` with the account returned in the creation response's `x-9router-connection-id`. Missing pins return 400; unavailable pins fail instead of switching accounts. Tracked OpenAI Responses, Anthropic Files and Message Batches, and MiniMax/xAI resource operations require the creator key or authenticated operator access. Completion polling uses the creation model and creator key, and repeated terminal usage does not charge twice. Deleted creator keys cannot redirect charges to the polling key.
+For account-bound operations, send `x-connection-id` with the account returned in the creation response's `x-9router-connection-id`. Missing pins return 400; unavailable pins fail instead of switching accounts. Tracked OpenAI Responses, Anthropic Files and Message Batches, and MiniMax/xAI resource operations require the creator key or authenticated operator access. Completion polling uses the creation model and creator key, and repeated terminal usage does not charge twice. Deleted creator keys cannot redirect charges to the polling key. A tracked operation takes exactly one resource identifier: repeating it in the query or JSON body returns 400, as does an identifier-named query parameter (compared case-insensitively) on an operation that takes its identifier from the path or body. MiniMax `voice_clone` records the creating key as owner of the requested `voice_id` after a successful response, and a `voice_id` another key owns is refused.
 
 Native Anthropic file and Message Batch lists include only resources with a recorded gateway owner on the pinned account. API keys see their own resources; authenticated operators may see resources recorded for other owners. Resources without a recorded owner are omitted even for operators, and individual requests for them return HTTP 403 before dispatching the vendor operation. List boundary IDs and `has_more` reflect only visible resources. On a shared upstream account where most entries belong to other API keys, owned-list calls can stop after scanning 10 upstream pages and return HTTP 502 rather than a partial page when visibility cannot be resolved safely.
 
@@ -230,7 +230,7 @@ Search `searchConfig` providers in the registry today: `serper`, `youcom`, `sear
 
 ## Files and batches
 
-Local store under the data directory (`files/<id>`), not an upstream Files API. Owner is the DurinDoor API key (or `local` / operator when keys are not required). JSON POST that is not `application/json` returns 415. File upload that is not `multipart/form-data` returns 415.
+Local store under the data directory (`files/<id>`), not an upstream Files API. Files stored earlier under `~/.9router/files` stay readable in place and are not moved. Owner is the DurinDoor API key (or `local` / operator when keys are not required). JSON POST that is not `application/json` returns 415. File upload that is not `multipart/form-data` returns 415.
 
 OpenAI batches: `{ input_file_id, endpoint, completion_window?, metadata? }`. Anthropic batches: `{ requests: [{ custom_id, params }] }`. Cancel stops scheduling, finishes the active row, then marks cancelled. Anthropic results are NDJSON `{ custom_id, result }`.
 

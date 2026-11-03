@@ -27,7 +27,7 @@ export const NATIVE_OPERATIONS = {
     exact("POST", "/v1/t2a_async_v2", { kind: "tts", returnsConnection: true, createsResource: true, resourceResponseField: "task_id" }),
     exact("GET", "/v1/query/t2a_async_query_v2", { kind: "tts", accountBound: true, completionPoll: true, resourceQuery: "task_id" }),
     exact("POST", "/v1/voice_design", { kind: "tts", returnsConnection: true, createsResource: true, resourceResponseField: "voice_id" }),
-    exact("POST", "/v1/voice_clone", { kind: "tts", returnsConnection: true }),
+    exact("POST", "/v1/voice_clone", { kind: "tts", returnsConnection: true, createsResource: true, resourceRequestField: "voice_id" }),
     exact("POST", "/v1/get_voice", { kind: "tts", accountBound: true }),
     exact("POST", "/v1/delete_voice", { kind: "tts", accountBound: true, resourceBodyField: "voice_id" }),
     exact("POST", "/v1/files/upload", { kind: "file", returnsConnection: true, createsResource: true, resourceResponsePath: ["file", "file_id"] }),

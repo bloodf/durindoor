@@ -44,6 +44,45 @@ beforeEach(() => {
 });
 
 describe("native provider facade", () => {
+  describe("voice cloning ownership", () => {
+    const clone = (body = { voice_id: "voice-a", file_id: 1 }) => handleNativeProvider(request("http://local/v1/native/minimax/v1/voice_clone?model=minimax/H3", body), "minimax", "/v1/voice_clone");
+    const success = () => new Response(JSON.stringify({ base_resp: { status_code: 0, status_msg: "success" } }), { headers: { "content-type": "application/json" } });
+
+    it("records the creating key as owner of the requested voice", async () => {
+      mocks.readOwner.mockResolvedValueOnce(null);
+      mocks.fetch.mockResolvedValueOnce(success());
+      const result = await clone();
+      expect(result.status).toBe(200);
+      await result.text();
+      expect(mocks.createOwner).toHaveBeenCalledWith(expect.objectContaining({ ownerId: "key", provider: "minimax", connectionId: "conn-a", resourceId: "voice-a" }));
+    });
+
+    it("records no owner when the provider reports a failure", async () => {
+      mocks.readOwner.mockResolvedValueOnce(null);
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ base_resp: { status_code: 2013, status_msg: "invalid" } }), { headers: { "content-type": "application/json" } }));
+      await (await clone()).text();
+      expect(mocks.createOwner).not.toHaveBeenCalled();
+    });
+
+    it("refuses a voice id another key already owns", async () => {
+      mocks.readOwner.mockResolvedValueOnce({ ownerId: "other-key", usageEventId: "x" });
+      expect((await clone()).status).toBe(403);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
+    it.each([{}, { voice_id: "" }, { voice_id: ["a"] }])("requires one voice id: %j", async (body) => {
+      expect((await clone(body)).status).toBe(400);
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    });
+
+    it("lets the operator act on any owner's voice", async () => {
+      mocks.resolveOwner.mockResolvedValueOnce({ authorized: true, ownerId: "operator", allowAllOwners: true });
+      mocks.readOwner.mockResolvedValueOnce({ ownerId: "other-key", usageEventId: "x" });
+      mocks.fetch.mockResolvedValueOnce(success());
+      expect((await clone()).status).toBe(200);
+    });
+  });
+
   it("rejects unknown operation before auth", async () => {
     const result = await handleNativeProvider(request("http://local/v1/native/openai/nope?model=openai/gpt-realtime"), "openai", "/nope");
     expect(result.status).toBe(404); expect(mocks.resolveClientApiKey).not.toHaveBeenCalled();

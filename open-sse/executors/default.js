@@ -463,12 +463,13 @@ export class DefaultExecutor extends BaseExecutor {
       return body;
     }
 
-    let tags = Array.isArray(body.tags) ? [...body.tags] : [];
+    // Parse once at the boundary: only string tags can carry attribution.
+    let tags = (body.tags ?? []).filter(isString);
     for (const fallback of NOUS_ATTRIBUTION.tags) {
       const prefix = fallback.slice(0, fallback.indexOf("=") + 1);
       // Empty attribution values do not satisfy the upstream requirement.
-      tags = tags.filter((tag) => typeof tag !== "string" || !tag.startsWith(prefix) || tag.slice(prefix.length).trim());
-      if (!tags.some((tag) => typeof tag === "string" && tag.startsWith(prefix))) tags.push(fallback);
+      tags = tags.filter((tag) => !tag.startsWith(prefix) || tag.slice(prefix.length).trim());
+      if (!tags.some((tag) => tag.startsWith(prefix))) tags.push(fallback);
     }
     return { ...body, tags: [...new Set(tags)] };
   }

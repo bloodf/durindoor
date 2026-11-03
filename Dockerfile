@@ -105,7 +105,9 @@ ENV CHATGPT_WEB_CHROME_PATH=/usr/bin/chromium-browser
 # the builder stage note above. When Xvfb is present and
 # no DISPLAY is set, start it so the headed ChatGPT Web browser has a screen;
 # DURINDOOR_XVFB=0 turns that off.
-RUN apk add --no-cache su-exec && \
+# ffmpeg converts audio for Codex speech-to-text (cx/transcribe). Alpine ships it as
+# one package with no slimmer variant; it adds roughly 100 MiB to the image.
+RUN apk add --no-cache su-exec ffmpeg && \
   printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nif [ -z "$DISPLAY" ] && [ "$DURINDOOR_XVFB" != "0" ] && command -v Xvfb >/dev/null 2>&1; then\n  su-exec node Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &\n  export DISPLAY=:99\nfi\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 

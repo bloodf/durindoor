@@ -507,11 +507,12 @@ describe("special executor terminal integrity", () => {
   });
 
   it("honors ambient Cursor proxy routing while explicit direct mode stays HTTP/2", async () => {
-    const envKeys = ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"];
+    const envKeys = ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "CURSOR_AGENT_SERVICE"];
     const previous = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
     process.env.HTTPS_PROXY = "http://proxy.example.test:8080";
     delete process.env.NO_PROXY;
     delete process.env.no_proxy;
+    delete process.env.CURSOR_AGENT_SERVICE;
     try {
       const proxied = new CursorExecutor();
       const proxiedFetch = vi.spyOn(proxied, "makeFetchRequest").mockResolvedValue({
@@ -532,6 +533,32 @@ describe("special executor terminal integrity", () => {
       expect(proxiedHttp2).not.toHaveBeenCalled();
       expect(proxiedResult.terminalProvenance).toBe("validated");
 
+      // Text requests use AgentService, also HTTP/2 and never the proxy-aware fetch.
+      const agent = new CursorExecutor();
+      const agentFetch = vi.spyOn(agent, "makeFetchRequest");
+      const agentLegacyHttp2 = vi.spyOn(agent, "makeHttp2Request");
+      const agentStream = vi.fn(() => ({
+        responseHeaders: Promise.resolve({ ":status": 200 }),
+        write() {},
+        end() {},
+        close() {},
+        async read() { return { value: undefined, done: true }; },
+      }));
+      agent.openAgentHttp2Stream = agentStream;
+      await agent.execute({
+        model: "cursor-model",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: true,
+        credentials: { accessToken: "token", providerSpecificData: { machineId: "machine" } },
+        proxyOptions: { proxyMode: "direct", disableEnvProxy: true },
+        attemptStartedAt: 1236,
+      });
+      expect(agentStream).toHaveBeenCalledOnce();
+      expect(agentFetch).not.toHaveBeenCalled();
+      expect(agentLegacyHttp2).not.toHaveBeenCalled();
+
+      // The legacy ChatService path keeps the same routing contract.
+      process.env.CURSOR_AGENT_SERVICE = "off";
       const direct = new CursorExecutor();
       const directFetch = vi.spyOn(direct, "makeFetchRequest");
       const directHttp2 = vi.spyOn(direct, "makeHttp2Request").mockResolvedValue({

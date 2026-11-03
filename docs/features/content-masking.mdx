@@ -1,0 +1,47 @@
+---
+title: Content masking
+description: Optionally detect or mask credentials and personal data in prompts before they reach a provider.
+---
+
+Content masking scans outbound chat requests for well-known API keys and secrets, and for common personal data. It is off by default.
+
+## Modes
+
+Set `contentMasking` in settings:
+
+```json
+{ "contentMasking": { "mode": "mask", "credentials": true, "pii": true } }
+```
+
+| `mode` | Behavior |
+| --- | --- |
+| `off` | Default. Nothing is scanned. |
+| `warn` | Count matches and log the counts. The request is sent unchanged, byte for byte. |
+| `mask` | Replace each match with a typed placeholder, such as `[REDACTED:anthropic]` or `[EMAIL_REDACTED]`, then send the request. |
+
+Set `credentials` or `pii` to `false` to turn either group off.
+
+The log line has a count for each type, for example `MASKING masked 3 (email:2,anthropic:1)`. The matched values are never logged or stored. The token-saver bypass header does not turn masking off.
+
+## What is matched
+
+- **Credentials:** OpenAI, Anthropic, Groq, xAI, Google, Hugging Face, GitHub, Slack, Stripe, AWS access key and npm keys. Also generic `sk-` keys, private key blocks, JWTs and connection strings that contain a password.
+- **Personal data:** email addresses, US SSNs and Brazilian CPF/CNPJ. Also Brazilian phone numbers written with an area code in parentheses, such as `(11) 98765-4321`, and card numbers that pass the Luhn check.
+
+These rules keep false positives down:
+
+- Personal-data patterns skip fenced and inline code. Credentials are still masked inside code.
+- `data:` URLs, images, documents, tool calls, tool call IDs and tool arguments are never scanned or changed. Bare long numbers, such as timestamps and order IDs, are not treated as phone numbers.
+
+## What is scanned
+
+Masking reads message text, system and instruction text, and tool results. That includes Claude `tool_result` content nested in user turns, OpenAI Responses `function_call_output` and `custom_tool_call_output`, and Gemini text parts. It runs once, before format translation, so every provider gets the masked text.
+
+Provider responses are not masked.
+
+## Scope and failure behavior
+
+- Masking covers chat requests that go through the chat pipeline: Chat Completions, Responses and Messages. Embeddings, media and search routes are not masked.
+- Masking runs before request logging. With `ENABLE_REQUEST_LOGS=true`, logged request bodies are the masked ones in `mask` mode.
+- In `mask` mode, a masking error rejects the request with HTTP 500 instead of sending it unmasked. In `warn` mode an error only logs a warning.
+- The mode is case-insensitive. An unknown value turns masking off and logs a warning.

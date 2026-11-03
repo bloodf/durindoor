@@ -60,6 +60,7 @@ import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { gateStep } from "../services/compression/fidelityGate.js";
+import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
@@ -317,7 +318,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -532,8 +533,40 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     clientPrefersSSE
   });
 
+  // Opt-in PII / credential masking (#1112) on the source body, before request
+  // logging and any translation, so neither disk logs nor any provider format
+  // see the originals. Logs counts per type only, never the matched values.
+  // Not affected by the token-saver bypass header: it is a data-protection
+  // control, not a saver. Mask mode fails CLOSED: if masking throws, the
+  // request is rejected rather than sent unmasked; warn mode fails open.
+  const maskingMode = normalizeMaskingMode(contentMasking?.mode);
+  if (contentMasking?.mode && !maskingMode) {
+    log?.warn?.("MASKING", "unknown contentMasking.mode; masking is off (use off, warn or mask)");
+  }
+  let clientLogBody = clientRawRequest?.body;
+  if (maskingMode === "warn" || maskingMode === "mask") {
+    try {
+      const maskingConfig = { ...contentMasking, mode: maskingMode };
+      const masked = maskRequestContent(body, maskingConfig);
+      if (masked.total > 0) {
+        body = masked.body;
+        const summary = Object.entries(masked.counts).map(([k, n]) => `${k}:${n}`).join(",");
+        log?.warn?.("MASKING", `${maskingMode === "mask" ? "masked" : "detected"} ${masked.total} (${summary})`);
+      }
+      if (maskingMode === "mask" && clientLogBody && isObject(clientLogBody)) {
+        clientLogBody = maskRequestContent(clientLogBody, maskingConfig).body;
+      }
+    } catch (e) {
+      log?.warn?.("MASKING", `failed: ${sanitizeErrorMessage(e?.message)}`);
+      if (maskingMode === "mask") {
+        finishTimeline("error", "error", "content masking failed");
+        return createErrorResult(500, "Content masking failed; request not sent");
+      }
+    }
+  }
+
   const reqLogger = await createRequestLogger(sourceFormat, targetFormat, cleanModel);
-  if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
+  if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientLogBody, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
 

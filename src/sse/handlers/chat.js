@@ -1277,6 +1277,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         "off",
         compressionEnabled: !!chatSettings.compressionEnabled,
         compressionEngines: chatSettings.compressionEngines || {},
+        contentMasking: chatSettings.contentMasking ?? null,
         compressionFidelityGate: chatSettings.compressionFidelityGate === true,
         compressionAdaptive: chatSettings.compressionAdaptive ?? null,
         // Detect source format by endpoint + body

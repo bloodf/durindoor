@@ -76,7 +76,19 @@ Estimated cost uses the built-in model prices. Override a model's price on **Set
 
 Successful media operations preserve provider USD receipts when available, including explicit zero. Without a receipt, supported builtin audio rates or explicitly configured native tariffs can produce an estimate; otherwise native costs remain unknown. Token price overrides alone do not define per-image, per-second, or per-job prices. An unpriced or subscription-backed model is not automatically free. Chat token pricing is an estimate, and its configured rates may differ from subscription billing.
 
-Dollar budgets currently compare recorded numeric spend only. Unknown-cost requests count toward successful request and token allowances when reported, but add no amount to dollar totals; a zero total therefore does not prove free usage or enforce a hard spending cap for unpriced work. Failed or denied requests do not consume successful-use allowances. Keep these limits in mind when granting access to models without authoritative prices.
+Dollar budgets (`policy.maxCostUsd` and `monthlyBudget`) compare recorded numeric spend only, and they deny the next request once that spend reaches the limit. Each model class behaves differently:
+
+| Model | Recorded cost | Effect on a dollar budget |
+| --- | --- | --- |
+| Provider returned a USD receipt, including zero | The receipt, `costStatus: "known"` | Adds the receipt. It outranks every price and override. |
+| Built-in or overridden token price | Estimate, `costStatus: "estimated"` | Adds the estimate. |
+| Free model with a built-in zero price | Estimated zero | Adds nothing. It is a price of zero, not an unknown price. |
+| Subscription-backed model | Token-value estimate, not your subscription invoice | Adds the estimate, so a budget can run out while the subscription still has quota. Override the price with zeros to stop that. |
+| Unpriced model or missing native quantity | `cost: null`, `costStatus: "unknown"` | Adds nothing and never denies. The event counts in `unknownCostRequests`. |
+
+A zero dollar total therefore does not prove free usage, and a dollar budget is not a hard spending cap for unpriced work. Set an override on [Settings → Pricing](#prices) for any model a budgeted key can reach. Unknown-cost requests still count toward request and token limits when reported. Failed or denied requests do not consume successful-use allowances.
+
+An async image job the provider accepted can still bill even if DurinDoor never sees it finish: the client aborted during polling, polling timed out, or a status check failed. DurinDoor records these with `status: "accepted"`, `costStatus: "unknown"`, `costSource: "accepted-job"` and `meta.jobState: "accepted"`. They count as one request and one unknown-cost request, add no dollars and no tokens, and are not priced by a native tariff because no output was measured. A job the provider reports as failed, or a submission it refused, records nothing. Check the provider's dashboard for the actual charge. Asynchronous video and music jobs differ: they are recorded when a client poll observes completion, so a job nobody polls again does not appear in usage.
 
 Restoring or importing a database starts a new billing epoch. A request admitted before the restore whose provider call finishes after it is not recorded in the new epoch. Chat usage from such a request is dropped. Media and other non-chat routes fail the response with a usage-accounting error (`USAGE_ACCOUNTING_FAILED`) even though the provider already did the work, and the gateway does not retry the call. Avoid restoring while paid requests are in flight.
 

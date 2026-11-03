@@ -128,7 +128,8 @@ export class CodexAppServerExecutor extends BaseExecutor {
         let turnStartSent = false;
         let interruptLater = false;
         const interrupt = () => {
-          if (threadId && turnId) client.notify("turn/interrupt", { threadId, turnId });
+          // turn/interrupt is a client request (it needs an id); the reply and any rejection are ignored.
+          if (threadId && turnId) client.request("turn/interrupt", { threadId, turnId }, 5000).catch(() => {});
         };
         // A turn id can arrive after the stream already ended; interrupt it then and close.
         const learnTurnId = (value) => {
@@ -185,12 +186,11 @@ export class CodexAppServerExecutor extends BaseExecutor {
         signal?.addEventListener("abort", abort, { once: true });
         const timeoutMs = this.clientOptions.turnTimeoutMs ?? config.turnTimeoutMs;
         timer = setTimeout(() => endTurn(null, `Codex app-server turn timed out after ${timeoutMs}ms`), timeoutMs);
+        // A body cancel ends the turn like an abort: interrupt if the id is known, else wait briefly for it.
         cancelHook = () => {
-          done = true;
           sealed = true;
           clearTimeout(timer);
-          clearTimeout(graceTimer);
-          client.close();
+          if (!done) endTurn("stop");
         };
 
         const run = async () => {

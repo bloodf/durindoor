@@ -20,6 +20,7 @@ function makeFactory(script) {
     state.options = options;
     const socket = new EventEmitter();
     const push = (message) => socket.emit("message", Buffer.from(JSON.stringify(message)));
+    state.push = push;
     socket.send = (data) => {
       const message = JSON.parse(data);
       state.sent.push(message);
@@ -176,9 +177,29 @@ describe("codex-app-server lifecycle", () => {
     });
     const text = await out.response.text();
     expect(state.sent.filter((m) => m.method === "turn/interrupt")).toEqual([
-      { jsonrpc: "2.0", method: "turn/interrupt", params: { threadId: "thr_1", turnId: "turn_7" } },
+      { jsonrpc: "2.0", id: expect.any(Number), method: "turn/interrupt", params: { threadId: "thr_1", turnId: "turn_7" } },
     ]);
     expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
+
+  it("interrupts with the known turn id when the response body is cancelled", async () => {
+    const g = guard();
+    const { factory, state } = makeFactory(basicScript(() => {}));
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory }).execute({
+      model: "gpt-5.4", body: { messages: [{ role: "user", content: "hi" }] },
+    });
+    const reader = out.response.body.getReader();
+    await settle();
+    // turn/start carries no id in basicScript; announce it the way the server does.
+    state.push({ method: "turn/started", params: { turn: { id: "turn_c" } } });
+    await settle();
+    await reader.cancel();
+    await settle();
+    g.stop();
+    expect(g.uncaught).toEqual([]);
+    expect(state.sent.filter((m) => m.method === "turn/interrupt")).toEqual([
+      { jsonrpc: "2.0", id: expect.any(Number), method: "turn/interrupt", params: { threadId: "thr_1", turnId: "turn_c" } },
+    ]);
   });
 
   it("handles an abort that arrives before thread/start", async () => {
@@ -288,7 +309,7 @@ describe("codex-app-server turn", () => {
     expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(state.sent.filter((m) => m.method === "turn/interrupt")).toEqual([
-      { jsonrpc: "2.0", method: "turn/interrupt", params: { threadId: "thr_1", turnId: "turn_late" } },
+      { jsonrpc: "2.0", id: expect.any(Number), method: "turn/interrupt", params: { threadId: "thr_1", turnId: "turn_late" } },
     ]);
   });
 

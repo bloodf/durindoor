@@ -3,7 +3,7 @@ title: Codex App-Server
 description: Route requests through a local codex app-server over WebSocket. Unverified and experimental.
 ---
 
-Codex App-Server (`codex-app-server`, alias `cxa`) drives one turn per request against a `codex app-server` process you run yourself. The Codex CLI owns its own sign-in (`~/.codex/auth.json`). DurinDoor never sees or replays that token; its only credential is the WebSocket capability token you give it.
+Codex App-Server (`codex-app-server`, alias `cxa`) drives one turn per request against a `codex app-server` process you run yourself. The Codex CLI owns its own sign-in (`~/.codex/auth.json`). DurinDoor itself never reads or replays that token; its only credential is the WebSocket capability token you give it. See Isolation below for what the app-server process itself can reach.
 
 This provider is **unverified**. No live account run backs it. Treat every claim here as the documented protocol, not tested behavior.
 
@@ -32,15 +32,15 @@ Then configure DurinDoor through the environment. Connection rows cannot set the
 | `DURINDOOR_CODEX_APPSERVER_WS_TOKEN_FILE` | File holding the token, used when the variable above is unset. |
 | `DURINDOOR_CODEX_APPSERVER_CWD` | Working directory for `thread/start`. Default `/tmp`. |
 | `DURINDOOR_CODEX_APPSERVER_APPROVAL` | Approval policy. Default `on-request`; codex's own prompts are denied unless auto-approve is set. |
-| `DURINDOOR_CODEX_APPSERVER_SANDBOX` | Sandbox mode. Default `read-only`. Write or command execution needs an explicit value such as `workspace-write`. |
+| `DURINDOOR_CODEX_APPSERVER_SANDBOX` | Sandbox mode. Default `read-only`. `workspace-write` and other wider modes need an explicit value. Read-only still lets codex read files the app-server user can read. |
 | `DURINDOOR_CODEX_APPSERVER_TURN_TIMEOUT_MS` | Overall limit for one turn. Default `600000`. |
-| `DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE` | `true`, `1` or `yes` approves codex's own command, file and permission prompts. Default is to deny them. |
+| `DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE` | `true`, `1` or `yes` approves codex's own command and file-change prompts. Permission-grant prompts are always declined. Default is to deny them all. |
 
 Add the provider once under **Providers** so a connection row exists; it needs no key. With no URL or token set, requests fail with HTTP 503 `codex_app_server_unconfigured`.
 
 ## Isolation
 
-Anyone who can call this gateway can start turns on that app-server, so give it only the access you are willing to share. Run the app-server as a separate OS user or in its own container, with no access to the DurinDoor data directory, its database, or other local credential files. Leave the sandbox read-only unless you need more, and treat `workspace-write`, `never` approvals and auto-approve as deliberate choices for a trusted setup.
+Anyone who can call this gateway can start turns on that app-server, and even a read-only sandbox lets codex read files that the app-server's OS user can read. That includes the Codex CLI's own sign-in file, so a gateway caller could ask codex to show it. Run the app-server as a dedicated OS user (or in its own container) whose only credential is the codex login it needs, and which has no access to the DurinDoor data directory, its database, or other local credential files. Do not share the instance with people who should not hold that account. Treat `workspace-write`, `never` approvals and auto-approve as deliberate choices for a trusted setup.
 
 ## What it does
 

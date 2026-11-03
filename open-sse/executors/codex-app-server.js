@@ -124,8 +124,20 @@ export class CodexAppServerExecutor extends BaseExecutor {
         let threadId = "";
         let turnId = "";
         let timer = null;
+        let graceTimer = null;
+        let turnStartSent = false;
+        let interruptLater = false;
         const interrupt = () => {
           if (threadId && turnId) client.notify("turn/interrupt", { threadId, turnId });
+        };
+        // A turn id can arrive after the stream already ended; interrupt it then and close.
+        const learnTurnId = (value) => {
+          turnId = value;
+          if (!interruptLater) return;
+          interruptLater = false;
+          clearTimeout(graceTimer);
+          interrupt();
+          client.close();
         };
         let toolIndex = 0;
         let started = false;
@@ -134,7 +146,7 @@ export class CodexAppServerExecutor extends BaseExecutor {
           started = true;
           emit({ role: "assistant", content: "" });
         };
-        const finish = (reason, usage, error) => {
+        const finish = (reason, usage, error, keepOpen = false) => {
           if (done) return;
           done = true;
           clearTimeout(timer);
@@ -145,7 +157,7 @@ export class CodexAppServerExecutor extends BaseExecutor {
             emit({}, reason, usage ? { usage } : {});
           }
           enqueue("data: [DONE]\n\n");
-          client.close();
+          if (!keepOpen) client.close();
           if (!sealed) {
             sealed = true;
             try {
@@ -155,21 +167,29 @@ export class CodexAppServerExecutor extends BaseExecutor {
             }
           }
         };
-        const abort = () => {
-          interrupt();
-          finish("stop");
+        // End the stream. If turn/start is still in flight, keep the socket open briefly so the
+        // interrupt can carry the real turn id once it arrives.
+        const endTurn = (reason, error) => {
+          if (done) return;
+          if (turnId || !turnStartSent) {
+            interrupt();
+            finish(reason, null, error);
+            return;
+          }
+          interruptLater = true;
+          finish(reason, null, error, true);
+          graceTimer = setTimeout(() => client.close(), 5000);
         };
+        const abort = () => endTurn("stop");
         if (signal?.aborted) return abort();
         signal?.addEventListener("abort", abort, { once: true });
         const timeoutMs = this.clientOptions.turnTimeoutMs ?? config.turnTimeoutMs;
-        timer = setTimeout(() => {
-          interrupt();
-          finish(null, null, `Codex app-server turn timed out after ${timeoutMs}ms`);
-        }, timeoutMs);
+        timer = setTimeout(() => endTurn(null, `Codex app-server turn timed out after ${timeoutMs}ms`), timeoutMs);
         cancelHook = () => {
           done = true;
           sealed = true;
           clearTimeout(timer);
+          clearTimeout(graceTimer);
           client.close();
         };
 
@@ -189,7 +209,7 @@ export class CodexAppServerExecutor extends BaseExecutor {
           client.onNotification((method, params) => {
             const p = isObject(params) ? params : {};
             if (method === "turn/started" && isString(p.turn?.id)) {
-              turnId = p.turn.id;
+              learnTurnId(p.turn.id);
             } else if (method === "item/agentMessage/delta" && isString(p.delta) && p.delta) {
               start();
               emit({ content: p.delta });
@@ -226,8 +246,9 @@ export class CodexAppServerExecutor extends BaseExecutor {
           });
           const turnParams = { threadId, input: [{ type: "text", text: promptText, text_elements: [] }], model: baseModel };
           if (effort) turnParams.effort = effort;
+          turnStartSent = true;
           const started = await client.request("turn/start", turnParams);
-          if (isString(started?.turn?.id)) turnId = started.turn.id;
+          if (isString(started?.turn?.id)) learnTurnId(started.turn.id);
         };
         run().catch((error) => {
           log?.warn?.("CODEX-APP-SERVER", clean(error.message));

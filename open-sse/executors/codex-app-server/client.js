@@ -5,6 +5,17 @@ import { isString } from "../../../src/shared/utils/typeChecks.js";
 const ENV = process.env;
 const TOOL_CALL_METHOD = "item/tool/call";
 // Prompts that gate codex's own host execution (not harness tools); denied unless the operator opts in.
+// Response shapes follow the app-server protocol schema (openai/codex codex-rs/app-server-protocol,
+// schema/typescript at f1b0721c): v2 command and file-change prompts take accept/decline, the legacy
+// prompts take a ReviewDecision ("approved" / "abort"), and permission prompts take a granted profile.
+// Anything not approved fails closed; permission grants are never extended automatically.
+function approvalResult(method, approve) {
+  if (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") {
+    return { decision: approve ? "accept" : "decline" };
+  }
+  if (method === "item/permissions/requestApproval") return { permissions: {}, scope: "turn" };
+  return { decision: approve ? "approved" : "abort" };
+}
 const APPROVAL_METHODS = new Set([
   "item/commandExecution/requestApproval",
   "item/fileChange/requestApproval",
@@ -168,7 +179,7 @@ export class CodexAppServerClient {
           respondError: (code, message) => this.reply({ id: msg.id, error: { code, message } }),
         });
       } else if (APPROVAL_METHODS.has(msg.method)) {
-        this.reply({ id: msg.id, result: { decision: this.autoApprove ? "approved" : "denied" } });
+        this.reply({ id: msg.id, result: approvalResult(msg.method, this.autoApprove) });
       } else {
         this.reply({ id: msg.id, error: { code: -32601, message: `router: unsupported server request "${msg.method}"` } });
       }

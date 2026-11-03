@@ -247,18 +247,49 @@ describe("codex-app-server turn", () => {
     expect(chunks.at(-1).choices[0].finish_reason).toBe("tool_calls");
   });
 
-  it("denies codex approval prompts by default and approves only on opt-in", async () => {
+  it("answers approval prompts with schema-defined values: fail closed by default, accept only on opt-in", async () => {
     const approval = (io) => {
       io.push({ id: 700, method: "item/commandExecution/requestApproval", params: {} });
+      io.push({ id: 702, method: "item/fileChange/requestApproval", params: {} });
+      io.push({ id: 703, method: "item/permissions/requestApproval", params: { permissions: { network: { enabled: true } } } });
+      io.push({ id: 704, method: "execCommandApproval", params: {} });
       io.push({ id: 701, method: "item/unknown/request", params: {} });
       io.push({ method: "turn/completed", params: {} });
     };
+    const result = (run_, id) => run_.state.sent.find((m) => m.id === id).result;
     const denied = await run(basicScript(approval));
-    expect(denied.state.sent.find((m) => m.id === 700).result.decision).toBe("denied");
+    expect(result(denied, 700)).toEqual({ decision: "decline" });
+    expect(result(denied, 702)).toEqual({ decision: "decline" });
+    expect(result(denied, 703)).toEqual({ permissions: {}, scope: "turn" });
+    expect(result(denied, 704)).toEqual({ decision: "abort" });
     expect(denied.state.sent.find((m) => m.id === 701).error.code).toBe(-32601);
     process.env.DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE = "true";
     const approved = await run(basicScript(approval));
-    expect(approved.state.sent.find((m) => m.id === 700).result.decision).toBe("approved");
+    expect(result(approved, 700)).toEqual({ decision: "accept" });
+    expect(result(approved, 702)).toEqual({ decision: "accept" });
+    expect(result(approved, 703)).toEqual({ permissions: {}, scope: "turn" });
+    expect(result(approved, 704)).toEqual({ decision: "approved" });
+  });
+
+  it("interrupts with the late turn id when the abort lands while turn/start is in flight", async () => {
+    const controller = new AbortController();
+    const { factory, state } = makeFactory((message, io) => {
+      if (message.method === "initialize") io.push({ id: message.id, result: {} });
+      else if (message.method === "thread/start") io.push({ id: message.id, result: { thread: { id: "thr_1" } } });
+      else if (message.method === "turn/start") {
+        setTimeout(() => controller.abort(), 5);
+        setTimeout(() => io.push({ id: message.id, result: { turn: { id: "turn_late" } } }), 30);
+      }
+    });
+    const out = await new CodexAppServerExecutor({ webSocketFactory: factory }).execute({
+      model: "gpt-5.4", body: { messages: [{ role: "user", content: "hi" }] }, signal: controller.signal,
+    });
+    const text = await out.response.text();
+    expect(text.trimEnd().endsWith("data: [DONE]")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(state.sent.filter((m) => m.method === "turn/interrupt")).toEqual([
+      { jsonrpc: "2.0", method: "turn/interrupt", params: { threadId: "thr_1", turnId: "turn_late" } },
+    ]);
   });
 
   it("reports an app-server error notification in-band", async () => {

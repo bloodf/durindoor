@@ -1790,6 +1790,12 @@
     },
     "format": "openai"
   },
+  "void-ai": {
+    "baseUrl": "https://api.voidai.app/v1/chat/completions",
+    "validateUrl": "https://api.voidai.app/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "token-kiosk": {
     "baseUrl": "https://agent-router.gaib.ai/v1/chat/completions",
     "validateUrl": "https://agent-router.gaib.ai/v1/models",
@@ -2264,6 +2270,12 @@
   "yi": {
     "baseUrl": "https://api.lingyiwanwu.com/v1/chat/completions",
     "format": "openai"
+  },
+  "yolo-auto": {
+    "baseUrl": "https://yolo-auto.com/v1/chat/completions",
+    "validateUrl": "https://yolo-auto.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "yuanbao-web": {
     "baseUrl": "https://yuanbao.tencent.com/api/chat",

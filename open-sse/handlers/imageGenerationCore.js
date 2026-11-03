@@ -53,7 +53,8 @@ export async function handleImageGenerationCore({
   const isAbort = (error) => signal?.aborted || error?.name === "AbortError";
   const abortedResult = () => createErrorResult(499, "Image generation request aborted");
   // fetchImageAsBase64 drops its own timeout when given a signal, so keep it here.
-  const imageFetchOptions = signal ? { signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) } : undefined;
+  // Built per call: the timeout must start at the prefetch, not at core entry.
+  const imageFetchOptions = () => (signal ? { signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) } : undefined);
 
   if (!body.prompt) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
@@ -89,7 +90,7 @@ export async function handleImageGenerationCore({
         const first = finalBody.data?.[0];
         let b64 = first?.b64_json;
         if (!b64 && first?.url) {
-          const image = await fetchImageAsBase64(first.url, imageFetchOptions);
+          const image = await fetchImageAsBase64(first.url, imageFetchOptions());
           b64 = image?.url?.split(",", 2)[1];
         }
         if (b64) {
@@ -288,7 +289,7 @@ export async function handleImageGenerationCore({
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      const image = await fetchImageAsBase64(first.url, imageFetchOptions);
+      const image = await fetchImageAsBase64(first.url, imageFetchOptions());
       b64 = image?.url?.split(",", 2)[1];
     }
     if (b64) {

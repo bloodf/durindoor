@@ -13,6 +13,7 @@ vi.mock("../../open-sse/executors/index.js", async (orig) => {
 vi.mock("../../open-sse/translator/concerns/image.js", async (orig) => ({ ...(await orig()), fetchImageAsBase64: mocks.fetchImage }));
 
 const { handleImageGenerationCore } = await import("../../open-sse/handlers/imageGenerationCore.js");
+import { FETCH_TIMEOUT_MS } from "../../open-sse/config/mediaConfig.js";
 const { sleep } = await import("../../open-sse/handlers/imageProviders/_base.js");
 
 const json = (v) => new Response(JSON.stringify(v), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -127,7 +128,35 @@ describe("other abort propagation points in the core", () => {
     expect((await run("antigravity", "gemini-3-pro-image", ctrl.signal)).status).toBe(499);
   });
 
-  it("binary output fetches the image with an abortable, time-limited signal", async () => {
+  it("binary output prefetch gets a fresh time-limited signal created after a slow generation", async () => {
+    const ctrl = new AbortController();
+    const order = [];
+    const timeoutCtrl = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => { order.push(`timeout:${ms}`); return timeoutCtrl.signal; });
+    global.fetch.mockImplementationOnce(async () => { order.push("submit-done"); return json({ created: 1, data: [{ url: "https://cdn.test/a.png" }] }); });
+    mocks.fetchImage.mockResolvedValueOnce({ url: "data:image/png;base64,AAAA" });
+    try {
+      const result = await handleImageGenerationCore({
+        body: { prompt: "a fox" },
+        modelInfo: { provider: "openai", model: "dall-e-3" },
+        credentials: { apiKey: "key" },
+        binaryOutput: true,
+        log: null,
+        signal: ctrl.signal
+      });
+      expect(result.success).toBe(true);
+      // The timeout starts only once generation has finished, so a slow job still gets its bytes.
+      expect(order).toEqual(["submit-done", `timeout:${FETCH_TIMEOUT_MS}`]);
+      const { signal } = mocks.fetchImage.mock.calls[0][1];
+      expect(signal.aborted).toBe(false);
+      timeoutCtrl.abort();
+      expect(signal.aborted).toBe(true);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it("binary output prefetch is aborted by the client signal", async () => {
     const ctrl = new AbortController();
     global.fetch.mockResolvedValueOnce(json({ created: 1, data: [{ url: "https://cdn.test/a.png" }] }));
     mocks.fetchImage.mockResolvedValueOnce({ url: "data:image/png;base64,AAAA" });

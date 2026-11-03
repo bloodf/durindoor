@@ -5,13 +5,16 @@ const m = vi.hoisted(() => ({
   core: vi.fn(),
   credentials: vi.fn(),
   markUnavailable: vi.fn(),
-  comboModels: vi.fn()
+  comboModels: vi.fn(),
+  noAuth: vi.fn(),
+  wantsDefault: vi.fn(),
+  route: vi.fn()
 }));
 
 vi.mock("../../open-sse/handlers/imageGenerationCore.js", () => ({ handleImageGenerationCore: m.core }));
 vi.mock("../../src/sse/services/auth.js", () => ({
   getProviderCredentialsWithQuotaPreflight: m.credentials,
-  getNoAuthProviderCredentials: vi.fn(),
+  getNoAuthProviderCredentials: m.noAuth,
   markAccountUnavailable: m.markUnavailable,
   clearAccountError: vi.fn(),
   resolveClientApiKey: vi.fn(async () => ({ apiKey: null, auth: { ok: true, apiKeyId: null, billingEpoch: null } }))
@@ -43,8 +46,8 @@ vi.mock("../../src/sse/utils/requestCorrelation.js", () => ({
   withRequestCorrelation: (fn) => fn
 }));
 vi.mock("../../src/sse/services/mediaRoutes.js", () => ({
-  wantsDefaultRoute: () => false,
-  resolveMediaRoute: vi.fn(),
+  wantsDefaultRoute: (...a) => m.wantsDefault(...a),
+  resolveMediaRoute: (...a) => m.route(...a),
   defaultRouteComboOptions: () => ({})
 }));
 vi.mock("../../open-sse/services/comboRoutingPolicy.js", () => ({ getComboRoutingPolicy: vi.fn(async () => null) }));
@@ -71,6 +74,7 @@ describe("image generation handler: client abort", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     m.comboModels.mockResolvedValue(null);
+    m.wantsDefault.mockReturnValue(false);
     // Bounded: a second account lookup means the handler fell through to another account.
     m.credentials
       .mockResolvedValueOnce({ connectionId: "conn-1", apiKey: "k" })
@@ -111,5 +115,43 @@ describe("image generation handler: client abort", () => {
     expect(m.core).toHaveBeenCalledTimes(1);
     expect(m.core.mock.calls[0][0].signal).toBe(req.signal);
     expect(m.markUnavailable).not.toHaveBeenCalled();
+  });
+
+  // The core reports 502 here, so only the combo's own signal check can stop it.
+  const abortThenSucceed = (ctrl) => m.core
+    .mockImplementationOnce(async () => {
+      ctrl.abort();
+      return { success: false, status: 502, error: "x", response: new Response("{}", { status: 502 }) };
+    })
+    .mockResolvedValue({ success: true, response: new Response("ok"), accounting: {} });
+
+  it("named combo stops on client abort even when the core reports a plain failure", async () => {
+    const ctrl = new AbortController();
+    m.credentials.mockReset().mockResolvedValue({ connectionId: "conn-1", apiKey: "k" });
+    m.comboModels.mockResolvedValue(["runwayml/gen4_image", "fal-ai/flux"]);
+    abortThenSucceed(ctrl);
+    const response = await handleImageGeneration(request(ctrl, "my-combo"));
+    expect(response.status).toBe(499);
+    expect(m.core).toHaveBeenCalledTimes(1);
+  });
+
+  it("default-route combo stops on client abort even when the core reports a plain failure", async () => {
+    const ctrl = new AbortController();
+    m.credentials.mockReset().mockResolvedValue({ connectionId: "conn-1", apiKey: "k" });
+    m.wantsDefault.mockReturnValue(true);
+    m.route.mockResolvedValue({ models: ["runwayml/gen4_image", "fal-ai/flux"] });
+    abortThenSucceed(ctrl);
+    const response = await handleImageGeneration(request(ctrl, "default"));
+    expect(response.status).toBe(499);
+    expect(m.core).toHaveBeenCalledTimes(1);
+  });
+
+  it("no-auth providers also receive request.signal", async () => {
+    const ctrl = new AbortController();
+    m.noAuth.mockResolvedValue({ connectionId: "n1" });
+    m.core.mockResolvedValue({ success: true, response: new Response("ok"), accounting: {} });
+    const req = request(ctrl, "sdwebui/sdxl");
+    await handleImageGeneration(req);
+    expect(m.core.mock.calls[0][0].signal).toBe(req.signal);
   });
 });

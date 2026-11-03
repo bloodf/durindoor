@@ -62,6 +62,7 @@ export default {
   models: [
     { id: "gpt-6-astra", name: "GPT 6 Astra" },
     { id: "gpt-6.1-sol", name: "GPT 6.1 Sol" },
+    { id: "gpt-6.1-terra", name: "GPT 6.1 Terra" },
     { id: "gpt-6-sol", name: "GPT 6 Sol" },
     { id: "gpt-6-luna", name: "GPT 6 Luna" },
     // gpt-5.5 / gpt-5.5-review / gpt-5.5-image removed: retired for Codex with ChatGPT sign-in on

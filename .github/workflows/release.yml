@@ -85,6 +85,7 @@ jobs:
           npm run verify:packed -- "$RUNNER_TEMP"/pack/durindoor-*.tgz
 
       - name: Publish CLI
-        run: npm run cli:publish
+        # Publish the exact tarball the smoke installed; tarball publishes run no prepublishOnly rebuild.
+        run: npm publish "$RUNNER_TEMP"/pack/durindoor-*.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

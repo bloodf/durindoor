@@ -507,6 +507,21 @@ describe("#1115 native resource identifiers", () => {
       const target = `${nativeTarget(op, order[0])}&${op.resourceQuery}=${order[1]}`;
       expect((await send(target, "owner", nativeOptions(op, order[0]))).status).toBe(400);
     }
+    const name = op.resourceQuery;
+    for (const extra of [name.toUpperCase(), name.replace(/^./, (char) => char.toUpperCase()), name === "task_id" ? "file_id" : "task_id", "id"]) {
+      const target = `${nativeTarget(op, "mine")}&${extra}=other`;
+      expect((await send(target, "owner", nativeOptions(op, "mine"))).status, extra).toBe(400);
+    }
+    noDispatch();
+  });
+
+  it.each(byPath)("forwards no second identifier beside a path identifier: $label", async (op) => {
+    await ownNative(op.provider, "mine", "owner");
+    await ownNative(op.provider, "other", "foreign");
+    for (const name of [op.resourceParam, op.resourceParam.toUpperCase(), "task_id", "file_id", "voice_id", "id", "request_id"]) {
+      const target = `${nativeTarget(op, "mine")}&${name}=other`;
+      expect((await send(target, "owner", nativeOptions(op, "mine"))).status, name).toBe(400);
+    }
     noDispatch();
   });
 
@@ -524,8 +539,10 @@ describe("#1115 native resource identifiers", () => {
     ]) {
       expect((await send(nativeTarget(op, "mine"), "owner", { ...nativeOptions(op, "mine"), body })).status, body).toBe(400);
     }
-    const inQuery = `${nativeTarget(op, "mine")}&${field}=other`;
-    expect((await send(inQuery, "owner", nativeOptions(op, "mine"))).status).toBe(400);
+    for (const name of [field, field.toUpperCase(), "task_id", "id"]) {
+      const inQuery = `${nativeTarget(op, "mine")}&${name}=other`;
+      expect((await send(inQuery, "owner", nativeOptions(op, "mine"))).status, name).toBe(400);
+    }
     noDispatch();
   });
 

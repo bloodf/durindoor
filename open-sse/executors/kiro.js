@@ -19,7 +19,7 @@ import {
   KIRO_DEFAULT_REGION } from
 "../config/kiroRegions.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { resolveContinuationId, extractClientSessionId } from "../utils/sessionManager.js";
+import { extractClientSessionId } from "../utils/sessionManager.js";
 import { getKiroUsage } from "../services/usage/kiro.js";
 import { KIRO_CREDIT_EXHAUSTION_PROBE_MS } from "../config/errorConfig.js";
 import {
@@ -353,6 +353,19 @@ signal = null)
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
  * Uses AWS CodeWhisperer streaming API with AWS EventStream binary format
  */
+// Per inbound request (the context survives retries and endpoint fallbacks): one conversation id
+// for sessions that carry no client, assistant or workspace identity.
+const requestConversationIds = new WeakMap();
+function requestScopedConversationId(requestContext) {
+  if (!requestContext) return uuidv4();
+  let id = requestConversationIds.get(requestContext);
+  if (!id) {
+    id = uuidv4();
+    requestConversationIds.set(requestContext, id);
+  }
+  return id;
+}
+
 export class KiroExecutor extends BaseExecutor {
   // `amazon-q` reuses this executor with its own provider id, so its
   // connections, cooldowns and usage stay separate from Kiro's.
@@ -464,7 +477,7 @@ export class KiroExecutor extends BaseExecutor {
   }
 
   /**
-   * Shape a Kiro request for its resolved gateway and stamp session affinity.
+   * Shape a Kiro request for its resolved gateway.
    *
    * The Kiro IDE gateway (`runtime.*.kiro.dev`) rejects top-level
    * `systemPrompt`, while CodeWhisperer/Amazon Q accepts it. The translator
@@ -472,16 +485,16 @@ export class KiroExecutor extends BaseExecutor {
    * incompatible top-level duplicate is removed. `targetUrl` is threaded from
    * BaseExecutor per dispatch attempt rather than stored on this shared executor.
    *
-   * The translators place a resolveSessionId-derived affinity id in
-   * `conversationState.conversationId`. Reusing one `agentContinuationId` per
-   * (scope, connectionId, model, conversationId) tuple lets the upstream keep
-   * serving a direct session from its warm cache across turns, while the
-   * account + model key dimensions prevent cross-account or cross-model replay.
-   * Explicit client sessions use the global cache; generated fallback sessions
-   * are scoped to `requestContext`, which also remains stable across retries.
+   * The deprecated `agentMode`, `agentContinuationId` and `agentTaskType` fields
+   * are no longer sent (upstream decolua/9router#3776, unverified live). Session
+   * affinity rests on `conversationState.conversationId`. An explicit client or
+   * assistant-derived id is forwarded as the translator set it. When the translator
+   * could only fall back to the per-connection id (one id for every unrelated
+   * session on that account), it is replaced by an id scoped to this inbound
+   * request, which stays stable across retries and endpoint fallbacks.
    */
   transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
-    let transformedBody = body;
+    let transformed = body;
     if (
     targetUrl?.includes(".kiro.dev") &&
     body && isObject(
@@ -489,32 +502,17 @@ export class KiroExecutor extends BaseExecutor {
     !Array.isArray(body) &&
     Object.prototype.hasOwnProperty.call(body, "systemPrompt"))
     {
-      transformedBody = { ...body };
-      delete transformedBody.systemPrompt;
+      const { systemPrompt: _systemPrompt, ...rest } = body;
+      transformed = rest;
     }
 
-    const conversationId = transformedBody?.conversationState?.conversationId;
-    if (!conversationId || !isObject(transformedBody?.conversationState)) return transformedBody;
-    const explicitFromContext = extractClientSessionId(requestContext?.clientHeaders, null);
-    const explicitFromCredentials = extractClientSessionId(credentials?.rawHeaders, null);
-    const isGenerated = credentials?._clientSessionIsGenerated ??
-    !(explicitFromContext ?? explicitFromCredentials);
-    const continuationId = resolveContinuationId({
-      sessionId: conversationId,
-      connectionId: credentials?.connectionId,
-      model,
-      scope: "kiro",
-      requestContext,
-      requestScoped: isGenerated
-    });
+    if (!transformed?.conversationState?.conversationId || !isObject(transformed.conversationState)) return transformed;
+    const explicit = extractClientSessionId(requestContext?.clientHeaders, null) ?? extractClientSessionId(credentials?.rawHeaders, null);
+    const isGenerated = credentials?._clientSessionIsGenerated ?? !explicit;
+    if (!isGenerated) return transformed;
     return {
-      ...transformedBody,
-      conversationState: {
-        ...transformedBody.conversationState,
-        agentContinuationId: continuationId,
-        agentTaskType: "vibe"
-      },
-      agentMode: "vibe"
+      ...transformed,
+      conversationState: { ...transformed.conversationState, conversationId: requestScopedConversationId(requestContext) }
     };
   }
 

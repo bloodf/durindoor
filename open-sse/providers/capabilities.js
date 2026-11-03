@@ -1266,7 +1266,7 @@ export function isLegacyHaikuModel(model = "") {
  * Haiku 5+ family caps; overrides the budget-shaped `*claude*haiku*` pattern.
  * Limits are left to defaults/catalog overlays: the global family has no cited source.
  */
-const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", defaultEffort: "medium" };
+const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" };
 
 /**
  * Resolve capabilities for a model using the 4-step fallback chain,

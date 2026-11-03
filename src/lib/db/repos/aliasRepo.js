@@ -74,6 +74,7 @@ const BOOLEAN_CAPS = [
 
 
 const INTEGER_CAPS = ["contextWindow", "maxOutput", "maxInput"];
+const DEFAULT_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 function isPositiveInteger(value) {
   return Number.isInteger(value) && value > 0 && value <= Number.MAX_SAFE_INTEGER;
@@ -142,6 +143,12 @@ export function normalizeCustomCapabilities(raw) {
       return { ok: false, error: `${key} must be an array of non-empty strings` };
     }
     out[key] = [...new Set(value)];
+  }
+  if (raw.defaultEffort !== undefined) {
+    if (raw.defaultEffort !== null && !DEFAULT_EFFORTS.includes(raw.defaultEffort)) {
+      return { ok: false, error: `defaultEffort must be one of ${DEFAULT_EFFORTS.join(", ")}` };
+    }
+    out.defaultEffort = raw.defaultEffort;
   }
   if (raw.thinkingType !== undefined) {
     if (raw.thinkingType !== null && !["adaptive", "between_tools"].includes(raw.thinkingType)) {

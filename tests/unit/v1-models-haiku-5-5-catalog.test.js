@@ -24,7 +24,7 @@ vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: mocks.getSettings }
 const project = (m) => ({
   id: m.id,
   name: m.name,
-  deprecated: m.deprecated,
+  lifecycle: m.lifecycle,
   defaultEffort: m.capabilities?.defaultEffort,
   thinkingFormat: m.capabilities?.thinkingFormat,
   contextWindow: m.capabilities?.contextWindow,
@@ -54,7 +54,7 @@ describe("/v1/models Claude Haiku catalog (#1363)", () => {
     expect(project(row)).toEqual({
       id,
       name: "Claude Haiku 5.5",
-      deprecated: undefined,
+      lifecycle: undefined,
       defaultEffort: "medium",
       thinkingFormat: "claude-adaptive",
       contextWindow: 1000000,
@@ -62,38 +62,44 @@ describe("/v1/models Claude Haiku catalog (#1363)", () => {
     });
   });
 
-  // Marked legacy on platform.claude.com/docs/en/models/overview ("Legacy models (still available)")
-  // or Deprecated in the lifecycle table of .../about-claude/model-deprecations.
+  // "legacy": the models overview's "Legacy models (still available)" list.
+  // "deprecated": status Deprecated in the lifecycle table of .../about-claude/model-deprecations.
   const LEGACY = {
     anthropic: [
       "claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
       "claude-opus-4-5-20251101", "claude-opus-4-5", "claude-sonnet-5", "claude-sonnet-4-6",
-      "claude-sonnet-4-5-20250929", "claude-sonnet-4-5", "claude-mythos-preview",
       "claude-haiku-4-5-20251001", "claude-haiku-4-5",
     ],
     cc: ["claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
   };
+  const DEPRECATED = { anthropic: ["claude-sonnet-4-5-20250929", "claude-sonnet-4-5", "claude-mythos-preview"], cc: [] };
   // Active per both pages: never flagged.
   const CURRENT = {
     anthropic: ["claude-fable-5-1", "claude-mythos-5-1", "claude-mythos-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
     cc: ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
   };
+  const ids = (table) => Object.entries(table).flatMap(([p, list]) => list.map((id) => `${p}/${id}`));
 
-  it.each(Object.entries(LEGACY).flatMap(([p, ids]) => ids.map((id) => `${p}/${id}`)))(
-    "%s stays listed and is flagged deprecated",
-    (id) => {
-      const row = models.find((m) => m.id === id);
-      expect(row, id).toBeTruthy();
-      expect(row.deprecated).toBe(true);
-    },
-  );
+  it.each(ids(LEGACY))("%s stays listed with lifecycle legacy", (id) => {
+    expect(models.find((m) => m.id === id)?.lifecycle, id).toBe("legacy");
+  });
 
-  it.each(Object.entries(CURRENT).flatMap(([p, ids]) => ids.map((id) => `${p}/${id}`)))(
-    "%s is listed and not flagged",
-    (id) => {
-      const row = models.find((m) => m.id === id);
-      expect(row, id).toBeTruthy();
-      expect(row.deprecated).toBeUndefined();
-    },
-  );
+  it.each(ids(DEPRECATED))("%s stays listed with lifecycle deprecated", (id) => {
+    expect(models.find((m) => m.id === id)?.lifecycle, id).toBe("deprecated");
+  });
+
+  it.each(ids(CURRENT))("%s is listed and has no lifecycle", (id) => {
+    const row = models.find((m) => m.id === id);
+    expect(row, id).toBeTruthy();
+    expect(row.lifecycle).toBeUndefined();
+  });
+
+  it("does not publish other providers' pre-existing deprecated flags", () => {
+    expect(models.filter((m) => m.deprecated !== undefined)).toEqual([]);
+  });
+
+  it("defaultEffort is published only on Haiku 5.5", () => {
+    const withEffort = models.filter((m) => m.capabilities?.defaultEffort).map((m) => m.id).sort();
+    expect(withEffort).toEqual(["anthropic/claude-haiku-5-5", "cc/claude-haiku-5-5"]);
+  });
 });

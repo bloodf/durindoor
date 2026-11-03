@@ -277,6 +277,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `minimax-cn` | claude | apikey | `https://api.minimax.cn/anthropic/v1/messages` |
 | `mistral` |  | apikey | `https://api.mistral.ai/v1/chat/completions` |
 | `mixlayer` |  | apikey | `https://models.mixlayer.ai/v1/chat/completions` |
+| `mlx` | openai | apikey | `http://127.0.0.1:8080/v1` |
 | `mmf` |  | apikey | `https://api.xiaomimimo.com/api/free-ai/openai/chat` |
 | `modal` | openai | apikey | `https://api.modal.ai/v1/chat/completions` |
 | `modelscope` | openai | apikey | `https://api-inference.modelscope.cn/v1/chat/completions` |

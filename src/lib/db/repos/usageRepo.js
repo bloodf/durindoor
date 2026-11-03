@@ -14,7 +14,7 @@ import {
   toLocalDateKey,
   VALID_USAGE_STATS_PERIODS } from
 "../../usagePeriods.js";
-import { incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
+import { adjustApiKeyUsageSync, incrementApiKeyUsageSync } from "./apiKeyUsageTotalsRepo.js";
 import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "./quotaSql.js";
 import { normalizeTokenSaverEvent, aggregateTokenSaverEvents, tokenSaverEventColumns } from "open-sse/rtk/index.js";
 import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
@@ -293,11 +293,11 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, usageEventId FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
       timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
       apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
-      tokens: parseJson(r.tokens, {})
+      tokens: parseJson(r.tokens, {}), storedEventId: r.usageEventId
     }));
   } catch {}
 }
@@ -669,12 +669,67 @@ export function assertBillingEpochSync(db, billingEpoch) {
   if ((billingEpoch ?? null) !== current) throw new Error("Stale or missing billing epoch");
 }
 
+// Event IDs already include their producer's scope. Hash the exact ID to
+// preserve the existing global identity without retaining caller material.
+const usageEventReceiptKey = (usageEventId) => createHash("sha256").update(usageEventId).digest("hex");
+
 function claimUsageEventReceipt(db, usageEventId) {
-  // Event IDs already include their producer's scope. Hash the exact ID to
-  // preserve the existing global identity without retaining caller material.
-  const key = createHash("sha256").update(usageEventId).digest("hex");
   return db.run(`INSERT INTO kv(scope, key, value) VALUES('usageEventReceipts', ?, '1')
-    ON CONFLICT(scope, key) DO NOTHING`, [key]).changes > 0;
+    ON CONFLICT(scope, key) DO NOTHING`, [usageEventReceiptKey(usageEventId)]).changes > 0;
+}
+
+/* An accepted-job receipt keeps the key row id so lifetime totals can still be
+ * settled after history was pruned or reset. Settled receipts return to '1'. */
+function setUsageEventReceiptSync(db, usageEventId, value) {
+  db.run(`UPDATE kv SET value = ? WHERE scope = 'usageEventReceipts' AND key = ?`, [value, usageEventReceiptKey(usageEventId)]);
+}
+
+function acceptedReceiptSync(db, usageEventId) {
+  const row = db.get(`SELECT value FROM kv WHERE scope = 'usageEventReceipts' AND key = ?`, [usageEventReceiptKey(usageEventId)]);
+  const value = row ? parseJson(row.value, null) : null;
+  return value?.state === "accepted" ? value : null;
+}
+
+// Re-derive one dimension's last-seen time after a row left it.
+function refreshLastSeenSync(db, row) {
+  const day = row.timestamp.slice(0, 10);
+  const dims = [row.provider || "", row.model || "", row.connectionId || "", row.apiKey || "", row.endpoint || ""];
+  db.run(`DELETE FROM usageLastSeen WHERE dateKey = ? AND provider = ? AND model = ? AND connectionId = ? AND apiKey = ? AND endpoint = ?`, [day, ...dims]);
+  const previous = db.get(`SELECT MAX(timestamp) AS timestamp FROM usageHistory
+    WHERE timestamp >= ? AND timestamp < ? AND COALESCE(provider, '') = ? AND COALESCE(model, '') = ?
+    AND COALESCE(connectionId, '') = ? AND COALESCE(apiKey, '') = ? AND COALESCE(endpoint, '') = ?`,
+    [`${day}T00:00:00.000Z`, new Date(Date.parse(`${day}T00:00:00.000Z`) + 86400000).toISOString(), ...dims]);
+  if (previous?.timestamp) upsertLastSeen(db, { ...row, timestamp: previous.timestamp });
+}
+
+// Apply a counter delta to the day that already holds an accepted row.
+function addDayDeltaSync(db, row, delta, identitySalt) {
+  const dateKey = toLocalDateKey(row.timestamp);
+  const stored = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
+  const day = stored ? parseJson(stored.data, {}) : {};
+  aggregateEntryToDay(day, {
+    provider: row.provider, model: row.model, connectionId: row.connectionId, apiKey: row.apiKey, endpoint: row.endpoint,
+    latencySamples: 0, ttftSamples: 0, timedCompletionTokens: 0, ...delta,
+  }, identitySalt);
+  db.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`, [dateKey, stringifyJson(day)]);
+}
+
+const apiKeyIdForSync = (db, apiKey) => apiKey ? db.get(`SELECT id FROM apiKeys WHERE key = ?`, [apiKey])?.id || null : null;
+
+/* Upgrade an accepted row in place: one request, now with the terminal usage.
+ * Accepted rows never carry tokens or cost, so the new values are the delta. */
+function settleAcceptedRowSync(db, row, entry, costSplit, identitySalt) {
+  const tokens = entry.tokens;
+  const columns = usageTokenColumns(tokens);
+  db.run(`UPDATE usageHistory SET promptTokens = ?, completionTokens = ?, cost = ?, status = ?, tokens = ?, meta = ?,
+    cachedTokens = ?, reasoningTokens = ?, cacheCreationTokens = ?, ${USAGE_COST_FIELDS.map((field) => `${field} = ?`).join(", ")}
+    WHERE id = ? AND status = 'accepted'`, [
+    tokens.prompt_tokens, tokens.completion_tokens, entry.cost, entry.status || "ok", stringifyJson(tokens), stringifyJson(entry.meta),
+    columns.cachedTokens, columns.reasoningTokens, columns.cacheCreationTokens, ...USAGE_COST_FIELDS.map((field) => costSplit[field]), row.id,
+  ]);
+  const unknownCostRequests = (entry.cost === null ? 1 : 0) - 1;
+  addDayDeltaSync(db, row, { tokens, cost: entry.cost, requests: 0, unknownCostRequests, ...costSplit }, identitySalt);
+  adjustApiKeyUsageSync(db, apiKeyIdForSync(db, row.apiKey), { tokens: tokens.total_tokens, cost: entry.cost ?? 0, unknownCostRequests });
 }
 
 /** Preserve legacy event identities before history removal or portable export.
@@ -763,6 +818,10 @@ export async function saveRequestUsage(entry) {
       if (nativePrice && !(nativePrice.cost === null && priced.cost === null)) priced = nativePrice;
     }
     entry.cost = priced.cost;
+    const accepted = entry.status === "accepted";
+    if (accepted && (!entry.usageEventId || entry.cost !== null || entry.tokens.total_tokens > 0)) {
+      throw new TypeError("Accepted usage needs an event id and no measured cost or tokens");
+    }
     entry.requests = 1;
     entry.unknownCostRequests = entry.cost === null ? 1 : 0;
     entry.meta = { ...entry.meta, costStatus: priced.costStatus, costSource: priced.costSource };
@@ -791,6 +850,7 @@ export async function saveRequestUsage(entry) {
     entry.timedCompletionTokens = latencyMs > ttftMs ? completionTokens : 0;
 
     let inserted = false;
+    let settled = false;
 
     // Every request is a distinct event — never deduplicate on identical field
     // payloads, or parallel writes that share fields (same timestamp + provider +
@@ -800,36 +860,45 @@ export async function saveRequestUsage(entry) {
     // All writes (receipt claim, history insert, daily upsert, lifetime counter) happen in ONE
     // transaction; better-sqlite3/node:sqlite are synchronous, so no JS yield
     // occurs mid-transaction and the writes remain atomic/serialized in-process.
+    // Scope storage identity, not the caller's request ID used by live sessions.
+    const usageEventId = entry.usageEventId && entry.billingEpoch != null ?
+      JSON.stringify(["billing", entry.billingEpoch, entry.usageEventId]) : entry.usageEventId;
     db.transaction(() => {
       // Reuse the quota writer lock: the schema row exists even when this day
       // and lifetime counter do not. PostgreSQL holds it until commit/rollback.
       // ponytail: global writer lock; use per-day locks if throughput demands it.
       assertBillingEpochSync(db, entry.billingEpoch);
       const identitySalt = getOrCreateUsageIdentitySalt(db);
-      // Scope storage identity, not the caller's request ID used by live sessions.
-      const usageEventId = entry.usageEventId && entry.billingEpoch != null ?
-        JSON.stringify(["billing", entry.billingEpoch, entry.usageEventId]) : entry.usageEventId;
       // Idempotency: only when the caller supplies a real event id.
       if (entry.usageEventId) {
         const claimed = claimUsageEventReceipt(db, usageEventId);
         const existing = db.get(`SELECT * FROM usageHistory WHERE usageEventId = ?`, [usageEventId]);
         if (existing) {
+          // A terminal event with the job's identity settles its accepted row.
+          if (existing.status === "accepted" && !accepted) {
+            settleAcceptedRowSync(db, existing, entry, costSplit, identitySalt);
+            setUsageEventReceiptSync(db, usageEventId, "1");
+            settled = true;
+            return;
+          }
           if (!existing.endpoint && entry.endpoint) {
             db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [entry.endpoint, existing.id]);
             // Endpoint enrichment moves a row between dimension groups.
-            db.run(`DELETE FROM usageLastSeen WHERE dateKey = ? AND provider = ? AND model = ? AND connectionId = ? AND apiKey = ? AND endpoint = ?`,
-              [existing.timestamp.slice(0, 10), existing.provider || "", existing.model || "", existing.connectionId || "", existing.apiKey || "", existing.endpoint || ""]);
-            const previous = db.get(`SELECT MAX(timestamp) AS timestamp FROM usageHistory
-              WHERE timestamp >= ? AND timestamp < ? AND COALESCE(provider, '') = ? AND COALESCE(model, '') = ?
-              AND COALESCE(connectionId, '') = ? AND COALESCE(apiKey, '') = ? AND COALESCE(endpoint, '') = ?`,
-              [`${existing.timestamp.slice(0, 10)}T00:00:00.000Z`, new Date(Date.parse(`${existing.timestamp.slice(0, 10)}T00:00:00.000Z`) + 86400000).toISOString(),
-                existing.provider || "", existing.model || "", existing.connectionId || "", existing.apiKey || "", existing.endpoint || ""]);
-            if (previous?.timestamp) upsertLastSeen(db, { ...existing, timestamp: previous.timestamp });
+            refreshLastSeenSync(db, existing);
             upsertLastSeen(db, { ...existing, endpoint: entry.endpoint });
           }
           return;
         }
-        if (!claimed) return;
+        if (!claimed) {
+          // History holding the accepted row was pruned or reset; lifetime totals were not.
+          const receipt = !accepted && acceptedReceiptSync(db, usageEventId);
+          if (receipt) {
+            adjustApiKeyUsageSync(db, receipt.apiKeyId, { tokens: entry.tokens.total_tokens, cost: entry.cost ?? 0, unknownCostRequests: (entry.cost === null ? 1 : 0) - 1 });
+            setUsageEventReceiptSync(db, usageEventId, "1");
+            settled = true;
+          }
+          return;
+        }
       }
 
       const insert = db.run(
@@ -870,11 +939,20 @@ export async function saveRequestUsage(entry) {
           cost: entry.cost
         });
       }
+      if (accepted) setUsageEventReceiptSync(db, usageEventId, stringifyJson({ state: "accepted", apiKeyId }));
       inserted = true;
     });
 
+    if (settled) {
+      // Keep the accepted item's place and time, as the history row does.
+      recentRing.items = recentRing.items.map((item) => item.storedEventId === usageEventId && item.status === "accepted" ?
+        { ...item, cost: entry.cost, status: entry.status || "ok", tokens: entry.tokens, meta: entry.meta } : item);
+      scheduleStatsEvent("update", 250);
+      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
+    }
+
     if (inserted) {
-      pushToRing(entry);
+      pushToRing({ ...entry, storedEventId: usageEventId });
       // Non-success usage remains billable history but must not overwrite the
       // request lifecycle's error/cancellation state with a completed session.
       if (!entry.status || entry.status === "ok") {
@@ -891,6 +969,38 @@ export async function saveRequestUsage(entry) {
     const msg = String(e && e.message || "");
     if (entry.strict || /syntax error|does not exist|collation/i.test(msg)) throw e;
     return false;
+  }
+}
+
+/**
+ * Remove an accepted job's row when the provider reported the job failed, so it
+ * consumes no successful-use allowance. Idempotent; a settled or missing event is
+ * left alone. The receipt stays claimed, so a later replay cannot add the event.
+ * billingEpoch is the job's creation epoch.
+ */
+export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
+  if (!isString(usageEventId) || !usageEventId.trim()) throw new TypeError("Usage event ID must be a nonempty string");
+  const db = await getAdapter();
+  const storageId = billingEpoch != null ? JSON.stringify(["billing", billingEpoch, usageEventId]) : usageEventId;
+  let changed = false;
+  db.transaction(() => {
+    assertBillingEpochSync(db, billingEpoch);
+    const receipt = acceptedReceiptSync(db, storageId);
+    if (!receipt) return;
+    const row = db.get(`SELECT * FROM usageHistory WHERE usageEventId = ? AND status = 'accepted'`, [storageId]);
+    if (row) {
+      db.run(`DELETE FROM usageHistory WHERE id = ?`, [row.id]);
+      addDayDeltaSync(db, row, { tokens: {}, cost: 0, requests: -1, unknownCostRequests: -1 }, getOrCreateUsageIdentitySalt(db));
+      refreshLastSeenSync(db, row);
+      db.run(`UPDATE _meta SET value = CAST(CAST(value AS BIGINT) - 1 AS TEXT) WHERE key = 'totalRequestsLifetime'`);
+    }
+    adjustApiKeyUsageSync(db, receipt.apiKeyId, { requests: -1, unknownCostRequests: -1 });
+    setUsageEventReceiptSync(db, storageId, "1");
+    changed = true;
+  });
+  if (changed) {
+    recentRing.items = recentRing.items.filter((item) => !(item.storedEventId === storageId && item.status === "accepted"));
+    scheduleStatsEvent("update", 250);
   }
 }
 

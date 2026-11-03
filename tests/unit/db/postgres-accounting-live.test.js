@@ -334,6 +334,26 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     expect(window.month).toMatchObject({ requests: 1, cost: 0, unknownCostRequests: 1 });
   }, 30_000);
 
+  it('settles one accepted job once across concurrent terminal writers, and retracts a failed one', async () => {
+    const [a, b] = await pair();
+    const accepted = (id) => event(id, null, { status: 'accepted', costStatus: 'unknown', costSource: 'accepted-job', tokens: {}, nativeUnits: {}, meta: { jobState: 'accepted' } });
+    expect(await a.call('save', [accepted('job-paid'), accepted('job-failed')])).toMatchObject({ ok: true });
+    const terminal = event('job-paid', 0.25, { modality: 'video', nativeUnits: { videoJobs: 1 } });
+    for (const result of await Promise.all([a.call('save', [terminal]), b.call('save', [terminal])])) expect(result).toMatchObject({ ok: true });
+    const retract = { usageEventId: 'job-failed', billingEpoch: epoch };
+    for (const result of await Promise.all([a.call('retract', retract), b.call('retract', retract)])) expect(result).toMatchObject({ ok: true });
+    const { usageHistory } = await snapshot();
+    expect(usageHistory).toHaveLength(1);
+    // The fixture's raw pg client returns BIGINT columns as strings.
+    expect(usageHistory[0].status).toBe('ok');
+    expect([Number(usageHistory[0].promptTokens), Number(usageHistory[0].completionTokens)]).toEqual([2, 3]);
+    expect(Number(usageHistory[0].cost)).toBe(0.25);
+    const { totals, window } = (await a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' })).value;
+    expect(totals).toMatchObject({ totalRequests: 1, totalTokens: 5, totalCost: 0.25, unknownCostRequests: 0 });
+    expect(window.month).toMatchObject({ requests: 1, cost: 0.25, unknownCostRequests: 0 });
+    expect((await sql.query("SELECT value FROM _meta WHERE key='totalRequestsLifetime'")).rows[0].value).toBe('1');
+  }, 30_000);
+
   it('rejects in-flight old epochs after cutover and deduplicates new-epoch replay after process reopen', async () => {
     const [a, b] = await pair();
     expect(await a.call('epoch')).toMatchObject({

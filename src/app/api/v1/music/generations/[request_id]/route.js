@@ -2,7 +2,7 @@ import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleMusicGet } from "@/sse/handlers/music.js";
 
 /** Poll with the submission's request_id, original API key and
- * x-9router-connection-id. Only confirmed terminal success records usage.
+ * x-9router-connection-id. Terminal success settles the accepted usage row; failure removes it.
  */
 async function GETHandler(request, { params }) {
   const { request_id } = await params;

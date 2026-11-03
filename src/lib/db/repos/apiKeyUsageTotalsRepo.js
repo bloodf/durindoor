@@ -90,3 +90,21 @@ export function incrementApiKeyUsageSync(db, apiKeyId, { tokens, cost }) {
     [apiKeyId, normalizedTokens, normalizedCost, cost === null ? 1 : 0, now],
   );
 }
+
+/**
+ * Apply a signed correction to one key's lifetime totals inside the caller's
+ * transaction: settling an accepted job (tokens, cost, unknown count) or
+ * retracting one (one request and its unknown count). Never adds a request.
+ */
+export function adjustApiKeyUsageSync(db, apiKeyId, { tokens = 0, cost = 0, requests = 0, unknownCostRequests = 0 }) {
+  if (!apiKeyId) return;
+  for (const value of [tokens, cost, requests, unknownCostRequests]) {
+    if (!isNumber(value) || !Number.isFinite(value)) throw new TypeError("Usage adjustment must be finite numbers");
+  }
+  if (requests > 0) throw new TypeError("Usage adjustment cannot add requests");
+  db.run(
+    `UPDATE apiKeyUsageTotals SET totalTokens = totalTokens + ?, totalCost = totalCost + ?, totalRequests = totalRequests + ?,
+       unknownCostRequests = unknownCostRequests + ?, updatedAt = ? WHERE apiKeyId = ?`,
+    [Math.ceil(tokens), cost, requests, unknownCostRequests, new Date().toISOString(), apiKeyId],
+  );
+}

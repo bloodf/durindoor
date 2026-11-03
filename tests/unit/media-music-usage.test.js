@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ key: "music-key", keyId: "music-key-id", provider: "suno", allowed: [], denied: false, failLedger: false }));
 vi.mock("@/lib/localDb", async () => ({
@@ -37,6 +37,27 @@ const get = (id = "clip-1", connection = "account-a") => poll(new Request(`http:
 const clip = (status = "complete", id = "clip-1") => ({ id, status, audio_url: "https://cdn.invalid/song.mp3", metadata: { duration: 12.5 } });
 const rows = () => adapter.all("SELECT * FROM usageHistory");
 const meta = (row) => JSON.parse(row.meta);
+
+// Transforming the handler and DB graph is the slow part. Warm it once so
+// beforeEach keeps the default hook timeout and a real hang still fails.
+beforeAll(async () => {
+  const before = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+  const env = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE"].map((name) => [name, process.env[name]]));
+  const warm = fs.mkdtempSync(path.join(os.tmpdir(), "music-usage-warm-"));
+  process.env.DATA_DIR = warm;
+  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  delete global._dbAdapter;
+  try {
+    await import("@/lib/db/index.js");
+    await import("@/sse/handlers/music.js");
+  } finally {
+    await global._dbAdapter?.instance?.close?.();
+    delete global._dbAdapter;
+    for (const signal of signals) for (const listener of process.listeners(signal)) if (!before.get(signal).has(listener)) process.removeListener(signal, listener);
+    for (const [name, value] of Object.entries(env)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+    fs.rmSync(warm, { recursive: true, force: true });
+  }
+}, 60_000);
 
 beforeEach(async () => {
   listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
@@ -122,13 +143,16 @@ describe("music terminal usage lifecycle", () => {
     const submitted = await generate(request());
     expect(await submitted.json()).toMatchObject({ request_id: "clip-1", status: "submitted" });
     expect(submitted.headers.get("x-9router-connection-id")).toBe("account-a");
-    expect(rows()).toEqual([]);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ status: "accepted", cost: null, usageEventId: `${submitted.headers.get("x-request-id")}:music` });
+    expect(meta(rows()[0])).toMatchObject({ modality: "music", costStatus: "unknown", costSource: "accepted-job", jobState: "accepted" });
     expect((await get()).status).toBe(200);
-    expect(rows()).toEqual([]);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].status).toBe("accepted");
     const completed = await get();
     expect(await completed.json()).toMatchObject({ status: "completed" });
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ usageEventId: `${submitted.headers.get("x-request-id")}:music`, connectionId: "account-a", cost: null });
+    expect(rows()[0]).toMatchObject({ status: "ok", usageEventId: `${submitted.headers.get("x-request-id")}:music`, connectionId: "account-a", cost: null });
     expect(meta(rows()[0])).toMatchObject({ nativeUnits: { audioSeconds: 12.5 } });
     expect(String(fetch.mock.calls[1][0])).toContain("/api/feed/v2?ids=clip-1");
     expect(fetch.mock.calls[1][1].method).toBe("GET");
@@ -144,9 +168,9 @@ describe("music terminal usage lifecycle", () => {
       .mockResolvedValueOnce(json({ songs: [{ id: "b", finished: true, song_path: "https://cdn.invalid/b" }, { id: "a", finished: true, song_path: "https://cdn.invalid/a" }] }));
     expect(await (await generate(request("udio/udio-default"))).json()).toMatchObject({ request_id: "a,b", status: "submitted" });
     await get("a,b");
-    expect(rows()).toEqual([]);
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
     expect(await (await get("a,b")).json()).toMatchObject({ status: "completed" });
-    expect(rows()).toHaveLength(1);
+    expect(rows().map((row) => row.status)).toEqual(["ok"]);
     expect(meta(rows()[0])).toMatchObject({ nativeUnits: {}, costStatus: "unknown" });
     expect(new URL(fetch.mock.calls[1][0]).searchParams.get("songIds")).toBe("a,b");
   });
@@ -161,7 +185,7 @@ describe("music terminal usage lifecycle", () => {
     state.allowed = ["account-b"];
     expect((await get()).status).toBe(403);
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(rows()).toEqual([]);
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
   });
 
   it("retries persisted terminal evidence after ledger failure without polling again", async () => {
@@ -169,20 +193,23 @@ describe("music terminal usage lifecycle", () => {
     await generate(request());
     state.failLedger = true;
     expect((await get()).status).toBe(500);
-    expect(rows()).toEqual([]);
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
     state.failLedger = false;
     expect((await get()).status).toBe(200);
     expect((await get()).status).toBe(200);
-    expect(rows()).toHaveLength(1);
+    expect(rows().map((row) => row.status)).toEqual(["ok"]);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("never charges failed jobs and replays their terminal failure", async () => {
     fetch.mockResolvedValueOnce(json({ clips: [clip("submitted")] })).mockResolvedValueOnce(json({ clips: [clip("error")] }));
     await generate(request());
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
     expect(await (await get()).json()).toMatchObject({ status: "failed" });
     expect(await (await get()).json()).toMatchObject({ status: "failed" });
     expect(rows()).toEqual([]);
+    const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
+    expect(await getApiKeyUsageTotals(state.keyId)).toMatchObject({ totalRequests: 0, unknownCostRequests: 0 });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -190,7 +217,7 @@ describe("music terminal usage lifecycle", () => {
     fetch.mockResolvedValueOnce(json({ clips: [clip("submitted")] })).mockResolvedValueOnce(json({ clips: [clip("complete", "other")] }));
     await generate(request());
     expect((await get()).status).toBe(502);
-    expect(rows()).toEqual([]);
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
   });
 
   it("rejects anonymous submissions and policy denials before transport", async () => {
@@ -221,7 +248,7 @@ it("keeps concurrent completion polls idempotent", async () => {
   fetch.mockImplementation(async () => json({ clips: [clip()] }));
   const responses = await Promise.all([get(), get()]);
   expect(responses.map((response) => response.status)).toEqual([200, 200]);
-  expect(rows()).toHaveLength(1);
+  expect(rows().map((row) => row.status)).toEqual(["ok"]);
 });
 
 it("records only the successful fallback account", async () => {
@@ -236,5 +263,6 @@ it("records only the successful fallback account", async () => {
 it("does not bill even a completed asynchronous submission snapshot", async () => {
   fetch.mockResolvedValueOnce(json({ clips: [clip()] }));
   expect((await generate(request())).status).toBe(200);
-  expect(rows()).toEqual([]);
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toMatchObject({ status: "accepted", cost: null });
 });

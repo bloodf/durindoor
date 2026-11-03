@@ -140,7 +140,7 @@ it.each(cases)("$modality: first terminal wins double poll, durable replay spend
   const submitted = await submit(fixture);
   expect(submitted.status).toBe(200);
   expect(submitted.headers.get("x-9router-connection-id")).toBe(`account-${fixture.provider}`);
-  expect(rows()).toEqual([]);
+  expect(rows().map((row) => [row.status, row.cost])).toEqual([["accepted", null]]);
   const admission = jobs()[0];
   expect(admission).toMatchObject({ apiKeyId: "caller-id", billingEpoch: epoch, resourceId: id });
   const beforePoll = transport.fetch.mock.calls.length;
@@ -149,7 +149,7 @@ it.each(cases)("$modality: first terminal wins double poll, durable replay spend
   expect(transport.fetch).toHaveBeenCalledTimes(beforePoll);
   reply(fixture, id, pending(fixture));
   expect((await poll(fixture, id)).status).toBe(200);
-  expect(rows()).toEqual([]);
+  expect(rows().map((row) => [row.status, row.cost])).toEqual([["accepted", null]]);
 
   const releases = [];
   let bothReached;
@@ -210,16 +210,17 @@ it.each(cases)("$modality: pending and failed USD do not bill; missing USD stays
   expect((await submit(fixture)).status).toBe(200);
   reply(fixture, failureId, pending(fixture));
   expect((await poll(fixture, failureId)).status).toBe(200);
-  expect(rows()).toEqual([]);
-  expect(receipts()).toEqual([]);
+  expect(rows().map((row) => row.status)).toEqual(["accepted"]);
+  expect(receipts().map((receipt) => JSON.parse(receipt.value))).toEqual([{ state: "accepted", apiKeyId: "caller-id" }]);
   reply(fixture, failureId, failed(fixture));
   expect((await poll(fixture, failureId)).status).toBe(200);
   const failedCalls = transport.fetch.mock.calls.length;
   expect((await poll(fixture, failureId)).status).toBe(200);
   expect(transport.fetch).toHaveBeenCalledTimes(failedCalls);
   expect(rows()).toEqual([]);
-  expect(receipts()).toEqual([]);
-  expect(await database.getApiKeyUsageTotals("caller-id")).toMatchObject({ totalRequests: 0, totalCost: 0 });
+  // The failed job's receipt stays claimed, so it can never be counted later.
+  expect(receipts().map((receipt) => receipt.value)).toEqual(["1"]);
+  expect(await database.getApiKeyUsageTotals("caller-id")).toMatchObject({ totalRequests: 0, totalCost: 0, unknownCostRequests: 0 });
 
   const unknownId = `${fixture.modality}-unknown`;
   reply(fixture, unknownId, pending(fixture));
@@ -229,7 +230,7 @@ it.each(cases)("$modality: pending and failed USD do not bill; missing USD stays
   transport.fetch.mockResolvedValueOnce(json(payload));
   expect((await poll(fixture, unknownId)).status).toBe(200);
   expect(rows()).toHaveLength(1);
-  expect(rows()[0].cost).toBeNull();
+  expect(rows()[0]).toMatchObject({ status: "ok", cost: null });
   expect(JSON.parse(rows()[0].meta)).toMatchObject({ costStatus: "unknown", costSource: "unavailable",
     nativeUnits: { [fixture.modality === "video" ? "videoSeconds" : "audioSeconds"]: fixture.seconds } });
   await reopen();
@@ -237,8 +238,9 @@ it.each(cases)("$modality: pending and failed USD do not bill; missing USD stays
   expect(await database.getApiKeyUsageTotals("caller-id")).toMatchObject({ totalRequests: 1, totalCost: 0, unknownCostRequests: 1 });
   reply(fixture, `${fixture.modality}-next`, pending(fixture));
   expect((await submit(fixture)).status).toBe(200);
-  expect(rows()).toHaveLength(1);
-  expect(receipts()).toHaveLength(1);
+  expect(rows().map((row) => row.status)).toEqual(["ok", "accepted"]);
+  expect(receipts()).toHaveLength(3);
+  expect(await database.getApiKeyUsageTotals("caller-id")).toMatchObject({ totalRequests: 2, totalCost: 0, unknownCostRequests: 2 });
 });
 
 it.each(cases)("$modality: changed billing epoch rejects stale pending ownership before transport", async (fixture) => {
@@ -250,7 +252,7 @@ it.each(cases)("$modality: changed billing epoch rejects stale pending ownership
   const calls = transport.fetch.mock.calls.length;
   expect((await poll(fixture, id)).status).toBe(404);
   expect(transport.fetch).toHaveBeenCalledTimes(calls);
-  expect(rows()).toEqual([]);
-  expect(receipts()).toEqual([]);
+  expect(rows().map((row) => row.status)).toEqual(["accepted"]);
+  expect(receipts()).toHaveLength(1);
   expect(jobs()[0].terminal).toBeUndefined();
 });

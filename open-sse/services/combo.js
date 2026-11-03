@@ -41,6 +41,11 @@ const TOOL_RESULT_PREFIX = "[Tool result: ";
 // unpinned path unchanged — mirroring upstream splitFingerprintPin (#6696).
 export const FP_PIN_SEPARATOR = "|fp|";
 
+/** Set on a member's error response when the provider already accepted an async
+ * job (#1085). Its outcome is unknown and it may still bill, so the combo returns
+ * that response instead of starting a second billable job on the next member. */
+export const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
+
 export function splitFingerprintPin(id) {
   if (!isString(id)) return null;
   const idx = id.indexOf(FP_PIN_SEPARATOR);
@@ -1561,6 +1566,12 @@ export async function handleComboChat({
         }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return successfulResult;
+      }
+
+      if (result.headers?.get?.(ACCEPTED_JOB_HEADER)) {
+        releaseFailedAffinity(modelStr, i);
+        log.warn("COMBO", `Model ${modelStr} failed after the provider accepted the job; not trying other models`, { status: result.status });
+        return result;
       }
 
       // Extract error info from response

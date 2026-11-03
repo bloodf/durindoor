@@ -1,7 +1,7 @@
 // Separate OS process using the production synchronous PostgreSQL adapter.
 import { updatePricing } from '../../src/lib/db/repos/pricingRepo.js';
 import { getAdapter } from '../../src/lib/db/driver.js';
-import { saveRequestUsage, getBillingEpoch, getApiKeyWindowUsageTotals } from '../../src/lib/db/repos/usageRepo.js';
+import { saveRequestUsage, getBillingEpoch, getApiKeyWindowUsageTotals, retractAcceptedUsage } from '../../src/lib/db/repos/usageRepo.js';
 import { getApiKeyUsageTotals } from '../../src/lib/db/repos/apiKeyUsageTotalsRepo.js';
 import { createMediaJob, finishMediaJob, getMediaJob } from '../../src/lib/db/repos/mediaJobsRepo.js';
 const adapter = await getAdapter();
@@ -46,7 +46,8 @@ process.on('message', async ({
         ...entry,
         strict: true
       }));
-    } else if (action === 'epoch') value = await getBillingEpoch();else if (action === 'summary') value = {
+    } else if (action === 'retract') value = await retractAcceptedUsage(args);
+    else if (action === 'epoch') value = await getBillingEpoch();else if (action === 'summary') value = {
       totals: await getApiKeyUsageTotals(args.keyId),
       window: await getApiKeyWindowUsageTotals(args.apiKey, args.dayStart, args.monthStart)
     };else if (action === 'createJob') value = await createMediaJob(args);else if (action === 'finishJob') {

@@ -78,6 +78,23 @@ export async function recordApiKeyUsage(apiKey, usage) {
 }
 
 /**
+ * Record a provider-accepted async job whose cost is not known yet. The job
+ * already exists upstream and the caller needs its id, so a ledger failure is
+ * logged and never fails the response. The terminal event with the same
+ * usageEventId settles this row, or retractAcceptedUsage removes it on failure.
+ */
+export async function recordAcceptedJobUsage(apiKey, usage) {
+  try {
+    await recordApiKeyUsage(apiKey, {
+      tokens: {}, nativeUnits: {}, cost: null, costStatus: "unknown", costSource: "accepted-job",
+      meta: { jobState: "accepted" }, ...usage, status: "accepted",
+    });
+  } catch (error) {
+    log.error("USAGE", `[${usage.provider}/${usage.model}] accepted job not recorded: ${error.message}`);
+  }
+}
+
+/**
  * Record non-chat usage only after a successful response. Validation errors,
  * policy denials, and upstream failures must not consume a caller's lifetime
  * allowance.

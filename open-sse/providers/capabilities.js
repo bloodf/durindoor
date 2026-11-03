@@ -267,6 +267,19 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
+// Copilot, NanoGPT and Kiro serve Claude 5.5 under dotted ids. Same models as the dashed
+// rows (Opus 5.5 / Sonnet 5.5 reject thinking.type "disabled"; Sonnet takes "between_tools"),
+// scoped per provider so other gateways (e.g. OpenRouter) keep their own handling.
+const CLAUDE_5_5_DOTTED_BASE = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 };
+const CLAUDE_5_5_DOTTED_CAPS = {
+  "claude-opus-5.5": CLAUDE_5_5_DOTTED_BASE,
+  "claude-sonnet-5.5": { ...CLAUDE_5_5_DOTTED_BASE, thinkingModes: ["adaptive", "between_tools"] },
+};
+const KIRO_CLAUDE_5_5_CAPS = Object.fromEntries(
+  Object.entries(CLAUDE_5_5_DOTTED_CAPS).flatMap(([id, caps]) =>
+    ["", "-thinking", "-agentic", "-thinking-agentic"].map((suffix) => [id + suffix, caps]))
+);
+
 const ANTHROPIC_API_CAPABILITIES = AUDITED_PROVIDER_CAPABILITIES.anthropic;
 // Codex-only models have no direct API counterpart. Published API model sizes
 // live in vendorModelCapabilities.js and are reused by all Codex aliases.
@@ -452,8 +465,10 @@ export const PROVIDER_CAPABILITIES = {
   // so the 12 keys can never drift from the catalog in providerModels.js.
   // Exposed under both the provider id ("kiro") and its short alias ("kr") —
   // callers pass either.
-  kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
-  kr: KIRO_GPT_5_6_PROVIDER_CAPS,
+  kiro: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  kr: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  github: CLAUDE_5_5_DOTTED_CAPS,
+  nanogpt: CLAUDE_5_5_DOTTED_CAPS,
   "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,
   aq: KIRO_GPT_5_6_PROVIDER_CAPS,
   // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.
@@ -776,9 +791,6 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
-// Copilot (and Kiro/Token Harbor) serve the same 5.5 models under dotted ids; mirror the dashed rows.
-{ pattern: "*claude*opus-5.5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*sonnet-5.5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, thinkingModes: ["adaptive", "between_tools"], contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*opus-5-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*opus-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*sonnet-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },

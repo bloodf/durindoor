@@ -104,6 +104,17 @@ canonical value before any DeepSeek reasoning-placeholder handling. User,
 system and tool messages are unchanged, as are other providers' existing rules.
 This is field normalization, not validation of arbitrary reasoning value types.
 
+## DeepAI
+
+`deepai` is image-only; DeepAI has no chat endpoint. Requests to `/v1/images/generations` with model `text2img` are sent to `https://api.deepai.org/api/text2img` with the `api-key` header and return the `output_url` image link. Optional `size` (`WIDTHxHEIGHT`, 128 to 1536 in multiples of 32) and `negative_prompt` are forwarded.
+
+API access requires your own DeepAI Pro subscription; DurinDoor does not provide one. DeepAI's asynchronous video routes are not supported yet.
+
+### Unverified
+
+- No live call was made. Requests are sent as multipart/form-data per the DeepAI guide (its JavaScript example sends JSON instead); response and error bodies follow `deepai.org/docs` only.
+- DeepAI's resale and redistribution terms were not reviewed. Use your own key for your own requests.
+
 ## Pioneer (Fastino)
 
 Pioneer is now Fastino: `api.pioneer.ai` is retired and the API lives at `https://api.fastino.ai/v1`. Create a key at the Fastino dashboard (keys start with `fast_sk_`; legacy `pio_sk_` keys no longer work). The provider lists the decoder models from the Fastino model catalog. GLiNER and GLiDE models need a request `schema` or `/v1/systemone` and are not exposed here.

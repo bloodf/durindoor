@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 319 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 320 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -93,6 +93,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Dahl | `dahl` | apikey | 0 |  |
 | Databricks | `databricks` | apikey | 4 | [site](https://www.databricks.com) |
 | DataRobot | `datarobot` | apikey | 0 | [site](https://docs.datarobot.com) |
+| DeepAI | `deepai` | apikey | 1 | [site](https://deepai.org/docs) |
 | Deepgram | `deepgram` | apikey | 4 | [site](https://deepgram.com) |
 | DeepInfra | `deepinfra` | apikey | 0 | [site](https://deepinfra.com) |
 | DeepSeek | `deepseek` | apikey | 4 | [site](https://deepseek.com) |

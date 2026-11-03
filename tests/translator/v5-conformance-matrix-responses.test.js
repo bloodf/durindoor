@@ -670,8 +670,8 @@ describe("#1089 Responses client conformance", () => {
     }, claude), claude)).toEqual({ type: "object", properties: {} });
   });
 
-  // #1089 failing: Responses→Claude leaves free-form parameters:{} as input_schema:{} (Anthropic requires type:object). Refs #1350
-  it.skip("normalizes Claude free-form parameters {} to a typed empty object schema", () => {
+  // #1089 / #1350: Responses→Claude lowers free-form parameters:{} to a typed empty object schema (fixed by #1351).
+  it("normalizes Claude free-form parameters {} to a typed empty object schema", () => {
     expect(toolParams(request({
       input: "hi",
       tools: [{ type: OPENAI_BLOCK.FUNCTION, name: "lookup", parameters: {} }],

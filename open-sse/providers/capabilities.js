@@ -378,7 +378,13 @@ const OX_ALPHA_CAPABILITIES = {
   maxOutput: 131072
 };
 
+// Antigravity 3.6-3.8 Flash tiers: no "minimal" level, so none/minimal floor to low (same
+// mechanism as Gemini 4). Scoped to Antigravity; other providers keep their own metadata.
+// Unverified: the 400 "Thinking level MINIMAL is not supported" (upstream decolua/9router#5355) was not reproduced live.
+const ANTIGRAVITY_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], thinkingFloorHidesThoughts: true, contextWindow: 1048576, maxOutput: 65536 };
+
 export const PROVIDER_CAPABILITIES = {
+  antigravity: Object.fromEntries(["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.7", "gemini-3.6"].map((id) => [id, ANTIGRAVITY_FLASH_TIER_CAPABILITIES])),
   // Native API metadata is separate from OAuth and reseller contracts.
   openai: AUDITED_PROVIDER_CAPABILITIES.openai,
   codex: { ...CODEX_ONLY_CAPABILITIES, ...AUDITED_PROVIDER_CAPABILITIES.codex },

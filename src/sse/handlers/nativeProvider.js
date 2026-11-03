@@ -181,6 +181,13 @@ export async function handleNativeProvider(request, provider, path) {
   const bodyResourceNode = operation.resourceBodyField && jsonTree ? findNodeAtLocation(jsonTree, [operation.resourceBodyField]) : null;
   const bodyResourceId = bodyResourceNode?.type === "number" ? jsonBody.slice(bodyResourceNode.offset, bodyResourceNode.offset + bodyResourceNode.length) : parsed?.[operation.resourceBodyField];
   const pollResourceId = operation.resourceParam ? pathParts[resourceIndex] : operation.resourceQuery ? url.searchParams.get(operation.resourceQuery) : bodyResourceId;
+  // Authorize exactly one identifier: a provider's parser may pick a different repeat.
+  if (operation.resourceQuery && url.searchParams.getAll(operation.resourceQuery).length > 1) return fail(HTTP_STATUS.BAD_REQUEST, "Ambiguous native resource ID");
+  if (operation.resourceBodyField) {
+    const field = operation.resourceBodyField.toLowerCase();
+    const repeats = (jsonTree?.children || []).filter((property) => String(property.children?.[0]?.value).toLowerCase() === field).length;
+    if (repeats > 1 || url.searchParams.has(operation.resourceBodyField)) return fail(HTTP_STATUS.BAD_REQUEST, "Ambiguous native resource ID");
+  }
   if (trackedResource && (!isString(pollResourceId) || !pollResourceId)) return fail(HTTP_STATUS.BAD_REQUEST, "Missing native resource ID");
   const resourceOwner = trackedResource ? await readNativeResourceOwner(provider, credentials.connectionId, pollResourceId) : null;
   if (trackedResource && !resourceOwner?.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Unknown native resource owner");

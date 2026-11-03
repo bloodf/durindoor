@@ -1,0 +1,1229 @@
+{
+  "sourceHead": "250a42caaac957098cc46c0618cf6b78d8539df7",
+  "skillSource": "pedrojaques99/visant-skills-public@fe555cfdeb405799db51ca52468079512c9adc1a",
+  "catalog": {
+    "completed": 854,
+    "total": 854,
+    "errors": 0
+  },
+  "chromium": {
+    "cases": 328,
+    "errors": [],
+    "byResult": {
+      "passed": 328
+    }
+  },
+  "snapshots": [
+    {
+      "name": "usage-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1369,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-start-here--explore-workspace&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "monitoring-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 625,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-monitoring--runtime&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmonitoring"
+    },
+    {
+      "name": "combos-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1441,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-combos-combospage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcombos"
+    },
+    {
+      "name": "combo-create-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1655,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-combos-combospage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcombos"
+    },
+    {
+      "name": "combo-picker-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 10813,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-combos-combospage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcombos"
+    },
+    {
+      "name": "combo-picker-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 10813,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-combos-combospage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcombos"
+    },
+    {
+      "name": "providers-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 812,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerspage--inventory&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fproviders"
+    },
+    {
+      "name": "endpoint-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 651,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-endpoint--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fendpoint"
+    },
+    {
+      "name": "api-keys-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 690,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-api-keys--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fkeys"
+    },
+    {
+      "name": "proxy-pools-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 629,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-proxypoolspage--populated&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fproxy-pools"
+    },
+    {
+      "name": "timeline-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 608,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinepage--loaded&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Ftimeline"
+    },
+    {
+      "name": "quota-tracker-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 689,
+      "url": "http://localhost:6006/dashboard/quota?id=v5-review-pages-operations-quotapage--empty-providers&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fquota"
+    },
+    {
+      "name": "health-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 11,
+      "url": "http://localhost:6006/dashboard/quota?id=v5-review-pages-health--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fhealth"
+    },
+    {
+      "name": "health-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 659,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fhealth"
+    },
+    {
+      "name": "console-log-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 565,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-consolelogclient--streaming&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fconsole-log"
+    },
+    {
+      "name": "playground-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 593,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-playground-playgroundpageclient--empty-conversation&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fplayground"
+    },
+    {
+      "name": "my-dashboards-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 804,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-your-dashboards--operations&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fworkspaces"
+    },
+    {
+      "name": "token-saver-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1147,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--overview&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Ftoken-saver"
+    },
+    {
+      "name": "token-settings-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 11,
+      "url": "http://localhost:6006/dashboard/token-saver/settings"
+    },
+    {
+      "name": "headroom-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 806,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-savers-headroomclient--running-with-events&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fheadroom"
+    },
+    {
+      "name": "test-savers-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 621,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-compression-studio--empty&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcompression-studio"
+    },
+    {
+      "name": "cli-tools-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 940,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-clitoolspageclient--catalog&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcli-tools"
+    },
+    {
+      "name": "skills-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 990,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-skillspage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fskills"
+    },
+    {
+      "name": "auto-configure-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 679,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-auto-configure--status-preview&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fauto-configure"
+    },
+    {
+      "name": "instances-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 749,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmcp-gateway"
+    },
+    {
+      "name": "keys-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 653,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway-keys--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmcp-gateway%2Fkeys"
+    },
+    {
+      "name": "embedding-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 766,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-providers%2Fembedding"
+    },
+    {
+      "name": "text-to-image-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 817,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-providers%2Fimage"
+    },
+    {
+      "name": "web-fetch-search-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 820,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-weblisting--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-providers%2Fweb"
+    },
+    {
+      "name": "media-routes-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 846,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-media-routes--automatic&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-routes"
+    },
+    {
+      "name": "settings-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1022,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-profile-profilepage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fprofile"
+    },
+    {
+      "name": "provider-detail-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 913,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerdetailpage--open-ai-detail&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fproviders%2Fopenai"
+    },
+    {
+      "name": "usage-edit-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1700,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-usage-page--overview&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fusage"
+    },
+    {
+      "name": "usage-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1379,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-start-here--explore-workspace&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "monitoring-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 625,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-monitoring--runtime&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmonitoring"
+    },
+    {
+      "name": "combos-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1441,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-combos-combospage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcombos"
+    },
+    {
+      "name": "providers-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 812,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerspage--inventory&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fproviders"
+    },
+    {
+      "name": "endpoint-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 651,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-endpoint--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fendpoint"
+    },
+    {
+      "name": "api-keys-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 690,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-api-keys--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fkeys"
+    },
+    {
+      "name": "proxy-pools-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 629,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-proxypoolspage--populated&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fproxy-pools"
+    },
+    {
+      "name": "timeline-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 608,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinepage--loaded&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Ftimeline"
+    },
+    {
+      "name": "quota-tracker-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 689,
+      "url": "http://localhost:6006/dashboard/quota?id=v5-review-pages-operations-quotapage--empty-providers&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fquota"
+    },
+    {
+      "name": "health-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 659,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fhealth"
+    },
+    {
+      "name": "console-log-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 565,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-consolelogclient--streaming&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fconsole-log"
+    },
+    {
+      "name": "playground-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 593,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-playground-playgroundpageclient--empty-conversation&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fplayground"
+    },
+    {
+      "name": "my-dashboards-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 804,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-your-dashboards--operations&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fworkspaces"
+    },
+    {
+      "name": "token-saver-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1147,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--overview&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Ftoken-saver"
+    },
+    {
+      "name": "headroom-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 799,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-savers-headroomclient--running-with-events&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fheadroom"
+    },
+    {
+      "name": "test-savers-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 621,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-compression-studio--empty&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcompression-studio"
+    },
+    {
+      "name": "cli-tools-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 940,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-clitoolspageclient--catalog&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fcli-tools"
+    },
+    {
+      "name": "skills-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 990,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-skillspage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fskills"
+    },
+    {
+      "name": "auto-configure-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 679,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-auto-configure--status-preview&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fauto-configure"
+    },
+    {
+      "name": "instances-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 749,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmcp-gateway"
+    },
+    {
+      "name": "keys-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 653,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway-keys--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmcp-gateway%2Fkeys"
+    },
+    {
+      "name": "embedding-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 766,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-providers%2Fembedding"
+    },
+    {
+      "name": "text-to-image-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 817,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-providers%2Fimage"
+    },
+    {
+      "name": "web-fetch-search-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 820,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-weblisting--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-providers%2Fweb"
+    },
+    {
+      "name": "media-routes-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 846,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-media-routes--automatic&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fmedia-routes"
+    },
+    {
+      "name": "settings-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1022,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-profile-profilepage--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fprofile"
+    },
+    {
+      "name": "provider-detail-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 913,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerdetailpage--open-ai-detail&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fproviders%2Fopenai"
+    },
+    {
+      "name": "usage-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1387,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-start-here--explore-workspace&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "monitoring-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 633,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-monitoring--runtime&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmonitoring"
+    },
+    {
+      "name": "combos-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1449,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-combos-combospage--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fcombos"
+    },
+    {
+      "name": "providers-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 820,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerspage--inventory&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fproviders"
+    },
+    {
+      "name": "endpoint-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 659,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-endpoint--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fendpoint"
+    },
+    {
+      "name": "api-keys-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 698,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-api-keys--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fkeys"
+    },
+    {
+      "name": "proxy-pools-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 637,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-proxypoolspage--populated&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fproxy-pools"
+    },
+    {
+      "name": "timeline-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 616,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinepage--loaded&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Ftimeline"
+    },
+    {
+      "name": "quota-tracker-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 697,
+      "url": "http://localhost:6006/dashboard/quota?id=v5-review-pages-operations-quotapage--empty-providers&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fquota"
+    },
+    {
+      "name": "health-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 667,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fhealth"
+    },
+    {
+      "name": "console-log-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 573,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-consolelogclient--streaming&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fconsole-log"
+    },
+    {
+      "name": "playground-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 601,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-playground-playgroundpageclient--empty-conversation&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fplayground"
+    },
+    {
+      "name": "my-dashboards-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 812,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-your-dashboards--operations&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fworkspaces"
+    },
+    {
+      "name": "token-saver-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1150,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--overview&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Ftoken-saver"
+    },
+    {
+      "name": "headroom-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 807,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-savers-headroomclient--running-with-events&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fheadroom"
+    },
+    {
+      "name": "test-savers-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 629,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-compression-studio--empty&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fcompression-studio"
+    },
+    {
+      "name": "cli-tools-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 948,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-clitoolspageclient--catalog&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fcli-tools"
+    },
+    {
+      "name": "skills-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 998,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-skillspage--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fskills"
+    },
+    {
+      "name": "auto-configure-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 687,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-auto-configure--status-preview&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fauto-configure"
+    },
+    {
+      "name": "instances-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 757,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmcp-gateway"
+    },
+    {
+      "name": "keys-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 661,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway-keys--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmcp-gateway%2Fkeys"
+    },
+    {
+      "name": "embedding-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 774,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-providers%2Fembedding"
+    },
+    {
+      "name": "text-to-image-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 825,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-providers%2Fimage"
+    },
+    {
+      "name": "web-fetch-search-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 828,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-weblisting--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-providers%2Fweb"
+    },
+    {
+      "name": "media-routes-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 854,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-media-routes--automatic&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-routes"
+    },
+    {
+      "name": "settings-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1030,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-profile-profilepage--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fprofile"
+    },
+    {
+      "name": "provider-detail-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 921,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerdetailpage--open-ai-detail&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fproviders%2Fopenai"
+    },
+    {
+      "name": "usage-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1387,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-start-here--explore-workspace&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "monitoring-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 633,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-monitoring--runtime&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmonitoring"
+    },
+    {
+      "name": "combos-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1449,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-combos-combospage--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fcombos"
+    },
+    {
+      "name": "providers-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 820,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerspage--inventory&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fproviders"
+    },
+    {
+      "name": "endpoint-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 659,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-endpoint--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fendpoint"
+    },
+    {
+      "name": "api-keys-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 698,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-api-keys--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fkeys"
+    },
+    {
+      "name": "proxy-pools-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 637,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-proxypoolspage--populated&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fproxy-pools"
+    },
+    {
+      "name": "timeline-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 616,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinepage--loaded&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Ftimeline"
+    },
+    {
+      "name": "quota-tracker-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 697,
+      "url": "http://localhost:6006/dashboard/quota?id=v5-review-pages-operations-quotapage--empty-providers&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fquota"
+    },
+    {
+      "name": "health-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 667,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fhealth"
+    },
+    {
+      "name": "console-log-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 573,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-consolelogclient--streaming&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fconsole-log"
+    },
+    {
+      "name": "playground-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 601,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-playground-playgroundpageclient--empty-conversation&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fplayground"
+    },
+    {
+      "name": "my-dashboards-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 812,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-your-dashboards--operations&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fworkspaces"
+    },
+    {
+      "name": "token-saver-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1155,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--overview&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Ftoken-saver"
+    },
+    {
+      "name": "headroom-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 814,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-savers-headroomclient--running-with-events&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fheadroom"
+    },
+    {
+      "name": "test-savers-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 629,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-compression-studio--empty&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fcompression-studio"
+    },
+    {
+      "name": "cli-tools-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 948,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-clitoolspageclient--catalog&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fcli-tools"
+    },
+    {
+      "name": "skills-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 998,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-skillspage--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fskills"
+    },
+    {
+      "name": "auto-configure-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 687,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-auto-configure--status-preview&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fauto-configure"
+    },
+    {
+      "name": "instances-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 757,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmcp-gateway"
+    },
+    {
+      "name": "keys-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 661,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-mcp-gateway-keys--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmcp-gateway%2Fkeys"
+    },
+    {
+      "name": "embedding-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 774,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-providers%2Fembedding"
+    },
+    {
+      "name": "text-to-image-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 825,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-kindlisting--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-providers%2Fimage"
+    },
+    {
+      "name": "web-fetch-search-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 828,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-weblisting--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-providers%2Fweb"
+    },
+    {
+      "name": "media-routes-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 854,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-media-routes--automatic&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fmedia-routes"
+    },
+    {
+      "name": "settings-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1030,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-profile-profilepage--default&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fprofile"
+    },
+    {
+      "name": "provider-detail-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 921,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-providers-providerdetailpage--open-ai-detail&viewMode=story&globals=theme%3Adark&v5Route=%2Fdashboard%2Fproviders%2Fopenai"
+    },
+    {
+      "name": "token-settings-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 765,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-settings--all-settings&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "database-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 647,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-settings-databasesettingspage--default&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "translator-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 933,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-translator-translatorworkspace--loaded-request&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "login-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 217,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-redesign-login--animated-gate&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "callback-error-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 184,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-public-callback--live-error&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "health-error-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 641,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--load-failure&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "token-saver-error-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 892,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--service-unavailable&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "token-settings-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 765,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-settings--all-settings&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "database-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 647,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-settings-databasesettingspage--default&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "translator-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 968,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-translator-translatorworkspace--loaded-request&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "login-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 217,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-redesign-login--animated-gate&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "callback-error-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 184,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-public-callback--live-error&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "health-error-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 641,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--load-failure&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "token-saver-error-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 892,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--service-unavailable&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "token-settings-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 773,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-settings--all-settings&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "database-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 655,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-settings-databasesettingspage--default&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "translator-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 973,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-translator-translatorworkspace--loaded-request&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "login-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 217,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-redesign-login--animated-gate&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "callback-error-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 184,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-public-callback--live-error&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "health-error-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 649,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--load-failure&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "token-saver-error-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 900,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--service-unavailable&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "token-settings-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 773,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-settings--all-settings&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "database-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 655,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-settings-databasesettingspage--default&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "translator-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 967,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-translator-translatorworkspace--loaded-request&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "login-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 217,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-redesign-login--animated-gate&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "callback-error-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 184,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-public-callback--live-error&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "health-error-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 649,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-health--load-failure&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "token-saver-error-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 900,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-workflows-token-saver-overview--service-unavailable&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "cli-tool-detail-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 857,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-tooldetailclient--claude&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "media-detail-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 905,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-providerdetail--embedding-example&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "media-combo-detail-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 759,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-combodetail--default&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "mitm-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 703,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-mitmpageclient--default&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "pxpipe-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1126,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-pxpipe-pxpipeclient--populated&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "timeline-detail-light-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 594,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinedetailpage--loaded&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "cli-tool-detail-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 857,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-tooldetailclient--claude&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "media-detail-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 905,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-providerdetail--embedding-example&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "media-combo-detail-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 759,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-combodetail--default&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "mitm-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 703,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-mitmpageclient--default&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "pxpipe-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1126,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-pxpipe-pxpipeclient--populated&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "timeline-detail-light-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 594,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinedetailpage--loaded&viewMode=story&globals=theme%3Alight"
+    },
+    {
+      "name": "cli-tool-detail-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 865,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-tooldetailclient--claude&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "media-detail-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 913,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-providerdetail--embedding-example&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "media-combo-detail-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 767,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-combodetail--default&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "mitm-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 711,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-mitmpageclient--default&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "pxpipe-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 1134,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-pxpipe-pxpipeclient--populated&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "timeline-detail-dark-mobile",
+      "width": 390,
+      "overflow": 0,
+      "nodes": 602,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinedetailpage--loaded&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "cli-tool-detail-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 865,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-cli-tools-tooldetailclient--claude&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "media-detail-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 913,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-providerdetail--embedding-example&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "media-combo-detail-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 767,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-media-combodetail--default&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "mitm-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 711,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-operations-mitmpageclient--default&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "pxpipe-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 1134,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-pxpipe-pxpipeclient--populated&viewMode=story&globals=theme%3Adark"
+    },
+    {
+      "name": "timeline-detail-dark-desktop",
+      "width": 1280,
+      "overflow": 0,
+      "nodes": 602,
+      "url": "http://localhost:6006/iframe.html?id=v5-review-pages-timeline-timelinedetailpage--loaded&viewMode=story&globals=theme%3Adark"
+    }
+  ],
+  "navigationFailures": [
+    {
+      "flow": "Usage \u2192 Quota \u2192 Health",
+      "quotaUrl": "http://localhost:6006/dashboard/quota?id=v5-review-pages-operations-quotapage--empty-providers&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fquota",
+      "resultUrl": "http://localhost:6006/dashboard/quota?id=v5-review-pages-health--default&viewMode=story&globals=theme%3Alight&v5Route=%2Fdashboard%2Fhealth",
+      "visible": true
+    },
+    {
+      "flow": "Token Saver dashboard \u2192 Compression settings after story playback settled",
+      "resultUrl": "http://localhost:6006/dashboard/token-saver/settings",
+      "visible": true
+    }
+  ],
+  "providerOverlap": {
+    "width": 1280,
+    "theme": "dark",
+    "Augment Auggie CLI": {
+      "horizontalOverlapWithSwitchHitAreaPx": 23.75,
+      "verticalOverlapPx": 17
+    },
+    "DuckDuckGo AI Chat": {
+      "horizontalOverlapWithSwitchHitAreaPx": 26.078125,
+      "verticalOverlapPx": 17
+    }
+  },
+  "notes": [
+    "Snapshot sweeps are rendered fixture views, not proof of all state transitions.",
+    "Story play completion is measured by the separate 854-story catalog gate.",
+    "Full-page screenshots do not expand fixed inner scroll regions.",
+    "Two 404 documents in the snapshot list are navigation failures, not successful layout coverage.",
+    "All data is synthetic. No provider, database, account or credential validation."
+  ],
+  "repositoryGates": {
+    "antiSlop": {
+      "status": "passed",
+      "diagnostics": 0,
+      "files": 2377
+    },
+    "storybookCoverage": {
+      "status": "failed",
+      "exitCode": 1,
+      "missingManifestRows": 134,
+      "sourceHashReports": 116,
+      "orphanBuiltStoryIds": 1113,
+      "note": "Metadata/source-census mismatch; counts are not distinct UI defects."
+    },
+    "fullCI": "not run, documentation-only review",
+    "rootESLint": "not run this round"
+  }
+}

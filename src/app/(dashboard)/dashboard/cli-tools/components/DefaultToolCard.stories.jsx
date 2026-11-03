@@ -69,7 +69,7 @@ export const QwenGuideConfigured = {
     const dialog = await within(canvasElement.ownerDocument.body).findByRole("dialog", { name: "Select Model" });
     await expect(dialog).toBeVisible();
     const gpt41 = await waitFor(() => {
-      const button = Array.from(dialog.querySelectorAll("button")).find((node) => Array.from(node.querySelectorAll("span")).some((span) => span.firstChild?.nodeType === Node.TEXT_NODE && span.firstChild.nodeValue === "GPT-4.1"));
+      const button = within(dialog).getAllByRole("button").find((choice) => within(choice).queryByText("GPT-4.1", { exact: true }));
       expect(button).toBeDefined();
       return button;
     });

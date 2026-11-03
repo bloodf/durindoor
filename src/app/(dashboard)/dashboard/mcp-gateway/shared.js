@@ -10,8 +10,9 @@
  * everything the way the combined page did.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useNotificationStore } from "@/store/notificationStore";
+import { requestCollection } from "../providers/workflowRequests.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 
 export function nowMs() {
@@ -55,27 +56,22 @@ export function useGatewayCollection(path, field, { eager = true } = {}) {
   const [error, setError] = useState(null);
   const notify = useNotificationStore((state) => state.addNotification);
 
+  const generation = useRef(0);
   const reload = useCallback(async () => {
+    const token = ++generation.current;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(path);
-      const body = res.ok ? await res.json().catch(() => ({})) : {};
-      if (!res.ok) {
-        const message = body.error ?? `Failed to load ${field} (${res.status})`;
-        notify({ type: "error", message });
-        setError(message);
-        setItems([]);
-        return;
-      }
-      setItems(Array.isArray(body[field]) ? body[field] : []);
+      const loaded = await requestCollection(path, field);
+      if (token === generation.current) setItems(loaded);
     } catch (caught) {
+      if (token !== generation.current) return;
       const message = caught instanceof Error ? caught.message : `Failed to load ${field}`;
       notify({ type: "error", message });
       setError(message);
       setItems([]);
     } finally {
-      setLoading(false);
+      if (token === generation.current) setLoading(false);
     }
   }, [path, field, notify]);
 

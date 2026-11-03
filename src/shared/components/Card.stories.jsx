@@ -41,7 +41,7 @@ export const TitledWithIcon = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Combos")).toBeInTheDocument();
-    await expect(canvas.getByText("layers")).toBeInTheDocument();
+    await expect(canvasElement.querySelector('[data-icon-name="layers"]') || canvas.getByText("layers")).toBeInTheDocument();
   },
 };
 

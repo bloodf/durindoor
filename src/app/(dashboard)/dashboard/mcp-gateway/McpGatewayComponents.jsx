@@ -8,7 +8,7 @@
  * particular spans the split because a key's grants name instances.
  */
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, useRef } from "react";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -47,12 +47,19 @@ export function StatusBadge({ instance }) {
 
 export function NewKeyDialog({ onClose, onCreate }) {
   const [name, setName] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const submitting = useRef(false);
   const formId = useId();
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
-    onCreate(name.trim() || null);
+    if (submitting.current) return;
+    submitting.current = true; setPending(true); setError("");
+    try { await onCreate(name.trim() || null); }
+    catch (caught) { setError(caught.message || "Key could not be created. Retry."); }
+    finally { submitting.current = false; setPending(false); }
   }
-  return <Modal open onClose={onClose} title="Name gateway key" subtitle="Optional. Leave blank to create an unnamed key." size="sm" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button form={formId} type="submit" variant="primary">Create key</Button></>}><form id={formId} onSubmit={submit}><Input label="Key name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Optional descriptive name" autoFocus /></form></Modal>;
+  return <Modal open pending={pending} onClose={onClose} title="Name gateway key" subtitle="Optional. Leave blank to create an unnamed key." size="sm" footer={<><Button variant="secondary" icon="close" disabled={pending} onClick={onClose}>Cancel</Button><Button form={formId} type="submit" variant="primary" icon="vpn_key" loading={pending}>Create key</Button></>}><form id={formId} onSubmit={submit}><Input label="Key name" value={name} disabled={pending} onChange={(event) => setName(event.target.value)} placeholder="Optional descriptive name" autoFocus />{error && <p role="alert" className="mt-3 text-dd-danger">{error}</p>}</form></Modal>;
 }
 
 export function InstancesPanel({ instances, loading, testResults, onCreate, onToggle, onTest, onConnect, onEdit, onDelete }) {
@@ -68,8 +75,8 @@ export function InstanceRow({ instance, test, onToggle, onTest, onConnect, onEdi
 export function TestResult({ test, onConnect, showLogin }) {
   return <div className="mt-3 flex flex-wrap items-center gap-2 text-xs" role="status">{test.ok ? <><StatusDot tone="success" label={`${test.toolCount} tools discovered`} />{test.sample?.length ? <span className="text-dd-muted">Sample: {test.sample.map((sample) => sample.name).join(", ")}</span> : null}</> : <><StatusDot tone="danger" label={`Test failed: ${test.error}`} />{showLogin ? <Button size="sm" variant="secondary" icon="login" onClick={onConnect}>Login</Button> : null}</>}</div>;
 }
-export function KeysPanel({ keys, loading, copied, onCreate, onEdit, onReveal, onDelete }) {
-  return <Card padding={false}><CardHeader icon="vpn_key" title="Gateway keys" subtitle="API keys harnesses use to talk to this gateway" /><CardContent>{loading ? <div className="flex items-center gap-2 py-8 text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin motion-reduce:animate-none">progress_activity</span>Loading keys…</div> : keys.length === 0 ? <EmptyState icon="key" title="No gateway keys yet" message="Mint a key for each harness that needs access to this gateway." action={{ label: "New key", icon: "vpn_key", onClick: onCreate }} /> : <div className="flex flex-col gap-3">{keys.map((key) => <KeyRow key={key.id} gatewayKey={key} copied={copied} onEdit={onEdit} onReveal={onReveal} onDelete={onDelete} />)}</div>}</CardContent></Card>;
+export function KeysPanel({ keys, loading, error, onRetry, copied, onCreate, onEdit, onReveal, onDelete }) {
+  return <Card padding={false}><CardHeader icon="vpn_key" title="Gateway keys" subtitle="API keys harnesses use to talk to this gateway" /><CardContent>{error ? <div role="alert" className="mb-3 flex flex-wrap items-center gap-3 text-dd-danger"><span>{keys.length ? "Showing last confirmed keys. " : "Keys could not be loaded. "}{error}</span><Button icon="refresh" variant="secondary" onClick={onRetry}>Retry</Button></div> : null}{loading ? <div className="flex items-center gap-2 py-8 text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin motion-reduce:animate-none">progress_activity</span>Loading keys…</div> : error && keys.length === 0 ? null : keys.length === 0 ? <EmptyState icon="key" title="No gateway keys yet" message="Mint a key for each harness that needs access to this gateway." action={{ label: "New key", icon: "vpn_key", onClick: onCreate }} /> : <div className="flex flex-col gap-3">{keys.map((key) => <KeyRow key={key.id} gatewayKey={key} copied={copied} onEdit={onEdit} onReveal={onReveal} onDelete={onDelete} />)}</div>}</CardContent></Card>;
 }
 export function KeyRow({ gatewayKey, copied, onEdit, onReveal, onDelete }) {
   return <article className="flex flex-col gap-3 rounded-dd-lg border border-dd-border-subtle bg-dd-bg-alt p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-medium text-dd-text">{gatewayKey.name ?? <span className="text-dd-muted">Unnamed key</span>}</p><p className="mt-1 text-xs text-dd-muted">{gatewayKey.machineId ? `Machine ${gatewayKey.machineId.slice(0, 8)}… · ` : ""}Created {gatewayKey.createdAt?.slice(0, 10) ?? "unknown"}</p></div><div className="flex items-center gap-1"><Tooltip content="Manage instance grants"><IconButton icon="tune" label="Manage grants" onClick={() => onEdit(gatewayKey.id)} /></Tooltip><Button size="sm" variant="secondary" icon={copied === `reveal_${gatewayKey.id}` ? "check" : "content_copy"} onClick={() => onReveal(gatewayKey.id)}>{copied === `reveal_${gatewayKey.id}` ? "Copied" : "Copy key"}</Button><Tooltip content="Delete key"><IconButton icon="delete" label="Delete key" onClick={() => onDelete(gatewayKey.id)} /></Tooltip></div></article>;

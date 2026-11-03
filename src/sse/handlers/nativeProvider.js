@@ -19,6 +19,7 @@ const { collectNativeModelSlots } = nativeModelSlots;
 
 const MAX_ERROR_BYTES = 8192;
 const MAX_RESOURCE_LIST_REQUESTS = 10;
+const RESOURCE_ID_NAMES = ["id", "task_id", "file_id", "voice_id", "request_id"];
 const FORWARD_HEADERS = new Set(["accept", "content-type", "anthropic-version", "anthropic-beta", "anthropic-workspace-id", "idempotency-key", "openai-beta", "x-client-request-id"]);
 function fail(status, message) {
   return errorResponse(status, message);
@@ -181,6 +182,20 @@ export async function handleNativeProvider(request, provider, path) {
   const bodyResourceNode = operation.resourceBodyField && jsonTree ? findNodeAtLocation(jsonTree, [operation.resourceBodyField]) : null;
   const bodyResourceId = bodyResourceNode?.type === "number" ? jsonBody.slice(bodyResourceNode.offset, bodyResourceNode.offset + bodyResourceNode.length) : parsed?.[operation.resourceBodyField];
   const pollResourceId = operation.resourceParam ? pathParts[resourceIndex] : operation.resourceQuery ? url.searchParams.get(operation.resourceQuery) : bodyResourceId;
+  // Authorize exactly one identifier: a provider's parser may pick a different repeat.
+  // Names compare case-insensitively; only a query-ID operation may carry one, under its own name.
+  if (trackedResource) {
+    const idNames = new Set([trackedResource, ...RESOURCE_ID_NAMES].map((name) => name.toLowerCase()));
+    const queryIds = [...url.searchParams.keys()].filter((name) => idNames.has(name.toLowerCase()));
+    if (queryIds.length > (operation.resourceQuery ? 1 : 0) || queryIds.some((name) => name !== operation.resourceQuery)) {
+      return fail(HTTP_STATUS.BAD_REQUEST, "Ambiguous native resource ID");
+    }
+  }
+  if (operation.resourceBodyField) {
+    const field = operation.resourceBodyField.toLowerCase();
+    const repeats = (jsonTree?.children || []).filter((property) => String(property.children?.[0]?.value).toLowerCase() === field).length;
+    if (repeats > 1) return fail(HTTP_STATUS.BAD_REQUEST, "Ambiguous native resource ID");
+  }
   if (trackedResource && (!isString(pollResourceId) || !pollResourceId)) return fail(HTTP_STATUS.BAD_REQUEST, "Missing native resource ID");
   const resourceOwner = trackedResource ? await readNativeResourceOwner(provider, credentials.connectionId, pollResourceId) : null;
   if (trackedResource && !resourceOwner?.ownerId) return fail(HTTP_STATUS.FORBIDDEN, "Unknown native resource owner");

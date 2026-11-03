@@ -344,7 +344,9 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     for (const result of await Promise.all([a.call('retract', retract), b.call('retract', retract)])) expect(result).toMatchObject({ ok: true });
     const { usageHistory } = await snapshot();
     expect(usageHistory).toHaveLength(1);
-    expect(usageHistory[0]).toMatchObject({ status: 'ok', promptTokens: 2, completionTokens: 3 });
+    // The fixture's raw pg client returns BIGINT columns as strings.
+    expect(usageHistory[0].status).toBe('ok');
+    expect([Number(usageHistory[0].promptTokens), Number(usageHistory[0].completionTokens)]).toEqual([2, 3]);
     expect(Number(usageHistory[0].cost)).toBe(0.25);
     const { totals, window } = (await a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' })).value;
     expect(totals).toMatchObject({ totalRequests: 1, totalTokens: 5, totalCost: 0.25, unknownCostRequests: 0 });

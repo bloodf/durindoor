@@ -483,6 +483,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
         if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
+        if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
         logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
         const totalLatency = Date.now() - requestStartTime;

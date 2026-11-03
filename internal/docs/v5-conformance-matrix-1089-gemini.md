@@ -1,6 +1,6 @@
 # Issue #1089 Gemini client conformance matrix
 
-Counts: already-present 8; repaired 10; failing 0; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 8; repaired 13; failing 0; unsupported-by-contract 0; upstream-pending 0.
 
 Rows 1-7 and 13-16 map to tests in `tests/translator/v5-conformance-matrix-gemini.test.js`; row 17 maps to `v5-conformance-gemini-name-restore.test.js`. Gemini-client reply rows (Chat to Gemini) and the usage rows link existing tests.
 
@@ -23,6 +23,9 @@ Rows 1-7 and 13-16 map to tests in `tests/translator/v5-conformance-matrix-gemin
 | Request | `toolConfig` VALIDATED maps to auto (no OpenAI equivalent) | Chat | repaired (known degradation) | `maps VALIDATED to auto` |
 | Request | gemini-cli source aliasing | Chat | repaired | `aliases dotted names for gemini-cli sources too` |
 | Non-stream | alias restored to `ns.search` in functionCall (Chat and Responses upstreams) | Gemini | repaired | `restores ns.search from a Chat upstream`, `restores ns.search from a Responses upstream` |
+| Request | `ns.search` and `ns_search` get distinct sanitized call ids | Claude | repaired | `keeps ns.search and ns_search ids distinct and legal` |
+| Request | explicit client ids sanitized on both sides of the pair | Claude | repaired | `sanitizes explicit client ids on both sides of the pair` |
+| Forced SSE to JSON | alias restored (Responses and Chat upstream; GEMINI and GEMINI_CLI) | Gemini | repaired | `tests/unit/forced-sse-gemini-name-restore.test.js` |
 | Request | Namespaced tool, strict, malformed schema from Chat | Gemini | already-present | see `v5-conformance-matrix-1089-chat.md` |
 
 Repaired in this change: Gemini-source requests previously ignored `toolConfig` and sent dotted tool names unaliased to Chat, Claude and Responses upstreams.

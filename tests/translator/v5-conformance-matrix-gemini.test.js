@@ -123,3 +123,27 @@ describe("#1089 Gemini client conformance — review fixes", () => {
     expect(out.tools[0].function.name).toMatch(NAME);
   });
 });
+
+describe("#1089 Gemini client conformance — call id pairing", () => {
+  const ids = (name, id) => {
+    const body = geminiBody();
+    body.contents[1].parts[0].functionCall = { name, ...(id && { id }) , args: {} };
+    body.contents[2].parts[0].functionResponse = { name, ...(id && { id }), response: { result: "ok" } };
+    const out = translateRequest(GEMINI, CLAUDE, "m", body, false);
+    return [out.messages[1].content[0].id, out.messages[2].content[0].tool_use_id];
+  };
+
+  it("keeps ns.search and ns_search ids distinct and legal", () => {
+    const [a] = ids("ns.search");
+    const [b] = ids("ns_search");
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^[a-zA-Z0-9_-]+$/);
+    expect(b).toMatch(/^[a-zA-Z0-9_-]+$/);
+  });
+
+  it("sanitizes explicit client ids on both sides of the pair", () => {
+    const [use, result] = ids("f", "a.b");
+    expect(use).toMatch(/^[a-zA-Z0-9_-]+$/);
+    expect(result).toBe(use);
+  });
+});

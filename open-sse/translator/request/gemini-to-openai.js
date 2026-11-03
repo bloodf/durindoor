@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
@@ -89,8 +90,16 @@ export function geminiToOpenAIRequest(model, body, stream) {
   return result;
 }
 
-// Anthropic/OpenAI id patterns reject dots etc.; keep the derived id deterministic for pairing.
-const generatedCallId = (name) => `call_${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+// Anthropic/OpenAI id patterns reject dots etc. Sanitize generated and client ids the same
+// way on both sides of a pair; add a hash when sanitizing changed the value so
+// `ns.search` and `ns_search` stay distinct.
+const safeId = (raw) => {
+  const text = String(raw);
+  const clean = text.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return clean === text ? text : `${clean}_${createHash("sha1").update(text).digest("hex").slice(0, 8)}`;
+};
+const generatedCallId = (name) => safeId(`call_${name}`);
+const callId = (id, name) => (id ? safeId(id) : generatedCallId(name));
 
 // Convert Gemini content to OpenAI message
 function convertGeminiContent(content) {
@@ -127,7 +136,7 @@ function convertGeminiContent(content) {
       // Gemini lacks a native call id; derive a deterministic one from the name so the
       // matching functionResponse maps to the same tool_call_id (providers require pairing).
       toolCalls.push({
-        id: part.functionCall.id || generatedCallId(part.functionCall.name),
+        id: callId(part.functionCall.id, part.functionCall.name),
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: part.functionCall.name,
@@ -139,7 +148,7 @@ function convertGeminiContent(content) {
     if (part.functionResponse) {
       return {
         role: ROLE.TOOL,
-        tool_call_id: part.functionResponse.id || generatedCallId(part.functionResponse.name),
+        tool_call_id: callId(part.functionResponse.id, part.functionResponse.name),
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
       };
     }

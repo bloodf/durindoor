@@ -41,15 +41,15 @@ export default {
     resolution: isString(body.resolution) ? body.resolution : "1k",
     aspect_ratio: isString(body.aspect_ratio) ? body.aspect_ratio : SIZE_TO_ASPECT[body.size] || "square_1_1"
   }),
-  async parseResponse(response, { headers }) {
+  async parseResponse(response, { headers, signal }) {
     const submitted = await readJson(response, "submit");
     const taskId = submitted?.data?.task_id || submitted?.task_id;
     if (!isString(taskId) || !TASK_ID_RE.test(taskId)) throw new Error("Magnific Mystic did not return a task_id");
     const statusUrl = `${BASE_URL}/${encodeURIComponent(taskId)}`;
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      await sleep(POLL_INTERVAL_MS);
-      const r = await fetch(statusUrl, { headers: { [AUTH_HEADER]: headers[AUTH_HEADER] } });
+      await sleep(POLL_INTERVAL_MS, signal);
+      const r = await fetch(statusUrl, { headers: { [AUTH_HEADER]: headers[AUTH_HEADER] }, signal });
       if (!r.ok) throw new Error(`Magnific Mystic status ${r.status}`);
       const json = await readJson(r, "status");
       const task = json?.data || json;

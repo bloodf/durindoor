@@ -106,6 +106,23 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
 }
 
 /**
+ * The ledger rejects a total other than input + output, and chat writes are not
+ * strict, so a disagreeing provider would lose the whole row. A larger total is
+ * unreported output (xAI reports reasoning outside completion_tokens), so it joins
+ * completion once; a smaller one is ignored. The reported value stays in meta.
+ */
+function reconcileReportedTotal(usage) {
+  const expected = Math.ceil(usage.prompt_tokens ?? 0) + Math.ceil(usage.completion_tokens ?? 0);
+  const reported = usage.total_tokens === undefined ? expected : Math.ceil(usage.total_tokens);
+  if (reported === expected) return { tokens: usage };
+  const total = Math.max(reported, expected);
+  return {
+    tokens: { ...usage, completion_tokens: Math.ceil(usage.completion_tokens ?? 0) + total - expected, total_tokens: total },
+    reportedTotalTokens: usage.total_tokens,
+  };
+}
+
+/**
  * Persist normalized usage. A non-success status keeps billable accounting
  * without allowing persistence to complete an errored live session.
  * billingEpoch is the original admission stamp, including pre-cutover null.
@@ -121,10 +138,10 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
   // Canonicalize before deciding what to persist. Cache-only, reasoning-only,
   // total-only, cost-only, and zero-token successful requests are all valid
   // committed events even when their visible input/output counters are zero.
-  const normalized = canonicalizeUsage(providerNormalized) || {
+  const { tokens: normalized, reportedTotalTokens } = reconcileReportedTotal(canonicalizeUsage(providerNormalized) || {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
-  };
+  });
   const inTokens = normalized.prompt_tokens ?? 0;
   const outTokens = normalized.completion_tokens ?? 0;
 
@@ -138,6 +155,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     provider: provider || "unknown",
     model: model || "unknown",
     tokens: normalized,
+    ...(reportedTotalTokens === undefined ? null : { meta: { reportedTotalTokens } }),
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,

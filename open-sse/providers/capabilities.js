@@ -204,6 +204,8 @@ export const MODEL_CAPABILITIES = {
    */
   "glm-5.3": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // Upstream c61ee37d: z.ai docs say GLM-5.3-FLASH cannot disable thinking and carries the 1M window.
+  "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   // OpenCode serves the same weights under this free id from its own inference
   // service, which rejects the zai `thinking` object (400 unknown field
   // "thinking") and accepts reasoning_effort (upstream 32c5f30a, probed on both
@@ -654,10 +656,8 @@ export const PROVIDER_CAPABILITIES = {
   oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },
   "opencode-go": {
     "ox-alpha-free": OX_ALPHA_CAPABILITIES,
-    // glm-5.3-flash has no exact global entry (only the base "glm-5.3" id
-    // does, with the z.ai-native "zai" thinkingFormat), so without a
-    // provider override it fell through to DEFAULT_CAPABILITIES with no
-    // reasoning at all. OpenCode Go's backend also rejects the z.ai
+    // The global glm-5.3-flash entry uses the z.ai-native "zai" thinkingFormat,
+    // so without this provider override it would be sent z.ai-shaped fields. OpenCode Go's backend also rejects the z.ai
     // `thinking` object (400: unknown field "thinking") and wants
     // reasoning_effort, so the format here must be "openai", not "zai". #4226
     "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 }
@@ -934,6 +934,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*kimi*", caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
 
 // ── GLM / Z.ai (thinking.enabled; disable via enable_thinking:false) ─
+// Upstream c61ee37d: the whole 5.3 line cannot disable thinking (prefixed ids such as z-ai/glm-5.3-flash).
+{ pattern: "*glm-5.3*", caps: { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*glm-5*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
 { pattern: "*glm-4.7*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
 { pattern: "*glm-4*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000 } },

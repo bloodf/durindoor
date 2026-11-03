@@ -125,12 +125,6 @@ export function parseBulkKeyRow(line, opts) {
     };
   }
 
-  // Muse keys are the whole "LLM|id|secret" string: keep it opaque instead of
-  // splitting it into name "LLM" and a truncated key (upstream a199d777).
-  if (/^LLM\|/i.test(line)) {
-    return { ok: true, name: `LLM ${index + 1}`, apiKey: line.trim() };
-  }
-
   // Standard shape: name|apiKey OR just apiKey (auto-named).
   if (parts.length >= 2) {
     const baseName = parts[0].trim() || defaultName;

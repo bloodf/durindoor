@@ -19,6 +19,7 @@ import {
   KIRO_DEFAULT_REGION } from
 "../config/kiroRegions.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { extractClientSessionId } from "../utils/sessionManager.js";
 import { getKiroUsage } from "../services/usage/kiro.js";
 import { KIRO_CREDIT_EXHAUSTION_PROBE_MS } from "../config/errorConfig.js";
 import {
@@ -352,6 +353,19 @@ signal = null)
  * KiroExecutor - Executor for Kiro AI (AWS CodeWhisperer)
  * Uses AWS CodeWhisperer streaming API with AWS EventStream binary format
  */
+// Per inbound request (the context survives retries and endpoint fallbacks): one conversation id
+// for sessions that carry no client, assistant or workspace identity.
+const requestConversationIds = new WeakMap();
+function requestScopedConversationId(requestContext) {
+  if (!requestContext) return uuidv4();
+  let id = requestConversationIds.get(requestContext);
+  if (!id) {
+    id = uuidv4();
+    requestConversationIds.set(requestContext, id);
+  }
+  return id;
+}
+
 export class KiroExecutor extends BaseExecutor {
   // `amazon-q` reuses this executor with its own provider id, so its
   // connections, cooldowns and usage stay separate from Kiro's.
@@ -473,10 +487,14 @@ export class KiroExecutor extends BaseExecutor {
    *
    * The deprecated `agentMode`, `agentContinuationId` and `agentTaskType` fields
    * are no longer sent (upstream decolua/9router#3776, unverified live). Session
-   * affinity now rests on `conversationState.conversationId`, which the translators
-   * derive from resolveSessionId per (scope, connectionId, session).
+   * affinity rests on `conversationState.conversationId`. An explicit client or
+   * assistant-derived id is forwarded as the translator set it. When the translator
+   * could only fall back to the per-connection id (one id for every unrelated
+   * session on that account), it is replaced by an id scoped to this inbound
+   * request, which stays stable across retries and endpoint fallbacks.
    */
   transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
+    let transformed = body;
     if (
     targetUrl?.includes(".kiro.dev") &&
     body && isObject(
@@ -485,9 +503,17 @@ export class KiroExecutor extends BaseExecutor {
     Object.prototype.hasOwnProperty.call(body, "systemPrompt"))
     {
       const { systemPrompt: _systemPrompt, ...rest } = body;
-      return rest;
+      transformed = rest;
     }
-    return body;
+
+    if (!transformed?.conversationState?.conversationId || !isObject(transformed.conversationState)) return transformed;
+    const explicit = extractClientSessionId(requestContext?.clientHeaders, null) ?? extractClientSessionId(credentials?.rawHeaders, null);
+    const isGenerated = credentials?._clientSessionIsGenerated ?? !explicit;
+    if (!isGenerated) return transformed;
+    return {
+      ...transformed,
+      conversationState: { ...transformed.conversationState, conversationId: requestScopedConversationId(requestContext) }
+    };
   }
 
   /**

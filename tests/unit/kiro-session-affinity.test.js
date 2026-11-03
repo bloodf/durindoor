@@ -36,7 +36,7 @@ beforeEach(() => clearSessionStore());
 
 describe("kiro payload carries no deprecated agent fields", () => {
   it("omits agentMode, agentContinuationId and agentTaskType and keeps the conversation id", () => {
-    const out = executor.transformRequest(MODEL, kiroBody("sess-1"), true, { connectionId: "conn-a" });
+    const out = executor.transformRequest(MODEL, kiroBody("sess-1"), true, { connectionId: "conn-a", rawHeaders: { "x-session-id": "sess-1" } });
     expect(out.agentMode).toBeUndefined();
     expect(out.conversationState.agentContinuationId).toBeUndefined();
     expect(out.conversationState.agentTaskType).toBeUndefined();
@@ -45,7 +45,7 @@ describe("kiro payload carries no deprecated agent fields", () => {
 
   it("does not add them on retry or fallback re-dispatch either", () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const out = executor.transformRequest(MODEL, kiroBody("sess-1"), true, { connectionId: "conn-a" }, Object.freeze({ clientHeaders: {} }));
+      const out = executor.transformRequest(MODEL, kiroBody("sess-1"), true, { connectionId: "conn-a", rawHeaders: { "x-session-id": "sess-1" } }, Object.freeze({ clientHeaders: {} }));
       expect(JSON.stringify(out)).not.toMatch(/agentMode|agentContinuationId|agentTaskType/);
     }
   });
@@ -71,6 +71,37 @@ describe("kiro session affinity via conversationId", () => {
     // Conversations are scoped by the credential upstream, so the payload no longer does it.
     expect(translate("client-sess-1", "conn-a").conversationState.conversationId).toBe("client-sess-1");
     expect(translate("client-sess-1", "conn-b").conversationState.conversationId).toBe("client-sess-1");
+  });
+});
+
+describe("kiro sessions with no client session id", () => {
+  // The translators fall back to one per-connection id for every such session; the executor
+  // must not let unrelated sessions on one account share a conversationId.
+  const generated = (ctx) => executor.transformRequest(MODEL, kiroBody("per-connection-id"), true, { connectionId: "conn-a", _clientSessionIsGenerated: true }, ctx);
+
+  it("gives unrelated inbound requests on the same account different conversation ids", () => {
+    const a = generated(Object.freeze({ clientHeaders: {} }));
+    const b = generated(Object.freeze({ clientHeaders: {} }));
+    expect(a.conversationState.conversationId).not.toBe("per-connection-id");
+    expect(a.conversationState.conversationId).not.toBe(b.conversationState.conversationId);
+  });
+
+  it("keeps one id across retries and endpoint fallbacks of the same inbound request", () => {
+    const ctx = Object.freeze({ clientHeaders: {} });
+    expect(generated(ctx).conversationState.conversationId).toBe(generated(ctx).conversationState.conversationId);
+  });
+
+  it("mints a fresh id when there is no request context", () => {
+    expect(generated(null).conversationState.conversationId).not.toBe(generated(null).conversationState.conversationId);
+  });
+
+  it("end to end: two headerless translations never share a conversation id", () => {
+    const credentials = { connectionId: "conn-a", rawHeaders: {} };
+    const make = () => {
+      const translated = openaiToKiroRequest(MODEL, { model: MODEL, messages: [{ role: "user", content: "hello" }] }, true, credentials);
+      return executor.transformRequest(MODEL, translated, true, credentials, Object.freeze({ clientHeaders: {} }));
+    };
+    expect(make().conversationState.conversationId).not.toBe(make().conversationState.conversationId);
   });
 });
 

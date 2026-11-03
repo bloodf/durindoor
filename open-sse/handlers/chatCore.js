@@ -69,19 +69,8 @@ import { maskSensitiveUrl } from "../utils/requestLogger.js";
 import { isOpencodeGoProvider, stripBooleanReasoning } from "../services/opencodeReasoningSanitizer.js";
 import { startTrace, record, finishTrace } from "./chatCore/proxyTimeline.js";
 
-// Neutral adaptive config forwarded to the compression seam. mode:"off" short-
-// circuits resolveAdaptivePlan before it dereferences budget fields, but the
-// object is kept complete so a later adaptive mode flip already has the full
-// computeTarget() contract (outputReserve/safetyMargin/pct/absoluteBudget).
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
-const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
-  mode: "off",
-  policy: "reserve-output",
-  outputReserve: 4096,
-  safetyMargin: 1024,
-  pct: 0.85,
-  absoluteBudget: 0
-});
+import { normalizeContextBudgetConfig } from "../services/compression/adaptiveCompression/types.js";
 
 const TOP_LEVEL_STREAM_FORMATS = new Set([
 FORMATS.OPENAI,
@@ -329,7 +318,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -894,18 +883,25 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // snapshot and emits no header. Fail-open throughout.
   let compressionHeaderValue = null;
   if (tokenSaverEnabled && compressionEnabled) {
+    const adaptiveBudget = normalizeContextBudgetConfig(compressionAdaptive);
     const preStackSnapshot = structuredClone(translatedBody);
     try {
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
         enabled: true,
         engines: compressionEngines ?? {},
-        applyOpts: { ...COMPRESSION_ADAPTIVE_CONFIG, rtkApplied: runRtk },
+        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         adaptive: {
-          ...COMPRESSION_ADAPTIVE_CONFIG,
+          ...adaptiveBudget,
           estimatedTokens: estimateTokens(translatedBody),
+          // Unknown (null) limit -> resolver skips adaptive; it never claims fit.
           modelContextLimit: effectiveModelCapabilities.contextWindow,
-          requestMaxTokens: translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null
+          // Output reserve of the RESOLVED model: the request's own cap clamped to
+          // the model maxOutput, else the operator/documented default; 0 falls
+          // back to adaptiveBudget.outputReserve inside computeTarget.
+          requestMaxTokens: executor.resolveEffectiveOutputReservation?.(translatedBody, {
+            ...requestContext, modelCapabilities: effectiveModelCapabilities
+          }) || null
         },
         log
       });

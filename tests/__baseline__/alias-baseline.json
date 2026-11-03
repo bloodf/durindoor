@@ -190,10 +190,12 @@
     "vercel-ai-gateway": "vercel-ai-gateway",
     "vertex": "vertex",
     "vertex-partner": "vertex-partner",
+    "void-ai": "void-ai",
     "volcengine-ark": "volcengine-ark",
     "xai": "xai",
     "xiaomi-mimo": "xiaomi-mimo",
     "xiaomi-tokenplan": "xiaomi-tokenplan",
+    "yolo-auto": "yolo-auto",
     "zylo-api": "zylo"
   },
   "modelKeys": [
@@ -301,11 +303,13 @@
     "venice",
     "vertex",
     "vertex-partner",
+    "void-ai",
     "volcengine-ark",
     "voyage-ai",
     "xai",
     "xiaomi-mimo",
     "xiaomi-tokenplan",
+    "yolo-auto",
     "zylo"
   ]
 }

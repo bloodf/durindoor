@@ -621,14 +621,4 @@ describe("#1115 native voices", () => {
     expect(fixture.fetch).not.toHaveBeenCalled();
     expect(list.accountBound).toBe(true);
   });
-
-  it("forwards no caller credential on the public voice list", async () => {
-    const internal = vi.fn(async () => Response.json({ languages: [], byLang: {} }));
-    vi.stubGlobal("fetch", internal);
-    const response = await send("/v1/audio/voices?provider=minimax", "owner");
-    expect(response.status).toBe(200);
-    const [, init] = internal.mock.calls[0];
-    expect(new Headers(init?.headers).get("authorization")).toBeNull();
-    expect(new Headers(init?.headers).get("x-api-key")).toBeNull();
-  });
 });

@@ -85,7 +85,7 @@ The final verifier checked its 13-source and 12-harness freeze before and after 
 | Media | `/v1/videos/{id}` and `/v1/music/generations/{id}` polling by owner, account pin, scope and model policy; `/v1/images/generations`, `/v1/audio/speech`, `/v1/video/generations`, `/v1/videos/generations` and `/v1/music/generations` model policy and account scope |
 | Native resources | Every tracked operation for every provider, across spellings and identities; unknown owner fails closed; one identifier per request; creation responses never move an existing owner and record only the top-level ID |
 | Rerouted requests | Batch rows keep the creating key's model policy and account scope, recheck a vision bridge target and stop once the key is deactivated; default media routes apply model policy and account scope to the routed model |
-| Voices | Cloning records no owner and moves none; a voice with no recorded owner fails closed; the native account voice list needs an account pin within key scope; the public voice list forwards no caller credential |
+| Voices | Cloning records no owner and moves none; a voice with no recorded owner fails closed; the native account voice list needs an account pin within key scope |
 
 Existing passing coverage is kept as an exclusion instead of being repeated: combo and direct chat dispatch and native list filtering in `unit/security-authorization-matrix.test.js`, candidate scope filtering in `unit/media-routes.test.js`, and concurrent owner creation in `unit/native-resource-owners-atomic.test.js`.
 

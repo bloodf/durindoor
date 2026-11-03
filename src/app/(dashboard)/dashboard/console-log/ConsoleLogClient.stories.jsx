@@ -99,7 +99,7 @@ export const ResumeFromPause = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Jump to latest" }));
     await waitFor(() => expect(canvas.queryByText(/^\d+ new$/)).not.toBeInTheDocument());
-    await expect(canvas.getByText("Streaming")).toBeVisible();
+    await expect(canvas.getByText("Polling")).toBeVisible();
   },
 };
 
@@ -110,4 +110,13 @@ export const Empty = {
     await expect(await canvas.findByText("No console logs yet.")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Copy visible" })).toBeDisabled();
   },
+};
+
+export const TransportUnavailable = {
+  parameters: fixture({ ...routes, "GET /api/translator/console-logs": { status: 503, body: { error: "Console offline" } }, "GET /api/translator/console-logs/stream": null }),
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText("Unavailable", { exact: true })).toBeVisible(); await expect(canvas.queryByText("No console logs yet.")).not.toBeInTheDocument(); await expect(canvas.queryByText("Streaming")).not.toBeInTheDocument(); },
+};
+export const ClearRejected = {
+  parameters: fixture({ ...routes, "DELETE /api/translator/console-logs": { status: 500, body: { error: "Clear rejected" } } }),
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await canvas.findByText(/CANCELLED 1200ms/); await userEvent.click(canvas.getByRole("button", { name: "Clear", exact: true })); await expect(await canvas.findByText(/Console logs were not cleared/)).toBeVisible(); await expect(canvas.getByText(/CANCELLED 1200ms/)).toBeVisible(); },
 };

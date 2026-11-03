@@ -25,7 +25,7 @@ function speedHint(stats) {
 
 export default function OverviewCards({ stats }) {
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+    <div data-usage-overview className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
       <StatCard icon="query_stats" label="Total requests" value={fmt(stats.totalRequests)} />
       <StatCard
         icon="input"

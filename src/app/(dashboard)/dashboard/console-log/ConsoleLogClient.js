@@ -152,6 +152,12 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
  * until measured, then positioned using measured cumulative offsets.
  */
 export default function ConsoleLogClient() {
+  const [transport, setTransport] = useState({ state: "connecting", error: "" });
+  const [lastAt, setLastAt] = useState(null);
+  const [retry, setRetry] = useState(0);
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState("");
+  const clearPending = useRef(false);
   const [log, setLog] = useState(EMPTY_CONSOLE_LOG);
   const [frozen, setFrozen] = useState(null);
   const [level, setLevel] = useState("all");
@@ -183,20 +189,22 @@ export default function ConsoleLogClient() {
 
   useEffect(() => {
     transportRef.current = startConsoleLogTransport({
+      onStatus: setTransport,
       onEvent: (msg) => {
+        setLastAt(new Date());
         if (msg.type === "init") applyLog((prev) => reconcileConsoleSnapshot(prev, msg.logs));
         else if (msg.type === "line") applyLog((prev) => appendConsoleLines(prev, [msg.line]));
         else if (msg.type === "lines") applyLog((prev) => appendConsoleLines(prev, msg.lines));
         else if (msg.type === "clear") clearLog();
       },
-      onSnapshot: (lines) => applyLog((prev) => reconcileConsoleSnapshot(prev, lines)),
+      onSnapshot: (lines) => { setLastAt(new Date()); applyLog((prev) => reconcileConsoleSnapshot(prev, lines)); },
     });
 
     return () => {
       transportRef.current?.stop();
       transportRef.current = null;
     };
-  }, [applyLog, clearLog]);
+  }, [applyLog, clearLog, retry]);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -252,13 +260,18 @@ export default function ConsoleLogClient() {
   };
 
   const handleClear = async () => {
+    if (clearPending.current) return;
+    clearPending.current = true;
+    setClearing(true); setClearError("");
     try {
       const response = await fetch("/api/translator/console-logs", { method: "DELETE" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       transportRef.current?.invalidate();
       clearLog();
     } catch (err) {
-      console.error("Failed to clear console logs:", err);
+      setClearError(`Console logs were not cleared: ${err.message}. Try Clear again.`);
+    } finally {
+      clearPending.current = false; setClearing(false);
     }
   };
 
@@ -269,6 +282,8 @@ export default function ConsoleLogClient() {
 
   const visibleText = () => filtered.map((entry) => entry.raw).join("\n");
   const total = filtered.length;
+  const transportLabels = { connecting: "Connecting", streaming: "Streaming", polling: "Polling", reconnecting: "Reconnecting", unavailable: "Unavailable" };
+  const connected = transport.state === "streaming" || transport.state === "polling";
   const tailing = !paused && following;
   const scrollTop = tailing ? Math.max(0, layout.height - viewport.height) : Math.min(viewport.top, Math.max(0, layout.height - viewport.height));
   const { start, end } = consoleWindow(layout.offsets, scrollTop, viewport.height, OVERSCAN_ROWS);
@@ -284,7 +299,7 @@ export default function ConsoleLogClient() {
             <Input size="sm" icon="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search logs" aria-label="Search console logs" className="min-w-[13rem] flex-1 font-mono" />
             <Select size="sm" fullWidth={false} className="w-44" value={tag} onChange={setTag} options={tagOptions} aria-label="Filter by tag" />
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <StatusDot tone={paused ? "neutral" : "success"} pulse={!paused} label={paused ? "Paused" : "Streaming"} />
+              <StatusDot tone={paused ? "neutral" : connected ? "success" : transport.state === "unavailable" ? "danger" : "neutral"} pulse={!paused && connected} label={paused ? "Paused" : transportLabels[transport.state]} />
               {paused && newCount > 0 ? (
                 <span role="status" className="dd-tnum inline-flex h-7 items-center rounded-full border border-dd-info bg-dd-info/10 px-2.5 font-mono text-xs text-dd-info">{newCount} new</span>
               ) : null}
@@ -298,14 +313,16 @@ export default function ConsoleLogClient() {
               <Button size="sm" variant="ghost" icon="wrap_text" aria-pressed={wrap} onClick={() => setWrap((value) => !value)}>Wrap lines</Button>
               <Button size="sm" variant="ghost" icon={copied === "visible" ? "check" : "content_copy"} disabled={total === 0} onClick={() => copy(visibleText(), "visible")}>{copied === "visible" ? "Copied" : "Copy visible"}</Button>
               <Button size="sm" variant="ghost" icon="download" disabled={total === 0} onClick={() => downloadLog(`${visibleText()}\n`)}>Download .log</Button>
-              <Button size="sm" variant="ghost" icon="delete_sweep" onClick={handleClear}>Clear</Button>
+              <Button size="sm" variant="ghost" icon="delete_sweep" loading={clearing} disabled={clearing} onClick={handleClear}>Clear</Button>
               <span role="status" className="dd-tnum inline-flex h-7 items-center rounded-dd border border-dd-border-subtle bg-dd-surface-2 px-2 font-mono text-xs text-dd-muted" aria-label={`${total} of ${shown.entries.length} log lines`} title={`Buffer keeps the latest ${CONSOLE_LOG_CONFIG.maxLines} lines`}>{total}/{shown.entries.length}</span>
             </div>
           </div>
         </div>
+        {transport.error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-dd-border px-4 py-3 text-sm text-dd-danger"><p>Log transport unavailable. {transport.error}{lastAt ? ` Last received ${lastAt.toLocaleTimeString()}; retained logs may be stale.` : " No snapshot received."}</p><Button size="sm" icon="refresh" variant="secondary" onClick={() => setRetry((value) => value + 1)}>Retry log connection</Button></div> : null}
+        {clearError ? <p role="alert" className="px-4 py-2 text-sm text-dd-danger">{clearError}</p> : null}
         <div ref={viewportRef} role="log" tabIndex={0} aria-label="Console log output" aria-live="off" onScroll={handleScroll} className="h-[calc(100vh-320px)] min-h-80 overflow-auto bg-dd-surface">
           {total === 0 ? (
-            <div className="flex h-full items-center justify-center text-[13px] text-dd-muted">{shown.entries.length === 0 ? "No console logs yet." : "No matching console logs."}</div>
+            <div className="flex h-full items-center justify-center text-[13px] text-dd-muted">{shown.entries.length === 0 ? lastAt ? "No console logs yet." : transport.state === "unavailable" ? "Console logs unavailable." : "Connecting to console logs…" : "No matching console logs."}</div>
           ) : (
             <div className="relative" style={{ height: layout.height }}>
               {rows.map((entry, offset) => <LogRow key={entry.id} entry={entry} index={start + offset} needle={needle} wrap={wrap} top={layout.offsets[start + offset]} onMeasure={measureRow} />)}

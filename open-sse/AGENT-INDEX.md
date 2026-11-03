@@ -285,6 +285,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nanobanana` |  | apikey | `https://api.nanobananaapi.ai/v1/chat/completions` |
 | `nanogpt` | openai | apikey | `https://nano-gpt.com/api/v1/chat/completions` |
 | `nara` |  | apikey | `https://router.bynara.id/v1/chat/completions` |
+| `navy` |  | apikey | `https://api.navy/v1/chat/completions` |
 | `nebius` |  | apikey | `https://api.studio.nebius.ai/v1/chat/completions` |
 | `nimble` |  | apikey | `` |
 | `nomic` |  | hidden | `https://api-atlas.nomic.ai/v1/embedding/text` |
@@ -294,10 +295,13 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `nube` |  | apikey | `https://ai.nube.sh/api/v1/chat/completions` |
 | `nvidia` |  | freeTier | `https://integrate.api.nvidia.com/v1/chat/completions` |
 | `oci` |  | apikey | `https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/openai/v1/chat/completions` |
+| `ofoxai` |  | apikey | `https://api.ofox.ai/v1/chat/completions` |
 | `ollama` | ollama | freeTier | `https://ollama.com/api/chat` |
 | `ollama-local` | ollama | apikey | `http://localhost:11434` |
 | `oneminai` |  | apikey | `https://api.1min.ai/api/chat-with-ai` |
+| `onomeo` |  | apikey | `https://onomeo.com/v1/chat/completions` |
 | `oobabooga` | openai | apikey | `http://localhost:5000/v1` |
+| `openadapter` |  | apikey | `https://api.openadapter.in/v1/chat/completions` |
 | `openai` |  | apikey | `https://api.openai.com/v1/chat/completions` |
 | `opencode` |  | free | `https://opencode.ai` |
 | `opencode-go` |  | apikey | `https://opencode.ai/zen/go/v1/chat/completions` |
@@ -318,6 +322,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `poixe-ai` |  | apikey | `https://api.poixe.com/v1/chat/completions` |
 | `pollinations` | openai | free | `https://gen.pollinations.ai/v1/chat/completions` |
 | `poolside` |  | freeTier | `https://inference.poolside.ai/v1/chat/completions` |
+| `publicai` |  | apikey | `https://api.publicai.co/v1/chat/completions` |
 | `puter` | openai | apikey | `https://api.puter.com/puterai/openai/v1/chat/completions` |
 | `qianfan` |  | apikey | `https://qianfan.baidubce.com/v2/chat/completions` |
 | `qiniu` |  | apikey | `https://api.qnaigc.com/v1/chat/completions` |
@@ -327,8 +332,10 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qwen-cloud` | openai | apikey | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `qwen-cloud-token-plan` | openai | apikey | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions` |
 | `recraft` |  | apikey | `` |
+| `regolo` |  | apikey | `https://api.regolo.ai/v1/chat/completions` |
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |
 | `requesty` |  | freeTier | `https://router.requesty.ai/v1/chat/completions` |
+| `routeway` |  | apikey | `https://api.routeway.ai/v1/chat/completions` |
 | `runwayml` |  | apikey | `` |
 | `sambanova` |  | freeTier | `https://api.sambanova.ai/v1/chat/completions` |
 | `sap` |  | apikey | `https://example-aicore.cfapps.eu10.hana.ondemand.com/v2/lm/deployments/example-deployment/chat/completions` |
@@ -355,6 +362,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `theoldllm` | openai | free | `https://theoldllm.vercel.app/api/chatgpt` |
 | `tinyfish` |  | apikey | `` |
 | `together` |  | apikey | `https://api.together.xyz/v1/chat/completions` |
+| `token-kiosk` |  | apikey | `https://agent-router.gaib.ai/v1/chat/completions` |
 | `tokenmarket` |  | apikey | `https://api.tokensmarket.ai/v1/chat/completions` |
 | `tokenreply` |  | apikey | `https://api.tokenreply.com/v1/chat/completions` |
 | `tokenrouter` |  | freeTier | `https://api.tokenrouter.com/v1/chat/completions` |

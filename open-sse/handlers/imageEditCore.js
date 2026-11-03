@@ -4,6 +4,7 @@ import { PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
+import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 const XAI_IMAGE_EDIT_FIELDS = new Set(["n", "response_format", "quality", "resolution", "aspect_ratio", "storage_options"]);
 
@@ -147,5 +148,9 @@ export async function handleImageEditCore({
   }
   if (onRequestSuccess) await onRequestSuccess();
   const text = await res.text();
-  return { success: true, status: res.status, response: new Response(text, { status: 200, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
+  let value = null;
+  try { value = JSON.parse(text); } catch { /* Preserve opaque successful responses. */ }
+  const accounting = mediaAccounting(value, provider, "image");
+  returnedImageUnits(accounting, value);
+  return { success: true, status: res.status, accounting, response: new Response(text, { status: 200, headers: { "Content-Type": res.headers.get("content-type") || "application/json", "Access-Control-Allow-Origin": "*" } }) };
 }

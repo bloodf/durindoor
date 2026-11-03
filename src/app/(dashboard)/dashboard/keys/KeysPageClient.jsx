@@ -59,6 +59,7 @@ function ApiKeyRow({ apiKey, groupLabels = [], onToggle, onReveal, onEdit, onDel
               {active ? "Active" : "Paused"}
             </span>
           </Badge>
+          {apiKey.isAdmin ? <Badge tone="accent" size="sm">Admin</Badge> : null}
           {groupLabels.map((label) => (
             <Badge key={label} tone="accent" size="sm">{label}</Badge>
           ))}
@@ -216,6 +217,7 @@ export default function KeysPageClient() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyDailyLimitTokens, setNewKeyDailyLimitTokens] = useState("");
+  const [newKeyIsAdmin, setNewKeyIsAdmin] = useState(false);
   const [newKeyExpiryPreset, setNewKeyExpiryPreset] = useState("never");
   const [newKeyCustomExpiresAt, setNewKeyCustomExpiresAt] = useState("");
   const [keyStatus, setKeyStatus] = useState(null);
@@ -232,6 +234,7 @@ export default function KeysPageClient() {
   const [editKeyAllowedCombos, setEditKeyAllowedCombos] = useState([]);
   const [editKeyExpiryPreset, setEditKeyExpiryPreset] = useState("never");
   const [editKeyDailyLimitTokens, setEditKeyDailyLimitTokens] = useState("");
+  const [editKeyIsAdmin, setEditKeyIsAdmin] = useState(false);
   const [editKeyCustomExpiresAt, setEditKeyCustomExpiresAt] = useState("");
   const [editKeyStatus, setEditKeyStatus] = useState(null);
   const [editKeyPolicy, setEditKeyPolicy] = useState(emptyAddKeyPolicy);
@@ -416,7 +419,7 @@ export default function KeysPageClient() {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt, policy, providerConnectionIds: newKeyProviderConnectionIds }),
+        body: JSON.stringify({ name: newKeyName, allowedCombos: newKeyAllowedCombos, dailyLimitTokens, expiresAt, policy, providerConnectionIds: newKeyProviderConnectionIds, isAdmin: newKeyIsAdmin }),
       });
       const data = await res.json();
 
@@ -426,6 +429,7 @@ export default function KeysPageClient() {
         await fetchData();
         setNewKeyName("");
         setNewKeyDailyLimitTokens("");
+        setNewKeyIsAdmin(false);
         setNewKeyExpiryPreset("never");
         setNewKeyCustomExpiresAt("");
         setNewKeyAllowedCombos([]);
@@ -504,9 +508,10 @@ export default function KeysPageClient() {
     handleToggleKey(key.id, checked);
   };
 
-  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch, dailyLimitTokens = null, providerConnectionIds, groupIds) => {
+  const handleUpdateKeyDetails = async (id, allowedCombos, expiresAt, policyPatch, dailyLimitTokens = null, providerConnectionIds, groupIds, isAdmin) => {
     try {
       const payload = { allowedCombos, expiresAt, dailyLimitTokens, providerConnectionIds, groupIds };
+      if (isAdmin !== undefined) payload.isAdmin = isAdmin;
       if (policyPatch) Object.assign(payload, policyPatch);
       const res = await fetch(`/api/keys/${id}`, {
         method: "PUT",
@@ -544,6 +549,7 @@ export default function KeysPageClient() {
     setEditKeyExpiryPreset(expiry.selection);
     setEditKeyCustomExpiresAt(expiry.customLocalValue);
     setEditKeyDailyLimitTokens(key.dailyLimitTokens == null ? "" : String(key.dailyLimitTokens));
+    setEditKeyIsAdmin(key.isAdmin === true);
     setEditKeyPolicy(apiKeyPolicyToDraft(key.policy));
     setEditKeyPolicyDirty(false);
     setEditKeyStatus(null);
@@ -554,6 +560,7 @@ export default function KeysPageClient() {
     setShowAddModal(false);
     setNewKeyName("");
     setNewKeyDailyLimitTokens("");
+    setNewKeyIsAdmin(false);
     setNewKeyExpiryPreset("never");
     setNewKeyCustomExpiresAt("");
     setNewKeyAllowedCombos([]);
@@ -776,6 +783,12 @@ export default function KeysPageClient() {
             onChange={(e) => setNewKeyDailyLimitTokens(e.target.value)}
             placeholder="Unlimited"
           />
+          <Checkbox
+            label="Admin scope"
+            hint="Lets this key change management settings (keys, providers, combos, proxy pools, OAuth). Reads and inference do not need it."
+            checked={newKeyIsAdmin}
+            onChange={setNewKeyIsAdmin}
+          />
           <Field label="Expiry">
             <Select
               value={newKeyExpiryPreset}
@@ -953,6 +966,12 @@ export default function KeysPageClient() {
             onChange={(event) => { setEditKeyDailyLimitTokens(event.target.value); setEditKeyStatus(null); }}
             placeholder="Unlimited (leave empty to clear)"
           />
+          <Checkbox
+            label="Admin scope"
+            hint="Lets this key change management settings (keys, providers, combos, proxy pools, OAuth). Reads and inference do not need it."
+            checked={editKeyIsAdmin}
+            onChange={(checked) => { setEditKeyIsAdmin(checked); setEditKeyStatus(null); }}
+          />
           {combos.length > 0 ? (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-dd-muted">Select which combos this key can access. Leave empty to allow all.</p>
@@ -1094,7 +1113,7 @@ export default function KeysPageClient() {
                   setEditKeyStatus({ type: "error", message: "Daily limit must be a non-negative whole number" });
                   return;
                 }
-                const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy, parsedLimit, editKeyProviderConnectionIds, editKeyGroupIds);
+                const updated = await handleUpdateKeyDetails(editKey.id, editKeyAllowedCombos, expiresAt, policy, parsedLimit, editKeyProviderConnectionIds, editKeyGroupIds, editKeyIsAdmin);
                 if (!updated) return;
                 resetEditModal();
               }}

@@ -1,0 +1,50 @@
+---
+title: OpenTelemetry traces
+description: Opt-in OTLP/HTTP export of routing spans without prompts, credentials or payloads.
+---
+
+DurinDoor can export one span per routing attempt to an OpenTelemetry collector. Tracing is off by default. It adds no SDK dependency: spans are posted as OTLP/HTTP JSON with the built-in `fetch`.
+
+## Enable
+
+Set one of these environment variables and restart:
+
+| Variable | Meaning |
+| --- | --- |
+| `DURINDOOR_OTEL_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL, for example `http://otel-collector:4318`. `/v1/traces` is appended. |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full traces URL, used exactly as given. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Optional `key=value,key=value` headers, such as collector auth. Values may be URL-encoded. |
+| `OTEL_SERVICE_NAME` | Service name. The default is `durindoor`. |
+| `OTEL_SDK_DISABLED=true` | Turns export off, even when an endpoint is set. |
+
+Only `http:` and `https:` endpoints are accepted. The endpoint comes from the operator, so treat it as trusted configuration.
+
+## What a span contains
+
+Each attempt that `chatCore` handles becomes one `CLIENT` span. When a combo or fallback retries, every attempt shares the trace ID derived from the client request ID, and each attempt gets its own span ID.
+
+| Field | Source |
+| --- | --- |
+| `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.operation.name` | Resolved provider and model; the operation is `chat`. |
+| `durindoor.endpoint` | Client endpoint path. The query string is dropped. |
+| `durindoor.client_format`, `durindoor.provider_format` | Translation formats. |
+| `durindoor.outcome` and span status | `ok`, `error`, or `aborted`. |
+| `durindoor.total_ms`, `durindoor.ttft_ms` | Attempt duration, and time to the first streamed byte. |
+| Span events | Timeline event types only: `route`, `error`, `abort`, `info`, `retry`, `fallback`. |
+
+Spans never include these, even when the proxy timeline stores them:
+
+- Prompts, responses or payloads
+- Event summaries and error text
+- API keys, credentials or connection IDs
+
+## Failure behavior
+
+Export never affects inference.
+
+- Spans wait in a bounded buffer of 512. When it is full, the oldest are dropped.
+- Batches of up to 64 are sent every 5 seconds, or sooner when a batch fills. Each send has a 3-second timeout.
+- A failed batch is retried. After 5 consecutive failures, it is dropped.
+- The flush timer never keeps the process alive. On a normal exit, pending spans get one final flush. On SIGTERM, any unsent spans are lost.
+
+Tracing is independent of the dashboard proxy timeline. With the timeline off, spans are still produced. Request data is not persisted, and the streaming frame tap only notes the first byte.

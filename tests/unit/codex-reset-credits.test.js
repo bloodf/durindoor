@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  isNonAdminApiKeyCaller: vi.fn(),
   proxyAwareFetch: vi.fn(),
   getProviderConnectionById: vi.fn(),
   updateProviderConnection: vi.fn(),
@@ -15,6 +16,8 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 }));
 
 vi.mock("open-sse/index.js", () => ({}));
+
+vi.mock("@/dashboardGuard", () => ({ isNonAdminApiKeyCaller: mocks.isNonAdminApiKeyCaller }));
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
@@ -39,6 +42,7 @@ describe("Codex reset credits", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.resolveConnectionProxyConfig.mockResolvedValue({});
+    mocks.isNonAdminApiKeyCaller.mockResolvedValue(false);
   });
 
   it("returns normalized reset credit expiry details", async () => {
@@ -259,5 +263,15 @@ describe("Codex reset credits", () => {
       undefined,
     );
     expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+  });
+  it("refuses an OAuth credential refresh to an API key without the admin scope", async () => {
+    mocks.isNonAdminApiKeyCaller.mockResolvedValue(true);
+    mocks.getProviderConnectionById.mockResolvedValue({ id: "conn_1", provider: "codex", authType: "oauth", accessToken: "t", refreshToken: "r", providerSpecificData: {} });
+    const { GET } = await import("../../src/app/api/usage/[connectionId]/codex-reset-credits/route.js");
+    const response = await GET(new Request("http://localhost/api/usage/conn_1"), {
+      params: Promise.resolve({ connectionId: "conn_1" }),
+    });
+    expect(response.status).toBe(403);
+    expect(mocks.refreshAndUpdateCredentials).not.toHaveBeenCalled();
   });
 });

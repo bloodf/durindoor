@@ -18,7 +18,8 @@ import {
   generateRequestId,
   generateSessionId,
   generateProjectId,
-  cleanJSONSchemaForAntigravity } from
+  cleanJSONSchemaForAntigravity,
+  applyGemini4RequestRules } from
 "../formats/gemini.js";
 import { parseDataUri } from "../concerns/image.js";
 import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.js";
@@ -384,7 +385,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   }
 
   result.contents = normalizeGeminiContents(result.contents);
-  return result;
+  return applyGemini4RequestRules(result, model);
 }
 
 // OpenAI -> Gemini (standard API)

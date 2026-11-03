@@ -5,6 +5,7 @@ import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeo
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
+import { initState } from "../../translator/index.js";
 import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
 import { extractCompleteSseFrames } from "../../utils/streamHelpers.js";
 import { PROVIDERS } from "../../config/providers.js";
@@ -413,7 +414,7 @@ function withNativeClaudeFields(projected, message, claudeCompat) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -450,7 +451,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         }
         const usage = jsonResponse.usage || {};
         appendLog({ tokens: usage, status: "200 OK" });
-        saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+        saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
         if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
         // Responses usage is already cache-inclusive after stream conversion.
@@ -474,7 +475,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
         }
 
-        const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model);
+        const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model, {
+          chatCustomToolNames: sourceFormat === FORMATS.OPENAI ? initState(FORMATS.OPENAI, body).chatCustomToolNames : new Set(),
+          toolNameMap
+        });
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
         const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
@@ -561,7 +565,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const emptyOutput = claudeSSE && isEmptyClaudeCompletion(parsed, claudeSSE.stopReason);
       const usage = parsed.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       const totalLatency = Date.now() - requestStartTime;

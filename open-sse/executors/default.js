@@ -5,7 +5,7 @@ import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/provi
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta } from "../providers/shared.js";
-import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -316,7 +316,7 @@ export class DefaultExecutor extends BaseExecutor {
     const clamped = this.config?.clampRequestBody?.(body);
     if (clamped && isObject(clamped) && !Array.isArray(clamped)) body = clamped;
     applyGlmtModelAlias(this.provider, model, body);
-    let transformed = this.applyJsonSchemaFallback(body);
+    let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
 
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
     transformed = applyDeepSeekV4ProAlias({
@@ -448,6 +448,30 @@ export class DefaultExecutor extends BaseExecutor {
     if (!text || !isObject(text) || Array.isArray(text)) return;
     if (text.format !== undefined) return;
     body.text = { ...text, format: { type: "text" } };
+  }
+
+  applyNousAttribution(model, body, stream, credentials) {
+    if (!this.provider?.startsWith?.("openai-compatible-") || !credentials?.apiKey
+      || !isObject(body) || Array.isArray(body)
+      || (body.tags != null && !Array.isArray(body.tags))) return body;
+
+    try {
+      const url = new URL(this.buildUrl(model, stream, 0, credentials));
+      if (url.protocol !== "https:" || url.hostname !== NOUS_ATTRIBUTION.hostname
+        || url.pathname !== NOUS_ATTRIBUTION.chatCompletionsPath) return body;
+    } catch {
+      return body;
+    }
+
+    // Parse once at the boundary: only string tags can carry attribution.
+    let tags = (body.tags ?? []).filter(isString);
+    for (const fallback of NOUS_ATTRIBUTION.tags) {
+      const prefix = fallback.slice(0, fallback.indexOf("=") + 1);
+      // Empty attribution values do not satisfy the upstream requirement.
+      tags = tags.filter((tag) => !tag.startsWith(prefix) || tag.slice(prefix.length).trim());
+      if (!tags.some((tag) => tag.startsWith(prefix))) tags.push(fallback);
+    }
+    return { ...body, tags: [...new Set(tags)] };
   }
 
   // Fallback json_schema → json_object for openai-compatible providers without native Structured Output.

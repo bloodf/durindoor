@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // #1085: pins the documented dollar-budget behavior per model class and price override.
 vi.mock("@/sse/services/auth.js", () => ({ hasValidCliToken: async () => false, extractApiKey: () => "class-secret" }));
@@ -14,6 +14,27 @@ const save = (provider, model, extra = {}) => database.saveRequestUsage({
 });
 const decision = () => enforce(new Request("http://localhost/v1/chat/completions", { method: "POST" }), "any/model", "class-secret");
 const totals = () => database.getApiKeyUsageTotals("class-key");
+
+// Warm the DB, pricing and policy graph once so beforeEach keeps the default hook timeout.
+beforeAll(async () => {
+  const before = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+  const env = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE"].map((name) => [name, process.env[name]]));
+  const warm = fs.mkdtempSync(path.join(os.tmpdir(), "budget-classes-warm-"));
+  process.env.DATA_DIR = warm;
+  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  delete global._dbAdapter;
+  try {
+    await import("@/lib/db/index.js");
+    await import("@/sse/services/apiKeyPolicy.js");
+    await import("@/lib/db/repos/pricingRepo.js");
+  } finally {
+    await global._dbAdapter?.instance?.close?.();
+    delete global._dbAdapter;
+    for (const signal of signals) for (const listener of process.listeners(signal)) if (!before.get(signal).has(listener)) process.removeListener(signal, listener);
+    for (const [name, value] of Object.entries(env)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+    fs.rmSync(warm, { recursive: true, force: true });
+  }
+}, 60_000);
 
 beforeEach(async () => {
   listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));

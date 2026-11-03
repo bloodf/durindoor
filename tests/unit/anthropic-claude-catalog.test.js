@@ -3,6 +3,7 @@ import "../translator/registerAll.js";
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getPricingForModel, calculateCostBreakdown } from "../../open-sse/providers/pricing.js";
+import { stripUnsupportedModalities } from "../../open-sse/translator/concerns/modality.js";
 import { projectClaudeCodeModel } from "../../src/app/api/v1/models/_claudeCompat.js";
 
 describe("Anthropic and Claude Code model catalogs", () => {
@@ -76,5 +77,26 @@ describe("Claude Haiku 5.5 pricing and Claude Code projection (#1363)", () => {
     // No per-model list exists in _claudeCompat.js; 1,000,000 is below its 1,048,576 [1m] cutoff for every 5.5 model.
     expect(projectClaudeCodeModel({ id: "cc/claude-haiku-5-5", owned_by: "cc" })).toBe("claude-cc/claude-haiku-5-5");
     expect(projectClaudeCodeModel({ id: "cc/claude-sonnet-5-5", owned_by: "cc" })).toBe("claude-cc/claude-sonnet-5-5");
+  });
+});
+
+describe("Claude Haiku 5.5 documented capabilities (#1363)", () => {
+  // PDF support, structured outputs and web search list claude-haiku-5-5 in supportedModels
+  // on platform.claude.com/docs/en/build-with-claude/{pdf-support,structured-outputs} and
+  // .../agents-and-tools/tool-use/web-search-tool.
+  it.each(["anthropic", "claude", "cc"])("%s advertises pdf, search and structured output", (provider) => {
+    expect(getCapabilitiesForModel(provider, "claude-haiku-5-5")).toMatchObject({
+      vision: true, pdf: true, search: true, structuredOutput: true,
+    });
+  });
+
+  it("keeps PDF documents in the request instead of omitting them", () => {
+    const doc = { type: "document", source: { type: "base64", media_type: "application/pdf", data: "AAAA" } };
+    for (const provider of ["anthropic", "claude"]) {
+      const body = { messages: [{ role: "user", content: [{ type: "text", text: "read" }, doc] }] };
+      stripUnsupportedModalities(body, "claude", getCapabilitiesForModel(provider, "claude-haiku-5-5"));
+      expect(JSON.stringify(body)).not.toContain("file omitted");
+      expect(body.messages[0].content).toContainEqual(doc);
+    }
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import Select from "@/shared/ui/components/Select.jsx";
 import { Chip } from "@/shared/ui/components/Chip.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -22,7 +22,7 @@ import { isString } from "../../../../shared/utils/typeChecks.js";
  * @param {string[]} props.allowedConnectionIds current allow-list (never null)
  * @param {object[]} props.connections active provider connections for labels
  * @param {object[]} props.groups connection groups (each with `connectionIds`)
- * @param {(ids: string[]) => Promise<void>} props.onChange persists the new list
+ * @param {(ids: string[]) => Promise<void | {ok: boolean, error?: string}>} props.onChange persists the new list
  */
 function connectionLabel(connection) {
   return `${connection.name || connection.email || connection.provider || "Connection"} (${connection.id.slice(0, 8)})`;
@@ -47,6 +47,8 @@ export default function ComboAllowListEditor({
   onChange,
 }) {
   const [open, setOpen] = useState(false);
+  const pending = useRef(false);
+  const [failure, setFailure] = useState(null);
   const [saving, setSaving] = useState(false);
   const [assignGroupValue, setAssignGroupValue] = useState("");
 
@@ -57,12 +59,13 @@ export default function ComboAllowListEditor({
   const labelForId = (id) => options.find((o) => o.value === id)?.label || id;
 
   const persist = async (next) => {
-    setSaving(true);
+    if (pending.current) return;
+    pending.current = true; setSaving(true); setFailure(null);
     try {
-      await onChange(next);
-    } finally {
-      setSaving(false);
-    }
+      const result = await onChange(next);
+      if (result?.ok === false) throw new Error(result.error || "Allow-list could not be saved.");
+    } catch (error) { setFailure({ message: error.message || "Allow-list could not be saved.", draft: next }); }
+    finally { pending.current = false; setSaving(false); }
   };
 
   // Group quick-add: groups that still contribute at least one new id. Groups
@@ -115,12 +118,13 @@ export default function ComboAllowListEditor({
             key={id}
             size="sm"
             label={labelForId(id)}
-            onRemove={() => persist(allowedConnectionIds.filter((x) => x !== id))}
+            onRemove={saving ? undefined : () => persist(allowedConnectionIds.filter((x) => x !== id))}
           />
         ))}
         {groupOptions.length > 0 ? (
           <div className="w-full sm:min-w-[180px] sm:w-auto">
             <Select
+              disabled={saving}
               aria-label="Add a group…"
               options={groupOptions}
               value={assignGroupValue}
@@ -156,6 +160,8 @@ export default function ComboAllowListEditor({
           </Button>
         )}
       </div>
+      {saving && <p role="status" className="text-xs text-dd-muted">Saving connection restrictions…</p>}
+      {failure && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-dd-danger"><span>{failure.message} Your change is retained for retry.</span><Button icon="refresh" size="sm" variant="secondary" onClick={() => persist(failure.draft)}>Retry</Button></div>}
     </div>
   );
 }

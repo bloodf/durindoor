@@ -19,6 +19,6 @@ async function getStatus() {
 }
 
 export default async function AutoConfigurePage() {
-  const status = await getStatus().catch(() => null);
-  return <AutoConfigureClient status={status} />;
+  try { return <AutoConfigureClient status={await getStatus()} />; }
+  catch { return <AutoConfigureClient status={null} initialError="Configuration status could not be loaded." />; }
 }

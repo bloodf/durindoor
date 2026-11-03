@@ -26,8 +26,9 @@ describe("compression registry (F-1a)", () => {
     expect(isEngineAvailable("headroom")).toBe(true);
     expect(isEngineAvailable("caveman")).toBe(true);
     expect(isEngineAvailable("lite")).toBe(true);
+    expect(isEngineAvailable("rtk")).toBe(true);
     // Metadata-only placeholders: named by the catalog but not dispatchable.
-    for (const id of ["ccr", "rtk", "relevance", "aggressive", "llmlingua", "ultra"]) {
+    for (const id of ["ccr", "relevance", "aggressive", "llmlingua", "ultra"]) {
       expect(isEngineAvailable(id)).toBe(false);
     }
   });

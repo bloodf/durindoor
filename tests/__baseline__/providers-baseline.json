@@ -499,7 +499,7 @@
       "Content-Type": "application/connect+proto",
       "User-Agent": "connect-es/1.6.1"
     },
-    "clientVersion": "3.1.0"
+    "clientVersion": "3.12.17"
   },
   "databricks": {
     "baseUrl": "https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints",
@@ -1457,6 +1457,12 @@
     "validateUrl": "https://api.nanobananaapi.ai/v1/models",
     "format": "openai"
   },
+  "navy": {
+    "baseUrl": "https://api.navy/v1/chat/completions",
+    "validateUrl": "https://api.navy/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "nara": {
     "baseUrl": "https://router.bynara.id/v1/chat/completions",
     "validateUrl": "https://router.bynara.id/v1/models",
@@ -1486,6 +1492,12 @@
       "dropClientMetadata": true
     },
     "format": "openai"
+  },
+  "ofoxai": {
+    "baseUrl": "https://api.ofox.ai/v1/chat/completions",
+    "validateUrl": "https://api.ofox.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "ollama-local": {
     "baseUrl": "http://localhost:11434",
@@ -1679,6 +1691,18 @@
       "scheme": "bearer"
     },
     "format": "openai"
+  },
+  "onomeo": {
+    "baseUrl": "https://onomeo.com/v1/chat/completions",
+    "validateUrl": "https://onomeo.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "openadapter": {
+    "baseUrl": "https://api.openadapter.in/v1/chat/completions",
+    "validateUrl": "https://api.openadapter.in/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "openference-api": {
     "baseUrl": "https://api.openference.com/v1/chat/completions",

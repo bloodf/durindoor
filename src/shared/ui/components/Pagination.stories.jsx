@@ -99,9 +99,9 @@ export const WithRowsPerPage = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const select = canvas.getByRole("combobox", { name: "Rows per page" });
-    await expect(select).toHaveValue("25");
+    await expect(canvasElement.querySelector("select")).toHaveValue("25");
     await userEvent.selectOptions(select, "50");
-    await expect(select).toHaveValue("50");
+    await expect(canvasElement.querySelector("select")).toHaveValue("50");
   },
 };
 

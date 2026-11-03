@@ -1,6 +1,6 @@
 # Issue #1089: OpenAI Chat Completions client matrix
 
-Status counts: already-present 41; failing 17; passing (#1331) 4; repaired (#1335) 3; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
+Status counts: already-present 41; failing 7; passing (#1331) 4; repaired (#1332) 1; repaired (#1333) 2; repaired (#1334) 6; repaired (#1335) 3; repaired (#1356) 1; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
 
 Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Failing rows are `it.skip` markers with a `// #1089 failing: #<issue> …` reason. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance. The #1330 non-stream error rows assert the live handler 502 contract (Option A), not a Claude/Gemini translator terminal.
 
@@ -19,13 +19,13 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | tool_choice none | Claude | already-present | `maps tool_choice none to Claude` |
 | Request | tool_choice required | Claude | already-present | `maps tool_choice required to Claude` |
 | Request | tool_choice named function | Gemini | already-present | `maps named tool_choice to Gemini ANY with allowedFunctionNames` |
-| Request | tool_choice auto | Gemini | failing | `maps tool_choice auto to Gemini AUTO mode` |
-| Request | tool_choice none | Gemini | failing | `maps tool_choice none to Gemini NONE mode` |
-| Request | tool_choice required | Gemini | failing | `maps tool_choice required to Gemini ANY mode` |
-| Request | tool_choice auto | Responses | failing | `preserves tool_choice auto on Chat to Responses` |
-| Request | tool_choice none | Responses | failing | `preserves tool_choice none on Chat to Responses` |
-| Request | tool_choice required | Responses | failing | `preserves tool_choice required on Chat to Responses` |
-| Request | tool_choice named function | Responses | failing | `preserves named tool_choice on Chat to Responses` |
+| Request | tool_choice auto | Gemini | already-present | `maps tool_choice auto to Gemini AUTO mode` |
+| Request | tool_choice none | Gemini | already-present | `maps tool_choice none to Gemini NONE mode` |
+| Request | tool_choice required | Gemini | already-present | `maps tool_choice required to Gemini ANY mode` |
+| Request | tool_choice auto | Responses | already-present | `preserves tool_choice auto on Chat to Responses` |
+| Request | tool_choice none | Responses | already-present | `preserves tool_choice none on Chat to Responses` |
+| Request | tool_choice required | Responses | already-present | `preserves tool_choice required on Chat to Responses` |
+| Request | tool_choice named function | Responses | already-present | `preserves named tool_choice on Chat to Responses` |
 | Request | parallel_tool_calls false | Claude | already-present | `carries parallel_tool_calls false as Claude disable_parallel_tool_use` |
 | Request | parallel_tool_calls true | Claude | already-present | `leaves Claude unrestricted when parallel_tool_calls is true` |
 | Request | parallel_tool_calls false/true | Responses | already-present | `preserves parallel_tool_calls false and true on Chat to Responses` |
@@ -55,12 +55,12 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Stream | tool call | Responses | already-present | `streams tool calls to Responses with call identity and completed arguments` |
 | Request | tool-result image media | Claude | repaired (#1356) | `converts tool-result image_url media to Claude image blocks` |
 | Request | tool-result image media | Gemini | already-present | `keeps tool-result image URL visible through Gemini functionResponse` |
-| Request | tool-result image media | Responses | failing | `preserves tool-result image media on Chat to Responses` |
+| Request | tool-result image media | Responses | repaired (#1332) | `preserves tool-result image media on Chat to Responses` |
 | Request | turn-scoped tool pairing | Claude | repaired (#1335) | `pairs Claude tool results only within the current assistant turn` |
 | Request | turn-scoped tool pairing | Gemini | repaired (#1335) | `pairs Gemini tool results only within the current assistant turn` |
 | Request | turn-scoped tool pairing | Responses | repaired (#1335) | `pairs Responses tool results only within the current assistant turn` |
-| Request | non-string object description (#1091) | Kiro | failing | `coerces object tool descriptions before Kiro trim` |
-| Request | non-string numeric description (#1091) | Kiro | failing | `coerces numeric tool descriptions before Kiro trim` |
+| Request | non-string object description (#1091) | Kiro | repaired (#1333) | `coerces object tool descriptions before Kiro trim` |
+| Request | non-string numeric description (#1091) | Kiro | repaired (#1333) | `coerces numeric tool descriptions before Kiro trim` |
 | Request | empty description fallback (#1091) | Kiro | already-present | `fills empty Kiro descriptions with a Tool: name fallback` |
 | Request | tuple prefixItems (lossy Gemini degradation) (#1091) | Gemini | already-present (known degradation) | `converts Gemini tuple prefixItems into items` |
 | Request | free-form schema (#1091) | Claude | already-present | `preserves free-form object schemas on Claude` |
@@ -75,8 +75,8 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 
 ## Failing reasons (tracked issues)
 
-1. #1328 — Gemini string `tool_choice` auto/none/required are dropped; only named `{type:function}` is mapped.
-2. #1329 — Chat→Responses never copies `tool_choice`.
+1. #1328 — fixed: Gemini string `tool_choice` auto/none/required map to AUTO/NONE/ANY.
+2. #1329 — fixed (#1336): Chat→Responses preserves `tool_choice`.
 3. #1330 — Resolved on main (#1348 / Option A): Chat JSON `finish_reason: error` returns HTTP 502 `Provider returned an incoherent non-streaming response` before Claude/Gemini projection; matrix rows assert that handler contract.
 4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` stays skipped: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so that projector branch is unreachable.
 5. #1332 — Chat→Claude image conversion is repaired by #1356 (data URI and HTTP(S), preserving error flags). Chat→Responses still stringifies image parts into output text; that residual remains open.

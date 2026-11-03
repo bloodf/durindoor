@@ -7,8 +7,9 @@
 //   - headroom       (engines/headroomAdapter.js -> rtk/headroom.js)
 //   - caveman        (engines/cavemanAdapter.js -> caveman.js)
 //   - lite           (engines/lite.js)
+//   - rtk            (engines/rtkAdapter.js -> rtk/index.js)
 //
-// All other catalog ids (ccr, rtk, relevance, aggressive, llmlingua,
+// All other catalog ids (ccr, relevance, aggressive, llmlingua,
 // ultra) are metadata-only placeholders in engineCatalog.js and are NEVER
 // imported here. getEngine(id) on any of them throws "Unknown compression
 // engine: <id>" so callers cannot accidentally dispatch to a stub.
@@ -21,6 +22,7 @@ import { sessionDedupEngine } from "./engines/session-dedup/index.js";
 import { cavemanEngine } from "./engines/cavemanAdapter.js";
 import { headroomEngine } from "./engines/headroomAdapter.js";
 import { liteEngine } from "./engines/lite.js";
+import { rtkEngine } from "./engines/rtkAdapter.js";
 import { ENGINE_IDS, engineMeta, isEngineAvailable } from "./engineCatalog.js";
 import { SINGLE_MODE_OF } from "./deriveDefaultPlan.js";
 
@@ -57,6 +59,7 @@ export function registerBuiltinEngines() {
   register(headroomEngine);
   register(cavemanEngine);
   register(liteEngine);
+  register(rtkEngine);
   registered = true;
 }
 

@@ -185,44 +185,44 @@ describe("#1089 OpenAI Chat client conformance — tools and policies", () => {
     });
   });
 
-  // #1089 failing: #1328 Chat→Gemini only maps named function tool_choice; string auto is dropped.
-  it.skip("maps tool_choice auto to Gemini AUTO mode", () => {
+  // #1089 / #1328: Chat→Gemini maps string tool_choice auto (fixed).
+  it("maps tool_choice auto to Gemini AUTO mode", () => {
     const out = request(GEMINI, chatBody({ tool_choice: "auto", parallel_tool_calls: true }));
     expect(out.toolConfig).toEqual({ functionCallingConfig: { mode: "AUTO" } });
   });
 
-  // #1089 failing: #1328 Chat→Gemini only maps named function tool_choice; string none is dropped.
-  it.skip("maps tool_choice none to Gemini NONE mode", () => {
+  // #1089 / #1328: Chat→Gemini maps string tool_choice none (fixed).
+  it("maps tool_choice none to Gemini NONE mode", () => {
     const out = request(GEMINI, chatBody({ tool_choice: "none" }));
     expect(out.toolConfig).toEqual({ functionCallingConfig: { mode: "NONE" } });
   });
 
-  // #1089 failing: #1328 Chat→Gemini only maps named function tool_choice; string required is dropped.
-  it.skip("maps tool_choice required to Gemini ANY mode", () => {
+  // #1089 / #1328: Chat→Gemini maps string tool_choice required (fixed).
+  it("maps tool_choice required to Gemini ANY mode", () => {
     const out = request(GEMINI, chatBody({ tool_choice: "required", parallel_tool_calls: true }));
     expect(out.toolConfig).toEqual({ functionCallingConfig: { mode: "ANY" } });
   });
 
-  // #1089 failing: #1329 openaiToOpenAIResponsesRequest never copies tool_choice from Chat.
-  it.skip("preserves tool_choice auto on Chat to Responses", () => {
+  // #1089 / #1329: Chat→Responses preserves tool_choice (fixed by #1336).
+  it("preserves tool_choice auto on Chat to Responses", () => {
     const out = request(RESPONSES, chatBody({ tool_choice: "auto" }));
     expect(out.tool_choice).toBe("auto");
   });
 
-  // #1089 failing: #1329 openaiToOpenAIResponsesRequest never copies tool_choice from Chat.
-  it.skip("preserves tool_choice none on Chat to Responses", () => {
+  // #1089 / #1329: Chat→Responses preserves tool_choice (fixed by #1336).
+  it("preserves tool_choice none on Chat to Responses", () => {
     const out = request(RESPONSES, chatBody({ tool_choice: "none" }));
     expect(out.tool_choice).toBe("none");
   });
 
-  // #1089 failing: #1329 openaiToOpenAIResponsesRequest never copies tool_choice from Chat.
-  it.skip("preserves tool_choice required on Chat to Responses", () => {
+  // #1089 / #1329: Chat→Responses preserves tool_choice (fixed by #1336).
+  it("preserves tool_choice required on Chat to Responses", () => {
     const out = request(RESPONSES, chatBody({ tool_choice: "required" }));
     expect(out.tool_choice).toBe("required");
   });
 
-  // #1089 failing: #1329 openaiToOpenAIResponsesRequest never copies tool_choice from Chat.
-  it.skip("preserves named tool_choice on Chat to Responses", () => {
+  // #1089 / #1329: Chat→Responses preserves tool_choice (fixed by #1336).
+  it("preserves named tool_choice on Chat to Responses", () => {
     const out = request(RESPONSES, chatBody({
       tool_choice: { type: OPENAI_BLOCK.FUNCTION, function: { name: "ns.search" } },
     }));
@@ -597,8 +597,7 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
     expect(response.parts[0].functionResponse.name).toBe("fetch");
   });
 
-  // #1089 failing: #1332 Chat→Responses stringifies tool-result image parts into output text instead of media items.
-  it.skip("preserves tool-result image media on Chat to Responses", () => {
+  it("preserves tool-result image media on Chat to Responses", () => {
     const out = request(RESPONSES, mediaBody);
     const output = out.input.find((item) => item.type === "function_call_output" && item.call_id === "c1");
     expect(output.output).toEqual(expect.arrayContaining([
@@ -667,8 +666,7 @@ describe("#1089 OpenAI Chat client conformance — tool calls and media", () => 
 });
 
 describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
-  // #1089 failing: #1333 Kiro calls description.trim on non-string object descriptions and throws TypeError.
-  it.skip("coerces object tool descriptions before Kiro trim", () => {
+  it("coerces object tool descriptions before Kiro trim", () => {
     const out = request(KIRO, chatBody({
       tools: [{
         type: OPENAI_BLOCK.FUNCTION,
@@ -683,8 +681,7 @@ describe("#1089 OpenAI Chat client conformance — #1091 schema edges", () => {
     expect(kiroTool(out).toolSpecification.description.length).toBeGreaterThan(0);
   });
 
-  // #1089 failing: #1333 Kiro calls description.trim on numeric descriptions and throws TypeError.
-  it.skip("coerces numeric tool descriptions before Kiro trim", () => {
+  it("coerces numeric tool descriptions before Kiro trim", () => {
     const out = request(KIRO, chatBody({
       tools: [{
         type: OPENAI_BLOCK.FUNCTION,

@@ -72,6 +72,8 @@ async function execute(stream = false) {
 }
 
 beforeEach(() => {
+  // These cases pin the legacy ChatService wire format.
+  vi.stubEnv("CURSOR_AGENT_SERVICE", "off");
   vi.clearAllMocks();
   mocks.proxy.mockResolvedValue({ connectionProxyEnabled: false, connectionProxyUrl: "", vercelRelayUrl: "" });
   mocks.update.mockResolvedValue(undefined);
@@ -81,6 +83,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   restoreHttp2();
   vi.unstubAllGlobals();
 });

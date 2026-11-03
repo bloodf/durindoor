@@ -62,7 +62,24 @@ describe("/v1/models Claude Haiku catalog (#1363)", () => {
     });
   });
 
-  it.each(["anthropic/claude-haiku-4-5-20251001", "anthropic/claude-haiku-4-5", "cc/claude-haiku-4-5-20251001"])(
+  // Marked legacy on platform.claude.com/docs/en/models/overview ("Legacy models (still available)")
+  // or Deprecated in the lifecycle table of .../about-claude/model-deprecations.
+  const LEGACY = {
+    anthropic: [
+      "claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+      "claude-opus-4-5-20251101", "claude-opus-4-5", "claude-sonnet-5", "claude-sonnet-4-6",
+      "claude-sonnet-4-5-20250929", "claude-sonnet-4-5", "claude-mythos-preview",
+      "claude-haiku-4-5-20251001", "claude-haiku-4-5",
+    ],
+    cc: ["claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
+  };
+  // Active per both pages: never flagged.
+  const CURRENT = {
+    anthropic: ["claude-fable-5-1", "claude-mythos-5-1", "claude-mythos-5", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    cc: ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+  };
+
+  it.each(Object.entries(LEGACY).flatMap(([p, ids]) => ids.map((id) => `${p}/${id}`)))(
     "%s stays listed and is flagged deprecated",
     (id) => {
       const row = models.find((m) => m.id === id);
@@ -71,9 +88,12 @@ describe("/v1/models Claude Haiku catalog (#1363)", () => {
     },
   );
 
-  it("does not flag current models", () => {
-    for (const id of ["anthropic/claude-sonnet-5-5", "anthropic/claude-opus-5-5", "cc/claude-haiku-5-5"]) {
-      expect(models.find((m) => m.id === id)?.deprecated).toBeUndefined();
-    }
-  });
+  it.each(Object.entries(CURRENT).flatMap(([p, ids]) => ids.map((id) => `${p}/${id}`)))(
+    "%s is listed and not flagged",
+    (id) => {
+      const row = models.find((m) => m.id === id);
+      expect(row, id).toBeTruthy();
+      expect(row.deprecated).toBeUndefined();
+    },
+  );
 });

@@ -243,6 +243,7 @@ export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
   lemonade: "http://localhost:13305/api/v1",
   llamafile: "http://127.0.0.1:8080/v1",
   "llama-cpp": "http://127.0.0.1:8080/v1",
+  mlx: "http://127.0.0.1:8080/v1",
   triton: "http://localhost:8000/v1",
   "docker-model-runner": "http://localhost:12434/v1",
   xinference: "http://localhost:9997/v1",

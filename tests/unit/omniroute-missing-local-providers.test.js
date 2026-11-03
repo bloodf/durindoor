@@ -18,6 +18,7 @@ const requestedProviderIds = [
   "llama-cpp",
   "llamafile",
   "lm-studio",
+  "mlx",
   "oobabooga",
   "opencode-zen",
   "triton",
@@ -63,6 +64,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
       lemonade: "http://localhost:13305/api/v1",
       llamafile: "http://127.0.0.1:8080/v1",
       "llama-cpp": "http://127.0.0.1:8080/v1",
+      mlx: "http://127.0.0.1:8080/v1",
       triton: "http://localhost:8000/v1",
       "docker-model-runner": "http://localhost:12434/v1",
       xinference: "http://localhost:9997/v1",
@@ -83,7 +85,7 @@ describe("OmniRoute Batch G local/router provider parity", () => {
   });
 
   it("omits Authorization for optional local providers when credentials are empty", () => {
-    for (const id of ["lm-studio", "vllm", "lemonade", "llamafile", "llama-cpp", "triton", "docker-model-runner", "xinference", "oobabooga", "9router"]) {
+    for (const id of ["lm-studio", "vllm", "lemonade", "llamafile", "llama-cpp", "mlx", "triton", "docker-model-runner", "xinference", "oobabooga", "9router"]) {
       const headers = new DefaultExecutor(id).buildHeaders({}, true);
       expect(headers.Authorization, `${id} should not send an empty bearer token`).toBeUndefined();
     }

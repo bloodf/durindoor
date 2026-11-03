@@ -532,6 +532,7 @@ const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
 "lemonade",
 "llamafile",
 "llama-cpp",
+"mlx",
 "triton",
 "docker-model-runner",
 "xinference",

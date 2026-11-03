@@ -59,9 +59,9 @@ describe("route validation", () => {
 
 describe("adapter coverage", () => {
   it("leaves out image and embedding models of providers the gateway has no adapter for", async () => {
-    mocks.buildModelsList.mockResolvedValue([model("venice/venice-sd35"), model("xai/grok-imagine-image")]);
+    mocks.buildModelsList.mockResolvedValue([model("topaz/upscale"), model("xai/grok-imagine-image")]);
     expect((await describeMediaRoute("image", { settings: {} })).models).toEqual(["xai/grok-imagine-image"]);
-    mocks.buildModelsList.mockResolvedValue([model("venice/text-embedding-3-large"), model("gemini/embedding-001")]);
+    mocks.buildModelsList.mockResolvedValue([model("orcarouter/text-embedding-3-small"), model("gemini/embedding-001")]);
     expect((await describeMediaRoute("embedding", { settings: {} })).models).toEqual(["gemini/embedding-001"]);
   });
 });

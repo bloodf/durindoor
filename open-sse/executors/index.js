@@ -17,6 +17,7 @@ import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
 import { KimiWebExecutor } from "./kimi-web.js";
 import { CodexExecutor } from "./codex.js";
+import { CodexAppServerExecutor } from "./codex-app-server.js";
 import { CursorExecutor } from "./cursor.js";
 import { VertexExecutor } from "./vertex.js";
 import { QwenExecutor } from "./qwen.js";
@@ -62,6 +63,8 @@ const executors = {
   antigravity: new AntigravityExecutor(),
   agy: new AntigravityExecutor("agy"),
   auggie: new AuggieExecutor(),
+  "codex-app-server": new CodexAppServerExecutor(),
+  cxa: new CodexAppServerExecutor(), // Alias for codex-app-server
   aug: new AuggieExecutor(), // Alias for auggie
   azure: new AzureExecutor(),
   "azure-openai": new AzureOpenAIExecutor(),

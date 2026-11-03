@@ -1,6 +1,6 @@
 /**
  * #1168 offline scope: installed codex/cx uses account-scoped HTTP Responses,
- * not the candidate codex-app-server local JSON-RPC transport. Synthetic fetch
+ * not the codex-app-server local JSON-RPC transport. Synthetic fetch
  * fixtures prove wire behavior only, never account access or vendor support.
  * App-server, g4f, and web identities cannot inherit native Codex capabilities.
  * Live acceptance requires account-backed endpoint/auth/model/tool/stream proof;
@@ -131,34 +131,24 @@ describe("#1168 native HTTP comparison does not prove local app-server support",
     expect(await result.response.json()).toMatchObject({ error: { type: "authentication_error" } });
   });
 
-  it("keeps candidate identity absent and rejects validation/discovery without HTTP traffic", async () => {
-    expect(AI_PROVIDERS["codex-app-server"]).toBeUndefined();
-    expect(hasSpecializedExecutor("codex-app-server")).toBe(false);
+  it("registers the app-server identity without HTTP validation or discovery traffic", async () => {
+    expect(AI_PROVIDERS["codex-app-server"]).toMatchObject({ noAuth: true });
+    expect(hasSpecializedExecutor("codex-app-server")).toBe(true);
     mocks.getProviderConnectionById.mockResolvedValue({ ...connection, provider: "codex-app-server" });
-    expect(await testSingleConnection(connection.id)).toMatchObject({ valid: false, error: "Provider test not supported" });
+    expect(await testSingleConnection(connection.id)).toMatchObject({ valid: false });
     expect(await fetchConnectionModels({ ...connection, provider: "codex-app-server" })).toMatchObject({ status: 400 });
     expect(proxyAwareFetch).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported local app-server execution before dispatching credentials to an unrelated HTTP vendor", async () => {
-    proxyAwareFetch.mockResolvedValueOnce(json({ choices: [] }));
+  it("does not dispatch native Codex credentials over HTTP when the local transport is unconfigured", async () => {
     const executor = getExecutor("codex-app-server");
-    const buildHeaders = vi.spyOn(executor, "buildHeaders");
-    try {
-      const execution = executor.execute({
-        model, stream: false, credentials,
-        body: { model, messages: [{ role: "user", content: "Offline local transport boundary" }] },
-      });
-      await expect(execution).rejects.toBeInstanceOf(Error);
-      await expect(execution).rejects.toMatchObject({
-        status: 400,
-        message: 'Unknown provider "codex-app-server": no supported transport endpoint',
-      });
-      expect(buildHeaders).not.toHaveBeenCalled();
-      expect(proxyAwareFetch, "Unsupported local transport must not leak credentials to OpenAI HTTP fallback").not.toHaveBeenCalled();
-      expect(globalThis.fetch).not.toHaveBeenCalled();
-    } finally {
-      buildHeaders.mockRestore();
-    }
+    const result = await executor.execute({
+      model, stream: false, credentials,
+      body: { model, messages: [{ role: "user", content: "Offline local transport boundary" }] },
+    });
+    expect(result.response.status).toBe(503);
+    expect((await result.response.json()).error.code).toBe("codex_app_server_unconfigured");
+    expect(proxyAwareFetch, "Local transport must not leak credentials to an HTTP fallback").not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

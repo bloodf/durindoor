@@ -13,6 +13,7 @@
     "local-router-providers",
     "claude-code",
     "codex",
+    "codex-app-server",
     "antigravity",
     "kiro",
     "cursor",

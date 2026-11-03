@@ -1,0 +1,49 @@
+---
+title: Codex App-Server
+description: Route requests through a local codex app-server over WebSocket. Unverified and experimental.
+---
+
+Codex App-Server (`codex-app-server`, alias `cxa`) drives one turn per request against a `codex app-server` process you run yourself. The Codex CLI owns its own sign-in (`~/.codex/auth.json`). DurinDoor never sees or replays that token; its only credential is the WebSocket capability token you give it.
+
+This provider is **unverified**. No live account run backs it. Treat every claim here as the documented protocol, not tested behavior.
+
+## Read this first
+
+- **OpenAI documents the WebSocket transport as experimental and unsupported.** The app-server interface itself is documented at [learn.chatgpt.com/docs/app-server](https://learn.chatgpt.com/docs/app-server). OpenAI's guidance for automation is the Codex SDK. The protocol can change without notice.
+- **It re-serves a ChatGPT subscription through the gateway.** Every client of this DurinDoor instance spends the quota of whichever account the Codex CLI is signed in to. Do not expose it to people who should not use that account, and check OpenAI's terms for your plan before you do.
+
+The existing [OpenAI Codex](./codex.mdx) provider is separate and still replays an OAuth token to the Responses API.
+
+## Set up
+
+Start the app-server on a private network, with a capability token, and never publish its port:
+
+```bash
+codex app-server --listen ws://127.0.0.1:1456 --ws-auth capability-token --ws-token-file ~/.codex-appserver-token
+```
+
+Then configure DurinDoor through the environment. Connection rows cannot set these values, so stored data cannot redirect the token.
+
+| Variable | Meaning |
+| --- | --- |
+| `DURINDOOR_CODEX_APPSERVER_WS` | `ws://` or `wss://` URL, without embedded credentials. Required. |
+| `DURINDOOR_CODEX_APPSERVER_WS_TOKEN` | Capability token. |
+| `DURINDOOR_CODEX_APPSERVER_WS_TOKEN_FILE` | File holding the token, used when the variable above is unset. |
+| `DURINDOOR_CODEX_APPSERVER_CWD` | Working directory for `thread/start`. Default `/tmp`. |
+| `DURINDOOR_CODEX_APPSERVER_APPROVAL` | Approval policy. Default `never`, so codex does not wait on its own prompts. |
+| `DURINDOOR_CODEX_APPSERVER_SANDBOX` | Sandbox mode. Default `workspace-write`. |
+| `DURINDOOR_CODEX_APPSERVER_AUTO_APPROVE` | `true`, `1` or `yes` approves codex's own command, file and permission prompts. Default is to deny them. |
+
+Add the provider once under **Providers** so a connection row exists; it needs no key. With no URL or token set, requests fail with HTTP 503 `codex_app_server_unconfigured`.
+
+## What it does
+
+- Request format is chat completions. History is flattened into one text turn. Images are not sent.
+- Models are the text models of the `codex` provider. A `-none`, `-low`, `-medium`, `-high` or `-xhigh` suffix sets the reasoning effort; otherwise `reasoning_effort` from the request is used.
+- Reasoning deltas arrive as `reasoning_content`. Token usage comes from the `turn/completed` notification when present.
+- Request tools are advertised as dynamic tools, which is an experimental app-server field. When codex calls one, DurinDoor returns it as a `tool_calls` finish. Your client runs the tool and sends the result in the next request.
+- Connection and turn errors arrive as an in-band error event, with the capability token removed.
+
+## Not verified
+
+No live app-server, account, model list, tool round trip, usage accounting or error shape has been run against this provider. Tests use a mocked WebSocket. Version drift in the app-server protocol, the `item/tool/call` request and the usage field names is untested.

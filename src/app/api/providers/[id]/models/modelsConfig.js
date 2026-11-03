@@ -9,6 +9,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
@@ -447,6 +448,21 @@ export const PROVIDER_MODELS_CONFIG = {
       return {
         models: getStaticProviderModels("kimchi"),
         warning: "Kimchi returned no live models; falling back to static catalog."
+      };
+    }
+  },
+  cursor: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const result = await resolveCursorModels({
+        accessToken: connection.accessToken,
+        providerSpecificData: connection.providerSpecificData || {}
+      }, { forceRefresh: true, log: console, proxyOptions });
+      if (result?.models?.length) {
+        return { models: result.models.map((m) => ({ id: m.id, name: m.name })) };
+      }
+      return {
+        models: getStaticProviderModels("cursor"),
+        warning: "Cursor returned no live models; falling back to static catalog."
       };
     }
   },

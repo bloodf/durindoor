@@ -20,6 +20,7 @@ import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js"
 import { discoverOllamaCatalog, isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveClineModels } from "open-sse/services/clineModels.js";
@@ -192,6 +193,14 @@ const LIVE_MODEL_RESOLVERS = {
       return model;
     });
     return models.length ? { models } : null;
+  },
+  cursor: async (conn) => {
+    const result = await resolveCursorModels({
+      accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
+      providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
+    }, { ...(await liveResolverOptions(conn)) });
+    if (!result?.models?.length) return null;
+    return { models: result.models.map((m) => ({ id: m.id, name: m.name })) };
   },
   qoder: (conn) => resolveQoderLiveModels(conn, "qoder"),
   "qoder-cn": (conn) => resolveQoderLiveModels(conn, "qoder-cn"),

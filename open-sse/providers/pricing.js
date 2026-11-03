@@ -172,6 +172,9 @@ export const MODEL_PRICING = {
   // === Anthropic / Claude ===
   /** Opus 5.5 list price: $4 in / $20 out, $0.20 cache read, $5 5-minute cache write. */
   "claude-opus-5-5": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00, cache_creation: 5.00 },
+  /** Haiku 5.5 list price (platform.claude.com/docs/en/about-claude/pricing): prompts over 100K tokens bill every rate at 5x. */
+  "claude-haiku-5-5": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
+  "claude-haiku-5.5": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
   "claude-sonnet-5-5": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50 },
   "claude-sonnet-5": { input: 3.00, output: 15.00, cached: 0.30, reasoning: 15.00, cache_creation: 3.75 },
   "claude-opus-4-6": { input: 5.00, output: 25.00, cached: 0.50, reasoning: 25.00, cache_creation: 6.25 },

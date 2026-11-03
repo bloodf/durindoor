@@ -204,6 +204,8 @@ export const MODEL_CAPABILITIES = {
    */
   "glm-5.3": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // Upstream c61ee37d: z.ai docs say GLM-5.3-FLASH cannot disable thinking and carries the 1M window.
+  "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   // OpenCode serves the same weights under this free id from its own inference
   // service, which rejects the zai `thinking` object (400 unknown field
   // "thinking") and accepts reasoning_effort (upstream 32c5f30a, probed on both
@@ -265,6 +267,19 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
     vision: true, reasoning: true, search: true, thinkingCanDisable: false,
     thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 32000
   }])
+);
+
+// Copilot (github, GHE), NanoGPT and Kiro serve Claude 5.5 under dotted ids. Same models as the dashed
+// rows (Opus 5.5 / Sonnet 5.5 reject thinking.type "disabled"; Sonnet takes "between_tools"),
+// scoped per provider so other gateways (e.g. OpenRouter) keep their own handling.
+const CLAUDE_5_5_DOTTED_BASE = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 };
+const CLAUDE_5_5_DOTTED_CAPS = {
+  "claude-opus-5.5": CLAUDE_5_5_DOTTED_BASE,
+  "claude-sonnet-5.5": { ...CLAUDE_5_5_DOTTED_BASE, thinkingModes: ["adaptive", "between_tools"] },
+};
+const KIRO_CLAUDE_5_5_CAPS = Object.fromEntries(
+  Object.entries(CLAUDE_5_5_DOTTED_CAPS).flatMap(([id, caps]) =>
+    ["", "-thinking", "-agentic", "-thinking-agentic"].map((suffix) => [id + suffix, caps]))
 );
 
 const ANTHROPIC_API_CAPABILITIES = AUDITED_PROVIDER_CAPABILITIES.anthropic;
@@ -452,8 +467,13 @@ export const PROVIDER_CAPABILITIES = {
   // so the 12 keys can never drift from the catalog in providerModels.js.
   // Exposed under both the provider id ("kiro") and its short alias ("kr") —
   // callers pass either.
-  kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
-  kr: KIRO_GPT_5_6_PROVIDER_CAPS,
+  kiro: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  kr: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  github: CLAUDE_5_5_DOTTED_CAPS,
+  "ghe-copilot": CLAUDE_5_5_DOTTED_CAPS,
+  ghe: CLAUDE_5_5_DOTTED_CAPS,
+  // NanoGPT lists the vendor-prefixed id and capability lookup keys on the full registry id.
+  nanogpt: { "anthropic/claude-sonnet-5.5": CLAUDE_5_5_DOTTED_CAPS["claude-sonnet-5.5"] },
   "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,
   aq: KIRO_GPT_5_6_PROVIDER_CAPS,
   // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.
@@ -638,10 +658,8 @@ export const PROVIDER_CAPABILITIES = {
     "ox-alpha-free": OX_ALPHA_CAPABILITIES,
     // Upstream c8644368: 1M window and 128k output for claude-haiku-5-5 on OpenCode Go (adaptive thinking already comes from the haiku rule).
     "claude-haiku-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-    // glm-5.3-flash has no exact global entry (only the base "glm-5.3" id
-    // does, with the z.ai-native "zai" thinkingFormat), so without a
-    // provider override it fell through to DEFAULT_CAPABILITIES with no
-    // reasoning at all. OpenCode Go's backend also rejects the z.ai
+    // The global glm-5.3-flash entry uses the z.ai-native "zai" thinkingFormat,
+    // so without this provider override it would be sent z.ai-shaped fields. OpenCode Go's backend also rejects the z.ai
     // `thinking` object (400: unknown field "thinking") and wants
     // reasoning_effort, so the format here must be "openai", not "zai". #4226
     "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 }
@@ -918,6 +936,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*kimi*", caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
 
 // ── GLM / Z.ai (thinking.enabled; disable via enable_thinking:false) ─
+// Upstream c61ee37d: the whole 5.3 line cannot disable thinking (prefixed ids such as z-ai/glm-5.3-flash).
+{ pattern: "*glm-5.3*", caps: { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*glm-5*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
 { pattern: "*glm-4.7*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
 { pattern: "*glm-4*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000 } },

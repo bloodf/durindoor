@@ -1,5 +1,6 @@
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { FETCH_TIMEOUT_MS } from "../config/mediaConfig.js";
 import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { getExecutor } from "../executors/index.js";
@@ -25,6 +26,7 @@ function serializeRequestBody(requestBody) {
  * @param {object} [options.log] - Logger
  * @param {boolean} [options.streamToClient] - Pipe SSE to client (codex)
  * @param {boolean} [options.binaryOutput] - Return raw image bytes
+ * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
  * @param {function} [options.onStreamComplete] - Awaited once with ({status, accounting, error}, response).
@@ -42,10 +44,17 @@ export async function handleImageGenerationCore({
   binaryOutput = false,
   onCredentialsRefreshed,
   onRequestSuccess,
-  onStreamComplete
+  onStreamComplete,
+  signal
 }) {
   const { provider, model } = modelInfo;
   const proxyOptions = resolveCredentialProxyOptions(credentials);
+  // Client disconnects are not provider failures: callers must not cool down the account.
+  const isAbort = (error) => signal?.aborted || error?.name === "AbortError";
+  const abortedResult = () => createErrorResult(499, "Image generation request aborted");
+  // fetchImageAsBase64 drops its own timeout when given a signal, so keep it here.
+  // Built per call: the timeout must start at the prefetch, not at core entry.
+  const imageFetchOptions = () => (signal ? { signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) } : undefined);
 
   if (!body.prompt) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
@@ -68,7 +77,8 @@ export async function handleImageGenerationCore({
         body,
         credentials,
         log,
-        proxyOptions
+        proxyOptions,
+        signal
       );
       if (onRequestSuccess) await onRequestSuccess();
       const accounting = mediaAccounting(responseBody, provider, "image");
@@ -80,7 +90,7 @@ export async function handleImageGenerationCore({
         const first = finalBody.data?.[0];
         let b64 = first?.b64_json;
         if (!b64 && first?.url) {
-          const image = await fetchImageAsBase64(first.url);
+          const image = await fetchImageAsBase64(first.url, imageFetchOptions());
           b64 = image?.url?.split(",", 2)[1];
         }
         if (b64) {
@@ -105,6 +115,7 @@ export async function handleImageGenerationCore({
         })
       };
     } catch (error) {
+      if (isAbort(error)) return abortedResult();
       // Executor adapters may tag the upstream status and quota reset.
       const tagged = Number(error?.status);
       const status = Number.isInteger(tagged) && tagged >= 400 && tagged <= 599 ? tagged : HTTP_STATUS.BAD_GATEWAY;
@@ -141,9 +152,11 @@ export async function handleImageGenerationCore({
       method: "POST",
       headers,
       body: serializeRequestBody(requestBody),
+      signal,
       proxyOptions
     });
   } catch (error) {
+    if (isAbort(error)) return abortedResult();
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
@@ -176,9 +189,11 @@ export async function handleImageGenerationCore({
           method: "POST",
           headers: retryHeaders,
           body: serializeRequestBody(retryBody),
+          signal,
           proxyOptions
         });
-      } catch {
+      } catch (error) {
+        if (isAbort(error)) return abortedResult();
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
       }
     } else {
@@ -206,6 +221,7 @@ export async function handleImageGenerationCore({
         headers,
         credentials,
         log,
+        signal,
         streamToClient,
         onReceipt: (value, prefix) => {
           const receipt = mediaAccounting(value, provider, "image");
@@ -245,6 +261,7 @@ export async function handleImageGenerationCore({
       parsed = await providerResponse.json();
     }
   } catch (parseError) {
+    if (isAbort(parseError)) return abortedResult();
     // An adapter may tag a parse/validation error with an explicit HTTP status
     // (e.g. 422 for a per-request content rejection) to distinguish it from a
     // generic upstream failure. Only honor a sane client/server error status;
@@ -272,7 +289,7 @@ export async function handleImageGenerationCore({
     const first = finalBody.data?.[0];
     let b64 = first?.b64_json;
     if (!b64 && first?.url) {
-      const image = await fetchImageAsBase64(first.url);
+      const image = await fetchImageAsBase64(first.url, imageFetchOptions());
       b64 = image?.url?.split(",", 2)[1];
     }
     if (b64) {

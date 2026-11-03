@@ -3,7 +3,7 @@ title: Compatibility
 description: Supported Node version, database drivers, platforms and artifacts, with what CI actually exercises.
 ---
 
-This page lists what DurinDoor supports and how each claim is backed. **Tested** means an automated job in this repository runs it. **Checked manually** means a maintainer ran it once and no job repeats it. **Untested** means the code path exists but nothing exercises it, so treat it as unsupported until you verify it yourself.
+This page lists what DurinDoor supports and how each claim is backed. **Tested** means an automated job in this repository runs it. **Health-checked** means a job only confirms the server answers `/api/health`. **Checked manually** means a maintainer ran it once and no job repeats it. **Untested** means the code path exists but nothing exercises it, so treat it as unsupported until you verify it yourself.
 
 ## Node.js
 
@@ -20,7 +20,7 @@ No other Node version is tested. The packages that DurinDoor depends on may list
 
 | Component | What it is | Evidence | Status |
 | --- | --- | --- | --- |
-| `better-sqlite3` (native SQLite) | Preferred driver. App dependency `^12.11.1`. The npm CLI installs its own copy into `DATA_DIR/runtime` on `postinstall`, pinned in `cli/hooks/sqliteRuntime.js` | Driver-selection unit tests and the full suite run on `ubuntu-latest` (x64) with Node 26.13.0. Upstream publishes Node 26 (ABI 147) prebuilt binaries for darwin x64 and arm64, linux x64, arm64 and arm, linuxmusl x64, arm64 and arm, and win32 x64 and arm64 (checked against the 12.11.1 and 12.10.1 release assets). Loading it on macOS arm64 with Node 26.13.0 was checked manually | Tested on Linux x64 and in the Docker images. Prebuild available elsewhere. Not run in CI on macOS or Windows |
+| `better-sqlite3` (native SQLite) | Preferred driver. App dependency `^12.11.1`. The npm CLI installs its own copy into `DATA_DIR/runtime` on `postinstall`, pinned in `cli/hooks/sqliteRuntime.js` | Driver-selection unit tests and the full suite run on `ubuntu-latest` (x64) with Node 26.13.0. Upstream publishes Node 26 (ABI 147) prebuilt binaries for darwin x64 and arm64, linux x64, arm64 and arm, linuxmusl x64, arm64 and arm, and win32 x64 and arm64 (checked against the 12.11.1 and 12.10.1 release assets). Loading it on macOS arm64 with Node 26.13.0 was checked manually | Tested on Linux x64. The Docker images are only health-checked, which also passes on a `sql.js` fallback, so the driver is not verified there. Prebuild available elsewhere. Not run in CI on macOS or Windows |
 | `node:sqlite` | Second choice on Node 22.5 or later | The fallback order is unit-tested in `tests/unit/db-driver-chain.test.js`. No job runs the server on it | Selection logic tested, server untested |
 | `sql.js` | Pure-JS fallback, ships its `.wasm` beside the bundle | Unit tests for persistence and for the shipped wasm asset. The artifact smokes do not force or assert which driver opens, so the server is not known to run on `sql.js` | Component tested, server untested |
 | PostgreSQL | `pg` `^8.13`, queried from a `worker_threads` worker (`pgSyncWorker.cjs`) with a synchronous facade | `npm run check:postgres-migrations` checks that PostgreSQL migrations match SQLite's. Unit tests use mocks. No workflow starts a PostgreSQL server | Migration parity tested, live server untested. Compose ships `postgres16`, `postgres17` and `postgres18` profiles |
@@ -28,8 +28,8 @@ No other Node version is tested. The packages that DurinDoor depends on may list
 | System tray (CLI) | macOS and Linux: `systray2` `2.1.4`, lazy-installed into `DATA_DIR/runtime`. Windows: PowerShell `NotifyIcon`, no binary | No test starts a tray | Untested |
 | Standalone build | `.next/standalone/custom-server.js` | `npm run verify:installed` in `release.yml` and the manual `artifact-smoke.yml`: starts the server in an isolated `DATA_DIR`, checks health, login, settings and auth denial | Tested on Linux x64 |
 | npm tarball | `npm pack` of the CLI | `npm run verify:packed` in the same two workflows installs the tarball with `--ignore-scripts` and runs the installed-artifact smoke | Tested on Linux x64. The `postinstall` runtime install is not exercised |
-| Docker `linux/amd64` | Alpine (musl) image | `docker-publish.yml` builds on `ubuntu-24.04` and requires `/api/health` before publishing | Tested |
-| Docker `linux/arm64` | Alpine (musl) image | Same job on `ubuntu-24.04-arm` | Tested |
+| Docker `linux/amd64` | Alpine (musl) image | `docker-publish.yml` builds on `ubuntu-24.04` and requires `/api/health` before publishing. Health also passes on a `sql.js` fallback, so the database driver is not asserted | Health-checked |
+| Docker `linux/arm64` | Alpine (musl) image | Same job on `ubuntu-24.04-arm` | Health-checked |
 | Web-session browser (ChatGPT Web) | Alpine Chromium under Xvfb, `playwright` `1.63.0`. Build with `--build-arg CHATGPT_WEB_BROWSER=false` to leave it out | The image builds. No test drives a real browser session | Untested |
 | Bun | `npm run start:bun` and a `bun:sqlite` branch in the driver chain | Nothing runs under Bun | Untested |
 
@@ -37,8 +37,9 @@ No other Node version is tested. The packages that DurinDoor depends on may list
 
 | Platform | How it runs | Status |
 | --- | --- | --- |
-| Linux x64 | Source, npm, standalone, Docker | Tested |
-| Linux arm64 | Docker | Tested (health smoke only) |
+| Linux x64 | Source, npm, standalone | Tested |
+| Linux x64 | Docker | Health-checked |
+| Linux arm64 | Docker | Health-checked |
 | Linux arm64 without Docker | npm, source | Untested. Prebuilt `better-sqlite3` exists |
 | macOS arm64 | npm, source | Checked manually. Not in CI |
 | macOS x64 | npm, source | Untested |

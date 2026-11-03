@@ -190,6 +190,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `firecrawl_custom` |  | apikey | `` |
 | `fireworks` |  | apikey | `https://api.fireworks.ai/inference/v1/chat/completions` |
 | `fish-audio` |  | apikey | `` |
+| `free-ai` | openai | apikey | `https://api.free.ai/v1/chat/` |
 | `freeaiapikey` |  | apikey | `https://api.freeaiapikey.com/v1/chat/completions` |
 | `freeinference` |  | apikey | `https://freeinference.org/v1/chat/completions` |
 | `freemodel-dev` |  | apikey | `https://api.freemodel.dev/v1/chat/completions` |

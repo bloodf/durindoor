@@ -776,6 +776,9 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
+// Copilot (and Kiro/Token Harbor) serve the same 5.5 models under dotted ids; mirror the dashed rows.
+{ pattern: "*claude*opus-5.5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*sonnet-5.5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, thinkingModes: ["adaptive", "between_tools"], contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*opus-5-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*opus-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*sonnet-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },

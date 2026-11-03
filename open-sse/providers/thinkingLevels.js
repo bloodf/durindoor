@@ -45,6 +45,7 @@ const FORMAT_LEVELS = {
 // GPT-5.6 patterns must precede broad *codex* so Sol/Terra/Luna keep their matrix.
 const PATTERN_THINKING = [
   /** Claude Opus 5.5 accepts low..max including xhigh; it rejects disabled thinking and `ultra`. */
+  { pattern: "*claude*opus-5.5*", levels: ["low", "medium", "high", "xhigh", "max"] },
   { pattern: "*claude*opus-5-5*", levels: ["low", "medium", "high", "xhigh", "max"] },
   // Sol/Terra accept max + ultra on the wire.
   { pattern: "*gpt-5.6-sol*", levels: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
@@ -139,6 +140,13 @@ export function isNativeDeepSeekV4(provider, model) {
   return (provider === "deepseek" || provider === "ds") && NATIVE_DEEPSEEK_V4_MODELS.has(model);
 }
 
+// OpenAI documents reasoning.effort "max" for GPT-5.6 and GPT-6 (9router 763fb68). Rows above
+// only cover named variants, so an OpenAI Compatible node serving any other spelling would
+// clamp max to xhigh; give those the same set. Explicit rows still win; "openai" is unchanged.
+const OPENAI_MAX_EFFORT_MODEL = /(?:^|\/)gpt-(?:5\.6|6)(?:[.-]|$)/i;
+const COMPAT_MAX_LEVELS = [...L.base, "xhigh", "max"];
+const isOpenAICompatibleNode = (provider) => String(provider || "").startsWith("openai-compatible-");
+
 // Returns valid thinking levels for a model, or null when the model has no reasoning.
 export function getThinkingLevels(provider, model) {
   const caps = getCapabilitiesForModel(provider, model);
@@ -158,7 +166,9 @@ export function getThinkingLevelsFromCapabilities(caps, provider = null, model =
     (!p.provider || p.provider === provider) && matchPattern(p.pattern, modelId));
   const format = caps.thinkingFormat === "openai-low-high-max" ? caps.thinkingFormat :
   (provider ? PROVIDERS[provider]?.thinkingFormat : null) || caps.thinkingFormat;
-  let levels = Array.isArray(caps.thinkingEfforts) ? caps.thinkingEfforts : hit?.levels || (format === "deepseek" && isNativeDeepSeekV4(provider, modelId)
+  let levels = Array.isArray(caps.thinkingEfforts) ? caps.thinkingEfforts : hit?.levels
+    || (isOpenAICompatibleNode(provider) && OPENAI_MAX_EFFORT_MODEL.test(modelId) ? COMPAT_MAX_LEVELS : null)
+    || (format === "deepseek" && isNativeDeepSeekV4(provider, modelId)
     ? L.hiMax
     : FORMAT_LEVELS[format] || L.base);
   if (caps.thinkingCanDisable === false) levels = levels.filter((l) => l !== "none");

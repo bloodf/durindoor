@@ -21,6 +21,7 @@ export function SttExampleCard({ providerId }) {
   const [selectedModel, setSelectedModel] = useState(builtinSttModels[0]?.id ?? "");
   const selectedModelObj = sttModels.find((m) => m.id === selectedModel);
   const allowedParams = Array.isArray(selectedModelObj?.params) ? selectedModelObj.params : [];
+  const responseFormats = selectedModelObj?.responseFormats || ["json", "text", "srt", "verbose_json", "vtt"];
 
   const [audioFile, setAudioFile] = useState(null);
   const [language, setLanguage] = useState("");
@@ -134,7 +135,7 @@ export function SttExampleCard({ providerId }) {
         {allowedParams.includes("temperature") && <Row label="Temperature"><Input aria-label="Temperature" type="number" step="0.1" min="0" max="1" value={temperature} onChange={(e) => setTemperature(e.target.value)} placeholder="0 - 1 (default 0)" /></Row>}
         {allowedParams.includes("response_format") && (
           <Row label="Response Format">
-            <Select aria-label="Response format" value={responseFormat} onChange={setResponseFormat} options={[{ value: "json", label: "json" }, { value: "text", label: "text" }, { value: "srt", label: "srt" }, { value: "verbose_json", label: "verbose_json" }, { value: "vtt", label: "vtt" }]} />
+            <Select aria-label="Response format" value={responseFormat} onChange={setResponseFormat} options={responseFormats.map((format) => ({ value: format, label: format }))} />
           </Row>
         )}
         <div className="mt-1">

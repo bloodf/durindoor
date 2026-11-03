@@ -8,7 +8,7 @@ import { Badge } from "@/shared/ui/components/Badge.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
 import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import { AddCustomEmbeddingModal, AddSystemoneCompatibleModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
-import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, isLocalOllamaProvider } from "@/shared/constants/providers";
+import { MEDIA_PROVIDER_KINDS, AI_PROVIDERS, OAUTH_PROVIDERS, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, isLocalOllamaProvider } from "@/shared/constants/providers";
 import ConnectionsCard from "@/app/(dashboard)/dashboard/providers/components/ConnectionsCard";
 import ModelsCard from "@/app/(dashboard)/dashboard/providers/components/ModelsCard";
 import { KIND_EXAMPLE_CONFIG } from "./components/exampleShared";
@@ -110,6 +110,11 @@ export default function MediaProviderDetailPage() {
       {/* Connections */}
       {!isCustom && provider.noAuth ? (
         <NoAuthProxyCard providerId={id} />
+      ) : OAUTH_PROVIDERS[id] ? (
+        <div role="note" className="rounded-dd border border-dd-border px-4 py-3 text-[13px]">
+          <p className="mb-2 text-dd-muted">This service shares your existing OAuth connections.</p>
+          <Link href={`/dashboard/providers/${id}`} className="text-dd-accent underline outline-none focus-visible:shadow-dd-focus">Manage OAuth connections</Link>
+        </div>
       ) : (
         <ConnectionsCard providerId={id} isOAuth={false} />
       )}

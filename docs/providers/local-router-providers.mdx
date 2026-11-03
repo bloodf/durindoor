@@ -3,7 +3,7 @@ title: Local router providers
 description: Configure local OpenAI-compatible servers, default URLs, and provider-specific limits.
 ---
 
-DurinDoor ships dedicated registry entries for local and router endpoints that speak OpenAI-compatible `/v1` routes: `9router`, `lm-studio`, `vllm`, `lemonade`, `llamafile`, `llama-cpp`, `triton`, `docker-model-runner`, `xinference`, `oobabooga`, and `opencode-zen`.
+DurinDoor ships dedicated registry entries for local and router endpoints that speak OpenAI-compatible `/v1` routes: `9router`, `lm-studio`, `vllm`, `lemonade`, `llamafile`, `llama-cpp`, `mlx`, `triton`, `docker-model-runner`, `xinference`, `oobabooga`, and `opencode-zen`.
 
 These servers expose OpenAI-compatible endpoints. The API key is optional when the upstream does not enforce one. DurinDoor omits the `Authorization` header when no API key or access token is saved. Saving a connection with a placeholder key still works if you want the normal connection form. If a connection does not set `providerSpecificData.baseUrl`, DurinDoor uses the provider's local default:
 
@@ -15,6 +15,7 @@ These servers expose OpenAI-compatible endpoints. The API key is optional when t
 | `lemonade` | `http://localhost:13305/api/v1` |
 | `llamafile` | `http://127.0.0.1:8080/v1` |
 | `llama-cpp` | `http://127.0.0.1:8080/v1` |
+| `mlx` | `http://127.0.0.1:8080/v1` |
 | `triton` | `http://localhost:8000/v1` |
 | `docker-model-runner` | `http://localhost:12434/v1` |
 | `xinference` | `http://localhost:9997/v1` |

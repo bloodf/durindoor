@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 320 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 321 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -208,6 +208,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | MiniMax (China) | `minimax-cn` | apikey | 27 | [site](https://www.minimax.cn) |
 | Mistral | `mistral` | apikey | 4 | [site](https://mistral.ai) |
 | Mixlayer | `mixlayer` | apikey | 1 |  |
+| MLX | `mlx` | apikey | 0 | [site](https://github.com/ml-explore/mlx-lm) |
 | MMF | `mmf` | apikey | 1 |  |
 | Modal | `modal` | apikey | 1 | [site](https://modal.com/docs) |
 | ModelScope | `modelscope` | apikey | 0 | [site](https://modelscope.cn) |

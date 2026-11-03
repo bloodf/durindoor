@@ -109,3 +109,25 @@ describe("prepareClaudeRequest — blank thinking blocks (deepSeekServed via ope
     expect(asst.content[0].text).toBe("kept");
   });
 });
+
+describe("mid-history turns emptied by blank thinking (#1557 review)", () => {
+  const history = () => [
+    { role: "user", content: "one" },
+    assistant([thinking("  ")]),
+    { role: "user", content: "two" },
+    assistant([{ type: "text", text: "answer" }]),
+    { role: "user", content: "three" },
+  ];
+
+  it("passthrough drops the emptied turn instead of sending content: []", () => {
+    const out = normalizeClaudePassthrough({ messages: history() });
+    expect(out.messages.every((m) => m.content.length > 0)).toBe(true);
+    expect(out.messages.filter((m) => m.role === "assistant")).toHaveLength(1);
+  });
+
+  it("translated path drops it and merges the now-adjacent user turns", () => {
+    const out = prepareClaudeRequest(claudeRequest(history()), "opencode-go");
+    expect(out.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+    expect(out.messages[0].content.map((b) => b.text)).toEqual(["one", "two"]);
+  });
+});

@@ -54,6 +54,23 @@ function normalizeMessageContent(msg) {
   return msg;
 }
 
+/**
+ * After a turn is dropped, the user turns on either side become adjacent. Merge them so
+ * strict Claude-wire upstreams that require alternating roles accept the history.
+ * tool_result blocks stay first, as Anthropic requires.
+ */
+function mergeAdjacentUserTurns(messages, index) {
+  const a = messages[index];
+  const b = messages[index + 1];
+  if (a?.role !== ROLE.USER || b?.role !== ROLE.USER) return;
+  const blocks = (m) => Array.isArray(m.content) ? m.content :
+    isString(m.content) && m.content ? [{ type: CLAUDE_BLOCK.TEXT, text: m.content }] : [];
+  const all = [...blocks(a), ...blocks(b)];
+  const results = all.filter((x) => x?.type === CLAUDE_BLOCK.TOOL_RESULT);
+  a.content = [...results, ...all.filter((x) => x?.type !== CLAUDE_BLOCK.TOOL_RESULT)];
+  messages.splice(index + 1, 1);
+}
+
 /** Count request-wide Anthropic cache breakpoints. */
 function countCacheControlBlocks(body) {
   let count = 0;
@@ -543,12 +560,14 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   const thinkingEnabled = body.thinking?.type === "enabled";
   const removedServerToolIds = new Set();
   const emptiedByServerToolFilter = new Set();
+  const emptiedByBlankThinking = new Set();
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role !== ROLE.ASSISTANT || !Array.isArray(msg.content)) continue;
       let hasToolUse = false;
       let hasKeptThinking = false;
       let removedServerTool = false;
+      let removedBlankThinking = false;
       const kept = [];
       for (const block of msg.content) {
         // Opaque redacted data has no readable-thinking signature to validate.
@@ -560,7 +579,10 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
         // Anthropic rejects a thinking block with no visible text (400 "each thinking block must
         // contain non-whitespace thinking"), even with a valid signature, and a replayed one
         // would 400 every later turn. Redacted blocks carry `data`, not text, and are exempt.
-        if (block.type === CLAUDE_BLOCK.THINKING && !String(block.thinking ?? "").trim()) continue;
+        if (block.type === CLAUDE_BLOCK.THINKING && !String(block.thinking ?? "").trim()) {
+          removedBlankThinking = true;
+          continue;
+        }
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
           const isAdaptiveModel = isAdaptiveThinkingModel(model);
           const isPlaceholder = block.signature === DEFAULT_THINKING_CLAUDE_SIGNATURE;
@@ -586,9 +608,16 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       }
       msg.content = kept;
       if (removedServerTool && kept.length === 0) emptiedByServerToolFilter.add(msg);
+      if (removedBlankThinking && kept.length === 0) emptiedByBlankThinking.add(msg);
       if (thinkingEnabled && !hasKeptThinking && hasToolUse && !isAdaptiveThinkingModel(model)) {
         msg.content.unshift(buildThinkingPlaceholder("claude"));
       }
+    }
+
+    // A mid-history turn that held only blank thinking would otherwise go out as `content: []`
+    // (Anthropic 400s on empty content); drop it like the translated path does.
+    if (emptiedByBlankThinking.size > 0) {
+      body.messages = body.messages.filter((msg) => !emptiedByBlankThinking.has(msg));
     }
 
     if (removedServerToolIds.size > 0) {
@@ -716,6 +745,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
         msg.content = msg.content.filter((block) => !(block?.type === CLAUDE_BLOCK.THINKING && !String(block.thinking ?? "").trim()));
         if (msg.content.length === 0) {
           filtered.splice(i, 1);
+          mergeAdjacentUserTurns(filtered, i - 1);
           continue;
         }
         // Add cache_control to last non-thinking block of first (from end) assistant with content

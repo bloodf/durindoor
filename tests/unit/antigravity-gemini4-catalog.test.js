@@ -75,3 +75,19 @@ describe("Gemini 4 rules", () => {
     expect(Object.keys(out.request.contents.at(-1).parts[0])).toContain("functionResponse");
   });
 });
+
+describe("Gemini 3.6-3.8 Flash tiers floor minimal to low (#1552, upstream 9router#5355; 400 unverified live)", () => {
+  const run = (model, intent) => {
+    const body = { request: { contents: [{ role: "user", parts: [{ text: "hi" }] }], generationConfig: {} } };
+    applyThinking("antigravity", model, body, "antigravity", intent, getCapabilitiesForModel("antigravity", model));
+    return body.request.generationConfig.thinkingConfig.thinkingLevel;
+  };
+  it.each(["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.7", "gemini-3.7-flash-low", "gemini-3.6", "gemini-3.6-flash-medium"])(
+    "%s emits low for minimal and none", (id) => {
+      expect(run(id, { mode: "level", level: "minimal" })).toBe("low");
+      expect(run(id, { mode: "level", level: "none" })).toBe("low");
+    });
+  it("keeps minimal for Gemini 3 models with a MINIMAL tier", () => {
+    expect(run("gemini-3-flash", { mode: "level", level: "minimal" })).toBe("minimal");
+  });
+});

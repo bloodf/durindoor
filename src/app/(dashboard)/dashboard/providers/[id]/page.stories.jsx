@@ -9,7 +9,7 @@ import { createRoutingFixture } from "@/shared/ui/v5/preservation/routing-fixtur
 
 // Kept aligned with PROVIDER_MODELS_CONFIG by the focused redesign test.
 // This public ID list avoids importing server model-fetch handlers in the browser.
-const REVIEW_MODEL_LIST_PROVIDERS = new Set(["claude", "gemini", "qwen", "kimi-web", "codex", "antigravity", "github", "openai", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "siliconflow", "hyperbolic", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "kimchi", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "typesafe", "venice", "orcarouter"]);
+const REVIEW_MODEL_LIST_PROVIDERS = new Set(["claude", "gemini", "qwen", "kimi-web", "codex", "antigravity", "github", "openai", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "siliconflow", "hyperbolic", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "kimchi", "cursor", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "typesafe", "venice", "orcarouter"]);
 const REVIEW_NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local"]);
 
 /** Fresh isolated data when navigating from one provider's story to another. */

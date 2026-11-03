@@ -24054,7 +24054,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js": "ac79cd80d8c92439d4da04616793eaf57008f4bb43461a13bf0018bab7b14de0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25291,7 +25291,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25314,7 +25314,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25336,7 +25336,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25358,7 +25358,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25530,7 +25530,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25562,7 +25562,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb"
           },
           "expectedAbsentRole": {
             "role": "dialog",
@@ -25677,7 +25677,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -25765,7 +25765,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "7f1a9f993e94e343a5f3377dd7763c696a1d05a850b66282cdfbae9a8d64cba0",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "3bbe0ce2ad95d7328291dd5047282e23f88b830b03e19cfaa60b15d852a2420e",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "b087fd25f1946fb76d8819c9eba9059233d3ca0c78f83891e042ab01f87f13fb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "bb451049bdb5f02c3fb74c4ea11081866ba85c72cfe0e719e92861e402d9fffe",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"

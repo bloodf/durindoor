@@ -19,6 +19,7 @@ import {
 "../utils/cursorProtobuf.js";
 import { shouldForceAgentMode } from "../utils/cursorToolMapping.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
+import { resolveCursorModels, resolveAutoModelSelection } from "../services/cursorModels.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse, sseChunk } from "../utils/sse.js";
@@ -140,7 +141,7 @@ function encodeHistoryMessage(message) {
   return agentMessage(1, agentMessage(1, agentMessage(1, text)));
 }
 
-export function buildAgentRunFrame(messages, model, tools = []) {
+export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort = null) {
   // custom_system_prompt (RunRequest field 8) makes AgentService return an
   // empty turn. Fold system text into the current user message instead.
   const system = messages
@@ -175,7 +176,18 @@ export function buildAgentRunFrame(messages, model, tools = []) {
     ...(conversationHistory ? [agentMessage(7, conversationHistory)] : []),
   );
   const conversationAction = agentMessage(1, userAction);
-  const requestedModel = concatBuffers(agentString(1, model), agentBool(7, true));
+  const effort = String(reasoningEffort || "").toLowerCase();
+  const effortValue = effort === "ultra" ? "max" : effort === "minimal" ? "low" : effort;
+  const parameter = effortValue && effortValue !== "none"
+    ? agentMessage(3, concatBuffers(
+      agentString(1, /gpt-/i.test(model) ? "reasoning" : "effort"),
+      agentString(2, effortValue),
+    ))
+    : null;
+  const requestedModel = concatBuffers(
+    agentString(1, model), agentBool(7, true),
+    ...(parameter ? [parameter] : []),
+  );
   // ModelDetails (field 3): thinking variants (Composer, Grok, *-thinking)
   // return an empty turn when only RequestedModel (field 9) is set.
   const modelDetails = concatBuffers(
@@ -464,6 +476,59 @@ export async function readCursorResponseBody(response, signal, {
     combined.removeEventListener("abort", onAbort);
     try {reader.releaseLock();} catch {/* noop */}
   }
+}
+
+// Long-session empty-turn recovery: Cursor occasionally answers a long
+// history replay with HTTP 200 and zero deltas (empty turn). One retry on a
+// tail-only frame recovers the session instead of failing the client turn.
+// Capped at one retry: a retry is another upstream send and must not multiply
+// quota-bearing dispatches beyond a single bounded recovery.
+const CURSOR_EMPTY_TURN_MAX_RETRIES = (() => {
+  const value = Number(process.env.CURSOR_EMPTY_TURN_MAX_RETRIES);
+  return Number.isFinite(value) && value >= 0 ? Math.min(Math.floor(value), 1) : 1;
+})();
+
+const CURSOR_TAIL_ONLY_THRESHOLD = (() => {
+  const value = Number(process.env.CURSOR_TAIL_ONLY_THRESHOLD);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 80;
+})();
+
+const CURSOR_EMPTY_TURN_RETRY_DELAY_MS = (() => {
+  const value = Number(process.env.CURSOR_EMPTY_TURN_RETRY_DELAY_MS);
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 400;
+})();
+
+/** Minimal tail for wedged long sessions — drops bulk history and tool XML. */
+export function tailOnlyCursorMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages || [];
+  const systemMessages = messages.filter(
+    (message) => message?.role === ROLE.SYSTEM && !/\[(durindoor|9router)\] Long session/.test(String(message?.content || "")),
+  );
+  const chatMessages = messages.filter((message) => message?.role !== ROLE.SYSTEM);
+  let anchor = chatMessages.length - 1;
+  for (let i = chatMessages.length - 1; i >= 0; i--) {
+    if (chatMessages[i]?.role === ROLE.USER || chatMessages[i]?.role === ROLE.TOOL) {
+      anchor = i;
+      break;
+    }
+  }
+  const tailStart = anchor > 0 && chatMessages[anchor - 1]?.role === ROLE.ASSISTANT ? anchor - 1 : anchor;
+  const tail = chatMessages.slice(Math.max(0, tailStart));
+  const note = {
+    role: ROLE.SYSTEM,
+    content: `[durindoor] Long session: ${messages.length} messages trimmed to the latest turn. Answer the current request; re-read files if needed.`,
+  };
+  return [...systemMessages, note, ...tail];
+}
+
+/**
+ * Retry an empty AgentService turn only when a long-session replay is the
+ * likely cause: upstream accepts the request, streams HTTP 200, and closes
+ * with zero deltas. A first-message empty turn is a protocol condition, not
+ * a wedged replay, and must surface to the client without retry.
+ */
+function shouldRetryEmptyTurn(messageCount) {
+  return messageCount >= CURSOR_TAIL_ONLY_THRESHOLD;
 }
 
 export class CursorExecutor extends BaseExecutor {
@@ -771,16 +836,39 @@ export class CursorExecutor extends BaseExecutor {
       signal.addEventListener("abort", () => requestController.abort(signal.reason), { once: true });
     }
 
-    let session;
+    // Empty-turn recovery works on the original client history so each retry
+    // re-derives its own frame from a clean base (original vs tail-only).
+    const originalMessages = body.messages || [];
+    let workingMessages = originalMessages;
     const tools = body.tools || [];
+    // "Auto (Server Picks)" / "default" is a picker alias, not an AgentService
+    // model id — sending it verbatim yields an empty turn. Resolve it to the
+    // account's default agent-capable model from the live catalog before Run.
+    let runModel = model;
+    if (model === "default" || model === "auto") {
+      const catalog = await resolveCursorModels(credentials, { signal, log, proxyOptions });
+      const selection = resolveAutoModelSelection(catalog?.models);
+      if (selection) {
+        log?.info?.("CURSOR", `auto model resolved: ${model} → ${selection.modelId} (${selection.matchedBy})`);
+        runModel = selection.modelId;
+      }
+    }
+
+    const openAgentSession = (frameMessages) => {
+      const session = this.openAgentHttp2Stream(url, headers, requestController.signal);
+      session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort));
+      return session;
+    };
+
+    const headersTimeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+    let session;
     let responseHeaders;
     try {
       responseHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-        session = this.openAgentHttp2Stream(url, headers, requestController.signal);
-        session.write(buildAgentRunFrame(body.messages || [], model, tools));
+        session = openAgentSession(workingMessages);
         return withCursorTimeout(
           session.responseHeaders,
-          this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS,
+          headersTimeoutMs,
           "Cursor AgentService response headers timed out"
         );
       }));
@@ -834,6 +922,12 @@ export class CursorExecutor extends BaseExecutor {
     };
 
     const consume = async (onEvent) => {
+      const finishTurn = () => {
+        flushThinkingFallback(onEvent);
+        finished = true;
+        if (emittedText) onEvent({ type: "done" });
+        else onEvent({ type: "error", value: "Cursor AgentService returned an empty turn" });
+      };
       try {
         while (!finished) {
           const { done, value } = await session.read();
@@ -874,9 +968,7 @@ export class CursorExecutor extends BaseExecutor {
               }
               // Keep unsigned reasoning upstream-only for Anthropic clients.
               if (update.has(14)) {
-                flushThinkingFallback(onEvent);
-                finished = true;
-                onEvent({ type: "done" });
+                finishTurn();
               }
             }
 
@@ -935,13 +1027,75 @@ export class CursorExecutor extends BaseExecutor {
             }
           });
         }
+        if (!finished) finishTurn();
       } finally {
         try { session.end(); } catch {}
         try { session.close(); } catch {}
-        if (!finished) {
-          flushThinkingFallback(onEvent);
-          onEvent({ type: "done" });
+      }
+    };
+
+    // One AgentService attempt on the current working frame. Returns sawContent
+    // so the retry policy can tell a wedged long replay from a protocol empty.
+    const runAgentTurn = async (onEvent) => {
+      finished = false;
+      emittedText = false;
+      thinkingAcc = "";
+      emittedVisible = 0;
+      pending = Buffer.alloc(0);
+      await consume(onEvent);
+      return { sawContent: emittedText };
+    };
+
+    // Wrap events so we never retry once real output has reached the client.
+    let outputStarted = false;
+    const makeWrappedEvent = (onEvent) => (event) => {
+      if (event.type === "text" || event.type === "thinking" || event.type === "tool_call") outputStarted = true;
+      onEvent(event);
+    };
+
+    // Retry loop: fresh h2 session per attempt. An empty turn on a long replay
+    // swaps to a tail-only frame; any other failure surfaces immediately.
+    // While a retry is still available the empty-turn error event is withheld:
+    // emitting it would close the SSE stream before recovery can run.
+    const runWithRetry = async (onEvent) => {
+      outputStarted = false;
+      const wrapped = makeWrappedEvent(onEvent);
+      let attempt = 0;
+      for (;;) {
+        let turnError = null;
+        const result = await runAgentTurn((event) => {
+          if (event.type === "error") turnError = event;
+          else wrapped(event);
+        });
+        if (turnError && shouldRetryEmptyTurn(originalMessages.length) && !outputStarted && attempt < CURSOR_EMPTY_TURN_MAX_RETRIES && !requestController.signal.aborted) {
+          attempt++;
+          log?.info?.("CURSOR", `empty_turn on ${originalMessages.length}-message session; retry ${attempt}/${CURSOR_EMPTY_TURN_MAX_RETRIES} with tail-only frame`);
+          workingMessages = tailOnlyCursorMessages(originalMessages);
+          let retryHeaders;
+          try {
+            retryHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
+              session = openAgentSession(workingMessages);
+              return withCursorTimeout(
+                session.responseHeaders,
+                headersTimeoutMs,
+                "Cursor AgentService response headers timed out"
+              );
+            }));
+          } catch (error) {
+            try { session?.close(); } catch {}
+            throw error;
+          }
+          const retryStatus = Number(retryHeaders[":status"] || 0);
+          if (retryStatus !== 200) {
+            try { session.close(); } catch {}
+            wrapped(turnError);
+            return result;
+          }
+          await new Promise((resolve) => setTimeout(resolve, CURSOR_EMPTY_TURN_RETRY_DELAY_MS));
+          continue;
         }
+        if (turnError) wrapped(turnError);
+        return result;
       }
     };
 
@@ -951,7 +1105,7 @@ export class CursorExecutor extends BaseExecutor {
       let agentError = null;
       const toolCalls = [];
       let finishReason = "stop";
-      await consume((event) => {
+      await runWithRetry((event) => {
         if (event.type === "text") content += event.value;
         else if (event.type === "thinking") reasoning += event.value;
         else if (event.type === "tool_call") {
@@ -1001,7 +1155,10 @@ export class CursorExecutor extends BaseExecutor {
     const encoder = new TextEncoder();
     const responseStream = new ReadableStream({
       start(controller) {
-        consume((event) => {
+        // Defer terminal SSE until runWithRetry settles. Emitting stop on the
+        // first empty upstream turn wedges Cursor before the tail-only retry
+        // can recover the session.
+        runWithRetry((event) => {
           if (event.type === "text") {
             controller.enqueue(encoder.encode(chatChunkSse({ id: responseId, created, model, delta: { content: event.value } })));
           } else if (event.type === "thinking") {

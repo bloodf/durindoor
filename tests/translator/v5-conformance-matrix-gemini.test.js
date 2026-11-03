@@ -188,5 +188,6 @@ describe("#1089 Gemini client conformance — call id pairing across turns", () 
     const reply = out.messages.find((m) => m.role === "tool").tool_call_id;
     expect(calls.at(-1)).toBe(reply);
     expect(calls).toContain(reply);
+    expect(new Set(calls).size).toBe(calls.length);
   });
 });

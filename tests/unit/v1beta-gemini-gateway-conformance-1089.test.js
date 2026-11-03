@@ -138,6 +138,9 @@ describe("#1089 Gemini public route through handleChatCore", () => {
     });
     const msgs = outbound().messages;
     const lastCall = msgs.filter((m) => m.tool_calls).at(-1).tool_calls[0].id;
-    expect(msgs.find((m) => m.role === "tool").tool_call_id).toBe(lastCall);
+    // chatCore adds a placeholder reply for the unanswered first call; the real reply is last.
+    expect(msgs.filter((m) => m.role === "tool").at(-1).tool_call_id).toBe(lastCall);
+    const allCalls = msgs.filter((m) => m.tool_calls).flatMap((m) => m.tool_calls.map((c) => c.id));
+    expect(new Set(allCalls).size).toBe(allCalls.length);
   });
 });

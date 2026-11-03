@@ -184,7 +184,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
        * pivot below where overlong/dotted names are aliased. Apply the same clamp
        * so Chat upstreams and the response round-trip map stay consistent (#1345).
        */
-      if (sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI && isObject(result)) {
+      if ((sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.GEMINI) && targetFormat === FORMATS.OPENAI && isObject(result)) {
         responsesToolAliases = normalizeOpenAIToolNames(result);
       }
     } else {
@@ -202,7 +202,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
            * `toolNameMaxLength`; that is deliberate, and both maps compose into
            * one toolNameMap that the response path restores (#1406).
            */
-          if (sourceFormat === FORMATS.OPENAI_RESPONSES && isObject(result)) {
+          if ((sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.GEMINI) && isObject(result)) {
             responsesToolAliases = normalizeOpenAIToolNames(result);
           }
           // Log OpenAI intermediate format

@@ -69,6 +69,19 @@ export function geminiToOpenAIRequest(model, body, stream) {
     }
   }
 
+  // toolConfig → tool_choice (inverse of openai-to-gemini)
+  const fcc = body.toolConfig?.functionCallingConfig;
+  if (result.tools?.length && fcc?.mode) {
+    const names = fcc.allowedFunctionNames;
+    if (fcc.mode === "NONE") result.tool_choice = "none";
+    else if (fcc.mode === "AUTO") result.tool_choice = "auto";
+    else if (fcc.mode === "ANY") {
+      result.tool_choice = names?.length === 1
+        ? { type: OPENAI_BLOCK.FUNCTION, function: { name: names[0] } }
+        : "required";
+    }
+  }
+
   return result;
 }
 

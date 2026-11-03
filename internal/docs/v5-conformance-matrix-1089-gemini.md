@@ -1,0 +1,23 @@
+# Issue #1089 Gemini client conformance matrix
+
+Counts: already-present 8; repaired 5; failing 0; unsupported-by-contract 0; upstream-pending 0.
+
+Rows 1-7 map 1:1 to tests in `tests/translator/v5-conformance-matrix-gemini.test.js`. Gemini-client reply rows (Chat to Gemini) and the usage rows link existing tests.
+
+| Direction | Feature | Target | Status | Covering test |
+|---|---|---|---|---|
+| Request | Namespaced `ns.search` aliased to `^[a-zA-Z0-9_-]{1,64}$` with round-trip map, keyword-named properties kept | Chat | repaired | `aliases the namespaced tool for Chat and keeps keyword-named properties` |
+| Request | Same, declaration and history share one alias | Claude | repaired | `aliases the namespaced tool for Claude and keeps keyword-named properties` |
+| Request | Same | Responses | repaired | `aliases the namespaced tool for Responses` |
+| Request | `functionResponse` paired with its `functionCall` | Chat, Claude, Responses | already-present | `pairs functionResponse with its functionCall for Chat, Claude and Responses` |
+| Request | `toolConfig` AUTO/NONE/ANY to `tool_choice`; single allowed name to named choice | Chat | repaired | `maps toolConfig mode %s to Chat tool_choice`, `maps a single allowedFunctionNames entry to a named Chat tool_choice` |
+| Request | `toolConfig` forced choice | Claude, Responses | repaired | `carries toolConfig forced choice to Claude and Responses` |
+| Stream | length, content_filter, stop terminals | Gemini | already-present | `streams Chat %s as Gemini %s` |
+| Non-stream | length, content_filter terminals | Gemini | already-present | `tests/translator/v5-conformance-matrix-chat.test.js`: `maps non-stream length to Gemini MAX_TOKENS with text`, `maps non-stream content_filter to Gemini SAFETY` |
+| Non-stream | error finish returns incoherent 502 | Gemini | already-present | `tests/translator/v5-conformance-matrix-chat.test.js`: `returns 502 for non-stream error finish for a Gemini client` |
+| Stream | error terminal as OTHER | Gemini | already-present | `tests/translator/v5-conformance-matrix-chat.test.js`: `emits Gemini stream error as OTHER finishReason` |
+| Usage | stream and JSON thought/candidate accounting | Gemini | already-present | `tests/translator/v5-conformance-gemini-usage.test.js`, `v5-conformance-gemini-stream-usage.test.js` |
+| Request | OpenAI string `tool_choice` to Gemini modes | Gemini | already-present | `tests/translator/v5-conformance-gemini-tool-choice.test.js` |
+| Request | Namespaced tool, strict, malformed schema from Chat | Gemini | already-present | see `v5-conformance-matrix-1089-chat.md` |
+
+Repaired in this change: Gemini-source requests previously ignored `toolConfig` and sent dotted tool names unaliased to Chat, Claude and Responses upstreams.

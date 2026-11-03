@@ -38,7 +38,7 @@ Do not point a browser page at this URL from another origin. Curl, Claude Code, 
 
 ## Choose a control tool
 
-Read-only tools do not write DurinDoor state. Mutating tools do.
+Read-only tools do not write DurinDoor state. Mutating tools do. A caller that authenticates only with a DurinDoor API key needs the key's admin scope (`isAdmin`) for mutating tools; without it the call returns JSON-RPC error code 403. Read tools accept any active key. Dashboard sessions, the CLI token, and keyless loopback callers are not affected.
 
 | Tool | Mode | Input | Returns |
 | --- | --- | --- | --- |

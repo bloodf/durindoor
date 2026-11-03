@@ -16,7 +16,7 @@
     "urlSuffix": "?beta=true",
     "headers": {
       "Anthropic-Version": "2023-06-01",
-      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
+      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
       "Anthropic-Dangerous-Direct-Browser-Access": "true",
       "User-Agent": "claude-cli/2.1.312 (external, sdk-cli)",
       "X-App": "cli",
@@ -42,7 +42,7 @@
   },
   "agy": {
     "baseUrls": [
-      "https://cloudcode-pa.googleapis.com"
+      "https://daily-cloudcode-pa.googleapis.com"
     ],
     "format": "antigravity",
     "headers": {
@@ -137,7 +137,7 @@
   },
   "antigravity": {
     "baseUrls": [
-      "https://cloudcode-pa.googleapis.com"
+      "https://daily-cloudcode-pa.googleapis.com"
     ],
     "format": "antigravity",
     "headers": {
@@ -1272,6 +1272,12 @@
     },
     "format": "openai"
   },
+  "meganova-ai": {
+    "baseUrl": "https://api.meganova.ai/v1/chat/completions",
+    "validateUrl": "https://api.meganova.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "meta-llama": {
     "baseUrl": "https://api.llama.com/compat/v1/chat/completions",
     "validateUrl": "https://api.llama.com/compat/v1/models",
@@ -1423,6 +1429,12 @@
     },
     "format": "openai"
   },
+  "mixlayer": {
+    "baseUrl": "https://models.mixlayer.ai/v1/chat/completions",
+    "validateUrl": "https://models.mixlayer.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "mmf": {
     "baseUrl": "https://api.xiaomimimo.com/api/free-ai/openai/chat",
     "noAuth": true,
@@ -1434,10 +1446,28 @@
     "executor": "muse-spark-web",
     "authType": "cookie"
   },
+  "naga-ac": {
+    "baseUrl": "https://api.naga.ac/v1/chat/completions",
+    "validateUrl": "https://api.naga.ac/v1/models",
+    "format": "openai",
+    "authType": "optional"
+  },
   "nanobanana": {
     "baseUrl": "https://api.nanobananaapi.ai/v1/chat/completions",
     "validateUrl": "https://api.nanobananaapi.ai/v1/models",
     "format": "openai"
+  },
+  "navy": {
+    "baseUrl": "https://api.navy/v1/chat/completions",
+    "validateUrl": "https://api.navy/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "nara": {
+    "baseUrl": "https://router.bynara.id/v1/chat/completions",
+    "validateUrl": "https://router.bynara.id/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "nebius": {
     "baseUrl": "https://api.studio.nebius.ai/v1/chat/completions",
@@ -1462,6 +1492,12 @@
       "dropClientMetadata": true
     },
     "format": "openai"
+  },
+  "ofoxai": {
+    "baseUrl": "https://api.ofox.ai/v1/chat/completions",
+    "validateUrl": "https://api.ofox.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "ollama-local": {
     "baseUrl": "http://localhost:11434",
@@ -1656,6 +1692,36 @@
     },
     "format": "openai"
   },
+  "onomeo": {
+    "baseUrl": "https://onomeo.com/v1/chat/completions",
+    "validateUrl": "https://onomeo.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "openadapter": {
+    "baseUrl": "https://api.openadapter.in/v1/chat/completions",
+    "validateUrl": "https://api.openadapter.in/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "openference-api": {
+    "baseUrl": "https://api.openference.com/v1/chat/completions",
+    "validateUrl": "https://api.openference.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "openvecta": {
+    "baseUrl": "https://api.openvecta.com/v1/chat/completions",
+    "validateUrl": "https://api.openvecta.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "opper": {
+    "baseUrl": "https://api.opper.ai/v3/compat/chat/completions",
+    "validateUrl": "https://api.opper.ai/v3/compat/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "piapi": {
     "baseUrl": "https://api.piapi.ai/v1/chat/completions",
     "validateUrl": "https://api.piapi.ai/v1/models",
@@ -1678,6 +1744,30 @@
     },
     "format": "openai"
   },
+  "publicai": {
+    "baseUrl": "https://api.publicai.co/v1/chat/completions",
+    "validateUrl": "https://api.publicai.co/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "regolo": {
+    "baseUrl": "https://api.regolo.ai/v1/chat/completions",
+    "validateUrl": "https://api.regolo.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "routeway": {
+    "baseUrl": "https://api.routeway.ai/v1/chat/completions",
+    "validateUrl": "https://api.routeway.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "poixe-ai": {
+    "baseUrl": "https://api.poixe.com/v1/chat/completions",
+    "validateUrl": "https://api.poixe.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "sap": {
     "baseUrl": "https://example-aicore.cfapps.eu10.hana.ondemand.com/v2/lm/deployments/example-deployment/chat/completions",
     "validateUrl": "https://example-aicore.cfapps.eu10.hana.ondemand.com/v2/lm/scenarios/foundation-models/models",
@@ -1699,6 +1789,36 @@
       "scheme": "bearer"
     },
     "format": "openai"
+  },
+  "token-kiosk": {
+    "baseUrl": "https://agent-router.gaib.ai/v1/chat/completions",
+    "validateUrl": "https://agent-router.gaib.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "tokenreply": {
+    "baseUrl": "https://api.tokenreply.com/v1/chat/completions",
+    "validateUrl": "https://api.tokenreply.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "uc-direct": {
+    "baseUrl": "https://api.uncensored.com/api/v1/chat/completions",
+    "validateUrl": "https://api.uncensored.com/api/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "unifically": {
+    "baseUrl": "https://api.unifically.com/v1/chat/completions",
+    "validateUrl": "https://api.unifically.com/v1/models?category=llm",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "unorouter": {
+    "baseUrl": "https://api.unorouter.com/v1/chat/completions",
+    "validateUrl": "https://api.unorouter.com/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   },
   "watsonx": {
     "baseUrl": "https://ca-tor.ml.cloud.ibm.com/ml/gateway/v1/chat/completions",
@@ -2254,5 +2374,11 @@
     },
     "clientId": "1031625952748946",
     "tokenUrl": "https://auth.meta.com/oidc/device/token/"
+  },
+  "zylo-api": {
+    "baseUrl": "https://api.zyloai.net/v1/chat/completions",
+    "validateUrl": "https://api.zyloai.net/v1/models",
+    "format": "openai",
+    "authType": "apikey"
   }
 }

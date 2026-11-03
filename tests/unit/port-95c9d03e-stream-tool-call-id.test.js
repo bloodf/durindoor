@@ -41,7 +41,7 @@ describe("ensureStreamToolCallIds", () => {
     const seen = new Set();
     const c = chunk([{ index: 3, function: { name: "read", arguments: "{}" } }]);
     expect(ensureStreamToolCallIds(c, seen)).toBe(true);
-    expect(c.choices[0].delta.tool_calls[0].id).toMatch(/^call_3_/);
+    expect(c.choices[0].delta.tool_calls[0].id).toMatch(/^call_0_3_/);
   });
 
   it("keeps a provider id and leaves continuation fragments without an id", () => {

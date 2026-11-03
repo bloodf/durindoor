@@ -1,6 +1,8 @@
 // Migration registry — append new entries when schema changes.
 // Each migration: { version: number, name: string, up(db): void }
-// Versions MUST be unique and monotonically increasing.
+// Versions MUST be unique. The runner applies every version missing from the
+// recorded `appliedMigrations` set, so a lower version merged later still runs;
+// keep each `up` safe to run after higher versions.
 import m001 from "./001-initial.js";
 import m002 from "./002-mcp-gateway.js";
 import m003 from "./003-mcp-grant-tools.js";
@@ -25,8 +27,10 @@ import m022 from "./022-token-saver-daily.js";
 import m023 from "./023-usage-latency.js";
 import m024 from "./024-usage-history-api-key-index.js";
 import m025 from "./025-proxy-timeline.js";
+import m026 from "./026-usage-unknown-cost.js";
+import m027 from "./027-api-key-admin-scope.js";
 
-export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016, m017, m018, m020, m021, m022, m023, m024, m025].sort(
+export const MIGRATIONS = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010, m011, m012, m013, m014, m015, m016, m017, m018, m020, m021, m022, m023, m024, m025, m026, m027].sort(
   (a, b) => a.version - b.version
 );
 

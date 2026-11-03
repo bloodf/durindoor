@@ -1,5 +1,6 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { getModelMeta } from "../config/providerModels.js";
 import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
@@ -60,6 +61,12 @@ async function resolveProjectId(apiKey) {
  * Auth: SA JSON (stored as apiKey) → JWT assertion → Bearer token (via jose)
  * Token is minted/cached in tokenRefresh.js, not here.
  */
+// US and EU multi-regions require the matching representative host and /locations/<region> path.
+function vertexLocationBase(projectId, location) {
+  const host = location === "eu" || location === "us" ? `aiplatform.${location}.rep.googleapis.com` : "aiplatform.googleapis.com";
+  return `https://${host}/v1/projects/${projectId}/locations/${location}`;
+}
+
 export class VertexExecutor extends BaseExecutor {
   constructor(providerId = "vertex") {
     super(providerId, PROVIDERS[providerId] || {});
@@ -84,6 +91,7 @@ export class VertexExecutor extends BaseExecutor {
 
     // Gemini on Vertex
     const action = stream ? "streamGenerateContent" : "generateContent";
+    const defaultLocation = getModelMeta(this.provider, model)?.defaultLocation || null;
 
     if (usesOAuth) {
       // SA JSON / ADC / pre-set accessToken: must use project-scoped path to avoid RESOURCE_PROJECT_INVALID
@@ -93,17 +101,23 @@ export class VertexExecutor extends BaseExecutor {
           "Add quota_project_id to your ADC JSON or set providerSpecificData.projectId."
         );
       }
-      const location = credentials?.providerSpecificData?.location || "us-central1";
-      // EU multi-region requires matching representative host and /locations/eu path.
-      const host = location === "eu" ? "aiplatform.eu.rep.googleapis.com" : "aiplatform.googleapis.com";
-      let url = `https://${host}/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:${action}`;
+      // Global-only models (registry defaultLocation, e.g. Argon) must not
+      // fall back to a regional location (upstream 9router 29fc880e).
+      const location = credentials?.providerSpecificData?.location || defaultLocation || "us-central1";
+      let url = `${vertexLocationBase(projectId, location)}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
       return url;
     }
 
-    // Raw API key: use global publishers endpoint with ?key= param
+    // Raw API keys stay on the projectless publishers endpoint, except models
+    // that are only served from multi-regions (registry defaultLocation, e.g.
+    // Argon): with an explicit project those honor its location, defaulting to
+    // the model's (upstream 9router 9c141910, narrowed to those models).
     // ?alt=sse is required for proper SSE streaming (matches every other Gemini executor)
-    let url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:${action}`;
+    const keyProjectId = credentials?.providerSpecificData?.projectId;
+    let url = keyProjectId && defaultLocation ?
+    `${vertexLocationBase(keyProjectId, credentials?.providerSpecificData?.location || defaultLocation)}/publishers/google/models/${model}:${action}` :
+    `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:${action}`;
     if (stream) url += "?alt=sse";
     if (rawKey) url += stream ? `&key=${rawKey}` : `?key=${rawKey}`;
     return url;

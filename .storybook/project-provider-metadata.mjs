@@ -16,7 +16,8 @@ async function projectCatalog(projectRoot) {
     "passthroughModels", "passthroughConnectionWideErrors", "hasOAuth", "authModes", "authType",
     "authHint", "features", "media", "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
     "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig", "searchViaChat", "searchConfig",
-    "fetchConfig", "modelsFetcher", "mediaPriority", "hiddenKinds", "models",
+    "fetchConfig", "systemoneConfig", "modelsFetcher", "mediaPriority", "hiddenKinds", "models",
+    "credentialForm", "apiKeyOptionalWith", "authSnippet",
     "thinkingFormat", "capabilities", "quirks", "requestDefaults",
   ]);
   const forbidden = new Set(["headers", "header", "authorization", "cookie", "credentials", "clientId", "clientSecret", "tokenUrl", "apiKey", "authHeader", "proxy", "agent", "userAgent"]);

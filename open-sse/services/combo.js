@@ -1334,7 +1334,10 @@ export async function handleComboChat({
     }}
   let lastError = null;
   let earliestRetryAfter = null;
+  let earliestRetryStatus = null;
+  let earliestRetryError = null;
   let lastStatus = null;
+  let requestScopedResult = null;
 
   // #6733: release the round-robin conversation-affinity pin when the
   // affinity-pinned FIRST member fails. Affinity only exists when the sticky
@@ -1494,14 +1497,16 @@ export async function handleComboChat({
 
         // Ignore JSON parse errors
       }
-      // Track earliest retryAfter across all combo models
-      if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
-        earliestRetryAfter = retryAfter;
-      }
-
       // Normalize error text to string (Worker-safe)
       if (!isString(errorText)) {
         try {errorText = JSON.stringify(errorText);} catch {errorText = String(errorText);}
+      }
+
+      // Track earliest retryAfter across all combo models
+      if (retryAfter && (!earliestRetryAfter || new Date(retryAfter) < new Date(earliestRetryAfter))) {
+        earliestRetryAfter = retryAfter;
+        earliestRetryStatus = result.status;
+        earliestRetryError = errorText || String(result.status);
       }
 
       // A client-side abort that surfaced without a 499 (bare
@@ -1515,7 +1520,7 @@ export async function handleComboChat({
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, cooldownMs } = checkFallbackError(
+      const { shouldFallback, cooldownMs, requestScoped } = checkFallbackError(
         result.status,
         errorText,
         0,
@@ -1523,6 +1528,20 @@ export async function handleComboChat({
         result.headers,
         errorBody
       );
+
+      // A request-scoped 4xx (validation, unsupported parameter, context overflow)
+      // means this member cannot serve THIS request, not that its credential is
+      // unhealthy. Try the next member without cooldown, waiting, or a smart-scoring
+      // penalty (same rule as request-scoped stream refusals above). Upstream
+      // 9router 5cdcddf5 (#5057).
+      if (!shouldFallback && requestScoped) {
+        releaseFailedAffinity(modelStr, i);
+        requestScopedResult ??= result;
+        lastError = errorText || String(result.status);
+        if (!lastStatus) lastStatus = result.status;
+        log.warn("COMBO", `Model ${modelStr} rejected the request (${result.status}), trying next`, { status: result.status });
+        continue;
+      }
 
       if (!shouldFallback) {
         if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
@@ -1552,6 +1571,9 @@ export async function handleComboChat({
       if (!lastStatus) lastStatus = result.status;
       log.warn("COMBO", `Model ${modelStr} failed, trying next`, { status: result.status });
     } catch (error) {
+      // The provider already completed billable work. A ledger failure must not
+      // become another dispatch, a provider-health penalty, or a masked abort.
+      if (error?.code === "USAGE_ACCOUNTING_FAILED") throw error;
       if (signal?.aborted) return abortedResponse();
       if (error?.isComboTimeout) {
         // Deadline miss is not a real failure; skip setting lastError so the final
@@ -1573,6 +1595,21 @@ export async function handleComboChat({
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
+  }
+
+  // A member rejected the request itself: return its own response (status and
+  // body) instead of the synthesized envelope, so the client sees the real cause.
+  // A transient failure with a retry hint wins: another member may serve the
+  // request once it recovers, so the client keeps the Retry-After (#1433).
+  // Only a retry hint still in the future beats the request-scoped rejection.
+  if (requestScopedResult && earliestRetryAfter && new Date(earliestRetryAfter).getTime() > Date.now()) {
+    const retryHuman = formatRetryAfter(earliestRetryAfter);
+    log.warn("COMBO", `No model served the request; returning the retryable failure | ${earliestRetryError} (${retryHuman})`);
+    return unavailableResponse(getClientStatusFromError(earliestRetryStatus, earliestRetryError), earliestRetryError, earliestRetryAfter, retryHuman);
+  }
+  if (requestScopedResult) {
+    log.warn("COMBO", `No model served the request; returning the first request-scoped failure (${requestScopedResult.status})`);
+    return requestScopedResult;
   }
 
   // All models failed

@@ -35,6 +35,8 @@ it("projects deterministic real public catalogs without leaking credentials or s
   expect(projected.PROVIDERS.claude.format).toBe("claude");
   expect(projected.PROVIDERS["xiaomi-tokenplan"].regions).toEqual(registry.find((entry) => entry.id === "xiaomi-tokenplan").transport.regions);
   expect(registry.find((entry) => entry.id === "claude").display.name).toBeTruthy();
+  expect(registry.find((entry) => entry.id === "bedrock").credentialForm).toBe("aws");
+  expect(registry.some((entry) => entry.apiKeyOptionalWith)).toBe(true);
   expect(registry.find((entry) => entry.id === "kimchi").models.map((model) => model.id)).toEqual(models.kimchi.map((model) => model.id));
   const forbidden = new Set(["clientSecret", "clientId", "authorization", "headers", "credentials", "apiKey", "tokenUrl"]);
   const visit = (value) => {

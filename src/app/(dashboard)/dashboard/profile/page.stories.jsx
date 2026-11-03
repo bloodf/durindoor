@@ -63,7 +63,7 @@ export default meta;
 export const Default = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: /Routing/ }));
+    await userEvent.click(await canvas.findByRole("tab", { name: /Routing/ }));
     const toggle = canvas.getByRole("switch", { name: "Round Robin" });
     await waitFor(() => expect(toggle).toBeEnabled());
     await userEvent.click(toggle);
@@ -88,15 +88,15 @@ export const OidcAndProxy = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: /Security/ }));
+    await userEvent.click(await canvas.findByRole("tab", { name: /Security/ }));
     // OIDC-enabled configurations expand this section after settings load.
     const clientId = await canvas.findByLabelText("Client ID");
     await waitFor(() => expect(clientId).toBeEnabled());
     await userEvent.clear(clientId);
     await userEvent.type(clientId, "unsaved-client");
-    await userEvent.click(canvas.getByRole("tab", { name: /Network/ }));
+    await userEvent.click(await canvas.findByRole("tab", { name: /Network/ }));
     await expect(canvas.getByLabelText("Proxy URL")).toBeVisible();
-    await userEvent.click(canvas.getByRole("tab", { name: /Security/ }));
+    await userEvent.click(await canvas.findByRole("tab", { name: /Security/ }));
     await expect(canvas.getByLabelText("Client ID")).toHaveValue("unsaved-client");
   },
 };
@@ -105,7 +105,7 @@ export const ShutdownConfirm = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(document.body);
-    await userEvent.click(canvas.getByRole("tab", { name: /System & Data/ }));
+    await userEvent.click(await canvas.findByRole("tab", { name: /System & Data/ }));
     await userEvent.click(canvas.getByRole("button", { name: "Shutdown" }));
     const dialog = await body.findByRole("dialog", { name: "Close Proxy" });
     await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect.getTiming().iterations)).map((animation) => animation.finished));
@@ -118,7 +118,7 @@ export const DatabaseExportPrompt = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(document.body);
-    await userEvent.click(canvas.getByRole("tab", { name: /System & Data/ }));
+    await userEvent.click(await canvas.findByRole("tab", { name: /System & Data/ }));
     await userEvent.click(canvas.getByRole("button", { name: "Download Backup" }));
     const dialog = await body.findByRole("dialog", { name: "Confirm Password" });
     await Promise.all(dialog.getAnimations({ subtree: true }).filter((animation) => Number.isFinite(animation.effect.getTiming().iterations)).map((animation) => animation.finished));
@@ -130,7 +130,7 @@ export const DatabaseExportPrompt = {
 export const SelectiveTransferPreview = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("tab", { name: /System & Data/ }));
+    await userEvent.click(await canvas.findByRole("tab", { name: /System & Data/ }));
     const body = within(document.body);
     await userEvent.click(canvas.getByRole("button", { name: "Load transfer catalog" }));
     await userEvent.type(await body.findByLabelText("Current password"), "password123");
@@ -140,5 +140,21 @@ export const SelectiveTransferPreview = {
     await userEvent.type(await body.findByLabelText("Current password"), "password123");
     await userEvent.click(await body.findByRole("button", { name: "Continue" }));
     await expect(await canvas.findByText("Export preview")).toBeVisible();
+  },
+};
+
+export const SettingsUnavailable = {
+  parameters: { storyFixture: { routes: { ...baseRoutes, "GET /api/settings": { status: 503, body: { error: "Settings temporarily unavailable" } } } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Settings temporarily unavailable");
+    await expect(canvas.getByRole("button", { name: "Retry settings" })).toBeVisible();
+    await expect(canvas.queryByRole("switch", { name: /Require login/i })).not.toBeInTheDocument();
+  },
+};
+export const SettingsLoading = {
+  parameters: { storyFixture: { routes: { ...baseRoutes, "GET /api/settings": () => new Promise(() => {}) } } },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("status")).toHaveTextContent("Loading settings");
   },
 };

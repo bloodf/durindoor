@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -98,6 +98,7 @@ function kiroMethodLabel(conn) {
   return conn.authType === "api_key" ? "API Key" : "OAuth";
 }
 
+/** Keep account identity visible below the canonical provider label, including OAuth accounts without email. */
 function getConnectionSecondaryLabel(connection) {
   if (connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()) {
     return connection.email.trim();
@@ -107,7 +108,8 @@ function getConnectionSecondaryLabel(connection) {
     return connection.displayName.trim();
   }
 
-  return null;
+  const name = connection.name?.trim();
+  return name && name !== getConnectionLabel(connection) ? name : null;
 }
 
 // Region is stored for builder-id/idc/api_key flows; social and imported flows
@@ -369,10 +371,7 @@ function buildQuotaFilterSearch(searchParams, state) {
 }
 
 function getCurrentSearchParams(searchParams) {
-  if (!isBrowser()) {
-    return new URLSearchParams(searchParams.toString());
-  }
-  return new URLSearchParams(window.location.search);
+  return new URLSearchParams(searchParams.toString());
 }
 
 function readPendingQuotaFilterNavigation() {
@@ -429,6 +428,7 @@ function formatTimeRemaining(value) {
 
 export default function ProviderLimits() {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialFilterStateRef = useRef(null);
   if (!initialFilterStateRef.current) {
@@ -436,6 +436,10 @@ export default function ProviderLimits() {
   }
   const initialFilterState = initialFilterStateRef.current;
   const [connections, setConnections] = useState([]);
+  const [connectionsError, setConnectionsError] = useState("");
+  const [connectionsLoaded, setConnectionsLoaded] = useState(false);
+  const connectionsSnapshot = useRef([]);
+  const connectionsRequest = useRef(0);
   const [quotaData, setQuotaData] = useState({});
   const [loading, setLoading] = useState({});
   const [errors, setErrors] = useState({});
@@ -581,9 +585,10 @@ export default function ProviderLimits() {
       const query = params.toString();
       lastSyncedQueryRef.current = query;
       const targetUrl = query ? `${pathname}?${query}` : pathname;
-      window.history.replaceState(window.history.state, "", targetUrl);
+      // Next navigation also respects the Storybook virtual application boundary.
+      router.replace(targetUrl, { scroll: false });
     },
-    [pathname, searchParams]
+    [pathname, searchParams, router]
   );
 
   const applyQuotaFilterState = useCallback(
@@ -758,6 +763,7 @@ export default function ProviderLimits() {
 
   const fetchConnections = useCallback(
     async (targetPage = page) => {
+      const epoch = ++connectionsRequest.current;
       try {
         const params = new URLSearchParams({
           page: String(targetPage),
@@ -776,7 +782,11 @@ export default function ProviderLimits() {
         if (!response.ok) throw new Error("Failed to fetch connections");
 
         const data = await response.json();
+        if (epoch !== connectionsRequest.current) return connectionsSnapshot.current;
         const connectionList = data.connections || [];
+        connectionsSnapshot.current = connectionList;
+        setConnectionsError("");
+        setConnectionsLoaded(true);
         const nextPagination = getSafePagination(data.pagination, pageSize);
         const nextTotals = getSafeTotals(data.totals, connectionList.length);
 
@@ -787,12 +797,9 @@ export default function ProviderLimits() {
         setPage(getPaginationPageValue(data.pagination, targetPage));
         return connectionList;
       } catch (error) {
-        console.error("Error fetching connections:", error);
-        setConnections([]);
-        setProviderOptions([]);
-        setPagination({ page: 1, pageSize, total: 0, totalPages: 1 });
-        setTotals({ eligibleConnections: 0, providerFilteredConnections: 0 });
-        return [];
+        if (epoch === connectionsRequest.current) setConnectionsError(error.message || "Connection list unavailable");
+        // A failed refresh is not a successful empty list.
+        return connectionsSnapshot.current;
       }
     },
     [accountFilter, page, pageSize, providerFilter]
@@ -1114,9 +1121,11 @@ export default function ProviderLimits() {
   useEffect(() => {
     if (!hasHydratedSavedState) return;
 
+    let active = true;
     const initializeData = async () => {
       setConnectionsLoading(true);
       const visibleConnections = await fetchConnections(page);
+      if (!active) return;
       setConnectionsLoading(false);
 
       // Always fetch fresh quota on mount, no cache display
@@ -1135,6 +1144,7 @@ export default function ProviderLimits() {
     };
 
     initializeData();
+    return () => { active = false; connectionsRequest.current++; };
   }, [fetchConnections, fetchQuota, hasHydratedSavedState, page]);
 
   useEffect(() => {
@@ -1445,8 +1455,9 @@ export default function ProviderLimits() {
         </div>
       {expiringFirst ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">Expiring-first currently reorders accounts inside current page. Cross-page ordering still follows backend pagination.</div> : null}
 
+      {connectionsError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger p-3 text-sm text-dd-danger"><p>Provider connections could not be loaded. {connectionsError}{connections.length ? " Last received accounts remain visible and may be stale." : " Retry to load your connections."}</p><Button icon="refresh" variant="secondary" disabled={refreshingAll} onClick={refreshAll}>Retry connections</Button></div> : null}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy={connectionsLoading || undefined}>
-        {connectionsLoading ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? providerGroups.map((group) => {
+        {connectionsLoading && !connections.length ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? providerGroups.map((group) => {
           const isGrouped = group.connections.length > 1;
           const isMerged = isGrouped && mergedProviders[group.provider] === true;
           const isCodexGroup = group.provider === "codex";
@@ -1469,7 +1480,7 @@ export default function ProviderLimits() {
             const testStatusTone = isInactive ? "neutral" : conn.testStatus === "active" || conn.testStatus === "success" ? "success" : conn.testStatus === "error" || conn.testStatus === "expired" || conn.testStatus === "unavailable" ? "danger" : "neutral";
             const secondaryLabel = getConnectionSecondaryLabel(conn);
 
-            return <section key={conn.id} aria-label={getConnectionLabel(conn) || conn.id} className={[sectionIndex > 0 ? "border-t border-dd-border-subtle" : "", isInactive ? "opacity-60" : "", "flex flex-col gap-3 p-3"].filter(Boolean).join(" ")}>
+            return <section key={conn.id} aria-label={secondaryLabel ? `${getConnectionLabel(conn)} · ${secondaryLabel}` : getConnectionLabel(conn) || conn.id} className={[sectionIndex > 0 ? "border-t border-dd-border-subtle" : "", isInactive ? "opacity-60" : "", "flex flex-col gap-3 p-3"].filter(Boolean).join(" ")}>
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="flex min-w-0 flex-1 basis-full flex-col gap-0.5 sm:basis-0">
                   <span className="truncate text-[13px] font-medium text-dd-text">{getConnectionLabel(conn)}</span>
@@ -1530,9 +1541,9 @@ export default function ProviderLimits() {
               </div> : group.connections.map((conn, sectionIndex) => renderAccountSection(conn, sectionIndex))}
             </div>
           </Card>;
-        }) : <div className="md:col-span-2"><Card><EmptyState icon={emptyState.icon} title={emptyState.title} message={emptyState.description} /></Card></div>}
+        }) : connectionsError ? null : <div className="md:col-span-2"><Card><EmptyState icon={emptyState.icon} title={emptyState.title} message={emptyState.description} /></Card></div>}
       </div>
-      <Card padding={false}>
+      {connectionsLoaded ? <Card padding={false}>
         <CardContent className="flex flex-wrap items-center gap-3 p-3">
           <span className="text-xs text-dd-muted">{connectionsPageSummary}</span>
           <div className="ms-auto flex flex-wrap items-center gap-2">
@@ -1567,7 +1578,7 @@ export default function ProviderLimits() {
             onPage={updatePage}
           />
         </CardContent>
-      </Card>
+      </Card> : null}
 
       <ConfirmDialog open={Boolean(resetConfirmState)} onCancel={() => { if (!resettingLimitId) setResetConfirmState(null); }} onConfirm={async () => { const connection = resetConfirmState?.connection; if (!connection) return; await handleResetLimit(connection.id, connection.provider, resetConfirmState?.grantId); setResetConfirmState(null); }} title={resetConfirmState?.connection?.provider === "claude" ? "Reset Claude limits?" : "Reset Codex limit?"} message={resetConfirmState?.connection?.provider === "claude" ? `Refills your ${formatClaudeResetClears(quotaData[resetConfirmState.connection.id]?.raw?.resetCredits?.clears)} now for ${getConnectionLabel(resetConfirmState.connection) || "this account"} · your weekly reset day stays ${formatCreditDate(quotaData[resetConfirmState.connection.id]?.raw?.resetCredits?.weeklyResetsAt)}. This cannot be undone. Resets left: ${resetConfirmState.resetCreditCount ?? 0}.` : `Use 1 Codex reset credit for ${getConnectionLabel(resetConfirmState?.connection || {}) || "this account"}. This cannot be undone. Remaining credits: ${resetConfirmState?.resetCreditCount ?? 0}.`} confirmLabel="Reset limit" cancelLabel="Cancel" tone="danger" pending={Boolean(resettingLimitId)} />
       <ConfirmDialog open={Boolean(deleteConfirmState)} onCancel={() => { if (!deletingId) setDeleteConfirmState(null); }} onConfirm={async () => { const connection = deleteConfirmState; if (!connection) return; await handleDeleteConnection(connection.id); setDeleteConfirmState(null); }} title="Delete connection?" message={`Delete ${getConnectionLabel(deleteConfirmState || {}) || "this connection"}? This cannot be undone.`} confirmLabel="Delete connection" cancelLabel="Cancel" tone="danger" pending={Boolean(deletingId)} />

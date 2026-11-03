@@ -9,7 +9,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getModelUpstreamThinkingIntent, resolveRequestedModelTier, applyProviderThinkingOverride, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
@@ -156,8 +156,11 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const needsNativeServerTools = Array.isArray(body?.tools) && body.tools.some((tool) =>
     isString(tool?.type) && tool.type !== "function" && tool.type !== "custom" && tool.type !== "tool");
   const nativeMiniMax = provider === "minimax" || provider === "minimax-cn";
+  // Kimi Code's /responses serves Responses clients only; typed server tools from
+  // Chat/Claude clients must stay on their native transport (#1368).
+  const responsesClientsOnly = provider === "kimi-coding-apikey";
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
-    (needsNativeServerTools || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
+    (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model);
@@ -298,6 +301,7 @@ async function cancelResponseBody(response) {
  * @param {object} options.body - Request body
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} options.credentials - Provider credentials
+ * @param {string|null} options.billingEpoch - Original admission epoch; never refresh during retries or completion.
  * @param {object} [options.log] - Unified logger (src/sse/utils/logger.js).
  *   Expected: `tagForSession(seed)`/`nextTag()` to allocate the session tag,
  *   `fmtThink(intent)` for the thinking label, `line(tag, symbol, message)`
@@ -305,7 +309,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, compressionFidelityGate = false, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -442,7 +446,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
-  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
+  body = applyProviderThinkingOverride(body, providerThinking);
+  // Suffix intent, then body effort/budget (including the provider-level
+  // override injected above), select `<model>-<tier>` catalog rows (upstream
+  // 9router 82aeb907). A catalog preset such as `(high)` applies only when
+  // nothing named a tier and neither the client nor the provider setting
+  // controls thinking (`thinking` present, or mode none/off).
+  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body);
+  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
+  const thinkingControlled = requestedModelTier || body.thinking ||
+  providerThinking?.mode === "none" || providerThinking?.mode === "off";
+  const thinkingIntent = modelThinkingIntent ||
+  (thinkingControlled ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({
     provider,
     model: cleanModel,
@@ -451,7 +466,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     endpoint: clientRawRequest?.endpoint,
     client_format: sourceFormat,
     provider_format: targetFormat,
-  });
+  }, { requestId: clientRawRequest?.requestId });
   const finishTimeline = (status, type, summary) => {
     if (!timelineTraceId) return;
     try {
@@ -477,25 +492,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     return lifecycleError;
   }
   requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
-  // Inject provider-level thinking config override (only if client hasn't set)
-  // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
-  if (providerThinking?.mode && providerThinking.mode !== "auto") {
-    const mode = providerThinking.mode;
-    if (mode === "none") {
-      // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
-      // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
-      delete body.thinking;
-      delete body.reasoning_effort;
-      delete body.reasoning;
-    } else if (mode === "on" && !body.thinking) {
-      console.log("Injecting provider-level thinking config override: on");
-      body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-    } else if (mode === "off" && !body.thinking) {
-      body = { ...body, thinking: { type: "disabled" } };
-    } else if (!body.reasoning_effort) {
-      body = { ...body, reasoning_effort: mode };
-    }
-  }
 
   const isCompactRequest = requestContext?.compact === true;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
@@ -628,7 +624,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent, modelCapabilities);
+    applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     /**
@@ -667,7 +663,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         stripList,
         connectionId,
         clientTool,
-        { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
+        { thinkingIntent, capabilityModel: cleanModel, modelCapabilities }
       );
     } catch (error) {
       // Translators flag a malformed client payload with statusCode 400; anything else is ours.
@@ -844,6 +840,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         enabled: true,
         engines: compressionEngines ?? {},
         applyOpts: COMPRESSION_ADAPTIVE_CONFIG,
+        fidelityGate: { textInvariants: compressionFidelityGate === true },
         adaptive: {
           ...COMPRESSION_ADAPTIVE_CONFIG,
           estimatedTokens: estimateTokens(translatedBody),
@@ -1651,6 +1648,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     comboId,
     comboName,
     apiKey,
+    billingEpoch,
     clientRawRequest,
     traceId: timelineTraceId,
     onRequestSuccess: async (context = {}) => {
@@ -1744,7 +1742,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     try {
-      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, trackDone, appendLog, signal: providerSignal, credentials });
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);

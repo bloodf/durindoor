@@ -53,18 +53,18 @@ describe("direct Claude protocol parity", () => {
 
   it("keeps selectAnthropicBeta on the pre-PR third-party string without first-party-gated flags", () => {
     expect(CLAUDE_THIRD_PARTY_ANTHROPIC_BETA).toBe(
-      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
+      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01",
     );
     const sonnet = selectAnthropicBeta("claude-sonnet-5-5");
     expect(sonnet).toBe(
-      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01,effort-2025-11-24",
+      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01,effort-2025-11-24",
     );
     expect(sonnet).not.toContain("thinking-binding-controls-2026-08-01");
     expect(sonnet).not.toContain("cache-diagnosis-2026-04-07");
     // Non-opus/sonnet models omit the heavy-agent effort flag.
     const haiku = selectAnthropicBeta("claude-haiku-4-5");
     expect(haiku).toBe(
-      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01",
+      "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,mid-conversation-system-2026-04-07,fallback-credit-2026-06-01",
     );
     expect(haiku).not.toContain("effort-2025-11-24");
   });

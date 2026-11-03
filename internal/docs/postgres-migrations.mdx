@@ -42,6 +42,8 @@ Both engines reach version 25 (`025-proxy-timeline.js`). Shared versions must us
 - PG 018 is the same name (no-op; tables already come from 001).
 - PG 019 creates `pgCutoverLog`. The generator always emits that file.
 
+Both runners apply every registered version that is not in the `_meta` key `appliedMigrations` (a JSON array), in version order. `schemaVersion` stays the highest applied version so older binaries keep working. A database without `appliedMigrations` treats every registered version up to `schemaVersion` as applied and records the set on its next boot. A lower version that lands after a higher one therefore still runs, so each `up` must tolerate running after later versions. The SQLite-to-PG mirror skips both runner keys.
+
 The checker compares `{version,name}` for every SQLite entry and permits reserved PG-only versions. PG 019 remains reserved for the cutover log; do not reuse it or renumber an applied migration. Shared migrations 020-024 re-export dialect-aware implementations for token-saver and usage schema changes. Migration 025 shares its identity but emits PostgreSQL timeline DDL through the generator.
 
 ## Add a migration

@@ -81,6 +81,7 @@ A static import list is required because Next/webpack cannot analyze a dynamic `
 - `passthroughModels` forwards the client model id untouched.
 - `oauth.refreshLeadMs` feeds on-request refresh lead time. See [Architecture](./architecture.mdx).
 - `transport.thinkingFormat` overrides the wire shape `applyThinking` picks for every model behind this provider, ahead of a model's own capability-derived format. Set it to `"openai"` on a strict OpenAI-compatible reseller (Alicode, Baidu, Mistral) that re-hosts third-party reasoning models and rejects their native `thinking`/`enable_thinking`/`thinking_budget` fields.
+- `modelsFetcher` discovery (`fetchRegistryFetcherModels`) builds its request headers with `buildProviderProbeHeaders`, the same helper the connection test uses, so `transport.auth` (for example `X-API-Key`) and pinned `transport.headers` (for example `User-Agent`) apply to model discovery as well.
 - Provider logos are a separate policy: [Provider brand assets](./provider-brand-assets.mdx).
 
 ## Revision-bound OmniRoute identity audit

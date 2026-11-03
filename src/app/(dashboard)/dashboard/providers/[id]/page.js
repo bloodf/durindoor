@@ -29,6 +29,8 @@ import AddApiKeyModal from "./AddApiKeyModal";
 import { apiKeyConnectionNames } from "./apiKeyConnectionName";
 import EditCompatibleNodeModal from "./EditCompatibleNodeModal";
 import ProviderErrorRulesModal from "./ProviderErrorRulesModal";
+import AutoPingScheduleModal from "./AutoPingScheduleModal";
+import { getScheduleSlotLabels } from "@/shared/services/quotaPingSchedule";
 import { updateCompatibleProviderNode } from "./updateCompatibleProviderNode";
 import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
@@ -151,7 +153,8 @@ export default function ProviderDetailPage() {
   const [egressBucketed, setEgressBucketed] = useState(false);
   const [errorRules, setErrorRules] = useState([]);
   const [showErrorRulesModal, setShowErrorRulesModal] = useState(false);
-  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {}, schedules: {} });
+  const [scheduleConnection, setScheduleConnection] = useState(null);
   const [autoPingQueue] = useState(() => createLatestIntentQueue({
     write: async (_key, enabled, { connectionId }) => {
       const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
@@ -511,7 +514,7 @@ export default function ProviderDetailPage() {
       autoPingQueue.hydrate(
         Object.entries(apCfg.connections || {}).map(([id, enabled]) => [`${providerId}:${id}`, enabled])
       );
-      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
+      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {}, schedules: apCfg.schedules || {} });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
 
@@ -748,6 +751,19 @@ export default function ProviderDetailPage() {
   const handleAutoPingConnection = (connectionId, on) => {
     if (!AUTO_PING_SETTINGS_KEYS[providerId]) return;
     autoPingQueue.enqueue(`${providerId}:${connectionId}`, on, { connectionId });
+  };
+
+  // Schedule-only write: omits `enabled` so the reactive toggle queue keeps
+  // sole ownership of that flag.
+  const handleSaveAutoPingSchedule = async (connectionId, schedule) => {
+    const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schedule })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Auto-ping schedule update failed (${response.status})`);
+    setAutoPing((current) => ({ ...current, schedules: { ...current.schedules, [connectionId]: data.schedule || undefined } }));
   };
 
   useEffect(() => {
@@ -1389,6 +1405,9 @@ export default function ProviderDetailPage() {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                   provider: providerId,
+                  scheduleOn: autoPing.schedules?.[conn.id]?.enabled === true,
+                  scheduleSummary: getScheduleSlotLabels(autoPing.schedules?.[conn.id]).join(" / "),
+                  onOpenSchedule: () => setScheduleConnection(conn),
                 } : null}
                 onUpdateProxy={async (proxyPoolId) => {
                   try {
@@ -2421,6 +2440,14 @@ export default function ProviderDetailPage() {
         onClose={() => setShowEditNodeModal(false)}
         isAnthropic={isAnthropicCompatible} />
 
+      }
+      {scheduleConnection &&
+      <AutoPingScheduleModal
+        isOpen
+        connection={scheduleConnection}
+        schedule={autoPing.schedules?.[scheduleConnection.id] || null}
+        onSave={(schedule) => handleSaveAutoPingSchedule(scheduleConnection.id, schedule)}
+        onClose={() => setScheduleConnection(null)} />
       }
       <ProviderErrorRulesModal
         isOpen={showErrorRulesModal}

@@ -524,8 +524,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.
     flatMap((tool) => {
-      // Already in Chat Completions format: { type: "function", function: { name, ... } }
-      if (tool.function) return tool;
+      // Already in Chat Completions format: { type: "function", function: { name, ... } }.
+      // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.
+      if (tool.function) {
+        if (tool.function.parameters === undefined) return tool;
+        return { ...tool, function: { ...tool.function, parameters: normalizeToolSchema(tool.function.parameters, tool.function.name) } };
+      }
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
       // Dotted names stay dotted here: translateRequest aliases the OpenAI intermediate
@@ -539,7 +543,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           function: {
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(subtool.parameters),
+            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name)),
             strict: subtool.strict
           }
         }));
@@ -566,6 +570,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Responses API function tool: { type: "function", name, description, parameters }
       // Only convert when a non-empty name is present; skip hosted tools without one.
+      // Responses clients get the same schema validation/coercion as Chat clients (#1334).
       const name = tool.name;
       if (!name || !isString(name) || name.trim() === "") return null;
       return {
@@ -573,7 +578,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         function: {
           name,
           description: String(tool.description || ""),
-          parameters: normalizeToolParameters(tool.parameters),
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name)),
           strict: tool.strict
         }
       };
@@ -636,6 +641,23 @@ function extractInstructionsText(content) {
     }).filter(Boolean).join("\n");
   }
   return "";
+}
+
+/**
+ * Lower one Chat content part to a Responses content part. Chat `image_url`
+ * `{url, detail}` becomes `input_image` with a string URL; unknown types
+ * (tool_use, tool_result, thinking, ...) are serialized as text.
+ */
+function chatPartToResponses(c, contentType) {
+  if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
+  if (c.type === OPENAI_BLOCK.IMAGE_URL) {
+    const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
+    // No usable URL: fall through to the text serialization below.
+    if (isString(url) && url) return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
+  }
+  if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
+  const text = c.text || c.content || JSON.stringify(c);
+  return { type: contentType, text: isString(text) ? text : JSON.stringify(text) };
 }
 
 /**
@@ -762,20 +784,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       const content = isString(msg.content) ?
       [{ type: contentType, text: msg.content }] :
       Array.isArray(msg.content) ?
-      msg.content.map((c) => {
-        if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
-        // Convert Chat Completions image_url → Responses API input_image
-        // Responses API expects: { type: "input_image", image_url: "<url string>" }
-        // Chat Completions sends: { type: "image_url", image_url: { url: "...", detail: "..." } }
-        if (c.type === OPENAI_BLOCK.IMAGE_URL) {
-          const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
-          return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
-        }
-        if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
-        // Serialize any unknown type (tool_use, tool_result, thinking, etc.) as text
-        const text = c.text || c.content || JSON.stringify(c);
-        return { type: contentType, text: isString(text) ? text : JSON.stringify(text) };
-      }) :
+      msg.content.map((c) => chatPartToResponses(c, contentType)) :
       [];
 
       // Only push a message block if content is non-empty.
@@ -820,11 +829,19 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     // Convert tool results - output must be a string for Responses API
     if (msg.role === ROLE.TOOL) {
       // Responses has no tool-error flag; retain failure meaning in its output text.
+      const errorPrefix = msg.is_error === true ? "[Tool error]\n" : "";
+      // Image parts stay media: Responses accepts an input_text/input_image array (#1332).
+      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE);
+      const output = hasImage ?
+      [
+      ...(errorPrefix ? [{ type: RESPONSES_ITEM.INPUT_TEXT, text: errorPrefix }] : []),
+      ...msg.content.map((c) => chatPartToResponses(c, RESPONSES_ITEM.INPUT_TEXT))] :
+      `${errorPrefix}${coerceResponsesOutput(msg.content)}`;
       const callId = clampResponsesCallId(msg.tool_call_id);
       result.input.push({
         type: customCallIds.has(callId) ? RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT : RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
         call_id: callId,
-        output: `${msg.is_error === true ? "[Tool error]\n" : ""}${coerceResponsesOutput(msg.content)}`
+        output
       });
     }
   }

@@ -77,3 +77,66 @@ describe("caveman engine", () => {
     expect(cavemanEngine.validateConfig({ enabled: "yes" }).valid).toBe(false);
   });
 });
+
+describe("caveman leaves unfenced diffs intact (#1468)", () => {
+  const DIFF = [
+    "diff --git a/src/app.js b/src/app.js",
+    "index 1a2b3c4..5d6e7f8 100644",
+    "--- a/src/app.js",
+    "+++ b/src/app.js",
+    "@@ -10,7 +10,8 @@ export function start() {",
+    "   const port = process.env.PORT || 20128;",
+    "-  listen(port);",
+    "+  listen(port, host);",
+    "   return port;",
+    " }",
+    "@@ -40,2 +41,2 @@",
+    "-  the old line",
+    "+  the new line",
+    "\\ No newline at end of file",
+  ].join("\n");
+
+  it("keeps every diff line byte-identical while compressing the prose around it", () => {
+    const content = `${TRIGGER}\n\n${DIFF}\n\nPlease kindly explain whether this is basically safe.`;
+    const result = cavemanCompress(
+      { model: "gpt-4", messages: [{ role: "user", content }] },
+      { enabled: true, intensity: "full" }
+    );
+    const out = result.body.messages[0].content;
+    expect(out).toContain(DIFF);
+    expect(out).not.toContain("Please kindly make sure");
+  });
+
+  it("keeps a bare hunk without file headers", () => {
+    const hunk = DIFF.split("\n").slice(4).join("\n");
+    const result = cavemanCompress(
+      { model: "gpt-4", messages: [{ role: "user", content: `${TRIGGER}\n${hunk}` }] },
+      { enabled: true, intensity: "ultra" }
+    );
+    expect(result.body.messages[0].content).toContain(hunk);
+  });
+});
+
+describe("unified diff hunks are bounded by their header counts (#1468 review)", () => {
+  it("keeps a blank context line inside the hunk", async () => {
+    const { extractPreservedBlocks } = await import("../../../open-sse/services/compression/preservation.js");
+    const hunk = "@@ -1,4 +1,4 @@\n context\n\n-const a = 1;\n+const a = 2;";
+    const { blocks } = extractPreservedBlocks(`Look:\n${hunk}\nThanks`);
+    expect(blocks.filter((b) => b.kind === "diff_block").map((b) => b.content)).toEqual([hunk]);
+  });
+
+  it("does not swallow prose bullets after a complete hunk", async () => {
+    const { extractPreservedBlocks } = await import("../../../open-sse/services/compression/preservation.js");
+    const hunk = "@@ -1,2 +1,2 @@\n keep\n-old\n+new";
+    const { blocks, text } = extractPreservedBlocks(`${hunk}\n- please kindly review this bullet\n- and this one`);
+    expect(blocks.find((b) => b.kind === "diff_block").content).toBe(hunk);
+    expect(text).toContain("- please kindly review this bullet");
+  });
+
+  it("keeps consecutive hunks and the no-newline marker in one block", async () => {
+    const { extractPreservedBlocks } = await import("../../../open-sse/services/compression/preservation.js");
+    const diff = "@@ -1 +1 @@\n-a\n+b\n\\ No newline at end of file\n@@ -9,0 +10,1 @@\n+tail";
+    const { blocks } = extractPreservedBlocks(`${diff}\nafter`);
+    expect(blocks.find((b) => b.kind === "diff_block").content).toBe(diff);
+  });
+});

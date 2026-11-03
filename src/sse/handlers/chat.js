@@ -42,6 +42,7 @@ import {
 import { getComboRoutingPolicy, mergeComboRouting } from "open-sse/services/comboRoutingPolicy.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "open-sse/utils/tokenSaverBridge.js";
+import { notifyWebhookEvent } from "@/lib/webhooks/index.js";
 import { resolveTokenSaverEnabled } from "open-sse/rtk/index.js";
 import { HTTP_STATUS, COMBO_MODEL_TIMEOUT_MS, STREAM_EARLY_EOF_PEEK_MS } from "open-sse/config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
@@ -55,7 +56,7 @@ import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentia
 import { allocateProviderAttemptTimestamp } from "@/shared/services/providerRateLimitEvidence";
 import {
   getModelQuotaFamily,
-  getModelUpstreamId,
+  getDispatchUpstreamModelId,
   PROVIDER_ID_TO_ALIAS } from
 "open-sse/config/providerModels.js";
 import { resolveProviderId } from "@/shared/constants/providers.js";
@@ -220,7 +221,8 @@ now = Date.now(),
 comboName = null,
 comboStrategy = "fallback",
 dependencies = {},
-comboRouting = null)
+comboRouting = null,
+body = null)
 {
   try {
     const resolveModelInfo = dependencies.getModelInfo || resolveQuotaModelInfo;
@@ -239,7 +241,8 @@ comboRouting = null)
         continue;
       }
       const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
-      const upstreamModel = getModelUpstreamId(providerAlias, model);
+      // Key quota by the tier row chatCore will actually dispatch.
+      const upstreamModel = getDispatchUpstreamModelId(providerAlias, model, body, settings?.providerThinking?.[provider]);
       const quotaFamily = getModelQuotaFamily(providerAlias, model);
       const allConnections = await loadConnections({ provider, isActive: true });
       const connections = comboRouting?.restrictionApplied === true ?
@@ -438,6 +441,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     log.warn("AUTH", "Invalid API key");
     return authErrorResponse(clientRawRequest.endpoint, "Invalid API key");
   }
+  // Keep admission identity across retries, nested combos, and fusion callbacks.
+  // An import during upstream work must not turn old usage into new-generation usage.
+  const billingEpoch = apiKeyAuth.billingEpoch;
 
   // Retain the authenticated record so local commands can expose only this
   // key's own lifetime totals. Combo ACL runs after Claude model decoding.
@@ -596,7 +602,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, comboRouting }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting }
           );
         },
         log,
@@ -632,7 +638,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, comboRouting }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting }
         );
       },
       log,
@@ -650,7 +656,8 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         comboName,
         comboStrategy,
         {},
-        comboRouting
+        comboRouting,
+        body
       ),
       jevClassify: true,
       decisionBackend: resolveDecisionBackend,
@@ -677,6 +684,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         allowVisionBridge: true,
         apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"),
         apiKeyId: apiKeyAuth.apiKeyId,
+        billingEpoch,
       }),
     { signal: request?.signal || undefined, source: "single-model" }
   );
@@ -758,7 +766,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, comboRouting = null } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -808,7 +816,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, comboRouting: mergedRouting }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting }
             );
           },
           log,
@@ -843,7 +851,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, comboRouting: mergedRouting }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting }
           );
         },
         log,
@@ -861,7 +869,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           comboName,
           comboStrategy,
           {},
-          mergedRouting
+          mergedRouting,
+          body
         ),
         jevClassify: true,
         decisionBackend: resolveDecisionBackend,
@@ -933,7 +942,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             attemptSignal,
             tokenSaverCollector,
-            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName, apiKeyId }
+            { settings, allowVisionBridge: false, preResolvedCapabilities: visionTargetCaps, apiKeyName, apiKeyId, billingEpoch }
           );
         }
         // Invalid reroute target: fall through to original model.
@@ -1024,7 +1033,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // sibling pool still returns exactly what the client would have received.
   let earlyEofOriginal = null;
   const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
-  const upstreamModel = getModelUpstreamId(providerAlias, model);
+  // Quota/cooldown keys follow the tier row chatCore will dispatch (client
+  // effort/budget and the provider-level thinking override pick `-<tier>` rows).
+  const quotaSettings = settings || await getSettings();
+  const upstreamModel = getDispatchUpstreamModelId(providerAlias, model, body, quotaSettings?.providerThinking?.[provider]);
   const quotaFamily = getModelQuotaFamily(providerAlias, model);
   const modelCandidates = [...new Set([model, upstreamModel].filter(Boolean))];
   const quotaResourceKeys = buildQuotaResourceKeys({ provider, modelCandidates, quotaFamily });
@@ -1086,6 +1098,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           lastError || credentials.lastError || "Unavailable";
           const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
           log.warn("CHAT", `[${provider}/${model}] all accounts unavailable`);
+          notifyWebhookEvent("provider.unavailable", { provider, model, status }, { throttleKey: `${provider}/${model}` });
           return unavailableResponse(getClientStatusFromError(status, errorMsg), `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
         }
         if (excludeConnectionIds.size === 0) {
@@ -1116,6 +1129,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           continue;
         }
         log.warn("CHAT", "No more accounts available", { provider });
+        notifyWebhookEvent("provider.unavailable", { provider, model, status: lastStatus || null }, { throttleKey: `${provider}/${model}` });
         const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
         if (attemptedRateLimit) {
           return unavailableResponse(429, `[${provider}/${model}] ${lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
@@ -1218,6 +1232,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         userAgent,
         apiKey,
         apiKeyName,
+        billingEpoch,
         abortSignal: requestSignal,
         // #747: outer-combo attribution; nested merge narrowed eligibility
         // (comboRouting.allowedConnectionIds) without changing attribution.
@@ -1262,6 +1277,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         "off",
         compressionEnabled: !!chatSettings.compressionEnabled,
         compressionEngines: chatSettings.compressionEngines || {},
+        compressionFidelityGate: chatSettings.compressionFidelityGate === true,
         // Detect source format by endpoint + body
         sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
         // A durable credential (OrcaRouter) has nothing to refresh: injecting the

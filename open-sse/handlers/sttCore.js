@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { transcribeCodex } from "./codexStt.js";
+import { deepgramToVerboseJson, parseDeepgramOptions } from "./deepgramStt.js";
 import { resolveLocalWhisperHost } from "../config/providers.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -49,6 +50,9 @@ async function upstreamError(res, secrets = []) {
 
 // Deepgram: raw binary POST + model query param
 async function transcribeDeepgram(cfg, file, model, token, formData) {
+  const options = parseDeepgramOptions(formData);
+  // A rejected option is the client's fault, so it must not cool the account down.
+  if (options.error) return { ...createErrorResult(HTTP_STATUS.BAD_REQUEST, options.error), local: true };
   const url = new URL(cfg.baseUrl);
   url.searchParams.set("model", model);
   url.searchParams.set("smart_format", "true");
@@ -56,6 +60,7 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
   const lang = formData.get("language");
   if (isString(lang) && lang.trim()) url.searchParams.set("language", lang.trim());else
   url.searchParams.set("detect_language", "true");
+  for (const [key, value] of Object.entries(options.query)) url.searchParams.set(key, value);
 
   const buf = await file.arrayBuffer();
   const res = await fetch(url, {
@@ -66,7 +71,12 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-  return jsonResponse({ text }, data, data.metadata?.duration);
+  const duration = data.metadata?.duration;
+  if (options.responseFormat === "text") return textResponse(text, data, duration);
+  if (options.responseFormat === "verbose_json") {
+    return jsonResponse(deepgramToVerboseJson(data, text, options, isString(lang) ? lang.trim() : ""), data, duration);
+  }
+  return jsonResponse({ text }, data, duration);
 }
 
 /** Sends AssemblyAI language_code when supplied, otherwise enabling detection (upstream #3058). */
@@ -267,6 +277,17 @@ function jsonResponse(obj, data = obj, duration) {
     response: new Response(JSON.stringify(obj), {
       status: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+    })
+  };
+}
+
+function textResponse(text, data, duration) {
+  return {
+    success: true,
+    ...transcriptionUsage(data, duration),
+    response: new Response(text, {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" }
     })
   };
 }

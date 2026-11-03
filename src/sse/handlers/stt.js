@@ -165,9 +165,9 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
     }
     if (isCodex) {
       if (request.signal?.aborted) return errorResponse(HTTP_STATUS.GATEWAY_TIMEOUT, "Transcription cancelled");
-      // Bad audio, unsupported options, a missing ffmpeg and local capacity are not account faults.
-      if (result.local) return result.response || errorResponse(result.status, result.error);
     }
+    // Bad audio, unsupported options, a missing ffmpeg and local capacity are not account faults.
+    if (result.local) return result.response || errorResponse(result.status, result.error);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key

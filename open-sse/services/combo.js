@@ -344,34 +344,93 @@ function trailingUserItems(arr) {
   return arr.slice(i + 1);
 }
 
+function addMimeCapabilities(mime, required) {
+  if (!isString(mime)) return;
+  if (mime.startsWith("image/")) required.add("vision");
+  if (mime.startsWith("audio/")) required.add("audioInput");
+  if (mime.startsWith("video/")) required.add("videoInput");
+  if (mime === "application/pdf") required.add("pdf");
+}
+
+function addBlockCapabilities(b, required) {
+  if (!b || !isObject(b)) return;
+  const t = b.type;
+  if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
+  if (t === "input_audio" || t === "audio_url") required.add("audioInput");
+  if (t === "video_url" || t === "video" || t === "input_video") required.add("videoInput");
+  if (t === "file" || t === "document" || t === "input_file") required.add("pdf");
+  // gemini parts: inlineData/fileData carry a mime
+  addMimeCapabilities(b.inlineData?.mimeType || b.fileData?.mimeType, required);
+}
+
+const FILE_BLOCK_TYPES = new Set(["file", "document", "input_file"]);
+const PDF_BASE64_PREFIX = "JVBERi0"; // base64 of "%PDF-"
+
+// A tool-output file needs pdf support only when it is actually a PDF: declared
+// application/pdf, a .pdf name/URL, or base64 bytes that start with %PDF-.
+// Text documents and CSVs are forwarded as-is.
+function isPdfFileBlock(b) {
+  const src = isObject(b.source) ? b.source : null;
+  const file = isObject(b.file) ? b.file : b;
+  if (src?.media_type === "application/pdf") return true;
+  const data = [src?.type === "base64" ? src.data : null, file.file_data].find(isString);
+  if (data) {
+    const mime = data.match(/^data:([^;,:]{1,255})/)?.[1];
+    if (mime) return mime === "application/pdf";
+    if (data.startsWith(PDF_BASE64_PREFIX)) return true;
+  }
+  const name = [file.filename, file.file_url, src?.type === "url" ? src.url : null].find(isString);
+  return Boolean(name && /\.pdf(?:$|[?#])/i.test(name));
+}
+
+/**
+ * Media modalities carried inside tool outputs on the current turn: Chat
+ * `tool`/`function` messages, Claude `tool_result` blocks, Responses
+ * `function_call_output`/`custom_tool_call_output` items and Gemini
+ * `functionResponse.parts`. The modality strip pass cannot remove these
+ * nested parts, so combo admission must route them to a capable member.
+ *
+ * @param {object} body - client request body (OpenAI/Claude/Gemini/Responses)
+ * @returns {Set<string>} subset of "vision" | "audioInput" | "videoInput" | "pdf"
+ */
+export function detectToolOutputCapabilities(body) {
+  const found = new Set();
+  if (!body || !isObject(body)) return found;
+  const scan = (blocks) => {
+    if (!Array.isArray(blocks)) return;
+    for (const b of blocks) {
+      if (FILE_BLOCK_TYPES.has(b?.type)) {
+        if (isPdfFileBlock(b)) found.add("pdf");
+      } else {
+        addBlockCapabilities(b, found);
+      }
+    }
+  };
+  for (const m of trailingUserItems(body.messages)) {
+    if (m?.role === "tool" || m?.role === "function") scan(m.content);
+    if (Array.isArray(m?.content)) for (const b of m.content) if (b?.type === "tool_result") scan(b.content);
+  }
+  for (const it of trailingUserItems(body.input)) {
+    if (it?.type === "function_call_output" || it?.type === "custom_tool_call_output") scan(it.output);
+  }
+  for (const c of trailingUserItems(body.contents || body.request?.contents)) {
+    if (Array.isArray(c?.parts)) for (const p of c.parts) scan(p?.functionResponse?.parts);
+  }
+  return found;
+}
+
 // Detect which capabilities a request needs. Modalities (vision/audioInput/pdf) are
-// scanned only on the current user turn; "search", "tools", and "reasoning" are request-wide.
+// scanned only on the current user turn, including tool outputs nested in it;
+// "search", "tools", and "reasoning" are request-wide.
 // Returns a Set of: "vision" | "audioInput" | "pdf" | "search" | "tools" | "reasoning".
 export function detectRequiredCapabilities(body) {
   const required = new Set();
   if (!body || !isObject(body)) return required;
 
-  const addByMime = (mime) => {
-    if (!isString(mime)) return;
-    if (mime.startsWith("image/")) required.add("vision");
-    if (mime.startsWith("audio/")) required.add("audioInput");
-    if (mime.startsWith("video/")) required.add("videoInput");
-    if (mime === "application/pdf") required.add("pdf");
-  };
-
-  const scanBlock = (b) => {
-    if (!b || !isObject(b)) return;
-    const t = b.type;
-    if (t === "image_url" || t === "image" || t === "input_image") required.add("vision");
-    if (t === "input_audio" || t === "audio_url") required.add("audioInput");
-    if (t === "video_url" || t === "video" || t === "input_video") required.add("videoInput");
-    if (t === "file" || t === "document" || t === "input_file") required.add("pdf");
-    // gemini parts: inlineData/fileData carry a mime
-    addByMime(b.inlineData?.mimeType || b.fileData?.mimeType);
-  };
+  const addByMime = (mime) => addMimeCapabilities(mime, required);
 
   const scanContent = (content) => {
-    if (Array.isArray(content)) for (const b of content) scanBlock(b);
+    if (Array.isArray(content)) for (const b of content) addBlockCapabilities(b, required);
   };
 
   // Hermes/Ollama/Vercel AI SDK message shapes (message-level, not content blocks).
@@ -419,6 +478,7 @@ export function detectRequiredCapabilities(body) {
   for (const it of trailingUserItems(body.input)) scanContent(it.content); // responses
   const contents = body.contents || body.request?.contents; // gemini / antigravity
   for (const c of trailingUserItems(contents)) scanContent(c.parts);
+  for (const cap of detectToolOutputCapabilities(body)) required.add(cap);
 
 
   for (const tool of body.tools || []) {
@@ -1295,6 +1355,24 @@ export async function handleComboChat({
         log.info("COMBO", `auto-switch for [${[...required].join(",")}] → ${reordered[0]}`);
       }
       rotatedModels = reordered;
+    }
+    // Tool-output media cannot be stripped, so members that cannot read it are
+    // never dispatched. Survivors still pass key/connection/combo ACLs per attempt.
+    const toolMedia = [...detectToolOutputCapabilities(body)];
+    if (toolMedia.length > 0) {
+      const capable = rotatedModels.filter((m) => {
+        const caps = capabilitiesMap?.get?.(m) ?? getCapabilitiesForModelByModelStr(m);
+        return toolMedia.every((c) => caps[c] === true);
+      });
+      if (capable.length === 0) {
+        const msg = `Combo "${comboName}" has no member that supports [${toolMedia.join(",")}] input returned by a tool`;
+        log.warn("COMBO", msg);
+        return new Response(
+          JSON.stringify({ error: { message: msg, type: "invalid_request_error", code: "capability_unavailable" } }),
+          { status: HTTP_STATUS.BAD_REQUEST, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      rotatedModels = capable;
     }
   }
 

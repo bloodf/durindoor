@@ -191,6 +191,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `firecrawl_custom` |  | apikey | `` |
 | `fireworks` |  | apikey | `https://api.fireworks.ai/inference/v1/chat/completions` |
 | `fish-audio` |  | apikey | `` |
+| `free-ai` | openai | apikey | `https://api.free.ai/v1/chat/` |
 | `freeaiapikey` |  | apikey | `https://api.freeaiapikey.com/v1/chat/completions` |
 | `freeinference` |  | apikey | `https://freeinference.org/v1/chat/completions` |
 | `freemodel-dev` |  | apikey | `https://api.freemodel.dev/v1/chat/completions` |
@@ -317,6 +318,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `perplexity-agent` | openai-responses | apikey | `https://api.perplexity.ai/v1/responses` |
 | `perplexity-web` | perplexity-web | webCookie | `https://www.perplexity.ai/rest/sse/perplexity_ask` |
 | `piapi` |  | apikey | `https://api.piapi.ai/v1/chat/completions` |
+| `pioneer` | openai | apikey | `https://api.fastino.ai/v1/chat/completions` |
 | `plamo` | openai | apikey | `https://api.platform.preferredai.jp/v1/chat/completions` |
 | `playht` |  | apikey | `` |
 | `poe` |  | apikey | `https://api.poe.com/v1/chat/completions` |

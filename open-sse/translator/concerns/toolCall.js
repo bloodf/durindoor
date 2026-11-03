@@ -208,6 +208,23 @@ export function normalizeOpenRouterToolSchemas(provider, tools) {
  * names without a known alias get bumped through `normalizeClaudeToolName`
  * for consistency with the response translators.
  */
+/** Restore request-side tool aliases on a buffered Gemini-family body (native or `{ response }` envelope). */
+export function restoreGeminiToolNames(body, aliases) {
+  if (!(aliases instanceof Map) || !aliases.size) return false;
+  let changed = false;
+  const candidates = body?.candidates || body?.response?.candidates;
+  for (const candidate of candidates || []) {
+    for (const part of candidate?.content?.parts || []) {
+      const call = part?.functionCall;
+      if (call && aliases.has(call.name)) {
+        call.name = aliases.get(call.name);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 export function restoreOpenAIToolNames(body, aliases) {
   let changed = false;
   const restoreCalls = (calls) => {

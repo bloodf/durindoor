@@ -14,7 +14,7 @@ import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from 
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
-import { restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
+import { restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
@@ -483,6 +483,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
         if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
+        if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
         logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: finalResp });
 
         const totalLatency = Date.now() - requestStartTime;
@@ -604,6 +605,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const finalResp = claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
       // Chat clients get the projection as-is, so restore request-side aliases (#1406).
       if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
+      if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
       logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-chat", requestBody: body, translatedBody, providerBody: parsed, clientBody: finalResp });
 
       await markSuccess();

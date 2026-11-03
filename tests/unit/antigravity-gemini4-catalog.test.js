@@ -75,3 +75,34 @@ describe("Gemini 4 rules", () => {
     expect(Object.keys(out.request.contents.at(-1).parts[0])).toContain("functionResponse");
   });
 });
+
+describe("Antigravity Gemini 3.6-3.8 Flash tiers floor minimal to low (#1552, upstream 9router#5355; 400 unverified live)", () => {
+  const run = (provider, model, intent) => {
+    const body = { request: { contents: [{ role: "user", parts: [{ text: "hi" }] }], generationConfig: {} } };
+    applyThinking("antigravity", model, body, provider, intent, getCapabilitiesForModel(provider, model));
+    return body.request.generationConfig.thinkingConfig;
+  };
+  const ids = ["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.7", "gemini-3.7-flash-low", "gemini-3.6", "gemini-3.6-flash-medium"];
+  it.each(ids)("antigravity %s emits low for minimal and none, without thoughts", (id) => {
+    for (const level of ["minimal", "none"]) {
+      const cfg = run("antigravity", id, { mode: "level", level });
+      expect(cfg.thinkingLevel).toBe("low");
+      expect(cfg.includeThoughts).toBe(false);
+    }
+  });
+  it("keeps thoughts for a real low request", () => {
+    expect(run("antigravity", "gemini-3.8-flash", { mode: "level", level: "low" }).includeThoughts).toBe(true);
+  });
+  it("resolves the ag alias to the same tier rules", () => {
+    expect(run("ag", "gemini-3.7-flash-low", { mode: "level", level: "minimal" }).thinkingLevel).toBe("low");
+  });
+  it.each(["gemini", "openrouter", "cheaperinference"])("%s gemini-3.7-flash gets no minimal clamp", (provider) => {
+    expect(getCapabilitiesForModel(provider, "gemini-3.7-flash").thinkingEfforts ?? null).toBeNull();
+  });
+  it("direct gemini keeps its documented 3.8 Flash row", () => {
+    expect(getCapabilitiesForModel("gemini", "gemini-3.8-flash").thinkingEfforts).toEqual(["low", "medium", "high"]);
+  });
+  it("keeps minimal for Gemini 3 models with a MINIMAL tier", () => {
+    expect(run("antigravity", "gemini-3-flash", { mode: "level", level: "minimal" }).thinkingLevel).toBe("minimal");
+  });
+});

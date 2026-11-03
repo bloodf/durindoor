@@ -189,6 +189,47 @@ describe("durable video jobs use the existing ledger", () => {
     expect(adapter.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'").value).toBe("1");
   });
 
+  describe("recent-request ring", () => {
+    const resetRing = async (initialized) => {
+      global._recentRing = { items: [], initialized };
+      await reload();
+      return import("@/lib/db/repos/usageRepo.js");
+    };
+    const ringRows = () => global._recentRing.items.map((item) => [item.status, item.cost]);
+    afterEach(() => { delete global._recentRing; });
+
+    it("replaces the accepted item on settlement, so the account reads as active", async () => {
+      const { getRecentlyActiveConnectionIds } = await resetRing(true);
+      await submit();
+      expect(ringRows()).toEqual([["accepted", null]]);
+      expect([...await getRecentlyActiveConnectionIds(60_000)]).toEqual([]);
+      fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 6 }, usage: { cost_usd: 0.4 } }));
+      expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
+      expect(ringRows()).toEqual([["ok", 0.4]]);
+      expect([...await getRecentlyActiveConnectionIds(60_000)]).toEqual(["account-a"]);
+    });
+
+    it("settles an item rebuilt from history after a restart", async () => {
+      await submit();
+      const { getRecentlyActiveConnectionIds } = await resetRing(false);
+      expect([...await getRecentlyActiveConnectionIds(60_000)]).toEqual([]);
+      expect(ringRows()).toEqual([["accepted", null]]);
+      fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 6 }, usage: { cost_usd: 0.4 } }));
+      await poll(pollRequest(), "shared-id");
+      expect(ringRows()).toEqual([["ok", 0.4]]);
+    });
+
+    it("removes an item rebuilt from history when the job is retracted", async () => {
+      await submit();
+      const { getRecentlyActiveConnectionIds } = await resetRing(false);
+      await getRecentlyActiveConnectionIds(60_000);
+      expect(ringRows()).toEqual([["accepted", null]]);
+      fetch.mockResolvedValueOnce(json({ status: "failed" }));
+      await poll(pollRequest(), "shared-id");
+      expect(ringRows()).toEqual([]);
+    });
+  });
+
   it("keeps an unpolled job as one accepted unknown-cost request", async () => {
     await submit();
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");

@@ -293,11 +293,11 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, usageEventId FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
       timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
       apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
-      tokens: parseJson(r.tokens, {})
+      tokens: parseJson(r.tokens, {}), storedEventId: r.usageEventId
     }));
   } catch {}
 }
@@ -860,15 +860,15 @@ export async function saveRequestUsage(entry) {
     // All writes (receipt claim, history insert, daily upsert, lifetime counter) happen in ONE
     // transaction; better-sqlite3/node:sqlite are synchronous, so no JS yield
     // occurs mid-transaction and the writes remain atomic/serialized in-process.
+    // Scope storage identity, not the caller's request ID used by live sessions.
+    const usageEventId = entry.usageEventId && entry.billingEpoch != null ?
+      JSON.stringify(["billing", entry.billingEpoch, entry.usageEventId]) : entry.usageEventId;
     db.transaction(() => {
       // Reuse the quota writer lock: the schema row exists even when this day
       // and lifetime counter do not. PostgreSQL holds it until commit/rollback.
       // ponytail: global writer lock; use per-day locks if throughput demands it.
       assertBillingEpochSync(db, entry.billingEpoch);
       const identitySalt = getOrCreateUsageIdentitySalt(db);
-      // Scope storage identity, not the caller's request ID used by live sessions.
-      const usageEventId = entry.usageEventId && entry.billingEpoch != null ?
-        JSON.stringify(["billing", entry.billingEpoch, entry.usageEventId]) : entry.usageEventId;
       // Idempotency: only when the caller supplies a real event id.
       if (entry.usageEventId) {
         const claimed = claimUsageEventReceipt(db, usageEventId);
@@ -944,12 +944,15 @@ export async function saveRequestUsage(entry) {
     });
 
     if (settled) {
+      // Keep the accepted item's place and time, as the history row does.
+      recentRing.items = recentRing.items.map((item) => item.storedEventId === usageEventId && item.status === "accepted" ?
+        { ...item, cost: entry.cost, status: entry.status || "ok", tokens: entry.tokens, meta: entry.meta } : item);
       scheduleStatsEvent("update", 250);
       if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
     }
 
     if (inserted) {
-      pushToRing(entry);
+      pushToRing({ ...entry, storedEventId: usageEventId });
       // Non-success usage remains billable history but must not overwrite the
       // request lifecycle's error/cancellation state with a completed session.
       if (!entry.status || entry.status === "ok") {
@@ -978,10 +981,10 @@ export async function saveRequestUsage(entry) {
 export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
   if (!isString(usageEventId) || !usageEventId.trim()) throw new TypeError("Usage event ID must be a nonempty string");
   const db = await getAdapter();
+  const storageId = billingEpoch != null ? JSON.stringify(["billing", billingEpoch, usageEventId]) : usageEventId;
   let changed = false;
   db.transaction(() => {
     assertBillingEpochSync(db, billingEpoch);
-    const storageId = billingEpoch != null ? JSON.stringify(["billing", billingEpoch, usageEventId]) : usageEventId;
     const receipt = acceptedReceiptSync(db, storageId);
     if (!receipt) return;
     const row = db.get(`SELECT * FROM usageHistory WHERE usageEventId = ? AND status = 'accepted'`, [storageId]);
@@ -996,7 +999,7 @@ export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
     changed = true;
   });
   if (changed) {
-    recentRing.items = recentRing.items.filter((item) => !(item.usageEventId === usageEventId && item.status === "accepted"));
+    recentRing.items = recentRing.items.filter((item) => !(item.storedEventId === storageId && item.status === "accepted"));
     scheduleStatsEvent("update", 250);
   }
 }

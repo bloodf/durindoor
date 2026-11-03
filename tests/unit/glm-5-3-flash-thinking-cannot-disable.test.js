@@ -22,4 +22,10 @@ describe("glm-5.3-flash thinking", () => {
     expect(body.enable_thinking).toBeUndefined();
     expect(body.thinking?.type).not.toBe("disabled");
   });
+
+  it.each(["cline", "nanogpt"])("prefixed z-ai/glm-5.3-flash on %s cannot disable thinking", (provider) => {
+    const caps = getCapabilitiesForModel(provider, "z-ai/glm-5.3-flash");
+    expect(caps.thinkingCanDisable).toBe(false);
+    expect(caps.contextWindow).toBe(1000000);
+  });
 });

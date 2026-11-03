@@ -44,6 +44,7 @@ export default {
     { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision Exp", supportedFormats: ["openai", "claude", "openai-responses"] },
     { id: "mimo-v2.5", name: "MiMo V2.5", supportedFormats: ["openai"] },
     { id: "mimo-v2.5-pro", name: "MiMo V2.5 Pro", supportedFormats: ["openai"] },
+    { id: "kimi-k3.1-pro", name: "Kimi K3.1 Pro", supportedFormats: ["openai"] },
     // Muse Spark is served by /zen/go/v1/responses only (upstream #3819/#3820) —
     // responses-only entry forces chatCore past sourceFormat-matched transports
     // into translation (see chatCore guard). forceStream keeps JSON clients on
@@ -56,6 +57,8 @@ export default {
     { id: "qwen3.7-max", name: "Qwen 3.7 Max", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "qwen3.7-plus", name: "Qwen 3.7 Plus", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
     { id: "qwen3.6-plus", name: "Qwen 3.6 Plus", targetFormat: "claude", supportedFormats: ["openai", "claude"] },
+    // Upstream c8644368: served by /zen/go/v1/messages only; /chat/completions answers "ModelProtocolUnsupported".
+    { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", targetFormat: "claude", supportedFormats: ["claude"] },
     { id: "ox-alpha-free", name: "Ox Alpha Free", supportedFormats: ["openai"] },
   ],
   features: {

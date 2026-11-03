@@ -21,6 +21,12 @@ export function parseBulkApiKeyLine(line, index, provider) {
     return { name, apiKey, providerSpecificData: { accountId } };
   }
 
+  // Muse keys are the whole LLM|id|secret string: keep it opaque (upstream a199d777).
+  const trimmed = String(line || "").trim();
+  if (/^LLM\|[^|\s]+\|[^|\s]+$/i.test(trimmed)) {
+    return { name: `LLM ${index + 1}`, apiKey: trimmed, providerSpecificData: undefined };
+  }
+
   const apiKey = parts.length >= 2 ? parts.slice(1).join("|").trim() : parts[0].trim();
   if (!apiKey) throw new Error("Bulk entry requires an API key");
   return { name, apiKey, providerSpecificData: undefined };

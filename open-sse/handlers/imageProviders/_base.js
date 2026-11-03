@@ -5,7 +5,13 @@ import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
 export const POLL_INTERVAL_MS = 1500;
 export const POLL_TIMEOUT_MS = 120000;
 
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Abortable: rejects with the signal's reason as soon as it aborts, so polling loops stop.
+export const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) return reject(signal.reason);
+  const onAbort = () => { clearTimeout(timer); reject(signal.reason); };
+  const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+  signal?.addEventListener("abort", onAbort, { once: true });
+});
 
 // Map OpenAI size to provider-specific aspect ratio
 export function sizeToAspectRatio(size) {

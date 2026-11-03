@@ -2,6 +2,14 @@ import { platform, arch } from "os";
 import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 
+// Nous Portal requires attribution tags for some API-key models. Neutral gateway identity,
+// no credential and no claim to be another client (upstream 9router 90f89471). Unverified live.
+export const NOUS_ATTRIBUTION = {
+  hostname: "inference-api.nousresearch.com",
+  chatCompletionsPath: "/v1/chat/completions",
+  tags: ["product=durindoor", "client=durindoor", "user=durindoor"],
+};
+
 // === Gemini CLI === derive từ registry gemini-cli.transport
 import { isUndefined } from "../../src/shared/utils/typeChecks.js";
 export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;

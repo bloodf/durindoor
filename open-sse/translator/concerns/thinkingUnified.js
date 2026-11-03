@@ -416,12 +416,14 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
       }
     case "gemini-level":{
         let level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        // Antigravity tiers: none/minimal asked for no visible thoughts even though the level is floored to low.
+        const hideThoughts = caps.thinkingFloorHidesThoughts === true && level === "minimal";
         const allowed = caps.thinkingEfforts;
         if (Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {
           level = ["none", "minimal"].includes(level) && allowed.includes("low") ?
             "low" : allowed.includes("high") ? "high" : allowed[0];
         }
-        setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
+        setGeminiThinking(body, { thinkingLevel: level, includeThoughts: !hideThoughts && level !== "minimal" });
         ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
         break;
       }

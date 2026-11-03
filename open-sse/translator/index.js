@@ -3,6 +3,7 @@ import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
+import { CLAUDE_TOOL_SUFFIX } from "../config/appConstants.js";
 import { filterToOpenAIFormat } from "./formats/openai.js";
 import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
@@ -163,8 +164,29 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     // pairs like claude:kiro (avoids the claude->openai->kiro double-hop).
     const directFn = requestRegistry.get(`${sourceFormat}:${targetFormat}`);
     if (directFn) {
+      /**
+       * Chat→Claude is registered as a direct `openai:claude` route, so it never
+       * enters the Responses pivot clamp below. Alias dotted / overlong names on
+       * the OpenAI-shaped body before conversion so declarations, tool_choice,
+       * and history share one round-trip map (#1343).
+       * Do not widen this to Responses→Chat — that direct route is owned by #1384.
+       */
+      if (sourceFormat === FORMATS.OPENAI && targetFormat === FORMATS.CLAUDE && isObject(result)) {
+        const credential = credentials?.accessToken || credentials?.apiKey;
+        const willSuffixTools = PROVIDERS[provider]?.quirks?.cloakToolsOnOAuth &&
+          isString(credential) && credential.includes("sk-ant-oat");
+        responsesToolAliases = normalizeOpenAIToolNames(result, willSuffixTools ? 64 - CLAUDE_TOOL_SUFFIX.length : 64);
+      }
       result = directFn(translationModel, result, stream, credentials, resolvedTranslationContext);
       finalizeTranslatedRequest = directFn.finalize;
+      /**
+       * Direct Responses→Chat (`openai-responses:openai`) never enters the OpenAI
+       * pivot below where overlong/dotted names are aliased. Apply the same clamp
+       * so Chat upstreams and the response round-trip map stay consistent (#1345).
+       */
+      if (sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI && isObject(result)) {
+        responsesToolAliases = normalizeOpenAIToolNames(result);
+      }
     } else {
       if (sourceFormat !== FORMATS.OPENAI) {
         const toOpenAI = requestRegistry.get(`${sourceFormat}:${FORMATS.OPENAI}`);
@@ -176,6 +198,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
            * Claude, Kiro and OpenAI-format upstreams reject. Alias the OpenAI intermediate
            * once, before any target translator, so declarations, tool_choice and history
            * share one map whatever the target (upstream PR #4200).
+           * chatCore aliases again for OpenAI targets with the provider's
+           * `toolNameMaxLength`; that is deliberate, and both maps compose into
+           * one toolNameMap that the response path restores (#1406).
            */
           if (sourceFormat === FORMATS.OPENAI_RESPONSES && isObject(result)) {
             responsesToolAliases = normalizeOpenAIToolNames(result);
@@ -230,6 +255,14 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
     });
     // Poe rejects image-only user turns with 400; Poe-only, other providers unchanged.
     if (Array.isArray(result?.messages)) result.messages = ensurePoeUserTurnHasText(result.messages, provider);
+    /**
+     * Chat→OpenAI same-format skips the pivot/direct clamps. Alias here so Chat
+     * upstreams reject neither dots nor overlong names (#1343). Scoped to Chat
+     * sources only — Responses→Chat is owned by the pivot / #1384 direct block.
+     */
+    if (sourceFormat === FORMATS.OPENAI && isObject(result)) {
+      responsesToolAliases = normalizeOpenAIToolNames(result);
+    }
   }
 
   // MiniMax-M3's OpenAI transport does not support forced tool_choice values
@@ -381,13 +414,17 @@ export function initState(sourceFormat, requestBody) {
   const toolNamespaces = {};
   const flatToolNamespaces = new Map();
   const plainToolNames = new Set();
+  // Chat Completions custom tools ({type:"custom", custom:{name}}) the client declared (#1436).
+  const chatCustomToolNames = new Set();
   if (Array.isArray(requestBody?.tools)) {
     for (const tool of requestBody.tools) {
       const type = isString(tool?.type) ? tool.type : "";
       const name = isString(tool?.function?.name) ?
       tool.function.name :
+      isString(tool?.custom?.name) ? tool.custom.name :
       isString(tool?.name) ? tool.name : "";
       if (name && type) toolTypes[name] = type;
+      if (type === "custom" && name && sourceFormat === FORMATS.OPENAI) chatCustomToolNames.add(name);
       if (type === "namespace" && name && Array.isArray(tool.tools)) {
         for (const subtool of tool.tools) {
           if (isString(subtool?.name) && subtool.name) {
@@ -426,6 +463,7 @@ export function initState(sourceFormat, requestBody) {
     usage: null,
     contentBlockIndex: -1,
     toolTypes,
+    chatCustomToolNames,
     toolNamespaces
   };
 

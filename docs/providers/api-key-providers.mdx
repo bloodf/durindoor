@@ -29,6 +29,16 @@ Save, then send a request using one of the connection's models. A duplicate prov
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 
+## OpenAI completion token limits
+
+For the `openai` provider, DurinDoor sends Chat Completions output limits as
+`max_completion_tokens`. Clients may still send `max_tokens`; if both fields
+are present, the explicit `max_completion_tokens` value wins and the legacy
+field is removed. This also applies to GPT-6-family models when using the Chat
+Completions transport. Native Responses requests retain `max_output_tokens`;
+this rule does not change the separate Chat-to-Responses translation. Custom
+compatible nodes and other providers keep their model-specific normalization.
+
 ## Amazon Bedrock credentials
 
 Bedrock is the one API-key provider that accepts three credential shapes. Pick the region where your models are enabled, then fill in exactly one of these in the AWS Credentials block:
@@ -84,3 +94,12 @@ Proxy fields on the add dialog are optional: `connectionProxyEnabled`, `connecti
 `google-pse` requires `cx` (Programmable Search Engine id) in provider-specific data. Without it, create returns 400.
 
 If a probe passes but chat fails, check model entitlement and deployment names. Bedrock `AccessDeniedException` can mean the credentials are valid but IAM denies that model; a passing credential probe does not grant inference permission.
+
+## NVIDIA assistant reasoning history
+
+For NVIDIA NIM, assistant messages use `reasoning_content`. If a client replays
+`reasoning` as an alias, DurinDoor removes that duplicate field and keeps an
+existing nonblank canonical value. The alias fills a missing, null or blank
+canonical value before any DeepSeek reasoning-placeholder handling. User,
+system and tool messages are unchanged, as are other providers' existing rules.
+This is field normalization, not validation of arbitrary reasoning value types.

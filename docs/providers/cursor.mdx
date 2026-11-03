@@ -35,9 +35,19 @@ Cursor publishes no refresh endpoint. The connection is saved with no refresh to
 
 ## Choose and verify a model
 
-Send `cu/<model>` from `GET /v1/models`. `cu/default` selects Cursor Auto. The imported machine ID is required for every request; a connection without it fails before dispatch.
+Send `cu/<model>` from `GET /v1/models`. `cu/default` selects Cursor Auto. `GET /v1/models` and the dashboard model list show the account's live Cursor catalog (`GetUsableModels`); when the live fetch fails, or a proxy applies to the connection, they fall back to the static catalog. The imported machine ID is required for every request; a connection without it fails before dispatch.
 
 Send a short prompt and find the account on **Usage**. Import validates token and machine-ID format, not a live Cursor request. A 401 after import can mean the session expired. Reimport after signing in to the IDE again.
+
+## AgentService transport
+
+Requests with only text, MCP tool schemas, tool calls and tool results go to Cursor's AgentService (`agent.api5.cursor.sh`, `agent.v1.AgentService/Run`) over Node's built-in `http2`. Other request shapes (for example image parts) keep using the legacy ChatService path. Set `CURSOR_AGENT_SERVICE=off` to force every request onto the legacy path.
+
+- `cu/default` and `cu/auto` resolve to the account's default agent model from the live `GetUsableModels` catalog; if the catalog cannot be read, the id is sent unchanged.
+- `reasoning_effort` (or `reasoning.effort`) is forwarded as a model parameter. `minimal` maps to `low` and `ultra` to `max`; `none` sends nothing.
+- A turn that ends with no output is returned as an error, never as an empty success. For histories of 80 or more messages, one tail-only retry is attempted. Tune with `CURSOR_TAIL_ONLY_THRESHOLD`, `CURSOR_EMPTY_TURN_MAX_RETRIES` (capped at 1) and `CURSOR_EMPTY_TURN_RETRY_DELAY_MS`.
+- Editor-only tool requests from Cursor (shell, read, write) are rejected so the model can continue; DurinDoor does not run them.
+- **Proxies:** the HTTP/2 stream cannot go through a proxy. When any proxy applies to the connection (connection proxy, pool, strict mode, relay, or `HTTPS_PROXY`-style environment variables), requests use the legacy ChatService path, which honors the proxy. DurinDoor never connects to AgentService directly while a proxy applies. The `auto`, `composer` and thinking models only run on AgentService, so they need a direct connection (no proxy).
 
 ## Image input
 

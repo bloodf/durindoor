@@ -3,7 +3,7 @@ title: Management API
 description: Every dashboard REST route under /api, which credentials it accepts, and what an API key cannot do.
 ---
 
-Dashboard automation uses `/api` on the same origin as inference. Most management routes accept a DurinDoor API key. Secret reveal, database administration, process control, and local host operations have stricter credentials. See [Automating DurinDoor](../guides/automating-durindoor.mdx) for a workflow and [MCP control](../features/mcp-control.mdx) for JSON-RPC tools.
+Dashboard automation uses `/api` on the same origin as inference. Management reads accept any active DurinDoor API key; management changes need a key with the admin scope (`isAdmin`). Secret reveal, database administration, process control, and local host operations have stricter credentials. See [Automating DurinDoor](../guides/automating-durindoor.mdx) for a workflow and [MCP control](../features/mcp-control.mdx) for JSON-RPC tools.
 
 ## Credentials
 
@@ -13,7 +13,7 @@ Authentication applies to the decoded route path. Individual handlers can requir
 | --- | --- |
 | session | Dashboard JWT cookie `auth_token` |
 | CLI | Header `x-9r-cli-token` (machine-bound) |
-| key | DurinDoor API key: `Authorization: Bearer`, `x-api-key`, `x-goog-api-key`, or `?key=` |
+| key | DurinDoor API key: `Authorization: Bearer`, `x-api-key`, `x-goog-api-key`, or `?key=`. For `POST`, `PUT`, `PATCH`, `DELETE`, and OAuth actions the key needs the admin scope (`isAdmin`), sent in a header (`?key=` never carries it); otherwise HTTP 403 |
 | loop | Loopback peer and `requireLogin` is off |
 | none | Public. No credential |
 | gw | MCP gateway key, not a DurinDoor API key |
@@ -38,8 +38,8 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 | GET | `/api/providers/suggested-models` | Suggested models for a registry fetcher id | session, CLI, key, loop |
 | POST | `/api/providers/test-batch` | Test several connections in one call | session, CLI, key, loop |
 | POST | `/api/providers/validate` | Probe one provider with a deadline and SSRF guard | session, CLI, key, loop |
-| GET, PUT, PATCH, DELETE | `/api/providers/{id}` | Read, replace, patch, or delete one connection | session, CLI, key, loop |
-| PATCH | `/api/providers/{id}/auto-ping` | Set that connection's quota auto-ping flag | session, CLI, key, loop |
+| GET, PUT, PATCH, DELETE | `/api/providers/{id}` | Read, replace, patch, or delete one connection | session, CLI, key, loop; changing proxy, base URL, endpoint, or relay fields: session, CLI, open local dashboard (operator only) |
+| PATCH | `/api/providers/{id}/auto-ping` | Set that connection's quota auto-ping flag (`enabled`) and anchored `schedule` (`{ enabled, anchor, timezone, windowHours, slotsPerDay }` or `null`; `windowHours` 1 to 24); either may be omitted to keep it. Operator access only | session, CLI, loop |
 | GET | `/api/providers/{id}/models` | Discover models for that connection | session, CLI, key, loop |
 | POST | `/api/providers/{id}/test` | Test one connection | session, CLI, key, loop |
 | POST | `/api/providers/{id}/test-models` | Ping models by kind using active connection `{id}`; unavailable pins fail rather than switching accounts | session, CLI, open local dashboard (operator only) |
@@ -48,9 +48,9 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
-| GET, POST | `/api/provider-nodes` | List (GET) or create (POST) a compatible/embedding node | session, CLI, key, loop |
+| GET, POST | `/api/provider-nodes` | List (GET) or create (POST) a compatible/embedding node | GET: session, CLI, key, loop; POST: session, CLI, open local dashboard (operator only) |
 | POST | `/api/provider-nodes/validate` | SSRF-bounded URL probe for a node | session, CLI, key, loop |
-| PUT, DELETE | `/api/provider-nodes/{id}` | Update or delete a node | session, CLI, key, loop |
+| PUT, DELETE | `/api/provider-nodes/{id}` | Update or delete a node | session, CLI, open local dashboard (operator only) |
 
 ### Media providers
 
@@ -67,10 +67,10 @@ A DurinDoor API key is an inference credential. It cannot reveal stored secrets,
 
 | Method | Path | Does | Auth |
 | --- | --- | --- | --- |
-| GET, POST | `/api/keys` | List keys with usage (GET) or mint a key (POST, secret once) | session, CLI, key, loop |
+| GET, POST | `/api/keys` | List keys with usage (GET) or mint a key (POST, secret once) | GET: session, CLI, key, loop; POST: session, CLI, open local dashboard (operator only) |
 | GET | `/api/keys/policy-catalog` | Model ids valid for a key policy allowlist | session, CLI, key, loop |
 | GET | `/api/keys/usage` | Current usage against each key's windowed limits | session, CLI, key, loop |
-| GET, PUT, DELETE | `/api/keys/{id}` | Read, update, or delete a key (secret masked) | session, CLI, key, loop |
+| GET, PUT, DELETE | `/api/keys/{id}` | Read, update, or delete a key (secret masked) | GET: session, CLI, key, loop; PUT, DELETE: session, CLI, open local dashboard (operator only) |
 | GET | `/api/keys/{id}/reveal` | Return the raw DurinDoor key secret | session, CLI, key, loop; key refused on reveal |
 
 ### Key groups
@@ -378,7 +378,7 @@ Database routes require a dashboard session or CLI token plus the dashboard pass
 
 ## What an API key cannot do
 
-The gate refuses a key on `GET /api/keys/{id}/reveal`, `GET /api/mcp-gateway/keys/{id}/reveal` (also 403 unless loopback), any `?reveal=1` (including an encoded `/reveal` path), `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`, `/api/settings/database` and children, `/api/oauth/cursor/auto-import`, `/api/oauth/kiro/auto-import`, `/api/oauth/xiaomi-mimo/auto-import`, and remote calls to local-only spawn paths (tunnel enable/disable, Tailscale, Cowork settings, Antigravity MITM, Headroom start/stop/proxy/extras, MCP plugin `/sse` and `/message`, `POST /api/auth/reset-password`). Families that do not accept an inference key: `/api/key-groups`, `/api/data-retention`, `/api/compression`, `/api/token-saver`, `/api/pxpipe`.
+The gate refuses a key on `GET /api/keys/{id}/reveal`, `GET /api/mcp-gateway/keys/{id}/reveal` (also 403 unless loopback), any `?reveal=1` (including an encoded `/reveal` path), `/api/shutdown`, `/api/version/shutdown`, `/api/version/update`, `/api/settings/database` and children, `/api/oauth/cursor/auto-import`, `/api/oauth/kiro/auto-import`, `/api/oauth/xiaomi-mimo/auto-import`, and remote calls to local-only spawn paths (tunnel enable/disable, Tailscale, Cowork settings, Antigravity MITM, Headroom start/stop/proxy/extras, MCP plugin `/sse` and `/message`, `POST /api/auth/reset-password`). A key without the admin scope gets 403 from the gate on every management change: `POST`, `PUT`, `PATCH`, and `DELETE` on the routes above, plus `/api/oauth/*` and `/api/mcp-gateway/oauth/*` actions over any method. This holds on loopback too, whatever the key's own limits or account scope. The key, provider-node, and connection-routing handlers (`PUT`/`PATCH /api/providers/{id}` changing proxy, base URL, endpoint, or relay fields) repeat that check. An admin-scoped key passes them. `GET /api/usage/{connectionId}` and `GET /api/usage/{connectionId}/codex-reset-credits` refresh stored OAuth credentials, so for OAuth connections they also refuse a key without the admin scope. Families that do not accept an inference key: `/api/key-groups`, `/api/data-retention`, `/api/compression`, `/api/token-saver`, `/api/pxpipe`.
 
 After the gate, `GET`/`POST /api/settings/auto-configure` and `POST /api/settings/firecrawl/detect` still want a session (or `requireLogin` off). `POST /api/data-retention` needs JWT or CLI. `POST /api/mcp-gateway/keys` is local-only in the handler. `POST /api/shutdown` also needs `SHUTDOWN_SECRET` and returns 403 in production.
 

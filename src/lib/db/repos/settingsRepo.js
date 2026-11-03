@@ -133,11 +133,22 @@ const DEFAULT_SETTINGS = {
   // Any engine throw fail-opens and restores the body; the loop never throws.
   compressionEnabled: false,
   compressionEngines: {},
+  // Opt-in outbound PII / credential masking (#1112): mode "off" | "warn" | "mask".
+  contentMasking: { mode: "off", credentials: true, pii: true },
+  // Opt-in text fidelity gate for stack steps (numbers, URLs, JSON keys,
+  // negations). Protected blocks are always gated; see fidelityGate.js.
+  compressionFidelityGate: false,
+  // Context-budget adaptive escalation for the stack (#1100). mode "off" |
+  // "floor" | "replace-autotrigger"; see adaptiveCompression/types.js.
+  compressionAdaptive: { mode: "off" },
   cavemanEnabled: false,
   cavemanLevel: "full",
   quotaTrackerState: DEFAULT_QUOTA_TRACKER_STATE,
   ponytailEnabled: false,
   ponytailLevel: "full",
+  // User-authored system prompt, injected independently of the built-in savers.
+  customPromptEnabled: false,
+  customPrompt: "",
   // Default: free no-auth providers remain enabled unless the user explicitly
   // disables them via Settings > Providers.
   disabledFreeProviders: [],

@@ -56,9 +56,7 @@ const ADDED_SVG_IDS = [
 // These copied SVGs intentionally have no registry entry (and therefore no UI
 // consumer), so they are stored for future ports but are not wired yet.
 const EXCLUDED_UNWIRED = [
-  "openadapter",
   "pioneer",
-  "publicai",
   "zed-hosted",
 ];
 

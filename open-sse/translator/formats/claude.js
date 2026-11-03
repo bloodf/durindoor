@@ -6,7 +6,7 @@ import { applyCloaking } from "../../utils/claudeCloaking.js";
 import { resolveSessionId } from "../../utils/sessionManager.js";
 import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { PROVIDERS } from "../../providers/index.js";
-import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { getCapabilitiesForModel, isLegacyHaikuModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
@@ -312,9 +312,6 @@ function demoteUnpairedToolResult(block) {
   return text;
 }
 
-// Models that reject thinking.type "adaptive" + output_config.effort (Opus 4.5+/Sonnet 4.6+ only)
-const ADAPTIVE_THINKING_UNSUPPORTED = /haiku/i;
-
 // Adaptive-thinking models (Fable/Mythos) do not support unsigned or default-
 // signature historical thinking blocks and must never receive synthetic placeholders.
 function isAdaptiveThinkingModel(model) {
@@ -452,8 +449,8 @@ export function enforceClaudeToolChoiceThinking(body, model = "", provider = "cl
 
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
-// 1. thinking.type "adaptive" → unsupported on Haiku
-// 2. output_config.effort → unsupported on Haiku
+// 1. thinking.type "adaptive" → unsupported on older/unversioned Haiku
+// 2. output_config.effort → unsupported on older/unversioned Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
 // 4. server_tool_use blocks carrying foreign IDs → rejected outright
 // 5. forced tool_choice while thinking is on → rejected by every thinking model
@@ -461,12 +458,12 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   if (!body || !isObject(body)) return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
-  if (body.thinking?.type === "adaptive" && ADAPTIVE_THINKING_UNSUPPORTED.test(model)) {
+  if (body.thinking?.type === "adaptive" && isLegacyHaikuModel(model)) {
     body.thinking = { type: "enabled", budget_tokens: 10000 };
   }
 
   // 2. Strip effort param for models that don't support it (keep other output_config fields)
-  if (ADAPTIVE_THINKING_UNSUPPORTED.test(model) && body.output_config?.effort != null) {
+  if (isLegacyHaikuModel(model) && body.output_config?.effort != null) {
     delete body.output_config.effort;
     if (Object.keys(body.output_config).length === 0) delete body.output_config;
   }
@@ -800,7 +797,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           return {
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: toClaudeInputSchema(tool.function.parameters),
+            input_schema: toClaudeInputSchema(tool.function.parameters, undefined, tool.function.name),
             ...(tool.function.strict !== undefined && { strict: tool.function.strict })
           };
         }

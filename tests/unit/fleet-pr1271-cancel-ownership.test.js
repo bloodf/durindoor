@@ -129,18 +129,18 @@ function creationFixture(id, holdEof) {
 }
 
 function owner(id) { return readNativeResourceOwner("anthropic", connectionId, id); }
-function expectedOwner(id) { return { ownerId: "creator", provider: "anthropic", model, connectionId, resourceId: id }; }
+function expectedOwner(id) { return { ownerId: "creator", provider: "anthropic", model, connectionId, resourceId: id, billingEpoch: null, usageEventId: expect.any(String) }; }
 
 describe("shared JSON ownership byte boundary", () => {
   it("waits for persistence before releasing a split ID and completes exactly once without reframing bytes", async () => {
     const id = `resource-${randomUUID()}`;
-    const chunks = [Buffer.from('{"id":"'), Buffer.from(`${id}","type":"fixture"}`)];
+    const chunks = [Buffer.from('{"id":"'), Buffer.from(`${id}","type":"message"}`)];
     let release;
     const persisted = new Promise((resolve) => { release = resolve; });
     const onValue = vi.fn(async (value) => {
       if (value.id) {
         await persisted;
-        await createNativeResourceOwner(expectedOwner(value.id));
+        await createNativeResourceOwner({ ...expectedOwner(value.id), usageEventId: "fixture-usage-event" });
       }
     });
     const onComplete = vi.fn();

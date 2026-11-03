@@ -38,6 +38,8 @@ export async function POST(request) {
   const operator = verifyRealtimeOperatorProof({ proof: request.headers.get("x-9r-realtime-operator-proof"), model: modelString, path: body.path, expiresAt: body.operatorExpiresAt });
   const { apiKey, auth } = await resolveClientApiKey(authRequest, { required: settings.requireApiKey === true });
   if (!auth.ok && !operator) return response(401, "Unauthorized");
+  // Bind every turn and close callback to admission, never the current generation.
+  const billingEpoch = auth.billingEpoch;
   const { provider, model } = await getModelInfo(modelString);
   if (!provider || !model) return response(400, "Bad Request");
   const canonicalIdentity = `${provider}/${model}`;
@@ -95,27 +97,23 @@ export async function POST(request) {
   try { proxy = resolveWebSocketProxyRoute(endpoint.toString(), credentials.providerSpecificData); }
   catch { return response(503, "Configured egress does not support native WebSocket transport"); }
   const usageSessionId = crypto.randomUUID();
+  const accounting = {
+    apiKey, billingEpoch, provider, model, connectionId: credentials.connectionId, endpoint: body.path,
+    modality: kind, nativeUnits: {}, cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable",
+  };
+  const committedResponses = new Set();
   let geminiTurn = 1;
-  let geminiUsagePart = 0;
   let geminiObservedUsage = null;
-  let geminiCommittedUsage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
   let geminiSettling = Promise.resolve(true);
-  const settleGeminiUsage = (turnComplete = false) => geminiSettling = geminiSettling.then(async () => {
+  // Gemini reports cumulative turn usage. Commit only at completion or close,
+  // preserving all components and invalid values for strict ledger validation.
+  const settleGeminiUsage = () => geminiSettling = geminiSettling.then(async () => {
     let allowed = true;
     if (geminiObservedUsage) {
-      const observed = geminiObservedUsage;
-      const delta = Object.fromEntries(["input_tokens", "output_tokens", "total_tokens"].map((key) => [key, Math.max(0, (observed[key] || 0) - (geminiCommittedUsage[key] || 0))]));
-      if (delta.input_tokens || delta.output_tokens || delta.total_tokens) {
-        allowed = await recordNativeUsage({ apiKey, provider, model, connectionId: credentials.connectionId, endpoint: body.path, value: { usage: delta }, usageEventId: `${provider}:${credentials.connectionId}:${usageSessionId}:turn:${geminiTurn}:part:${geminiUsagePart}` });
-        geminiUsagePart++;
-        geminiCommittedUsage = observed;
-      }
-    }
-    if (turnComplete) {
-      geminiTurn++;
-      geminiUsagePart = 0;
+      allowed = await recordNativeUsage({ ...accounting, tokens: geminiObservedUsage,
+        usageEventId: `${provider}:${credentials.connectionId}:${usageSessionId}:turn:${geminiTurn}` });
       geminiObservedUsage = null;
-      geminiCommittedUsage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+      geminiTurn++;
     }
     return allowed;
   });
@@ -128,11 +126,18 @@ export async function POST(request) {
       if (protocol.geminiLive) {
         const observed = nativeUsageFromValue(event);
         if (observed) geminiObservedUsage = observed;
-        return event?.serverContent?.turnComplete ? settleGeminiUsage(true) : event?.serverContent?.interrupted ? settleGeminiUsage() : true;
+        return event?.serverContent?.turnComplete ? settleGeminiUsage() : true;
       }
-      if (!isNativeTerminalUsageEvent(event)) return true;
-      return recordNativeUsage({ apiKey, provider, model, connectionId: credentials.connectionId, endpoint: body.path, value: event,
-        usageEventId: `${provider}:${credentials.connectionId}:${event?.response?.id || event?.id || usageSessionId}:terminal` });
+      if (!isNativeTerminalUsageEvent(event) || !nativeUsageFromValue(event)) return true;
+      // Transport/session events are not billable responses. Never use session IDs.
+      const responseId = event?.response?.id || event?.response_id ||
+        (event?.type === "conversation.item.input_audio_transcription.completed" ? event.item_id : null);
+      if (!responseId) throw new TypeError("Native realtime usage requires a billable response ID");
+      const usageEventId = `${provider}:${credentials.connectionId}:${responseId}:terminal`;
+      if (committedResponses.has(usageEventId)) return true;
+      const allowed = await recordNativeUsage({ ...accounting, value: event, usageEventId });
+      committedResponses.add(usageEventId);
+      return allowed;
     },
     onProviderClose: protocol.geminiLive ? settleGeminiUsage : null
   });

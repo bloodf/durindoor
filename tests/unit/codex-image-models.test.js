@@ -2,12 +2,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getModelsByProviderId, getModelType, isValidModel } from "../../open-sse/config/providerModels.js";
 import { getModelInfoCore } from "../../open-sse/services/model.js";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
+import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 
-const models = ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"];
+const models = ["gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"];
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("Codex GPT-5.6 image models", () => {
+describe("Codex GPT image models", () => {
+  it("drops retired gpt-5.5 chat, review and image ids", () => {
+    const ids = getModelsByProviderId("codex").map((entry) => entry.id);
+    for (const id of ["gpt-5.5", "gpt-5.5-review", "gpt-5.5-image"]) expect(ids).not.toContain(id);
+  });
+
+  it("resolves gpt-6-sol-image as an image model, not as gpt-6-sol chat", () => {
+    expect(getCapabilitiesForModel("codex", "gpt-6-sol-image")).toMatchObject({ imageOutput: true, reasoning: false });
+    expect(getCapabilitiesForModel("codex", "gpt-6-sol")).toMatchObject({ imageOutput: false, reasoning: true });
+  });
+
   it.each(models)("exposes %s-image as an image model while retaining its chat entry", (model) => {
     const catalog = getModelsByProviderId("codex");
     expect(catalog.filter((entry) => entry.id === `${model}-image`)).toHaveLength(1);
@@ -26,6 +37,8 @@ describe("Codex GPT-5.6 image models", () => {
     const events = [
       ["response.image_generation_call.partial_image", { partial_image_b64: "cGFydGlhbA==", partial_image_index: 0 }],
       ["response.output_item.done", { item: { type: "image_generation_call", result: "ZmluYWw=" } }],
+      // An output item is not terminal; Codex confirms the whole response separately.
+      ["response.completed", { response: { status: "completed", output: [{ type: "image_generation_call", result: "ZmluYWw=" }] } }],
     ];
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""),
@@ -72,5 +85,6 @@ describe("Codex GPT-5.6 image models", () => {
     expect(stream).toContain("event: done\n");
     expect(stream).toContain('"data":[{"b64_json":"ZmluYWw="}]');
     expect(onRequestSuccess).toHaveBeenCalledTimes(1);
+    expect(await result.completion).toMatchObject({ status: "success", accounting: { state: "complete", nativeUnits: { images: 1 } } });
   });
 });

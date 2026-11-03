@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the DB layer before importing the handler/core under test.
 const mocks = vi.hoisted(() => ({
@@ -37,12 +40,30 @@ vi.mock("@/lib/localDb", () => ({
   getComboForModel: mocks.getComboForModel,
   getComboByName: mocks.getComboByName,
   getProviderNodes: mocks.getProviderNodes,
+  getApiKeyProviderConnectionIds: async () => [],
+  saveRequestUsage: async (event) => (await import("../../src/lib/db/repos/usageRepo.js")).saveRequestUsage(event),
 }));
 
 import { handleVideoCreate, handleVideoGet } from "../../src/sse/handlers/video.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "../../open-sse/handlers/videoCore.js";
 import { POST, GET } from "../../src/app/api/v1/videos/[[...path]]/route.js";
 
+const CALLER_KEY = "sk-video-owner";
+let tempDir;
+let originalDataDir;
+let originalEngine;
+let adapter;
+
+afterEach(async () => {
+  await adapter?.close?.();
+  delete global._dbAdapter;
+  vi.unstubAllGlobals();
+  if (originalDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = originalDataDir;
+  if (originalEngine === undefined) delete process.env.DURINDOOR_DATABASE_ENGINE;
+  else process.env.DURINDOOR_DATABASE_ENGINE = originalEngine;
+  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+});
 const XAI_CONNECTION = {
   id: "xai-1",
   provider: "xai",
@@ -51,7 +72,7 @@ const XAI_CONNECTION = {
   testStatus: "active",
 };
 
-function jsonRequest(url, body, headers = {}) {
+function jsonRequest(url, body, headers = { authorization: `Bearer ${CALLER_KEY}` }) {
   return new Request(url, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
@@ -60,8 +81,16 @@ function jsonRequest(url, body, headers = {}) {
 }
 
 describe("xAI video proxy (9router#2593)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    originalDataDir = process.env.DATA_DIR;
+    originalEngine = process.env.DURINDOOR_DATABASE_ENGINE;
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "xai-video-proxy-"));
+    process.env.DATA_DIR = tempDir;
+    process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+    delete global._dbAdapter;
+    adapter = await (await import("../../src/lib/db/driver.js")).getAdapter();
+    adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)", ["video-owner", CALLER_KEY, "Video test", new Date().toISOString()]);
     mocks.getSettings.mockResolvedValue({ requireApiKey: false });
     mocks.getProviderConnections.mockResolvedValue([{ ...XAI_CONNECTION }]);
     mocks.getProviderConnectionById.mockImplementation(async (id) => {
@@ -73,7 +102,7 @@ describe("xAI video proxy (9router#2593)", () => {
         testStatus: "active",
       } : null;
     });
-    mocks.getApiKeyByKey.mockResolvedValue(null);
+    mocks.getApiKeyByKey.mockImplementation(async (key) => key === CALLER_KEY ? { id: "video-owner", isActive: true, policy: {} } : null);
     mocks.getApiKeyUsageTotals.mockResolvedValue({});
     mocks.getProxyPools.mockResolvedValue([]);
     mocks.getQuotaReservationPressure.mockResolvedValue({});
@@ -116,9 +145,14 @@ describe("xAI video proxy (9router#2593)", () => {
     // Account-pinning header returned for later polls.
     expect(res.headers.get("x-9router-connection-id")).toBe("xai-1");
     expect(res.headers.get("access-control-expose-headers")).toContain("x-9router-connection-id");
+    expect(JSON.parse(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value)).toMatchObject({ apiKeyId: "video-owner", connectionId: "xai-1", resourceId: "vid-123", model: "grok-imagine-video" });
+    expect(adapter.all("SELECT * FROM usageHistory")).toEqual([]);
   });
 
   it("GET polls https://api.x.ai/v1/videos/{id} with auth", async () => {
+    // Polling headers select an account; only a persisted caller-owned job authorizes access.
+    const { createMediaJob } = await import("../../src/lib/db/repos/mediaJobsRepo.js");
+    await createMediaJob({ provider: "xai", model: "grok-imagine-video", connectionId: "xai-1", resourceId: "vid-123", apiKeyId: "video-owner", usageEventId: "video-poll-test", endpoint: "/v1/videos/generations" });
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ status: "done", video: { url: "https://x.ai/v.mp4" } }), {
         status: 200,
@@ -128,7 +162,7 @@ describe("xAI video proxy (9router#2593)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const req = new Request("http://localhost/v1/videos/vid-123", {
-      headers: { "x-connection-id": "xai-1" },
+      headers: { "x-connection-id": "xai-1", authorization: `Bearer ${CALLER_KEY}` },
     });
     const res = await handleVideoGet(req, "vid-123");
 
@@ -139,6 +173,7 @@ describe("xAI video proxy (9router#2593)", () => {
     expect(init.method).toBe("GET");
     expect(init.headers.Authorization).toBe(`Bearer ${XAI_CONNECTION.apiKey}`);
     expect(res.headers.get("access-control-expose-headers")).toContain("x-9router-connection-id");
+    expect(adapter.all("SELECT usageEventId, connectionId FROM usageHistory")).toEqual([{ usageEventId: "video-poll-test", connectionId: "xai-1" }]);
   });
 
   it("polls MiniMax with the account header returned by MiniMax creation", async () => {
@@ -160,7 +195,7 @@ describe("xAI video proxy (9router#2593)", () => {
     expect(returnedHeader).toBe("minimax-1");
 
     const res = await handleVideoGet(new Request("http://localhost/v1/videos/task-mm", {
-      headers: { "x-9router-connection-id": returnedHeader },
+      headers: { "x-connection-id": returnedHeader, authorization: `Bearer ${CALLER_KEY}` },
     }), "task-mm");
     const pollCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/v2/query/video_generation/"));
 
@@ -171,7 +206,7 @@ describe("xAI video proxy (9router#2593)", () => {
 
   it("returns 401 when API key required but missing", async () => {
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
-    const req = jsonRequest("http://localhost/v1/videos/generations", { prompt: "x" });
+    const req = jsonRequest("http://localhost/v1/videos/generations", { prompt: "x" }, {});
     const res = await handleVideoCreate(req, "generations");
     expect(res.status).toBe(401);
     expect((await res.json()).error.message).toBe("Missing API key");

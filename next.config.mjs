@@ -1,12 +1,11 @@
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { resolveTracingRoot } from "./tracing-root.mjs";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 // CLI bundling needs workspace root so tracing includes hoisted node_modules (slim ~50MB).
 // Docker / default uses projectRoot so server.js lands at /app/server.js (not nested).
-const tracingRoot = process.env.NEXT_TRACING_ROOT_MODE === "workspace"
-  ? join(projectRoot, "..")
-  : projectRoot;
+const tracingRoot = resolveTracingRoot(projectRoot, process.env.NEXT_TRACING_ROOT_MODE);
 const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE || "128mb";
 
 /** @type {import('next').NextConfig} */
@@ -16,7 +15,7 @@ const nextConfig = {
   // Isolated provider paths retain upstream slash semantics; src/proxy.js
   // keeps the default no-trailing-slash redirect on ordinary application hosts.
   skipTrailingSlashRedirect: true,
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg", "playwright", "playwright-core", "tls-client-node"],
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg", "playwright", "playwright-core", "tls-client-node", "wreq-js"],
   turbopack: {
     root: tracingRoot
   },
@@ -52,11 +51,13 @@ const nextConfig = {
     // package first) and webpack fails with "Can't resolve 'better-sqlite3'".
     // Force-externalize so webpack never resolves it at build; driver.js catches the
     // missing require at runtime and falls back to node:sqlite (Node >=22.5) / sql.js.
+    // wreq-js (optional, OpenCode TLS transport) is handled the same way: a missing
+    // module falls back to native fetch in open-sse/services/opencodeTlsClient.js.
     if (isServer) {
       const prev = config.externals;
       config.externals = [
         ({ request }, cb) => (
-          request === "better-sqlite3" || request === "pg"
+          request === "better-sqlite3" || request === "pg" || request === "wreq-js"
             ? cb(null, `commonjs ${request}`)
             : cb()
         ),

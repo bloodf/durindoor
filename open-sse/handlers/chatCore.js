@@ -9,7 +9,7 @@ import { COLORS } from "../utils/stream.js";
 import { createStreamController } from "../utils/streamHandler.js";
 import { classifyQuotaTerminalReason } from "../utils/quotaTerminalReason.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
-import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
+import { getProviderModels, getModelTargetFormat, getModelSupportedFormats, getModelForceStream, getModelForceNonStreaming, getModelStrip, getModelUpstreamId, getModelUpstreamThinkingIntent, resolveRequestedModelTier, applyProviderThinkingOverride, getCanonicalModelId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isOpenCodeZenBaseUrl } from "../providers/shared.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, sanitizeErrorMessage, getClientStatusFromError } from "../utils/error.js";
@@ -48,6 +48,7 @@ import { dedupeTools } from "../utils/toolDeduper.js";
 import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
+import { injectCustomPrompt } from "../rtk/customPrompt.js";
 import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
@@ -58,6 +59,8 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
+import { gateStep } from "../services/compression/fidelityGate.js";
+import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
@@ -66,19 +69,8 @@ import { maskSensitiveUrl } from "../utils/requestLogger.js";
 import { isOpencodeGoProvider, stripBooleanReasoning } from "../services/opencodeReasoningSanitizer.js";
 import { startTrace, record, finishTrace } from "./chatCore/proxyTimeline.js";
 
-// Neutral adaptive config forwarded to the compression seam. mode:"off" short-
-// circuits resolveAdaptivePlan before it dereferences budget fields, but the
-// object is kept complete so a later adaptive mode flip already has the full
-// computeTarget() contract (outputReserve/safetyMargin/pct/absoluteBudget).
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
-const COMPRESSION_ADAPTIVE_CONFIG = Object.freeze({
-  mode: "off",
-  policy: "reserve-output",
-  outputReserve: 4096,
-  safetyMargin: 1024,
-  pct: 0.85,
-  absoluteBudget: 0
-});
+import { normalizeContextBudgetConfig } from "../services/compression/adaptiveCompression/types.js";
 
 const TOP_LEVEL_STREAM_FORMATS = new Set([
 FORMATS.OPENAI,
@@ -97,6 +89,24 @@ FORMATS.CLAUDE]
 );
 
 const COMPRESSION_HEADER = "X-DurinDoor-Compression";
+
+/**
+ * Run RTK in place. With `gate` set (an rtk compression-stack step), a result
+ * that fails the fidelity gate is rolled back in place (same object identity)
+ * and reports no stats.
+ */
+function compressRtkGated(target, enabled, gate, log) {
+  if (!gate || !enabled) return compressMessages(target, enabled);
+  const before = structuredClone(target);
+  const stats = compressMessages(target, enabled);
+  if (!stats?.hits?.length) return stats;
+  const verdict = gateStep(before, target, gate);
+  if (verdict.passed) return stats;
+  log?.warn?.("COMPRESS", `engine rtk failed, step rolled back: fidelity gate rejected step (${verdict.failedInvariant}: ${verdict.detail})`);
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, before);
+  return null;
+}
 
 /**
  * Stamp the X-DurinDoor-Compression response header onto a handler result.
@@ -155,8 +165,11 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const needsNativeServerTools = Array.isArray(body?.tools) && body.tools.some((tool) =>
     isString(tool?.type) && tool.type !== "function" && tool.type !== "custom" && tool.type !== "tool");
   const nativeMiniMax = provider === "minimax" || provider === "minimax-cn";
+  // Kimi Code's /responses serves Responses clients only; typed server tools from
+  // Chat/Claude clients must stay on their native transport (#1368).
+  const responsesClientsOnly = provider === "kimi-coding-apikey";
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
-    (needsNativeServerTools || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
+    (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model);
@@ -297,6 +310,7 @@ async function cancelResponseBody(response) {
  * @param {object} options.body - Request body
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} options.credentials - Provider credentials
+ * @param {string|null} options.billingEpoch - Original admission epoch; never refresh during retries or completion.
  * @param {object} [options.log] - Unified logger (src/sse/utils/logger.js).
  *   Expected: `tagForSession(seed)`/`nextTag()` to allocate the session tag,
  *   `fmtThink(intent)` for the thinking label, `line(tag, symbol, message)`
@@ -304,7 +318,7 @@ async function cancelResponseBody(response) {
  *   errors. Legacy `info`/`debug`/`warn`/`error` remain supported.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ body, modelInfo, credentials: rawCredentials, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, userAgent, apiKey, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
   const credentials = rawCredentials ?
   {
     ...rawCredentials,
@@ -441,7 +455,18 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
-  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel); // provider-facing model id
+  body = applyProviderThinkingOverride(body, providerThinking);
+  // Suffix intent, then body effort/budget (including the provider-level
+  // override injected above), select `<model>-<tier>` catalog rows (upstream
+  // 9router 82aeb907). A catalog preset such as `(high)` applies only when
+  // nothing named a tier and neither the client nor the provider setting
+  // controls thinking (`thinking` present, or mode none/off).
+  const requestedModelTier = resolveRequestedModelTier(modelThinkingIntent, body);
+  const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
+  const thinkingControlled = requestedModelTier || body.thinking ||
+  providerThinking?.mode === "none" || providerThinking?.mode === "off";
+  const thinkingIntent = modelThinkingIntent ||
+  (thinkingControlled ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({
     provider,
     model: cleanModel,
@@ -450,7 +475,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     endpoint: clientRawRequest?.endpoint,
     client_format: sourceFormat,
     provider_format: targetFormat,
-  });
+  }, { requestId: clientRawRequest?.requestId });
   const finishTimeline = (status, type, summary) => {
     if (!timelineTraceId) return;
     try {
@@ -476,25 +501,6 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     return lifecycleError;
   }
   requestContext = Object.freeze({ ...requestContext, catalogModel: cleanModel });
-  // Inject provider-level thinking config override (only if client hasn't set)
-  // on/off → extended type (body.thinking), none/low/medium/high → effort type (body.reasoning_effort)
-  if (providerThinking?.mode && providerThinking.mode !== "auto") {
-    const mode = providerThinking.mode;
-    if (mode === "none") {
-      // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
-      // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
-      delete body.thinking;
-      delete body.reasoning_effort;
-      delete body.reasoning;
-    } else if (mode === "on" && !body.thinking) {
-      console.log("Injecting provider-level thinking config override: on");
-      body = { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-    } else if (mode === "off" && !body.thinking) {
-      body = { ...body, thinking: { type: "disabled" } };
-    } else if (!body.reasoning_effort) {
-      body = { ...body, reasoning_effort: mode };
-    }
-  }
 
   const isCompactRequest = requestContext?.compact === true;
   const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
@@ -527,8 +533,40 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     clientPrefersSSE
   });
 
+  // Opt-in PII / credential masking (#1112) on the source body, before request
+  // logging and any translation, so neither disk logs nor any provider format
+  // see the originals. Logs counts per type only, never the matched values.
+  // Not affected by the token-saver bypass header: it is a data-protection
+  // control, not a saver. Mask mode fails CLOSED: if masking throws, the
+  // request is rejected rather than sent unmasked; warn mode fails open.
+  const maskingMode = normalizeMaskingMode(contentMasking?.mode);
+  if (contentMasking?.mode && !maskingMode) {
+    log?.warn?.("MASKING", "unknown contentMasking.mode; masking is off (use off, warn or mask)");
+  }
+  let clientLogBody = clientRawRequest?.body;
+  if (maskingMode === "warn" || maskingMode === "mask") {
+    try {
+      const maskingConfig = { ...contentMasking, mode: maskingMode };
+      const masked = maskRequestContent(body, maskingConfig);
+      if (masked.total > 0) {
+        body = masked.body;
+        const summary = Object.entries(masked.counts).map(([k, n]) => `${k}:${n}`).join(",");
+        log?.warn?.("MASKING", `${maskingMode === "mask" ? "masked" : "detected"} ${masked.total} (${summary})`);
+      }
+      if (maskingMode === "mask" && clientLogBody && isObject(clientLogBody)) {
+        clientLogBody = maskRequestContent(clientLogBody, maskingConfig).body;
+      }
+    } catch (e) {
+      log?.warn?.("MASKING", `failed: ${sanitizeErrorMessage(e?.message)}`);
+      if (maskingMode === "mask") {
+        finishTimeline("error", "error", "content masking failed");
+        return createErrorResult(500, "Content masking failed; request not sent");
+      }
+    }
+  }
+
   const reqLogger = await createRequestLogger(sourceFormat, targetFormat, cleanModel);
-  if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientRawRequest.body, clientRawRequest.headers);
+  if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientLogBody, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
 
@@ -604,8 +642,16 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Compress the source-format body here instead, before that rewrite.
   // Every other provider's translator keeps the tool_result shape 1:1, so
   // they stay on the unchanged post-translate pass.
+  // An `rtk` compression-stack step runs here too (#1098): one RTK pass per
+  // request at the dedicated position, so the stack step below is a no-op
+  // (rtkApplied) and accounting matches the standalone toggle.
+  const rtkInStack = compressionEnabled === true && compressionEngines?.rtk?.enabled === true;
+  const runRtk = tokenSaverEnabled && (rtkEnabled || rtkInStack);
+  // A stack rtk step is fidelity-gated like every stack step; the plain RTK
+  // toggle alone keeps its ungated behavior.
+  const rtkGate = rtkInStack ? { textInvariants: compressionFidelityGate === true } : null;
   const preTranslateRtk = provider === "cursor" ?
-  compressMessages(body, tokenSaverEnabled && rtkEnabled) :
+  compressRtkGated(body, runRtk, rtkGate, log) :
   null;
 
   let translatedBody;
@@ -627,7 +673,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, modelThinkingIntent, modelCapabilities);
+    applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     /**
@@ -666,7 +712,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         stripList,
         connectionId,
         clientTool,
-        { thinkingIntent: modelThinkingIntent, capabilityModel: cleanModel, modelCapabilities }
+        { thinkingIntent, capabilityModel: cleanModel, modelCapabilities }
       );
     } catch (error) {
       // Translators flag a malformed client payload with statusCode 400; anything else is ours.
@@ -786,7 +832,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
   // RTK: compress tool_result content. Skipped when already compressed
   // pre-translate above (cursor) so a retry never double-compresses a body.
-  const rtkStats = preTranslateRtk || compressMessages(translatedBody, tokenSaverEnabled && rtkEnabled);
+  const rtkStats = preTranslateRtk || compressRtkGated(translatedBody, runRtk, rtkGate, log);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? (saved / rtkStats.bytesBefore * 100).toFixed(0) : "0";
@@ -837,17 +883,25 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // snapshot and emits no header. Fail-open throughout.
   let compressionHeaderValue = null;
   if (tokenSaverEnabled && compressionEnabled) {
+    const adaptiveBudget = normalizeContextBudgetConfig(compressionAdaptive);
     const preStackSnapshot = structuredClone(translatedBody);
     try {
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
         enabled: true,
         engines: compressionEngines ?? {},
-        applyOpts: COMPRESSION_ADAPTIVE_CONFIG,
+        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk },
+        fidelityGate: { textInvariants: compressionFidelityGate === true },
         adaptive: {
-          ...COMPRESSION_ADAPTIVE_CONFIG,
+          ...adaptiveBudget,
           estimatedTokens: estimateTokens(translatedBody),
+          // Unknown (null) limit -> resolver skips adaptive; it never claims fit.
           modelContextLimit: effectiveModelCapabilities.contextWindow,
-          requestMaxTokens: translatedBody?.max_tokens ?? translatedBody?.max_completion_tokens ?? null
+          // Output reserve of the RESOLVED model: the request's own cap clamped to
+          // the model maxOutput, else the operator/documented default; 0 falls
+          // back to adaptiveBudget.outputReserve inside computeTarget.
+          requestMaxTokens: executor.resolveEffectiveOutputReservation?.(translatedBody, {
+            ...requestContext, modelCapabilities: effectiveModelCapabilities
+          }) || null
         },
         log
       });
@@ -886,6 +940,12 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (tokenSaverEnabled && ponytailEnabled && ponytailLevel && !carriesMedia) {
     injectPonytail(translatedBody, finalFormat, ponytailLevel);
     xf.push(`PONYTAIL:${ponytailLevel}`);
+  }
+
+  // Custom prompt: user-authored instruction, independent of the savers above.
+  // Still honors the per-request token-saver bypass header.
+  if (tokenSaverEnabled && customPromptEnabled && injectCustomPrompt(translatedBody, finalFormat, customPrompt)) {
+    xf.push(`CUSTOMPROMPT:${customPrompt.trim().length}c`);
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
@@ -1200,6 +1260,9 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Execute request
   let providerResponse, providerUrl, providerHeaders, finalBody;
   let terminalProvenance = null;
+  // Most executors return their registry format. Cursor AgentService is an
+  // exception: it is decoded by the executor into OpenAI-compatible output.
+  let providerResponseFormat = targetFormat;
   const captureExecutorToolNameMap = (body) => {
     if (!(body?._toolNameMap instanceof Map)) return;
     toolNameMap = new Map([...(toolNameMap || new Map()), ...body._toolNameMap]);
@@ -1300,6 +1363,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finalBody = result.transformedBody;
     captureExecutorToolNameMap(finalBody);
     terminalProvenance = result.terminalProvenance || null;
+    providerResponseFormat = result.responseFormat || targetFormat;
     reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
   } catch (error) {
     if (isQuotaDispatchUnavailable(error)) {
@@ -1425,6 +1489,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
           finalBody = retryResult.transformedBody;
           captureExecutorToolNameMap(finalBody);
           terminalProvenance = retryResult.terminalProvenance || null;
+          providerResponseFormat = retryResult.responseFormat || targetFormat;
           if (!providerResponse.ok) parsedError = await parseAndRestateError(providerResponse);
         } catch (error) {
           if (isQuotaDispatchUnavailable(error)) {
@@ -1639,6 +1704,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     comboId,
     comboName,
     apiKey,
+    billingEpoch,
     clientRawRequest,
     traceId: timelineTraceId,
     onRequestSuccess: async (context = {}) => {
@@ -1732,7 +1798,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     try {
-      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, trackDone, appendLog, signal: providerSignal });
+      const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
@@ -1745,7 +1811,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   if (!stream) {
     const streamToClient = clientRequestedStreaming === true;
     try {
-      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal });
+      const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, claudeCloaked, trackDone, appendLog, streamToClient, signal: providerSignal, credentials });
       return await finalizeResponse(await finalizeBufferedResult(result));
     } catch (error) {
       return failPostResponseHandling(error);
@@ -1753,10 +1819,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
   }
 
   // Streaming response
-  const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+  const { onStreamComplete, onCoherentTerminal, onStreamAbandoned, streamDetailId } = buildOnStreamComplete({ ...sharedCtx, credentials });
   abandonStreamingDetail = onStreamAbandoned;
   try {
-    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
+    const result = await handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, signal: providerSignal, credentials });
     if (!result?.success) await settleQuota(false, "stream_error");
     return await finalizeResponse(result);
   } catch (error) {

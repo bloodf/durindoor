@@ -5,7 +5,8 @@ import {
   getProviderCredentials,
   markAccountUnavailable,
 } from "@/sse/services/auth.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "@/sse/services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy } from "@/sse/services/apiKeyPolicy.js";
+import { observeNativeResponse } from "@/sse/services/nativeUsage.js";
 import { getSettings } from "@/lib/localDb";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
@@ -183,7 +184,7 @@ async function validateGeminiNativeClientKey(request) {
   if (!auth.ok) {
     return { apiKey, apiKeyId: auth.apiKeyId, error: Response.json({ error: { message: "Invalid API key" } }, { status: 401 }) };
   }
-  return { apiKey, apiKeyId: auth.apiKeyId, error: null };
+  return { apiKey, apiKeyId: auth.apiKeyId, billingEpoch: auth.billingEpoch, error: null };
 }
 
 function buildGeminiNativeAuthHeaders(credentials) {
@@ -228,7 +229,7 @@ function getSafeGeminiNativeErrorText(error) {
 }
 
 async function forwardGeminiNativeRequest(request, body, model, action) {
-  const { apiKey, apiKeyId, error: authError } = await validateGeminiNativeClientKey(request);
+  const { apiKey, apiKeyId, billingEpoch, error: authError } = await validateGeminiNativeClientKey(request);
   if (authError) return authError;
 
   const modelId = normalizeGeminiNativeModel(model);
@@ -239,6 +240,7 @@ async function forwardGeminiNativeRequest(request, body, model, action) {
   if (policyError) return policyError;
   const excludeConnectionIds = new Set();
   const bodyText = JSON.stringify(body);
+  const usageEventId = crypto.randomUUID();
   let lastError = null;
   let lastStatus = null;
 
@@ -332,15 +334,14 @@ async function forwardGeminiNativeRequest(request, body, model, action) {
         statusText: upstreamResponse.statusText,
         headers: corsHeadersFrom(upstreamResponse),
       });
-      // Do not clone/buffer a potentially streaming inline-audio response. The
-      // request estimate closes the zero-accounting bypass; quota batch 5 adds
-      // authoritative streamed non-chat usage and cost extraction.
-      const committedTokens = Math.ceil(bodyText.length / 4);
-      await recordApiKeyUsageForResponse(apiKey, clientResponse, {
-        tokens: committedTokens,
-        cost: 0,
+      // Observe provider tokens without buffering audio or estimating tokens from JSON.
+      // Preserve the pre-dispatch generation even if import occurs during fetch.
+      return observeNativeResponse(clientResponse, {
+        apiKey, billingEpoch, provider: "gemini", model: modelId, connectionId: credentials.connectionId,
+        endpoint: `/v1beta/models/${modelId}${action}`, usageEventId,
+        modality: "tts", tokens: {}, nativeUnits: {},
+        cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable",
       });
-      return clientResponse;
     }
 
     const errorText = await upstreamResponse.text();

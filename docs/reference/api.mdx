@@ -45,6 +45,15 @@ The catalog handlers do not consult `requireApiKey`. On loopback, reaching `/v1/
 
 ## Chat and completions
 
+When Chat Completions requests are routed to Claude, a tool message may contain
+text and `image_url` parts. Image data URIs become Claude base64 image blocks;
+HTTP(S) URLs become Claude URL image blocks inside the matching `tool_result`.
+String tool results and their `is_error` flag are preserved. Unsupported part
+types, missing image source fields, and invalid or non-HTTP(S) remote URLs are
+omitted, including when no supported parts remain. The conversion does not
+fetch images or validate their decoded bytes; the target provider validates
+image data. This applies to both streaming and non-streaming requests.
+
 Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. The gateway translates that format to the selected upstream provider.
 
 ```bash
@@ -57,6 +66,14 @@ curl http://localhost:20128/v1/chat/completions \
 Claude-format requests normally end on a user turn. A trailing assistant text prefill becomes a continuation user turn. Trailing `tool_use` blocks get error `tool_result` blocks. Opt out per request with `X-9Router-Assistant-Prefill: preserve`.
 
 `POST /v1/completions` is a router shim: `prompt` (string, or a one-element array) becomes one user message, then the chat core runs. Multiple prompts return 400. Streaming SSE `chat.completion.chunk` frames are rewritten to `text_completion`. Provider-native `/v1/completions` is not a goal.
+
+If a non-streaming request receives an OpenAI-style SSE error envelope upstream,
+the gateway returns an error rather than a partial completion. A valid integer
+`error.status` between 400 and 599 is preserved; otherwise the status is 502.
+The error message passes through credential/path redaction. Raw error details
+and partial content are not returned or recorded as successful usage. A
+`finish_reason: "error"` without an error envelope keeps the existing 502
+incoherent-response contract.
 
 `POST /v1/api/chat` runs the same chat core, then returns an Ollama-shaped response. Default model name if the body omits `model`: `llama3.2`.
 
@@ -87,6 +104,8 @@ Every media endpoint on this page, plus web search, web fetch, and embeddings be
 Image generation accepts JSON `{ model, prompt }`, optional `Accept: text/event-stream`, and `?response_format=binary`. Image edits accept multipart or provider-native JSON on supported models. xAI accepts `image: { url }` or `image: { file_id }`, or up to five sources in `images`; the adapter preserves `storage_options` and converts multipart `n` to a number. `sdwebui` and `comfyui` need no stored key.
 
 Responses `input_image` accepts `image_url` (URL or `data:` base64). A bare `file_id` is not resolved when either the registered Responses translator or worker converter converts a request to Chat Completions; it returns HTTP 400 instead of being sent as an image URL. This applies to message images and images inside `function_call_output`, with either stream setting. When both references are present, `image_url` takes precedence. The file reference is preserved on native-compatible, same-format Responses transports, while gateway normalizations still apply.
+
+When Chat Completions requests are routed to Responses, a tool message whose content includes `image_url` parts becomes a `function_call_output` whose `output` is an `input_text` / `input_image` array, keeping `detail` and the `[Tool error]` marker. Text-only and string tool results stay strings.
 
 TTS is JSON `{ model, input }` plus optional `language`. `?response_format=mp3` (default) or `json`. Voices: `GET /v1/audio/voices?provider={p}&lang=xx` with `p` in `elevenlabs`, `deepgram`, `inworld`, `minimax`, `minimax-cn`, `edge-tts`, `local-device`. Each voice row includes `model` ready for `/v1/audio/speech`.
 
@@ -148,6 +167,8 @@ Gemini speech uses Files plus Interactions for transcription and Interactions fo
 Dify exposes the configured published chat app, not an upstream model catalog. Its stateless chat adapter rejects client tools and media. Key checks use guarded `/info` and `/parameters` requests; a selected outbound proxy is rejected because it cannot preserve that probe's DNS guard. Inference retains the selected connection's egress policy.
 
 Tools execute in the client or the vendor's declared server-tool service. DurinDoor does not execute consumer function, computer, or browser tools on the gateway host.
+
+Tool parameter schemas are checked before a request is translated to Claude, Gemini, or (from Chat Completions) Responses. Numeric constraints sent as strings, such as `"minimum": "1"`, become numbers. A schema whose `properties` is not an object, whose property entries are not schema objects, or whose `required` is not an array of strings returns HTTP 400 `Invalid tool schema for "<tool>": ...` before any upstream call. Claude accepts only object schemas, so a tool whose schema has another `type` (for example `string` or `array`) also returns that 400 on Claude-bound routes. A schema with no `type` is treated as an object.
 
 ### Native background Responses
 

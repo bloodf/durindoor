@@ -1,5 +1,6 @@
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
+import { ROLE } from "../schema/roles.js";
 
 // Strip request params a given provider/model rejects upstream (e.g. HTTP 400).
 // Config-driven: add a rule instead of scattering `delete body.x` across executors.
@@ -9,6 +10,9 @@ import { isOpenCodeZenBaseUrl } from "../../providers/shared.js";
 import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const STRIP_RULES = [
+// 9router 7c42d8f: OpenAI accepts the modern completion cap. Keep explicit
+// destination values and scope this policy to the actual OpenAI provider.
+{ provider: "openai", renameParams: { max_tokens: "max_completion_tokens" } },
 /**
  * Claude models reject deprecated temperature and Claude Code's top-level
  * telemetry with `diagnostics: Extra inputs are not permitted`.
@@ -40,6 +44,15 @@ const STRIP_RULES = [
 { provider: "groq", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 { provider: "mistral", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 { provider: "cerebras", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
+// OpenCode Go's relay rejects `response_format` (json_schema and json_object)
+// for its deepseek family with HTTP 400 and a body that names neither the field
+// nor the reason, while other models on the same relay accept it. Measured
+// upstream 2026-10-13: 12/12 structured calls 400, 4/4 without the field 200
+// (decolua/9router 468aa7d9).
+{ provider: "opencode-go", match: /^deepseek/i, drop: ["response_format"] },
+
+// 9router ced0cf6: NIM treats these as aliases and rejects duplicate fields.
+{ provider: "nvidia", renameMessageFields: { reasoning: "reasoning_content" } },
 // Mistral's OpenAI-compatible API validates the body strictly and rejects the
 // Anthropic/Z.ai-native `thinking` object with 422 extra_forbidden. It only
 // accepts `reasoning_effort`, so drop any stray native thinking field that
@@ -113,6 +126,12 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
   for (const rule of rules) {
     if (rule.provider && !matchesProvider(rule.provider, provider)) continue;
     if (!matches(rule, model)) continue;
+    // Rename before clamps; a client-supplied target wins even when it is zero.
+    for (const [from, to] of Object.entries(rule.renameParams || {})) {
+      if (body[from] === undefined) continue;
+      if (body[to] === undefined) body[to] = body[from];
+      delete body[from];
+    }
     // Drop top-level params (guard: a rule may omit `drop`, e.g. message-only rules).
     for (const key of rule.drop || []) {
       if (body[key] !== undefined) delete body[key];
@@ -130,10 +149,18 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // assistant reasoning_content with 422 extra_forbidden (#1649). Assistant turns
     // only: that is where clients replay reasoning; a user-authored field is left
     // alone (#4220).
-    if (Array.isArray(rule.dropMessageFields) && Array.isArray(body.messages)) {
+    if ((rule.renameMessageFields || Array.isArray(rule.dropMessageFields)) && Array.isArray(body.messages)) {
       for (const msg of body.messages) {
-        if (!msg || !isObject(msg) || msg.role !== "assistant") continue;
-        for (const field of rule.dropMessageFields) {
+        if (!msg || !isObject(msg) || msg.role !== ROLE.ASSISTANT) continue;
+        for (const [from, to] of Object.entries(rule.renameMessageFields || {})) {
+          if (msg[from] === undefined) continue;
+          const existing = msg[to];
+          if (existing === undefined || existing === null || isString(existing) && !existing.trim()) {
+            msg[to] = msg[from];
+          }
+          delete msg[from];
+        }
+        for (const field of Array.isArray(rule.dropMessageFields) ? rule.dropMessageFields : []) {
           if (msg[field] !== undefined) delete msg[field];
         }
       }
@@ -185,7 +212,7 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
 // (o1/o3/o4 + the whole gpt-5.x family, matching the pre-port GitHub rule
 // `/gpt-5|o[134]-/i`) rather than the source's narrower exact list — so o4-mini
 // and gpt-5.6 keep the forward rename they had before this port.
-// Direction is decided by the MODEL STRING ALONE, provider-independent, mirroring
+// For non-OpenAI providers, direction is model-driven, mirroring
 // OmniRoute's supportsMaxTokens (modelCapabilities.ts). Source matches by raw
 // substring; DurinDoor anchors at a prefix boundary (`^`, `/`, `:`, `-`) and a
 // version boundary (`.`, `-`, end) so `openai/o3-mini`, `azure:o1`, `databricks-gpt-5`,
@@ -195,8 +222,9 @@ const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:-])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.
 
 /**
  * Normalize the max-token field name for the target model, in place.
- * - Family match (o1-family/o3-family/o4-family/gpt-5[.x]): forward rename `max_tokens` → `max_completion_tokens`.
- * - Any other model: reverse rename `max_completion_tokens` → `max_tokens`, because
+ * - OpenAI provider or family match (o1/o3/o4/gpt-5[.x]): forward rename
+ *   `max_tokens` → `max_completion_tokens`.
+ * - Other providers and models: reverse rename `max_completion_tokens` → `max_tokens`, because
  *   legacy-compatible providers (Volcengine Ark / DeepSeek, …) silently ignore the
  *   newer field and would apply no cap (OmniRoute #6912/#6964).
  * Precedence both directions: an explicitly set destination field always wins;
@@ -206,8 +234,10 @@ const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:-])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.
  * @param {object} body
  */
 export function applyParamRenames(provider, model, body) {
-  void provider; // direction is model-driven only (OmniRoute supportsMaxTokens parity)
-  if (MAX_TOKENS_UNSUPPORTED_MODEL.test(model)) {
+  // This runs before stripUnsupportedParams at the executor boundary. Select
+  // OpenAI's forward policy here too, or reverse renaming GPT-6 would erase an
+  // explicitly supplied max_completion_tokens before the final wire rule (#1366).
+  if (provider === "openai" || MAX_TOKENS_UNSUPPORTED_MODEL.test(model)) {
     if (body.max_tokens !== undefined) {
       if (body.max_completion_tokens === undefined) body.max_completion_tokens = body.max_tokens;
       delete body.max_tokens;

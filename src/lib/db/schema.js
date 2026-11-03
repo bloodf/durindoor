@@ -6,7 +6,7 @@ import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 27;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -93,6 +93,7 @@ export const TABLES = {
       dailyLimitTokens: "INTEGER",
       policy: "TEXT",
       expiresAt: "TEXT",
+      isAdmin: "INTEGER NOT NULL DEFAULT 0",
       createdAt: "TEXT NOT NULL",
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
@@ -135,6 +136,7 @@ export const TABLES = {
       totalTokens: "INTEGER NOT NULL DEFAULT 0",
       totalCost: "REAL NOT NULL DEFAULT 0",
       totalRequests: "INTEGER NOT NULL DEFAULT 0",
+      unknownCostRequests: "INTEGER NOT NULL DEFAULT 0",
       updatedAt: "TEXT",
     },
   },

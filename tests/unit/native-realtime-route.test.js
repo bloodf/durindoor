@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/localDb", () => ({ getSettings: mocks.getSettings, getApiKeyByKey: mocks.getApiKeyByKey, getApiKeyUsageLimitStatus: mocks.getApiKeyUsageLimitStatus, saveRequestUsage: mocks.saveRequestUsage }));
 vi.mock("@/sse/services/auth", () => ({ resolveClientApiKey: mocks.resolveClientApiKey, getProviderCredentialsWithQuotaPreflight: mocks.getProviderCredentialsWithQuotaPreflight }));
-vi.mock("@/sse/services/apiKeyPolicy", () => ({ enforceApiKeyModelPolicy: mocks.enforceApiKeyModelPolicy }));
+vi.mock("@/sse/services/apiKeyPolicy", async (importOriginal) => ({ ...await importOriginal(), enforceApiKeyModelPolicy: mocks.enforceApiKeyModelPolicy }));
 vi.mock("@/sse/services/model", () => ({ getModelInfo: mocks.getModelInfo }));
 vi.mock("open-sse/config/providerModels", () => ({ PROVIDER_ID_TO_ALIAS: {}, getModelQuotaFamily: vi.fn(), getModelUpstreamId: (_provider, model) => model }));
 vi.mock("open-sse/providers/registry/index.js", () => ({ default: mocks.registry }));
@@ -32,7 +32,7 @@ describe("native realtime credential boundary", () => {
       authScheme: "Bearer", protocols: { realtime: { wsUrl: "wss://api.openai.com/v1/realtime", modelInQuery: true } }
     } });
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
-    mocks.resolveClientApiKey.mockResolvedValue({ apiKey: "gateway-key", auth: { ok: true, apiKeyId: "gateway" } });
+    mocks.resolveClientApiKey.mockResolvedValue({ apiKey: "gateway-key", auth: { ok: true, apiKeyId: "gateway", billingEpoch: "epoch-before-import" } });
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "gpt-realtime-2.1" });
     mocks.getApiKeyByKey.mockResolvedValue(null);
@@ -69,6 +69,13 @@ describe("native realtime credential boundary", () => {
     mocks.registry.length = 0;
     mocks.registry.push({ id: "gemini", models: [{ id: "gemini-3.8-live", kind: "live" }] });
     mocks.getModelInfo.mockResolvedValue({ provider: "gemini", model: "gemini-3.8-live" });
+    const admission = { ok: true, apiKeyId: "gateway", billingEpoch: "epoch-before-import" };
+    mocks.resolveClientApiKey.mockResolvedValue({ apiKey: "gateway-key", auth: admission });
+    const credentials = await mocks.getProviderCredentialsWithQuotaPreflight();
+    mocks.getProviderCredentialsWithQuotaPreflight.mockImplementation(async () => {
+      admission.billingEpoch = "epoch-after-import";
+      return credentials;
+    });
     const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
     const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }, { model: "gemini/gemini-3.8-live", path: "/v1/native/gemini/live", connectionId: "conn-a" }));
     const payload = await result.clone().json();
@@ -85,6 +92,9 @@ describe("native realtime credential boundary", () => {
     expect(mocks.saveRequestUsage.mock.calls.map(([entry]) => entry.tokens)).toEqual([
       expect.objectContaining({ input_tokens: 3, output_tokens: 2, total_tokens: 5 }),
       expect.objectContaining({ input_tokens: 2, output_tokens: 1, total_tokens: 3 }),
+    ]);
+    expect(mocks.saveRequestUsage.mock.calls.map(([entry]) => entry.billingEpoch)).toEqual([
+      "epoch-before-import", "epoch-before-import",
     ]);
   });
 
@@ -136,22 +146,57 @@ describe("native realtime credential boundary", () => {
     expect(mocks.enforceApiKeyModelPolicy).toHaveBeenCalledWith(expect.any(Request), "openai/gpt-realtime-2.1", "gateway-key", { limits: false });
   });
 
-  it("records terminal realtime provider usage through opaque handoff", async () => {
+  it("records each billable response once, preserving token components and unknown cost", async () => {
     const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
     const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }));
-    const { handoffId } = await result.json();
-    const prepared = handoff.consumeNativeRealtimeHandoff(handoffId);
-    expect(await prepared.onProviderEvent({ type: "response.completed", response: { id: "resp-a", usage: { input_tokens: 3, output_tokens: 5 } } })).toBe(true);
-    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "gateway-key", provider: "openai", model: "gpt-realtime-2.1", usageEventId: "openai:conn-a:resp-a:terminal" }));
+    const prepared = handoff.consumeNativeRealtimeHandoff((await result.json()).handoffId);
+    await prepared.onProviderEvent({ type: "session.created", session: { id: "session-a" } });
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
+    const usage = { input_tokens: 3, output_tokens: 5, input_tokens_details: { cached_tokens: 2, audio_tokens: 1 }, output_tokens_details: { reasoning_tokens: 2 } };
+    const event = { type: "response.completed", response: { id: "resp-a", usage } };
+    expect(await prepared.onProviderEvent(event)).toBe(true);
+    await prepared.onProviderEvent(event);
+    await prepared.onProviderEvent({ ...event, response: { id: "resp-b", usage } });
+    expect(mocks.saveRequestUsage.mock.calls.map(([entry]) => entry.usageEventId)).toEqual([
+      "openai:conn-a:resp-a:terminal", "openai:conn-a:resp-b:terminal",
+    ]);
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: "gateway-key", provider: "openai", model: "gpt-realtime-2.1", connectionId: "conn-a",
+      endpoint: "/v1/realtime", modality: "realtime", tokens: usage, nativeUnits: {},
+      billingEpoch: "epoch-before-import",
+      cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable",
+    }));
+    await expect(prepared.onProviderEvent({ type: "response.completed", id: "session-a", usage })).rejects.toThrow("billable response ID");
   });
 
-  it("stops realtime relay when terminal usage cannot commit", async () => {
-    mocks.saveRequestUsage.mockRejectedValueOnce(new Error("disk unavailable"));
+  it("settles interrupted Gemini usage once on close with all reported components", async () => {
+    mocks.registry.length = 0;
+    mocks.registry.push({ id: "gemini", models: [{ id: "gemini-3.8-live", kind: "live" }] });
+    mocks.getModelInfo.mockResolvedValue({ provider: "gemini", model: "gemini-3.8-live" });
+    const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
+    const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof }, { model: "gemini/gemini-3.8-live", path: "/v1/native/gemini/live" }));
+    const prepared = handoff.consumeNativeRealtimeHandoff((await result.json()).handoffId);
+    const usage = { promptTokenCount: 5, responseTokenCount: 2, totalTokenCount: 7, thoughtsTokenCount: 1, input_tokens_details: { cached_tokens: 4 } };
+    await prepared.onProviderEvent({ usageMetadata: usage, serverContent: { interrupted: true } });
+    expect(mocks.saveRequestUsage).not.toHaveBeenCalled();
+    await prepared.onProviderClose();
+    await prepared.onProviderClose();
+    expect(mocks.saveRequestUsage).toHaveBeenCalledTimes(1);
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({
+      tokens: { ...usage, input_tokens: 5, output_tokens: 2, total_tokens: 7 },
+      billingEpoch: "epoch-before-import",
+    }));
+  });
+
+  it.each([null, "epoch-before-import"])("rejects late realtime usage after import from epoch %s", async (billingEpoch) => {
+    mocks.resolveClientApiKey.mockResolvedValue({ apiKey: "gateway-key", auth: { ok: true, apiKeyId: "gateway", billingEpoch } });
     const proof = createControlProof({ method: "POST", pathname: "/api/v1/realtime/native", remotePort: 43210 });
     const result = await POST(request({ "x-9r-owner-port": "43210", "x-9r-owner-proof": proof, "x-9r-realtime-client-key": "gateway-key" }));
     const { handoffId } = await result.json();
     const prepared = handoff.consumeNativeRealtimeHandoff(handoffId);
-    await expect(prepared.onProviderEvent({ type: "response.completed", response: { id: "resp-fail", usage: { input_tokens: 1, output_tokens: 1 } } })).rejects.toThrow("disk unavailable");
+    mocks.saveRequestUsage.mockRejectedValueOnce(new Error("Stale or missing billing epoch"));
+    await expect(prepared.onProviderEvent({ type: "response.completed", response: { id: "resp-fail", usage: { input_tokens: 1, output_tokens: 1 } } })).rejects.toThrow("Stale or missing billing epoch");
+    expect(mocks.saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({ billingEpoch }));
   });
 
   it("stops realtime relay after daily limit becomes exhausted", async () => {

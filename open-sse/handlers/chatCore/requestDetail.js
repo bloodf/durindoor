@@ -108,7 +108,7 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
 /**
  * The ledger rejects a total other than input + output, and chat writes are not
  * strict, so a disagreeing provider would lose the whole row. A larger total is
- * unreported output (xAI reports reasoning outside completion_tokens), so it joins
+ * treated as output missing from completion_tokens (such as reasoning), so it joins
  * completion once; a smaller one is ignored. The reported value stays in meta.
  */
 function reconcileReportedTotal(usage) {

@@ -46,7 +46,6 @@ describe("Qoder stream-start billing fallback", () => {
 
   it.each([
     JSON.stringify({ code: "112", message: "quota exhausted" }),
-    JSON.stringify({ code: "10605", message: "queue throttled" }),
     JSON.stringify({ pricingUrl: "https://qoder.sh/pricing" }),
     JSON.stringify({ code: "110", message: "billing daily count exceeded" }),
     JSON.stringify({ code: 110, message: "billing daily count exceeded" }),
@@ -56,6 +55,22 @@ describe("Qoder stream-start billing fallback", () => {
     expect(wrapped.status).toBe(403);
     expect(wrapped.headers.get("content-type")).toContain("application/json");
     await expect(wrapped.json()).resolves.toEqual({ error: { message: body, code: 403 } });
+  });
+
+  it("treats 10605 as a retryable queue 503, not a billing 403", async () => {
+    const body = JSON.stringify({ code: "10605", message: JSON.stringify({ isQueued: true, retryAfterSeconds: 30 }), subCode: "RESOURCE_LIMIT" });
+    const wrapped = await wrapQoderSSE(responseFromChunks([envelope(403, body)]), "qoder/auto");
+
+    expect(wrapped.status).toBe(503);
+    expect(wrapped.headers.get("x-qoder-queue-delay-ms")).toBe("30000");
+    expect((await wrapped.json()).error.code).toBe("qoder_model_queued");
+  });
+
+  it("keeps a billing signature recognisable when it arrives together with 10605", async () => {
+    const body = JSON.stringify({ code: "10605", pricingUrl: "https://qoder.sh/pricing" });
+    const wrapped = await wrapQoderSSE(responseFromChunks([envelope(403, body)]), "qoder/auto");
+
+    expect(wrapped.status).toBe(403);
   });
 
   it("detects a code-110 billing block when statusCodeValue is a numeric string", async () => {

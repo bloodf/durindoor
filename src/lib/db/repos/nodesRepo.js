@@ -91,6 +91,11 @@ export async function deleteProviderNode(id) {
     if (!row) return;
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
+    // customModels keys are `${providerAlias}|${id}|${type}`; the alias is the node id or its prefix.
+    for (const alias of [id, removed.prefix].filter(Boolean)) {
+      const head = `${alias}|`;
+      db.run(`DELETE FROM kv WHERE scope = 'customModels' AND substr(key, 1, ?) = ?`, [head.length, head]);
+    }
   });
   return removed;
 }

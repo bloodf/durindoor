@@ -26,6 +26,7 @@
 - ci: Run full local test inventory in four sequential isolated batches, preserving each command's five-minute limit and four-worker cap; fail closed on incomplete or inconsistent reports.
 - fix(security): Enforce accepted-principal ownership for native Anthropic files/batches and encoded public API routing. Anthropic files and batches created before the upgrade have no recorded owner, so after the upgrade they return 403 to all callers, including operators.
 - fix(security): Scope account-backed media-provider voice lists to a key's provider accounts; send the public voice list's internal call to the configured server address; record MiniMax voice clone ownership; store local files under `DATA_DIR` while keeping files under `~/.9router/files` readable (#1115).
+- fix(security): Require exactly one resource identifier on tracked native operations; repeated query or JSON body identifiers return 400. Add a route-level authorization matrix for files, batches, media jobs and native resources across path spellings and identities (#1115).
 - chore(deps-dev): Update the test package to vitest 4.1.12 (vite 8.3.5, source-map-js 1.2.2) and happy-dom 21.0.4, clearing its `npm audit` advisories (#1412). The earlier happy-dom 20.14 overlay failures came from two tests restoring a `CSSStyleDeclaration` property descriptor that newer happy-dom rejects; those tests now restore only the value.
 
 ## Features

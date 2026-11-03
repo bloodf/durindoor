@@ -137,3 +137,14 @@ OpenRouter's documented free-model limits ([rate limits](https://openrouter.ai/d
 OAuth free tiers still need an account. Quota rules change without a DurinDoor release. Keep a paid or local fallback for work that cannot wait on a free pool. Watch usage on the dashboard and reconnect if the upstream revokes the token.
 
 After connecting, use the exact discovered ID in a chat or media request and check **Usage**. For local failures, verify the server from the gateway host first. Free-tier availability and billing rules belong to the upstream provider and can change independently of this build.
+
+## Free.ai
+
+`free-ai` talks to `https://api.free.ai/v1/chat/` (note the trailing slash; there is no `/chat/completions`). Models are discovered from `/v1/models`. Create an `sk-free-...` key on the Free.ai dashboard. Published free-tier limits are roughly 30K tokens per day, 60 requests per minute and 1000 requests per month.
+
+Free.ai's terms do not allow resale or redistribution of access without written consent. Use your own key for your own calls, for example on a self-hosted gateway. Check their current terms before sharing a DurinDoor instance with other people.
+
+### Unverified
+
+- No live call was made. The `/v1/models` response shape, streaming, tool calls and error bodies are unconfirmed.
+- The free-tier limits come from Free.ai's public pages and can change.

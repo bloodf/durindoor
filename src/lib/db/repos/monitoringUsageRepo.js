@@ -1,6 +1,7 @@
 import { getAdapter } from "../driver.js";
 
-const ERROR_CASE = "CASE WHEN LOWER(COALESCE(status, 'ok')) IN ('', 'ok', 'success', '200') THEN 0 ELSE 1 END";
+// "accepted": a provider took an async job whose outcome was never observed. Not an error.
+const ERROR_CASE = "CASE WHEN LOWER(COALESCE(status, 'ok')) IN ('', 'ok', 'success', '200', 'accepted') THEN 0 ELSE 1 END";
 const TOTALS = `COUNT(*) AS requests, COALESCE(SUM(promptTokens), 0) AS prompt,
   COALESCE(SUM(completionTokens), 0) AS completion, COALESCE(SUM(cost), 0) AS cost`;
 

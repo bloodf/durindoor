@@ -40,6 +40,7 @@ export function isModelAllowed(policy, modelStr) {
  * object, nativeUnits object, USD cost and costStatus/costSource provenance.
  * known means authoritative, estimated means a caller estimate, and unknown
  * requires null cost. Never pass guessed free cost or scalar token totals.
+ * usage.status defaults to ok; "accepted" marks a provider-accepted job with no observed outcome.
  * Incomplete legacy events and storage failures throw; there is no totals-only
  * fallback. A missing API key still records local usage without key totals.
  * Every failure carries code USAGE_ACCOUNTING_FAILED and the original cause:
@@ -67,7 +68,7 @@ export async function recordApiKeyUsage(apiKey, usage) {
     if (usage.cost === undefined || !["known", "estimated", "unknown"].includes(usage.costStatus)) {
       throw new TypeError("Usage event requires cost and costStatus");
     }
-    const committed = await saveRequestUsage({ ...usage, apiKey, status: "ok", strict: true });
+    const committed = await saveRequestUsage({ ...usage, apiKey, status: usage.status ?? "ok", strict: true });
     if (committed === false) throw new Error("Usage accounting was not committed");
   } catch (cause) {
     const error = new Error(cause?.message || String(cause), { cause });

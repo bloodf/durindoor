@@ -1,0 +1,68 @@
+---
+title: Compatibility
+description: Supported Node version, database drivers, platforms and artifacts, with what CI actually exercises.
+---
+
+This page lists what DurinDoor supports and how each claim is backed. **Tested** means an automated job in this repository runs it. **Checked manually** means a maintainer ran it once and no job repeats it. **Untested** means the code path exists but nothing exercises it, so treat it as unsupported until you verify it yourself.
+
+## Node.js
+
+| Surface | Version | Where it is enforced |
+| --- | --- | --- |
+| App (`package.json` `engines`) | exactly `26.13.0`, npm `11.20.0` | `package.json`, `.nvmrc` |
+| CLI package (`durindoor`) | `>=26.13.0` | `cli/package.json` |
+| Docker image | `node:26.13.0-alpine` | `Dockerfile` (`NODE_IMAGE`) |
+| CI, nightly, release, artifact smoke | `26.13.0` | `.github/workflows/*.yml` |
+
+No other Node version is tested. The packages that DurinDoor depends on may list wider ranges (`better-sqlite3` 12.11.1 declares `20.x` through `26.x`), but that is their claim, not a result from this project's CI.
+
+## Compatibility matrix
+
+| Component | What it is | Evidence | Status |
+| --- | --- | --- | --- |
+| `better-sqlite3` (native SQLite) | Preferred driver. App dependency `^12.11.1`. The npm CLI installs its own copy into `DATA_DIR/runtime` on `postinstall`, pinned in `cli/hooks/sqliteRuntime.js` | Driver-selection unit tests and the full suite run on `ubuntu-latest` (x64) with Node 26.13.0. Upstream publishes Node 26 (ABI 147) prebuilt binaries for darwin x64 and arm64, linux x64, arm64 and arm, linuxmusl x64, arm64 and arm, and win32 x64 and arm64 (checked against the 12.11.1 and 12.10.1 release assets). Loading it on macOS arm64 with Node 26.13.0 was checked manually | Tested on Linux x64 and in the Docker images. Prebuild available elsewhere. Not run in CI on macOS or Windows |
+| `node:sqlite` | Second choice on Node 22.5 or later | The fallback order is unit-tested in `tests/unit/db-driver-chain.test.js`. No job runs the server on it | Selection logic tested, server untested |
+| `sql.js` | Pure-JS fallback, ships its `.wasm` beside the bundle | Unit tests for persistence and for the shipped wasm asset. The artifact smokes do not force or assert which driver opens, so the server is not known to run on `sql.js` | Component tested, server untested |
+| PostgreSQL | `pg` `^8.13`, queried from a `worker_threads` worker (`pgSyncWorker.cjs`) with a synchronous facade | `npm run check:postgres-migrations` checks that PostgreSQL migrations match SQLite's. Unit tests use mocks. No workflow starts a PostgreSQL server | Migration parity tested, live server untested. Compose ships `postgres16`, `postgres17` and `postgres18` profiles |
+| Worker threads | PostgreSQL query worker only | Covered by the PostgreSQL row | Untested against a live server |
+| System tray (CLI) | macOS and Linux: `systray2` `2.1.4`, lazy-installed into `DATA_DIR/runtime`. Windows: PowerShell `NotifyIcon`, no binary | No test starts a tray | Untested |
+| Standalone build | `.next/standalone/custom-server.js` | `npm run verify:installed` in `release.yml` and the manual `artifact-smoke.yml`: starts the server in an isolated `DATA_DIR`, checks health, login, settings and auth denial | Tested on Linux x64 |
+| npm tarball | `npm pack` of the CLI | `npm run verify:packed` in the same two workflows installs the tarball with `--ignore-scripts` and runs the installed-artifact smoke | Tested on Linux x64. The `postinstall` runtime install is not exercised |
+| Docker `linux/amd64` | Alpine (musl) image | `docker-publish.yml` builds on `ubuntu-24.04` and requires `/api/health` before publishing | Tested |
+| Docker `linux/arm64` | Alpine (musl) image | Same job on `ubuntu-24.04-arm` | Tested |
+| Web-session browser (ChatGPT Web) | Alpine Chromium under Xvfb, `playwright` `1.63.0`. Build with `--build-arg CHATGPT_WEB_BROWSER=false` to leave it out | The image builds. No test drives a real browser session | Untested |
+| Bun | `npm run start:bun` and a `bun:sqlite` branch in the driver chain | Nothing runs under Bun | Untested |
+
+## Operating systems and architectures
+
+| Platform | How it runs | Status |
+| --- | --- | --- |
+| Linux x64 | Source, npm, standalone, Docker | Tested |
+| Linux arm64 | Docker | Tested (health smoke only) |
+| Linux arm64 without Docker | npm, source | Untested. Prebuilt `better-sqlite3` exists |
+| macOS arm64 | npm, source | Checked manually. Not in CI |
+| macOS x64 | npm, source | Untested |
+| Windows x64 | npm, source | Untested. The CLI contains Windows-specific code for the tray, process scanning and `APPDATA` |
+| Windows arm64, Linux arm (32-bit) | npm, source | Untested |
+
+## Known gaps
+
+- `tests/package.json` still declares `node: ^20.19.0 || >=22.12.0` for the test package, while CI runs it on 26.13.0.
+- `cli/hooks/sqliteRuntime.js` pins `better-sqlite3` `12.10.1` for the CLI runtime copy, while the app depends on `^12.11.1`. Both have Node 26 prebuilt binaries.
+- `tests/unit/node-version-alignment.test.js` keeps the table above honest for the app, CLI, Dockerfile and workflows. It does not cover the two gaps above.
+- There is no required CI job that runs the standalone artifact on macOS or Windows, or the server on `sql.js`, `node:sqlite` or a live PostgreSQL server.
+
+## Move to a new Node, machine or platform
+
+1. Stop DurinDoor and any watchdog. Make a full [data backup](../operations/data-management.mdx) with the encryption keys and secrets. For PostgreSQL, take a verified dump.
+2. Install the Node version in the table above. For a source or npm install, reinstall dependencies on the new Node so native modules are rebuilt: reinstall the CLI package, or run `npm ci` in a checkout.
+3. Restore the data directory with the same `JWT_SECRET`, `API_KEY_SECRET` and `master-key`. SQLite database files are not tied to a CPU architecture, but this repository does not test cross-platform restores, so copy the files with the app stopped and verify afterwards.
+4. Start and read the startup log. A line naming the driver, for example `[DB] Driver: pg | engine: postgres`, shows what opened. A native-driver warning is not a failure if a later driver opens. `No SQLite driver available` means all of them failed.
+5. Verify as described in [Upgrading](../operations/upgrading.mdx#after-the-bump): health, `/v1/models`, one authenticated request, and **Settings → Database**.
+
+## Recover from a failed move
+
+- **Native driver does not load.** Reinstall the CLI package, or rebuild in the checkout. `sql.js` can run a small installation in the meantime. See [Troubleshooting](../troubleshooting.mdx).
+- **PostgreSQL unreachable.** Legacy dashboard-managed installs fall back to SQLite once per process and record `databaseEngineError`. Explicit PostgreSQL startup fails instead. See [Boot fallback](../operations/postgres.mdx#boot-fallback).
+- **Bad migration or data.** Stop every writer, restore the verified pre-move backup with its matching secrets, and start the previous version. Starting an old binary against a migrated database does not undo migrations. See [Roll back a failed upgrade](../operations/upgrading.mdx#roll-back-a-failed-upgrade).
+- **Coming from 9router.** Use the [migration script](../reference/migrating-from-9router.mdx).

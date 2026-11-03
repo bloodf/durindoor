@@ -111,7 +111,7 @@ function nativeRequest(op, principal, extra = {}) {
   const model = registry.find((entry) => entry.id === op.provider)?.models[0]?.id;
   if (!model) throw new Error(`Missing registry fixture model: ${op.provider}`);
   const query = new URLSearchParams({ model: `${op.provider}/${model}`, ...(op.resourceQuery ? { [op.resourceQuery]: "resource" } : {}) });
-  const body = op.method === "POST" ? (op.resourceBodyField ? { [op.resourceBodyField]: "resource" } : {}) : undefined;
+  const body = op.method === "POST" ? (op.resourceBodyField ? { [op.resourceBodyField]: "resource" } : op.resourceRequestField ? { [op.resourceRequestField]: "created" } : {}) : undefined;
   const req = request(`/api/v1/native/${op.provider}${path}?${query}`, principal, op.method, body, { "x-connection-id": `${op.provider}-account`, ...extra });
   return native[op.method](req, { params: Promise.resolve({ provider: op.provider, operation: path.slice(1).split("/") }) });
 }
@@ -164,7 +164,7 @@ describe.each(principals)("#1115 native principal %s", (principal) => {
       const ids = principal === "cli" ? ["resource", "foreign-resource"] : [principal === "owner" ? "resource" : "foreign-resource"];
       expect(payload).toEqual({ data: ids.map((id) => ({ id })), first_id: ids[0], last_id: ids.at(-1), has_more: false });
     }
-    if (op.createsResource) expect(fixture.owners.get(`${op.provider}:${op.provider}-account:resource`)?.ownerId).toBe(principal === "cli" ? "operator" : principal);
+    if (op.createsResource) expect(fixture.owners.get(`${op.provider}:${op.provider}-account:${op.resourceRequestField ? "created" : "resource"}`)?.ownerId).toBe(principal === "cli" ? "operator" : principal);
     for (const [, init] of fixture.fetch.mock.calls) {
       expect(init.headers.get("cookie")).toBeNull(); expect(init.headers.get("x-9r-cli-token")).toBeNull();
     }

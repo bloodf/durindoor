@@ -146,7 +146,7 @@ describe("xAI video proxy (9router#2593)", () => {
     expect(res.headers.get("x-9router-connection-id")).toBe("xai-1");
     expect(res.headers.get("access-control-expose-headers")).toContain("x-9router-connection-id");
     expect(JSON.parse(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value)).toMatchObject({ apiKeyId: "video-owner", connectionId: "xai-1", resourceId: "vid-123", model: "grok-imagine-video" });
-    expect(adapter.all("SELECT * FROM usageHistory")).toEqual([]);
+    expect(adapter.all("SELECT status, cost, connectionId FROM usageHistory")).toEqual([{ status: "accepted", cost: null, connectionId: "xai-1" }]);
   });
 
   it("GET polls https://api.x.ai/v1/videos/{id} with auth", async () => {

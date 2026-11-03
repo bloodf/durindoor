@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ keyId: "owner", connectionId: "account-a", allowed: [], denied: false, failLedger: false }));
 vi.mock("@/lib/localDb", async () => ({
@@ -62,6 +62,27 @@ async function importCutover() {
   const backup = await exportDb();
   await importDb({ ...backup, billingCutoverVersion: 1, billingEpoch: backup.billingEpoch || "imported-generation" });
 }
+// Transforming the handler and DB graph is the slow part. Warm it once so
+// beforeEach keeps the default hook timeout and a real hang still fails.
+beforeAll(async () => {
+  const before = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+  const env = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE"].map((name) => [name, process.env[name]]));
+  const warm = fs.mkdtempSync(path.join(os.tmpdir(), "video-usage-warm-"));
+  process.env.DATA_DIR = warm;
+  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  delete global._dbAdapter;
+  try {
+    await import("@/lib/db/index.js");
+    await import("@/sse/handlers/video.js");
+  } finally {
+    await global._dbAdapter?.instance?.close?.();
+    delete global._dbAdapter;
+    for (const signal of signals) for (const listener of process.listeners(signal)) if (!before.get(signal).has(listener)) process.removeListener(signal, listener);
+    for (const [name, value] of Object.entries(env)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+    fs.rmSync(warm, { recursive: true, force: true });
+  }
+}, 60_000);
+
 beforeEach(async () => {
   listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
   previousDataDir = process.env.DATA_DIR;
@@ -95,13 +116,13 @@ describe("durable video jobs use the existing ledger", () => {
     fetch.mockClear();
     expect((await poll(pollRequest(), "shared-id")).status).toBe(404);
     expect(fetch).not.toHaveBeenCalled();
-    expect(rows()).toEqual([]);
+    // The imported history keeps the old job's creation row; it is never settled.
+    expect(rows().map((row) => [row.status, row.cost])).toEqual([["accepted", null]]);
     await submit();
     fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 3 }, usage: { cost_usd: 0.2 } }));
     expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
     expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
-    expect(rows()).toHaveLength(1);
-    expect(rows()[0].cost).toBe(0.2);
+    expect(rows().map((row) => [row.status, row.cost])).toEqual([["accepted", null], ["ok", 0.2]]);
   });
 
   it.each(["create", "poll", "direct"])("does not upgrade an in-flight %s completion across import", async (operation) => {
@@ -119,7 +140,8 @@ describe("durable video jobs use the existing ledger", () => {
     const response = operation === "create" ? await create(createRequest(), "generations") :
       operation === "poll" ? await poll(pollRequest(), "shared-id") : await generate(directRequest());
     expect(response.status).toBe(500);
-    expect(rows()).toEqual([]);
+    // Only a poll has a creation row; the import keeps it unsettled.
+    expect(rows().map((row) => [row.status, row.cost])).toEqual(operation === "poll" ? [["accepted", null]] : []);
     expect(adapter.all("SELECT value FROM kv WHERE scope = 'mediaJobs'")).toEqual([]);
     if (operation === "direct") {
       fetch.mockResolvedValueOnce(json({ video: { duration: 3 }, usage: { cost_usd: 0.2 } }));
@@ -129,9 +151,12 @@ describe("durable video jobs use the existing ledger", () => {
     }
   });
 
-  it("records no submission usage or secret, then deduplicates concurrent and restarted completion polls", async () => {
+  it("records an accepted unknown-cost row at submission, then settles it once across concurrent and restarted polls", async () => {
     await submit();
-    expect(rows()).toEqual([]);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ status: "accepted", cost: null, provider: "xai", model: "grok-imagine-video", connectionId: "account-a", apiKey: "owner-secret", endpoint: "/v1/videos/generations" });
+    expect(JSON.parse(rows()[0].meta)).toMatchObject({ modality: "video", costStatus: "unknown", costSource: "accepted-job", jobState: "accepted" });
+    expect(rows()[0].tokens).not.toContain("secret");
     const stored = adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value;
     expect(stored).not.toContain("secret");
     expect(JSON.parse(stored)).toMatchObject({ apiKeyId: "owner", connectionId: "account-a", model: "grok-imagine-video" });
@@ -143,10 +168,98 @@ describe("durable video jobs use the existing ledger", () => {
     adapter = await (await import("@/lib/db/driver.js")).getAdapter();
     await poll(pollRequest(), "shared-id");
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ cost: null, promptTokens: 0, completionTokens: 0, connectionId: "account-a", apiKey: "owner-secret" });
+    expect(rows()[0]).toMatchObject({ status: "ok", cost: null, promptTokens: 0, completionTokens: 0, connectionId: "account-a", apiKey: "owner-secret" });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ nativeUnits: { videoSeconds: 4.5 }, costStatus: "unknown" });
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
-    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1 });
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, unknownCostRequests: 1 });
+  });
+
+  it("settles a priced completion into the accepted row without a second request", async () => {
+    await submit();
+    fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 6 }, usage: { cost_usd: 0.4 } }));
+    expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ status: "ok", cost: 0.4 });
+    expect(JSON.parse(rows()[0].meta)).toMatchObject({ costStatus: "known", costSource: "provider" });
+    const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0.4, unknownCostRequests: 0 });
+    const day = JSON.parse(adapter.get("SELECT data FROM usageDaily").data);
+    expect(day).toMatchObject({ requests: 1, cost: 0.4, unknownCostRequests: 0 });
+    expect(Object.values(day.byProvider)[0]).toMatchObject({ requests: 1, cost: 0.4, unknownCostRequests: 0 });
+    expect(adapter.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'").value).toBe("1");
+  });
+
+  describe("recent-request ring", () => {
+    const resetRing = async (initialized) => {
+      global._recentRing = { items: [], initialized };
+      await reload();
+      return import("@/lib/db/repos/usageRepo.js");
+    };
+    const ringRows = () => global._recentRing.items.map((item) => [item.status, item.cost]);
+    afterEach(() => { delete global._recentRing; });
+
+    it("replaces the accepted item on settlement, so the account reads as active", async () => {
+      const { getRecentlyActiveConnectionIds } = await resetRing(true);
+      await submit();
+      expect(ringRows()).toEqual([["accepted", null]]);
+      expect([...await getRecentlyActiveConnectionIds(60_000)]).toEqual([]);
+      fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 6 }, usage: { cost_usd: 0.4 } }));
+      expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
+      expect(ringRows()).toEqual([["ok", 0.4]]);
+      expect([...await getRecentlyActiveConnectionIds(60_000)]).toEqual(["account-a"]);
+    });
+
+    it("settles an item rebuilt from history after a restart", async () => {
+      await submit();
+      const { getRecentlyActiveConnectionIds } = await resetRing(false);
+      expect([...await getRecentlyActiveConnectionIds(60_000)]).toEqual([]);
+      expect(ringRows()).toEqual([["accepted", null]]);
+      fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 6 }, usage: { cost_usd: 0.4 } }));
+      await poll(pollRequest(), "shared-id");
+      expect(ringRows()).toEqual([["ok", 0.4]]);
+    });
+
+    it("removes an item rebuilt from history when the job is retracted", async () => {
+      await submit();
+      const { getRecentlyActiveConnectionIds } = await resetRing(false);
+      await getRecentlyActiveConnectionIds(60_000);
+      expect(ringRows()).toEqual([["accepted", null]]);
+      fetch.mockResolvedValueOnce(json({ status: "failed" }));
+      await poll(pollRequest(), "shared-id");
+      expect(ringRows()).toEqual([]);
+    });
+  });
+
+  it("keeps an unpolled job as one accepted unknown-cost request", async () => {
+    await submit();
+    const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0, unknownCostRequests: 1 });
+  });
+
+  it("still records the completion when the accepted row could not be written", async () => {
+    state.failLedger = true;
+    await submit();
+    expect(rows()).toEqual([]);
+    expect(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'")).toBeTruthy();
+    state.failLedger = false;
+    fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 6 }, usage: { cost_usd: 0.4 } }));
+    expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ status: "ok", cost: 0.4 });
+  });
+
+  it.each(["prune", "all"])("settles lifetime totals when history was cleared (%s) before completion", async (mode) => {
+    await submit();
+    const { pruneUsageOlderThan, resetUsageHistory } = await import("@/lib/db/repos/usageRepo.js");
+    if (mode === "prune") await pruneUsageOlderThan(Date.now() + 1000);
+    else await resetUsageHistory("all");
+    fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 6 }, usage: { cost_usd: 0.4 } }));
+    expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
+    expect(rows()).toEqual([]);
+    const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0.4, unknownCostRequests: 0 });
+    expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0.4, unknownCostRequests: 0 });
   });
 
   it.each(["prune", "all"])("does not recharge durable terminal jobs after %s and restart", async (mode) => {
@@ -183,7 +296,7 @@ describe("durable video jobs use the existing ledger", () => {
     const failedBody = await failed.json();
     expect(failedBody).toMatchObject({ error: { type: "server_error", code: "internal_server_error" } });
     expect(JSON.stringify(failedBody)).not.toContain("ledger unavailable");
-    expect(rows()).toEqual([]);
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
     const stored = adapter.get("SELECT key, value FROM kv WHERE scope = 'mediaJobs'");
     const observed = JSON.parse(stored.value);
     expect(JSON.parse(stored.key)).toEqual(["video", "xai", "account-a", "shared-id"]);
@@ -200,7 +313,7 @@ describe("durable video jobs use the existing ledger", () => {
     fetch.mockReset();
     fetch.mockRejectedValue(new Error("upstream expired"));
     expect((await poll(pollRequest(), "shared-id")).status).toBe(500);
-    expect(rows()).toEqual([]);
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
     expect(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value).toBe(stored.value);
     state.failLedger = false;
     const replay = await poll(pollRequest(), "shared-id");
@@ -210,7 +323,7 @@ describe("durable video jobs use the existing ledger", () => {
     expect((await poll(pollRequest(), "shared-id")).status).toBe(200);
     expect(fetch).not.toHaveBeenCalled();
     expect(rows()).toHaveLength(1);
-    expect(rows()[0].cost).toBe(0.4);
+    expect(rows()[0]).toMatchObject({ status: "ok", cost: 0.4 });
     expect(rows()[0].usageEventId).toBe(observed.usageEventId);
     expect(adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value).toBe(stored.value);
   });
@@ -230,7 +343,8 @@ describe("durable video jobs use the existing ledger", () => {
     state.denied = false; state.keyId = null;
     expect((await create(createRequest(), "generations")).status).toBe(403);
     expect(fetch).not.toHaveBeenCalled();
-    expect(rows()).toEqual([]);
+    // Only the owner's creation row; refused polls and creation add nothing.
+    expect(rows().map((row) => row.status)).toEqual(["accepted"]);
   });
 
   it("separates identical upstream IDs by original connection and never rotates a poll", async () => {
@@ -243,6 +357,7 @@ describe("durable video jobs use the existing ledger", () => {
     expect(rows().map((row) => row.connectionId).sort()).toEqual(["account-a", "account-b"]);
     expect(new Set(rows().map((row) => row.usageEventId)).size).toBe(2);
     expect(rows().map((row) => JSON.parse(row.meta).nativeUnits)).toEqual([{ videoJobs: 1 }, { videoJobs: 1 }]);
+    expect(rows().map((row) => row.status)).toEqual(["ok", "ok"]);
   });
 
   it.each(["failed", "cancelled", "expired"])("never records successful use for %s jobs", async (status) => {
@@ -252,5 +367,9 @@ describe("durable video jobs use the existing ledger", () => {
     fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 8 } }));
     await poll(pollRequest(), "shared-id");
     expect(rows()).toEqual([]);
+    const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 0, totalCost: 0, unknownCostRequests: 0 });
+    expect(JSON.parse(adapter.get("SELECT data FROM usageDaily").data)).toMatchObject({ requests: 0, unknownCostRequests: 0 });
+    expect(adapter.all("SELECT * FROM usageLastSeen")).toEqual([]);
   });
 });

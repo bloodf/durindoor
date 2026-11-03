@@ -95,10 +95,11 @@ describe("async video completion and the dollar budget", () => {
     const { updatePricing } = await import("@/lib/db/repos/pricingRepo.js");
     await updatePricing({ xai: { "grok-imagine-video": { native: { unit, rate } } } });
     await submit();
-    expect(rows()).toEqual([]);
+    // Creation has no measured units, so the tariff cannot price it yet.
+    expect(rows().map((row) => [row.status, row.cost])).toEqual([["accepted", null]]);
     fetch.mockImplementation(async () => json({ status: "done", video: { duration: 5 } }));
     await Promise.all([poll(pollRequest(), "job-1"), poll(pollRequest(), "job-1")]);
-    expect(rows()).toHaveLength(1); expect(rows()[0].cost).toBe(0.6);
+    expect(rows()).toHaveLength(1); expect(rows()[0]).toMatchObject({ status: "ok", cost: 0.6 });
     const before = rows();
     expect(JSON.parse(before[0].meta)).toMatchObject({ costStatus: "estimated", nativeUnits: { videoJobs: 1, videoSeconds: 5 }, pricing: { unit, rate, quantity: unit === "video_job" ? 1 : 5 } });
     await updatePricing({ xai: { "grok-imagine-video": { native: { unit, rate: 99 } } } });
@@ -136,15 +137,18 @@ describe("async video completion and the dollar budget", () => {
     await submit("job-unknown");
     fetch.mockResolvedValueOnce(json({ status: "pending" }));
     await poll(pollRequest("job-pending"), "job-pending");
-    expect(rows()).toEqual([]);
+    const statuses = () => rows().map((row) => [row.status, row.cost]);
+    expect(statuses()).toEqual([["accepted", null], ["accepted", null], ["accepted", null]]);
+    expect(await decision()).toBeNull();
     fetch.mockResolvedValueOnce(json({ status: "failed", video: { duration: 5 }, usage: { cost_usd: 9 } }));
     await poll(pollRequest("job-failed"), "job-failed");
-    expect(rows()).toEqual([]);
+    expect(statuses()).toEqual([["accepted", null], ["accepted", null]]);
     fetch.mockResolvedValueOnce(json({ status: "done", video: { duration: 5 } }));
     await poll(pollRequest("job-unknown"), "job-unknown");
-    expect(rows()).toHaveLength(1);
-    expect(rows()[0].cost).toBeNull();
-    expect(JSON.parse(rows()[0].meta)).toMatchObject({ costStatus: "unknown" });
+    expect(statuses()).toEqual([["accepted", null], ["ok", null]]);
+    expect(JSON.parse(rows()[1].meta)).toMatchObject({ costStatus: "unknown" });
+    const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
+    expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 2, totalCost: 0, unknownCostRequests: 2 });
     expect(await decision()).toBeNull();
   });
 });

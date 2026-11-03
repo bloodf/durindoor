@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   createMediaJob: vi.fn(async (job) => job),
   getMediaJob: vi.fn(),
   recordApiKeyUsage: vi.fn(),
+  recordAcceptedJobUsage: vi.fn(async () => {}),
   recordApiKeyUsageForResponse: vi.fn(async (_key, response) => response),
   getNoAuthProviderCredentials: vi.fn()
 }));
@@ -72,6 +73,7 @@ vi.mock("@/lib/db/repos/mediaJobsRepo.js", () => ({
 vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
   enforceApiKeyModelPolicy: vi.fn(async () => null),
   recordApiKeyUsage: mocks.recordApiKeyUsage,
+  recordAcceptedJobUsage: mocks.recordAcceptedJobUsage,
   recordApiKeyUsageForResponse: mocks.recordApiKeyUsageForResponse
 }));
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
@@ -241,6 +243,10 @@ describe("media endpoints without a model", () => {
       modality: "music", provider: "udio", model: "udio-default", connectionId: "c1",
       resourceId: "music-job-1", apiKeyId: "music-route-owner",
       usageEventId: `${res.headers.get("x-request-id")}:music`, endpoint: "/v1/music/generations"
+    });
+    expect(mocks.recordAcceptedJobUsage).toHaveBeenCalledExactlyOnceWith("music-route-secret", {
+      billingEpoch: undefined, usageEventId: `${res.headers.get("x-request-id")}:music`, provider: "udio", model: "udio-default",
+      connectionId: "c1", endpoint: "/v1/music/generations", modality: "music"
     });
     expect(mocks.recordApiKeyUsage).not.toHaveBeenCalled();
     expect(mocks.recordApiKeyUsageForResponse).not.toHaveBeenCalled();

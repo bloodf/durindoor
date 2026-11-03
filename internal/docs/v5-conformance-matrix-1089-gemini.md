@@ -1,8 +1,8 @@
 # Issue #1089 Gemini client conformance matrix
 
-Counts: already-present 8; repaired 5; failing 0; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 8; repaired 10; failing 0; unsupported-by-contract 0; upstream-pending 0.
 
-Rows 1-7 map 1:1 to tests in `tests/translator/v5-conformance-matrix-gemini.test.js`. Gemini-client reply rows (Chat to Gemini) and the usage rows link existing tests.
+Rows 1-7 and 13-16 map to tests in `tests/translator/v5-conformance-matrix-gemini.test.js`; row 17 maps to `v5-conformance-gemini-name-restore.test.js`. Gemini-client reply rows (Chat to Gemini) and the usage rows link existing tests.
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
@@ -18,6 +18,11 @@ Rows 1-7 map 1:1 to tests in `tests/translator/v5-conformance-matrix-gemini.test
 | Stream | error terminal as OTHER | Gemini | already-present | `tests/translator/v5-conformance-matrix-chat.test.js`: `emits Gemini stream error as OTHER finishReason` |
 | Usage | stream and JSON thought/candidate accounting | Gemini | already-present | `tests/translator/v5-conformance-gemini-usage.test.js`, `v5-conformance-gemini-stream-usage.test.js` |
 | Request | OpenAI string `tool_choice` to Gemini modes | Gemini | already-present | `tests/translator/v5-conformance-gemini-tool-choice.test.js` |
+| Request | generated call ids sanitized (no dots) | Claude | repaired | `sanitizes generated call ids so Claude tool_use ids stay legal` |
+| Request | `toolConfig` ANY with several allowed names declares only those tools | Chat | repaired | `declares only allowed tools when ANY lists several names` |
+| Request | `toolConfig` VALIDATED maps to auto (no OpenAI equivalent) | Chat | repaired (known degradation) | `maps VALIDATED to auto` |
+| Request | gemini-cli source aliasing | Chat | repaired | `aliases dotted names for gemini-cli sources too` |
+| Non-stream | alias restored to `ns.search` in functionCall (Chat and Responses upstreams) | Gemini | repaired | `restores ns.search from a Chat upstream`, `restores ns.search from a Responses upstream` |
 | Request | Namespaced tool, strict, malformed schema from Chat | Gemini | already-present | see `v5-conformance-matrix-1089-chat.md` |
 
 Repaired in this change: Gemini-source requests previously ignored `toolConfig` and sent dotted tool names unaliased to Chat, Claude and Responses upstreams.

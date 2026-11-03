@@ -98,3 +98,28 @@ describe("#1089 Gemini client conformance — replies", () => {
     expect((last.response ?? last).candidates[0].finishReason).toBe(expected);
   });
 });
+
+describe("#1089 Gemini client conformance — review fixes", () => {
+  it("sanitizes generated call ids so Claude tool_use ids stay legal", () => {
+    const out = request(CLAUDE);
+    expect(out.messages[1].content[0].id).toMatch(/^[a-zA-Z0-9_-]+$/);
+    expect(out.messages[2].content[0].tool_use_id).toBe(out.messages[1].content[0].id);
+  });
+
+  it("declares only allowed tools when ANY lists several names", () => {
+    const body = geminiBody({ functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["a", "b"] } });
+    body.tools[0].functionDeclarations = ["a", "b", "c"].map((name) => ({ name, parameters: schema }));
+    const out = translateRequest(GEMINI, CHAT, "m", body, false);
+    expect(out.tools.map((t) => t.function.name)).toEqual(["a", "b"]);
+    expect(out.tool_choice).toBe("required");
+  });
+
+  it("maps VALIDATED to auto", () => {
+    expect(request(CHAT, { functionCallingConfig: { mode: "VALIDATED" } }).tool_choice).toBe("auto");
+  });
+
+  it("aliases dotted names for gemini-cli sources too", () => {
+    const out = translateRequest(FORMATS.GEMINI_CLI, CHAT, "m", structuredClone(geminiBody()), false);
+    expect(out.tools[0].function.name).toMatch(NAME);
+  });
+});

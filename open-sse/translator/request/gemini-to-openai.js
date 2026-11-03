@@ -69,21 +69,28 @@ export function geminiToOpenAIRequest(model, body, stream) {
     }
   }
 
-  // toolConfig → tool_choice (inverse of openai-to-gemini)
+  // toolConfig → tool_choice (inverse of openai-to-gemini). VALIDATED has no OpenAI
+  // equivalent; it is closest to "auto" (model may answer or call, args schema-checked).
   const fcc = body.toolConfig?.functionCallingConfig;
   if (result.tools?.length && fcc?.mode) {
     const names = fcc.allowedFunctionNames;
     if (fcc.mode === "NONE") result.tool_choice = "none";
-    else if (fcc.mode === "AUTO") result.tool_choice = "auto";
+    else if (fcc.mode === "AUTO" || fcc.mode === "VALIDATED") result.tool_choice = "auto";
     else if (fcc.mode === "ANY") {
-      result.tool_choice = names?.length === 1
-        ? { type: OPENAI_BLOCK.FUNCTION, function: { name: names[0] } }
-        : "required";
+      if (names?.length === 1) result.tool_choice = { type: OPENAI_BLOCK.FUNCTION, function: { name: names[0] } };
+      else {
+        // Several allowed names: OpenAI has no allow-list, so declare only the allowed tools.
+        if (names?.length) result.tools = result.tools.filter((t) => names.includes(t.function.name));
+        result.tool_choice = "required";
+      }
     }
   }
 
   return result;
 }
+
+// Anthropic/OpenAI id patterns reject dots etc.; keep the derived id deterministic for pairing.
+const generatedCallId = (name) => `call_${String(name).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
 // Convert Gemini content to OpenAI message
 function convertGeminiContent(content) {
@@ -120,7 +127,7 @@ function convertGeminiContent(content) {
       // Gemini lacks a native call id; derive a deterministic one from the name so the
       // matching functionResponse maps to the same tool_call_id (providers require pairing).
       toolCalls.push({
-        id: part.functionCall.id || `call_${part.functionCall.name}`,
+        id: part.functionCall.id || generatedCallId(part.functionCall.name),
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: part.functionCall.name,
@@ -132,7 +139,7 @@ function convertGeminiContent(content) {
     if (part.functionResponse) {
       return {
         role: ROLE.TOOL,
-        tool_call_id: part.functionResponse.id || `call_${part.functionResponse.name}`,
+        tool_call_id: part.functionResponse.id || generatedCallId(part.functionResponse.name),
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
       };
     }

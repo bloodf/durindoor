@@ -13,6 +13,25 @@ export const sleep = (ms, signal) => new Promise((resolve, reject) => {
   signal?.addEventListener("abort", onAbort, { once: true });
 });
 
+// The provider accepted this job, but its outcome can no longer be observed. It may
+// still bill, so the core records it as accepted with unknown cost (#1085).
+export const jobOutcomeUnknown = (message, status) =>
+  Object.assign(new Error(message), { jobOutcomeUnknown: true }, status ? { status } : null);
+
+// One status check for an accepted job. An abort stays an abort; anything else
+// that loses sight of the job is a lost observation, not a reported job failure.
+export async function fetchJobStatus(url, init, label) {
+  let response;
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    if (init?.signal?.aborted || error?.name === "AbortError") throw error;
+    throw jobOutcomeUnknown(`${label} status check failed: ${error?.message || error}`);
+  }
+  if (!response.ok) throw jobOutcomeUnknown(`${label} status ${response.status}`);
+  return response;
+}
+
 // Map OpenAI size to provider-specific aspect ratio
 export function sizeToAspectRatio(size) {
   if (!size || !isString(size)) return "1:1";

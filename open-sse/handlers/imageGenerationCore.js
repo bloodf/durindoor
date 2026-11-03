@@ -52,6 +52,12 @@ export async function handleImageGenerationCore({
   // Client disconnects are not provider failures: callers must not cool down the account.
   const isAbort = (error) => signal?.aborted || error?.name === "AbortError";
   const abortedResult = () => createErrorResult(499, "Image generation request aborted");
+  // A 2xx async submit means the provider took the job and may bill it, whatever we
+  // observe afterwards. No measured units or receipt exist, so the cost stays unknown.
+  const withAcceptedJob = (result) => ({
+    ...result,
+    acceptedJob: { ...mediaAccounting(null, provider, "image"), costSource: "accepted-job", meta: { jobState: "accepted" } }
+  });
   // fetchImageAsBase64 drops its own timeout when given a signal, so keep it here.
   // Built per call: the timeout must start at the prefetch, not at core entry.
   const imageFetchOptions = () => (signal ? { signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) } : undefined);
@@ -261,7 +267,7 @@ export async function handleImageGenerationCore({
       parsed = await providerResponse.json();
     }
   } catch (parseError) {
-    if (isAbort(parseError)) return abortedResult();
+    if (isAbort(parseError)) return adapter.async ? withAcceptedJob(abortedResult()) : abortedResult();
     // An adapter may tag a parse/validation error with an explicit HTTP status
     // (e.g. 422 for a per-request content rejection) to distinguish it from a
     // generic upstream failure. Only honor a sane client/server error status;
@@ -270,7 +276,8 @@ export async function handleImageGenerationCore({
     const status = Number.isInteger(tagged) && tagged >= 400 && tagged <= 599 ?
     tagged :
     HTTP_STATUS.BAD_GATEWAY;
-    return createErrorResult(status, parseError.message || `Invalid response from ${provider}`);
+    const failed = createErrorResult(status, parseError.message || `Invalid response from ${provider}`);
+    return parseError?.jobOutcomeUnknown ? withAcceptedJob(failed) : failed;
   }
 
   if (onRequestSuccess) await onRequestSuccess();

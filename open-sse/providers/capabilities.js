@@ -637,7 +637,7 @@ export const PROVIDER_CAPABILITIES = {
   "opencode-go": {
     "ox-alpha-free": OX_ALPHA_CAPABILITIES,
     // Upstream c8644368: 1M window and 128k output for claude-haiku-5-5 on OpenCode Go (adaptive thinking already comes from the haiku rule).
-    "claude-haiku-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+    "claude-haiku-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
     // glm-5.3-flash has no exact global entry (only the base "glm-5.3" id
     // does, with the z.ai-native "zai" thinkingFormat), so without a
     // provider override it fell through to DEFAULT_CAPABILITIES with no

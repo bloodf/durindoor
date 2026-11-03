@@ -52,6 +52,7 @@ describe("OpenCode Go claude-haiku-5-5 and kimi-k3.1-pro", () => {
     const caps = getCapabilitiesForModel("opencode-go", CLAUDE_ONLY);
     expect(caps.contextWindow).toBe(1000000);
     expect(caps.maxOutput).toBe(128000);
+    expect(caps.pdf).toBe(true);
   });
 
   it("prices kimi-k3.1-pro below the kimi-k3 row", () => {

@@ -19,13 +19,13 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | tool_choice none | Claude | already-present | `maps tool_choice none to Claude` |
 | Request | tool_choice required | Claude | already-present | `maps tool_choice required to Claude` |
 | Request | tool_choice named function | Gemini | already-present | `maps named tool_choice to Gemini ANY with allowedFunctionNames` |
-| Request | tool_choice auto | Gemini | failing | `maps tool_choice auto to Gemini AUTO mode` |
-| Request | tool_choice none | Gemini | failing | `maps tool_choice none to Gemini NONE mode` |
-| Request | tool_choice required | Gemini | failing | `maps tool_choice required to Gemini ANY mode` |
-| Request | tool_choice auto | Responses | failing | `preserves tool_choice auto on Chat to Responses` |
-| Request | tool_choice none | Responses | failing | `preserves tool_choice none on Chat to Responses` |
-| Request | tool_choice required | Responses | failing | `preserves tool_choice required on Chat to Responses` |
-| Request | tool_choice named function | Responses | failing | `preserves named tool_choice on Chat to Responses` |
+| Request | tool_choice auto | Gemini | already-present | `maps tool_choice auto to Gemini AUTO mode` |
+| Request | tool_choice none | Gemini | already-present | `maps tool_choice none to Gemini NONE mode` |
+| Request | tool_choice required | Gemini | already-present | `maps tool_choice required to Gemini ANY mode` |
+| Request | tool_choice auto | Responses | already-present | `preserves tool_choice auto on Chat to Responses` |
+| Request | tool_choice none | Responses | already-present | `preserves tool_choice none on Chat to Responses` |
+| Request | tool_choice required | Responses | already-present | `preserves tool_choice required on Chat to Responses` |
+| Request | tool_choice named function | Responses | already-present | `preserves named tool_choice on Chat to Responses` |
 | Request | parallel_tool_calls false | Claude | already-present | `carries parallel_tool_calls false as Claude disable_parallel_tool_use` |
 | Request | parallel_tool_calls true | Claude | already-present | `leaves Claude unrestricted when parallel_tool_calls is true` |
 | Request | parallel_tool_calls false/true | Responses | already-present | `preserves parallel_tool_calls false and true on Chat to Responses` |
@@ -75,8 +75,8 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 
 ## Failing reasons (tracked issues)
 
-1. #1328 — Gemini string `tool_choice` auto/none/required are dropped; only named `{type:function}` is mapped.
-2. #1329 — Chat→Responses never copies `tool_choice`.
+1. #1328 — fixed: Gemini string `tool_choice` auto/none/required map to AUTO/NONE/ANY.
+2. #1329 — fixed (#1336): Chat→Responses preserves `tool_choice`.
 3. #1330 — Resolved on main (#1348 / Option A): Chat JSON `finish_reason: error` returns HTTP 502 `Provider returned an incoherent non-streaming response` before Claude/Gemini projection; matrix rows assert that handler contract.
 4. #1331 — Chat→Responses length/content_filter → `incomplete` and stream `response.failed` for error are fixed. Non-stream `error` → `status: failed` stays skipped: live handlers 502 first (`isCoherentOpenAICompletion` + SSE→JSON #1348), so that projector branch is unreachable.
 5. #1332 — Chat→Claude image conversion is repaired by #1356 (data URI and HTTP(S), preserving error flags). Chat→Responses still stringifies image parts into output text; that residual remains open.

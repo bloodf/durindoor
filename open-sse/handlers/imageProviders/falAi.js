@@ -1,5 +1,5 @@
 // Fal.ai — async submit + queue polling
-import { sleep, nowSec, sizeToAspectRatio, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
+import { sleep, nowSec, sizeToAspectRatio, fetchJobStatus, jobOutcomeUnknown, readJobBody, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const BASE_URL = PROVIDER_MEDIA["fal-ai"]?.imageConfig?.baseUrl;
@@ -22,16 +22,15 @@ export default {
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
       await sleep(POLL_INTERVAL_MS, signal);
-      const r = await fetch(status_url, { headers, signal });
-      if (!r.ok) throw new Error(`Fal status ${r.status}`);
-      const s = await r.json();
+      const r = await fetchJobStatus(status_url, { headers, signal }, "Fal");
+      const s = await readJobBody(() => r.json(), signal);
       if (s.status === "COMPLETED") {
-        const fr = await fetch(response_url, { headers, signal });
-        return await fr.json();
+        // The job finished and is billed: losing its result is still an accepted job.
+        return readJobBody(async () => (await fetchJobStatus(response_url, { headers, signal }, "Fal result")).json(), signal);
       }
       if (s.status === "FAILED") throw new Error(s.error || "Fal generation failed");
     }
-    throw new Error("Fal polling timeout");
+    throw jobOutcomeUnknown("Fal polling timeout");
   },
   normalize: (responseBody) => {
     const images = Array.isArray(responseBody.images)

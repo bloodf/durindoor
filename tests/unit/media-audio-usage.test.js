@@ -124,13 +124,32 @@ describe("audio handlers commit normalized native usage", () => {
     vi.mocked(markAccountUnavailable).mockClear();
     const request = sttRequest("deepgram/nova-3");
     const body = await request.formData();
-    body.set("temperature", "0");
+    body.set("stream", "true");
     const response = await handleStt(new Request(request.url, { method: "POST", body }));
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain("does not support: temperature");
+    expect(await response.text()).toContain("does not support stream=true");
     expect(fetch).not.toHaveBeenCalled();
     expect(markAccountUnavailable).not.toHaveBeenCalled();
     expect(rows()).toEqual([]);
+  });
+
+  it("falls back from an OpenAI 500 to Deepgram for a temperature=0 client and records one row", async () => {
+    state.combo = ["openai/whisper-1", "deepgram/nova-3"];
+    fetch.mockResolvedValueOnce(json({ error: { message: "upstream failed" } }, 500))
+      .mockResolvedValueOnce(json({ metadata: { duration: 3 }, results: { channels: [{ alternatives: [{ transcript: "fallback" }] }] } }));
+    const request = sttRequest(null);
+    const body = await request.formData();
+    body.set("temperature", "0");
+    const response = await handleStt(new Request(request.url, { method: "POST", body }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ text: "fallback" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const deepgramUrl = new URL(fetch.mock.calls[1][0]);
+    expect(deepgramUrl.hostname).toBe("api.deepgram.com");
+    expect(deepgramUrl.searchParams.has("temperature")).toBe(false);
+    const [row, ...others] = rows();
+    expect(others).toEqual([]);
+    expect(row).toMatchObject({ provider: "deepgram", model: "nova-3" });
   });
 
   it("retains AssemblyAI duration from the completed poll, not the upload", async () => {

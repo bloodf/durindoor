@@ -6,8 +6,12 @@
 
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
-const SUPPORTED_FIELDS = new Set([
-  "file", "model", "language", "response_format", "diarize", "diarize_model",
+// Fields that shape the response are validated. Anything else (temperature,
+// prompt, chunking_strategy, include[], unknown fields) cannot change the shape,
+// so it is ignored and logged by name, keeping Deepgram usable as a fallback for
+// clients written against OpenAI.
+const HANDLED_FIELDS = new Set([
+  "file", "model", "language", "response_format", "stream", "diarize", "diarize_model",
   "timestamp_granularities", "timestamp_granularities[]",
 ]);
 const RESPONSE_FORMATS = new Set(["json", "text", "verbose_json"]);
@@ -19,13 +23,15 @@ const fail = (error) => ({ error });
 
 /**
  * Validate client fields before any audio is sent.
- * @returns {{error: string} | {responseFormat: string, query: Record<string, string>, diarized: boolean, segments: boolean, words: boolean}}
+ * @returns {{error: string} | {responseFormat: string, query: Record<string, string>, ignored: string[], diarized: boolean, segments: boolean, words: boolean}}
  */
 export function parseDeepgramOptions(formData) {
-  const unsupported = [...new Set([...formData.entries()]
-    .filter(([key, value]) => !SUPPORTED_FIELDS.has(key) && present(value))
+  const ignored = [...new Set([...formData.entries()]
+    .filter(([key, value]) => !HANDLED_FIELDS.has(key) && present(value))
     .map(([key]) => key))];
-  if (unsupported.length) return fail(`Deepgram transcription does not support: ${unsupported.join(", ")}`);
+  if (String(formData.get("stream") ?? "").trim().toLowerCase() === "true") {
+    return fail("Deepgram transcription does not support stream=true");
+  }
 
   const format = formData.get("response_format");
   const responseFormat = present(format) ? String(format).trim() : "json";
@@ -55,30 +61,30 @@ export function parseDeepgramOptions(formData) {
   if (diarizeModel !== null) query.diarize_model = diarizeModel;
   else if (diarized) query.diarize = "true";
   if (segments) query.utterances = "true";
-  return { responseFormat, query, diarized, segments, words };
+  return { responseFormat, query, ignored, diarized, segments, words };
 }
 
 const isTime = (value) => Number.isFinite(value) && value >= 0;
+const hasTiming = (entry) => isTime(entry.start) && isTime(entry.end) && entry.start <= entry.end;
 const speakerOf = (entry) => Number.isInteger(entry.speaker) && entry.speaker >= 0 ? { speaker: entry.speaker } : null;
 const list = (value) => Array.isArray(value) ? value.filter((entry) => entry && isObject(entry)) : [];
 
 function mapSegments(utterances) {
   return list(utterances)
-    .filter((u) => isTime(u.start) && isTime(u.end) && isString(u.transcript))
+    .filter((u) => hasTiming(u) && isString(u.transcript))
     .map((u, id) => ({ id, start: u.start, end: u.end, text: u.transcript, ...speakerOf(u) }));
 }
 
 function mapWords(words) {
   return list(words)
-    .filter((w) => isTime(w.start) && isTime(w.end) && isString(w.word))
+    .filter((w) => hasTiming(w) && isString(w.word))
     .map((w) => ({ word: w.word, start: w.start, end: w.end, ...speakerOf(w) }));
 }
 
 /** Map a Deepgram response to OpenAI-style verbose_json plus speaker labels. */
-export function deepgramToVerboseJson(data, text, options, requestedLanguage) {
+export function deepgramToVerboseJson(data, text, options, duration) {
   const channel = data?.results?.channels?.[0];
-  const language = isString(channel?.detected_language) ? channel.detected_language : requestedLanguage;
-  const duration = data?.metadata?.duration;
+  const language = isString(channel?.detected_language) ? channel.detected_language : null;
   const segments = options.segments ? mapSegments(data?.results?.utterances) : null;
   const words = options.words ? mapWords(channel?.alternatives?.[0]?.words) : null;
   const speakers = [...new Set([...(segments ?? []), ...(words ?? [])].map((e) => e.speaker).filter((s) => s !== undefined))]

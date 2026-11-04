@@ -49,10 +49,11 @@ async function upstreamError(res, secrets = []) {
 }
 
 // Deepgram: raw binary POST + model query param
-async function transcribeDeepgram(cfg, file, model, token, formData) {
+async function transcribeDeepgram(cfg, file, model, token, formData, log) {
   const options = parseDeepgramOptions(formData);
   // A rejected option is the client's fault, so it must not cool the account down.
   if (options.error) return { ...createErrorResult(HTTP_STATUS.BAD_REQUEST, options.error), local: true };
+  if (options.ignored.length) log?.warn?.("STT", `Deepgram ignored fields: ${JSON.stringify(options.ignored.slice(0, 20))}`);
   const url = new URL(cfg.baseUrl);
   url.searchParams.set("model", model);
   url.searchParams.set("smart_format", "true");
@@ -71,10 +72,14 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
   const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-  const duration = data.metadata?.duration;
+  // A malformed payload is not an account fault, and the audio is already billed.
+  if (!isString(text)) return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Deepgram returned a non-string transcript"), local: true };
+  // Keep a usable transcript when only the duration is malformed; the ledger then has no audio seconds.
+  const rawDuration = data.metadata?.duration;
+  const duration = isNumber(rawDuration) && Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : undefined;
   if (options.responseFormat === "text") return textResponse(text, data, duration);
   if (options.responseFormat === "verbose_json") {
-    return jsonResponse(deepgramToVerboseJson(data, text, options, isString(lang) ? lang.trim() : ""), data, duration);
+    return jsonResponse(deepgramToVerboseJson(data, text, options, duration), data, duration);
   }
   return jsonResponse({ text }, data, duration);
 }
@@ -304,7 +309,7 @@ export function supportsSttTranslation(cfg, model = null) {
  * Successful results include usageValue and nativeUnits captured at provider decode.
  * @returns {Promise<{success, response, usageValue?, nativeUnits?, status?, error?}>}
  */
-export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription", signal }) {
+export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription", signal, log }) {
   const file = formData.get("file");
   if (!file) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
@@ -356,7 +361,7 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   try {
     const proxyOptions = resolveCredentialProxyOptions(credentials);
     switch (cfg.format) {
-      case "deepgram":return await transcribeDeepgram(cfg, file, model, token, formData);
+      case "deepgram":return await transcribeDeepgram(cfg, file, model, token, formData, log);
       case "assemblyai":return await transcribeAssemblyAI(cfg, file, model, token, formData);
       case "nvidia-asr":return await transcribeNvidia(cfg, file, model, token, formData, proxyOptions);
       case "huggingface-asr":return await transcribeHuggingFace(cfg, file, model, token);

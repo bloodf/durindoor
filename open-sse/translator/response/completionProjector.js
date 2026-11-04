@@ -372,3 +372,33 @@ export function projectCompletionToClientFormat(completion, sourceFormat, option
       return completion;
   }
 }
+/**
+ * Project an OpenAI completion for a buffered (non-stream) Gemini-family client.
+ * Native Gemini needs top-level candidates and usageMetadata; gemini-cli / Antigravity keep
+ * the `{ response }` envelope their stream translators emit. Call ids and reasoning/cache
+ * usage survive the hop so a follow-up request can pair its functionResponse.
+ */
+export function projectCompletionToGeminiClient(completion, sourceFormat, options = {}) {
+  const projected = projectCompletionToClientFormat(completion, sourceFormat, options);
+  const result = projected?.response;
+  if (!result?.candidates?.[0] || !completion?.choices?.[0]) return projected;
+  const calls = completion.choices[0].message?.tool_calls || [];
+  let callIndex = 0;
+  for (const part of result.candidates[0].content.parts) {
+    if (part.functionCall) {
+      const id = calls[callIndex++]?.id;
+      if (id !== undefined) part.functionCall.id = id;
+    }
+  }
+  const usage = completion.usage;
+  if (usage?.prompt_tokens_details?.cached_tokens !== undefined) {
+    result.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
+  }
+  if (usage?.completion_tokens_details?.reasoning_tokens !== undefined) {
+    result.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
+    // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
+    result.usageMetadata.candidatesTokenCount = Math.max(0,
+      result.usageMetadata.candidatesTokenCount - result.usageMetadata.thoughtsTokenCount);
+  }
+  return sourceFormat === FORMATS.GEMINI ? result : projected;
+}

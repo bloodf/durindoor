@@ -11,9 +11,9 @@ import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, sav
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { decloakToolNames } from "../../utils/claudeCloaking.js";
-import { restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
+import { restoreClaudeToolNames, restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { openAIResponsesBodyToClaude, openAIResponsesBodyToGemini, openAIResponsesBodyToOpenAI } from "../../translator/response/openai-responses-nonstream.js";
-import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
+import { projectCompletionToClientFormat, projectCompletionToGeminiClient } from "../../translator/response/completionProjector.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
@@ -283,6 +283,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // Same name resolution as the streaming translator: restore request-side aliases,
   // then split namespace tools and strip provider-injected prefixes (upstream PR #4200).
   const responsesClient = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE;
+  const geminiClient = sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI;
   const projectionOptions = () => {
     if (!responsesClient) return { ...options, customToolNames };
     return { ...options, customToolNames, resolveToolName: createResponsesToolNameResolver(options.requestBody, options.toolNameMap) };
@@ -323,29 +324,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     claudeMsg = normalizeClaudeCacheUsage(claudeMsg, responseBody);
     return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
   }
-  if (sourceFormat === FORMATS.GEMINI && targetFormat === FORMATS.OPENAI && responseBody?.choices?.[0]) {
-    // The shared projector returns a wrapped Gemini-family body; native Gemini
-    // requires candidates and usageMetadata at the top level.
-    const result = projectCompletionToClientFormat(responseBody, sourceFormat, projectionOptions()).response;
-    const calls = responseBody.choices[0].message?.tool_calls || [];
-    let callIndex = 0;
-    for (const part of result.candidates[0].content.parts) {
-      if (part.functionCall) {
-        const id = calls[callIndex++]?.id;
-        if (id !== undefined) part.functionCall.id = id;
-      }
-    }
-    const usage = responseBody.usage;
-    if (usage?.prompt_tokens_details?.cached_tokens !== undefined) {
-      result.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
-    }
-    if (usage?.completion_tokens_details?.reasoning_tokens !== undefined) {
-      result.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
-      // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
-      result.usageMetadata.candidatesTokenCount = Math.max(0,
-        result.usageMetadata.candidatesTokenCount - result.usageMetadata.thoughtsTokenCount);
-    }
-    return result;
+  if (geminiClient && targetFormat === FORMATS.OPENAI && responseBody?.choices?.[0]) {
+    return projectCompletionToGeminiClient(responseBody, sourceFormat, projectionOptions());
   }
   if (targetFormat === FORMATS.OPENAI) return responseBody;
 
@@ -427,6 +407,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (usage) {
       result.usage = toOpenAIUsage(usage, "gemini");
     }
+    if (geminiClient) return projectCompletionToGeminiClient(result, sourceFormat, projectionOptions());
     return sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ?
     projectCompletionToClientFormat(result, sourceFormat, projectionOptions()) :
     result;
@@ -485,6 +466,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (responseBody.usage) {
       result.usage = claudeUsageToOpenAI(responseBody.usage);
     }
+    if (geminiClient) return projectCompletionToGeminiClient(result, sourceFormat, projectionOptions());
     return responsesClient ? projectCompletionToClientFormat(result, sourceFormat, projectionOptions()) : result;
   }
 
@@ -639,6 +621,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(translatedResponse, toolNameMap);
     // Gemini clients: JSON projection bypasses the streaming translator's alias restore.
     if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(translatedResponse, toolNameMap);
+    if (sourceFormat === FORMATS.CLAUDE) restoreClaudeToolNames(translatedResponse, toolNameMap);
 
     const usage = extractUsageFromResponse(responseBody);
     appendLog({ tokens: usage, status: "200 OK" });

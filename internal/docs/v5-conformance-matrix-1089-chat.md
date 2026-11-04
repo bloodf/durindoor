@@ -1,6 +1,6 @@
 # Issue #1089: OpenAI Chat Completions client matrix
 
-Status counts: already-present 48; failing 0; passing (#1331) 4; repaired (#1332) 1; repaired (#1333) 2; repaired (#1334) 6; repaired (#1335) 3; repaired (#1356) 1; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
+Status counts: already-present 49; failing 0; passing (#1331) 4; repaired (#1332) 1; repaired (#1333) 2; repaired (#1334) 6; repaired (#1335) 3; repaired (#1356) 1; handler-502 (#1348) 1; unsupported-by-contract 0; upstream-pending 0.
 
 Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.test.js`. Two already-present Gemini schema rows are labeled as known or deliberate degradations, not full conformance. The #1330 non-stream error rows assert the live handler 502 contract (Option A), not a Claude/Gemini translator terminal.
 
@@ -72,6 +72,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-chat.tes
 | Request | malformed schema rejection (#1091) | Claude | repaired (#1334) | `rejects malformed tool schemas for Claude` |
 | Request | malformed schema rejection (#1091) | Gemini | repaired (#1334) | `rejects malformed tool schemas for Gemini` |
 | Request | malformed schema rejection (#1091) | Responses | repaired (#1334) | `rejects malformed tool schemas for Responses` |
+| Public route `POST /v1/chat/completions` | alias upstream, named choice, strict and parallel false kept, name restored | Chat | already-present | `tests/unit/public-route-tool-conformance-1089.test.js` (Chat to Chat is same-format passthrough and does not validate tool schemas) |
 
 ## Failing reasons (tracked issues)
 

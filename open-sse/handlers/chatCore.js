@@ -1339,6 +1339,8 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         undefined,
         providerSignal
       );
+      // A disconnect may finish the request while acquireMany is returning its lease.
+      if (providerRequestFinished) releaseConcurrencySlots();
       log?.debug?.("CONCURRENCY", `${provider} | slots acquired (global=${globalLimit || "off"}, provider=${concurrencyLimit || "off"})`);
     } catch (e) {
       finishProviderRequest();

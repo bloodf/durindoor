@@ -130,7 +130,7 @@ Together uses this same async job surface with its native `/v2/videos` upstream.
 | POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
 | POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, MiniMax CN, Together, OrcaRouter) |
 
-Image generation and edit requests reject registry models known to be non-image with HTTP 400 before selecting an account. Unknown and custom model IDs remain eligible for provider dispatch.
+Image generation and edit requests reject registry models known to be non-image with HTTP 400 before selecting an account. Unknown and custom model IDs remain eligible for provider dispatch. If the catalog metadata needed to check for a custom image model is unavailable, the request returns HTTP 503 without selecting an account.
 
 ## Cached ChatGPT Web images
 

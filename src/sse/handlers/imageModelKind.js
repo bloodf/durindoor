@@ -17,8 +17,8 @@ export async function imageModelKindError(provider, model, settings) {
     const synced = isModelAutoSyncEnabled(provider, settings) ? effectiveSyncedModels(await getSyncedModelCatalog(provider), entry.models) : null;
     if (synced?.some((item) => ids.has(item.id) && (item.kind || item.type) === "image")) return null;
   } catch {
-    // Metadata unavailable: preserve dispatch rather than reject a custom image model.
-    return null;
+    // A missing override cannot be established while metadata is unavailable.
+    return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Image model metadata is temporarily unavailable.");
   }
   return errorResponse(HTTP_STATUS.BAD_REQUEST, `Model '${provider}/${model}' cannot be used for image generation or editing.`);
 }

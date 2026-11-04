@@ -9,7 +9,7 @@ vi.mock("@/sse/services/auth.js", () => ({
 }));
 vi.mock("@/sse/services/model.js", () => ({
   getModelInfo: vi.fn(async (id) => {
-    const resolved = id === "my-image" ? "openai/gpt-image-1" : id;
+    const resolved = id === "my-image" ? "openai/gpt-image-1" : id === "my-custom" ? "openai/gpt-4o" : id;
     const [provider, ...model] = resolved.split("/");
     return { provider, model: model.join("/") };
   }),
@@ -59,11 +59,40 @@ describe("image model kind", () => {
     expect((await handleImageGeneration(request("openai/gpt-4o"))).status).toBe(200);
     expect(fetch).toHaveBeenCalledOnce();
   });
-  it("preserves dispatch if custom metadata cannot be read", async () => {
+  it.each(["custom", "synced"])("does not infer image kind from an untyped %s row", async (source) => {
+    if (source === "custom") state.customModels = [{ providerAlias: "openai", id: "gpt-4o" }];
+    else state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "gpt-4o" }] } };
+    expect((await handleImageGeneration(request("openai/gpt-4o"))).status).toBe(400);
+    expect(state.credentials).not.toHaveBeenCalled();
+    expect(state.mark).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("returns 503 if custom metadata cannot be read for an aliased model", async () => {
     const db = await import("@/lib/localDb");
+    state.customModels = [{ providerAlias: "openai", id: "gpt-4o", kind: "image" }];
     vi.mocked(db.getCustomModels).mockRejectedValueOnce(new Error("unavailable"));
-    expect((await handleImageGeneration(request("openai/gpt-4o"))).status).toBe(200);
-    expect(fetch).toHaveBeenCalledOnce();
+    expect((await handleImageGeneration(request("my-custom"))).status).toBe(503);
+    expect(state.credentials).not.toHaveBeenCalled();
+    expect(state.mark).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("returns 503 if the enabled synced catalog cannot be read", async () => {
+    const db = await import("@/lib/localDb");
+    vi.mocked(db.getSyncedModelCatalog).mockRejectedValueOnce(new Error("unavailable"));
+    expect((await handleImageGeneration(request("my-custom"))).status).toBe(503);
+    expect(state.credentials).not.toHaveBeenCalled();
+    expect(state.mark).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("enforces policy before attempting unavailable metadata", async () => {
+    const db = await import("@/lib/localDb");
+    state.policy = new Response("denied", { status: 403 });
+    vi.mocked(db.getCustomModels).mockRejectedValueOnce(new Error("unavailable"));
+    expect((await handleImageGeneration(request("my-custom"))).status).toBe(403);
+    expect(db.getCustomModels).not.toHaveBeenCalled();
+    expect(state.credentials).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    vi.mocked(db.getCustomModels).mockReset().mockImplementation(async () => state.customModels);
   });
   it("rejects a known chat model on image edits before credentials", async () => {
     const form = new FormData();

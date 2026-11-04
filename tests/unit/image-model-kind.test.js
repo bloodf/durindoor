@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ combo: null, policy: null, customModels: [], syncedCatalogs: {}, credentials: vi.fn(), mark: vi.fn() }));
-vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => ({})), getApiKeyByKey: vi.fn(), getComboForModel: vi.fn(async () => null), getCustomModels: vi.fn(async () => state.customModels), getSyncedModelCatalog: vi.fn(async (provider) => state.syncedCatalogs[provider]) }));
+const state = vi.hoisted(() => ({ combo: null, policy: null, settings: {}, customModels: [], syncedCatalogs: {}, credentials: vi.fn(), mark: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => state.settings), getApiKeyByKey: vi.fn(), getComboForModel: vi.fn(async () => null), getCustomModels: vi.fn(async () => state.customModels), getSyncedModelCatalog: vi.fn(async (provider) => state.syncedCatalogs[provider]) }));
 vi.mock("@/sse/services/auth.js", () => ({
   resolveClientApiKey: vi.fn(async () => ({ apiKey: null, auth: { ok: true, apiKeyId: null, billingEpoch: null } })),
   getProviderCredentialsWithQuotaPreflight: state.credentials, getNoAuthProviderCredentials: vi.fn(),
@@ -30,7 +30,7 @@ const { handleImageEdit } = await import("@/sse/handlers/imageEdit.js");
 const fixture = { created: 123, data: [{ b64_json: "aGVsbG8=" }] };
 const request = (model) => new Request("http://localhost/v1/images/generations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model, prompt: "fox" }) });
 beforeEach(() => {
-  vi.clearAllMocks(); state.combo = null; state.policy = null; state.customModels = []; state.syncedCatalogs = {};
+  vi.clearAllMocks(); state.combo = null; state.policy = null; state.settings = {}; state.customModels = []; state.syncedCatalogs = {};
   state.credentials.mockResolvedValue({ connectionId: "test", apiKey: "test", connectionName: "test" });
   vi.stubGlobal("fetch", vi.fn(async () => Response.json(fixture)));
 });
@@ -133,6 +133,36 @@ describe("image model kind", () => {
     state.policy = new Response("denied", { status: 403 });
     expect((await handleImageGeneration(request("openai/gpt-4o"))).status).toBe(403);
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("does not penalize a smart-scoring combo for local metadata failure", async () => {
+    const db = await import("@/lib/localDb");
+    const { getComboModelQuotaHealth, resetComboScoring } = await import("open-sse/services/combo.js");
+    const comboName = "combo";
+    resetComboScoring(comboName);
+    state.combo = ["openai/gpt-4o"];
+    state.settings = { comboStrategies: { combo: { fallbackStrategy: "smart-scoring" } } };
+    vi.mocked(db.getCustomModels).mockRejectedValueOnce(new Error("unavailable"));
+    const schedule = vi.spyOn(globalThis, "setTimeout");
+    const response = await handleImageGeneration(request(comboName));
+    expect(schedule).not.toHaveBeenCalled();
+    schedule.mockRestore();
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.message).toMatch(/metadata.*unavailable/i);
+    expect(getComboModelQuotaHealth(comboName, "openai/gpt-4o")).toBe("healthy");
+    expect(state.credentials).not.toHaveBeenCalled();
+    expect(state.mark).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("still penalizes a genuine upstream server failure", async () => {
+    const { getComboModelQuotaHealth, resetComboScoring } = await import("open-sse/services/combo.js");
+    resetComboScoring("combo");
+    state.combo = ["openai/gpt-image-1"];
+    state.settings = { comboStrategies: { combo: { fallbackStrategy: "smart-scoring" } } };
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ error: { message: "upstream error" } }, { status: 503 }));
+    state.mark.mockResolvedValue({ shouldFallback: false });
+    expect((await handleImageGeneration(request("combo"))).status).toBe(503);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(getComboModelQuotaHealth("combo", "openai/gpt-image-1")).toBe("degraded");
   });
   it("preserves combo fallback after a rejected model", async () => {
     state.combo = ["openai/gpt-4o", "openai/gpt-image-1"];

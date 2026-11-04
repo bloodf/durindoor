@@ -10,12 +10,14 @@ vi.mock("@/shared/constants/models", async (importOriginal) => ({
   getModelsByProviderId: () => [{ id: "shared-model", name: "Shared" }],
 }));
 import ProviderDetailPage from "../../src/app/(dashboard)/dashboard/providers/[id]/page.js";
+import CompatibleModelsSection from "../../src/app/(dashboard)/dashboard/providers/[id]/CompatibleModelsSection.js";
+import PassthroughModelsSection from "../../src/app/(dashboard)/dashboard/providers/[id]/PassthroughModelsSection.js";
 
 const response = (data) => ({ ok: true, json: async () => data });
 const deferred = () => {
-  let resolve;
-  const promise = new Promise((done) => { resolve = done; });
-  return { promise, resolve };
+  let resolve, reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 };
 
 let host, root, pending;
@@ -51,6 +53,27 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
+describe.each([
+  ["compatible", CompatibleModelsSection],
+  ["passthrough", PassthroughModelsSection],
+])("%s model evidence", (_name, Component) => {
+  it("shows skipped after a manual test without reporting success", async () => {
+    const props = {
+      providerAlias: "test", providerStorageAlias: "test", providerDisplayAlias: "test",
+      modelAliases: {}, customModels: [{ id: "shared-model", providerAlias: "test" }],
+      connections: [{ id: "connection", isActive: true }], onCopy: () => {}, onDeleteAlias: () => {},
+      onAddCustomModel: () => {}, onDeleteCustomModel: () => {}, onRefresh: () => {},
+    };
+    await act(async () => { root.render(React.createElement(Component, props)); });
+    expect(host.textContent).toContain("Inference not tested");
+    expect(fetch).not.toHaveBeenCalled();
+    await click(host.querySelector('button[aria-label="Test shared-model"]'));
+    await act(async () => { pending.resolve(response({ skipped: true })); await pending.promise; });
+    expect(host.textContent).toContain("Inference skipped in this session");
+    expect(host.textContent).not.toContain("Inference passed in this session");
+  });
+});
+
 describe("provider switch while evidence is pending", () => {
   it("does not show a previous provider's catalog evidence", async () => {
     await render("openrouter");
@@ -58,6 +81,66 @@ describe("provider switch while evidence is pending", () => {
     await render("siliconflow");
     await act(async () => { pending.resolve(response({ models: [], source: "previous-provider", degraded: true })); await pending.promise; });
     expect(host.textContent).not.toContain("previous-provider");
+  });
+
+  it("shows connection and catalog evidence without asserting inference", async () => {
+    await render("openrouter");
+    expect(host.textContent).toContain("Operational status is not authentication verification.");
+    expect(host.textContent).toContain("Operational: unknown");
+    expect(host.textContent).toContain("Inference not tested");
+    expect(fetch.mock.calls.some(([url]) => String(url) === "/api/models/test")).toBe(false);
+    await click([...host.querySelectorAll("button")].find((button) => button.textContent.includes("Sync models")));
+    await act(async () => { pending.resolve(response({ models: [], source: "fallback", degraded: true })); await pending.promise; });
+    expect(host.textContent).toContain("Catalog source: fallback (degraded). This does not verify inference.");
+  });
+
+  it("keeps a new discovery running when an older request finishes", async () => {
+    await render("openrouter");
+    await click([...host.querySelectorAll("button")].find((button) => button.textContent.includes("Sync models")));
+    const old = pending;
+    await render("siliconflow");
+    await render("openrouter");
+    pending = deferred();
+    await click([...host.querySelectorAll("button")].find((button) => button.textContent.includes("Sync models")));
+    await act(async () => { old.resolve(response({ models: [], source: "stale-source" })); await old.promise; });
+    expect(host.textContent).toContain("Syncing…");
+    expect(host.textContent).not.toContain("stale-source");
+    await act(async () => { pending.resolve(response({ models: [], source: "live" })); await pending.promise; });
+    expect(host.textContent).toContain("Catalog source: live");
+  });
+
+  it("ignores old discovery after returning to the same provider", async () => {
+    await render("openrouter");
+    await click([...host.querySelectorAll("button")].find((button) => button.textContent.includes("Sync models")));
+    await render("siliconflow");
+    await render("openrouter");
+    await act(async () => { pending.resolve(response({ models: [], source: "stale-source", degraded: true })); await pending.promise; });
+    expect(host.textContent).not.toContain("stale-source");
+  });
+
+  it("ignores old inference after returning to the same provider", async () => {
+    await render("openrouter");
+    await click(host.querySelector('button[aria-label="Test model"]'));
+    await render("siliconflow");
+    await render("openrouter");
+    await act(async () => { pending.resolve(response({ ok: true })); await pending.promise; });
+    expect(host.textContent).not.toContain("Inference passed in this session");
+    expect(host.textContent).toContain("Inference not tested");
+  });
+
+  it("does not let an old failure clear a new inference test", async () => {
+    await render("openrouter");
+    await click(host.querySelector('button[aria-label="Test model"]'));
+    const old = pending;
+    await render("siliconflow");
+    await render("openrouter");
+    pending = deferred();
+    await click(host.querySelector('button[aria-label="Test model"]'));
+    await act(async () => { old.reject(new Error("old network error")); await old.promise.catch(() => {}); });
+    expect(host.textContent).toContain("Inference test running");
+    expect(host.textContent).not.toContain("Network error");
+    await act(async () => { pending.resolve(response({ skipped: true })); await pending.promise; });
+    expect(host.textContent).toContain("Inference skipped in this session");
   });
 
   it("does not assign the previous provider's inference to the same model ID", async () => {

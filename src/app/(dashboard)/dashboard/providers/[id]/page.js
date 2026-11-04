@@ -85,6 +85,7 @@ export default function ProviderDetailPage() {
   const notify = useNotificationStore();
   const providerId = params.id;
   const currentProviderIdRef = useRef(null);
+  const providerGenerationRef = useRef(0);
   const fetchConnectionsGenerationRef = useRef(0);
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
@@ -97,6 +98,7 @@ export default function ProviderDetailPage() {
 
   useEffect(() => {
     currentProviderIdRef.current = providerId;
+    providerGenerationRef.current += 1;
     // Clear the previous provider's rows immediately on switch. Without this the
     // old connections and plan badges stay rendered under the new provider's
     // header until its fetch resolves — and a stale in-flight response is
@@ -787,7 +789,7 @@ export default function ProviderDetailPage() {
   }, [providerId]);
 
   const handleSyncModels = async () => {
-    const requestProviderId = providerId;
+    const requestGeneration = providerGenerationRef.current;
     const connection = connections.find((item) => item.isActive !== false);
     if (!connection?.id) return;
 
@@ -797,12 +799,12 @@ export default function ProviderDetailPage() {
         cache: "no-store"
       });
       const data = response.ok ? await response.json() : null;
-      if (currentProviderIdRef.current !== requestProviderId) return;
+      if (providerGenerationRef.current !== requestGeneration) return;
       setSuggestedModels(Array.isArray(data?.models) ? data.models : []);
       setCatalogEvidence(data ? { source: data.source, degraded: data.degraded } : null);
       setModelsFetchedAt(new Date());
     } finally {
-      if (currentProviderIdRef.current === requestProviderId) setSyncingModels(false);
+      if (providerGenerationRef.current === requestGeneration) setSyncingModels(false);
     }
   };
 
@@ -1503,7 +1505,7 @@ export default function ProviderDetailPage() {
 
 
   const handleTestModel = async (modelId) => {
-    const requestProviderId = providerId;
+    const requestGeneration = providerGenerationRef.current;
     if (testingModelIds.has(modelId)) return;
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
@@ -1517,16 +1519,16 @@ export default function ProviderDetailPage() {
         })
       });
       const data = await res.json();
-      if (currentProviderIdRef.current !== requestProviderId) return;
+      if (providerGenerationRef.current !== requestGeneration) return;
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
       setModelsTestError(outcome === "error" ? data.error || "Model not reachable" : "");
     } catch {
-      if (currentProviderIdRef.current !== requestProviderId) return;
+      if (providerGenerationRef.current !== requestGeneration) return;
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setModelsTestError("Network error");
     } finally {
-      if (currentProviderIdRef.current === requestProviderId) {
+      if (providerGenerationRef.current === requestGeneration) {
         setTestingModelIds((prev) => {const n = new Set(prev);n.delete(modelId);return n;});
       }
     }

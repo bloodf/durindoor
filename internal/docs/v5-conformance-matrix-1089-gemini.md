@@ -38,7 +38,7 @@ Every request row maps to a test in `tests/translator/v5-conformance-matrix-gemi
 | Public route | `:streamGenerateContent` streams Gemini SSE, `ns.search` restored | Gemini (Claude, Gemini upstream) | already-present | same file |
 | Request | Namespaced tool, strict, malformed schema from Chat | Gemini | already-present | see `v5-conformance-matrix-1089-chat.md` |
 
-Gateway rows drive the real `/v1beta` route and `handleChatCore`; only the upstream executor is faked.
+Gateway rows drive the real `/v1beta` route and `handleChatCore`; fixtures mock both `handleChat` and the upstream executor. Authentication and routing in `handleChat` are not exercised.
 
 Supported Gemini route: `/v1beta/models/*`. Gateway rows drive the real route with the upstream dialect faked at the executor (Chat, Claude and Gemini upstreams, JSON and SSE). Known limit, unchanged here: a Gemini-shaped body posted to `/v1/chat/completions` is treated as a Chat request and is not a supported Gemini route. The gateway tests mock `handleChat` and call the real `handleChatCore`, so auth and routing in `handleChat` are not exercised.
 

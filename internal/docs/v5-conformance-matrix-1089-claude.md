@@ -1,6 +1,6 @@
 # Issue #1089 Claude Messages client conformance
 
-Counts: already-present 15; repaired 4; failing 0; unsupported-by-contract 1; upstream-pending 0.
+Counts: already-present 15; repaired 6; failing 0; unsupported-by-contract 1; upstream-pending 0.
 
 Request rows from a Claude Messages client map to tests in `tests/translator/v5-conformance-matrix-claude.test.js` unless another file is named. Reply rows that reuse the Chat and Responses matrices point at those docs. Counts are computed from the rows below.
 
@@ -24,6 +24,8 @@ Request rows from a Claude Messages client map to tests in `tests/translator/v5-
 | Stream response (delta + message_stop) | end_turn terminal, single finish chunk | Chat | already-present | `tests/translator/v5-conformance-matrix-claude.test.js` |
 | Stream response | functionCall to tool_use, tool_use stop_reason | Claude (Gemini upstream) | already-present | `emits tool_use for a functionCall and a tool_use stop_reason` |
 | Stream response | MAX_TOKENS to max_tokens | Claude (Gemini upstream) | already-present | `maps MAX_TOKENS to max_tokens` |
+| Non-stream and forced-SSE reply | request-side tool alias restored to `ns.search` in `tool_use` | Claude (Chat upstream) | repaired | `restores ns.search from a Chat JSON upstream`, `restores ns.search from a forced-SSE Chat stream` in `tests/translator/v5-conformance-claude-name-restore.test.js` |
+| Public route `POST /v1/messages` | alias upstream, named choice and parallel false kept, name restored; malformed schema 400 | Claude | repaired | `tests/unit/public-route-tool-conformance-1089.test.js` |
 | Non-stream and stream replies | Chat upstream tool call, length, content_filter, error | Claude | already-present | see `v5-conformance-matrix-1089-chat.md` rows with target Claude |
 | Non-stream and stream replies | Responses upstream incomplete, failed, tool call | Claude | already-present | see `v5-conformance-matrix-1089-responses.md` rows with target Claude |
 

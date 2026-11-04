@@ -1,6 +1,6 @@
 # Issue #1089 Gemini client conformance matrix
 
-Counts: already-present 11; repaired 17; repaired (known degradation) 1; failing 0; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 13; repaired 17; repaired (known degradation) 1; failing 0; unsupported-by-contract 0; upstream-pending 0.
 
 Every request row maps to a test in `tests/translator/v5-conformance-matrix-gemini.test.js` unless another file is named. Gemini-client reply rows (Chat to Gemini) and the usage rows link existing tests. Counts are computed from the rows below.
 
@@ -25,7 +25,6 @@ Every request row maps to a test in `tests/translator/v5-conformance-matrix-gemi
 | Non-stream | alias restored to `ns.search` in functionCall (Chat and Responses upstreams) | Gemini | repaired | `restores ns.search from a Chat upstream`, `restores ns.search from a Responses upstream` |
 | Request | `ns.search` and `ns_search` get distinct sanitized call ids | Claude | repaired | `keeps ns.search and ns_search ids distinct and legal` |
 | Request | explicit client ids sanitized on both sides of the pair | Claude | repaired | `sanitizes explicit client ids on both sides of the pair` |
-| Forced SSE to JSON | alias restored (Responses and Chat upstream; GEMINI and GEMINI_CLI) | Gemini | repaired | `tests/unit/forced-sse-gemini-name-restore.test.js` |
 | Request | `toolConfig` ANY naming no declared tool keeps every tool and sends `required` | Chat | repaired | `keeps every tool and required when ANY names match no declared tool` |
 | Request | two idless same-turn calls to one function get distinct paired ids | Chat | repaired | `gives two idless same-turn calls to one function distinct paired ids` |
 | Public route | namespaced tool aliased upstream, `ns.search` restored in the JSON reply (`POST /v1beta/models/*:generateContent` through real `handleChatCore`) | Gemini | already-present | `tests/unit/v1beta-gemini-gateway-conformance-1089.test.js`: `aliases a namespaced tool upstream and restores ns.search in the JSON reply` |
@@ -34,8 +33,13 @@ Every request row maps to a test in `tests/translator/v5-conformance-matrix-gemi
 | Public route | two idless same-turn calls get distinct paired ids (`/v1beta` bridge) | Gemini | already-present | `gives two idless same-turn calls to one function distinct paired ids` |
 | Request | reply pairs with the call of the turn just before it after an unanswered call | Chat | repaired | `pairs a reply with the call in the turn just before it` |
 | Public route | same, through the `/v1beta` bridge | Gemini | repaired | `pairs a reply with the call in the turn just before it after an unanswered call` |
+| Request | unanswered `functionCall` gets a synthetic tool_result / tool message | Claude, Chat, Responses | repaired | `answers an unanswered functionCall with a synthetic tool_result for Claude`, `answers an unanswered functionCall with a tool message for Chat and Responses` |
+| Public route | `POST /v1beta/models/*:generateContent` returns top-level candidates, `ns.search` restored | Gemini (Claude, Gemini upstream) | already-present | `#1089 /v1beta with a %s upstream` in `tests/unit/v1beta-gemini-gateway-conformance-1089.test.js` |
+| Public route | `:streamGenerateContent` streams Gemini SSE, `ns.search` restored | Gemini (Claude, Gemini upstream) | already-present | same file |
 | Request | Namespaced tool, strict, malformed schema from Chat | Gemini | already-present | see `v5-conformance-matrix-1089-chat.md` |
 
-Gateway rows drive the real `/v1beta` route and `handleChatCore`; only the upstream executor is faked.
+Gateway rows drive the real `/v1beta` route and `handleChatCore`; fixtures mock both `handleChat` and the upstream executor. Authentication and routing in `handleChat` are not exercised.
+
+Supported Gemini route: `/v1beta/models/*`. Gateway rows drive the real route with the upstream dialect faked at the executor (Chat, Claude and Gemini upstreams, JSON and SSE). Known limit, unchanged here: a Gemini-shaped body posted to `/v1/chat/completions` is treated as a Chat request and is not a supported Gemini route. The gateway tests mock `handleChat` and call the real `handleChatCore`, so auth and routing in `handleChat` are not exercised.
 
 Repaired in this change: Gemini-source requests previously ignored `toolConfig` and sent dotted tool names unaliased to Chat, Claude and Responses upstreams.

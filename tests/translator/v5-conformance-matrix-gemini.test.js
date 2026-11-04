@@ -185,9 +185,37 @@ describe("#1089 Gemini client conformance — call id pairing across turns", () 
   it("pairs a reply with the call in the turn just before it", () => {
     const out = translateRequest(GEMINI, CHAT, "m", structuredClone(history), false);
     const calls = out.messages.filter((m) => m.tool_calls).flatMap((m) => m.tool_calls.map((c) => c.id));
-    const reply = out.messages.find((m) => m.role === "tool").tool_call_id;
+    // the first call is unanswered and gets a synthetic reply; the real reply is last
+    const reply = out.messages.filter((m) => m.role === "tool").at(-1).tool_call_id;
     expect(calls.at(-1)).toBe(reply);
     expect(calls).toContain(reply);
     expect(new Set(calls).size).toBe(calls.length);
+  });
+});
+
+describe("#1089 Gemini client conformance — unanswered calls", () => {
+  const unanswered = () => ({
+    contents: [
+      { role: "user", parts: [{ text: "one" }] },
+      { role: "model", parts: [{ functionCall: { name: "f", args: { n: 1 } } }] },
+      { role: "user", parts: [{ text: "never mind" }] },
+    ],
+    tools: [{ functionDeclarations: [{ name: "f", parameters: schema }] }],
+  });
+
+  it("answers an unanswered functionCall with a synthetic tool_result for Claude", () => {
+    const out = translateRequest(GEMINI, CLAUDE, "m", unanswered(), false);
+    const use = out.messages.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((b) => b.type === "tool_use");
+    const results = out.messages.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((b) => b.type === "tool_result");
+    expect(results.map((r) => r.tool_use_id)).toEqual([use.id]);
+  });
+
+  it("answers an unanswered functionCall with a tool message for Chat and Responses", () => {
+    const chat = translateRequest(GEMINI, CHAT, "m", unanswered(), false);
+    const call = chat.messages.find((m) => m.tool_calls).tool_calls[0].id;
+    expect(chat.messages.filter((m) => m.role === "tool").map((m) => m.tool_call_id)).toEqual([call]);
+    const resp = translateRequest(GEMINI, RESPONSES, "m", unanswered(), false);
+    const callId = resp.input.find((i) => i.type === "function_call").call_id;
+    expect(resp.input.filter((i) => i.type === "function_call_output").map((i) => i.call_id)).toEqual([callId]);
   });
 });

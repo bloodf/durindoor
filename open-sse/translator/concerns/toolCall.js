@@ -225,6 +225,19 @@ export function restoreGeminiToolNames(body, aliases) {
   return changed;
 }
 
+/** Restore request-side tool aliases on a buffered Claude Messages body. */
+export function restoreClaudeToolNames(body, aliases) {
+  if (!(aliases instanceof Map) || !aliases.size || !Array.isArray(body?.content)) return false;
+  let changed = false;
+  for (const block of body.content) {
+    if (block?.type === "tool_use" && aliases.has(block.name)) {
+      block.name = aliases.get(block.name);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export function restoreOpenAIToolNames(body, aliases) {
   let changed = false;
   const restoreCalls = (calls) => {

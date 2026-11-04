@@ -63,16 +63,19 @@ const upstream = async ({ body: sent }) => ({
   url: "http://upstream.test", headers: {}, transformedBody: sent,
 });
 
+let target = { provider: "openai", model: "gpt-test", credentials: { apiKey: "k" } };
+
 const outbound = () => mocks.execute.mock.calls.at(-1)[0].body;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  target = { provider: "openai", model: "gpt-test", credentials: { apiKey: "k" } };
   mocks.handleChat.mockImplementation(async (request) => {
     const chatBody = await request.json();
     const result = await handleChatCore({
       body: chatBody,
-      modelInfo: { provider: "openai", model: "gpt-test" },
-      credentials: { apiKey: "k" },
+      modelInfo: { provider: target.provider, model: target.model },
+      credentials: target.credentials,
       clientRawRequest: { endpoint: "/v1/chat/completions", body: chatBody, headers: { accept: "application/json" } },
       log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
@@ -142,5 +145,78 @@ describe("#1089 Gemini public route through handleChatCore", () => {
     expect(msgs.filter((m) => m.role === "tool").at(-1).tool_call_id).toBe(lastCall);
     const allCalls = msgs.filter((m) => m.tool_calls).flatMap((m) => m.tool_calls.map((c) => c.id));
     expect(new Set(allCalls).size).toBe(allCalls.length);
+  });
+});
+
+// Claude and Gemini upstreams answer in their own dialect, JSON or SSE, echoing the outbound tool name.
+const claudeJson = (name) => new Response(JSON.stringify({
+  id: "msg_1", type: "message", role: "assistant", model: "claude-x", stop_reason: "tool_use",
+  content: [{ type: "tool_use", id: "tu1", name, input: { type: "a" } }],
+  usage: { input_tokens: 1, output_tokens: 1 },
+}), { headers: { "content-type": "application/json" } });
+
+const claudeSse = (name) => new Response([
+  ["message_start", { type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model: "claude-x", content: [], usage: { input_tokens: 1, output_tokens: 0 } } }],
+  ["content_block_start", { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tu1", name, input: {} } }],
+  ["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"type":"a"}' } }],
+  ["content_block_stop", { type: "content_block_stop", index: 0 }],
+  ["message_delta", { type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 1 } }],
+  ["message_stop", { type: "message_stop" }],
+].map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+
+const geminiChunk = (name) => ({
+  candidates: [{ content: { role: "model", parts: [{ functionCall: { name, args: { type: "a" } } }] }, finishReason: "STOP", index: 0 }],
+  usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 }, modelVersion: "g",
+});
+const geminiJson = (name) => new Response(JSON.stringify(geminiChunk(name)), { headers: { "content-type": "application/json" } });
+const geminiSse = (name) => new Response(`data: ${JSON.stringify(geminiChunk(name))}\n\n`, { headers: { "content-type": "text/event-stream" } });
+
+const dialects = {
+  claude: {
+    target: { provider: "claude", model: "claude-sonnet-4-6", credentials: { accessToken: "t", providerSpecificData: {} } },
+    aliased: true,
+    toolName: (sent) => sent.tools[0].name,
+    reply: (sent, stream) => (stream ? claudeSse : claudeJson)(sent.tools[0].name),
+  },
+  gemini: {
+    target: { provider: "gemini", model: "gemini-2.5-pro", credentials: { apiKey: "k" } },
+    aliased: false, // Gemini accepts dotted names, so nothing is rewritten upstream
+    toolName: (sent) => sent.tools[0].functionDeclarations[0].name,
+    reply: (sent, stream) => (stream ? geminiSse : geminiJson)(sent.tools[0].functionDeclarations[0].name),
+  },
+};
+
+describe.each(Object.keys(dialects))("#1089 /v1beta with a %s upstream", (kind) => {
+  const dialect = dialects[kind];
+  const arrange = () => {
+    target = dialect.target;
+    mocks.execute.mockImplementation(async ({ body: sent, stream }) => ({
+      response: dialect.reply(sent, stream === true || sent.stream === true), url: "http://upstream.test", headers: {}, transformedBody: sent,
+    }));
+  };
+
+  it("returns top-level candidates with ns.search restored for :generateContent", async () => {
+    arrange();
+    const res = await post("generateContent", body());
+    expect(res.status).toBe(200);
+    const sent = outbound();
+    if (dialect.aliased) {
+      expect(dialect.toolName(sent)).toMatch(NAME);
+      expect(dialect.toolName(sent)).not.toBe("ns.search");
+    }
+    const json = await res.json();
+    expect(json.object).toBeUndefined();
+    expect(json.response).toBeUndefined();
+    expect(json.candidates[0].content.parts.find((p) => p.functionCall).functionCall.name).toBe("ns.search");
+  });
+
+  it("streams Gemini SSE with ns.search restored for :streamGenerateContent", async () => {
+    arrange();
+    const res = await post("streamGenerateContent?alt=sse", body());
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('"name":"ns.search"');
+    expect(text).not.toMatch(/ns_search/);
+    expect(text).toContain("candidates");
   });
 });

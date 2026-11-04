@@ -93,6 +93,6 @@ Before launching the server, the harness checks the shipped PostgreSQL worker at
 
 ### `npm run verify:packed`
 
-Takes the `.tgz` from `npm --prefix cli pack` (after `npm --prefix cli run build`), installs it with `--ignore-scripts` into a clean temporary prefix and HOME, then runs the installed-artifact check above on `node_modules/durindoor/app/custom-server.js`. It publishes nothing. The manual `Artifact Smoke` workflow and the `Release` workflow (before the publish step) run both the standalone and packed checks; pull requests do not, to save Actions minutes.
+Takes the `.tgz` from `npm pack ./cli` (not `npm --prefix cli pack`, which packs the repository root) (after `npm --prefix cli run build`), installs it with `--ignore-scripts` into a clean temporary prefix and HOME, then runs the installed-artifact check above on `node_modules/durindoor/app/custom-server.js`. It publishes nothing. The manual `Artifact Smoke` workflow and the `Release` workflow (before the publish step) run both the standalone and packed checks; pull requests do not, to save Actions minutes.
 
 The harness does not build, install, publish, enable browser auto-install, or use live provider credentials. Build/install and exercise it separately for each release artifact. Docker verification remains **pending on this host: Docker is unavailable**; a host artifact smoke does not prove the Docker image.

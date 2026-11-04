@@ -156,3 +156,25 @@ describe("#1089 public routes keep tool policy and restore aliases", () => {
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 });
+
+// Gemini clients use /v1beta/models/*; see v1beta-gemini-gateway-conformance-1089.test.js for the
+// Gemini route against Chat, Claude and Gemini upstreams. A Gemini-shaped body posted to
+// /v1/chat/completions is not a supported Gemini route: it is treated as a Chat request.
+describe("#1089 Gemini client through its public route", () => {
+  it("POST /v1beta/models/*:generateContent restores ns.search from a Chat upstream", async () => {
+    const { POST } = await import("../../src/app/api/v1beta/models/[...path]/route.js");
+    const res = await POST(new Request("https://router.test/v1beta/models/gpt-test:generateContent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        tools: [{ functionDeclarations: [{ name: "ns.search", description: "S", parameters: schema }] }],
+      }),
+    }), { params: Promise.resolve({ path: ["gpt-test:generateContent"] }) });
+    expect(res.status).toBe(200);
+    expect(outbound().tools[0].function.name).toMatch(NAME);
+    const reply = await res.json();
+    expect(reply.candidates[0].content.parts.find((p) => p.functionCall).functionCall.name).toBe("ns.search");
+  });
+});
+

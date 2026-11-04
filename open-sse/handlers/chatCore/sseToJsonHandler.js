@@ -10,7 +10,7 @@ import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-open
 import { extractCompleteSseFrames } from "../../utils/streamHelpers.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
-import { projectCompletionToClientFormat, projectCompletionToGeminiClient, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
+import { projectCompletionToClientFormat, responsesApiToOpenAICompletion } from "../../translator/response/completionProjector.js";
 import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
@@ -480,8 +480,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           toolNameMap
         });
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-        const project = GEMINI_FAMILY_FORMATS.has(sourceFormat) ? projectCompletionToGeminiClient : projectCompletionToClientFormat;
-        const finalResp = project(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+        const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
         if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
         if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
@@ -603,7 +602,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }
       const clientParsed = clientUsage ? { ...parsed, usage: clientUsage } : parsed;
       const resolveToolName = sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE ? createResponsesToolNameResolver(body, toolNameMap) : undefined;
-      const projected = (GEMINI_FAMILY_FORMATS.has(sourceFormat) ? projectCompletionToGeminiClient : projectCompletionToClientFormat)(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
+      const projected = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
       const finalResp = claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
       // Chat clients get the projection as-is, so restore request-side aliases (#1406).
       if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);

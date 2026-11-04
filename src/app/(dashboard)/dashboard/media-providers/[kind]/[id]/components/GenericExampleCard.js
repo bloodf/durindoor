@@ -59,7 +59,10 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
   const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText", "systemone"]);
   const needsModel = KIND_NEEDS_MODEL.has(kind);
   const allowManualModel = needsModel && kindModels.length === 0;
-  const [selectedModel, setSelectedModel] = useState(kindModels[0]?.id ?? "");
+  const [selection, setSelection] = useState({ provider: safeProviderAlias, kind, id: kindModels[0]?.id ?? "", manual: allowManualModel });
+  const selectionMatches = selection.provider === safeProviderAlias && selection.kind === kind;
+  const selectedModel = selectionMatches && (kindModels.some((m) => m.id === selection.id) || allowManualModel && selection.manual) ? selection.id : kindModels[0]?.id ?? "";
+  const setSelectedModel = (id) => setSelection({ provider: safeProviderAlias, kind, id, manual: allowManualModel });
   const selectedModelObj = kindModels.find((m) => m.id === selectedModel);
   const supportsEdit = Array.isArray(selectedModelObj?.capabilities) && selectedModelObj.capabilities.includes("edit");
   const supportsMask = Array.isArray(selectedModelObj?.capabilities) && selectedModelObj.capabilities.includes("mask");
@@ -104,6 +107,10 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
   }, [providerId]);
 
   useEffect(() => {
+    setSelection({ provider: safeProviderAlias, kind, id: getModelsByProviderId(providerId).find((m) => getModelKind(m) === kind)?.id ?? "", manual: false });
+  }, [providerId, safeProviderAlias, kind]);
+
+  useEffect(() => {
     if (kind !== "image") return;
     let active = true;
     setSyncedModels({ provider: null, models: [] });
@@ -128,7 +135,6 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
         if (!active || requestGeneration !== generation) return;
         const models = (data.models || []).filter((row) => row.providerAlias === safeProviderAlias && (row.kind || row.type) === kind);
         setRegisteredModels({ provider: safeProviderAlias, kind, models });
-        if (kind === "systemone") setSelectedModel((current) => current || models[0]?.id || "");
       }).catch(() => { if (active && requestGeneration === generation) setRegisteredModels({ provider: safeProviderAlias, kind, models: [] }); });
     };
     load();

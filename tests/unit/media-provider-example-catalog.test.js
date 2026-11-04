@@ -90,6 +90,76 @@ it("keeps the newest custom catalog when a refresh races", async () => {
   expect(within(document.body).queryByRole("option", { name: "Old Custom Image" })).toBeNull();
 });
 
+it("does not submit a removed or retagged custom model and preserves valid selections", async () => {
+  let custom = [{ providerAlias: "openai", id: "custom-image", name: "Custom Image", kind: "image" }];
+  vi.stubGlobal("fetch", vi.fn(async (url, options) => {
+    if (url === "/api/tunnel/status") return Response.json({});
+    if (url === "/api/providers/client") return Response.json({ connections: [] });
+    if (url === "/api/models/custom") return Response.json({ models: custom });
+    if (String(url).startsWith("/api/models/auto-sync?")) return Response.json({});
+    if (url === "/api/v1/images/generations") return Response.json({ data: [{ b64_json: "aGVsbG8=" }], model: JSON.parse(options.body).model });
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const view = await render(GenericExampleCard, { providerId: "openai", kind: "image" });
+  await act(async () => view.getByRole("combobox", { name: "Model" }).click());
+  await act(async () => within(document.body).getByRole("option", { name: "Custom Image" }).click());
+  await act(async () => window.dispatchEvent(new Event("customModelChanged")));
+  expect(view.getByRole("region", { name: "Request example" }).textContent).toContain("openai/custom-image");
+  custom = [{ providerAlias: "openai", id: "custom-image", name: "Custom Image", kind: "stt" }];
+  await act(async () => window.dispatchEvent(new Event("customModelChanged")));
+  expect(view.getByRole("region", { name: "Request example" }).textContent).not.toContain("openai/custom-image");
+  custom = [];
+  await act(async () => window.dispatchEvent(new Event("customModelChanged")));
+  expect(view.getByRole("region", { name: "Request example" }).textContent).not.toContain("openai/custom-image");
+  const run = view.getByRole("button", { name: "Run" });
+  if (!run.disabled) {
+    await act(async () => run.click());
+    const call = fetch.mock.calls.find(([url]) => url === "/api/v1/images/generations");
+    expect(JSON.parse(call[1].body).model).not.toBe("openai/custom-image");
+  }
+});
+
+it("keeps a manually entered model when no catalog is available", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/tunnel/status") return Response.json({});
+    if (url === "/api/providers/client") return Response.json({ connections: [] });
+    if (url === "/api/models/custom") return Response.json({ models: [] });
+    if (String(url).startsWith("/api/models/auto-sync?")) return Response.json({});
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const view = await render(GenericExampleCard, { providerId: "custom-provider", kind: "image" });
+  const input = view.getByRole("textbox", { name: "Model" });
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "custom-model");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(view.getByRole("region", { name: "Request example" }).textContent).toContain("custom-provider/custom-model");
+});
+
+it("clears provider-scoped selection across A to B to A", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    if (url === "/api/tunnel/status") return Response.json({});
+    if (url === "/api/providers/client") return Response.json({ connections: [] });
+    if (url === "/api/models/custom") return Response.json({ models: [{ providerAlias: "openai", id: "custom-image", name: "Custom Image", kind: "image" }] });
+    if (String(url).startsWith("/api/models/auto-sync?")) return Response.json({});
+    if (url === "/api/v1/images/generations") return Response.json({ data: [{ b64_json: "aGVsbG8=" }] });
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const view = await render(GenericExampleCard, { providerId: "openai", kind: "image" });
+  await act(async () => view.getByRole("combobox", { name: "Model" }).click());
+  await act(async () => within(document.body).getByRole("option", { name: "Custom Image" }).click());
+  await act(async () => root.render(React.createElement(GenericExampleCard, { providerId: "xai", kind: "image" })));
+  expect(view.getByRole("region", { name: "Request example" }).textContent).not.toContain("xai/custom-image");
+  const run = view.getByRole("button", { name: "Run" });
+  if (!run.disabled) {
+    await act(async () => run.click());
+    const call = fetch.mock.calls.find(([url]) => url === "/api/v1/images/generations");
+    expect(JSON.parse(call[1].body).model).not.toBe("xai/custom-image");
+  }
+  await act(async () => root.render(React.createElement(GenericExampleCard, { providerId: "openai", kind: "image" })));
+  expect(view.getByRole("region", { name: "Request example" }).textContent).not.toContain("openai/custom-image");
+});
+
 it("makes a normalized synced image model selectable for an existing provider", async () => {
   const staticModels = getModelsByProviderId("openai");
   const rows = normalizeSyncedModels([{ id: "gpt-image-sync-fixture", kind: "image", display_name: "Synced Image Fixture" }], staticModels);

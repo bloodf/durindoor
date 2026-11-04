@@ -112,3 +112,13 @@ it("leaves consistent usage unmodified", async () => {
   expect(row).toMatchObject({ promptTokens: 100, completionTokens: 50, reasoningTokens: 20 });
   expect(JSON.parse(row.meta).reportedTotalTokens).toBeUndefined();
 });
+
+it("records chat as an explicit modality, without native units or a native tariff", async () => {
+  const { updatePricing } = await import("@/lib/db/repos/pricingRepo.js");
+  await updatePricing({ fixture: { "fixture-model": { input: 1, output: 1, native: { unit: "image", rate: 5 } } } });
+  const row = await save({ prompt_tokens: 1_000_000, completion_tokens: 0 });
+  expect(row.cost).toBe(1);
+  const meta = JSON.parse(row.meta);
+  expect(meta).toMatchObject({ modality: "chat", costStatus: "estimated", costSource: "pricing" });
+  expect(meta.nativeUnits).toBeUndefined();
+});

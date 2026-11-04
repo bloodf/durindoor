@@ -108,17 +108,25 @@ export async function describeMediaRoute(kind, { settings, supports = null, apiK
   const all = await listMediaRouteCandidates(kind, { apiKeyId });
   const candidates = supports ? all.filter((m) => supports(providerOfModelId(m.id), String(m.id).slice(String(m.id).indexOf("/") + 1))) : all;
   const saved = savedRoute(settings, kind);
-  const available = new Map(candidates.map((m) => [canonicalizePolicyModelIdentity(m.id), m.id]));
+  const available = new Set(candidates.map((m) => canonicalizePolicyModelIdentity(m.id)));
+  // Older catalogs omitted the vendor prefix. Keep the saved request unchanged.
+  const isAvailable = (id, ids) => {
+    const canonical = canonicalizePolicyModelIdentity(id);
+    if (ids.has(canonical)) return true;
+    const slash = canonical.indexOf("/");
+    const provider = canonical.slice(0, slash);
+    return ids.has(`${provider}/${provider}/${canonical.slice(slash + 1)}`);
+  };
   // A saved route is the user's choice: an endpoint that can run none of its
   // models (a sync-only video model on /v1/videos, a Deepgram-only STT route on
   // /v1/audio/translations) errors rather than starting work on a provider the
   // route never named.
-  let models = saved.length > 0 ? [...new Set(saved.map((id) => available.get(canonicalizePolicyModelIdentity(id))).filter(Boolean))] : candidates.map((m) => m.id);
+  let models = saved.length > 0 ? saved.filter((id) => isAvailable(id, available)) : candidates.map((m) => m.id);
   // Vectors from different embedding models are not comparable, so an
   // embeddings route never falls through to a second model.
   if (kind === "embedding") models = models.slice(0, 1);
   const allIds = new Set(all.map((m) => canonicalizePolicyModelIdentity(m.id)));
-  const reason = saved.length === 0 ? "none" : saved.some((id) => allIds.has(canonicalizePolicyModelIdentity(id))) ? "endpoint" : "saved";
+  const reason = saved.length === 0 ? "none" : saved.some((id) => isAvailable(id, allIds)) ? "endpoint" : "saved";
   return { saved, candidates, models, reason };
 }
 

@@ -2,8 +2,6 @@ import { getApiKeyByKey, getProviderNodes } from "@/lib/localDb";
 import { extractApiKey } from "./auth.js";
 import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers.js";
 import { isString } from "@/shared/utils/typeChecks.js";
-import REGISTRY from "open-sse/providers/registry/index.js";
-import { canonicalizePolicyModelIdentity } from "./apiKeyPolicyIdentity.js";
 
 /**
  * Per-key model access rules stored in `policy.modelAccess`
@@ -55,19 +53,8 @@ export async function getModelAccessCandidateBuilder() {
       const model = modelStr.slice(slash + 1);
       const prefix = modelStr.slice(0, slash);
       const providerId = idByPrefix.get(prefix) || resolveProviderId(prefix);
-      const canonical = canonicalizePolicyModelIdentity(`${providerId}/${model}`);
-      const canonicalModel = canonical.slice(providerId.length + 1);
-      const forms = new Set([model, canonicalModel]);
-      if (canonicalModel.startsWith(`${providerId}/`)) {
-        const legacy = canonicalModel.slice(providerId.length + 1);
-        if (canonicalizePolicyModelIdentity(`${providerId}/${legacy}`) === canonical) forms.add(legacy);
-      }
-      const entry = REGISTRY.find((item) => item.id === providerId);
-      for (const form of forms) {
-        for (const name of [providerId, prefix, prefixById.get(providerId), getProviderAlias(providerId), entry?.uiAlias, ...(entry?.aliases || [])]) {
-          if (name) names.add(`${name}/${form}`);
-        }
-      }
+      names.add(`${providerId}/${model}`);
+      names.add(`${prefixById.get(providerId) || getProviderAlias(providerId)}/${model}`);
     }
     return [...names];
   };

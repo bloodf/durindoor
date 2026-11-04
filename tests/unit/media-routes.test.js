@@ -58,6 +58,20 @@ describe("route validation", () => {
 });
 
 describe("saved legacy routes", () => {
+  it("dispatches a saved Fal route to its original upstream path", async () => {
+    const { handleImageGenerationCore } = await import("../../open-sse/handlers/imageGenerationCore.js");
+    const { parseModel } = await import("../../open-sse/services/model.js");
+    mocks.buildModelsList.mockResolvedValue([model("fal-ai/fal-ai/flux/schnell")]);
+    const route = await describeMediaRoute("image", { settings: { mediaRoutes: { image: ["fal/flux/schnell"] } } });
+    const fetch = vi.fn(async () => new Response("upstream rejected", { status: 500 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      await handleImageGenerationCore({ body: { prompt: "test" }, modelInfo: parseModel(route.models[0]), credentials: { apiKey: "test" } });
+      expect(fetch.mock.calls[0][0]).toBe("https://queue.fal.run/flux/schnell");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it.each([
     ["image", "fal/flux/schnell", "fal-ai/fal-ai/flux/schnell"],
     ["embedding", "nvidia/nv-embedqa-e5-v5", "nvidia/nvidia/nv-embedqa-e5-v5"],
@@ -65,7 +79,7 @@ describe("saved legacy routes", () => {
   ])("resolves %s legacy identity", async (kind, oldId, publishedId) => {
     mocks.buildModelsList.mockResolvedValue([model(publishedId)]);
     const route = await describeMediaRoute(kind, { settings: { mediaRoutes: { [kind]: [oldId] } } });
-    expect(route.models).toEqual([publishedId]);
+    expect(route.models).toEqual([oldId]);
     expect(route.saved).toEqual([oldId]);
   });
 });

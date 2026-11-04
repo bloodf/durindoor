@@ -63,6 +63,20 @@ describe("model access patterns", () => {
     expect(access.isModelAccessAllowed(undefined, ["anything"])).toBe(true);
   });
 
+  it.each([
+    ["fal/flux/schnell", "fal-ai/fal-ai/flux/schnell"],
+    ["nvidia/nv-embedqa-e5-v5", "nvidia/nvidia/nv-embedqa-e5-v5"],
+    ["nvidia/magpie-tts-multilingual", "nvidia/nvidia/magpie-tts-multilingual"],
+  ])("keeps different upstream resources separate for %s", async (oldId, publishedId) => {
+    const candidatesFor = await access.getModelAccessCandidateBuilder();
+    for (const [restricted, requested] of [[oldId, publishedId], [publishedId, oldId]]) {
+      expect(policy.isModelAllowed({ allowedModels: [restricted] }, requested)).toBe(false);
+      expect(access.isModelAccessAllowed({ mode: "allow", patterns: [restricted] }, candidatesFor(requested))).toBe(false);
+      expect(access.isModelAccessAllowed({ mode: "deny", patterns: [restricted] }, candidatesFor(requested))).toBe(true);
+      expect(access.isModelAccessAllowed({ mode: "deny", patterns: [restricted] }, candidatesFor(restricted))).toBe(false);
+    }
+  });
+
   it("lists a resolved model under its provider id and its alias", async () => {
     const candidatesFor = await access.getModelAccessCandidateBuilder();
     expect(candidatesFor("codex/gpt-5")).toEqual(expect.arrayContaining(["codex/gpt-5", "cx/gpt-5"]));
@@ -83,6 +97,34 @@ describe("model access policy storage", () => {
 });
 
 describe("model access enforcement", () => {
+  it("enforces restrictions before dispatching distinct Fal resources", async () => {
+    const { handleImageGenerationCore } = await import("../../open-sse/handlers/imageGenerationCore.js");
+    const ids = ["fal/flux/schnell", "fal-ai/fal-ai/flux/schnell"];
+    const urls = ["https://queue.fal.run/flux/schnell", "https://queue.fal.run/fal-ai/flux/schnell"];
+    const fetch = vi.fn(async () => new Response("upstream rejected", { status: 500 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        const restricted = ids[i];
+        const other = ids[1 - i];
+        for (const mode of ["allow", "deny"]) {
+          const key = await keyWith({ mode, patterns: [restricted] });
+          for (const [requested, blocked] of [[restricted, mode === "deny"], [other, mode === "allow"]]) {
+            fetch.mockClear();
+            const error = await policy.enforceApiKeyModelPolicy(request(key.key), requested, key.key, { limits: false });
+            expect(error?.status ?? null).toBe(blocked ? 403 : null);
+            if (!error) {
+              await handleImageGenerationCore({ body: { prompt: "test" }, modelInfo: { provider: "fal-ai", model: requested.slice(requested.indexOf("/") + 1) }, credentials: { apiKey: "test" } });
+              expect(fetch).toHaveBeenCalledOnce();
+              expect(fetch.mock.calls[0][0]).toBe(urls[ids.indexOf(requested)]);
+            } else expect(fetch).not.toHaveBeenCalled();
+          }
+        }
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("returns 403 for a denied model under any of its names", async () => {
     const key = await keyWith({ mode: "deny", patterns: ["cx/*"] });
     const byId = await policy.enforceApiKeyModelPolicy(request(key.key), "codex/gpt-5", key.key);

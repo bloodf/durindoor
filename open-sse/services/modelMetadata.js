@@ -9,6 +9,7 @@ const BOOLEAN_KEYS = ["vision", "pdf", "audioInput", "videoInput", "imageOutput"
 const FLAG_ALIASES = { supportsTools: "tools", supports_tools: "tools", tool_call: "tools", structured_output: "structuredOutput", prompt_caching: "promptCaching", supportsReasoning: "reasoning", isReasoning: "reasoning", isVL: "vision" };
 const INPUT_FLAGS = { image: "vision", pdf: "pdf", audio: "audioInput", video: "videoInput" };
 const OUTPUT_FLAGS = { image: "imageOutput", audio: "audioOutput", video: "videoOutput" };
+const DEFAULT_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh", "max"]);
 const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(value);
 
 function positiveLimit(value) {
@@ -147,6 +148,7 @@ export function extractApiCapabilities(raw, options) {
       if (Array.isArray(source[key]) && source[key].length && source[key].every(isString)) caps[key] = [...source[key]];
     }
     for (const key of ["thinkingFormat", "thinkingType"]) if (isString(source[key])) caps[key] = source[key];
+    if (DEFAULT_EFFORTS.has(source.defaultEffort)) caps.defaultEffort = source.defaultEffort;
     const thinkingRange = boundedThinkingRange(source.thinkingRange);
     if (thinkingRange !== undefined) caps.thinkingRange = thinkingRange;
   }

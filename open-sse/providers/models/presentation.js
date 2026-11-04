@@ -34,6 +34,8 @@ function suppliedDisplayName(model, modelId) {
   return name;
 }
 
+const LIFECYCLES = new Set(["legacy", "deprecated"]);
+
 export function projectModelPresentation({ model = {}, modelId, providerId, outputAlias }) {
   const suppliedName = suppliedDisplayName(model, modelId);
   const provider = findProvider(providerId, outputAlias);
@@ -63,5 +65,8 @@ export function projectModelPresentation({ model = {}, modelId, providerId, outp
     provider_name: providerName,
     provider_alias: outputAlias,
     gateway_provider: gatewayProvider,
+    // Anthropic lifecycle ("legacy" | "deprecated") for models it has moved off the active list.
+    // The model stays listed; this is information only.
+    ...(LIFECYCLES.has(model.lifecycle ?? registryModel?.lifecycle) ? { lifecycle: model.lifecycle ?? registryModel.lifecycle } : null),
   };
 }

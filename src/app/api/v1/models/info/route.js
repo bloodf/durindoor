@@ -48,6 +48,7 @@ function buildInfo({ alias, providerId, model, kind, providerInfo, snapshot }) {
     provider_name: presentation.provider_name,
     provider_alias: presentation.provider_alias,
     gateway_provider: presentation.gateway_provider,
+    ...(presentation.lifecycle ? { lifecycle: presentation.lifecycle } : null),
     ...(model.routingUnavailableReason ? {
       endpoint: null,
       routingAvailable: false,

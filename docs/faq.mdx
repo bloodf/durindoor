@@ -46,7 +46,7 @@ Those are separate `/v1` families: embeddings, image generate and edit, speech, 
 
 ## What is a combo?
 
-A named group of model routes. The client puts the combo name in `model`. The default strategy tries members in order after failures; other strategies rotate, rank, or combine members. [Combos](./features/combos.mdx).
+A named group of model routes. The client puts the combo name in `model`. The default strategy tries members in order after failures; other strategies rotate, rank, or combine members. The terminal UI creates chat combos and excludes models known to be non-chat from its creation list. [Combos](./features/combos.mdx).
 
 ## What is account fallback?
 

@@ -324,6 +324,19 @@ describe("rich compatible model metadata", () => {
 });
 
 describe("dashboard model metadata", () => {
+  it("exposes each selected static or synced model kind without changing identity", async () => {
+    dashboardDb.settings = { modelAutoSyncProviders: { openai: false, xai: true } };
+    dashboardDb.catalogs = { xai: entry([{ id: "future-chat", kind: "llm" }, { id: "future-image", kind: "image" }, { id: "future-kind", kind: "unrecognized" }]) };
+    dashboardDb.aliases = { "xai/future-image": "paint" };
+    dashboardDb.custom = [{ providerAlias: "xai", id: "future-chat", kind: "llm", capabilities: { tools: false } }, { providerAlias: "xai", id: "custom-only", kind: "image" }];
+    const { models } = await (await getDashboardModels()).json();
+    expect(models.find((m) => m.provider === "openai" && m.model === "gpt-4o")).toMatchObject({ fullModel: "openai/gpt-4o", kind: "llm" });
+    expect(models.find((m) => m.provider === "openai" && m.model === "gpt-image-1")).toMatchObject({ fullModel: "openai/gpt-image-1", kind: "image" });
+    expect(models.find((m) => m.fullModel === "xai/future-image")).toMatchObject({ alias: "paint", kind: "image" });
+    expect(models.find((m) => m.fullModel === "xai/future-kind")).toMatchObject({ kind: "unrecognized" });
+    expect(models.find((m) => m.fullModel === "xai/future-chat")).toMatchObject({ kind: "llm", caps: { tools: false } });
+    expect(models.some((m) => m.fullModel === "xai/custom-only")).toBe(false);
+  });
   it("uses each provider's current synced roster, scoped enrichment and operator overrides", async () => {
     const id = "future-discovery-model";
     dashboardDb.catalogs = {

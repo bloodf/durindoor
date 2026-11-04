@@ -45,6 +45,8 @@ export const FP_PIN_SEPARATOR = "|fp|";
  * job (#1085). Its outcome is unknown and it may still bill, so the combo returns
  * that response instead of starting a second billable job on the next member. */
 export const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
+// In-process marker: upstream response bodies and headers cannot impersonate local failures.
+export const LOCAL_REQUEST_ERROR = Symbol("localRequestError");
 
 export function splitFingerprintPin(id) {
   if (!isString(id)) return null;
@@ -1606,6 +1608,13 @@ export async function handleComboChat({
       if (isLocalStreamLifecycleError(errorText)) {
         releaseFailedAffinity(modelStr, i);
         return abortedResponse();
+      }
+
+      // A local metadata failure is not an upstream or account-health signal.
+      if (result[LOCAL_REQUEST_ERROR]) {
+        releaseFailedAffinity(modelStr, i);
+        requestScopedResult ??= result;
+        continue;
       }
 
       // Check if should fallback to next model

@@ -54,10 +54,24 @@ describe("image model kind", () => {
     expect((await handleImageGeneration(request("openai/gpt-4o"))).status).toBe(200);
     expect(fetch).toHaveBeenCalledOnce();
   });
-  it("allows a synced image row sharing a registered chat id", async () => {
-    state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "gpt-4o", kind: "image" }] } };
+  it("honors an image row produced by synced catalog normalization", async () => {
+    const { normalizeSyncedModels } = await import("@/lib/modelAutoSync/catalog.js");
+    const { default: openai } = await import("../../open-sse/providers/registry/openai.js");
+    const models = normalizeSyncedModels([{ id: "gpt-4o", kind: "image" }], openai.models);
+    expect(models[0].kind).toBe("image");
+    state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models } };
     expect((await handleImageGeneration(request("openai/gpt-4o"))).status).toBe(200);
     expect(fetch).toHaveBeenCalledOnce();
+  });
+  it("preserves explicit registry kind precedence in synced normalization", async () => {
+    const { normalizeSyncedModels } = await import("@/lib/modelAutoSync/catalog.js");
+    const { default: openai } = await import("../../open-sse/providers/registry/openai.js");
+    const models = normalizeSyncedModels([{ id: "text-embedding-3-small", kind: "image" }], openai.models);
+    expect(models[0].kind).toBe("embedding");
+    state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models } };
+    expect((await handleImageGeneration(request("openai/text-embedding-3-small"))).status).toBe(400);
+    expect(state.credentials).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
   it.each(["custom", "synced"])("does not infer image kind from an untyped %s row", async (source) => {
     if (source === "custom") state.customModels = [{ providerAlias: "openai", id: "gpt-4o" }];

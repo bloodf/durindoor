@@ -14,6 +14,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { imageModelKindError } from "./imageModelKind.js";
 
 // Allow large image uploads (mask + image can be several MB).
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
@@ -82,6 +83,8 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const kindError = await imageModelKindError(provider, model, await getSettings());
+  if (kindError) return kindError;
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   const excludeConnectionIds = new Set();

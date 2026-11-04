@@ -19,6 +19,7 @@ import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForRespon
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
+import { imageModelKindError } from "./imageModelKind.js";
 
 // Providers that don't require credentials (noAuth)
 const NO_AUTH_PROVIDERS = new Set(["sdwebui", "comfyui"]);
@@ -126,6 +127,8 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   // is selected, so a retired model never marks a healthy connection unavailable.
   const lifecycleError = checkModelLifecycle({ provider, canonicalModel: model, log });
   if (lifecycleError) return lifecycleError.response;
+  const kindError = await imageModelKindError(provider, model, await getSettings());
+  if (kindError) return kindError;
   const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};
 
 

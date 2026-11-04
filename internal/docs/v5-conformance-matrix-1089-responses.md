@@ -1,8 +1,8 @@
 # #1089 OpenAI Responses client conformance matrix
 
-Counts: already-present 23; failing 4; unsupported-by-contract 0; upstream-pending 0.
+Counts: already-present 27; repaired 1; failing 0; unsupported-by-contract 0; upstream-pending 0.
 
-Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-responses.test.js`.
+Every row maps to a test in `tests/translator/v5-conformance-matrix-responses.test.js` unless another file is named. Counts are computed from the rows.
 
 | Direction | Feature | Target | Status | Covering test |
 |---|---|---|---|---|
@@ -14,7 +14,7 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Request | Custom and namespaced tools, strict, parallel | OpenAI Chat | already-present | `lowers custom and namespaced tools to Chat with strict and parallel policy` |
 | Request | Custom and namespaced tools, alias map, parallel | Claude | already-present | `lowers custom and namespaced tools to Claude with alias map and parallel ban` |
 | Request | `function_call` / `function_call_output` pairing | OpenAI Chat, Claude, Gemini | already-present | `keeps function_call and function_call_output pairing to Chat, Claude, and Gemini` |
-| Request | Pairing scoped to assistant turn | OpenAI Chat | failing | `does not pair function_call_output across assistant turns` |
+| Request | Pairing scoped to assistant turn (repaired #1335) | OpenAI Chat | repaired | `relocates function_call_output after an intervening assistant message by call id` |
 | Request | Text tool-result media | OpenAI Chat, Claude, Gemini | already-present | `preserves text tool-result media to Chat, Claude, and Gemini` |
 | Request | `input_image` tool-result media | OpenAI Chat, Claude | already-present | `lifts input_image tool-result media beside text for Chat and Claude` |
 | Request | Unsupported tool-result file/audio media | OpenAI Chat, Claude, Gemini | already-present | `rejects unsupported tool-result file and audio media with HTTP 400` |
@@ -33,12 +33,9 @@ Every row maps 1:1 to a test in `tests/translator/v5-conformance-matrix-response
 | Request | Free-form `parameters:{}` → typed empty object schema | Claude | already-present | `normalizes Claude free-form parameters {} to a typed empty object schema` |
 | Request | String numeric schema constraints (#1091) | OpenAI Chat, Claude, Gemini | already-present | `coerces string numeric schema constraints to integers for Chat, Claude, and Gemini` |
 | Request | Malformed tool schemas (#1091) | OpenAI Chat, Claude, Gemini | already-present | `rejects malformed tool schemas with HTTP 400 for Chat, Claude, and Gemini` |
+| Public route `POST /v1/responses` | alias upstream, named choice, strict and parallel false kept, name restored (stream); malformed schema 400 | OpenAI Chat upstream | already-present | `tests/unit/public-route-tool-conformance-1089.test.js` |
 
-## Failing cases
-
-| Test | Reason |
-|---|---|
-| `relocates function_call_output after an intervening assistant message by call id` | Repaired (#1335): a tool-only turn is flushed as its own assistant message; late real outputs relocate next to it by call id. |
+Repaired (#1335): a tool-only turn is flushed as its own assistant message; late real outputs relocate next to it by call id.
 
 Note (#1334): Responses tool declarations go through the shared `normalizeToolSchema`. Numeric-string constraints are coerced for every target. The Gemini/Antigravity schema cleaner still drops string-length keywords (`minLength` / `maxLength`) by design.
 Chat-shaped `{type:"function", function:{...}}` tools inside a Responses body are validated too. Responses→Responses passthrough (no translation) does not run this validation.

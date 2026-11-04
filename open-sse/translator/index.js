@@ -186,6 +186,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
        * pivot below where overlong/dotted names are aliased. Apply the same clamp
        * so Chat upstreams and the response round-trip map stay consistent (#1345).
        */
+      // Gemini histories may leave a functionCall unanswered; Chat/Claude upstreams reject that.
+      if (isGeminiRequestSource(sourceFormat) && targetFormat === FORMATS.OPENAI && isObject(result)) fixMissingToolResponses(result);
       if ((sourceFormat === FORMATS.OPENAI_RESPONSES || isGeminiRequestSource(sourceFormat)) && targetFormat === FORMATS.OPENAI && isObject(result)) {
         responsesToolAliases = normalizeOpenAIToolNames(result);
       }
@@ -195,6 +197,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
         if (toOpenAI) {
           result = toOpenAI(translationModel, result, stream, credentials, resolvedTranslationContext);
           customToolNames = result._customToolNames;
+          if (isGeminiRequestSource(sourceFormat) && isObject(result)) fixMissingToolResponses(result);
           /**
            * Responses namespace tools expand to dotted `{namespace}.{subtool}` names that
            * Claude, Kiro and OpenAI-format upstreams reject. Alias the OpenAI intermediate

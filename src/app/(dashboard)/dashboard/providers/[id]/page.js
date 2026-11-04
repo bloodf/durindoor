@@ -779,11 +779,15 @@ export default function ProviderDetailPage() {
     setSuggestedModels([]);
     setCatalogEvidence(null);
     setModelTestResults({});
+    setTestingModelIds(new Set());
+    setModelsTestError("");
+    setSyncingModels(false);
     setModelsFetchedAt(null);
     setSyncedModels(null);
   }, [providerId]);
 
   const handleSyncModels = async () => {
+    const requestProviderId = providerId;
     const connection = connections.find((item) => item.isActive !== false);
     if (!connection?.id) return;
 
@@ -793,11 +797,12 @@ export default function ProviderDetailPage() {
         cache: "no-store"
       });
       const data = response.ok ? await response.json() : null;
+      if (currentProviderIdRef.current !== requestProviderId) return;
       setSuggestedModels(Array.isArray(data?.models) ? data.models : []);
       setCatalogEvidence(data ? { source: data.source, degraded: data.degraded } : null);
       setModelsFetchedAt(new Date());
     } finally {
-      setSyncingModels(false);
+      if (currentProviderIdRef.current === requestProviderId) setSyncingModels(false);
     }
   };
 
@@ -1498,6 +1503,7 @@ export default function ProviderDetailPage() {
 
 
   const handleTestModel = async (modelId) => {
+    const requestProviderId = providerId;
     if (testingModelIds.has(modelId)) return;
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
@@ -1511,14 +1517,18 @@ export default function ProviderDetailPage() {
         })
       });
       const data = await res.json();
+      if (currentProviderIdRef.current !== requestProviderId) return;
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
       setModelsTestError(outcome === "error" ? data.error || "Model not reachable" : "");
     } catch {
+      if (currentProviderIdRef.current !== requestProviderId) return;
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setModelsTestError("Network error");
     } finally {
-      setTestingModelIds((prev) => {const n = new Set(prev);n.delete(modelId);return n;});
+      if (currentProviderIdRef.current === requestProviderId) {
+        setTestingModelIds((prev) => {const n = new Set(prev);n.delete(modelId);return n;});
+      }
     }
   };
 

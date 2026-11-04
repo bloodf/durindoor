@@ -235,7 +235,7 @@ async function handleCreateCombo() {
   }
 
   // Older servers omit kind; unknown future kinds remain selectable.
-  const nonChatKinds = new Set(["image", "imageToText", "tts", "embedding", "stt", "rerank", "video", "music", "audio", "realtime", "realtimeTranslation", "realtimeTranscription", "live", "moderation", "systemone", "documentParsing", "webSearch", "webFetch"]);
+  const nonChatKinds = new Set(["image", "imageToText", "tts", "embedding", "stt", "rerank", "video", "music", "audio", "realtime", "realtimeTranslation", "realtimeTranscription", "live", "moderation", "systemone", "documentParsing", "webSearch", "webFetch", "agent"]);
   const availableModels = (modelsResult.data.models || []).filter((model) => !nonChatKinds.has(model.kind));
 
   if (availableModels.length === 0) {

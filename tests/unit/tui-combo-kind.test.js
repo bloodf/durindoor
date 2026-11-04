@@ -15,6 +15,7 @@ describe("CLI combo creation", () => {
       { provider: "openai", model: "gpt-4o", fullModel: "openai/gpt-4o", kind: "llm" },
       { provider: "openai", model: "gpt-image-1", fullModel: "openai/gpt-image-1", kind: "image" },
       { provider: "search", model: "fetch", fullModel: "search/fetch", kind: "webFetch" },
+      { provider: "devin", model: "devin", fullModel: "devin/devin", kind: "agent" },
       { provider: "old", model: "model", fullModel: "old/custom", kind: undefined },
       { provider: "future", model: "model", fullModel: "future/custom", kind: "future-kind" },
     ];
@@ -36,6 +37,7 @@ describe("CLI combo creation", () => {
     expect(printed).toContain("future/custom");
     expect(printed).not.toContain("gpt-image-1");
     expect(printed).not.toContain("search/fetch");
+    expect(printed).not.toContain("devin/devin");
     expect(create).toHaveBeenCalledWith({ name: "test-combo", models: ["openai/gpt-4o", "old/custom", "future/custom"] });
   });
 });

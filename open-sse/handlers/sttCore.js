@@ -70,7 +70,16 @@ async function transcribeDeepgram(cfg, file, model, token, formData, log) {
     body: buf
   });
   if (!res.ok) return upstreamError(res, [token]);
-  const data = await res.json();
+  // A successful upstream response may already be billed; malformed JSON is
+  // treated like a missing transcript rather than retrying a paid request.
+  const parsed = await res.json().catch((error) => {
+    if (!(error instanceof SyntaxError)) throw error;
+    return null;
+  });
+  const data = parsed !== null && isObject(parsed) && !Array.isArray(parsed) ? parsed : {};
+  // Invalid usage cannot be recorded as known usage or trigger another paid call.
+  const usage = data.usageMetadata ?? data.usage ?? data.meta?.tokens;
+  const billingData = usage !== undefined && (usage === null || !isObject(usage) || Array.isArray(usage)) ? {} : data;
   // The audio is already billed, so a failure here would make a combo pay again
   // on the next model. A non-string transcript is treated like a missing one.
   const transcript = data.results?.channels?.[0]?.alternatives?.[0]?.transcript;
@@ -81,11 +90,11 @@ async function transcribeDeepgram(cfg, file, model, token, formData, log) {
   // Keep a usable transcript when only the duration is malformed; the ledger then has no audio seconds.
   const rawDuration = data.metadata?.duration;
   const duration = isNumber(rawDuration) && Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : undefined;
-  if (options.responseFormat === "text") return textResponse(text, data, duration);
+  if (options.responseFormat === "text") return textResponse(text, billingData, duration);
   if (options.responseFormat === "verbose_json") {
-    return jsonResponse(deepgramToVerboseJson(data, text, options, duration), data, duration);
+    return jsonResponse(deepgramToVerboseJson(data, text, options, duration), billingData, duration);
   }
-  return jsonResponse({ text }, data, duration);
+  return jsonResponse({ text }, billingData, duration);
 }
 
 /** Sends AssemblyAI language_code when supplied, otherwise enabling detection (upstream #3058). */

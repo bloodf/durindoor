@@ -39,3 +39,33 @@ describe("formatCompactToken", () => {
     container.remove();
   });
 });
+
+describe("OverviewCards unknown-cost requests", () => {
+  const costHint = async (stats) => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(OverviewCards, {
+        stats: { totalRequests: 3, totalPromptTokens: 0, totalCachedTokens: 0, totalCompletionTokens: 0, totalCost: 1, ...stats },
+      }));
+    });
+    const text = container.textContent;
+    await act(async () => root.unmount());
+    container.remove();
+    return text;
+  };
+
+  it("says how many requests the estimate leaves out", async () => {
+    expect(await costHint({ unknownCostRequests: 1 })).toContain("Estimated, not actual billing. Excludes 1 request with unknown cost");
+    expect(await costHint({ unknownCostRequests: 1200 })).toContain("Excludes 1,200 requests with unknown cost");
+  });
+
+  it("keeps the plain hint when every request is priced", async () => {
+    for (const stats of [{ unknownCostRequests: 0 }, {}]) {
+      const text = await costHint(stats);
+      expect(text).toContain("Estimated, not actual billing");
+      expect(text).not.toContain("unknown cost");
+    }
+  });
+});

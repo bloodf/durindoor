@@ -57,6 +57,19 @@ describe("route validation", () => {
   });
 });
 
+describe("saved legacy routes", () => {
+  it.each([
+    ["image", "fal/flux/schnell", "fal-ai/fal-ai/flux/schnell"],
+    ["embedding", "nvidia/nv-embedqa-e5-v5", "nvidia/nvidia/nv-embedqa-e5-v5"],
+    ["tts", "nvidia/magpie-tts-multilingual", "nvidia/nvidia/magpie-tts-multilingual"],
+  ])("resolves %s legacy identity", async (kind, oldId, publishedId) => {
+    mocks.buildModelsList.mockResolvedValue([model(publishedId)]);
+    const route = await describeMediaRoute(kind, { settings: { mediaRoutes: { [kind]: [oldId] } } });
+    expect(route.models).toEqual([publishedId]);
+    expect(route.saved).toEqual([oldId]);
+  });
+});
+
 describe("adapter coverage", () => {
   it("leaves out image and embedding models of providers the gateway has no adapter for", async () => {
     mocks.buildModelsList.mockResolvedValue([model("topaz/upscale"), model("xai/grok-imagine-image")]);

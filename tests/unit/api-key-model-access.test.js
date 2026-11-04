@@ -63,6 +63,19 @@ describe("model access patterns", () => {
     expect(access.isModelAccessAllowed(undefined, ["anything"])).toBe(true);
   });
 
+  it.each([
+    ["fal/flux/schnell", "fal-ai/fal-ai/flux/schnell"],
+    ["nvidia/nv-embedqa-e5-v5", "nvidia/nvidia/nv-embedqa-e5-v5"],
+    ["nvidia/magpie-tts-multilingual", "nvidia/nvidia/magpie-tts-multilingual"],
+  ])("preserves legacy authorization for %s", async (oldId, publishedId) => {
+    const candidatesFor = await access.getModelAccessCandidateBuilder();
+    expect(policy.isModelAllowed({ allowedModels: [oldId] }, publishedId)).toBe(true);
+    for (const [mode, expected] of [["allow", true], ["deny", false]]) {
+      expect(access.isModelAccessAllowed({ mode, patterns: [oldId] }, candidatesFor(publishedId))).toBe(expected);
+      expect(access.isModelAccessAllowed({ mode, patterns: [publishedId] }, candidatesFor(oldId))).toBe(expected);
+    }
+  });
+
   it("lists a resolved model under its provider id and its alias", async () => {
     const candidatesFor = await access.getModelAccessCandidateBuilder();
     expect(candidatesFor("codex/gpt-5")).toEqual(expect.arrayContaining(["codex/gpt-5", "cx/gpt-5"]));

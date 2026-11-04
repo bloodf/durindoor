@@ -816,7 +816,8 @@ export async function saveRequestUsage(entry) {
     }
     // Provider receipts are authoritative. An operator tariff can replace an
     // unavailable or estimated native valuation, never a known numeric charge.
-    if (entry.modality && priced.costStatus !== "known") {
+    // Native tariffs never price chat, whose rows must not depend on them.
+    if (entry.modality && entry.modality !== "chat" && priced.costStatus !== "known") {
       const { resolveNativePricing } = await import("./pricingRepo.js");
       const nativePrice = await resolveNativePricing(entry.provider, entry.model, entry.modality, entry.nativeUnits);
       // Both unknown: keep the caller's source, which says why (e.g. accepted-job).

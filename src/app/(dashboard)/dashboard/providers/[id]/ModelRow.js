@@ -1,6 +1,7 @@
 import PropTypes from "prop-types";
 import { CapacityBadges } from "@/shared/components";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
+import InferenceStatus from "./InferenceStatus.jsx";
 
 const STATUS_TOKENS = {
   ok: { border: "border-dd-success/40", icon: "check_circle", iconClass: "text-dd-success" },
@@ -53,6 +54,7 @@ export default function ModelRow({
           <code className="max-w-[72vw] truncate rounded-dd bg-dd-surface-2 px-1.5 py-0.5 font-mono text-xs text-dd-text sm:max-w-[360px]">
             {displayModel}
           </code>
+          <InferenceStatus status={testStatus} testing={isTesting} />
           <span className="flex min-w-0 items-center gap-1 pl-1 text-xs">
             {model.name ? (
               <span className="truncate text-xs italic text-dd-subtle">{model.name}</span>

@@ -182,6 +182,7 @@ export default function ProviderDetailPage() {
     }
   }));
   const [suggestedModels, setSuggestedModels] = useState([]);
+  const [catalogEvidence, setCatalogEvidence] = useState(null);
   const [syncingModels, setSyncingModels] = useState(false);
   const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
@@ -776,6 +777,8 @@ export default function ProviderDetailPage() {
 
   useEffect(() => {
     setSuggestedModels([]);
+    setCatalogEvidence(null);
+    setModelTestResults({});
     setModelsFetchedAt(null);
     setSyncedModels(null);
   }, [providerId]);
@@ -791,6 +794,7 @@ export default function ProviderDetailPage() {
       });
       const data = response.ok ? await response.json() : null;
       setSuggestedModels(Array.isArray(data?.models) ? data.models : []);
+      setCatalogEvidence(data ? { source: data.source, degraded: data.degraded } : null);
       setModelsFetchedAt(new Date());
     } finally {
       setSyncingModels(false);
@@ -1665,6 +1669,12 @@ export default function ProviderDetailPage() {
           </button>
         }
 
+        {catalogEvidence && (catalogEvidence.source || catalogEvidence.degraded === true) &&
+        <p role="status" className="w-full text-xs text-dd-muted">
+          Catalog{catalogEvidence.source ? ` source: ${catalogEvidence.source}` : ""}{catalogEvidence.degraded === true ? " (degraded)" : ""}. This does not verify inference.
+        </p>
+        }
+
         {/* Suggested models from provider API — show only models not yet added */}
         {suggestedModels.length > 0 && (() => {
           const addedFullModels = new Set([
@@ -2275,6 +2285,7 @@ export default function ProviderDetailPage() {
 
           </div>
         }
+        <p className="mb-3 text-xs text-dd-muted">Models are catalog or configuration entries; they do not verify authentication or inference. Manual inference results apply only to this session.</p>
         {renderModelsSection()}
       </Card>
 

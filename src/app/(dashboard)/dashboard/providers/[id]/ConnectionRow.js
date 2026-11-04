@@ -199,9 +199,10 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
           {secondaryDisplayName && (
             <p className="text-xs text-dd-muted truncate">{secondaryDisplayName}</p>
           )}
+          <p className="text-xs text-dd-muted">Operational status is not authentication verification.</p>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
             <Badge variant={getStatusVariant()} size="sm" dot>
-              {connection.isActive === false ? "disabled" : (effectiveStatus || "Unknown")}
+              {`Operational: ${connection.isActive === false ? "disabled" : (effectiveStatus || "unknown")}`}
             </Badge>
             <Badge variant="default" size="sm">
               {authLabel}

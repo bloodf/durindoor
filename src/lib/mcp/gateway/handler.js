@@ -110,20 +110,26 @@ export async function handleJsonRpc(request, body, opts = {}) {
         if (!instance) {
           return respond(jsonRpcErr(obj.id, -32602, `unknown tool: ${toolName}`));
         }
+        // A tool call has no provider price, so it is not an unknown-cost LLM request.
+        // A failed call keeps its row for error rates but uses none of the key's limits.
+        const saveToolUsage = (failed) => saveRequestUsage({
+          billingEpoch,
+          provider: "mcp-gateway",
+          model: toolName,
+          connectionId: instance.id,
+          apiKey: failed ? null : rawKey,
+          endpoint: "/api/mcp-gateway",
+          tokens: {},
+          cost: 0,
+          costStatus: "known",
+          costSource: "mcp-gateway",
+          status: failed ? "error" : "ok"
+        }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
         try {
           const { dispatchToolCall } = await import("./aggregator");
           const args = isRecord(params.arguments) ? params.arguments : {};
           const { result } = await dispatchToolCall(instances, grants, toolName, args);
-          saveRequestUsage({
-            billingEpoch,
-            provider: "mcp-gateway",
-            model: toolName,
-            connectionId: instance.id,
-            apiKey: rawKey,
-            endpoint: "/api/mcp-gateway",
-            tokens: {},
-            status: "ok"
-          }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
+          saveToolUsage(isRecord(result) && result.isError === true);
           // Tool failures can arrive as successful RPC results rather than throws.
           if (isRecord(result) && result.isError === true && Array.isArray(result.content)) {
             return respond(jsonRpcOk(obj.id, {
@@ -139,16 +145,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           const errMsg = (isString(e.message) ? e.message : undefined) || String(e);
           const code = isNumber(e.code) ? e.code : -32603;
           const isUpstream = !e.code;
-          saveRequestUsage({
-            billingEpoch,
-            provider: "mcp-gateway",
-            model: toolName,
-            connectionId: instance.id,
-            apiKey: rawKey,
-            endpoint: "/api/mcp-gateway",
-            tokens: {},
-            status: "error"
-          }).catch((err) => console.warn("[mcp-gw] usage save failed:", err));
+          saveToolUsage(true);
           if (isUpstream) {
             return respond(jsonRpcOk(obj.id, {
               content: [{ type: "text", text: sanitizeErrorMessage(`tool error: ${errMsg}`) }],

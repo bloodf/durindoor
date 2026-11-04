@@ -293,11 +293,12 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, usageEventId FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta, usageEventId FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
       timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
       apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
-      tokens: parseJson(r.tokens, {}), storedEventId: r.usageEventId
+      tokens: parseJson(r.tokens, {}), storedEventId: r.usageEventId,
+      completedAt: parseJson(r.meta, {})?.completedAt
     }));
   } catch {}
 }
@@ -323,7 +324,9 @@ export async function getRecentlyActiveConnectionIds(withinMs, now = Date.now())
     if (!item.connectionId) continue;
     // status defaults to "ok"; anything explicitly "error" is not a success.
     if (item.status && item.status !== "ok") continue;
-    const ts = item.timestamp ? Date.parse(item.timestamp) : NaN;
+    // A settled job keeps its creation timestamp; liveness is when it finished.
+    const finishedAt = item.completedAt || item.timestamp;
+    const ts = finishedAt ? Date.parse(finishedAt) : NaN;
     if (Number.isFinite(ts) && ts >= cutoff) ids.add(item.connectionId);
   }
   return ids;
@@ -720,6 +723,8 @@ const apiKeyIdForSync = (db, apiKey) => apiKey ? db.get(`SELECT id FROM apiKeys 
  * Accepted rows never carry tokens or cost, so the new values are the delta. */
 function settleAcceptedRowSync(db, row, entry, costSplit, identitySalt) {
   const tokens = entry.tokens;
+  // The row keeps its creation timestamp. Survives a restart for the health check.
+  entry.meta = { ...entry.meta, completedAt: entry.timestamp };
   const columns = usageTokenColumns(tokens);
   db.run(`UPDATE usageHistory SET promptTokens = ?, completionTokens = ?, cost = ?, status = ?, tokens = ?, meta = ?,
     cachedTokens = ?, reasoningTokens = ?, cacheCreationTokens = ?, ${USAGE_COST_FIELDS.map((field) => `${field} = ?`).join(", ")}
@@ -811,7 +816,8 @@ export async function saveRequestUsage(entry) {
     }
     // Provider receipts are authoritative. An operator tariff can replace an
     // unavailable or estimated native valuation, never a known numeric charge.
-    if (entry.modality && priced.costStatus !== "known") {
+    // Native tariffs never price chat, whose rows must not depend on them.
+    if (entry.modality && entry.modality !== "chat" && priced.costStatus !== "known") {
       const { resolveNativePricing } = await import("./pricingRepo.js");
       const nativePrice = await resolveNativePricing(entry.provider, entry.model, entry.modality, entry.nativeUnits);
       // Both unknown: keep the caller's source, which says why (e.g. accepted-job).
@@ -946,7 +952,7 @@ export async function saveRequestUsage(entry) {
     if (settled) {
       // Keep the accepted item's place and time, as the history row does.
       recentRing.items = recentRing.items.map((item) => item.storedEventId === usageEventId && item.status === "accepted" ?
-        { ...item, cost: entry.cost, status: entry.status || "ok", tokens: entry.tokens, meta: entry.meta } : item);
+        { ...item, cost: entry.cost, status: entry.status || "ok", tokens: entry.tokens, meta: entry.meta, completedAt: entry.timestamp } : item);
       scheduleStatsEvent("update", 250);
       if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
     }

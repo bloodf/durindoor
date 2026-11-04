@@ -159,6 +159,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
   saveRequestUsage({
     provider: provider || "unknown",
     model: model || "unknown",
+    modality: "chat",
     tokens: normalized,
     ...(reportedTotalTokens === undefined ? null : { meta: { reportedTotalTokens } }),
     timestamp: new Date().toISOString(),

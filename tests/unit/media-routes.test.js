@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
 vi.mock("@/lib/localDb", () => ({ getApiKeyProviderConnectionIds: mocks.allowedIds, getProviderConnections: mocks.connections }));
 vi.mock("../../src/sse/services/keylessAvailability.js", () => ({ isKeylessProviderWorking: mocks.working }));
+vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetch(...args) }));
 
 const {
   wantsDefaultRoute,
@@ -58,6 +59,24 @@ describe("route validation", () => {
 });
 
 describe("saved legacy routes", () => {
+  it("dispatches a saved NVIDIA model with its default voice", async () => {
+    const { handleTtsCore } = await import("../../open-sse/handlers/ttsCore.js");
+    const { parseModel } = await import("../../open-sse/services/model.js");
+    mocks.buildModelsList.mockResolvedValue([model("nvidia/nvidia/magpie-tts-multilingual")]);
+    const route = await describeMediaRoute("tts", { settings: { mediaRoutes: { tts: ["nvidia/magpie-tts-multilingual"] } } });
+    const fetch = vi.fn(async () => new Response(new Uint8Array(2048), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const { provider, model: modelId } = parseModel(route.models[0]);
+      const result = await handleTtsCore({ provider, model: modelId, input: "Hello", credentials: { apiKey: "test" } });
+      expect(result.success).toBe(true);
+      expect(fetch.mock.calls[0][0]).toBe("https://877104f7-e885-42b9-8de8-f6e4c6303969.invocation.api.nvcf.nvidia.com/v1/audio/synthesize");
+      expect(fetch.mock.calls[0][1].body.get("voice")).toBe("Magpie-Multilingual.EN-US.Aria");
+      expect(fetch.mock.calls[0][1].body.get("text")).toBe("Hello");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("dispatches a saved Fal route to its original upstream path", async () => {
     const { handleImageGenerationCore } = await import("../../open-sse/handlers/imageGenerationCore.js");
     const { parseModel } = await import("../../open-sse/services/model.js");

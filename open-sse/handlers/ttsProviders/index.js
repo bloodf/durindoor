@@ -36,7 +36,9 @@ export async function synthesizeViaConfig(provider, text, model, credentials, pr
   const { PROVIDER_MODELS } = await import("open-sse/config/providerModels.js");
   const ttsModels = cfg.models || (PROVIDER_MODELS[provider] || []).filter(m => (m.kind || m.type) === "tts");
   const defaultModel = ttsModels[0]?.id || "";
-  const { modelId, voiceId } = parseModelVoice(model, defaultModel, "", ttsModels);
+  // The old NVIDIA catalog omitted the vendor prefix from this model ID.
+  const resolvedModel = provider === "nvidia" && model === "magpie-tts-multilingual" ? `nvidia/${model}` : model;
+  const { modelId, voiceId } = parseModelVoice(resolvedModel, defaultModel, "", ttsModels);
   return handler({ ...options, baseUrl: cfg.baseUrl, apiKey, text, modelId, voiceId, proxyOptions });
 }
 

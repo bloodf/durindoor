@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { transcribeCodex } from "./codexStt.js";
+import { deepgramToVerboseJson, parseDeepgramOptions } from "./deepgramStt.js";
 import { resolveLocalWhisperHost } from "../config/providers.js";
 import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSAGE } from "../utils/outboundUrlGuard.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -48,7 +49,11 @@ async function upstreamError(res, secrets = []) {
 }
 
 // Deepgram: raw binary POST + model query param
-async function transcribeDeepgram(cfg, file, model, token, formData) {
+async function transcribeDeepgram(cfg, file, model, token, formData, log) {
+  const options = parseDeepgramOptions(formData);
+  // A rejected option is the client's fault, so it must not cool the account down.
+  if (options.error) return { ...createErrorResult(HTTP_STATUS.BAD_REQUEST, options.error), local: true };
+  if (options.ignored.length) log?.warn?.("STT", `Deepgram ignored fields: ${JSON.stringify(options.ignored.slice(0, 20).map((name) => name.slice(0, 64)))}`);
   const url = new URL(cfg.baseUrl);
   url.searchParams.set("model", model);
   url.searchParams.set("smart_format", "true");
@@ -56,6 +61,7 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
   const lang = formData.get("language");
   if (isString(lang) && lang.trim()) url.searchParams.set("language", lang.trim());else
   url.searchParams.set("detect_language", "true");
+  for (const [key, value] of Object.entries(options.query)) url.searchParams.set(key, value);
 
   const buf = await file.arrayBuffer();
   const res = await fetch(url, {
@@ -65,8 +71,21 @@ async function transcribeDeepgram(cfg, file, model, token, formData) {
   });
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
-  const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-  return jsonResponse({ text }, data, data.metadata?.duration);
+  // The audio is already billed, so a failure here would make a combo pay again
+  // on the next model. A non-string transcript is treated like a missing one.
+  const transcript = data.results?.channels?.[0]?.alternatives?.[0]?.transcript;
+  if (transcript !== undefined && transcript !== null && !isString(transcript)) {
+    log?.warn?.("STT", "Deepgram returned a non-string transcript; using empty text");
+  }
+  const text = isString(transcript) ? transcript : "";
+  // Keep a usable transcript when only the duration is malformed; the ledger then has no audio seconds.
+  const rawDuration = data.metadata?.duration;
+  const duration = isNumber(rawDuration) && Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : undefined;
+  if (options.responseFormat === "text") return textResponse(text, data, duration);
+  if (options.responseFormat === "verbose_json") {
+    return jsonResponse(deepgramToVerboseJson(data, text, options, duration), data, duration);
+  }
+  return jsonResponse({ text }, data, duration);
 }
 
 /** Sends AssemblyAI language_code when supplied, otherwise enabling detection (upstream #3058). */
@@ -271,6 +290,17 @@ function jsonResponse(obj, data = obj, duration) {
   };
 }
 
+function textResponse(text, data, duration) {
+  return {
+    success: true,
+    ...transcriptionUsage(data, duration),
+    response: new Response(text, {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Access-Control-Allow-Origin": "*" }
+    })
+  };
+}
+
 /** OpenAI-format STT configs have a sibling `/audio/translations` endpoint. */
 export function supportsSttTranslation(cfg, model = null) {
   return cfg?.format === "openai" && TRANSCRIPTION_SUFFIX_RE.test(cfg.baseUrl || "") && (!Array.isArray(cfg.translationModels) || cfg.translationModels.includes(model));
@@ -283,7 +313,7 @@ export function supportsSttTranslation(cfg, model = null) {
  * Successful results include usageValue and nativeUnits captured at provider decode.
  * @returns {Promise<{success, response, usageValue?, nativeUnits?, status?, error?}>}
  */
-export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription", signal }) {
+export async function handleSttCore({ provider, model, formData, credentials, sttConfig, kind = "transcription", signal, log }) {
   const file = formData.get("file");
   if (!file) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: file");
 
@@ -335,7 +365,7 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   try {
     const proxyOptions = resolveCredentialProxyOptions(credentials);
     switch (cfg.format) {
-      case "deepgram":return await transcribeDeepgram(cfg, file, model, token, formData);
+      case "deepgram":return await transcribeDeepgram(cfg, file, model, token, formData, log);
       case "assemblyai":return await transcribeAssemblyAI(cfg, file, model, token, formData);
       case "nvidia-asr":return await transcribeNvidia(cfg, file, model, token, formData, proxyOptions);
       case "huggingface-asr":return await transcribeHuggingFace(cfg, file, model, token);

@@ -106,6 +106,7 @@ export default function ApiKeyPolicyFields({ draft, onChange, catalog = [], usag
           role={limitReached ? "alert" : undefined}
         >
           Committed usage: {usageDisplay.tokens} · {usageDisplay.cost} · {Number(usage.totalRequests || 0).toLocaleString()} requests
+          {Number(usage.unknownCostRequests) > 0 ? ` · ${Number(usage.unknownCostRequests).toLocaleString()} with unknown cost` : ""}
           {limitReached ? " · Limit reached" : ""}
         </p>
       ) : null}

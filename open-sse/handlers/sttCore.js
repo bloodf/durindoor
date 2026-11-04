@@ -15,6 +15,7 @@ import { resolveCredentialProxyOptions } from "../services/oauthCredentialManage
 const STT_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
 const STT_TRANSLATION_PATH = "/v1/audio/translations";
 const TRANSCRIPTION_SUFFIX_RE = /\/audio\/transcriptions\/?$/;
+const UNKNOWN_DURATION = Symbol("unknown duration");
 
 /** Builds configured STT auth, including raw Authorization required by AssemblyAI (upstream #3058). */
 function buildAuthHeaders(cfg, token) {
@@ -90,11 +91,12 @@ async function transcribeDeepgram(cfg, file, model, token, formData, log) {
   // Keep a usable transcript when only the duration is malformed; the ledger then has no audio seconds.
   const rawDuration = data.metadata?.duration;
   const duration = isNumber(rawDuration) && Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : undefined;
-  if (options.responseFormat === "text") return textResponse(text, billingData, duration);
+  // Explicit sentinel prevents other provider duration fields from being inferred.
+  if (options.responseFormat === "text") return textResponse(text, billingData, duration ?? UNKNOWN_DURATION);
   if (options.responseFormat === "verbose_json") {
-    return jsonResponse(deepgramToVerboseJson(data, text, options, duration), billingData, duration);
+    return jsonResponse(deepgramToVerboseJson(data, text, options, duration), billingData, duration ?? UNKNOWN_DURATION);
   }
-  return jsonResponse({ text }, billingData, duration);
+  return jsonResponse({ text }, billingData, duration ?? UNKNOWN_DURATION);
 }
 
 /** Sends AssemblyAI language_code when supplied, otherwise enabling detection (upstream #3058). */
@@ -265,12 +267,12 @@ function transcriptionUsage(data, duration = data?.duration ?? (data?.usage?.typ
   if (usage !== undefined && (usage === null || !isObject(usage) || Array.isArray(usage))) {
     throw new TypeError("STT provider usage must be an object");
   }
-  if (duration !== undefined && (!isNumber(duration) || !Number.isFinite(duration) || duration < 0)) {
+  if (duration !== undefined && duration !== UNKNOWN_DURATION && (!isNumber(duration) || !Number.isFinite(duration) || duration < 0)) {
     throw new TypeError("STT provider duration must be nonnegative seconds");
   }
   return {
     usageValue: data?.usageMetadata ? { usageMetadata: usage } : { usage },
-    nativeUnits: duration === undefined ? {} : { audioSeconds: duration },
+    nativeUnits: duration === undefined || duration === UNKNOWN_DURATION ? {} : { audioSeconds: duration },
   };
 }
 

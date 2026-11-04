@@ -112,6 +112,28 @@ describe("accepted Deepgram responses", () => {
     },
   );
 
+  it.each([
+    JSON.stringify({ duration: "invalid" }),
+    JSON.stringify({ usage: { type: "duration", seconds: "invalid" } }),
+  ].flatMap((body) => ["json", "text", "verbose_json"].map((format) => [body, format])))(
+    "does not infer invalid duration from %s in %s format", async (body, format) => {
+      state.models = ["deepgram/nova-3", "deepgram/nova-2"];
+      fetch.mockResolvedValue(new Response(body));
+      const original = request();
+      const form = await original.formData();
+      form.set("response_format", format);
+      const response = await handleStt(new Request(original.url, { method: "POST", body: form }));
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(rows()).toHaveLength(1);
+      expect(rows()[0]).toMatchObject({ provider: "deepgram", model: "nova-3", cost: null });
+      expect(metadata(rows()[0])).toMatchObject({ nativeUnits: {}, costStatus: "unknown" });
+      expect(metadata(rows()[0]).nativeUnits).not.toHaveProperty("audioSeconds");
+      expect(state.penalty).not.toHaveBeenCalled();
+    },
+  );
+
   it("falls back on a genuine upstream 500", async () => {
     state.models = ["deepgram/nova-3", "openai/whisper-1"];
     state.penalty.mockResolvedValue({ shouldFallback: false });

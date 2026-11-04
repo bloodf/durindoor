@@ -49,8 +49,12 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
   const safeExConfig = exConfig || {};
 
   // Get models for this kind (e.g., type="image")
-  const [registeredModels, setRegisteredModels] = useState([]);
-  const kindModels = [...getModelsByProviderId(providerId).filter((m) => getModelKind(m) === kind), ...registeredModels];
+  const [registeredModels, setRegisteredModels] = useState({ provider: null, kind: null, models: [] });
+  const [syncedModels, setSyncedModels] = useState({ provider: null, models: [] });
+  const staticModels = getModelsByProviderId(providerId).filter((m) => getModelKind(m) === kind);
+  const synced = syncedModels.provider === providerId && kind === "image" ? syncedModels.models : [];
+  const registered = registeredModels.provider === safeProviderAlias && registeredModels.kind === kind ? registeredModels.models : [];
+  const kindModels = [...staticModels, ...synced.filter((m) => !staticModels.some((row) => row.id === m.id)), ...registered.filter((m) => !staticModels.some((row) => row.id === m.id) && !synced.some((row) => row.id === m.id))];
   // Kinds that need a model identifier in the request (image/video/music/systemone)
   const KIND_NEEDS_MODEL = new Set(["image", "video", "music", "imageToText", "systemone"]);
   const needsModel = KIND_NEEDS_MODEL.has(kind);
@@ -100,12 +104,37 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
   }, [providerId]);
 
   useEffect(() => {
-    if (kind !== "systemone") return;
-    fetch("/api/models/custom", { cache: "no-store" }).then((r) => r.json()).then((data) => {
-      const models = (data.models || []).filter((row) => row.providerAlias === safeProviderAlias && (row.kind || row.type) === "systemone");
-      setRegisteredModels(models);
-      setSelectedModel((current) => current || models[0]?.id || "");
-    }).catch(() => setRegisteredModels([]));
+    if (kind !== "image") return;
+    let active = true;
+    setSyncedModels({ provider: null, models: [] });
+    fetch(`/api/models/auto-sync?provider=${encodeURIComponent(providerId)}`, { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        const status = data?.providers?.[providerId];
+        if (!active || !status?.eligible || !Array.isArray(status.models)) return;
+        setSyncedModels({ provider: providerId, models: status.models.filter((row) => getModelKind(row) === "image" && isString(row.id)) });
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [providerId, kind]);
+
+  useEffect(() => {
+    if (kind !== "systemone" && kind !== "image") return;
+    let active = true;
+    let generation = 0;
+    const load = () => {
+      const requestGeneration = ++generation;
+      return fetch("/api/models/custom", { cache: "no-store" }).then((r) => r.json()).then((data) => {
+        if (!active || requestGeneration !== generation) return;
+        const models = (data.models || []).filter((row) => row.providerAlias === safeProviderAlias && (row.kind || row.type) === kind);
+        setRegisteredModels({ provider: safeProviderAlias, kind, models });
+        if (kind === "systemone") setSelectedModel((current) => current || models[0]?.id || "");
+      }).catch(() => { if (active && requestGeneration === generation) setRegisteredModels({ provider: safeProviderAlias, kind, models: [] }); });
+    };
+    load();
+    window.addEventListener("focus", load);
+    window.addEventListener("customModelChanged", load);
+    return () => { active = false; window.removeEventListener("focus", load); window.removeEventListener("customModelChanged", load); };
   }, [kind, safeProviderAlias]);
 
   // Safe to early-return now that all hooks are declared

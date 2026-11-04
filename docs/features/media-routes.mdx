@@ -70,6 +70,8 @@ Both reject unknown kinds, and ids without a `provider/` prefix.
 
 Use ids exactly as `GET /v1/models/{kind}` lists them. When a vendor model id already starts with the provider name, the listed id repeats it, for example `fal/fal-ai/flux/schnell` or `nvidia/nvidia/parakeet-ctc-1.1b-asr`. The first segment picks the provider and the rest is sent upstream unchanged.
 
+The image provider example picker also includes image models from that provider's enabled, cached auto-sync catalog. Existing static models remain available in the picker.
+
 ## Verify a request without a model
 
 ```bash

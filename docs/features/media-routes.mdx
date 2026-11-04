@@ -30,8 +30,9 @@ DurinDoor does not ship a default model. A route can only hold models that `GET 
   - Keyless libraries with no server (edge-tts, google-tts) count as working.
   - Checks are cached per URL for 30 seconds.
 - The provider serves that kind.
-- For image and embedding routes, the provider has an image or embedding adapter in DurinDoor. A catalog that lists such models for a provider without one (Venice, for example) does not put them on the route.
-- The model itself is that kind.
+- For image and embedding routes, the provider has an image or embedding adapter in DurinDoor. A live or custom catalog row for a provider without one does not go on the route.
+- The model itself is that kind. Models a provider declares only in its speech, transcription, embedding, image or video settings (ElevenLabs, Cartesia, PlayHT, Fish Audio, Inworld, Coqui, Tortoise, Jina AI) count as that kind.
+- The model is routable. AWS Polly is listed as a text-to-speech provider, but DurinDoor has no Polly synthesis handler yet, so its models are never listed and a request to one returns HTTP 400.
 - The provider's visible-model allowlist and disabled-model list allow it.
 
 If nothing qualifies, a request without a model gets HTTP 400 with `error.code: "no_provider_for_kind"`. The message depends on why:
@@ -66,6 +67,8 @@ Routes are stored in settings as `mediaRoutes`, for example `{ "tts": ["elevenla
 - `PATCH /api/settings` with `{ "mediaRoutes": {...} }`.
 
 Both reject unknown kinds, and ids without a `provider/` prefix.
+
+Use ids exactly as `GET /v1/models/{kind}` lists them. When a vendor model id already starts with the provider name, the listed id repeats it, for example `fal/fal-ai/flux/schnell` or `nvidia/nvidia/parakeet-ctc-1.1b-asr`. The first segment picks the provider and the rest is sent upstream unchanged.
 
 ## Verify a request without a model
 

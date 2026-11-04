@@ -3,10 +3,17 @@ import { describe, expect, it } from "vitest";
 import sarvam from "../../open-sse/providers/registry/sarvam.js";
 
 describe("sarvam registry catalog", () => {
-  it("does not advertise sarvam-30b or unverified context lengths", () => {
-    const ids = sarvam.models.map((m) => m.id);
-    expect(ids).toEqual(["sarvam-105b", "sarvam-105b-conversations"]);
-    expect(sarvam.models.some((m) => "contextLength" in m)).toBe(false);
+  it("advertises only the two models Sarvam documents, with the documented context sizes", () => {
+    expect(sarvam.models.map((m) => [m.id, m.contextLength])).toEqual([
+      ["sarvam-105b", 128000],
+      ["sarvam-105b-conversations", 32000],
+    ]);
+    expect(sarvam.models.some((m) => m.id === "sarvam-30b")).toBe(false);
+  });
+
+  it("states the documented free-credit amount, not the retired one", () => {
+    expect(sarvam.display.notice.text).toContain("₹100");
+    expect(sarvam.display.notice.text).not.toContain("1,000");
   });
 
   it("derives the live catalog from /v1/models", () => {

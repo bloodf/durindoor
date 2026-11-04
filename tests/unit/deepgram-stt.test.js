@@ -84,11 +84,21 @@ describe("Deepgram response formats", () => {
     expect(wordsOnly.words).toHaveLength(6);
   });
 
-  it("returns 502 for a non-string transcript without penalising the account", async () => {
-    const upstream = { metadata: { duration: 1 }, results: { channels: [{ alternatives: [{ transcript: { nested: true } }] }] } };
-    for (const response_format of ["json", "text", "verbose_json"]) {
-      expect(await run({ response_format }, upstream)).toMatchObject({ success: false, status: 502, local: true, error: "Deepgram returned a non-string transcript" });
+  it("treats a non-string transcript like a missing one, and logs no content", async () => {
+    const upstream = { metadata: { duration: 1 }, results: { channels: [{ alternatives: [{ transcript: { nested: "private words" } }] }] } };
+    const expected = { json: { text: "" }, verbose_json: { task: "transcribe", duration: 1, text: "", segments: [] } };
+    for (const [response_format, body] of Object.entries(expected)) {
+      const log = { warn: vi.fn() };
+      const result = await run({ response_format }, upstream, log);
+      expect(result).toMatchObject({ success: true, nativeUnits: { audioSeconds: 1 } });
+      expect(await result.response.json()).toEqual(body);
+      const logged = log.warn.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(logged).toContain("non-string transcript");
+      expect(logged).not.toContain("private words");
     }
+    const text = await run({ response_format: "text" }, upstream);
+    expect(text.success).toBe(true);
+    expect(await text.response.text()).toBe("");
   });
 
   it("keeps the transcript and omits a malformed duration", async () => {
@@ -147,11 +157,20 @@ describe("Deepgram ignored parameters", () => {
     expect(logged).toContain('["temperature","prompt","chunking_strategy","include[]","custom"]');
     expect(logged).not.toContain("secret prompt");
   });
+
+  it("truncates each ignored field name in the log", async () => {
+    const log = { warn: vi.fn() };
+    await run({ ["x".repeat(5000)]: "1" }, FIXTURE, log);
+    const [line] = log.warn.mock.calls.map((call) => call.join(" "));
+    expect(line).toContain(`"${"x".repeat(64)}"`);
+    expect(line.length).toBeLessThan(200);
+  });
 });
 
 describe("Deepgram unsupported parameters", () => {
   it.each([
     ["stream=true", { stream: "true" }, /does not support stream=true/],
+    ["stream=1", { stream: "1" }, /does not support stream=true/],
     ["srt", { response_format: "srt" }, /response_format must be json, text or verbose_json/],
     ["vtt", { response_format: "vtt" }, /response_format must be json, text or verbose_json/],
     ["diarize value", { diarize: "yes", response_format: "verbose_json" }, /diarize must be true or false/],

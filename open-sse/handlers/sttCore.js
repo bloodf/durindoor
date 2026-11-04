@@ -53,7 +53,7 @@ async function transcribeDeepgram(cfg, file, model, token, formData, log) {
   const options = parseDeepgramOptions(formData);
   // A rejected option is the client's fault, so it must not cool the account down.
   if (options.error) return { ...createErrorResult(HTTP_STATUS.BAD_REQUEST, options.error), local: true };
-  if (options.ignored.length) log?.warn?.("STT", `Deepgram ignored fields: ${JSON.stringify(options.ignored.slice(0, 20))}`);
+  if (options.ignored.length) log?.warn?.("STT", `Deepgram ignored fields: ${JSON.stringify(options.ignored.slice(0, 20).map((name) => name.slice(0, 64)))}`);
   const url = new URL(cfg.baseUrl);
   url.searchParams.set("model", model);
   url.searchParams.set("smart_format", "true");
@@ -71,9 +71,13 @@ async function transcribeDeepgram(cfg, file, model, token, formData, log) {
   });
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
-  const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-  // A malformed payload is not an account fault, and the audio is already billed.
-  if (!isString(text)) return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Deepgram returned a non-string transcript"), local: true };
+  // The audio is already billed, so a failure here would make a combo pay again
+  // on the next model. A non-string transcript is treated like a missing one.
+  const transcript = data.results?.channels?.[0]?.alternatives?.[0]?.transcript;
+  if (transcript !== undefined && transcript !== null && !isString(transcript)) {
+    log?.warn?.("STT", "Deepgram returned a non-string transcript; using empty text");
+  }
+  const text = isString(transcript) ? transcript : "";
   // Keep a usable transcript when only the duration is malformed; the ledger then has no audio seconds.
   const rawDuration = data.metadata?.duration;
   const duration = isNumber(rawDuration) && Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : undefined;

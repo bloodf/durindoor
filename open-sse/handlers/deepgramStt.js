@@ -29,7 +29,7 @@ export function parseDeepgramOptions(formData) {
   const ignored = [...new Set([...formData.entries()]
     .filter(([key, value]) => !HANDLED_FIELDS.has(key) && present(value))
     .map(([key]) => key))];
-  if (String(formData.get("stream") ?? "").trim().toLowerCase() === "true") {
+  if (["true", "1"].includes(String(formData.get("stream") ?? "").trim().toLowerCase())) {
     return fail("Deepgram transcription does not support stream=true");
   }
 

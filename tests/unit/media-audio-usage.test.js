@@ -133,6 +133,19 @@ describe("audio handlers commit normalized native usage", () => {
     expect(rows()).toEqual([]);
   });
 
+  it("does not pay a second combo model after a non-string Deepgram transcript", async () => {
+    state.combo = ["deepgram/nova-3", "deepgram/nova-2"];
+    fetch.mockResolvedValue(json({ metadata: { duration: 2 }, results: { channels: [{ alternatives: [{ transcript: { nested: true } }] }] } }));
+    const response = await handleStt(sttRequest(null));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ text: "" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [row, ...others] = rows();
+    expect(others).toEqual([]);
+    expect(row).toMatchObject({ provider: "deepgram", model: "nova-3" });
+    expect(metadata(row)).toMatchObject({ nativeUnits: { audioSeconds: 2 } });
+  });
+
   it("falls back from an OpenAI 500 to Deepgram for a temperature=0 client and records one row", async () => {
     state.combo = ["openai/whisper-1", "deepgram/nova-3"];
     fetch.mockResolvedValueOnce(json({ error: { message: "upstream failed" } }, 500))

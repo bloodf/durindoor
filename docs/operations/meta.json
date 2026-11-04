@@ -10,6 +10,7 @@
     "postgres",
     "security",
     "opentelemetry",
+    "operational-metrics",
     "api-key-scoping",
     "webhooks"
   ]

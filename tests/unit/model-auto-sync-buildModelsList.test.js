@@ -30,6 +30,7 @@ import * as settingsRepo from "@/lib/db/repos/settingsRepo";
 import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 import { getModelsByProviderId } from "../../src/shared/constants/models.js";
+import { mergeSyncedCatalog, normalizeSyncedModels } from "../../src/lib/modelAutoSync/catalog.js";
 import { PROVIDER_CAPABILITIES } from "open-sse/providers/capabilities.js";
 import { projectDiscoveryMetadata } from "open-sse/services/modelMetadata.js";
 
@@ -68,6 +69,13 @@ beforeEach(() => {
 });
 
 describe("buildModelsList with auto-synced catalogs", () => {
+  it("publishes the normalized synced image fixture used by provider examples", async () => {
+    const staticModels = getModelsByProviderId("openai");
+    const rows = normalizeSyncedModels([{ id: "gpt-image-sync-fixture", kind: "image", display_name: "Synced Image Fixture" }], staticModels);
+    const catalog = mergeSyncedCatalog(null, rows, { now: Date.parse("2026-01-01T00:00:00Z"), staticModels });
+    setup({ catalogs: { openai: catalog } });
+    expect(await openaiIds(["image"])).toContain("openai/gpt-image-sync-fixture");
+  });
   it("lists exactly the synced chat models and prunes registry defaults", async () => {
     setup();
     expect(await openaiIds()).toEqual(["openai/gpt-9"]);

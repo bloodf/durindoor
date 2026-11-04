@@ -22,8 +22,10 @@ export default {
   // Sources (retrieved 2026-11-04): the chat completions reference at
   // https://docs.sarvam.ai/api-reference/chat/chat-completions-v1 says the endpoint "serves only
   // sarvam-105b and sarvam-105b-conversations", with 128K and 32K context. K is read as 1000, which
-  // may understate the real window. Max output is undocumented, so none is declared. The docs accept
-  // Bearer auth. sarvam-30b is not served. The anonymous /v1/models matches these two ids.
+  // may understate the real window. No max output is declared: `max_tokens` defaults to 2048 and its
+  // ceiling depends on the account plan, so there is no single per-model value. The docs accept
+  // Bearer auth. sarvam-30b is not served. An anonymous GET of /v1/models on 2026-11-04 (and the
+  // #768 audit before it) listed the same two ids; it was not run authenticated.
   // Unverified: authenticated /v1/models and chat routing (no live calls made); icon rights still open.
   models: [
     { id: "sarvam-105b", name: "Sarvam 105B", contextLength: 128000 },

@@ -85,6 +85,7 @@ export default function ProviderDetailPage() {
   const notify = useNotificationStore();
   const providerId = params.id;
   const currentProviderIdRef = useRef(null);
+  const providerGenerationRef = useRef(0);
   const fetchConnectionsGenerationRef = useRef(0);
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
@@ -97,6 +98,7 @@ export default function ProviderDetailPage() {
 
   useEffect(() => {
     currentProviderIdRef.current = providerId;
+    providerGenerationRef.current += 1;
     // Clear the previous provider's rows immediately on switch. Without this the
     // old connections and plan badges stay rendered under the new provider's
     // header until its fetch resolves — and a stale in-flight response is
@@ -182,6 +184,7 @@ export default function ProviderDetailPage() {
     }
   }));
   const [suggestedModels, setSuggestedModels] = useState([]);
+  const [catalogEvidence, setCatalogEvidence] = useState(null);
   const [syncingModels, setSyncingModels] = useState(false);
   const [modelsFetchedAt, setModelsFetchedAt] = useState(null);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
@@ -776,11 +779,17 @@ export default function ProviderDetailPage() {
 
   useEffect(() => {
     setSuggestedModels([]);
+    setCatalogEvidence(null);
+    setModelTestResults({});
+    setTestingModelIds(new Set());
+    setModelsTestError("");
+    setSyncingModels(false);
     setModelsFetchedAt(null);
     setSyncedModels(null);
   }, [providerId]);
 
   const handleSyncModels = async () => {
+    const requestGeneration = providerGenerationRef.current;
     const connection = connections.find((item) => item.isActive !== false);
     if (!connection?.id) return;
 
@@ -790,10 +799,12 @@ export default function ProviderDetailPage() {
         cache: "no-store"
       });
       const data = response.ok ? await response.json() : null;
+      if (providerGenerationRef.current !== requestGeneration) return;
       setSuggestedModels(Array.isArray(data?.models) ? data.models : []);
+      setCatalogEvidence(data ? { source: data.source, degraded: data.degraded } : null);
       setModelsFetchedAt(new Date());
     } finally {
-      setSyncingModels(false);
+      if (providerGenerationRef.current === requestGeneration) setSyncingModels(false);
     }
   };
 
@@ -1494,6 +1505,7 @@ export default function ProviderDetailPage() {
 
 
   const handleTestModel = async (modelId) => {
+    const requestGeneration = providerGenerationRef.current;
     if (testingModelIds.has(modelId)) return;
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
@@ -1507,14 +1519,18 @@ export default function ProviderDetailPage() {
         })
       });
       const data = await res.json();
+      if (providerGenerationRef.current !== requestGeneration) return;
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
       setModelsTestError(outcome === "error" ? data.error || "Model not reachable" : "");
     } catch {
+      if (providerGenerationRef.current !== requestGeneration) return;
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setModelsTestError("Network error");
     } finally {
-      setTestingModelIds((prev) => {const n = new Set(prev);n.delete(modelId);return n;});
+      if (providerGenerationRef.current === requestGeneration) {
+        setTestingModelIds((prev) => {const n = new Set(prev);n.delete(modelId);return n;});
+      }
     }
   };
 
@@ -1663,6 +1679,12 @@ export default function ProviderDetailPage() {
             <span className={`material-symbols-outlined text-sm ${syncingModels ? "animate-spin" : ""}`}>sync</span>
             {syncingModels ? "Syncing…" : "Sync models"}
           </button>
+        }
+
+        {catalogEvidence && (catalogEvidence.source || catalogEvidence.degraded === true) &&
+        <p role="status" className="w-full text-xs text-dd-muted">
+          Catalog{catalogEvidence.source ? ` source: ${catalogEvidence.source}` : ""}{catalogEvidence.degraded === true ? " (degraded)" : ""}. This does not verify inference.
+        </p>
         }
 
         {/* Suggested models from provider API — show only models not yet added */}
@@ -2275,6 +2297,7 @@ export default function ProviderDetailPage() {
 
           </div>
         }
+        <p className="mb-3 text-xs text-dd-muted">Models are catalog or configuration entries; they do not verify authentication or inference. Manual inference results apply only to this session.</p>
         {renderModelsSection()}
       </Card>
 

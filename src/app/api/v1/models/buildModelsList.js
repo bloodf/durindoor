@@ -1134,6 +1134,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
         const modelIds = rawModelIds.
         map((modelId) => {
+          // Some vendor ids start with the provider's own alias (fal-ai/flux/dev,
+          // nvidia/parakeet-...). Stripping them would publish an id that routes
+          // to a model the upstream does not have.
+          if (staticModelById.has(modelId) || liveModelIds.has(modelId)) return modelId;
           if (modelId.startsWith(`${outputAlias}/`)) return modelId.slice(outputAlias.length + 1);
           if (modelId.startsWith(`${staticAlias}/`)) return modelId.slice(staticAlias.length + 1);
           if (modelId.startsWith(`${providerId}/`)) return modelId.slice(providerId.length + 1);

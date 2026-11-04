@@ -81,7 +81,7 @@ jobs:
         run: |
           npm --prefix cli run build
           mkdir -p "$RUNNER_TEMP/pack"
-          npm --prefix cli pack --pack-destination "$RUNNER_TEMP/pack"
+          npm pack ./cli --pack-destination "$RUNNER_TEMP/pack"
           npm run verify:packed -- "$RUNNER_TEMP"/pack/durindoor-*.tgz
 
       - name: Publish CLI

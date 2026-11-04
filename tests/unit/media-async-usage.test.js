@@ -209,6 +209,22 @@ describe("durable video jobs use the existing ledger", () => {
       expect([...await getRecentlyActiveConnectionIds(60_000)]).toEqual(["account-a"]);
     });
 
+    it("counts a slow job as recent from its completion, keeping its displayed time", async () => {
+      const { getRecentlyActiveConnectionIds, saveRequestUsage } = await resetRing(true);
+      const created = new Date(Date.now() - 20 * 60_000).toISOString();
+      const job = { usageEventId: "slow-job", provider: "xai", model: "grok-imagine-video", connectionId: "account-a", endpoint: "/v1/videos/generations", modality: "video", strict: true };
+      await saveRequestUsage({ ...job, status: "accepted", timestamp: created, tokens: {}, nativeUnits: {}, cost: null, costStatus: "unknown", costSource: "accepted-job" });
+      await saveRequestUsage({ ...job, status: "ok", tokens: {}, nativeUnits: { videoJobs: 1 }, cost: 0.4, costStatus: "known", costSource: "provider" });
+      const active = async () => [...await getRecentlyActiveConnectionIds(10 * 60_000)];
+      expect(await active()).toEqual(["account-a"]);
+      expect(global._recentRing.items[0].timestamp).toBe(created);
+      expect(rows()[0].timestamp).toBe(created);
+      // The same answer after a restart rebuilds the ring from history.
+      const rebuilt = await resetRing(false);
+      expect([...await rebuilt.getRecentlyActiveConnectionIds(10 * 60_000)]).toEqual(["account-a"]);
+      expect(global._recentRing.items[0].timestamp).toBe(created);
+    });
+
     it("settles an item rebuilt from history after a restart", async () => {
       await submit();
       const { getRecentlyActiveConnectionIds } = await resetRing(false);

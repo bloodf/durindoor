@@ -55,7 +55,6 @@ export const DEFAULT_CAPABILITIES = {
   thinkingEfforts: null,
   thinkingType: null,
   thinkingModes: null,
-  defaultEffort: null, // effort the provider applies when the request names none (documented per model)
   supportedTools: null,
   maxInput: undefined,
   thinkingRange: null, // { min, max } for budget formats; null = no clamp

@@ -74,6 +74,7 @@ const BOOLEAN_CAPS = [
 
 
 const INTEGER_CAPS = ["contextWindow", "maxOutput", "maxInput"];
+// Not in DEFAULT_CAPABILITIES: only models with a documented default carry the key.
 const DEFAULT_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 function isPositiveInteger(value) {
@@ -108,7 +109,7 @@ export function normalizeCustomCapabilities(raw) {
   }
   const out = {};
   for (const key of Object.keys(raw)) {
-    if (!Object.hasOwn(DEFAULT_CAPABILITIES, key)) {
+    if (key !== "defaultEffort" && !Object.hasOwn(DEFAULT_CAPABILITIES, key)) {
       return { ok: false, error: `unknown capability key: ${key}` };
     }
   }

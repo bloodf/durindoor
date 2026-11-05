@@ -4,6 +4,7 @@ import { uploadFile, listFiles } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
 
 const CORS = {
@@ -26,7 +27,7 @@ async function HEADHandler() {
 /** GET /v1/files — list uploaded files. */
 async function GETHandler(request) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!ownership.authorized) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), ownership.denialReason);
   return json(await listFiles(ownership));
 }
 
@@ -36,7 +37,7 @@ async function GETHandler(request) {
  */
 async function POSTHandler(request) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!ownership.authorized) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), ownership.denialReason);
   const ct = (request.headers.get("content-type") || "").toLowerCase();
   if (!ct.includes("multipart/form-data")) {
     return errorResponse(415, "Content-Type must be multipart/form-data");

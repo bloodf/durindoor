@@ -467,7 +467,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
       const used = Math.round(limitStatus.usedTokens);
       const limit = Math.round(limitStatus.limitTokens);
       log.warn("AUTH", `API key daily token limit exceeded (${used}/${limit})`);
-      return errorResponse(HTTP_STATUS.RATE_LIMITED, `API key daily token limit exceeded (${used}/${limit} tokens)`);
+      return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.RATE_LIMITED, `API key daily token limit exceeded (${used}/${limit} tokens)`), "client_limit");
     }
 
     // Windowed per-key limits are checked once, before combo dispatch, so a

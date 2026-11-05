@@ -1,18 +1,192 @@
 # Operational metrics: issue #1129 remainder
 
-Status: the correction was published in PR #1656 at
-`dfb3f2fcd15baf360715c501c6f9dbf623a1289f`, based on
-`f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. The independent source-only
-recheck found the three original P2 defects resolved. The separate retained-evidence
-audit verified the reported results; neither review approves runtime readiness.
-Historical evidence for `d9fbe83b` and correction evidence for `dfb3f2f` are
-separate series below. The full checkpoint remains independently blocked.
+The previous published and independently reviewed PR #1656 snapshot is
+`ef75f562894faf826b27f8b482a290b281626328`, based on
+`f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. It extends the narrative-only
+`e832eeb34290e557dbc5fba8685cc3f51b7b1d4d` publication. The coordinator reports
+the independent source/evidence review found no actionable source defect and
+verified all 393 current and 587 prior retained artifacts. This is neither
+runtime approval nor the independently authorized full checkpoint.
 
-The client-admission increment extends narrative-only publication
-`e832eeb34290e557dbc5fba8685cc3f51b7b1d4d`. Its new ordinary-author evidence is
-separate from the historical results below. The previous exact-head reviews do
-not cover it. Fresh independent review and the full checkpoint remain required.
-Its exact source inventory and remaining producers are recorded below.
+The next Files/Batches, daily-limit and Ollama transfer changes extend that
+published head. A separately authorized ordinary-author slot validated the new
+source and regressions below. The published review does not cover this new
+patch. Historical `d9fbe83b`, `dfb3f2f`, `e832eeb3` and `ef75f562` evidence
+remains separate and unchanged. The earlier `dfb3f2f` source recheck resolved
+the three original P2 findings; fresh exact-head review and the independently
+authorized full checkpoint remain pending.
+
+## Next increment: Files/Batches, daily limits and caller coverage
+
+This increment reuses the existing weak Response annotations and the four
+fixed labels. `operationalMetrics.js` is unchanged. Producers only mark a
+Response; selected outer clean completion remains the sole counter owner.
+
+`resourceOwnership.js` forwards `denialReason` only in its already-denied
+internal result, mapping accepted `auth.reason` to `auth_missing` or
+`auth_invalid`. Success objects, owner identity and credential selection stay
+unchanged. The 15 existing final auth returns below annotate their actual
+Responses with this bounded metadata; the existing wire text stays unchanged.
+No reason is inferred from the generic 401 message or status.
+
+| Exact route under `src/app/api/v1/` | Existing auth-denial exports |
+| --- | --- |
+| `files/route.js` | GET, POST |
+| `files/[id]/route.js` | HEAD, GET, DELETE |
+| `files/[id]/content/route.js` | GET |
+| `batches/route.js` | GET, POST |
+| `batches/[id]/route.js` | GET |
+| `batches/[id]/cancel/route.js` | POST |
+| `messages/batches/route.js` | GET, POST |
+| `messages/batches/[id]/route.js` | GET |
+| `messages/batches/[id]/cancel/route.js` | POST |
+| `messages/batches/[id]/results/route.js` | GET |
+
+The three collection HEAD handlers remain unauthenticated 200 responses.
+OPTIONS, foreign/missing 404s, list filtering, validation 400/415, pending 409,
+provider/service catches and output-row errors are unchanged and unannotated.
+Foreign-owner refusals need an explicit service-result signal before they can
+be distinguished from missing resources without exposing their existence.
+`localFilesBatches.js` and ownership/DB authority remain outside this grant.
+
+The sole chat edit wraps the existing selected daily-token 429 at published
+`chat.js:470` with `client_limit`. `nativeUsage.js` adds the same annotation at
+its existing daily-denial Response construction. Native provider and SystemOne
+handlers pass that Response unchanged. `recordNativeUsage` also creates and
+discards a daily-denial Response after committing usage; that candidate is not
+a selected client outcome and contributes zero. No settlement, write, epoch,
+limit authority, dispatch order or protected chat/fusion logic changes.
+
+Coverage discovery also found `api/chat/route.js` transforms the chosen chat
+Response into a new Ollama NDJSON Response. The separately granted import and
+final-return wrap copy its existing weak selection to that transformed Response.
+The converter, await/synchronous behavior, headers, status and framing stay
+unchanged. This is a newly discovered metadata-transfer gap, separate from the
+nonblocking source verdict on the earlier published scope.
+
+Exact new patch inventory: the 10 route paths above; `src/sse/services/resourceOwnership.js`;
+`src/sse/handlers/chat.js`; `src/sse/services/nativeUsage.js`;
+`src/app/api/v1/api/chat/route.js`; the four existing tests
+`tests/unit/{operational-metrics-admission,operational-metrics-http-boundary,operational-metrics-runtime,resource-ownership}.test.js`;
+this document; and `docs/operations/operational-metrics.mdx`. These are 20 owned
+paths. No new module or test file is introduced. Runtime-test additions are
+limited to pending weak-cell reload and marked bodyless non-HEAD completion.
+
+New-producer regressions cover all 15 final resource auth returns for
+missing/invalid credentials; exact success/denied ownership-result shapes;
+recovered alternate credentials, local/operator success and unchanged HEAD/
+OPTIONS; actual implicit HEAD denial with its returned body unread; selected
+chat/native/SystemOne daily denial EOF versus cancel/abort; a post-commit
+discarded daily check; and real default-executor daily 429 rows without phantom
+client counts. A missing daily-query table is renamed/restored only inside the
+fixture's private database to exercise the actual unannotated 503;
+foreign/missing 404, filtering, validation and in-progress results 409 remain
+negative controls. The database operation ran only in the isolated fixture
+during the later authorized ordinary-author slot.
+
+Separate ef75 P3 coverage additions use literal lazy real-route imports for
+the annotated shared auth returns, polling/actions, native GET/POST/DELETE,
+public realtime HTTP aliases, legacy/Gemini and Ollama. Missing/invalid EOF and
+cancel cases assert status, wire format and no provider dispatch. Actual public
+Messages/Responses delayed tests hold only the input Request's original JSON
+read, then release it into the real handler/auth/policy path. They retain the
+actual threshold, frames and headers and distinguish clean EOF from request
+signal abort after the denial frame was enqueued. Existing assertions and
+provider-only mock boundaries remain; no shared handler is mocked. The two
+runtime additions check a pending selection surviving reload before EOF exactly
+once and marked bodyless non-HEAD completion at return. Their new ordinary-author
+results are recorded below; no pass is inherited from ef75.
+
+Public realtime credential/session HTTP auth/policy is already integrated
+through `handleOpenAINativeSession` and the native public wrappers. Pending
+eligibility 403s and native owner/billing/epoch refusals need separate exact
+return ownership. Internal realtime auth/native controls and model rechecks
+drive WebSocket errors/closures; weak metadata cannot cross loopback fetch/JSON
+and those control calls cannot stand in for public HTTP client outcomes. The
+WebSocket fallback issues actual loopback chat HTTP calls per turn; existing
+handler totals see those HTTP calls, not WebSocket sessions. Client-origin
+attribution and WebSocket metrics need their own approved boundary contract.
+
+Middleware remains unresolved: `dashboardGuard.js:668-678` selects the remote
+public-LLM credential denial before an observed handler. Its existing candidate
+list can distinguish missing/all-invalid only after the existing access checks.
+`proxy.js` can rebuild that Response while clearing a login cookie. A future
+one-writer integration must preserve NextResponse/cookie/wire behavior and prove
+runtime/bundle state visibility and actual terminal observation. Wrapping all
+proxy results would miscount pass-through/rewrite responses; importing the Node
+helper without that evidence is not authorized. Management/CSRF/gateway/control
+denials are different domains, not reasons inferred from 401/403. No middleware,
+custom-server, bootstrap, updater, auth-authority, DB, provider-capacity or fusion
+edits are included. These remaining acceptance items are not waived.
+
+The coordinator supplied the ef75 review path
+`/var/folders/tw/_vvy7bzd4zd07mg54rph6kh00000gn/T/dd1656-independent-review-cv398f1v/review.md`
+and verified SHA-256
+`87ae62d6b0efd416b3e2e9252d185589aefa014fa4acd37aa9375fd29f7728ea`.
+No reviewer was contacted or polled for this draft. Fresh exact-patch validation,
+review and the independent full checkpoint remain required before readiness.
+
+### New increment ordinary-author evidence
+
+The exclusive author slot uses a new private root,
+`/private/tmp/dd1656-resources-li5bm5a2`, separate from every sealed historical
+attempt. Initial LIGHT patch SHA-256 was
+`bc314a16b23a00a27ad80faa691432a3ca760782bd620f9d34854e0e26c76e6b`;
+its source-manifest SHA-256 was
+`adb2e6b49cd9aff41e9da41567a5b1089c079888994285784ee4e53fce1a781e`.
+One owned fixture correction below and this evidence narrative supersede those
+initial source hashes. Per-command inputs and final commit binding record the
+actual validated sources; the initial snapshot remains retained.
+
+Fresh scripts-disabled acquisitions installed root/test/commitlint dependencies
+into that root. The private Node 26.13.0 process and its spawned child both
+proved ABI 147, unprivileged uid 501 and actual external TCP plus synthetic
+real-home read/write `EPERM` before candidate imports on the same explicit
+`sandbox-exec`/`env -i` launch path. Every offline candidate command repeats that
+proof, uses private HOME/DATA/cache/reports and has a 295-second hard ceiling.
+The native addon was rebuilt offline and passed its ABI smoke; no old dependency
+installation was reused. Vitest retained its deadlines and used two fork workers.
+
+- Attempt 08: 296 pass, four fail, zero skipped. The new Gemini native-TTS
+  matrix incorrectly expected `x-request-id`. Its actual auth Response retains
+  no such header. The fixture now asserts that absence explicitly for native/
+  native-TTS, preserving the production identity/wire contract. The unread-body
+  cleanup assertions also failed on those early assertion failures and remain
+  in the raw diagnostics. No production correction was needed.
+- Attempt 09: all 300 tests across the four owned files pass, zero skipped,
+  with the corrected fixture. Its old failed source and report remain retained.
+- Attempt 10: exact ef75 production bytes with the same new tracked regression
+  fixtures produce 48 expected failures and 252 passes, zero skipped. The
+  failures are 30 selected resource counts, three selected daily counts, two
+  Ollama transfer counts, one implicit-HEAD denial count and 12 denied-result
+  metadata expectations. Separately, all 139 ef75 P3 coverage guards already
+  pass. This control is not reported as a successful validation run.
+- Attempt 11: all 3,858 tests across the exact 53-file mapped selection pass,
+  zero skipped. All four owned files and the mapped Files/Batches, resource,
+  native usage/session, epoch, auth/security, keepalive, Messages/Responses,
+  Ollama, legacy, Gemini, correlation and metrics callers are included. JSON
+  and JUnit agree; literal selectors are complete and unique; the baseline is
+  empty; all tracked source inputs remain unchanged during the command. JSON
+  SHA-256 is `2ceb982f0e138379a70d7974cb8d6c88f1b01bdde8b46dcd7a39593259c0319d`.
+
+Attempt 11 retains 29 `[KimchiUA Error]` dynamic-import diagnostics and 30 expected
+stale-billing-epoch save rejections from the expanded epoch callers. The new
+missing-table and deliberately malformed/failing cases retain their actual logs.
+These passing assertions do not establish clean runtime readiness. No baseline,
+timeout, worker limit, production authority or provider boundary was weakened.
+No private test file is counted as a tracked test. The socket-based WebSocket
+protocol suite remains separate from these HTTP annotations; its loopback-server
+needs do not authorize relaxing this offline sandbox. Middleware and built-mode
+scrape projection, bootstrap, remaining producers, overhead, fresh exact-head
+review and the owner-run full checkpoint remain open. No review, approval,
+status, trusted gate or merge was performed in this author slot.
+
+Root lint in attempt 13 passes with zero errors and 327 existing warnings;
+anti-slop reports zero diagnostics across 2,581 files. Its generated plugin
+bundle is retained as an output and restored to the canonical input before
+staging. Required changed-JavaScript/docs checks, the actual inner lint-staged
+run, unchanged mandatory hook and title/exact-range commitlint are recorded in
+the same evidence root and bound to the final source tree before publication.
 
 ## Acceptance and existing evidence
 
@@ -208,7 +382,11 @@ failure/retry, route-first/start-first/HMR reuse, existing Kimchi/Headroom
 lifecycle checks and independent updated-head app/website/CLI/standalone/packed
 artifact coverage. #1652's old evidence cannot establish this draft's readiness.
 
-## Admission signal discovery and integration
+## Published ef75 admission discovery and integration
+
+The following producer inventory, pending list and ordinary-author evidence
+describe the published ef75 increment. The next LIGHT patch and its remaining
+acceptance are recorded separately above; none of these passes validates it.
 
 The original discovery below used published `e832eeb3` source positions. It
 identified actual denial Responses separately from credential candidates and

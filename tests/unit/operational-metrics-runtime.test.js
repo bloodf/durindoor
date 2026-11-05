@@ -31,6 +31,42 @@ afterEach(() => {
 });
 
 describe("client HTTP observations", () => {
+  it("retains a pending weak admission selection across reload and counts EOF once", async () => {
+    const req = request({ method: "POST" });
+    const selection = metrics.createClientAdmissionSelection();
+    const source = selection.bind(new Response("selected denial frame", { headers: { "content-type": "text/event-stream" } }));
+    const denial = metrics.annotateClientAdmissionFailure(new Response(null, { status: 403 }), "policy");
+    const response = await metrics.observeHttpRequest(req, () => correlation.correlateResponse(source, "pending-fixture"));
+    const state = globalThis.__durindoorOperationalMetrics;
+    expect(response.bodyUsed).toBe(false);
+    expect(metrics.operationalMetricsText()).toContain("durindoor_http_active_requests 1\n");
+    expect(metrics.operationalMetricsText()).toContain('durindoor_client_admission_failures_total{reason="policy"} 0\n');
+    vi.resetModules();
+    const reloaded = await import("../../open-sse/services/operationalMetrics.js");
+    expect(globalThis.__durindoorOperationalMetrics).toBe(state);
+    selection.select(denial);
+    expect(reloaded.operationalMetricsText()).toContain('durindoor_client_admission_failures_total{reason="policy"} 0\n');
+    expect(await response.text()).toBe("selected denial frame");
+    expect(reloaded.operationalMetricsText()).toContain('durindoor_client_admission_failures_total{reason="policy"} 1\n');
+    expect(reloaded.operationalMetricsText()).toContain("durindoor_http_active_requests 0\n");
+    await (await reloaded.observeHttpRequest(req, () => new Response("same Request reused"))).text();
+    expect(reloaded.operationalMetricsText()).toContain("durindoor_http_requests_total 1\n");
+    expect(reloaded.operationalMetricsText()).toContain('durindoor_client_admission_failures_total{reason="policy"} 1\n');
+  });
+
+  it("counts a marked bodyless non-HEAD denial at return without replacing the Response", async () => {
+    const source = metrics.annotateClientAdmissionFailure(new Response(null, { status: 429,
+      headers: { "retry-after": "7" } }), "client_limit");
+    const response = await metrics.observeHttpRequest(request({ method: "POST" }), () => source);
+    expect(response).toBe(source);
+    expect(response.body).toBeNull();
+    expect(response.bodyUsed).toBe(false);
+    expect(response.headers.get("retry-after")).toBe("7");
+    expect(metrics.operationalMetricsText()).toContain("durindoor_http_active_requests 0\n");
+    expect(metrics.operationalMetricsText()).toContain('durindoor_http_requests_completed_total{outcome="http_error"} 1\n');
+    expect(metrics.operationalMetricsText()).toContain('durindoor_client_admission_failures_total{reason="client_limit"} 1\n');
+  });
+
   it("counts a nested and repeatedly observed Request once", async () => {
     const inner = correlation.withHttpRequestCorrelation(() => new Response("bytes"));
     const outer = correlation.withHttpRequestCorrelation((req) => inner(req));

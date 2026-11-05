@@ -183,6 +183,35 @@ afterAll(async () => {
 });
 
 describe("explicit public HTTP observations", () => {
+  it("finishes an actual file GET auth denial used for implicit HEAD with its body unread", async () => {
+    const { updateSettings } = await import("@/lib/db/repos/settingsRepo.js");
+    const counter = () => Number(metrics.operationalMetricsText().split("\n")
+      .find((line) => line.startsWith('durindoor_client_admission_failures_total{reason="auth_missing"} ')).split(" ")[1]);
+    const before = counter();
+    await updateSettings({ requireApiKey: true });
+    let response;
+    try {
+      response = await fileContent.GET(new Request("https://gateway.test/v1/files/file_000000000000000000000000/content", { method: "HEAD" }),
+        context("file_000000000000000000000000"));
+    } finally {
+      await updateSettings({ requireApiKey: false });
+    }
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toBe("application/json");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.body).not.toBeNull();
+    expect(response.bodyUsed).toBe(false);
+    expect(counter()).toBe(before + 1);
+    expectDelta({ starts: 1, errors: 1, durations: 1 });
+    // Downstream HEAD suppression need not read or cancel this body. A later
+    // disposal still cannot account for the same terminal response again.
+    await response.body.cancel("fixture disposal after terminal HEAD");
+    expect(counter()).toBe(before + 1);
+    expectDelta({ starts: 1, errors: 1, durations: 1 });
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  });
+
   it.each(["/v1/chat/completions", "/v1/embeddings"])("counts batch HTTP operations without counting default-executor %s rows", async (endpoint) => {
     const body = endpoint.endsWith("embeddings") ? { model: "openai/text-embedding-3-small", input: "fixture" } : chatBody;
     const jsonl = ["first", "second"].map((custom_id) => JSON.stringify({ custom_id, method: "POST", url: endpoint, body })).join("\n") + "\n";

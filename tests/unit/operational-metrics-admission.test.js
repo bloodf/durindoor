@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 // Real auth, policy, limits, public decorators,
 // translators and default batch executor; only provider execution is replaced.
 // Execution requires the separately authorized offline parent/child sandbox.
-const provider = vi.hoisted(() => ({ execute: vi.fn() }));
+const provider = vi.hoisted(() => ({ execute: vi.fn(), fetch: vi.fn() }));
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -41,6 +41,8 @@ const legacy = postRoute(() => import("../../src/app/api/v1/completions/route.js
 const gemini = postRoute(() => import("../../src/app/api/v1beta/models/[...path]/route.js"));
 const files = postRoute(() => import("../../src/app/api/v1/files/route.js"));
 const batches = postRoute(() => import("../../src/app/api/v1/batches/route.js"));
+const systemone = postRoute(() => import("../../src/app/api/v1/systemone/route.js"));
+const ollama = postRoute(() => import("../../src/app/api/v1/api/chat/route.js"));
 let baseline, keyNumber = 0;
 const ownedBatchIds = [];
 const reasons = ["auth_missing", "auth_invalid", "policy", "client_limit"];
@@ -86,6 +88,77 @@ async function keyWithPolicy(value = {}) {
   return db.createApiKey(`admission-fixture-${++keyNumber}`, "synthetic-machine", [], null, null, { policy: value });
 }
 
+async function dailyKey(limit = 0) {
+  return db.createApiKey(`daily-fixture-${++keyNumber}`, "synthetic-machine", [], limit);
+}
+
+// New producers: each entry names actual existing auth-denial returns. The
+// three collection HEAD exports do not authenticate and are tested separately.
+const resourceRoutes = [
+  { path: "/v1/files", load: () => import("../../src/app/api/v1/files/route.js"), methods: ["GET", "POST"], collection: true },
+  { path: "/v1/files/file_000000000000000000000000", load: () => import("../../src/app/api/v1/files/[id]/route.js"), methods: ["HEAD", "GET", "DELETE"] },
+  { path: "/v1/files/file_000000000000000000000000/content", load: () => import("../../src/app/api/v1/files/[id]/content/route.js"), methods: ["GET"] },
+  { path: "/v1/batches", load: () => import("../../src/app/api/v1/batches/route.js"), methods: ["GET", "POST"], collection: true },
+  { path: "/v1/batches/batch_000000000000000000000000", load: () => import("../../src/app/api/v1/batches/[id]/route.js"), methods: ["GET"] },
+  { path: "/v1/batches/batch_000000000000000000000000/cancel", load: () => import("../../src/app/api/v1/batches/[id]/cancel/route.js"), methods: ["POST"] },
+  { path: "/v1/messages/batches", load: () => import("../../src/app/api/v1/messages/batches/route.js"), methods: ["GET", "POST"], collection: true },
+  { path: "/v1/messages/batches/msgbatch_000000000000000000000000", load: () => import("../../src/app/api/v1/messages/batches/[id]/route.js"), methods: ["GET"] },
+  { path: "/v1/messages/batches/msgbatch_000000000000000000000000/cancel", load: () => import("../../src/app/api/v1/messages/batches/[id]/cancel/route.js"), methods: ["POST"] },
+  { path: "/v1/messages/batches/msgbatch_000000000000000000000000/results", load: () => import("../../src/app/api/v1/messages/batches/[id]/results/route.js"), methods: ["GET"] },
+];
+
+// ef75 coverage additions: real public wrappers for all annotated shared auth
+// return sites, including polling/actions and native credential/session aliases.
+// api/chat additionally needs the new final-Response metadata transfer.
+const ef75AuthRoutes = [
+  { path: "/v1/chat/completions", load: () => import("../../src/app/api/v1/chat/completions/route.js") },
+  { path: "/v1/embeddings", load: () => import("../../src/app/api/v1/embeddings/route.js") },
+  { path: "/v1/images/generations", load: () => import("../../src/app/api/v1/images/generations/route.js") },
+  { path: "/v1/images/edits", load: () => import("../../src/app/api/v1/images/edits/route.js") },
+  { path: "/v1/audio/speech", load: () => import("../../src/app/api/v1/audio/speech/route.js") },
+  { path: "/v1/audio/transcriptions", load: () => import("../../src/app/api/v1/audio/transcriptions/route.js"), multipart: true },
+  { path: "/v1/audio/translations", load: () => import("../../src/app/api/v1/audio/translations/route.js"), multipart: true },
+  { path: "/v1/music/generations", load: () => import("../../src/app/api/v1/music/generations/route.js") },
+  { path: "/v1/audio/music", load: () => import("../../src/app/api/v1/audio/music/route.js") },
+  { path: "/v1/music/generations/fixture-job", load: () => import("../../src/app/api/v1/music/generations/[request_id]/route.js"), method: "GET", params: { request_id: "fixture-job" } },
+  { path: "/v1/video/generations", load: () => import("../../src/app/api/v1/video/generations/route.js") },
+  ...["generations", "edits", "extensions"].map((action) => ({ path: `/v1/videos/${action}`, load: () => import("../../src/app/api/v1/videos/[[...path]]/route.js"), params: { path: [action] } })),
+  { path: "/v1/videos/fixture-job", load: () => import("../../src/app/api/v1/videos/[[...path]]/route.js"), method: "GET", params: { path: ["fixture-job"] } },
+  { path: "/v1/rerank", load: () => import("../../src/app/api/v1/rerank/route.js") },
+  { path: "/v1/search", load: () => import("../../src/app/api/v1/search/route.js") },
+  { path: "/v1/web/fetch", load: () => import("../../src/app/api/v1/web/fetch/route.js") },
+  { path: "/v1/moderations", load: () => import("../../src/app/api/v1/moderations/route.js") },
+  { path: "/v1/systemone", load: () => import("../../src/app/api/v1/systemone/route.js") },
+  { path: "/v1/messages/count_tokens", load: () => import("../../src/app/api/v1/messages/count_tokens/route.js"), fixedInvalidMessage: true },
+  { path: "/v1/messages", load: () => import("../../src/app/api/v1/messages/route.js") },
+  { path: "/v1/responses", load: () => import("../../src/app/api/v1/responses/route.js") },
+  { path: "/v1/responses/compact", load: () => import("../../src/app/api/v1/responses/compact/route.js") },
+  { path: "/v1/completions", load: () => import("../../src/app/api/v1/completions/route.js") },
+  { path: "/v1/api/chat", load: () => import("../../src/app/api/v1/api/chat/route.js"), ndjson: true },
+  { path: "/v1/realtime/client_secrets", load: () => import("../../src/app/api/v1/realtime/client_secrets/route.js") },
+  { path: "/v1/realtime/transcription_sessions", load: () => import("../../src/app/api/v1/realtime/transcription_sessions/route.js") },
+  { path: "/v1/realtime/translations/client_secrets", load: () => import("../../src/app/api/v1/realtime/translations/client_secrets/route.js") },
+  { path: "/v1/live/sessions", load: () => import("../../src/app/api/v1/live/sessions/route.js") },
+  ...["POST", "GET", "DELETE"].map((method) => ({ path: method === "POST" ? "/v1/native/openai/v1/chat/completions" : "/v1/native/openai/v1/responses/fixture-id", load: () => import("../../src/app/api/v1/native/[provider]/[...operation]/route.js"), method,
+    params: { provider: "openai", operation: method === "POST" ? ["v1", "chat", "completions"] : ["v1", "responses", "fixture-id"] }, native: true })),
+  { path: "/v1beta/models/gemini/gemini-2.5-flash-preview-tts:generateContent", load: () => import("../../src/app/api/v1beta/models/[...path]/route.js"), geminiTts: true,
+    params: { path: ["gemini", "gemini-2.5-flash-preview-tts:generateContent"] } },
+];
+
+function authRequest(entry, reason) {
+  const method = entry.method || "POST";
+  const headers = reason === "invalid" ? { authorization: "Bearer synthetic-invalid" } : {};
+  if (method === "GET" || method === "DELETE") return new Request(`https://gateway.test${entry.path}`, { method, headers });
+  if (entry.multipart) {
+    const form = new FormData();
+    form.set("model", model);
+    form.set("file", new File(["fixture"], "fixture.wav", { type: "audio/wav" }));
+    return new Request(`https://gateway.test${entry.path}`, { method, headers, body: form });
+  }
+  return request(entry.geminiTts ? { ...geminiBody, generationConfig: { responseModalities: ["AUDIO"] } }
+    : { ...chatBody, prompt: "fixture", input: "fixture", image: "data:image/png;base64,eA==", query: "fixture", url: "https://fixture.test", state: {}, questions: {} }, headers, entry.path);
+}
+
 beforeAll(async () => {
   const setupStarted = performance.now();
   const phase = (name) => console.info(`[admission fixture] ${name} ${Math.round(performance.now() - setupStarted)}ms`);
@@ -100,7 +173,7 @@ beforeAll(async () => {
   delete process.env.DURINDOOR_PG_URL;
   for (const name of globalNames) delete globalThis[name];
   vi.resetModules();
-  vi.stubGlobal("fetch", () => { throw new Error("Unexpected provider transport in admission fixture"); });
+  vi.stubGlobal("fetch", provider.fetch.mockImplementation(() => { throw new Error("Unexpected provider transport in admission fixture"); }));
   phase("private environment");
   // Fixture setup needs only these repositories. Importing the whole DB barrel
   // eagerly pulled provider/routing modules into the 10s setup hook.
@@ -129,6 +202,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.updateSettings({ requireApiKey: true, enableProxyTimeline: false, visionBridgeEnabled: false });
+  provider.fetch.mockClear();
   provider.execute.mockReset().mockImplementation(({ body, stream }) => {
     const completion = { id: "chat-fixture", object: "chat.completion", model: body.model,
       choices: [{ index: 0, message: { role: "assistant", content: "provider reply" }, finish_reason: "stop" }],
@@ -492,5 +566,335 @@ describe("selected client-admission failures", () => {
     expect(lines.map((line) => line.match(/reason="([^"]+)"/)[1])).toEqual(reasons);
     expect(metrics.operationalMetricsText()).not.toContain(privateValue);
     expectDelta({ starts: 1 });
+  });
+});
+
+describe("new Files/Batches auth producers", () => {
+  const denials = resourceRoutes.flatMap((entry) => entry.methods.flatMap((method) =>
+    ["missing", "invalid"].map((reason) => ({ ...entry, method, reason }))));
+
+  it.each(denials)("marks only selected $method $path $reason denial", async (entry) => {
+    const route = await entry.load();
+    const headers = entry.reason === "invalid" ? { authorization: "Bearer synthetic-invalid" } : {};
+    const req = new Request(`https://gateway.test${entry.path}`, { method: entry.method, headers });
+    const response = await route[entry.method](req, { params: Promise.resolve({ id: "unused-before-auth" }) });
+    expect(response.status).toBe(401);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("x-request-id")).toBe(correlation.getRequestId(req));
+    expect([...response.headers.keys()]).not.toContain("denialreason");
+    if (entry.method === "HEAD") {
+      expect(response.body).toBeNull();
+      expect(response.bodyUsed).toBe(false);
+    } else {
+      expectDelta({ starts: 1, active: 1 });
+      const body = await response.json();
+      expect(body.error.message).toBe("Invalid API key");
+      expect(Object.keys(body.error).sort()).toEqual(["code", "message", "request_id", "type"]);
+      expect(JSON.stringify(body)).not.toMatch(/denialReason|auth_missing|auth_invalid|synthetic-invalid/);
+    }
+    expectDelta({ starts: 1, [`auth_${entry.reason}`]: 1 });
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(resourceRoutes)("keeps $path OPTIONS and collection HEAD behavior", async (entry) => {
+    const route = await entry.load();
+    const response = await route.OPTIONS(new Request(`https://gateway.test${entry.path}`, { method: "OPTIONS" }));
+    expect(response.status).toBe(200);
+    expect(response.body).toBeNull();
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expectDelta();
+    if (entry.collection) {
+      const head = await route.HEAD(new Request(`https://gateway.test${entry.path}`, { method: "HEAD" }));
+      expect(head.status).toBe(200);
+      expect(head.body).toBeNull();
+      expectDelta({ starts: 1 });
+    }
+  });
+
+  it.each(["cancel", "abort"])("does not count a Files denial after %s", async (terminal) => {
+    const route = await resourceRoutes[0].load();
+    const abort = new AbortController();
+    const response = await route.GET(new Request("https://gateway.test/v1/files", { signal: abort.signal }));
+    expect(response.status).toBe(401);
+    expect(response.bodyUsed).toBe(false);
+    expectDelta({ starts: 1, active: 1 });
+    if (terminal === "abort") abort.abort("client left before EOF");
+    await response.body.cancel("client left before EOF");
+    expectDelta({ starts: 1 });
+  });
+
+  it("keeps recovered credentials, optional local auth and operator success unmarked", async () => {
+    const route = await resourceRoutes[0].load();
+    const key = await keyWithPolicy();
+    const recovered = await route.GET(new Request("https://gateway.test/v1/files", {
+      headers: { authorization: "Bearer synthetic-invalid", "x-api-key": key.key },
+    }));
+    expect(recovered.status).toBe(200);
+    expect((await recovered.json()).object).toBe("list");
+    await db.updateSettings({ requireApiKey: false });
+    const local = await route.GET(new Request("https://gateway.test/v1/files"));
+    expect(local.status).toBe(200);
+    await local.text();
+    await db.updateSettings({ requireApiKey: true });
+    const { getConsistentMachineId } = await import("@/shared/utils/machineId.js");
+    const operator = await route.GET(new Request("https://gateway.test/v1/files", {
+      headers: { "x-9r-cli-token": await getConsistentMachineId("9r-cli-auth"), authorization: "Bearer synthetic-invalid" },
+    }));
+    expect(operator.status).toBe(200);
+    await operator.text();
+    expectDelta({ starts: 3 });
+  });
+
+  it("does not guess admission from foreign/missing 404, filtered lists or validation 400/415", async () => {
+    storage = await import("../../open-sse/services/localFilesBatches.js");
+    const owner = await keyWithPolicy(), other = await keyWithPolicy();
+    const file = await storage.uploadFile({ filename: "private.txt", bytes: "fixture", purpose: "batch" }, { ownerId: owner.id });
+    const detail = await resourceRoutes[1].load();
+    for (const id of [file.id, "file_000000000000000000000000"]) {
+      const response = await detail.GET(new Request(`https://gateway.test/v1/files/${id}`, {
+        headers: { authorization: `Bearer ${other.key}` },
+      }), { params: Promise.resolve({ id }) });
+      expect(response.status).toBe(404);
+      expect((await response.json()).error.message).toBe("file not found");
+    }
+    const collection = await resourceRoutes[0].load();
+    const listed = await collection.GET(new Request("https://gateway.test/v1/files", { headers: { authorization: `Bearer ${other.key}` } }));
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).data).toEqual([]);
+    const unsupported = await files.POST(request({}, { authorization: `Bearer ${other.key}` }, "/v1/files"));
+    expect(unsupported.status).toBe(415);
+    expect((await unsupported.json()).error.message).toBe("Content-Type must be multipart/form-data");
+    const invalid = await batches.POST(request({}, { authorization: `Bearer ${other.key}` }, "/v1/batches"));
+    expect(invalid.status).toBe(400);
+    expect((await invalid.json()).error.message).toBe("input_file_id is required");
+    expectDelta({ starts: 5 });
+  });
+
+  it("keeps pending Anthropic results 409 separate from local admission denial", async () => {
+    storage = await import("../../open-sse/services/localFilesBatches.js");
+    const key = await keyWithPolicy();
+    const headers = { authorization: `Bearer ${key.key}` };
+    const entered = deferred(), release = deferred();
+    const execute = provider.execute.getMockImplementation();
+    provider.execute.mockImplementationOnce(async (options) => {
+      entered.resolve();
+      await release.promise;
+      return execute(options);
+    });
+    const collection = await resourceRoutes[6].load();
+    const response = await collection.POST(request({ requests: [{ custom_id: "pending-row", params: chatBody }] }, headers, "/v1/messages/batches"));
+    expect(response.status).toBe(200);
+    const batch = await response.json();
+    ownedBatchIds.push(batch.id);
+    try {
+      await entered.promise;
+      const results = await resourceRoutes[9].load();
+      const pending = await results.GET(new Request(`https://gateway.test/v1/messages/batches/${batch.id}/results`, { headers }),
+        { params: Promise.resolve({ id: batch.id }) });
+      expect(pending.status).toBe(409);
+      expect((await pending.json()).error.message).toBe("message batch has not ended yet");
+      expectDelta({ starts: 2 });
+    } finally {
+      release.resolve();
+      await storage._waitForBatch(batch.id);
+    }
+    expectDelta({ starts: 2 });
+  });
+});
+
+describe("new selected daily-token denial producers", () => {
+  it.each(["chat", "native", "systemone"].flatMap((route) =>
+    ["EOF", "cancel", "abort"].map((terminal) => [route, terminal])))("counts real %s daily denial only at %s clean completion", async (route, terminal) => {
+    const key = await dailyKey();
+    const abort = new AbortController();
+    const req = new Request(request(route === "systemone" ? { model, state: {}, questions: {} } : chatBody,
+      { authorization: `Bearer ${key.key}` }, route === "systemone" ? "/v1/systemone" : "/v1/chat/completions"), { signal: abort.signal });
+    const response = route === "native" ? await native.POST(req, {
+      params: Promise.resolve({ provider: "openai", operation: ["v1", "chat", "completions"] }),
+    }) : await (route === "chat" ? chat : systemone).POST(req);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBeNull();
+    expectDelta({ starts: 1, active: 1 });
+    if (terminal === "EOF") {
+      if (route === "chat") expect((await response.json()).error.message).toBe("API key daily token limit exceeded (0/0 tokens)");
+      else expect(await response.text()).toBe("API key daily token limit reached");
+      expectDelta({ starts: 1, client_limit: 1 });
+    } else {
+      if (terminal === "abort") abort.abort("daily denial not delivered");
+      await response.body.cancel("daily denial not delivered");
+      expectDelta({ starts: 1 });
+    }
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not count discarded daily denials or post-commit quota checks against a successful HTTP result", async () => {
+    const usage = await import("../../src/sse/services/nativeUsage.js");
+    const exhausted = await dailyKey();
+    const spent = await dailyKey(1);
+    const req = request();
+    const billingEpoch = await correlation.captureRequestBillingEpoch(req);
+    const boundary = correlation.withHttpRequestCorrelation(async () => {
+      const candidate = await usage.nativeUsageAdmission(exhausted.key);
+      expect(candidate.status).toBe(429);
+      expect(await candidate.text()).toBe("API key daily token limit reached");
+      expect(await usage.recordNativeUsage({ apiKey: spent.key, provider: "openai", model: "gpt-4o-mini",
+        connectionId: "fixture-account", endpoint: "/v1/responses", usageEventId: `post-commit-${spent.id}`, billingEpoch,
+        modality: "chat", tokens: { input_tokens: 1, output_tokens: 1 }, nativeUnits: {},
+        cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable" })).toBe(false);
+      return new Response("successful provider result");
+    });
+    const response = await boundary(req);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("successful provider result");
+    expectDelta({ starts: 1 });
+  });
+
+  it("does not turn actual missing daily-usage storage into a client-limit denial", async () => {
+    const key = await dailyKey(10);
+    // Inject a real query failure only in this fixture's private database.
+    adapter.exec("ALTER TABLE usageHistory RENAME TO admission_fixture_usageHistory");
+    let response;
+    try {
+      response = await chat.POST(request(chatBody, { authorization: `Bearer ${key.key}` }));
+    } finally {
+      adapter.exec("ALTER TABLE admission_fixture_usageHistory RENAME TO usageHistory");
+    }
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.message).toBe("Database temporarily unavailable");
+    expectDelta({ starts: 1 });
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps real default-executor daily 429 rows separate from successful batch HTTP operations", async () => {
+    storage = await import("../../open-sse/services/localFilesBatches.js");
+    const key = await dailyKey();
+    const headers = { authorization: `Bearer ${key.key}` };
+    const form = new FormData();
+    form.set("purpose", "batch");
+    form.set("file", new File([JSON.stringify({ custom_id: "daily-row", method: "POST", url: "/v1/chat/completions", body: chatBody }) + "\n"], "daily.jsonl", { type: "application/jsonl" }));
+    const upload = await files.POST(new Request("https://gateway.test/v1/files", { method: "POST", headers, body: form }));
+    expect(upload.status).toBe(201);
+    const file = await upload.json();
+    const response = await batches.POST(request({ input_file_id: file.id, endpoint: "/v1/chat/completions", completion_window: "24h" }, headers, "/v1/batches"));
+    expect(response.status).toBe(200);
+    const batch = await response.json();
+    ownedBatchIds.push(batch.id);
+    await storage._waitForBatch(batch.id);
+    const output = await storage.getBatchOutputText(batch.id, "output", { ownerId: key.id });
+    expect(JSON.parse(output.trim()).response).toMatchObject({ status_code: 429,
+      body: { error: { message: "API key daily token limit exceeded (0/0 tokens)" } } });
+    expectDelta({ starts: 2 });
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("ef75 auth-wrapper coverage and selected Ollama transfer", () => {
+  it.each(ef75AuthRoutes.flatMap((entry) => ["missing", "invalid"].flatMap((reason) =>
+    ["EOF", "cancel"].map((terminal) => ({ ...entry, reason, terminal })))))("keeps $path $method $reason $terminal auth accounting and wire", async (entry) => {
+    const route = await entry.load();
+    const req = authRequest(entry, entry.reason);
+    const response = await route[entry.method || "POST"](req, { params: Promise.resolve(entry.params || {}) });
+    const message = entry.reason === "missing" && !entry.fixedInvalidMessage ? "Missing API key" : "Invalid API key";
+    expect(response.status).toBe(401);
+    expect(response.bodyUsed).toBe(false);
+    expect(response.headers.get("content-type")).toContain(entry.ndjson ? "application/x-ndjson" : "application/json");
+    if (!entry.geminiTts) expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    if (entry.native || entry.geminiTts) expect(response.headers.get("x-request-id")).toBeNull();
+    else expect(response.headers.get("x-request-id")).toBe(correlation.getRequestId(req));
+    expectDelta({ starts: 1, active: 1 });
+    if (entry.terminal === "EOF") {
+      const text = await response.text();
+      // Existing outer JSON-error correlation also parses a single NDJSON
+      // error line, retaining its media type but serializing the correlated
+      // object without a trailing newline. The metadata copy must preserve it.
+      if (entry.ndjson) expect(text).toBe(JSON.stringify({ error: message, request_id: correlation.getRequestId(req) }));
+      else {
+        const body = JSON.parse(text);
+        expect(body.error.message).toBe(message);
+        expect(text).not.toMatch(/denialReason|auth_missing|auth_invalid|synthetic-invalid/);
+      }
+      expectDelta({ starts: 1, [`auth_${entry.reason}`]: 1 });
+    } else {
+      await response.body.cancel("public auth denial unread");
+      expectDelta({ starts: 1 });
+    }
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["messages", "responses"].flatMap((route) => ["EOF", "abort-after-enqueue"].map((terminal) => [route, terminal])))("keeps actual %s delayed denial frames and selected %s accounting", async (route, terminal) => {
+    // Load the real decorator/route before controlling time. Only this input
+    // Request's original JSON read is delayed; handleChat/auth/policy stay real.
+    const selected = await (route === "messages" ? import("../../src/app/api/v1/messages/route.js") : import("../../src/app/api/v1/responses/route.js"));
+    const abort = new AbortController();
+    const req = new Request(request(route === "messages" ? { ...chatBody, stream: true, max_tokens: 8 }
+      : { model, input: "fixture", stream: true }, {}, `/v1/${route}`), { signal: abort.signal });
+    const reading = deferred(), release = deferred();
+    const originalJson = req.json.bind(req);
+    vi.spyOn(req, "json").mockImplementation(async () => {
+      reading.resolve();
+      await release.promise;
+      return originalJson();
+    });
+    vi.useFakeTimers();
+    const pending = selected.POST(req);
+    await reading.promise;
+    await vi.advanceTimersByTimeAsync(2000);
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(Object.fromEntries(response.headers)).toEqual({
+      "cache-control": "no-cache, no-transform", connection: "keep-alive",
+      "content-type": "text/event-stream; charset=utf-8", "x-request-id": correlation.getRequestId(req),
+    });
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    expect(decoder.decode((await reader.read()).value)).toBe(route === "messages" ? 'event: ping\ndata: {"type":"ping"}\n\n' : ": keepalive\n\n");
+    release.resolve();
+    const frame = decoder.decode((await reader.read()).value);
+    const payload = JSON.parse(frame.split("\n").find((line) => line.startsWith("data: ")).slice(6));
+    expect(frame.startsWith("event: error\ndata: ")).toBe(true);
+    if (route === "messages") expect(payload).toEqual({ type: "error", error: {
+      type: "authentication_error", message: "Missing API key", status_code: 401,
+    } });
+    else expect(payload).toEqual({ type: "error", code: "invalid_api_key", message: "Missing API key", param: null,
+      sequence_number: 1, status_code: 401, error_type: "authentication_error" });
+    expectDelta({ starts: 1, active: 1 });
+    if (terminal === "abort-after-enqueue") abort.abort("request aborted after selected error frame");
+    expect(await reader.read()).toEqual({ value: undefined, done: true });
+    reader.releaseLock();
+    expectDelta({ starts: 1, ...(terminal === "EOF" ? { auth_missing: 1 } : {}) });
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves successful Ollama output and leaves upstream error frames unannotated", async () => {
+    const key = await keyWithPolicy();
+    const headers = { authorization: `Bearer ${key.key}` };
+    const successful = await ollama.POST(request(chatBody, headers, "/v1/api/chat"));
+    expect(successful.status).toBe(200);
+    expect(successful.headers.get("content-type")).toBe("application/x-ndjson");
+    const text = await successful.text();
+    expect(text.endsWith("\n")).toBe(true);
+    const rows = text.trim().split("\n").map((line) => JSON.parse(line));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ model: "gpt-4o-mini", message: { role: "assistant", content: "provider reply" }, done: true });
+    expectDelta({ starts: 1 });
+    // A provider-origin error inside a successful transport stream is not a
+    // locally annotated denial, regardless of its in-band status/code fields.
+    provider.execute.mockImplementationOnce(({ body }) => ({
+      response: new Response('data: {"id":"provider-stream","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"before-error"},"finish_reason":null}]}\n\ndata: {"error":{"message":"provider denied","code":"invalid_api_key","status_code":401}}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } }),
+      url: "https://provider.test/v1/chat/completions", headers: {}, transformedBody: body,
+    }));
+    const upstream = await ollama.POST(request({ ...chatBody, stream: true }, headers, "/v1/api/chat"));
+    expect(upstream.status).toBe(200);
+    expect(upstream.headers.get("content-type")).toBe("application/x-ndjson");
+    const upstreamText = await upstream.text();
+    expect(upstreamText).toContain('"content":"before-error"');
+    expect(upstreamText).toContain('{"error":"provider denied"}\n');
+    expect(provider.execute).toHaveBeenCalledTimes(2);
+    expectDelta({ starts: 2 });
   });
 });

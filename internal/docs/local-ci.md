@@ -50,7 +50,7 @@ Audited all ten workflows at main `05614249fae91cbb8c4022e91607857e3f942e25`.
 | `commitlint.yml`: commitlint | Exact base..head and supplied squash title, pinned commitlint | Manual dispatch with base SHA and title |
 | `artifact-smoke.yml`: smoke | Full mode builds standalone and CLI, packs, installs the exact tarball into an isolated prefix and smokes both artifacts; hashes the tarball | Existing manual smoke fallback |
 | `nightly.yml`: nightly | Lint/index/build/tests/reports covered by full mode | Schedule/manual control and prerelease creation unchanged; enabled state is owner-managed |
-| `release-prepare.yml`: prepare | Release-notes unit suites in full inventory; version/changelog commands can be previewed in a disposable checkout | Manual bump, branch/PR creation and optional auto-merge remain release-owner controls |
+| `release-prepare.yml`: prepare | Release-notes unit suites in full inventory; version/changelog commands can be previewed in a disposable checkout | Manual bump and draft PR creation; owner validation required before ready/merge, including retries |
 | `release-tag.yml`: tag | Root/CLI version equality in artifact checks; release-notes suites | Existing controlled bump-push/manual tag and GitHub Release creation unchanged |
 | `release.yml`: publish | Lint/index/build/tests/reports and standalone/packed CLI smoke | Release event and npm credential/OIDC publication unchanged |
 | `docker-publish.yml`: prepare, build, publish | Owner-only local Docker build/smoke procedure below; artifact checks validate version agreement | Tag validation, both native Linux architectures, digest upload, manifest verification and promotion retain publication controls |

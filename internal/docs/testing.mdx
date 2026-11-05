@@ -101,3 +101,5 @@ Dashboard Playwright is on [Local development](./local-development.mdx).
 ## Local workflow coverage
 
 See [local CI](./local-ci.md) for the one-command full run, workflow coverage, manual fallbacks and external owner verification. Full runs require registry-index, docs and catalog checks even without a website change, plus standalone and packed CLI smoke checks. Website selection includes shared dashboard/runtime/build inputs. The trigger migration cannot merge until its exact reviewed head passes the externally frozen full gate.
+
+Report acceptance and JUnit generation share terminal-state validation for the locked Vitest 4.1.12 JSON schema. Suites must be `passed` or `failed`; assertions must be `passed`, `failed`, `skipped` or `todo`. Explicit skipped/todo assertions remain valid. Pending, unknown, missing and malformed states fail before aggregation or JUnit output; diagnostic infrastructure failures remain failures.

@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import { validateCompletedReportStates } from "./report-states.mjs";
 
 const escapeXml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;")
@@ -8,15 +9,16 @@ const escapeXml = (value) => String(value ?? "")
   .replaceAll("'", "&apos;");
 
 export function writeJunitReport(report, outputPath) {
-  const suites = report.testResults || [];
+  validateCompletedReportStates(report);
+  const suites = report.testResults;
   const tests = suites.flatMap((suite) => suite.assertionResults || []);
   const failures = tests.filter((test) => test.status === "failed").length;
-  const skipped = tests.filter((test) => ["pending", "skipped", "todo", "disabled"].includes(test.status)).length;
+  const skipped = tests.filter((test) => ["skipped", "todo"].includes(test.status)).length;
   const body = suites.map((suite) => {
     const cases = (suite.assertionResults || []).map((test) => {
       const failure = test.status === "failed"
         ? `<failure message="test failed">${escapeXml((test.failureMessages || []).join("\n"))}</failure>`
-        : ["pending", "skipped", "todo", "disabled"].includes(test.status)
+        : ["skipped", "todo"].includes(test.status)
           ? "<skipped/>"
           : "";
       return `<testcase classname="${escapeXml(suite.name)}" name="${escapeXml(test.fullName || test.title)}">${failure}</testcase>`;

@@ -44,6 +44,7 @@ import { buildTimelineHref } from "../../timeline/href.js";
 import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { useNotificationStore } from "@/store/notificationStore";
 import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from "./connectionDelete";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -96,25 +97,6 @@ export default function ProviderDetailPage() {
   const [enabledModelIds, setEnabledModelIds] = useState([]);
   const [showVisibleModels, setShowVisibleModels] = useState(false);
 
-  useEffect(() => {
-    currentProviderIdRef.current = providerId;
-    providerGenerationRef.current += 1;
-    // Clear the previous provider's rows immediately on switch. Without this the
-    // old connections and plan badges stay rendered under the new provider's
-    // header until its fetch resolves — and a stale in-flight response is
-    // discarded rather than clearing them, so they can persist indefinitely.
-    setConnections([]);
-    setSelectedConnectionIds([]);
-    setConnectionFilter("");
-    setBulkFailures([]);
-    setCodexPlans({});
-    setProviderApiKeyConnectionNames([]);
-    // The visible-models modal saves under the provider it was opened for;
-    // close it and drop the old allowlist count so neither carries over.
-    setShowVisibleModels(false);
-    setEnabledModelIds([]);
-    setLoading(true);
-  }, [providerId]);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
@@ -206,6 +188,29 @@ export default function ProviderDetailPage() {
   const stopOneByOneRef = useRef(false);
   const [importingQoderModels, setImportingQoderModels] = useState(false);
   const { copied, copy } = useCopyToClipboard();
+
+  useEffect(() => {
+    currentProviderIdRef.current = providerId;
+    providerGenerationRef.current += 1;
+    // Clear the previous provider's rows immediately on switch. Without this the
+    // old connections and plan badges stay rendered under the new provider's
+    // header until its fetch resolves — and a stale in-flight response is
+    // discarded rather than clearing them, so they can persist indefinitely.
+    setConnections([]);
+    setSelectedConnectionIds([]);
+    setConnectionFilter("");
+    setBulkFailures([]);
+    setBulkStatusAction(null);
+    setBulkUpdatingProxy(false);
+    setShowBulkProxyModal(false);
+    setCodexPlans({});
+    setProviderApiKeyConnectionNames([]);
+    // The visible-models modal saves under the provider it was opened for;
+    // close it and drop the old allowlist count so neither carries over.
+    setShowVisibleModels(false);
+    setEnabledModelIds([]);
+    setLoading(true);
+  }, [providerId]);
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -1069,18 +1074,21 @@ export default function ProviderDetailPage() {
   const handleBulkDelete = () => {
     const count = selectedConnectionIds.length;
     if (count === 0) return;
+    const generation = providerGenerationRef.current;
     setConfirmState({
       title: `Delete ${count} Connection${count > 1 ? "s" : ""}`,
       message: `Delete ${count} connection${count > 1 ? "s" : ""}? This cannot be undone.`,
       onConfirm: async () => {
         setConfirmState(null);
+        if (generation !== providerGenerationRef.current) return;
         setBulkFailures([]);
         const result = await deleteConnections([...selectedConnectionIds]);
-        setBulkFailures(result.failures.map(({ id }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason: "Delete failed. Check the account and retry." })));
+        if (generation !== providerGenerationRef.current) return;
+        setBulkFailures(result.failures.map(({ id, error }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason: sanitizeErrorMessage(error) })));
         const deleted = new Set(result.deletedIds);
         setConnections((prev) => prev.filter((c) => !deleted.has(c.id)));
         // Failed rows stay listed and selected so the operator can fix and retry them.
-        setSelectedConnectionIds(result.failures.map((failure) => failure.id));
+        setSelectedConnectionIds((prev) => prev.filter((id) => !deleted.has(id)));
         if (result.failures.length > 0) notify.error(bulkDeleteFailureMessage(result), "Some connections were not deleted");
       }
     });
@@ -1222,6 +1230,7 @@ export default function ProviderDetailPage() {
   const handleBulkSetConnectionStatus = async (isActive) => {
     const idsToUpdate = [...selectedConnectionIds];
     if (idsToUpdate.length === 0) return;
+    const generation = providerGenerationRef.current;
 
     setBulkFailures([]);
     setBulkStatusAction(isActive ? "on" : "off");
@@ -1244,6 +1253,7 @@ export default function ProviderDetailPage() {
         })
       );
 
+      if (generation !== providerGenerationRef.current) return;
       const successfulConnections = results.
       filter((result) => result.ok && result.connection).
       map((result) => result.connection);
@@ -1254,9 +1264,10 @@ export default function ProviderDetailPage() {
       }
 
       setBulkFailures(failures.map(({ id, reason }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason })));
-      setSelectedConnectionIds(failures.map(({ id }) => id));
+      const succeeded = new Set(results.filter((result) => result.ok).map(({ id }) => id));
+      setSelectedConnectionIds((prev) => prev.filter((id) => !succeeded.has(id)));
     } finally {
-      setBulkStatusAction(null);
+      if (generation === providerGenerationRef.current) setBulkStatusAction(null);
     }
   };
 
@@ -1346,11 +1357,13 @@ export default function ProviderDetailPage() {
   };
 
   const applyProxyAssignments = async (assignments) => {
+    const generation = providerGenerationRef.current;
     setBulkUpdatingProxy(true);
     setBulkFailures([]);
     try {
       const failures = [];
       for (const { connectionId, proxyPoolId } of assignments) {
+        if (generation !== providerGenerationRef.current) return;
         try {
           const res = await fetch(`/api/providers/${connectionId}`, {
             method: "PUT",
@@ -1363,11 +1376,12 @@ export default function ProviderDetailPage() {
           failures.push({ id: connectionId, reason: "Network error" });
         }
       }
+      if (generation !== providerGenerationRef.current) return;
       setBulkFailures(failures.map((failure) => ({ ...failure, name: connections.find((c) => c.id === failure.id)?.name || failure.id })));
       await fetchConnections();
-      setShowBulkProxyModal(false);
+      if (generation === providerGenerationRef.current) setShowBulkProxyModal(false);
     } finally {
-      setBulkUpdatingProxy(false);
+      if (generation === providerGenerationRef.current) setBulkUpdatingProxy(false);
     }
   };
 

@@ -61,7 +61,6 @@ vi.mock("../../open-sse/services/projectId.js", () => ({
 }));
 
 const { handleChat, isNonChatModel } = await import("../../src/sse/handlers/chat.js");
-const { LOCAL_REQUEST_ERROR } = await import("../../open-sse/services/combo.js");
 
 function makeRequest(model) {
   return new Request("http://localhost/v1/chat/completions", {
@@ -102,7 +101,7 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model });
     const response = await handleChat(makeRequest(`openai/${model}`));
     expect(response.status).toBe(400);
-    expect((await response.json()).error.message).toContain("cannot be used for llm");
+    expect((await response.json()).error.message).toContain("not a chat model");
     expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
     expect(mocks.handleChatCore).not.toHaveBeenCalled();
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
@@ -119,11 +118,12 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
   });
 
   it("marks unavailable local metadata without selecting or penalizing an account", async () => {
-    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "tts-1" });
-    mocks.getCustomModels.mockRejectedValue(new Error("metadata unavailable"));
-    const response = await handleChat(makeRequest("openai/tts-1"));
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
+    mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }]);
+    mocks.getSyncedModelCatalog.mockRejectedValue(new Error("metadata unavailable"));
+    const response = await handleChat(makeRequest("openai/catalog-only"));
     expect(response.status).toBe(503);
-    expect(response[LOCAL_REQUEST_ERROR]).toBe(true);
+    expect((await response.json()).error.message).toContain("Model metadata is temporarily unavailable");
     expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
   });

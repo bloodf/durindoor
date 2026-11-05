@@ -94,6 +94,8 @@ Asynchronous video (`/v1/videos`) and music (Suno, Udio) jobs get the same accep
 
 Restoring or importing a database starts a new billing epoch. A request admitted before the restore whose provider call finishes after it is not recorded in the new epoch. Chat usage from such a request is dropped. Media and other non-chat routes fail the response with a usage-accounting error (`USAGE_ACCOUNTING_FAILED`) even though the provider already did the work, and the gateway does not retry the call. Avoid restoring while paid requests are in flight.
 
+The unknown-cost count is a lifetime counter for the key. When DurinDoor rebuilds the per-key totals from retained usage history, which happens after a legacy import or when the totals table is missing, it reconstructs that count from the history it still holds. Retained history is only a lower bound: pruning, a history reset, or a restored backup can leave fewer rows than the lifetime count, so a rebuild raises the count to what the retained history supports and never lowers it. Migration 026 seeded the count on the first upgrade, and migration 028 repairs a count that an older rebuild dropped. A count that was seeded too high is not corrected downward.
+
 
 ## Native-unit rate overrides
 

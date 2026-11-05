@@ -1,6 +1,6 @@
 # Unknown-cost count preservation in historical usage rebuilds (issue #1655)
 
-Status: implemented on the author branch, pending review. The branch fast-forwards onto PR #1653 (`eb5b52f5`) and adds the repair on top of it.
+Status: ordinary author validation completed for the source corrections after independent REQUEST CHANGES on `183243d342f19b3494b4af08d067c89cc56e093d`. The branch includes PR #1653 through `eb5b52f5`. Fresh exact-head independent review and the trusted full checkpoint remain pending; author results are not approval or readiness.
 
 Owner lens: accounting rebuild semantics and cross-engine parity. The MCP identity and exemption work stays with #1653, which remains frozen and unmerged.
 
@@ -9,7 +9,7 @@ PR #1653 head integrated: `eb5b52f5c630f9bce315100b237bee36c4dfcb86` (open, draf
 
 ## 1. The defect
 
-Two historical rebuild helpers rebuild per-key lifetime totals from retained usage history and drop the durable unknown-cost count.
+At the inherited base, two historical rebuild helpers dropped the durable unknown-cost count when rebuilding per-key lifetime totals from retained history.
 
 | Path | File | Lost value |
 | --- | --- | --- |
@@ -123,12 +123,12 @@ flowchart TD
 
 ## 5. Cross-engine divergence
 
-The legacy replacement diverges between engines today.
+The inherited legacy replacement diverged between engines before this patch.
 
 - SQLite executes real `INSERT OR REPLACE`, which deletes the row and re-inserts it. An omitted column returns to its default, so the durable count becomes 0.
 - PostgreSQL never sees that statement. `rewriteSqliteDml` (`src/lib/db/dialects/postgres/dmlRewrite.js:100-153`) rewrites `INSERT OR REPLACE` into `ON CONFLICT ("apiKeyId") DO UPDATE SET` over the listed columns only (`:122-153`). `unknownCostRequests` is not listed, so PostgreSQL preserves it.
 
-The same helper therefore resets the count on SQLite and preserves it on PostgreSQL.
+That inherited helper reset the count on SQLite and preserved it on PostgreSQL.
 
 ### Proposed portable write
 
@@ -147,7 +147,7 @@ ON CONFLICT(apiKeyId) DO UPDATE SET
   updatedAt = excluded.updatedAt
 ```
 
-The PG rewrite leaves a statement that already carries `ON CONFLICT` untouched, so this SQL runs unchanged on both engines. The monotonic expression is the `CASE WHEN` form that migration 026 already uses (`src/lib/db/migrations/026-usage-unknown-cost.js:51-54`). A two-argument `max()` exists in SQLite but not in PostgreSQL, where the column is a bigint, so the scalar form is not portable. The live PostgreSQL suite caught that difference.
+The PG rewrite leaves a statement that already carries `ON CONFLICT` untouched, so this SQL runs unchanged on both engines. The monotonic expression is the `CASE WHEN` form that migration 026 already uses (`src/lib/db/migrations/026-usage-unknown-cost.js:51-54`). A two-argument `max()` exists in SQLite but not in PostgreSQL, where the column is a bigint, so the scalar form is not portable. Prior PostgreSQL diagnostics exposed that difference, but those attempts are not accepted isolated parity proof.
 
 ## 6. Applied patch and ownership
 
@@ -210,7 +210,7 @@ So 28 was the next free shared version. The inventory was re-read after the fast
 - `src/lib/db/migrations/postgres/028-usage-unknown-cost-repair.js`, generated.
 - `src/lib/db/migrations/postgres/index.js`, generated. It is auto-generated and was not hand-edited (`scripts/migrate-sqlite-ddl-to-pg.mjs:320`).
 
-Generation and verification: `node scripts/migrate-sqlite-ddl-to-pg.mjs` then `npm run check:postgres-migrations`. The check compares the generated files byte for byte and the two registries by version and name (`scripts/check-postgres-migrations.mjs:11-40`). Both passed on the author branch.
+Future authorized generation/check commands are `node scripts/migrate-sqlite-ddl-to-pg.mjs` and `npm run check:postgres-migrations`. Earlier reported passes are retained but not accepted isolated evidence. Source inspection shows that the generator emits a fixed default re-export for 028, so the named-export and absent-source corrections require no generated-file or template change. Neither command ran during this source-only follow-up.
 
 ### Engine contract
 
@@ -223,7 +223,7 @@ Generation and verification: `node scripts/migrate-sqlite-ddl-to-pg.mjs` then `n
 - `applyVersionedMigrations` wraps each `up()` in `adapter.transaction(...)` and records the version in `appliedMigrations` and `schemaVersion` only after `up()` returns (`src/lib/db/migrate.js:139-145`). A failure rolls back and leaves version 28 unapplied, so the migration stays retryable. The PostgreSQL adapter uses `BEGIN` / `COMMIT` / `ROLLBACK` with savepoints (`internal/docs/postgres-migrations.mdx:140`).
 - Re-running is safe. The repair recomputes the reconstruction from history and applies U3, so a second pass returns the same value.
 - A database that already recorded version 28 does not run it again. A hand-rewound `schemaVersion` re-runs it (`src/lib/db/migrate.js:111-117`), which is safe under U3.
-- Guard inside the migration: skip when `apiKeyUsageTotals` or the `unknownCostRequests` column is absent, rather than aborting. Migration 026 owns the creation of the column and the seeding of the count.
+- Guards inside migration 028 skip reconstruction when the destination unknown-cost column, `usageHistory`, or `apiKeys` is absent. SQLite startup runs migrations before additive schema sync, so an already-applied 026 cannot recreate missing sources for 028. A skipped reconstruction preserves every durable field and lets startup recreate empty tables. It creates no history and catches no reflection, query or write errors. Migration 026 remains unchanged.
 - Malformed `meta` metadata must be tolerated, not fatal, the same way 026 tolerates it (`src/lib/db/migrations/026-usage-unknown-cost.js:44-46`).
 
 ### What the repair cannot fix
@@ -232,47 +232,28 @@ A durable count that base 026 overcounted for legacy MCP-error rows stays as it 
 
 ## 8. Regression coverage
 
-Draft file: `tests/unit/api-key-usage-unknown-cost-rebuild.test.js`. Not executed yet.
+The source-only review identified F1, a version-27 startup failure when history is absent, and gaps G1/G2 in legacy monotonicity and real-028 rollback coverage. Fresh ordinary author execution covered the following cases:
 
-| Group | Cases | Expected on base `f0c21bf6` | Reason |
-| --- | --- | --- | --- |
-| Production SQLite adapter | missing row reconstructs 1 | red | #1655 defect |
-| Production SQLite adapter | legacy replacement reconstructs 1 | red | #1655 defect |
-| Production SQLite adapter | exact failed-MCP pair exempt from both paths | red | #1653 exemption |
-| Production SQLite adapter | other-provider error counts | red | #1655 defect |
-| Production SQLite adapter | no provider and no status counts | red | #1655 defect |
-| Production SQLite adapter | legacy numeric unknown metadata counts | red | #1655 defect |
-| Production SQLite adapter | NULL cost with unknown metadata counts once | red | #1655 defect |
-| Production SQLite adapter | provider case, status whitespace, near-miss name count | red | #1655 defect |
-| Production SQLite adapter | durable count above the reconstruction is not lowered | green | guard |
-| Production SQLite adapter | reconstructed count survives history truncation | red | #1655 defect |
-| Production SQLite adapter | durable count without explainable history survives | green | guard |
-| Production SQLite adapter | history rows without a key are not attributed | green | guard |
-| Production SQLite adapter | repeated rebuilds return the same value | green | guard |
-| Legacy shapes | totals table without the column rebuilds and stays unaltered | green | guard for the 006 path |
-| Legacy shapes | history without provider and status rebuilds without failing | green | guard against the unguarded predicate at the #1653 head |
-| Legacy shapes | unknown count kept when history lacks provider and status | red | #1655 defect |
-| Legacy shapes | the write names the column and is monotonic | red | #1655 defect |
-| Legacy shapes | the legacy write is not `INSERT OR REPLACE` | red | #1655 defect |
-| Legacy shapes | SQLite resets an omitted column on replace | green | control |
-| PostgreSQL rewrite parity | the legacy statement omits the column after the rewrite | green | control for the divergence |
-| PostgreSQL rewrite parity | a rewritten monotonic upsert keeps the column | green | design control |
-| PostgreSQL rewrite parity | the monotonic upsert applies on SQLite without lowering | green | design control |
+- `tests/unit/db-migration-chain.test.js` builds a file-backed database with the real registry through 027 and 026 already recorded. One startup case drops history and checks additive recreation, all durable fields, the new 028 marker and reopen idempotence. Another uses a SQL trigger that fails only after the first key's repair is visible. It checks rollback of both keys and both migration markers, then retry and reopen with repeat writes forbidden.
+- `tests/unit/api-key-usage-unknown-cost-rebuild.test.js` calls the actual legacy helper with durable/history counts 5/1, 5/0 and 0/1. A shared matrix calls all three entry points for NULL and numeric-unknown costs, exact MCP errors, NULL attributes, case/whitespace/provider near misses and double-count prevention. Absent-source cases preserve the full durable row. Synthetic 900/901 runner tests and the handwritten SQLite monotonic-upsert control were replaced by actual migration/helper coverage.
+- `tests/unit/db/postgres-unknown-cost-rebuild-live.test.js` and its owned worker prepare version 27 through the real PostgreSQL registry using the production synchronous adapter, with no injected client factory. The upgrade test exercises real 028 through the transaction runner, failure on the second repair, marker/data rollback, retry and a normal production-driver reopen. The legacy-helper cases distinguish larger, empty-history and lower durable counts. This remains opt-in; a skipped test is not PostgreSQL proof.
+- Explicit zero-unknown assertions extend the existing production schema-v5/legacy-import caller checks and committed-token overwrite checks. Existing policy/backup restore tests already assert imported unknown counts and epoch fencing; their behavior is unchanged.
 
-The green rows are guards. A fix that satisfies U3 keeps them green, and a fix that assigns the reconstructed value instead of taking the maximum breaks the durable-count rows.
+The new F1 startup regression failed against the published `183243d3` migration with `no such table: usageHistory`. With the guard restored, all 227 assertions in the 11-file SQLite/caller selection passed, including F1 and real-028 rollback/retry/reopen. The opt-in PostgreSQL selection passed all 12 assertions. All 14 PostgreSQL worker close checks observed natural exit with code 0. JSON/JUnit, raw logs and input hashes were retained for both selections.
 
 ## 9. Evidence limits
 
-- The source reasoning in this document is source-level. The regression suites described in section 8 were executed on the author branch; their logs and receipts are retained outside the repository.
-- The focused SQLite run covers the new suite plus the caller evidence: the shipped migration chain, the committed-tokens regression that pins the overwrite semantics, the legacy round trip, the missing-table path, the backup round trips, the quota migration, the registry test, and the two #1653 suites. It does not cover the whole repository suite.
-- The PostgreSQL parity run uses a private disposable cluster with the production synchronous adapter in a loader-free child process. The cluster binaries are a private, relocated PostgreSQL 18.6 whose compiled-in Homebrew paths were rewritten to equally long private paths in the private copy. Nothing outside the private tree is referenced or written.
-- The earlier PostgreSQL attempt, which resolved the compiled-in paths through symlinks in the shared Homebrew prefix, is rejected setup evidence. It is not a parity result. The three symlinks that attempt created were removed, and their objects are retained privately with their original inodes and targets.
-- The prior reviews were read as text. Their retained fixtures and hashes were not re-executed.
-- The claim that the current writer cannot produce a numeric-cost row with unknown metadata rests on the validation at `src/lib/db/repos/usageRepo.js:793-796` and the predicate at `:832`. The age and origin of the legacy rows that do have that shape are not independently dated.
-- Whether base 026 overcounted legacy MCP-error rows in a real installation is not established. It depends on imported history that predates the current handler, which emitted a known zero cost (`src/lib/mcp/gateway/handler.js:124`). The repair deliberately leaves that direction alone.
-- The public meaning of the count is documented at `docs/guides/usage-and-quota.mdx:87`. The guide now also describes the rebuild, its lower-bound limit, and the two migrations, in one narrow paragraph.
-- The minimal-schema cases in the new suite are artificial shapes built in the test. They are compatibility guards, not a reproduced supported upgrade defect: no tracked release shipped a history table without `provider` and `status`.
-- `internal/docs/postgres-migrations.mdx` stated that both engines reach version 25, which was already stale. It now states version 28.
+The independent source review at `183243d3` returned REQUEST CHANGES. Its retained report SHA-256 is `fea31e97fd037e852634f69700abe51427b22c53190d555fbbc332c9da2cbf0e`. Local corrections do not change that verdict or the reviewed head.
+
+- The previously reported 193 SQLite assertions, PostgreSQL results, lint/docs and generated checks are retained historical outputs, not accepted isolated execution evidence. The probe checked private HOME, ABI and a credential denylist. It did not prove real-home/network denial in the parent and child; the supervisor did not enforce an OS sandbox or an allowlisted environment.
+- The Kimchi preseed and 240-second timeout attempts remain rejected. The preseed was removed and the 60-second fixture timeout restored. The refused sudo/firewall probe was not retried. Root verified removal of the three shared Homebrew links; their retained objects and all failed receipts remain private evidence. Private relocated binaries do not establish isolation by themselves.
+- The historical lint-staged diff run failed on the anonymous default export in migration 028. The named-object/default-export correction addresses that source cause. The historical no-staged-files run is not hook acceptance, and the original complete hook/range/title receipts remain missing. Fresh staged-hook and commit checks are recorded separately with the publication evidence; they do not retroactively repair that historical gap.
+- Fresh execution used explicit `/usr/bin/sandbox-exec` and `/usr/bin/env -i`, copied Node 26.13.0/ABI 147, private HOME/DATA/cache/reports and two Vitest fork workers. Each launch first verified external TCP and synthetic real-home sentinel read/write `EPERM` in the parent and a spawned child, before candidate imports. PostgreSQL used a new owned private cluster, loopback port 55455 only, copied private binaries and read-only retained private libraries. No shared symlink writes, real database, credentials, updater preseed, loader or timer suppression were used.
+- Fresh SQLite execution retained nine Kimchi VM-import diagnostics. The 14 PostgreSQL worker logs retained 14 Kimchi fetch/DNS failures and module warnings; no handler or timer was suppressed. The first fresh SQLite full-selection attempt ended with session exit 143 before its supervisor completion receipt, with an empty JUnit file. Its cause is undetermined and it remains a failed attempt. A new labeled run with streaming logs passed; that retry does not turn the interrupted run into a pass.
+- The runtime results cover these ordinary author selections only. Final source/commit binding, hook and commitlint outcomes are separate publication records. A fresh independent exact-head review and trusted full checkpoint are still required. No gate status, review approval or merge readiness follows from these results.
+- `ensureAndBackfillApiKeyUsageTotals` has no production caller in the reviewed head; its old caller description is stale. Direct tests establish its exported contract only. Production startup/import evidence uses `backfillApiKeyUsageTotals` and the real runner.
+- Minimal schemas without attribution columns are artificial compatibility fixtures. F1 instead models a supported SQLite additive-recovery path after migrations through 027 were recorded. The guard does not add PostgreSQL additive schema recovery.
+- No automatic downward correction of historical overcounts is authorized. The age and origin of legacy numeric-unknown rows and any real installation's prior MCP overcount remain unproven.
 
 ## 10. Open decisions
 

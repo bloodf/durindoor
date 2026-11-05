@@ -6,8 +6,18 @@ const { getAdapter } = await import('../../src/lib/db/driver.js');
 const { backfillApiKeyUsageTotals } = await import('../../src/lib/db/helpers/apiKeyUsageTotals.js');
 const { ensureAndBackfillApiKeyUsageTotals } = await import('../../src/lib/db/migrations/apiKeyUsageTotalsBackfill.js');
 const { default: unknownCostRepair } = await import('../../src/lib/db/migrations/028-usage-unknown-cost-repair.js');
+const { applyVersionedMigrations } = await import('../../src/lib/db/migrate.js');
+const { PG_MIGRATIONS, bootstrapPgMetaTable } = await import('../../src/lib/db/migrations/postgres/index.js');
 
-const adapter = await getAdapter();
+let adapter;
+if (process.env.DURINDOOR_TEST_BOOTSTRAP_V27 === '1') {
+  const { createPostgresAdapter } = await import('../../src/lib/db/adapters/pgAdapter.js');
+  adapter = await createPostgresAdapter({ url: process.env.DURINDOOR_PG_URL });
+  bootstrapPgMetaTable(adapter);
+  applyVersionedMigrations(adapter, PG_MIGRATIONS.filter((migration) => migration.version <= 27));
+} else {
+  adapter = await getAdapter();
+}
 
 process.send({
   ready: true,
@@ -74,6 +84,8 @@ process.on('message', async ({ id, action, args }) => {
     } else if (action === 'repair') {
       unknownCostRepair.up(adapter);
       value = true;
+    } else if (action === 'migrate') {
+      value = applyVersionedMigrations(adapter, PG_MIGRATIONS);
     } else if (action === 'totals') {
       value = adapter.all(
         `SELECT "apiKeyId","totalTokens","totalCost","totalRequests","unknownCostRequests"

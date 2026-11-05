@@ -24,7 +24,7 @@ let admin, sql, url, directory, workerEntry, bundleDirectory, diagnosticsDirecto
 let databaseCreated = false;
 const workers = new Set();
 
-async function worker(label) {
+async function worker(label, bootstrapV27 = false) {
   const home = fs.mkdtempSync(path.join(directory, `${label}-`));
   const workerUrl = new URL(url);
   workerUrl.searchParams.set('application_name', `dd-unknown-cost-${label}`);
@@ -41,6 +41,7 @@ async function worker(label) {
       TZ: 'UTC',
       DURINDOOR_DATABASE_ENGINE: 'postgres',
       DURINDOOR_PG_URL: workerUrl.toString(),
+      ...(bootstrapV27 ? { DURINDOOR_TEST_BOOTSTRAP_V27: '1' } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
@@ -166,9 +167,9 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
     url = target.toString();
     sql = new pg.Client({ connectionString: url });
     await sql.connect();
-    // The first production adapter connection applies the PostgreSQL migration
-    // set, so the schema exists before the fixture seeds anything.
-    const bootstrap = await worker('bootstrap');
+    // Use the production synchronous adapter and registry through 027 so the
+    // first test upgrades a database on which 026 ran and 028 has never run.
+    const bootstrap = await worker('bootstrap', true);
     await closeWorker(bootstrap);
     await sql.query(
       `INSERT INTO "apiKeys"("id","key","name","isActive","allowedCombos","createdAt") VALUES($1,$2,$3,1,$4,$5)`,
@@ -187,6 +188,65 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
       try { await admin?.query(`DROP DATABASE IF EXISTS ${databaseName}`); } catch { /* cluster already gone */ }
     }
     try { fs.rmSync(directory, { recursive: true, force: true }); } catch { /* best effort */ }
+  });
+
+  it('rolls back a partial real 028 upgrade from v27, then retries and reopens', async () => {
+    const state = await worker('upgrade-v27', true);
+    const secondId = 'repair-second-key';
+    const secondKey = 'synthetic-second-key';
+    const markers = async () => (await sql.query(`SELECT * FROM "_meta" WHERE key IN ('schemaVersion', 'appliedMigrations') ORDER BY key`)).rows;
+    const rows = async () => (await sql.query(`SELECT * FROM "apiKeyUsageTotals" ORDER BY "apiKeyId"`)).rows;
+    try {
+      const beforeMarkers = await markers();
+      expect(beforeMarkers.find((row) => row.key === 'schemaVersion').value).toBe('27');
+      const applied = JSON.parse(beforeMarkers.find((row) => row.key === 'appliedMigrations').value);
+      expect(applied).toContain(26);
+      expect(applied).toContain(27);
+      expect(applied).not.toContain(28);
+      await state.call('seedKeys', [{ id: secondId, key: secondKey, name: 'Second', createdAt: timestamp }]);
+      await state.call('seedHistory', [apiKey, secondKey].map((key) => ({ timestamp, apiKey: key, cost: null })));
+      await state.call('seedTotals', [keyId, secondId].map((id) => ({
+        apiKeyId: id, totalTokens: 40, totalCost: 1.5, totalRequests: 12, unknownCostRequests: 0,
+      })));
+      const before = await rows();
+      await sql.query(`CREATE FUNCTION fail_second_repair() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM "apiKeyUsageTotals" WHERE "unknownCostRequests" > 0) THEN
+            RAISE EXCEPTION '028 failure after first repair';
+          END IF;
+          RETURN NEW;
+        END; $$`);
+      await sql.query(`CREATE TRIGGER fail_second_repair BEFORE UPDATE OF "unknownCostRequests" ON "apiKeyUsageTotals"
+        FOR EACH ROW EXECUTE FUNCTION fail_second_repair()`);
+      await expect(state.call('migrate')).rejects.toThrow('028 failure after first repair');
+      expect(await rows()).toEqual(before);
+      expect(await markers()).toEqual(beforeMarkers);
+      await sql.query(`DROP TRIGGER fail_second_repair ON "apiKeyUsageTotals"`);
+      expect((await state.call('migrate')).value).toMatchObject({ applied: 1, from: 27, to: 28 });
+      const repaired = await rows();
+      expect(repaired.map(({ unknownCostRequests, ...row }) => row))
+        .toEqual(before.map(({ unknownCostRequests, ...row }) => row));
+      expect(repaired.map((row) => Number(row.unknownCostRequests))).toEqual([1, 1]);
+      expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28]);
+      // With repaired rows present, any repeat UPDATE would now throw.
+      await sql.query(`CREATE TRIGGER fail_second_repair BEFORE UPDATE OF "unknownCostRequests" ON "apiKeyUsageTotals"
+        FOR EACH ROW EXECUTE FUNCTION fail_second_repair()`);
+      await closeWorker(state);
+      const again = await worker('upgrade-reopen');
+      try {
+        expect(await rows()).toEqual(repaired);
+        expect((await markers()).find((row) => row.key === 'schemaVersion').value).toBe('28');
+        expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28]);
+      } finally {
+        await closeWorker(again);
+      }
+    } finally {
+      await sql.query(`DROP TRIGGER IF EXISTS fail_second_repair ON "apiKeyUsageTotals"`);
+      await sql.query(`DROP FUNCTION IF EXISTS fail_second_repair()`);
+      await closeWorker(state);
+      await reset();
+      await sql.query(`DELETE FROM "apiKeys" WHERE id = $1`, [secondId]);
+    }
   });
 
   it('runs the production PostgreSQL adapter in a loader-free child process', async () => {
@@ -264,16 +324,18 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
     }
   });
 
-  it('keeps an existing durable count through the legacy replacement rebuild', async () => {
+  it.each([[5, 1, 5], [5, 0, 5], [0, 1, 1]])('legacy helper composes durable %i with retained %i as %i', async (durable, retained, expected) => {
     await reset();
     const state = await worker('legacy-replacement');
     try {
-      await state.call('seedHistory', [{ timestamp, provider: 'openai', apiKey, cost: null, status: 'ok' }]);
-      await state.call('seedTotals', [{ apiKeyId: keyId, totalRequests: 1, unknownCostRequests: 1 }]);
+      await state.call('seedHistory', Array.from({ length: retained }, () => ({ timestamp, provider: 'openai', apiKey, cost: null, status: 'ok' })));
+      await state.call('seedTotals', [{ apiKeyId: keyId, totalRequests: 1, unknownCostRequests: durable }]);
       await state.call('legacyBackfill');
       const row = await totals(keyId);
-      expect(Number(row.unknownCostRequests)).toBe(1);
-      expect(Number(row.totalRequests)).toBe(1);
+      expect(Number(row.unknownCostRequests)).toBe(expected);
+      expect(Number(row.totalRequests)).toBe(retained);
+      await state.call('legacyBackfill');
+      expect(Number((await totals(keyId)).unknownCostRequests)).toBe(expected);
     } finally {
       await closeWorker(state);
     }

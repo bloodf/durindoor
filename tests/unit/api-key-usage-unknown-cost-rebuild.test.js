@@ -5,7 +5,6 @@ import { rewriteSqliteDml } from "../../src/lib/db/dialects/postgres/dmlRewrite.
 import { backfillApiKeyUsageTotals } from "../../src/lib/db/helpers/apiKeyUsageTotals.js";
 import { ensureAndBackfillApiKeyUsageTotals } from "../../src/lib/db/migrations/apiKeyUsageTotalsBackfill.js";
 import migration028 from "../../src/lib/db/migrations/028-usage-unknown-cost-repair.js";
-import { applyVersionedMigrations } from "../../src/lib/db/migrate.js";
 
 // Regression contract for issue #1655: rebuilding per-key lifetime totals from
 // retained usage history must preserve the durable unknown-cost count.
@@ -135,6 +134,54 @@ function unknownCount(db, id) {
 }
 
 describe("API-key usage rebuild: unknown-cost count preservation", () => {
+  describe.each([
+    ["current helper", (db) => backfillApiKeyUsageTotals(db, { overwrite: true })],
+    ["legacy helper", ensureAndBackfillApiKeyUsageTotals],
+    ["migration 028", (db) => migration028.up(db)],
+  ])("%s predicate contract", (_name, rebuild) => {
+    it.each([
+      ["ordinary success", "openai", "ok", 1],
+      ["ordinary error", "openai", "error", 1],
+      ["exact MCP error", "mcp-gateway", "error", 0],
+      ["NULL provider", null, "error", 1],
+      ["NULL status", "mcp-gateway", null, 1],
+      ["NULL attributes", null, null, 1],
+      ["provider near miss", "mcp-gateway-other", "error", 1],
+      ["provider case", "MCP-GATEWAY", "error", 1],
+      ["status case", "mcp-gateway", "ERROR", 1],
+      ["status whitespace", "mcp-gateway", "error ", 1],
+    ])("%s has the same NULL and numeric-unknown eligibility", (_label, provider, status, expected) => {
+      const db = freshDb();
+      for (const [id, cost] of [["null-cost", null], ["numeric-cost", 0]]) {
+        insertKey(db, id, id);
+        setTotals(db, id);
+        // Unknown metadata on the NULL row must not count that row twice.
+        insertHistory(db, { secret: id, cost, provider, status, meta: '{"costStatus":"unknown"}' });
+      }
+      rebuild(db);
+      expect(unknownCount(db, "null-cost")).toBe(expected);
+      expect(unknownCount(db, "numeric-cost")).toBe(expected);
+      rebuild(db);
+      expect(unknownCount(db, "null-cost")).toBe(expected);
+      expect(unknownCount(db, "numeric-cost")).toBe(expected);
+    });
+  });
+
+  it.each([
+    [5, 1, 5],
+    [5, 0, 5],
+    [0, 1, 1],
+  ])("legacy helper composes durable %i with retained %i as %i", (durable, retained, expected) => {
+    const db = freshDb();
+    insertKey(db, "key-1");
+    setTotals(db, "key-1", { unknownCostRequests: durable });
+    for (let i = 0; i < retained; i++) insertHistory(db);
+    ensureAndBackfillApiKeyUsageTotals(db);
+    expect(unknownCount(db, "key-1")).toBe(expected);
+    ensureAndBackfillApiKeyUsageTotals(db);
+    expect(unknownCount(db, "key-1")).toBe(expected);
+  });
+
   describe("rebuild helper over the current schema", () => {
     it("reconstructs the count when the durable totals row is missing", () => {
       const db = freshDb();
@@ -392,6 +439,17 @@ describe("API-key usage rebuild: unknown-cost count preservation", () => {
   });
 
   describe("migration 028 repairs the durable count", () => {
+    it.each(["usageHistory", "apiKeys"])("preserves every durable value when %s is absent", (table) => {
+      const db = minimalDb();
+      insertMinimalKey(db, "key-1");
+      setTotals(db, "key-1", { totalTokens: 40, totalCost: 1.5, totalRequests: 12, unknownCostRequests: 5 });
+      const before = totalsRow(db, "key-1");
+      db.exec(`DROP TABLE ${table}`);
+      migration028.up(db);
+      expect(totalsRow(db, "key-1")).toEqual(before);
+      expect(db.all(`PRAGMA table_info(${table})`)).toHaveLength(0);
+    });
+
     it("raises a lost count to the reconstructed bound", () => {
       const db = freshDb();
       insertKey(db, "key-1");
@@ -507,52 +565,6 @@ describe("API-key usage rebuild: unknown-cost count preservation", () => {
     });
   });
 
-  describe("migration runner contract", () => {
-    function metaDb() {
-      const db = createBetterSqliteAdapter(":memory:");
-      openDbs.push(db);
-      db.exec(buildCreateTableSql("_meta", TABLES._meta));
-      db.exec(buildCreateTableSql("apiKeys", TABLES.apiKeys));
-      return db;
-    }
-
-    it("records the version after a successful migration and applies nothing on a second run", () => {
-      const db = metaDb();
-      const migrations = [{
-        version: 900,
-        name: "probe-ok",
-        up: (adapter) => {
-          adapter.run(`INSERT INTO apiKeys(id, key, name, createdAt) VALUES('probe', 'probe-secret', 'Probe', '2026-01-01T00:00:00.000Z')`);
-        },
-      }];
-
-      const first = applyVersionedMigrations(db, migrations);
-      expect(first.applied).toBe(1);
-      expect(db.get(`SELECT value FROM _meta WHERE key = 'appliedMigrations'`).value).toContain("900");
-
-      const second = applyVersionedMigrations(db, migrations);
-      expect(second.applied).toBe(0);
-      expect(db.get(`SELECT COUNT(*) AS c FROM apiKeys`).c).toBe(1);
-    });
-
-    it("rolls back and does not record the version when a migration fails", () => {
-      const db = metaDb();
-      const migrations = [{
-        version: 901,
-        name: "probe-fail",
-        up: (adapter) => {
-          adapter.run(`INSERT INTO apiKeys(id, key, name, createdAt) VALUES('probe', 'probe-secret', 'Probe', '2026-01-01T00:00:00.000Z')`);
-          throw new Error("probe failure");
-        },
-      }];
-
-      expect(() => applyVersionedMigrations(db, migrations)).toThrow("probe failure");
-      expect(db.get(`SELECT COUNT(*) AS c FROM apiKeys`).c).toBe(0);
-      const recorded = db.get(`SELECT value FROM _meta WHERE key = 'appliedMigrations'`);
-      expect(recorded === null || recorded === undefined || !String(recorded.value).includes("901")).toBe(true);
-    });
-  });
-
   describe("PostgreSQL rewrite parity", () => {
     it("omits the unknown-cost count from the rewritten historical replacement statement", () => {
       const rewritten = rewriteSqliteDml(
@@ -585,38 +597,6 @@ describe("API-key usage rebuild: unknown-cost count preservation", () => {
       expect(monotonic[3]).toMatch(/^excluded\./);
       expect(monotonic[4]).not.toMatch(/^excluded\./);
       expect(rewritten).not.toMatch(/MAX\s*\(/i);
-    });
-
-    it("applies a monotonic upsert on SQLite without lowering the durable count", () => {
-      const db = freshDb();
-      insertKey(db, "key-1");
-      setTotals(db, "key-1", { totalRequests: 1, unknownCostRequests: 5 });
-
-      db.run(
-        `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt)
-         VALUES(?, ?, ?, ?, ?, ?)
-         ON CONFLICT(apiKeyId) DO UPDATE SET
-           totalTokens = excluded.totalTokens,
-           totalCost = excluded.totalCost,
-           totalRequests = excluded.totalRequests,
-           unknownCostRequests = CASE WHEN apiKeyUsageTotals.unknownCostRequests < excluded.unknownCostRequests THEN excluded.unknownCostRequests ELSE apiKeyUsageTotals.unknownCostRequests END,
-           updatedAt = excluded.updatedAt`,
-        ["key-1", 0, 0, 1, 1, NOW],
-      );
-      expect(unknownCount(db, "key-1")).toBe(5);
-
-      db.run(
-        `INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt)
-         VALUES(?, ?, ?, ?, ?, ?)
-         ON CONFLICT(apiKeyId) DO UPDATE SET
-           totalTokens = excluded.totalTokens,
-           totalCost = excluded.totalCost,
-           totalRequests = excluded.totalRequests,
-           unknownCostRequests = CASE WHEN apiKeyUsageTotals.unknownCostRequests < excluded.unknownCostRequests THEN excluded.unknownCostRequests ELSE apiKeyUsageTotals.unknownCostRequests END,
-           updatedAt = excluded.updatedAt`,
-        ["key-1", 0, 0, 9, 7, NOW],
-      );
-      expect(unknownCount(db, "key-1")).toBe(7);
     });
   });
 });

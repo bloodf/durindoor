@@ -26,7 +26,7 @@ import { hasUnknownCostColumn, tableColumnNames, unknownCostEligibilitySql } fro
  * restored backup carries a count its retained history cannot explain. The
  * count is therefore never corrected downward here.
  */
-export default {
+const migration = {
   version: 28,
   name: "usage-unknown-cost-repair",
   up(db) {
@@ -35,6 +35,11 @@ export default {
     if (!hasUnknownCostColumn(db)) return;
 
     const historyColumns = tableColumnNames(db, "usageHistory");
+    // SQLite startup runs migrations before additive schema repair. An absent
+    // source supplies no reconstruction; preserve every durable value and let
+    // SQLite recreate the table. Reflection and SQL errors still propagate.
+    if (!historyColumns.size || !tableColumnNames(db, "apiKeys").size) return;
+
     const eligibility = unknownCostEligibilitySql(db, "h");
     const counts = new Map();
 
@@ -75,3 +80,5 @@ export default {
     }
   },
 };
+
+export default migration;

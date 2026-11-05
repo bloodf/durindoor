@@ -18,7 +18,7 @@ than arbitrary model IDs.
 | Web search and fetch | Search handler test; fetch not tested | No explicit cross-kind test | `tests/unit/nonchat-model-kind.test.js:62`; `src/sse/handlers/fetch.js:192`; full provider/model IDs are not search/fetch provider identities |
 | Media route picker | Tested for speech, transcription, embedding, video, search and music | No other wrong-kind picker matrix | `tests/unit/media-routes.test.js:106` |
 | CLI combo picker | Correct kind included | Image and web-fetch rows excluded; other kinds lack individual assertions | `tests/unit/tui-combo-kind.test.js:13` |
-| Chat on mixed providers | Not applicable | Deferred to #1090, which owns the chat handler | `src/sse/handlers/chat.js:189,202,894` checks image separately and provider-level chat capability |
+| Chat on mixed providers | Not applicable | Speech, transcription and embedding handler assertions authored; broader pair matrix remains open | `tests/unit/non-chat-model-guard.test.js` covers registry and catalog-only kinds; validation pending |
 
 Per-vendor response fixtures without a documented source were not added. No live
 provider calls were made. The full browser matrix and the remaining #1136

@@ -12,12 +12,18 @@ const mocks = vi.hoisted(() => ({
   getProviderCredentials: vi.fn(),
   handleChatCore: vi.fn(),
   enforceApiKeyModelPolicy: vi.fn(),
+  getCustomModels: vi.fn(),
+  getSyncedModelCatalog: vi.fn(),
+  markAccountUnavailable: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getApiKeyByKey: vi.fn(async () => null),
   getApiKeyUsageLimitStatus: vi.fn(async () => ({ exceeded: false, usedTokens: 0, limitTokens: 0 })),
+  getCustomModels: mocks.getCustomModels,
+  getSyncedModelCatalog: mocks.getSyncedModelCatalog,
+  getProviderNodes: vi.fn(async () => []),
 }));
 
 vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
@@ -30,7 +36,7 @@ vi.mock("../../src/sse/services/model.js", async (importOriginal) => ({
 vi.mock("../../src/sse/services/auth.js", () => ({
   getProviderCredentials: mocks.getProviderCredentials,
   getProviderCredentialsWithQuotaPreflight: mocks.getProviderCredentials,
-  markAccountUnavailable: vi.fn(),
+  markAccountUnavailable: mocks.markAccountUnavailable,
   clearAccountError: vi.fn(),
   extractApiKey: vi.fn(() => "test-key"),
   evaluateApiKeyAuth: vi.fn(async () => ({ ok: true })),
@@ -55,6 +61,7 @@ vi.mock("../../open-sse/services/projectId.js", () => ({
 }));
 
 const { handleChat, isNonChatModel } = await import("../../src/sse/handlers/chat.js");
+const { LOCAL_REQUEST_ERROR } = await import("../../open-sse/services/combo.js");
 
 function makeRequest(model) {
   return new Request("http://localhost/v1/chat/completions", {
@@ -70,6 +77,9 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
     mocks.getSettings.mockResolvedValue({ requireApiKey: false, comboStrategy: "fallback", comboStickyRoundRobinLimit: 1 });
     mocks.getComboModels.mockResolvedValue(null);
     mocks.enforceApiKeyModelPolicy.mockResolvedValue(null);
+    mocks.getCustomModels.mockResolvedValue([]);
+    mocks.getSyncedModelCatalog.mockResolvedValue(null);
+    mocks.getProviderCredentials.mockResolvedValue(null);
   });
 
   it("refuses a Laya checkpoint, so the prompt and key never reach the OpenAI fallback", async () => {
@@ -86,6 +96,43 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
     const res = await handleChat(makeRequest("local-whisper/whisper-1"));
     expect(res.status).toBe(400);
     expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+  });
+
+  it.each(["text-embedding-3-small", "tts-1", "whisper-1"])("rejects mixed-provider %s before account selection", async (model) => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model });
+    const response = await handleChat(makeRequest(`openai/${model}`));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.message).toContain("cannot be used for llm");
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+    expect(mocks.handleChatCore).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+  });
+
+  it.each(["custom", "synced"])("rejects a %s catalog-only non-chat model", async (source) => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
+    if (source === "custom") mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }]);
+    else mocks.getSyncedModelCatalog.mockResolvedValue({ syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "catalog-only", kind: "embedding" }] });
+    const response = await handleChat(makeRequest("openai/catalog-only"));
+    expect(response.status).toBe(400);
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+  });
+
+  it("marks unavailable local metadata without selecting or penalizing an account", async () => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "tts-1" });
+    mocks.getCustomModels.mockRejectedValue(new Error("metadata unavailable"));
+    const response = await handleChat(makeRequest("openai/tts-1"));
+    expect(response.status).toBe(503);
+    expect(response[LOCAL_REQUEST_ERROR]).toBe(true);
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+  });
+
+  it.each(["unknown", "multi-kind"])("continues to account selection for %s models", async (kind) => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
+    if (kind === "multi-kind") mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }, { providerAlias: "openai", id: "catalog-only", kind: "llm" }]);
+    await handleChat(makeRequest("openai/catalog-only"));
+    expect(mocks.getProviderCredentials).toHaveBeenCalled();
   });
 });
 

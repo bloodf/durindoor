@@ -62,6 +62,7 @@ import {
 import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { modelKindError } from "./modelKind.js";
 import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
@@ -911,6 +912,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // the request started as a combo; the top-level combo name is not a model id.
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError2) return policyError2;
+
+  // Mixed providers also expose speech and embedding models; reject declared
+  // non-chat kinds before selecting an account, while allowing unknown IDs.
+  const kindError = await modelKindError(provider, model, settings, "llm");
+  if (kindError) return kindError;
 
   // Vision Bridge (#6640): after policy passes, resolve custom capabilities and
   // reroute vision requests to the configured vision-capable model. Denied

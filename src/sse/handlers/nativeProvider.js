@@ -134,7 +134,7 @@ export async function handleNativeProvider(request, provider, path) {
   const observeCompletion = operation.completionPoll === true;
   if ((parsed?.background === true || operation.kind === "batches" && request.method === "POST" && !operation.accountBound) &&
     !await nativeDirectSessionAllowed(apiKey)) {
-    return fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot delegate native background or batch inference");
+    return annotateClientAdmissionFailure(fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot delegate native background or batch inference"), "policy");
   }
   if (dispatchInference) {
     const dailyError = await nativeUsageAdmission(apiKey);
@@ -146,7 +146,7 @@ export async function handleNativeProvider(request, provider, path) {
   const asynchronousCreation = operation.createsResource && ["task_id", "request_id"].includes(operation.resourceResponseField) || parsed?.background === true;
   if (["realtime", "realtime-translation", "realtime-transcription", "live"].includes(operation.kind) &&
     !await nativeDirectSessionAllowed(apiKey)) {
-    return fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot mint direct native sessions");
+    return annotateClientAdmissionFailure(fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot mint direct native sessions"), "policy");
   }
   const trackedResource = operation.resourceParam || operation.resourceQuery || operation.resourceBodyField;
   const requestOwner = operation.createsResource || trackedResource || operation.listsResources ? await resolveResourceOwner(request, auth) : null;

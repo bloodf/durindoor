@@ -43,6 +43,22 @@ const files = postRoute(() => import("../../src/app/api/v1/files/route.js"));
 const batches = postRoute(() => import("../../src/app/api/v1/batches/route.js"));
 const systemone = postRoute(() => import("../../src/app/api/v1/systemone/route.js"));
 const ollama = postRoute(() => import("../../src/app/api/v1/api/chat/route.js"));
+const nativeEligibilityRoutes = [
+  { name: "native background", path: "/v1/native/openai/v1/chat/completions", background: true,
+    invoke: (req) => native.POST(req, { params: Promise.resolve({ provider: "openai", operation: ["v1", "chat", "completions"] }) }) },
+  { name: "native session", path: "/v1/native/openai/v1/realtime/client_secrets",
+    invoke: (req) => native.POST(req, { params: Promise.resolve({ provider: "openai", operation: ["v1", "realtime", "client_secrets"] }) }) },
+  { name: "public realtime secret", path: "/v1/realtime/client_secrets", correlated: true,
+    invoke: (req) => postRoute(() => import("../../src/app/api/v1/realtime/client_secrets/route.js")).POST(req) },
+  { name: "public translation secret", path: "/v1/realtime/translations/client_secrets", correlated: true,
+    invoke: (req) => postRoute(() => import("../../src/app/api/v1/realtime/translations/client_secrets/route.js")).POST(req) },
+  { name: "public transcription session", path: "/v1/realtime/transcription_sessions", correlated: true,
+    invoke: (req) => postRoute(() => import("../../src/app/api/v1/realtime/transcription_sessions/route.js")).POST(req) },
+  { name: "public live session", path: "/v1/live/sessions", correlated: true,
+    invoke: (req) => postRoute(() => import("../../src/app/api/v1/live/sessions/route.js")).POST(req) },
+  { name: "native batch", path: "/v1/native/anthropic/v1/messages/batches", batch: true,
+    invoke: (req) => native.POST(req, { params: Promise.resolve({ provider: "anthropic", operation: ["v1", "messages", "batches"] }) }) },
+];
 let baseline, keyNumber = 0;
 const ownedBatchIds = [];
 const reasons = ["auth_missing", "auth_invalid", "policy", "client_limit"];
@@ -789,6 +805,178 @@ describe("new selected daily-token denial producers", () => {
     expectDelta({ starts: 2 });
     expect(provider.execute).not.toHaveBeenCalled();
     expect(provider.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("configured native eligibility denial producers", () => {
+  const bodyFor = (entry) => entry.batch ? { model: "anthropic/claude-haiku-4-5", requests: [] }
+    : entry.background ? { ...chatBody, background: true } : { model };
+  const messageFor = (entry) => entry.background || entry.batch
+    ? "Usage-capped API keys cannot delegate native background or batch inference"
+    : "Usage-capped API keys cannot mint direct native sessions";
+  const wireFor = (message, requestId = null) => JSON.stringify({ error: {
+    message, type: "permission_error", code: "permission_denied", ...(requestId ? { request_id: requestId } : {}),
+  } });
+  const noDispatch = () => {
+    expect(provider.execute).not.toHaveBeenCalled();
+    expect(provider.fetch).not.toHaveBeenCalled();
+  };
+
+  it.each(nativeEligibilityRoutes.flatMap((entry) =>
+    ["EOF", "unread-then-cancel", "abort"].map((terminal) => [entry.name, terminal, entry])))(
+    "counts %s configured refusal only at %s clean completion", async (_name, terminal, entry) => {
+      // A positive, unspent daily cap still disallows delegated execution.
+      const key = await dailyKey(100);
+      const abort = new AbortController();
+      const req = new Request(request(bodyFor(entry), { authorization: `Bearer ${key.key}` }, entry.path), { signal: abort.signal });
+      const response = await entry.invoke(req);
+      const requestId = entry.correlated ? correlation.getRequestId(req) : null;
+      expect(response.status).toBe(403);
+      expect(Object.fromEntries(response.headers)).toEqual({
+        "access-control-allow-origin": "*", "content-type": "application/json", ...(requestId ? { "x-request-id": requestId } : {}),
+      });
+      expect(response.bodyUsed).toBe(false);
+      expectDelta({ starts: 1, active: 1 });
+      if (terminal === "EOF") {
+        expect(await response.text()).toBe(wireFor(messageFor(entry), requestId));
+        expectDelta({ starts: 1, policy: 1 });
+        // An already completed observation cannot count a second terminal.
+        abort.abort("after clean EOF");
+        expectDelta({ starts: 1, policy: 1 });
+      } else {
+        if (terminal === "abort") abort.abort("configured denial not delivered");
+        else {
+          await Promise.resolve();
+          expect(response.bodyUsed).toBe(false);
+          expectDelta({ starts: 1, active: 1 });
+        }
+        await response.body.cancel("configured denial not delivered");
+        expectDelta({ starts: 1 });
+      }
+      noDispatch();
+    });
+
+  it.each(nativeEligibilityRoutes.slice(0, 2).flatMap((entry) =>
+    ["daily-zero", "token-cap", "cost-cap", "request-window"].map((cap) => [entry.name, cap, entry])))(
+    "keeps %s %s eligibility in policy rather than exhausted allowance", async (_name, cap, entry) => {
+      const key = cap === "daily-zero" ? await dailyKey(0) : await keyWithPolicy(cap === "token-cap"
+        ? { maxTokens: 100 } : cap === "cost-cap" ? { maxCostUsd: 100 } : { rpmLimit: 100 });
+      const response = await entry.invoke(request(bodyFor(entry), { authorization: `Bearer ${key.key}` }, entry.path));
+      expect(response.status).toBe(403);
+      expect(await response.text()).toBe(wireFor(messageFor(entry)));
+      expectDelta({ starts: 1, policy: 1 });
+      noDispatch();
+    });
+
+  it.each(nativeEligibilityRoutes.slice(0, 2).flatMap((entry) =>
+    ["auth_missing", "auth_invalid", "allowlist", "malformed"].map((earlier) => [entry.name, earlier, entry])))(
+    "preserves the earlier %s %s outcome", async (_name, earlier, entry) => {
+      let headers = {}, message = "Missing API key";
+      if (earlier === "auth_invalid") {
+        headers = { authorization: "Bearer synthetic-invalid" };
+        message = "Invalid API key";
+      } else if (["allowlist", "malformed"].includes(earlier)) {
+        const key = await keyWithPolicy(earlier === "allowlist" ? { allowedModels: ["openai/not-this-model"] } : {});
+        if (earlier === "malformed") adapter.run("UPDATE apiKeys SET policy = ? WHERE id = ?", ["{", key.id]);
+        headers = { authorization: `Bearer ${key.key}` };
+        message = earlier === "malformed" ? "API key policy is invalid; contact the administrator"
+          : 'Model "openai/gpt-4o-mini" is not allowed for this API key';
+      }
+      const response = await entry.invoke(request(bodyFor(entry), headers, entry.path));
+      const auth = earlier.startsWith("auth_");
+      expect(response.status).toBe(auth ? 401 : 403);
+      expect(await response.text()).toBe(auth ? JSON.stringify({ error: {
+        message, type: "authentication_error", code: "invalid_api_key",
+      } }) : wireFor(message));
+      expectDelta({ starts: 1, [auth ? earlier : "policy"]: 1 });
+      noDispatch();
+    });
+
+  it.each(["HEAD", "bodyless", "body-error"])(
+    "preserves a real selected eligibility cell through the %s observer contract", async (terminal) => {
+      // Native routes have no HEAD export and their refusals have JSON bodies.
+      // These explicit adapters test observation/metadata contracts; they do
+      // not claim a public native HEAD or bodyless producer exists.
+      const key = await dailyKey(100);
+      const { handleOpenAINativeSession } = await import("../../src/sse/handlers/nativeProvider.js");
+      const selected = await handleOpenAINativeSession(request({ model }, { authorization: `Bearer ${key.key}` }), "/v1/realtime/client_secrets");
+      expect(selected.status).toBe(403);
+      expectDelta();
+      const body = selected.body;
+      let target = selected;
+      const failure = new Error("synthetic downstream body failure");
+      if (terminal !== "HEAD") {
+        target = metrics.copyClientAdmissionFailure(selected, new Response(terminal === "bodyless" ? null : new ReadableStream({
+          pull(controller) { controller.error(failure); },
+        }, { highWaterMark: 0 }), { status: selected.status, headers: selected.headers }));
+        await selected.body.cancel("explicit test adapter owns replacement");
+      }
+      const req = new Request("https://gateway.test/observer-contract", { method: terminal === "HEAD" ? "HEAD" : "POST" });
+      const response = await metrics.observeHttpRequest(req, () => target);
+      if (terminal === "body-error") {
+        expectDelta({ starts: 1, active: 1 });
+        await expect(response.text()).rejects.toBe(failure);
+        expectDelta({ starts: 1 });
+      } else {
+        expect(response).toBe(target);
+        expectDelta({ starts: 1, policy: 1 });
+        if (terminal === "HEAD") {
+          expect(response.body).toBe(body);
+          expect(response.bodyUsed).toBe(false);
+          await response.body.cancel("HEAD transport discards unread body");
+        } else expect(response.body).toBeNull();
+        expectDelta({ starts: 1, policy: 1 });
+      }
+      noDispatch();
+    });
+
+  it.each([
+    ["native background", 403, nativeEligibilityRoutes[0]],
+    ...nativeEligibilityRoutes.slice(1, 3).flatMap((entry) => [200, 403].map((status) => [entry.name, status, entry])),
+  ])("leaves eligible %s upstream HTTP %s unannotated", async (_name, status, entry) => {
+    const key = await keyWithPolicy();
+    const payload = status === 200 ? '{"value":"synthetic-session","expires_at":1}'
+      : '{"error":{"message":"upstream configured refusal"}}';
+    provider.fetch.mockImplementationOnce(async (url, options) => {
+      expect(String(url)).toBe(entry.background ? "https://api.openai.com/v1/chat/completions"
+        : "https://api.openai.com/v1/realtime/client_secrets");
+      expect(options.method).toBe("POST");
+      expect(JSON.parse(options.body)).toEqual({ ...bodyFor(entry), model: "gpt-4o-mini" });
+      return new Response(payload, { status, headers: { "content-type": "application/json" } });
+    });
+    const req = request(bodyFor(entry), { authorization: `Bearer ${key.key}` }, entry.path);
+    const response = await entry.invoke(req);
+    expect(response.status).toBe(status);
+    const requestId = entry.correlated ? correlation.getRequestId(req) : null;
+    expect(response.headers.get("x-request-id")).toBe(requestId);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await response.text()).toBe(status === 200 ? payload : wireFor("upstream configured refusal", requestId));
+    expectDelta({ starts: 1 });
+    expect(provider.fetch).toHaveBeenCalledTimes(1);
+    expect(provider.execute).not.toHaveBeenCalled();
+  });
+
+  it("does not observe discarded internal refusals or realtime control responses as clients", async () => {
+    const key = await dailyKey(100);
+    const { handleOpenAINativeSession } = await import("../../src/sse/handlers/nativeProvider.js");
+    const boundary = correlation.withHttpRequestCorrelation(async () => {
+      const discarded = await handleOpenAINativeSession(request({ model }, { authorization: `Bearer ${key.key}` }), "/v1/realtime/client_secrets");
+      expect(discarded.status).toBe(403);
+      expect(await discarded.text()).toBe(wireFor(messageFor(nativeEligibilityRoutes[1])));
+      const authControl = await import("../../src/app/api/v1/realtime/auth/route.js");
+      const auth = await authControl.GET(new Request("https://gateway.test/api/v1/realtime/auth"));
+      expect(auth.status).toBe(401);
+      expect((await auth.json()).error.message).toBe("Missing API key");
+      const nativeControl = await import("../../src/app/api/v1/realtime/native/route.js");
+      const control = await nativeControl.POST(request({ model }, {}, "/api/v1/realtime/native"));
+      expect(control.status).toBe(404);
+      expect(await control.text()).toBe("Not Found");
+      return new Response("selected independent success");
+    });
+    const response = await boundary(request());
+    expect(await response.text()).toBe("selected independent success");
+    expectDelta({ starts: 1 });
+    noDispatch();
   });
 });
 

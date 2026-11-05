@@ -1,5 +1,161 @@
 # Operational metrics: issue #1129 remainder
 
+## Native configured eligibility increment
+
+Published PR #1656 head `8287380248d44f21f7f7b3f9a2ad97c8d85861cb`
+remains the immutable independent review target for the previous increment.
+The coordinator reports its completed source/evidence review found no
+actionable source defect and all three prior P3 coverage gaps were addressed.
+It verified 234 current and 980 historical artifacts, with 3,858 passing tests
+across 53 files matching JSON/JUnit. The 29 Kimchi diagnostics remain unresolved.
+This is historical source clearance, without runtime, gate or acceptance approval.
+The supplied report is
+`/var/folders/tw/_vvy7bzd4zd07mg54rph6kh00000gn/T/dd1656-independent-final-review-137mnpwr/review.md`,
+with coordinator-verified SHA-256
+`159bde688c285e4449ddfc88e65d1130be62b816134929f82a1c8eae35cccae3`.
+No reviewer was contacted or polled. No previous proof validates this new draft.
+
+This increment owns exactly four existing paths:
+`src/sse/handlers/nativeProvider.js`,
+`tests/unit/operational-metrics-admission.test.js`,
+`docs/operations/operational-metrics.mdx` and this document.
+At the published head, the handler already imports the annotation helper at
+line 18. Its only two changes wrap the existing final `fail(...)` Responses
+at lines 137 and 149 with `annotateClientAdmissionFailure(..., "policy")`.
+There are no other production edits, new labels, state, timers or imports.
+
+The first return follows the existing background/non-account-bound batch
+eligibility check at lines 135–137; the second follows the direct-session
+check at lines 147–149. Both are local final refusals before provider
+selection. `nativeDirectSessionAllowed` at `nativeUsage.js:86–94` rejects
+configured daily, lifetime token/cost or positive window caps, and malformed
+policy. It does not ask whether those allowances have been spent. These are
+configured eligibility restrictions (`policy`), not exhaustion (`client_limit`).
+Malformed policy on these public requests normally selects the earlier
+model-policy denial at `nativeProvider.js:113–115`; the draft preserves and
+tests that earlier outcome instead of forcing eligibility to run.
+The weak annotation alone never increments a counter. Body/status/headers,
+branch order, auth, dispatch, ownership, billing and cancellation stay unchanged.
+
+The 46 new regression cases use real public native background, native batch,
+native session and all four public realtime/live session alias handlers.
+They cover EOF exactly-once, unread then cancel, request abort, configured
+unspent/zero caps, prior missing/invalid auth and model/malformed policy,
+eligible session success, upstream 403 and no-dispatch/wire controls.
+Only the existing provider transport mock is used for eligible upstream cases;
+the Anthropic batch refusal requires no provider mock or connection.
+Internal discarded shared-handler refusals and actual realtime auth/native
+control responses must not add phantom client observations.
+
+Native routes have no HEAD handler and these two producers always return JSON
+bodies. Three explicitly named observer-contract adapters therefore retain a
+real selected eligibility cell for HEAD, bodyless and body-error cases; they
+do not claim those are additional public native exports or producer shapes.
+HEAD retains the actual selected Response/body unread and counts at return;
+bodyless selection uses the existing weak-cell copy API; an errored replacement
+body contributes zero admission failures. All prior assertions remain intact.
+The initial LIGHT phase ran no candidate imports, tests, installs, lint,
+build, hooks, DB/provider commands or publication. The later authorized
+ordinary-author results below apply to the unchanged app/test inputs.
+Fresh exact-head review and the independent full checkpoint remain required.
+Native owner/billing/epoch,
+opaque resource ownership, middleware, provider-capacity, WebSocket, keepalive
+and runtime-bootstrap acceptance remains unresolved; this patch closes none
+of those gaps by exclusion.
+
+### Native increment ordinary-author evidence
+
+The new isolated root is `/private/tmp/dd1656-native-author-l473vs5v`.
+Its initial four-path patch SHA-256 is
+`ad00d16e0cb0e06b3a7a607e41629c566e1ef4be4cec1f30cb3db10a572e5d55`;
+initial source-manifest SHA-256 is
+`a4d4d465bbf2a5d2c9dee43322ee4620a96deff7f6ff335eef6b0dda8f22f6e3`.
+This evidence narrative supersedes only that initial internal-document input;
+the production diff remains exactly the two return wrappers and all app/test
+inputs remain unchanged. Per-command manifests freeze 5,127 tracked inputs.
+
+Fresh private Node 26.13.0/ABI 147, newly acquired scripts-disabled root/test/
+commitlint dependencies and an explicit offline native addon rebuild/smoke
+were used. Every candidate launch first proved actual parent and spawned-child
+external TCP and real-home synthetic read/write `EPERM`, using the same
+`sandbox-exec`/`env -i` path and private HOME/DATA/cache/reports. Commands have
+a 295-second ceiling including termination, at most two fork workers, unchanged
+test deadlines and an empty failure baseline. No shared dependency pool or
+real user database/provider credentials were used.
+
+Attempt 09 passed all 281 admission assertions, including the 46 additions,
+without fixture corrections. Attempt 11 then used exact 82873802 production
+with that identical tracked test file: 17 expected missing selected-`policy`
+counts failed and 264 passed. All 235 prior assertions and 29 new negative or
+preceding-outcome controls passed; this was not a setup failure. Raw stderr
+shows expected policy 1 versus actual 0. Both return annotations were restored
+before attempt 13, which passed 4,000 assertions across all 66 explicit mapped
+files, with no skipped/failed assertions. Fresh JSON/JUnit agree and the exact
+selector inventory is retained in `mapped-tests.json`/`caller-inventory.json`.
+The owned metrics, native/provider/session, resource/auth, window limits,
+identity/usage, keepalive, correlation and security callers are included.
+No socket/WebSocket protocol test inventory was expanded.
+
+Mapped stderr retains 39 Kimchi dynamic-import errors, 31 stale-billing-epoch
+save rejections and nine native validation/missing-totals error-control save
+diagnostics. These are not suppressed. This is ordinary-author regression
+evidence, without clean-runtime or full-gate approval. Evidence-helper attempts
+are also retained: an initial compact-JSON classifier assertion, an incorrect
+save-log literal tally and a later overly narrow all-stale classifier. The
+corrected receipt separates all five actual save-diagnostic messages; no test
+or raw report was changed. The Python metadata helper's xcrun cache `EPERM`
+diagnostics are retained too. App builds, PG, real providers, trusted gate,
+review/approval and merge remain unrun. Mandatory lint/hooks/commitlint and
+exact publication binding are recorded in the retained author receipts and PR.
+
+### Middleware proposal only: ownership and proof still required
+
+The minimal future production ownership request is:
+
+| Path at published `82873802` | Proposed exact responsibility |
+| --- | --- |
+| `src/dashboardGuard.js:668–678` | Mark only the two final public-LLM auth 401 Responses after the existing access decision fails; use existing candidate presence (`:219–229`) to distinguish `auth_missing`/`auth_invalid`, never annotate candidate evaluation or alter authorization |
+| `src/proxy.js:117–121` and `:169–170` | Copy the weak cell through MiMo's existing Response reconstruction; await the existing final normal/MiMo result and observe only a marked public-auth denial once, after that selection |
+| `open-sse/services/operationalMetrics.js` | Add a narrow marked-only terminal observer using existing state and fixed reasons, with a NextResponse-preserving reconstruction contract; return unmarked Responses unchanged |
+| Proposed `tests/unit/operational-metrics-proxy.test.js` | Exercise the real guard/proxy and NextResponse, with provider work excluded; existing auth/MiMo callers must also remain in the eventual selection |
+
+The existing access decision at `dashboardGuard.js:284–303` accepts local,
+CLI, valid candidate keys and narrowly permitted safe dashboard model reads.
+All those checks remain in their current order. Only a final denied result is
+eligible for marking; management, gateway, CSRF, malformed-path 400, redirects,
+preflight, `NextResponse.next()` and rewrites are outside this proposal.
+Do not wrap all proxy results. Accepted traffic must reach the existing route
+observation exactly once. Preserve NextResponse/cookies, body identity where
+required, HEAD, backpressure and cancellation without eager body consumption.
+The selected-return call belongs after normal/MiMo resolution at the two final
+proxy returns, not inside `guardedApiDispatch` or `mimoLoginProxy`; those shared
+branches must not start a second observation. The current boolean access API
+need not change to report credential selection. The existing HTTP observer
+reconstructs a plain Response for a streamed body, so blindly calling it is
+insufficient for NextResponse fidelity. The future adapter must preserve that
+type and cookie behavior while sharing the existing terminal accounting;
+its exact reconstruction needs real NextResponse tests and emitted-mode proof.
+No new helper is implemented speculatively in this eligibility patch.
+
+The coordinator's runtime-owner feasibility report says pinned Next 16.4.3
+selects the Server/Node proxy build (`get-page-static-info:598–607`,
+`entries:280–282`) and invokes its Node adapter in process
+(`next-server:1205–1231`). This supplied source evidence does not prove that
+the emitted proxy and authenticated metrics scrape share state across bundles.
+Before implementation, require an explicit one-writer handoff for those
+three production files and exact integration fixtures, plus an authorized heavy
+slot and artifact/build ownership. Before coverage claims, exercise the actual
+emitted public denial followed by an authenticated scrape in the same worker,
+then accepted traffic without duplicate observation, separately in dev,
+production, standalone and packed CLI modes. Include both denial envelopes,
+recovered credential candidates, cookies/MiMo reconstruction, HEAD/bodyless,
+EOF/cancel/abort/error, preflight/rewrite and management negative controls.
+Source/global unit tests alone cannot establish same-worker visibility.
+Custom-server socket observation is broader and remains outside the proposal.
+There are no middleware, proxy, custom-server or bootstrap edits in this draft.
+
+## Historical Files/Batches and daily-limit increment
+
 The previous published and independently reviewed PR #1656 snapshot is
 `ef75f562894faf826b27f8b482a290b281626328`, based on
 `f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. It extends the narrative-only
@@ -16,7 +172,7 @@ remains separate and unchanged. The earlier `dfb3f2f` source recheck resolved
 the three original P2 findings; fresh exact-head review and the independently
 authorized full checkpoint remain pending.
 
-## Next increment: Files/Batches, daily limits and caller coverage
+## Published 20-path increment: Files/Batches, daily limits and caller coverage
 
 This increment reuses the existing weak Response annotations and the four
 fixed labels. `operationalMetrics.js` is unchanged. Producers only mark a
@@ -98,9 +254,10 @@ once and marked bodyless non-HEAD completion at return. Their new ordinary-autho
 results are recorded below; no pass is inherited from ef75.
 
 Public realtime credential/session HTTP auth/policy is already integrated
-through `handleOpenAINativeSession` and the native public wrappers. Pending
-eligibility 403s and native owner/billing/epoch refusals need separate exact
-return ownership. Internal realtime auth/native controls and model rechecks
+through `handleOpenAINativeSession` and the native public wrappers. At the
+published 82873802 head, eligibility 403s were still pending; the new LIGHT
+section above records their narrowly granted draft. Native owner/billing/epoch
+refusals still need separate exact return ownership. Internal realtime auth/native controls and model rechecks
 drive WebSocket errors/closures; weak metadata cannot cross loopback fetch/JSON
 and those control calls cannot stand in for public HTTP client outcomes. The
 WebSocket fallback issues actual loopback chat HTTP calls per turn; existing

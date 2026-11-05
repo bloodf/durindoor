@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Batches collection — create + list.
 import { createOpenAIBatch, listBatches } from "open-sse/services/localFilesBatches.js";
 import { makeDefaultExecutor } from "open-sse/handlers/localBatchExecutor.js";
@@ -61,6 +61,6 @@ async function POSTHandler(request) {
   }
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
-export const GET = withRequestCorrelation(GETHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

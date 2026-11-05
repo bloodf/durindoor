@@ -1,4 +1,4 @@
-import { getRequestId, withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { getRequestId, withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { randomUUID } from "node:crypto";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
@@ -282,5 +282,5 @@ async function POSTHandler(request) {
   return mapCompletionResponse(response);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

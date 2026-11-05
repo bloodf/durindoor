@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // Anthropic Message Batch results — JSONL stream.
 import { getAnthropicResultsJsonl } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -33,4 +33,4 @@ async function GETHandler(request, context) {
   });
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const GET = withRequestCorrelation(GETHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);

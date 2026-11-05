@@ -26,7 +26,7 @@ const metrics = globalThis.__durindoorOperationalMetrics ??= {
 };
 
 /** Bind an explicitly derived Request to the currently executing observation.
- * Called only where correlation already accepts an explicit trusted ID copy.
+ * Called by the legacy trusted-ID copy and the Gemini route's explicit bridge.
  * The opaque scope, never ID equality, determines accounting identity.
  */
 export function inheritHttpObservation(request) {
@@ -35,7 +35,7 @@ export function inheritHttpObservation(request) {
 }
 
 /** Observe HTTP transport completion, without interpreting provider payloads.
- * An unread body remains active until its request aborts or its reader cancels.
+ * An unread non-HEAD body stays active until request abort or reader cancel.
  * Same-Request reuse is one observation; independent Requests get independent
  * observations unless explicitly derived inside an active outer handler.
  */
@@ -80,7 +80,9 @@ export async function observeHttpRequest(request, callback) {
     return response;
   }
   const outcome = response.status >= 400 ? "http_error" : "completed";
-  if (!response.body) {
+  // Next can reuse GET for an implicit HEAD and discard its body without
+  // reading or cancelling it. Account at handler return and leave it untouched.
+  if (request.method === "HEAD" || !response.body) {
     finish(outcome);
     return response;
   }

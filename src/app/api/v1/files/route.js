@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Files collection — local filesystem store under ~/.9router/files/<id>. (DurinDoor data directory)
 import { uploadFile, listFiles } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -57,6 +57,6 @@ async function POSTHandler(request) {
   return json(meta, 201);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
-export const GET = withRequestCorrelation(GETHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

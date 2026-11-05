@@ -32,8 +32,8 @@ afterEach(() => {
 
 describe("client HTTP observations", () => {
   it("counts a nested and repeatedly observed Request once", async () => {
-    const inner = correlation.withRequestCorrelation(() => new Response("bytes"));
-    const outer = correlation.withRequestCorrelation((req) => inner(req));
+    const inner = correlation.withHttpRequestCorrelation(() => new Response("bytes"));
+    const outer = correlation.withHttpRequestCorrelation((req) => inner(req));
     const req = request();
     expect(await (await outer(req)).text()).toBe("bytes");
     expect(await (await outer(req)).text()).toBe("bytes");
@@ -43,8 +43,8 @@ describe("client HTTP observations", () => {
   });
 
   it("inherits only an explicitly derived Request inside the active outer handler", async () => {
-    const inner = correlation.withRequestCorrelation(() => new Response("legacy response"));
-    const outer = correlation.withRequestCorrelation(async (req) => {
+    const inner = correlation.withHttpRequestCorrelation(() => new Response("legacy response"));
+    const outer = correlation.withHttpRequestCorrelation(async (req) => {
       const derived = request();
       correlation.getRequestId(derived, correlation.getRequestId(req));
       return inner(derived);
@@ -57,32 +57,51 @@ describe("client HTTP observations", () => {
     const first = request(), second = request();
     correlation.getRequestId(first, "identical-trusted-id");
     correlation.getRequestId(second, "identical-trusted-id");
-    const handler = correlation.withRequestCorrelation(async () => new Response("ok"));
+    const handler = correlation.withHttpRequestCorrelation(async () => new Response("ok"));
     const responses = await Promise.all([handler(first), handler(second)]);
     expect(await Promise.all(responses.map((response) => response.text()))).toEqual(["ok", "ok"]);
     expect(responses.map((response) => response.headers.get("x-request-id"))).toEqual(["identical-trusted-id", "identical-trusted-id"]);
     expect(metrics.operationalMetricsText()).toContain("durindoor_http_requests_total 2\n");
   });
 
+  it("does not inherit an observation from an async scope after its outer handler returned", async () => {
+    let release, later;
+    const resumed = new Promise((resolve) => { release = resolve; });
+    const inner = correlation.withHttpRequestCorrelation(() => new Response("independent"));
+    const outer = correlation.withHttpRequestCorrelation((req) => {
+      later = resumed.then(() => {
+        const derived = request();
+        correlation.getRequestId(derived, correlation.getRequestId(req));
+        return inner(derived);
+      });
+      return new Response(null, { status: 204 });
+    });
+    expect((await outer(request())).status).toBe(204);
+    release();
+    expect(await (await later).text()).toBe("independent");
+    expect(metrics.operationalMetricsText()).toContain("durindoor_http_requests_total 2\n");
+    expect(metrics.operationalMetricsText()).toContain('durindoor_http_requests_completed_total{outcome="completed"} 2\n');
+  });
+
   it("counts distinct nested Requests independently without an explicit derivation", async () => {
     const first = request(), second = request();
     correlation.getRequestId(first, "same-id");
     correlation.getRequestId(second, "same-id");
-    const inner = correlation.withRequestCorrelation(() => new Response("inner"));
-    const outer = correlation.withRequestCorrelation(async () => new Response(await (await inner(second)).text()));
+    const inner = correlation.withHttpRequestCorrelation(() => new Response("inner"));
+    const outer = correlation.withHttpRequestCorrelation(async () => new Response(await (await inner(second)).text()));
     expect(await (await outer(first)).text()).toBe("inner");
     expect(metrics.operationalMetricsText()).toContain("durindoor_http_requests_total 2\n");
     expect(metrics.operationalMetricsText()).toContain('durindoor_http_requests_completed_total{outcome="completed"} 2\n');
   });
 
   it("preserves pre-dispatch rejection and sanitized handler error behavior", async () => {
-    const denied = correlation.withRequestCorrelation(() => new Response("denied", { status: 401, headers: { "retry-after": "1" } }));
+    const denied = correlation.withHttpRequestCorrelation(() => new Response("denied", { status: 401, headers: { "retry-after": "1" } }));
     const response = await denied(request());
     expect(response.status).toBe(401);
     expect(response.headers.get("retry-after")).toBe("1");
     expect(await response.text()).toBe("denied");
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const throws = correlation.withRequestCorrelation(() => { throw new Error("private-credential"); });
+    const throws = correlation.withHttpRequestCorrelation(() => { throw new Error("private-credential"); });
     const failed = await throws(request());
     expect(failed.status).toBe(500);
     expect((await failed.json()).error.message).toBe("Request failed");
@@ -94,7 +113,7 @@ describe("client HTTP observations", () => {
     const abort = new AbortController();
     let release;
     const waiting = new Promise((resolve) => { release = resolve; });
-    const handler = correlation.withRequestCorrelation(async () => { await waiting; return new Response("late"); });
+    const handler = correlation.withHttpRequestCorrelation(async () => { await waiting; return new Response("late"); });
     const pending = handler(request({ signal: abort.signal }));
     abort.abort("original reason");
     release();
@@ -108,7 +127,7 @@ describe("client HTTP observations", () => {
     const abort = new AbortController();
     abort.abort();
     const handler = vi.fn(() => new Response(null, { status: 204 }));
-    expect((await correlation.withRequestCorrelation(handler)(request({ signal: abort.signal }))).status).toBe(204);
+    expect((await correlation.withHttpRequestCorrelation(handler)(request({ signal: abort.signal }))).status).toBe(204);
     expect(handler).toHaveBeenCalledOnce();
     expect(metrics.operationalMetricsText()).toContain('durindoor_http_requests_completed_total{outcome="cancelled"} 1\n');
   });
@@ -117,7 +136,7 @@ describe("client HTTP observations", () => {
     const chunk = new Uint8Array([0, 128, 255]);
     const pull = vi.fn((controller) => pull.mock.calls.length === 1 ? controller.enqueue(chunk) : controller.close());
     const source = new ReadableStream({ pull }, { highWaterMark: 0 });
-    const handler = correlation.withRequestCorrelation(() => new Response(source, { status: 202, statusText: "Accepted", headers: { "x-test": "kept" } }));
+    const handler = correlation.withHttpRequestCorrelation(() => new Response(source, { status: 202, statusText: "Accepted", headers: { "x-test": "kept" } }));
     const response = await handler(request());
     expect(pull).not.toHaveBeenCalled();
     expect(response.status).toBe(202);
@@ -134,7 +153,7 @@ describe("client HTTP observations", () => {
 
   it("propagates the original body error and records one transport failure", async () => {
     const failure = new Error("body failed");
-    const handler = correlation.withRequestCorrelation(() => new Response(new ReadableStream({ pull(controller) { controller.error(failure); } }, { highWaterMark: 0 })));
+    const handler = correlation.withHttpRequestCorrelation(() => new Response(new ReadableStream({ pull(controller) { controller.error(failure); } }, { highWaterMark: 0 })));
     const response = await handler(request());
     const reader = response.body.getReader();
     await expect(reader.read()).rejects.toBe(failure);
@@ -142,12 +161,44 @@ describe("client HTTP observations", () => {
     expect(metrics.operationalMetricsText()).toContain('durindoor_http_requests_completed_total{outcome="stream_error"} 1\n');
   });
 
+  it("finishes an implicit HEAD with a deliberately unread GET response body", async () => {
+    const pull = vi.fn();
+    const cancel = vi.fn();
+    const body = new ReadableStream({ pull, cancel }, { highWaterMark: 0 });
+    const handler = correlation.withHttpRequestCorrelation(() => new Response(body, {
+      status: 200, headers: { "content-length": "5", "x-head": "preserved" },
+    }));
+    const response = await handler(request({ method: "HEAD" }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-length")).toBe("5");
+    expect(response.headers.get("x-head")).toBe("preserved");
+    expect(response.body).toBe(body);
+    expect(response.bodyUsed).toBe(false);
+    expect(pull).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(metrics.operationalMetricsText()).toContain("durindoor_http_active_requests 0\n");
+    expect(metrics.operationalMetricsText()).toContain('durindoor_http_requests_completed_total{outcome="completed"} 1\n');
+    expect(metrics.operationalMetricsText()).toContain("durindoor_http_request_duration_seconds_count 1\n");
+    // Deliberately do not read, cancel or abort: that is the implicit HEAD path.
+  });
+
+  it("accounts a native HEAD error at return without replacing or consuming its body", async () => {
+    const original = new Response("unread error", { status: 503, headers: { "retry-after": "3" } });
+    const response = await metrics.observeHttpRequest(request({ method: "HEAD" }), async () => original);
+    expect(response).toBe(original);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("3");
+    expect(response.bodyUsed).toBe(false);
+    expect(metrics.operationalMetricsText()).toContain("durindoor_http_active_requests 0\n");
+    expect(metrics.operationalMetricsText()).toContain('durindoor_http_requests_completed_total{outcome="http_error"} 1\n');
+  });
+
   it("forwards cancellation reason and rejection without a second terminal event", async () => {
     const reason = { reason: "consumer cancellation" };
     const failure = new Error("cancel failed");
     const cancel = vi.fn(() => Promise.reject(failure));
     const abort = new AbortController();
-    const handler = correlation.withRequestCorrelation(() => new Response(new ReadableStream({ cancel }, { highWaterMark: 0 })));
+    const handler = correlation.withHttpRequestCorrelation(() => new Response(new ReadableStream({ cancel }, { highWaterMark: 0 })));
     const response = await handler(request({ signal: abort.signal }));
     await expect(response.body.cancel(reason)).rejects.toBe(failure);
     abort.abort();
@@ -157,7 +208,7 @@ describe("client HTTP observations", () => {
   });
 
   it("keeps an unread body active and does not parse semantic provider error events", async () => {
-    const handler = correlation.withRequestCorrelation(() => new Response('data: {"error":"provider failure"}\n\n', { headers: { "content-type": "text/event-stream" } }));
+    const handler = correlation.withHttpRequestCorrelation(() => new Response('data: {"error":"provider failure"}\n\n', { headers: { "content-type": "text/event-stream" } }));
     const response = await handler(request());
     expect(metrics.operationalMetricsText()).toContain("durindoor_http_active_requests 1\n");
     expect(await response.text()).toBe('data: {"error":"provider failure"}\n\n');
@@ -168,7 +219,7 @@ describe("client HTTP observations", () => {
   it("records fixed cumulative latency buckets through terminal consumption", async () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
-    const response = await correlation.withRequestCorrelation(() => new Response("ok"))(request());
+    const response = await correlation.withHttpRequestCorrelation(() => new Response("ok"))(request());
     now = 3500;
     await response.text();
     const text = metrics.operationalMetricsText();
@@ -180,7 +231,7 @@ describe("client HTTP observations", () => {
   });
 
   it("excludes OPTIONS and preserves native HTTP response contracts", async () => {
-    await correlation.withRequestCorrelation(() => new Response(null))(request({ method: "OPTIONS" }));
+    await correlation.withHttpRequestCorrelation(() => new Response(null))(request({ method: "OPTIONS" }));
     const route = await import("../../src/app/api/v1/native/[provider]/[...operation]/route.js");
     const response = await route.POST(request({ method: "POST" }), { params: Promise.resolve({ provider: "private-provider", operation: ["test"] }) });
     expect(response.headers.get("x-native")).toBe("preserved");
@@ -191,7 +242,7 @@ describe("client HTTP observations", () => {
   });
 
   it("reuses aggregates on reload and starts empty for a fresh process state", async () => {
-    await (await correlation.withRequestCorrelation(() => new Response(null))(request())).text();
+    await (await correlation.withHttpRequestCorrelation(() => new Response(null))(request())).text();
     vi.resetModules();
     const reloaded = await import("../../open-sse/services/operationalMetrics.js");
     expect(reloaded.operationalMetricsText()).toContain("durindoor_http_requests_total 1\n");
@@ -203,7 +254,7 @@ describe("client HTTP observations", () => {
 
   it("exports only fixed labels without reading or retaining credential/prompt/URL fields", async () => {
     const req = request({ method: "POST", headers: { authorization: "Bearer private-key", "x-request-id": "private-caller-id", "content-type": "application/json" }, body: JSON.stringify({ prompt: "private-prompt", session: "private-session", url: "https://private.test/secret" }) });
-    const handler = correlation.withRequestCorrelation(async (input) => {
+    const handler = correlation.withHttpRequestCorrelation(async (input) => {
       expect(input.bodyUsed).toBe(false);
       expect((await input.json()).prompt).toBe("private-prompt");
       return new Response("unchanged");

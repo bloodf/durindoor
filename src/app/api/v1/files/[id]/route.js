@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI File detail — metadata + delete.
 import { getFile, deleteFile } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -56,6 +56,6 @@ async function DELETEHandler(request, context) {
   return json(result);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
-export const GET = withRequestCorrelation(GETHandler);
-export const DELETE = withRequestCorrelation(DELETEHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
+export const DELETE = withHttpRequestCorrelation(DELETEHandler);

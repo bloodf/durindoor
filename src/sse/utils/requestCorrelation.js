@@ -97,15 +97,22 @@ export async function correlateResponse(response, requestId = createRequestId())
   return new Response(response.body, responseInit(response, headers));
 }
 
+/** Correlate shared handlers without treating internal calls as HTTP requests. */
 export function withRequestCorrelation(handler) {
   return async function correlatedRequestHandler(...args) {
     const requestId = getRequestId(args[0]);
-    return observeHttpRequest(args[0], async () => {
-      try { return await correlateResponse(await handler(...args), requestId); }
-      catch (error) {
-        console.error(`[RequestCorrelation] ${requestId}: ${sanitizeErrorMessage(error?.stack || error?.message || error)}`);
-        return correlateResponse(errorResponse(500, "Request failed"), requestId);
-      }
-    });
+    try { return await correlateResponse(await handler(...args), requestId); }
+    catch (error) {
+      console.error(`[RequestCorrelation] ${requestId}: ${sanitizeErrorMessage(error?.stack || error?.message || error)}`);
+      return correlateResponse(errorResponse(500, "Request failed"), requestId);
+    }
+  };
+}
+
+/** Observe only public HTTP exports; shared handlers keep correlation alone. */
+export function withHttpRequestCorrelation(handler) {
+  const correlated = withRequestCorrelation(handler);
+  return function observedHttpRequestHandler(...args) {
+    return observeHttpRequest(args[0], () => correlated(...args));
   };
 }

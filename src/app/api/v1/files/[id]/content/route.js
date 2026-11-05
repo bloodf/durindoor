@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI File content — raw bytes download.
 import path from "node:path";
 import { getFileContent } from "open-sse/services/localFilesBatches.js";
@@ -41,4 +41,4 @@ async function GETHandler(request, context) {
   });
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const GET = withRequestCorrelation(GETHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);

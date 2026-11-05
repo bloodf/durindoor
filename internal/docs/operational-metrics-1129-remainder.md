@@ -1,9 +1,12 @@
 # Operational metrics: issue #1129 remainder
 
-Status: partial implementation in author validation, based on
-`f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. The integration owner granted the
-exclusive ordinary author slot after #1649 released it. Focused evidence below
-does not complete #1129. The full checkpoint remains independently blocked.
+Status: author-validated correction prepared against independently reviewed PR #1656 head
+`d9fbe83ba9d8ba532b68fbf61b9d5e73dc61f11f`, originally based on
+`f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. Historical author evidence below
+applies to that published head. The correction has separate ordinary author
+evidence below; it awaits publication and a new independent exact-head review.
+The slot was granted after the path/export inventory was recorded. The full
+checkpoint remains independently blocked.
 
 ## Acceptance and existing evidence
 
@@ -62,8 +65,9 @@ Chat terminal handlers already measure total and TTFT latency in
 Those describe attempts and parsed terminal events. HTTP observation must use
 its own monotonic elapsed time at the public boundary, without new body parsing.
 
-The common `withRequestCorrelation` wrapper in
-`src/sse/utils/requestCorrelation.js:98-107` wraps route and shared handlers.
+The correlation-only `withRequestCorrelation` wrapper in
+`src/sse/utils/requestCorrelation.js` wraps shared handlers. Explicit
+`withHttpRequestCorrelation` wraps public HTTP exports.
 The same Request is frequently nested. Legacy completions additionally create a
 new Request at `src/app/api/v1/completions/route.js:273` and inherit its existing
 trusted correlation ID at line 280. A WeakMap alone misses this case. The draft
@@ -71,9 +75,9 @@ must test nested same objects, that derived-object path, concurrent independent
 objects, pre-dispatch rejections, thrown handlers, stream EOF/error/cancel and
 request abort. Existing `getRequestId` ignores caller headers, generating an ID
 unless its explicit trusted argument supplies one. The telemetry draft never
-compares ID strings or deduplicates globally by ID. Only an explicit trusted-ID
-copy inside an executing outer observation binds the derived Request to that
-opaque scope. Distinct nested Requests without that operation, and top-level
+compares ID strings or deduplicates globally by ID. An explicit trusted-ID
+copy (legacy completions), or `inheritHttpObservation` (Gemini), inside an
+executing outer observation binds a derived Request to that opaque scope. Distinct nested Requests without that operation, and top-level
 Requests with identical trusted IDs, remain independent. Completed Request
 objects retain their once-only observation on reuse.
 
@@ -83,15 +87,19 @@ cancellation. HTTP 200 with a provider error envelope still has a clean HTTP
 transport; these metrics do not assert semantic provider success. Handler errors
 remain the existing sanitized HTTP 500. No upstream-attempt counter is implied.
 Durations include handler work and body consumption until terminal observation;
-an unread body remains in flight until cancellation or abort.
+an unread non-HEAD body remains in flight until cancellation or abort. HEAD and
+bodyless responses finish at return without consuming or cancelling a body.
 
 Covered: existing correlated chat/completions/messages/responses, embeddings,
 media/search/fetch/rerank/moderation/token-count, files/batches and catch-all
-routes, plus the assigned native HTTP wrapper. OPTIONS is excluded. The music
+routes, model detail, public realtime credential/session HTTP operations, the
+Gemini v1beta POST (including parse failures/native TTS), and the assigned native
+HTTP wrapper. OPTIONS is excluded. The music
 alias re-exports the already wrapped music route. Explicitly excluded: unwrapped
 root models listing (including `/v1` alias), models/info, plugin manifest,
 chatgpt-web image artifact download, internal realtime auth/control requests,
-WebSocket upgrades/sessions/turns, and middleware denials before handlers.
+the management translator/send diagnostic, WebSocket upgrades/sessions/turns,
+and middleware denials before handlers.
 These are coverage gaps, not zero traffic. The issue cannot close by calling
 this draft an all-route total; the integration owner must assign any required
 remaining lifecycle integrations.
@@ -137,8 +145,8 @@ belongs to the #1652 owner; a first-scrape start cannot establish boot coverage.
 
 ## Prepared implementation and remaining integration
 
-The owned draft now connects `operationalMetrics.js` to the common correlation
-wrapper, native HTTP exports, gate rejection sites, cache publication/clear
+The owned draft connects `operationalMetrics.js` to explicit public HTTP
+wrappers, native/Gemini HTTP exports, gate rejection sites, cache publication/clear
 sites and the authenticated metrics route. Fixed HTTP outcomes, buckets,
 admission reasons and provider states are documented in the operator guide.
 The observer uses a zero-high-water-mark stream, a lazy single upstream reader
@@ -147,7 +155,9 @@ request signal without aborting or cancelling upstream work and is removed at
 terminal accounting. Admission instrumentation changes no resolution/rejection,
 queue, timeout, rollback or release decision.
 
-The new runtime test file has focused author evidence below. It includes
+The published runtime test file has historical author evidence below. Its
+correction draft uses explicit HTTP wrappers and adds HEAD and expired async
+scope coverage; these additions have separate correction evidence below. The published file includes
 real wrapper nesting/derivation, identical-ID independent top-level Requests,
 independent nested Requests, early rejection/handler throw, abort before headers,
 already-aborted input, lazy binary stream pulls, original body error/cancel
@@ -267,8 +277,9 @@ not a published artifact or independent review receipt.
   actual-wrapper/scrape comparison failed on the exact base because the client
   request counter was absent, as expected.
 - Attempt 11: 201 assertions passed across 11 caller/fixture files, including
-  the same wrapper/scrape comparison on the candidate. Two Kimchi dynamic-import
-  errors appeared in stderr, despite exit 0. These diagnostics are retained and
+  the same wrapper/scrape comparison on the candidate. Seven Kimchi dynamic-import
+  errors appeared in stderr, despite exit 0, alongside four expected stale-epoch
+  save rejections. These separate diagnostics are retained and
   prevent calling the caller run clean runtime evidence. Protected Kimchi source
   was not changed or suppressed.
 - Attempt 12: 51 assertions passed on the unchanged base's two diagnostic
@@ -286,8 +297,212 @@ not a published artifact or independent review receipt.
   All diagnostics remain retained. Passing assertions are not a clean runtime
   run, full coverage, an independent review or an authorized gate result.
 
+## Independent review corrections in LIGHT
+
+The source/evidence review at
+`/var/folders/tw/_vvy7bzd4zd07mg54rph6kh00000gn/T/dd1656-light-review-wcpdjd5s`
+identified three P2 source defects and one P3 narrative error at the published
+head. All 29 review-manifest entries match their recorded sizes and hashes.
+The original review and author artifacts remain untouched. Reading retained raw
+attempt 11 stderr confirms seven Kimchi entries and four stale-epoch save
+rejections; the earlier checked-in count of two was wrong. The final PR body's
+seven-entry count was already correct. No historical evidence was rewritten.
+
+The owned LIGHT draft treats HEAD as terminal at handler return even when the
+reused GET handler returns a body. It returns that response unchanged, without
+reading/cancelling the body or changing cancellation authority. Draft regressions
+leave successful HEAD bodies deliberately unread/unaborted and check native
+HEAD error status, headers, response identity and terminal accounting.
+
+The granted correction separates HTTP observation from shared correlation.
+`withRequestCorrelation` keeps the existing IDs, sanitization, error conversion
+and response headers without starting an observation. Public exports use
+`withHttpRequestCorrelation`. Native retains its explicit observer; Gemini POST
+now observes its outer Request and explicitly binds its converted chat Request.
+The derived Gemini Request's construction, including its absent copied abort
+signal, is unchanged. No URL heuristic, ID-string equality or blanket nested
+Request suppression is used. Shared internal batch rows do not start HTTP
+observations; batch resource HTTP operations still do.
+
+Regression drafts in `tests/unit/operational-metrics-http-boundary.test.js` use
+real decorators, resource auth, shared handlers, default batch executor, legacy
+and Gemini bridges. Only provider execution/transport is replaced. They cover
+chat and embeddings batch rows, real file GET with unread HEAD body, actual
+legacy derivation, Gemini final JSON/SSE unread/cancel/EOF, outer abort without
+new derived signal inheritance, invalid JSON, native TTS, and independent nested
+public observations. The existing runtime draft retains once-only, demand,
+error/cancellation forwarding and identical-ID cases and adds HEAD plus an ALS
+scope that outlives its handler. The public correlation inventory harness
+forwards the new decorator while preserving the old shared-handler harness.
+
+The three P2 findings remain open until authorized validation, publication and
+new independent exact-head review. P3's narrative is corrected without changing
+historical artifacts. The published head remains `d9fbe83b`. No correction test,
+install, lint, build, hook, push or review execution preceded this inventory.
+No protected auth/chat/fusion/core, default executor, Gemini bridge, instrumentation
+bootstrap, denial or keepalive implementation was edited.
+
+## Granted correction inventory before execution
+
+There are 47 correction paths: five of the original nine paths, 39 v1 route
+files, Gemini's route, the correlation inventory harness, and the new HTTP
+boundary regression file. The complete PR draft spans 51 paths including four
+unchanged original PR paths: metrics route, native route, health monitor and
+concurrency gate. For the 39 v1 files below, changes are limited to adding the
+`withHttpRequestCorrelation` import and substituting that decorator on the 55
+listed non-OPTIONS exports. Every one of the 39 OPTIONS exports is unchanged.
+Removing those exact substitutions recovers each published-head file byte for
+byte. No route body, runtime declaration or re-export changes.
+
+Paths below are relative to `src/app/api/v1/`:
+
+| Route path | HTTP exports changed |
+| --- | --- |
+| `[...catchAll]/route.js` | GET, POST, PUT, PATCH, DELETE, HEAD |
+| `api/chat/route.js` | POST |
+| `audio/speech/route.js` | POST |
+| `audio/transcriptions/route.js` | POST |
+| `audio/translations/route.js` | POST |
+| `audio/voices/route.js` | GET |
+| `batches/[id]/cancel/route.js` | POST |
+| `batches/[id]/route.js` | GET |
+| `batches/route.js` | HEAD, GET, POST |
+| `chat/completions/route.js` | POST |
+| `completions/route.js` | HEAD, POST |
+| `embeddings/route.js` | POST |
+| `files/[id]/content/route.js` | GET |
+| `files/[id]/route.js` | HEAD, GET, DELETE |
+| `files/route.js` | HEAD, GET, POST |
+| `images/edits/route.js` | POST |
+| `images/generations/route.js` | POST |
+| `live/sessions/route.js` | POST |
+| `messages/batches/[id]/cancel/route.js` | POST |
+| `messages/batches/[id]/results/route.js` | GET |
+| `messages/batches/[id]/route.js` | GET |
+| `messages/batches/route.js` | HEAD, GET, POST |
+| `messages/count_tokens/route.js` | POST |
+| `messages/route.js` | POST |
+| `models/[...model]/route.js` | GET, HEAD |
+| `moderations/route.js` | POST |
+| `music/generations/[request_id]/route.js` | GET |
+| `music/generations/route.js` | POST |
+| `realtime/client_secrets/route.js` | POST |
+| `realtime/transcription_sessions/route.js` | POST |
+| `realtime/translations/client_secrets/route.js` | POST |
+| `rerank/route.js` | POST |
+| `responses/compact/route.js` | POST |
+| `responses/route.js` | POST |
+| `search/route.js` | POST |
+| `systemone/route.js` | POST |
+| `video/generations/route.js` | POST |
+| `videos/[[...path]]/route.js` | POST, GET |
+| `web/fetch/route.js` | POST |
+
+Other changed paths and caller impact:
+
+| Path | Correction and affected callers |
+| --- | --- |
+| `src/app/api/v1beta/models/[...path]/route.js` | POST outer observer plus explicit derived binding; OPTIONS and provider/conversion/catch bodies unchanged |
+| `src/sse/utils/requestCorrelation.js` | Shared decorator correlation-only; explicit HTTP decorator reuses it; all 17 shared decorated handler exports stop starting observations, retain correlation |
+| `open-sse/services/operationalMetrics.js` | HEAD terminal at return; preserves Response/body; documents explicit Gemini binding |
+| `tests/unit/operational-metrics-runtime.test.js` | Explicit boundary calls, unread HEAD, expired async scope; existing lifecycle regression coverage retained |
+| `tests/unit/public-route-correlation.test.js` | Forward the real new decorator through the existing response harness |
+| `tests/unit/operational-metrics-http-boundary.test.js` | Real-route/default-executor/bridge regressions; correction evidence below |
+| `docs/operations/operational-metrics.mdx` | Explicit boundary/HEAD/bridge semantics and precise exclusions |
+| `internal/docs/operational-metrics-1129-remainder.md` | Acceptance map, P3 correction, this inventory and pending proof |
+
+The unchanged `/v1/audio/music` alias re-exports its wrapped music route. Shared
+chat, embeddings, countTokens, fetch, imageEdit, imageGeneration, moderations,
+music (GET and generation), rerank, search, stt, systemone, tts and video
+(generation/create/GET) exports remain correlation-only. The management
+`/api/translator/send` POST keeps shared correlation and becomes unobserved,
+explicitly excluded from public gateway totals. Internal default-batch calls
+still execute real auth/policy/provider/translation paths. Gemini's final
+Response owns completion; native's existing observer remains in place.
+No explicit Edge runtime consumer was found in the granted route/correlation
+callers; explicit runtime declarations there select Node, otherwise Next's Node
+default applies. The existing Node ALS dependency is unchanged; instrumentation's
+compile-time Edge guard and lifecycle ownership remain untouched.
+
+Future author selectors include both metrics suites, request/public correlation,
+metrics route/auth/queue, native-provider, v1-batches/full-batches, v1-completions,
+Gemini native and Gemini gateway conformance. They are author regression evidence,
+not an independently frozen scoped selection or full-checkpoint authorization.
+
 Mandatory hooks, root lint, docs checks and commitlint must pass before normal
 push and a focused draft PR. Independent exact-head review, unresolved client
 denial/stream bridges, startup integration, real process/overhead/artifact proof
 and the authorized full checkpoint remain open. No build, server, provider,
 deployment, release or status publication is part of this author slot.
+
+## Correction author evidence (separate from original receipts)
+
+Private evidence root: `/private/tmp/dd1656-correction-25iau9to`. Original
+`/private/tmp/dd1129-author-f00piv16` and the independent review directory were
+not rewritten. This is ordinary author evidence, not a scoped/full gate,
+approval, independent review or execution-boundary review.
+
+Before application imports, actual Node 26.13.0 / ABI 147 / darwin-arm64 / uid
+501 parent and child both received EPERM on network and synthetic outside-home
+read/write probes. Dependencies were acquired into private storage with scripts
+disabled. Root/test lockfiles matched the published tree. The retained native
+SQLite build receipt/hash was checked before private copying and an offline
+in-memory ABI smoke. Commands used an allowlisted environment, private HOME,
+DATA_DIR/cache/reports and a 295-second supervisor; focused runs used at most two
+fork workers. No failure baseline, timeout or concurrency policy changed.
+
+Each application/check command records before/after SHA-256 manifests of the
+actual source/test/config inputs, full stdout/stderr hashes, arguments, exit and
+timestamps. Test JSON/JUnit case counts agree and report timestamps fit command
+receipts. The final 417-assertion run has no source/input drift. Dependency
+acquisition attempt 03's first input-root manifest was incorrect for nested
+`tests/`; that harness defect is recorded and fixed before application runs.
+Acquisition is not presented as application validation. All attempts remain.
+
+- Attempt 06 reproduced both phantom batch counters on exact old `d9fbe83b`
+  with the new boundary fixture copied into that comparison tree. It used only
+  machine reporters and cannot support a raw diagnostic absence claim.
+- Attempt 07 added the default reporter, preserved raw diagnostics, and exposed
+  an absolute-zero test teardown assertion that cascaded HEAD's leaked active
+  state into later cases. Teardown now requires zero per-case active delta;
+  the HEAD behavior assertion itself still fails on the old head. Neither early
+  attempt is substituted for final comparison evidence.
+- Attempt 09 runs the identical corrected fixture on exact old source: eight
+  expected failures, three passes. One newly introduced decorator-only case is
+  deliberately outside the old-head selector because that API does not exist
+  there. Actual legacy derivation and both SSE terminal cases already pass on
+  the old head. The failures demonstrate two phantom batch-client cases, leaked
+  unread HEAD, premature final Gemini JSON completion/cancellation, absent outer
+  abort accounting and unobserved invalid-JSON/native-TTS branches.
+- Attempt 08 on the correction passes all 42 boundary/runtime assertions, with
+  zero skipped. It retains one inherited Kimchi import error.
+- Attempt 10 passes 417 repository assertions across 23 files, zero skipped and
+  no private fixture counted. It covers the reviewer-mapped native, batches,
+  legacy, Gemini and correlation callers plus existing metrics/auth/queue,
+  health, gate, native usage/identity, early keepalive and active-session tests.
+  JSON SHA-256: `9f86c9c640f5fb00440834f830bc3b4c1af47f3f756d66adcef0f8a9e37cde28`.
+  Raw stderr contains ten inherited Kimchi import errors and four expected
+  stale-billing-epoch save rejections. The deliberate invalid-JSON test preserves
+  Gemini's existing parse-error log. Passing assertions do not erase these
+  diagnostics or establish clean runtime readiness.
+- Attempt 11 passes root lint: zero errors, 327 existing warnings, anti-slop zero
+  diagnostics. Its generated anti-slop bundle is retained as an output and
+  excluded from the patch. Attempt 12 passes changed JavaScript ESLint with
+  zero warnings. Docs, mandatory hook, title/range commitlint and final commit
+  binding are recorded in this evidence root before normal publication.
+- Attempt 14 staged correctly but macOS `/usr/bin/git` emitted denied xcrun
+  cache writes outside the private home. Attempt 16 is not a hook pass:
+  lint-staged reported no initial commit / failed staged-file lookup even though
+  the hook's final anti-slop command returned zero. Both outputs remain. Private
+  PATH now resolves directly to the installed CLT git binary, with its hash
+  recorded; hook source/config and sandbox restrictions are unchanged. Attempt
+  18 independently passes lint-staged for all 47 staged paths. The complete
+  mandatory hook is rerun on the final matching staged tree before publication.
+
+The three original P2 findings remain visible for the next independent review;
+this author evidence supports their corrections without self-approving them.
+P3's attempt-11 narrative is now seven Kimchi errors. Remaining issue acceptance
+still includes unstarted bootstrap (#1652 handoff), protected denial/early
+keepalive hooks, excluded metadata/artifact/middleware routes and WebSockets,
+real process-exit/artifact/overhead proof, inherited runtime diagnostics and the
+independently authorized full checkpoint. Refs #1129; this PR does not close it.

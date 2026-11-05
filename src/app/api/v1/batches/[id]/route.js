@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Batch detail — retrieve.
 import { getBatch } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
@@ -33,4 +33,4 @@ async function GETHandler(request, context) {
   return json(view);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const GET = withRequestCorrelation(GETHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);

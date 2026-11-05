@@ -1,12 +1,12 @@
 # Operational metrics: issue #1129 remainder
 
-Status: author-validated correction prepared against independently reviewed PR #1656 head
-`d9fbe83ba9d8ba532b68fbf61b9d5e73dc61f11f`, originally based on
-`f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. Historical author evidence below
-applies to that published head. The correction has separate ordinary author
-evidence below; it awaits publication and a new independent exact-head review.
-The slot was granted after the path/export inventory was recorded. The full
-checkpoint remains independently blocked.
+Status: the correction was published in PR #1656 at
+`dfb3f2fcd15baf360715c501c6f9dbf623a1289f`, based on
+`f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. The independent source-only
+recheck found the three original P2 defects resolved. The separate retained-evidence
+audit verified the reported results; neither review approves runtime readiness.
+Historical evidence for `d9fbe83b` and correction evidence for `dfb3f2f` are
+separate series below. The full checkpoint remains independently blocked.
 
 ## Acceptance and existing evidence
 
@@ -245,9 +245,9 @@ credential selection, allowance mutation, quota settlement or retry changes are
 part of this proposal. WebSocket sessions remain a separate protocol and are
 explicitly excluded from the HTTP contract, not fabricated as HTTP coverage.
 
-## Validation and publication still required
+## Original author validation plan and evidence
 
-Draft regressions must exercise the actual correlation wrapper and metrics
+The original validation plan required regressions to exercise the actual correlation wrapper and metrics
 handler, lazy stream reads, preserved bytes/status/headers, cancellation reason
 and thrown-error identity, once-only accounting, reload/restart, exact fixed
 label domains, fresh/stale/empty/invalid provider projection, gate timeout/abort
@@ -268,29 +268,29 @@ arguments, environment, profile hash, stdout/stderr hashes, timestamps and exits
 Test attempts retain fresh JSON and JUnit. This path is machine-local evidence,
 not a published artifact or independent review receipt.
 
-- Attempt 07: 31 passed, one failed. The formatter omitted a final newline;
+- Original attempt 07: 31 passed, one failed. The formatter omitted a final newline;
   the HTTP route already supplied one. The one-line formatter correction makes
-  the helper's standalone text complete. Attempt 09: all 32 focused tests passed.
-- Attempt 08: comparison started before its private source/dependency copy
+  the helper's standalone text complete. Original attempt 09: all 32 focused tests passed.
+- Original attempt 08: comparison started before its private source/dependency copy
   finished and failed before collection with MODULE_NOT_FOUND. It is retained,
-  not counted as a regression result. After copy completion, attempt 10's single
+  not counted as a regression result. After copy completion, original attempt 10's single
   actual-wrapper/scrape comparison failed on the exact base because the client
   request counter was absent, as expected.
-- Attempt 11: 201 assertions passed across 11 caller/fixture files, including
+- Original attempt 11: 201 assertions passed across 11 caller/fixture files, including
   the same wrapper/scrape comparison on the candidate. Seven Kimchi dynamic-import
   errors appeared in stderr, despite exit 0, alongside four expected stale-epoch
   save rejections. These separate diagnostics are retained and
   prevent calling the caller run clean runtime evidence. Protected Kimchi source
   was not changed or suppressed.
-- Attempt 12: 51 assertions passed on the unchanged base's two diagnostic
+- Original attempt 12: 51 assertions passed on the unchanged base's two diagnostic
   fixtures and reproduced the same Kimchi error origin. This attributes the
   protected-source diagnostic; it does not make it clean validation evidence.
-- Attempt 13: root lint failed the new observer's `typeof` guard under the
+- Original attempt 13: root lint failed the new observer's `typeof` guard under the
   existing anti-slop rule. The observer now uses the repository's existing
-  `isObject` and `isFunction` helpers. Attempt 14 passed root lint with zero
-  errors and 327 existing warnings, plus zero anti-slop diagnostics. Attempt 15
+  `isObject` and `isFunction` helpers. Original attempt 14 passed root lint with zero
+  errors and 327 existing warnings, plus zero anti-slop diagnostics. Original attempt 15
   passed changed-code ESLint with `--max-warnings=0`.
-- Attempt 16: 233 assertions passed across 15 files, zero skipped. This includes
+- Original attempt 16: 233 assertions passed across 15 files, zero skipped. This includes
   232 checked-in tests and the private retained before/after fixture. The final
   run logged seven Kimchi dynamic-import errors and expected stale-billing-epoch
   rejection diagnostics from the native identity fixture's rejection assertions.
@@ -301,10 +301,9 @@ not a published artifact or independent review receipt.
 
 The source/evidence review at
 `/var/folders/tw/_vvy7bzd4zd07mg54rph6kh00000gn/T/dd1656-light-review-wcpdjd5s`
-identified three P2 source defects and one P3 narrative error at the published
-head. All 29 review-manifest entries match their recorded sizes and hashes.
+identified three P2 source defects and one P3 narrative error at `d9fbe83b`. All 29 review-manifest entries match their recorded sizes and hashes.
 The original review and author artifacts remain untouched. Reading retained raw
-attempt 11 stderr confirms seven Kimchi entries and four stale-epoch save
+original attempt 11 stderr confirms seven Kimchi entries and four stale-epoch save
 rejections; the earlier checked-in count of two was wrong. The final PR body's
 seven-entry count was already correct. No historical evidence was rewritten.
 
@@ -335,10 +334,11 @@ error/cancellation forwarding and identical-ID cases and adds HEAD plus an ALS
 scope that outlives its handler. The public correlation inventory harness
 forwards the new decorator while preserving the old shared-handler harness.
 
-The three P2 findings remain open until authorized validation, publication and
-new independent exact-head review. P3's narrative is corrected without changing
-historical artifacts. The published head remains `d9fbe83b`. No correction test,
-install, lint, build, hook, push or review execution preceded this inventory.
+At the time this inventory was frozen, the three P2 findings awaited validation,
+publication and independent recheck; the published head was `d9fbe83b`.
+The correction was subsequently published at `dfb3f2f` and the independent
+source recheck found those defects resolved. P3's narrative was corrected without
+changing historical artifacts. No correction execution preceded this inventory.
 No protected auth/chat/fusion/core, default executor, Gemini bridge, instrumentation
 bootstrap, denial or keepalive implementation was edited.
 
@@ -455,28 +455,28 @@ Each application/check command records before/after SHA-256 manifests of the
 actual source/test/config inputs, full stdout/stderr hashes, arguments, exit and
 timestamps. Test JSON/JUnit case counts agree and report timestamps fit command
 receipts. The final 417-assertion run has no source/input drift. Dependency
-acquisition attempt 03's first input-root manifest was incorrect for nested
+correction acquisition attempt 03's first input-root manifest was incorrect for nested
 `tests/`; that harness defect is recorded and fixed before application runs.
 Acquisition is not presented as application validation. All attempts remain.
 
-- Attempt 06 reproduced both phantom batch counters on exact old `d9fbe83b`
+- Correction attempt 06 reproduced both phantom batch counters on exact old `d9fbe83b`
   with the new boundary fixture copied into that comparison tree. It used only
   machine reporters and cannot support a raw diagnostic absence claim.
-- Attempt 07 added the default reporter, preserved raw diagnostics, and exposed
+- Correction attempt 07 added the default reporter, preserved raw diagnostics, and exposed
   an absolute-zero test teardown assertion that cascaded HEAD's leaked active
   state into later cases. Teardown now requires zero per-case active delta;
   the HEAD behavior assertion itself still fails on the old head. Neither early
-  attempt is substituted for final comparison evidence.
-- Attempt 09 runs the identical corrected fixture on exact old source: eight
+  correction attempt is substituted for final comparison evidence.
+- Correction attempt 09 runs the identical corrected fixture on exact old source: eight
   expected failures, three passes. One newly introduced decorator-only case is
   deliberately outside the old-head selector because that API does not exist
   there. Actual legacy derivation and both SSE terminal cases already pass on
   the old head. The failures demonstrate two phantom batch-client cases, leaked
   unread HEAD, premature final Gemini JSON completion/cancellation, absent outer
   abort accounting and unobserved invalid-JSON/native-TTS branches.
-- Attempt 08 on the correction passes all 42 boundary/runtime assertions, with
+- Correction attempt 08 on the correction passes all 42 boundary/runtime assertions, with
   zero skipped. It retains one inherited Kimchi import error.
-- Attempt 10 passes 417 repository assertions across 23 files, zero skipped and
+- Correction attempt 10 passes 417 repository assertions across 23 files, zero skipped and
   no private fixture counted. It covers the reviewer-mapped native, batches,
   legacy, Gemini and correlation callers plus existing metrics/auth/queue,
   health, gate, native usage/identity, early keepalive and active-session tests.
@@ -485,23 +485,23 @@ Acquisition is not presented as application validation. All attempts remain.
   stale-billing-epoch save rejections. The deliberate invalid-JSON test preserves
   Gemini's existing parse-error log. Passing assertions do not erase these
   diagnostics or establish clean runtime readiness.
-- Attempt 11 passes root lint: zero errors, 327 existing warnings, anti-slop zero
+- Correction attempt 11 passes root lint: zero errors, 327 existing warnings, anti-slop zero
   diagnostics. Its generated anti-slop bundle is retained as an output and
-  excluded from the patch. Attempt 12 passes changed JavaScript ESLint with
+  excluded from the patch. Correction attempt 12 passes changed JavaScript ESLint with
   zero warnings. Docs, mandatory hook, title/range commitlint and final commit
   binding are recorded in this evidence root before normal publication.
-- Attempt 14 staged correctly but macOS `/usr/bin/git` emitted denied xcrun
-  cache writes outside the private home. Attempt 16 is not a hook pass:
+- Correction attempt 14 staged correctly but macOS `/usr/bin/git` emitted denied xcrun
+  cache writes outside the private home. Correction attempt 16 is not a hook pass:
   lint-staged reported no initial commit / failed staged-file lookup even though
   the hook's final anti-slop command returned zero. Both outputs remain. Private
   PATH now resolves directly to the installed CLT git binary, with its hash
-  recorded; hook source/config and sandbox restrictions are unchanged. Attempt
-  18 independently passes lint-staged for all 47 staged paths. The complete
-  mandatory hook is rerun on the final matching staged tree before publication.
+  recorded; hook source/config and sandbox restrictions are unchanged. Correction attempt
+  18 independently passes lint-staged for all 47 staged paths. Correction attempt 20 passed the complete
+  mandatory hook on the final matching staged tree before publication.
 
-The three original P2 findings remain visible for the next independent review;
-this author evidence supports their corrections without self-approving them.
-P3's attempt-11 narrative is now seven Kimchi errors. Remaining issue acceptance
+The independent source-only recheck at `dfb3f2f` found the three original P2
+findings resolved. This author evidence does not itself approve the correction.
+P3's original-attempt-11 narrative is now seven Kimchi errors. Remaining issue acceptance
 still includes unstarted bootstrap (#1652 handoff), protected denial/early
 keepalive hooks, excluded metadata/artifact/middleware routes and WebSockets,
 real process-exit/artifact/overhead proof, inherited runtime diagnostics and the

@@ -18,6 +18,8 @@ Provider detail shows catalog or configured models separately from connection op
 
 Registry-backed Claude validation probes and OpenAI-compatible fallback probes report server errors as provider unavailability. Add and edit dialogs show **Unavailable** for these responses. Retry when the provider is available; these errors do not establish that the credential is invalid.
 
+The provider validation API returns `valid: false` and `unavailable: true` for server errors from registry-backed probes. An unavailable result does not identify an invalid credential.
+
 | Model string | Routes to |
 | --- | --- |
 | `openai/gpt-4.1` | An OpenAI connection with upstream model `gpt-4.1` |

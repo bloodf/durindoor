@@ -20,12 +20,14 @@ vi.mock("@/lib/network/connectionProxy", () => ({
     vercelRelayUrl: "",
   }),
 }));
+vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
 
 const originalFetch = global.fetch;
 
 describe("baseUrl-only API-key provider connection test", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    global.fetch = vi.fn(() => { throw new Error("Unexpected network request"); });
     mocks.getProviderConnectionById.mockResolvedValue({
       id: "conn-glb",
       provider: "gitlawb-gmi",
@@ -147,6 +149,6 @@ describe("baseUrl-only API-key provider connection test", () => {
       method: "POST",
       body: JSON.stringify({ provider: "gitlawb-gmi", apiKey: "glb-test-key" }),
     }));
-    expect(await response.json()).toEqual({ valid: false, error });
+    expect(await response.json()).toEqual({ valid: false, error, ...(status >= 500 ? { unavailable: true } : {}) });
   });
 });

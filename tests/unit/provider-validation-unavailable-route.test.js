@@ -17,4 +17,9 @@ describe("provider validation API outage evidence", () => {
     expect(data).toMatchObject({ valid: false, error: "Invalid API key" });
     expect(data.unavailable).not.toBe(true);
   });
+  it("reports ChatGPT Web server errors as unavailable rather than rejected credentials", async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 503 }));
+    const result = await POST(new Request("http://localhost/api/providers/validate", { method: "POST", body: JSON.stringify({ provider: "chatgpt-web", apiKey: "test-token" }) }));
+    expect(await result.json()).toEqual({ valid: false, unavailable: true, error: "Provider unavailable - try again later" });
+  });
 });

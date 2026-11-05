@@ -101,6 +101,8 @@ Every `tools/call`, ok or error, writes a usage row with `provider: "mcp-gateway
 
 Failed calls stay attributed to the key that made them in the by-key view, but do not count toward that key's request limits or lifetime usage totals. Successful calls count toward request limits. Both are zero-cost tool usage, not unknown-cost LLM requests. Global and per-connection usage still include failures.
 
+The by-key view uses the configured gateway key name for MCP usage. Gateway key identities remain separate from ordinary API key identities, even if imported records share a key string or row ID. Deleted keys retain a masked historical identity.
+
 ## Connect a client
 
 Point any streamable-HTTP MCP client at the gateway. Replace the host with your DurinDoor base URL and the key with a gateway key from **MCP Gateway → Keys**.

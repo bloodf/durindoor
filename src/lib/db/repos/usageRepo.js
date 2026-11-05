@@ -1172,10 +1172,11 @@ export async function getUsageStats(period = "all", opts = {}) {
   const identitySalt = getOrCreateUsageIdentitySalt(db);
   const now = new Date();
 
-  const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
+  const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }, { getGatewayKeys }] = await Promise.all([
   import("./connectionsRepo.js"),
   import("./apiKeysRepo.js"),
-  import("./nodesRepo.js")]
+  import("./nodesRepo.js"),
+  import("./mcpGatewayRepo.js")]
   );
 
   let allConnections = [];
@@ -1193,13 +1194,27 @@ export async function getUsageStats(period = "all", opts = {}) {
   try {allApiKeys = await getApiKeys();} catch {}
   const apiKeyMap = Object.create(null);
   for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  let gatewayKeys = [];
+  try {gatewayKeys = await getGatewayKeys();} catch {}
+  const gatewayKeyMap = Object.create(null);
+  for (const k of gatewayKeys) gatewayKeyMap[k.key] = { name: k.name, id: k.id };
 
   // API responses use database IDs for registered keys and salted HMACs for
   // deleted/unknown keys. Neither identity contains raw key material.
   const unknownApiKeyIds = new Map();
-  function getPublicApiKeyIdentity(apiKey, internalIdentity = apiKey) {
+  function getPublicApiKeyIdentity(apiKey, internalIdentity = apiKey, provider = null) {
     if (!apiKey && (!internalIdentity || String(internalIdentity).startsWith("local-no-key"))) {
       return { id: "local-no-key", keyName: "Local (No API Key)", apiKeyMasked: null };
+    }
+    // Gateway and API keys live in separate tables. Resolve MCP rows first
+    // against gateway keys, with a separate ID namespace for cross-table collisions.
+    const gatewayKey = provider === "mcp-gateway" && apiKey ? gatewayKeyMap[apiKey] : null;
+    if (gatewayKey?.id) {
+      return {
+        id: `mcp-gateway-key:${gatewayKey.id}`,
+        keyName: gatewayKey.name || "MCP Gateway Key",
+        apiKeyMasked: maskApiKey(apiKey)
+      };
     }
     const keyInfo = apiKey ? apiKeyMap[apiKey] : null;
     if (keyInfo?.id) {
@@ -1404,7 +1419,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         const provider = ak.provider || akKey.split("|")[2] || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const apiKeyVal = ak.apiKey;
-        const identity = getPublicApiKeyIdentity(apiKeyVal, akKey);
+        const identity = getPublicApiKeyIdentity(apiKeyVal, akKey, provider);
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
         const statsKey = `${identity.id}|${rawModel}|${provider || "unknown"}`;
@@ -1476,7 +1491,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       if (stats.byAccount[accountKey] && new Date(e.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = e.timestamp;
     }
     for (const e of views[2].values()) {
-      const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider, identitySalt));
+      const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider, identitySalt), e.provider);
       const apiKeyKey = `${identity.id}|${e.model}|${e.provider || "unknown"}`;
       if (stats.byApiKey[apiKeyKey] && new Date(e.timestamp) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = e.timestamp;
     }
@@ -1567,7 +1582,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
 
       if (r.apiKey && isString(r.apiKey)) {
-        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey, identitySalt));
+        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey, identitySalt), r.provider);
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
         const akKey = `${identity.id}|${r.model}|${r.provider || "unknown"}`;

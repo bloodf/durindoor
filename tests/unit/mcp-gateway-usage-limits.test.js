@@ -11,9 +11,7 @@ vi.mock("../../src/lib/mcp/gateway/aggregator", () => ({ dispatchToolCall: (...a
 vi.mock("@/lib/localDb", async () => {
   const database = await import("@/lib/db/index.js");
   return {
-    validateGatewayKey: async () => ({ id: "gateway-key" }),
-    getGrantsForKeyDetailed: async () => [{ instanceId: "instance-1", toolAllowlist: ["echo"] }],
-    getEnabledInstancesByIds: async () => [{ id: "instance-1", slug: "tools" }],
+    ...database,
     saveRequestUsage(entry) {
       const write = database.saveRequestUsage(entry);
       state.writes.push(write);
@@ -22,14 +20,14 @@ vi.mock("@/lib/localDb", async () => {
   };
 });
 
-const KEY = "sk-mcp-limit-fixture";
-const RECORD = { key: KEY, policy: { monthlyRequestLimit: 2 } };
+let KEY; let gatewayKey;
+const RECORD = { key: null, policy: { monthlyRequestLimit: 2 } };
 const original = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL"].map((name) => [name, process.env[name]]));
 let directory; let adapter; let database; let handleJsonRpc; let checkApiKeyLimits;
 
-async function call() {
+async function call(key = KEY) {
   const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "tools__echo", arguments: {} } };
-  const request = new Request("http://localhost/api/mcp-gateway", { method: "POST", headers: { authorization: `Bearer ${KEY}` }, body: JSON.stringify(body) });
+  const request = new Request("http://localhost/api/mcp-gateway", { method: "POST", headers: { authorization: `Bearer ${key}` }, body: JSON.stringify(body) });
   const response = await handleJsonRpc(request, body);
   await Promise.all(state.writes.splice(0));
   return response;
@@ -48,7 +46,15 @@ beforeAll(async () => {
   delete global._dbAdapter;
   database = await import("@/lib/db/index.js");
   adapter = await (await import("@/lib/db/driver.js")).getAdapter();
-  adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES('mcp-key', ?, 'MCP limits', 1, '[]', ?)", [KEY, new Date().toISOString()]);
+  gatewayKey = await database.createGatewayKey("MCP limits", "mcp-fixture-machine");
+  KEY = gatewayKey.key;
+  RECORD.key = KEY;
+  await database.createInstance({ id: "instance-1", slug: "tools", title: "Fixture tools", kind: "custom", transport: "http" });
+  await database.setGrants(gatewayKey.id, ["instance-1"], [["echo"]]);
+  // Deliberately share this secret with a separate API-key policy fixture so
+  // these checks exercise actual counters. MCP identity must use the gateway's
+  // configured name and ID, never this policy fixture's distinct name and ID.
+  adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES('mcp-key', ?, 'Policy counter fixture', 1, '[]', ?)", [KEY, new Date().toISOString()]);
   ({ handleJsonRpc } = await import("../../src/lib/mcp/gateway/handler.js"));
   ({ checkApiKeyLimits } = await import("@/lib/apiKeyLimits.js"));
 }, 60_000);
@@ -80,7 +86,7 @@ it.each(failures)("%s keeps its error row but uses none of the key's limits", as
     const stats = await database.getUsageStats(period);
     expect(stats.totalRequests).toBe(2);
     expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({
-      apiKeyKey: "api-key:mcp-key", keyName: "MCP limits", apiKeyMasked: "***", requests: 2,
+      apiKeyKey: `mcp-gateway-key:${gatewayKey.id}`, keyName: "MCP limits", apiKeyMasked: "***", requests: 2,
     })]);
     expect(JSON.stringify(stats)).not.toContain(KEY);
     expect(Object.values(stats.byAccount)).toEqual([expect.objectContaining({ requests: 2 })]);
@@ -106,7 +112,69 @@ it("counts only successful calls for a key with mixed results", async () => {
   await call();
   expect((await checkApiKeyLimits(RECORD))?.message || "").toContain("monthly requests limit reached");
   const stats = await database.getUsageStats("all");
-  expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: "api-key:mcp-key", requests: 3 })]);
+  expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: `mcp-gateway-key:${gatewayKey.id}`, requests: 3 })]);
+});
+
+it.each(failures)("%s identifies a real gateway-only key through auth and grants", async (_name, arrange) => {
+  const gateway = await database.createGatewayKey("Gateway only", "mcp-fixture-machine");
+  await database.setGrants(gateway.id, ["instance-1"], [["echo"]]);
+  expect(adapter.get("SELECT id FROM apiKeys WHERE key = ?", [gateway.key])).toBeUndefined();
+  arrange();
+  const response = await call(gateway.key);
+  expect(response.status).toBe(200);
+  expect(state.dispatch).toHaveBeenCalledWith(
+    [expect.objectContaining({ id: "instance-1", slug: "tools" })],
+    [{ instanceId: "instance-1", slug: "tools", toolAllowlist: ["echo"] }],
+    "tools__echo", {},
+  );
+  expect(rows()).toEqual([expect.objectContaining({ apiKey: gateway.key, status: "error" })]);
+  for (const period of ["all", "today", "24h"]) {
+    const stats = await database.getUsageStats(period);
+    expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({
+      apiKeyKey: `mcp-gateway-key:${gateway.id}`, keyName: "Gateway only", requests: 1, apiKeyMasked: "***",
+    })]);
+    expect(stats.totalRequests).toBe(1);
+    expect(JSON.stringify(stats)).not.toContain(gateway.key);
+  }
+  await database.setGrants(gateway.id, []);
+  state.dispatch.mockClear();
+  expect((await call(gateway.key)).body.error.code).toBe(-32602);
+  expect(state.dispatch).not.toHaveBeenCalled();
+  expect(rows()).toHaveLength(1);
+});
+
+it("separates gateway and API identities when both the raw key and row ID collide", async () => {
+  const gateway = await database.createGatewayKey("Gateway collision", "mcp-fixture-machine");
+  await database.setGrants(gateway.id, ["instance-1"], [["echo"]]);
+  adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, 'API collision', 1, '[]', ?)", [gateway.id, gateway.key, new Date().toISOString()]);
+  state.dispatch.mockRejectedValue(new Error("upstream down"));
+  await call(gateway.key);
+  await database.saveRequestUsage({ apiKey: gateway.key, provider: "fixture", model: "tools__echo", tokens: {}, cost: 0, strict: true });
+  for (const period of ["all", "today", "24h"]) {
+    const stats = await database.getUsageStats(period);
+    const byKey = Object.values(stats.byApiKey);
+    expect(byKey).toHaveLength(2);
+    expect(byKey).toEqual(expect.arrayContaining([
+      expect.objectContaining({ apiKeyKey: `mcp-gateway-key:${gateway.id}`, keyName: "Gateway collision", requests: 1 }),
+      expect.objectContaining({ apiKeyKey: `api-key:${gateway.id}`, keyName: "API collision", requests: 1 }),
+    ]));
+    expect(JSON.stringify(stats)).not.toContain(gateway.key);
+  }
+});
+
+it("preserves the salted HMAC identity after a gateway-only key is deleted", async () => {
+  const gateway = await database.createGatewayKey("Deleted gateway", "mcp-fixture-machine");
+  await database.setGrants(gateway.id, ["instance-1"], [["echo"]]);
+  state.dispatch.mockRejectedValue(new Error("upstream down"));
+  await call(gateway.key);
+  await database.deleteGatewayKey(gateway.id);
+  for (const period of ["all", "today", "24h"]) {
+    const stats = await database.getUsageStats(period);
+    const [entry] = Object.values(stats.byApiKey);
+    expect(entry.apiKeyKey).toMatch(/^api-key:hmac-sha256:[a-f0-9]{64}$/);
+    expect(entry).toMatchObject({ keyName: "Deleted API key 1", apiKeyMasked: "***", requests: 1 });
+    expect(JSON.stringify(stats)).not.toContain(gateway.key);
+  }
 });
 
 it("excludes an attributed failed MCP ledger event from lifetime and window totals", async () => {

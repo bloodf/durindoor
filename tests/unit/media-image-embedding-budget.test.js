@@ -8,7 +8,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 // commit one attributed record, and the committed spend then denies the next
 // request before any provider dispatch. Image providers use the real core over
 // a synthetic fetch; the embedding core is replaced by a synthetic receipt.
-// Only credentials, model parsing, routing tables and token refresh are mocked.
+// Credentials, model parsing, routing tables, token refresh and Kimchi's user
+// agent are mocked. This fixture does not cover Kimchi's background updater.
 
 const state = vi.hoisted(() => ({ combo: null, embedding: vi.fn(), credentials: vi.fn() }));
 vi.mock("@/sse/services/auth.js", () => ({
@@ -32,6 +33,7 @@ vi.mock("@/sse/services/tokenRefresh.js", () => ({ checkAndRefreshToken: async (
 vi.mock("open-sse/services/comboRoutingPolicy.js", () => ({ getComboRoutingPolicy: async () => ({ allowedConnectionIds: ["account-i"], restrictionApplied: true }) }));
 vi.mock("open-sse/executors/index.js", () => ({ getExecutor: () => ({ noAuth: false }) }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetch(...args) }));
+vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "kimchi/0.1.01" }));
 vi.mock("open-sse/handlers/embeddingsCore.js", () => ({ handleEmbeddingsCore: (...args) => state.embedding(...args) }));
 
 const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];

@@ -62,7 +62,7 @@ export function resolveAuthBase(env = {}) {
 }
 
 /**
- * Inference/catalog origin. `ORCA_API_BASE_URL` → `ORCA_BASE_URL` → public default.
+ * Catalog and proxied health-probe origin. `ORCA_API_BASE_URL` → `ORCA_BASE_URL` → public default.
  * The suffix is a call-site concern so callers keep control of the path.
  * @param {Record<string, string|undefined>} [env]
  * @returns {string}

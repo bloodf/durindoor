@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ combo: null, policy: null, settings: {}, customModels: [], syncedCatalogs: {}, credentials: vi.fn(), mark: vi.fn(), ttsCore: vi.fn(), apiKeyId: null }));
-vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => state.settings), getCombos: vi.fn(async () => []), getApiKeyByKey: vi.fn(), getComboForModel: vi.fn(async () => null), getCustomModels: vi.fn(async () => state.customModels), getSyncedModelCatalog: vi.fn(async (provider) => state.syncedCatalogs[provider]) }));
+const state = vi.hoisted(() => ({ combo: null, policy: null, settings: {}, customModels: [], syncedCatalogs: {}, credentials: vi.fn(), noAuth: vi.fn(), mark: vi.fn(), ttsCore: vi.fn(), apiKeyId: null, nodes: [] }));
+vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => state.settings), getCombos: vi.fn(async () => []), getProviderNodes: vi.fn(async ({ type }) => state.nodes.filter((node) => node.type === type)), getApiKeyByKey: vi.fn(), getComboForModel: vi.fn(async () => null), getCustomModels: vi.fn(async () => state.customModels), getSyncedModelCatalog: vi.fn(async (provider) => state.syncedCatalogs[provider]) }));
 vi.mock("@/sse/services/auth.js", () => ({
   resolveClientApiKey: vi.fn(async () => ({ apiKey: null, auth: { ok: true, apiKeyId: state.apiKeyId, billingEpoch: null } })),
-  getProviderCredentialsWithQuotaPreflight: state.credentials, getNoAuthProviderCredentials: vi.fn(),
+  getProviderCredentialsWithQuotaPreflight: state.credentials, getNoAuthProviderCredentials: state.noAuth,
   markAccountUnavailable: state.mark, clearAccountError: vi.fn(),
 }));
 vi.mock("@/sse/services/model.js", () => ({
   getModelInfo: vi.fn(async (id) => {
-    const resolved = id === "my-image" ? "openai/gpt-image-1" : id === "my-custom" ? "openai/gpt-4o" : id;
+    const resolved = id === "custom-prefix/catalog-only" ? "node-id/catalog-only" : id === "my-image" ? "openai/gpt-image-1" : id === "my-custom" ? "openai/gpt-4o" : id;
     const [provider, ...model] = resolved.split("/");
     return { provider, model: model.join("/") };
   }),
@@ -37,8 +37,9 @@ const { handleVideoCreate } = await import("@/sse/handlers/video.js");
 const { handleVideoGeneration } = await import("@/sse/handlers/video.js");
 const jsonRequest = (path, body) => new Request(`http://localhost${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 beforeEach(() => {
-  vi.clearAllMocks(); state.combo = null; state.policy = null; state.settings = {}; state.customModels = []; state.syncedCatalogs = {}; state.apiKeyId = null;
+  vi.clearAllMocks(); state.combo = null; state.policy = null; state.settings = {}; state.customModels = []; state.syncedCatalogs = {}; state.apiKeyId = null; state.nodes = [];
   state.mark.mockResolvedValue({ shouldFallback: false });
+  state.noAuth.mockResolvedValue({ connectionId: "test", apiKey: "test" });
   state.ttsCore.mockResolvedValue({ success: false, status: 503, error: "upstream failure", response: Response.json({ error: { message: "upstream failure" } }, { status: 503 }) });
   state.credentials.mockResolvedValue({ connectionId: "test", apiKey: "test" });
 });
@@ -69,6 +70,79 @@ describe("non-chat model kinds", () => {
     const response = await handleVideoCreate(jsonRequest("/v1/videos", { model: "xai/grok-4.7", prompt: "hello" }), "generations");
     expect(response.status).toBe(400);
     expect((await response.json()).error.message).toMatch(/cannot be used for video/);
+    expect(state.credentials).not.toHaveBeenCalled();
+  });
+  it.each(["custom", "synced"])("rejects a catalog-only %s model of the wrong kind", async (source) => {
+    const row = { id: "catalog-only", kind: "embedding" };
+    if (source === "custom") state.customModels = [{ ...row, providerAlias: "openai" }];
+    else state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models: [row] } };
+    const response = await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/catalog-only", input: "hello" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.message).toContain("cannot be used for tts");
+    expect(state.credentials).not.toHaveBeenCalled();
+    expect(state.ttsCore).not.toHaveBeenCalled();
+  });
+  it("rejects a custom node model registered under its prefix", async () => {
+    state.nodes = [{ id: "node-id", prefix: "custom-prefix", type: "openai-compatible" }];
+    state.customModels = [{ providerAlias: "custom-prefix", id: "catalog-only", kind: "embedding" }];
+    const response = await handleTts(jsonRequest("/v1/audio/speech", { model: "custom-prefix/catalog-only", input: "hello" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.message).toContain("cannot be used for tts");
+    expect(state.credentials).not.toHaveBeenCalled();
+  });
+  it("does not borrow a built-in provider's rows for a custom node", async () => {
+    state.nodes = [{ id: "node-id", prefix: "openai", type: "openai-compatible" }];
+    state.customModels = [{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }];
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "node-id/catalog-only", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it.each(["custom", "synced"])("dispatches a matching catalog-only %s model", async (source) => {
+    const row = { id: "catalog-only", kind: "tts" };
+    if (source === "custom") state.customModels = [{ ...row, providerAlias: "openai" }];
+    else state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models: [row] } };
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/catalog-only", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it("dispatches a model with both matching and different catalog kinds", async () => {
+    state.customModels = [{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }, { providerAlias: "openai", id: "catalog-only", kind: "tts" }];
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/catalog-only", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it("dispatches a truly unknown model", async () => {
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/unknown-voice", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it("ignores disabled synced catalogs and other providers' custom rows", async () => {
+    state.settings = { modelAutoSyncProviders: { openai: false } };
+    state.customModels = [{ providerAlias: "xai", id: "unknown-voice", kind: "embedding" }];
+    state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "unknown-voice", kind: "embedding" }] } };
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/unknown-voice", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it("keeps untyped catalog IDs dispatchable", async () => {
+    state.customModels = [{ providerAlias: "openai", id: "unknown-voice" }];
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/unknown-voice", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it("preserves unknown-model dispatch when metadata is unavailable", async () => {
+    const db = await import("@/lib/localDb");
+    vi.mocked(db.getCustomModels).mockRejectedValueOnce(new Error("unavailable"));
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/unknown-voice", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it("accepts a matching synced kind alongside a different custom kind", async () => {
+    state.customModels = [{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }];
+    state.syncedCatalogs = { openai: { syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "catalog-only", kind: "tts" }] } };
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "openai/catalog-only", input: "hello" }))).status).toBe(503);
+    expect(state.ttsCore).toHaveBeenCalledOnce();
+  });
+  it("does not penalize smart scoring for a catalog-only wrong-kind model", async () => {
+    const { getComboModelQuotaHealth, resetComboScoring } = await import("open-sse/services/combo.js");
+    resetComboScoring("combo"); state.combo = ["openai/catalog-only"];
+    state.settings = { comboStrategies: { combo: { fallbackStrategy: "smart-scoring" } } };
+    state.customModels = [{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }];
+    expect((await handleTts(jsonRequest("/v1/audio/speech", { model: "combo", input: "hello" }))).status).toBe(400);
+    expect(getComboModelQuotaHealth("combo", "openai/catalog-only")).toBe("healthy");
     expect(state.credentials).not.toHaveBeenCalled();
   });
   it("does not penalize smart scoring for metadata failures", async () => {

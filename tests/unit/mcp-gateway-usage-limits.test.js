@@ -36,6 +36,7 @@ const rows = () => adapter.all("SELECT apiKey, status, cost, meta FROM usageHist
 const failures = [
   ["a thrown tool error", () => state.dispatch.mockRejectedValue(new Error("upstream down"))],
   ["an isError tool result", () => state.dispatch.mockResolvedValue({ result: { content: [{ type: "text", text: "nope" }], isError: true } })],
+  ["a coded tool error", () => state.dispatch.mockRejectedValue(Object.assign(new Error("denied"), { code: -32602 }))],
 ];
 
 beforeAll(async () => {
@@ -177,12 +178,12 @@ it("preserves the salted HMAC identity after a gateway-only key is deleted", asy
   }
 });
 
-it("excludes an attributed failed MCP ledger event from lifetime and window totals", async () => {
-  await database.saveRequestUsage({ provider: "mcp-gateway", status: "error", apiKey: KEY, model: "tools__echo", tokens: {}, cost: 0, strict: true });
+it.each([[{}, 0], [{ prompt_tokens: 5 }, null]])("excludes failed MCP ledger usage %j/%s from lifetime and windows", async (tokens, cost) => {
+  await database.saveRequestUsage({ provider: "mcp-gateway", status: "error", apiKey: KEY, model: "tools__echo", tokens, cost, strict: true });
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });
   const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
-  expect(window.day.requests).toBe(0);
-  expect(window.month.requests).toBe(0);
+  expect(window.day).toEqual({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
+  expect(window.month).toEqual(window.day);
   expect(rows()).toEqual([expect.objectContaining({ apiKey: KEY, status: "error" })]);
 });
 

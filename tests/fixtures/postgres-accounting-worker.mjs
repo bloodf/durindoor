@@ -6,12 +6,16 @@ import { getApiKeyUsageTotals } from '../../src/lib/db/repos/apiKeyUsageTotalsRe
 import { backfillApiKeyUsageTotals } from '../../src/lib/db/helpers/apiKeyUsageTotals.js';
 import { ensureAndBackfillApiKeyUsageTotals } from '../../src/lib/db/migrations/apiKeyUsageTotalsBackfill.js';
 import { createMediaJob, finishMediaJob, getMediaJob } from '../../src/lib/db/repos/mediaJobsRepo.js';
+import { createGatewayKey } from '../../src/lib/db/repos/mcpGatewayRepo.js';
+import unknownCostMigration from '../../src/lib/db/migrations/026-usage-unknown-cost.js';
 const adapter = await getAdapter();
 process.send({
   ready: true,
   pid: process.pid,
   backend: adapter.get('SELECT pg_backend_pid() AS pid').pid,
-  driver: adapter.driver
+  driver: adapter.driver,
+  execArgv: process.execArgv,
+  nodeOptions: process.env.NODE_OPTIONS ?? null
 });
 async function recordJob(job, apiKey) {
   if (job.terminal?.status !== 'succeeded') throw new Error('Terminal success required');
@@ -42,6 +46,8 @@ process.on('message', async ({
   try {
     let value;
     if (action === 'pricing') value = await updatePricing(args);
+    else if (action === 'gatewayKey') value = await createGatewayKey(args.name, args.machineId);
+    else if (action === 'migrateUnknown') { unknownCostMigration.up(adapter); value = true; }
     else if (action === 'save') {
       value = [];
       for (const entry of args) value.push(await saveRequestUsage({

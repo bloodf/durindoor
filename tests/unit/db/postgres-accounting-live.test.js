@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { fork } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
+import { build } from 'esbuild';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 const adminUrl = process.env.DURINDOOR_TEST_PG_URL;
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -18,14 +19,15 @@ const timestamp = '2026-10-19T12:00:00.000Z';
 const databaseName = `dd_accounting_${process.pid}_${Date.now()}`;
 let admin, sql, holder, url, directory;
 let databaseCreated = false;
+let workerEntry, bundleDirectory, diagnosticsDirectory;
 const workers = new Set();
 async function worker(label) {
   const home = fs.mkdtempSync(path.join(directory, `${label}-`));
   const workerUrl = new URL(url);
   workerUrl.searchParams.set('application_name', `dd-accounting-${label}`);
-  const child = fork(path.join(repo, 'tests/fixtures/postgres-accounting-worker.mjs'), [], {
+  const child = fork(workerEntry, [], {
     cwd: repo,
-    execArgv: ['--experimental-loader', path.join(repo, 'tests/fixtures/postgres-accounting-loader.mjs')],
+    execArgv: [],
     env: {
       PATH: process.env.PATH,
       HOME: home,
@@ -46,7 +48,14 @@ async function worker(label) {
     next: 0
   };
   workers.add(state);
-  child.stdout.resume();
+  const stdoutLog = fs.createWriteStream(path.join(diagnosticsDirectory, `${label}-${child.pid}.stdout.log`), { flags: 'wx', mode: 0o600 });
+  const stderrLog = fs.createWriteStream(path.join(diagnosticsDirectory, `${label}-${child.pid}.stderr.log`), { flags: 'wx', mode: 0o600 });
+  state.logsClosed = Promise.all([stdoutLog, stderrLog].map(stream => new Promise((resolve, reject) => {
+    stream.once('close', resolve);
+    stream.once('error', reject);
+  })));
+  child.stdout.pipe(stdoutLog);
+  child.stderr.pipe(stderrLog);
   child.stderr.on('data', chunk => {
     state.stderr += chunk;
   });
@@ -76,6 +85,9 @@ async function worker(label) {
   });
   await ready;
   expect(state.identity.driver).toBe('pg');
+  expect(state.identity.execArgv).toEqual([]);
+  expect(state.identity.nodeOptions).toBeNull();
+  fs.writeFileSync(path.join(diagnosticsDirectory, `${label}-${child.pid}.identity.json`), JSON.stringify(state.identity, null, 2), { mode: 0o600 });
   state.call = (action, args) => new Promise((resolve, reject) => {
     const id = ++state.next;
     state.pending.set(id, {
@@ -96,6 +108,8 @@ async function closeWorker(state, crash = false) {
     ok: true
   });
   const ended = await state.exited;
+  await state.logsClosed;
+  if (state.stderr) process.stderr.write(state.stderr);
   expect(ended).toEqual(crash ? {
     code: null,
     signal: 'SIGKILL'
@@ -156,6 +170,26 @@ async function snapshot() {
 describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
   beforeAll(async () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-pg-accounting-'));
+    diagnosticsDirectory = process.env.DURINDOOR_TEST_PG_LOG_DIR || path.join(os.tmpdir(), `${databaseName}-worker-logs`);
+    fs.mkdirSync(diagnosticsDirectory, { recursive: true, mode: 0o700 });
+    // Compile the same production imports for a plain Node child. Runtime
+    // aliases and the shared CommonJS source need no loader hooks or flags.
+    const cache = path.join(repo, 'tests/node_modules/.cache');
+    fs.mkdirSync(cache, { recursive: true });
+    bundleDirectory = fs.mkdtempSync(path.join(cache, 'pg-accounting-'));
+    workerEntry = path.join(bundleDirectory, 'worker.mjs');
+    const realtimeConfig = path.join(bundleDirectory, 'realtimeConfig.cjs');
+    fs.copyFileSync(path.join(repo, 'src/shared/utils/realtimeConfig.js'), realtimeConfig);
+    await build({
+      entryPoints: [path.join(repo, 'tests/fixtures/postgres-accounting-worker.mjs')],
+      outfile: workerEntry, bundle: true, platform: 'node', format: 'esm', packages: 'external',
+      alias: { '@': path.join(repo, 'src'), 'open-sse': path.join(repo, 'open-sse') },
+      plugins: [{ name: 'shared-commonjs-source', setup(builder) {
+        builder.onResolve({ filter: /realtimeConfig\.js$/ }, () => ({ path: realtimeConfig }));
+      } }],
+    });
+    fs.copyFileSync(workerEntry, path.join(diagnosticsDirectory, 'worker.bundle.mjs'));
+    console.log(`PostgreSQL worker stdout/stderr retained in ${diagnosticsDirectory}`);
     admin = new pg.Client({
       connectionString: adminUrl,
       connectionTimeoutMillis: 2000
@@ -189,6 +223,8 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     for (const state of [...workers]) {
       state.child.kill('SIGKILL');
       await state.exited;
+      await state.logsClosed;
+      if (state.stderr) process.stderr.write(state.stderr);
       workers.delete(state);
     }
   });
@@ -196,6 +232,8 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     for (const state of [...workers]) {
       state.child.kill('SIGKILL');
       await state.exited;
+      await state.logsClosed;
+      if (state.stderr) process.stderr.write(state.stderr);
       workers.delete(state);
     }
     try {
@@ -203,8 +241,39 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
       if (databaseCreated) await admin.query(`DROP DATABASE ${databaseName} WITH (FORCE)`);
     } finally {
       try { await admin?.end(); }
-      finally { if (directory) fs.rmSync(directory, { recursive: true, force: true }); }
+      finally {
+        if (directory) fs.rmSync(directory, { recursive: true, force: true });
+        if (bundleDirectory) fs.rmSync(bundleDirectory, { recursive: true, force: true });
+      }
     }
+  });
+  it('resolves a real gateway-only key from PostgreSQL without API-key fixtures', async () => {
+    const a = await worker('gateway-identity');
+    const created = await a.call('gatewayKey', { name: 'Postgres gateway', machineId: 'pg-fixture-machine' });
+    expect(created.ok).toBe(true);
+    const gateway = created.value;
+    expect(await a.call('save', [event('gateway-only', 0, { apiKey: gateway.key, provider: 'mcp-gateway', model: 'tools__echo', status: 'error', tokens: {}, modality: undefined, nativeUnits: undefined })]))
+      .toMatchObject({ ok: true, value: [true] });
+    const stats = await a.call('stats');
+    expect(stats.ok).toBe(true);
+    expect(Object.values(stats.value.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: `mcp-gateway-key:${gateway.id}`, keyName: 'Postgres gateway', requests: 1 })]);
+    expect(JSON.stringify(stats.value)).not.toContain(gateway.key);
+    expect((await sql.query('SELECT id FROM "apiKeys" WHERE key = $1', [gateway.key])).rows).toEqual([]);
+    await closeWorker(a);
+  });
+  it.each([null, 0])('migration 026 excludes failed MCP history with unknown cost %s', async cost => {
+    const a = await worker('migration-unknown');
+    await sql.query('INSERT INTO "usageHistory"(timestamp,"apiKey",provider,status,cost,meta) VALUES($1,$2,$3,$4,$5,$6)',
+      [timestamp, apiKey, 'mcp-gateway', 'error', cost, JSON.stringify({ costStatus: 'unknown' })]);
+    expect(await a.call('migrateUnknown')).toMatchObject({ ok: true, value: true });
+    expect((await a.call('summary', { keyId, apiKey, dayStart: timestamp, monthStart: timestamp })).value.totals.unknownCostRequests).toBe(0);
+    for (const [provider, status] of [['fixture', 'error'], [null, 'error'], ['mcp-gateway', null]]) {
+      await sql.query('INSERT INTO "usageHistory"(timestamp,"apiKey",provider,status,cost,meta) VALUES($1,$2,$3,$4,$5,$6)',
+        [timestamp, apiKey, provider, status, cost, JSON.stringify({ costStatus: 'unknown' })]);
+    }
+    for (let i = 0; i < 2; i++) expect(await a.call('migrateUnknown')).toMatchObject({ ok: true, value: true });
+    expect((await a.call('summary', { keyId, apiKey, dayStart: timestamp, monthStart: timestamp })).value.totals.unknownCostRequests).toBe(3);
+    await closeWorker(a);
   });
   it('keeps failed MCP attribution without consuming key policy totals', async () => {
     const a = await worker('mcp-attribution');

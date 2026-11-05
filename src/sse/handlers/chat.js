@@ -37,7 +37,8 @@ import { runWithTransientBackendRetry } from "open-sse/services/transientBackend
 import {
   getComboModelQuotaHealth,
   handleComboChat,
-  handleFusionChat } from
+  handleFusionChat,
+  comboPolicyRejection } from
 "open-sse/services/combo.js";
 import { getComboRoutingPolicy, mergeComboRouting } from "open-sse/services/comboRoutingPolicy.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
@@ -584,7 +585,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // combo access control above remains the gate for combo names.
     if (comboStrategy === "fusion") {
       log.info("CHAT", `Combo "${comboName}" with ${comboModels.length} models (strategy: fusion)`);
-      const capabilitiesMap = await resolveComboCapabilitiesMap(comboModels);
+      const capabilitiesMap = await resolveComboCapabilitiesMap([...comboModels, perCombo.judgeModel].filter(Boolean));
       return handleFusionChat({
         body,
         models: comboModels,
@@ -609,6 +610,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
         comboName,
         judgeModel: perCombo.judgeModel,
         tuning: perCombo.fusionTuning,
+        autoSwitch: true,
         contextRequirements: perCombo.contextRequirements,
         capabilitiesMap
       });
@@ -823,8 +825,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           comboName,
           judgeModel: perCombo.judgeModel,
           tuning: perCombo.fusionTuning,
+          autoSwitch: true,
           contextRequirements: perCombo.contextRequirements,
-          capabilitiesMap: await resolveComboCapabilitiesMap(comboModels)
+          capabilitiesMap: await resolveComboCapabilitiesMap([...comboModels, perCombo.judgeModel].filter(Boolean))
         });
       }
 
@@ -910,7 +913,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Enforce per-API-key model policy against the resolved underlying model when
   // the request started as a combo; the top-level combo name is not a model id.
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (policyError2) return policyError2;
+  if (policyError2) return comboRouting && policyError2.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError2;
 
   // Vision Bridge (#6640): after policy passes, resolve custom capabilities and
   // reroute vision requests to the configured vision-capable model. Denied
@@ -1070,12 +1073,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           preferredConnectionId: preferredConnectionId || requestReplayConnectionId,
           apiKeyId,
           allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
-          restrictionApplied: comboRouting?.restrictionApplied === true
+          restrictionApplied: comboRouting?.restrictionApplied === true,
+          reportScopeDenied: Boolean(comboRouting)
         });
       } catch (error) {
         if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
         throw error;
       }
+
+      if (credentials?.scopeDenied === true) return comboPolicyRejection();
 
       // If the caller pinned a connection, the selected credential must match it
       // exactly. Otherwise the account has been excluded/quota-blocked/rotated and

@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
-import { unavailableResponse, getClientStatusFromError } from "../utils/error.js";
+import { errorResponse, unavailableResponse, getClientStatusFromError } from "../utils/error.js";
 import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../utils/streamLifecycle.js";
 import { peekStreamForContent } from "../utils/streamContentPeek.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
@@ -47,6 +47,13 @@ export const FP_PIN_SEPARATOR = "|fp|";
 export const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
 // In-process marker: upstream response bodies and headers cannot impersonate local failures.
 export const LOCAL_REQUEST_ERROR = Symbol("localRequestError");
+export const LOCAL_POLICY_REJECTION = Symbol("localPolicyRejection");
+
+export function comboPolicyRejection() {
+  const response = errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied");
+  response[LOCAL_POLICY_REJECTION] = true;
+  return response;
+}
 
 export function splitFingerprintPin(id) {
   if (!isString(id)) return null;
@@ -174,6 +181,13 @@ function ensureTrailingUserTurn(messages) {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" && last?.role !== "model") return messages;
   return [...messages, { role: "user", content: "Continue from where the previous assistant message left off." }];
+}
+
+function filterByInputCapabilities(models, required, capabilitiesMap) {
+  return models.filter((model) => {
+    const caps = capabilitiesMap?.get?.(model) ?? getCapabilitiesForModelByModelStr(model);
+    return [...required].every((cap) => caps[cap] === true);
+  });
 }
 
 // Reorder combo models by capability fit. Stable; never drops a model (fallback intact).
@@ -1367,10 +1381,7 @@ export async function handleComboChat({
     // never dispatched. Survivors still pass key/connection/combo ACLs per attempt.
     const toolMedia = [...detectToolOutputCapabilities(body)];
     if (toolMedia.length > 0) {
-      const capable = rotatedModels.filter((m) => {
-        const caps = capabilitiesMap?.get?.(m) ?? getCapabilitiesForModelByModelStr(m);
-        return toolMedia.every((c) => caps[c] === true);
-      });
+      const capable = filterByInputCapabilities(rotatedModels, toolMedia, capabilitiesMap);
       if (capable.length === 0) {
         const msg = `Combo "${comboName}" has no member that supports [${toolMedia.join(",")}] input returned by a tool`;
         log.warn("COMBO", msg);
@@ -1892,7 +1903,8 @@ async function drainCancelledPanelCalls(calls, pendingIndexes, timeoutMs) {
  * Speed: quorum-grace collection caps the straggler penalty. Quality: the judge
  * runs the consensus/contradiction/blind-spot analysis before writing.
  *
- * Degrades gracefully: 0 panel answers -> 503, exactly 1 -> return it directly.
+ * Zero panel answers return 403 for unanimous local policy denial, otherwise 503.
+ * A lone survivor answers directly unless an explicit judge is configured.
  *
  * @param {Object} options
  * @param {Object} options.body - Request body (client format)
@@ -1902,12 +1914,14 @@ async function drainCancelledPanelCalls(calls, pendingIndexes, timeoutMs) {
  * @param {string} [options.comboName] - Combo name (logging)
  * @param {string} [options.judgeModel] - Judge model; falls back to panel[0]
  * @param {Object} [options.tuning] - Override FUSION_DEFAULTS (minPanel, grace, timeout)
+ * @param {boolean} [options.autoSwitch=true] - Admit only media-capable panel/judge
+ *   models and preserve media tool histories; false keeps legacy panel flattening.
  * @param {Object} [options.contextRequirements] - Optional per-combo context-window
  *   requirements; filters the panel BEFORE fan-out so an ineligible model is
  *   never called (same eligibility semantics as handleComboChat).
  * @returns {Promise<Response>}
  */
-export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, contextRequirements = null, capabilitiesMap = null }) {
+export async function handleFusionChat({ body, models, handleSingleModel, log, comboName, judgeModel, tuning, contextRequirements = null, capabilitiesMap = null, autoSwitch = true }) {
   const allModels = Array.isArray(models) ? models.filter(Boolean) : [];
   if (allModels.length === 0) {
     return new Response(
@@ -1932,7 +1946,18 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // branch in chat.js returns before handleComboChat, so without this call a
   // configured min-context filter would be silently ignored for fusion combos.
   const eligibleModels = filterByContextRequirements(allModels, contextRequirements, log, capabilitiesMap);
-  const panel = sortByContextSize(eligibleModels, contextRequirements, log, capabilitiesMap);
+  const requiredInput = autoSwitch ? [...detectRequiredCapabilities(body)].filter((cap) => HARD_CAPS.has(cap)) : [];
+  const capableModels = filterByInputCapabilities(eligibleModels, requiredInput, capabilitiesMap);
+  // Fusion cannot synthesize missing media. Validate the panel and any explicit
+  // judge before fan-out; never silently replace an operator-selected judge.
+  if (requiredInput.length > 0 && (capableModels.length === 0 ||
+  judgeModel?.trim() && filterByInputCapabilities([judgeModel.trim()], requiredInput, capabilitiesMap).length === 0)) {
+    return new Response(
+      JSON.stringify({ error: { message: `Fusion requires [${requiredInput.join(",")}] input support`, type: "invalid_request_error", code: "capability_unavailable" } }),
+      { status: HTTP_STATUS.BAD_REQUEST, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  const panel = sortByContextSize(capableModels, contextRequirements, log, capabilitiesMap);
   if (!Array.isArray(panel) || panel.length === 0) {
     const msg = `Combo "${comboName}" has no models matching context requirements`;
     log.warn("FUSION", msg);
@@ -1975,10 +2000,12 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     // Panel executors may translate or otherwise mutate their request. Each concurrent
     // call needs its own graph so mutations cannot leak to siblings or the original/judge.
     const panelBody = { ...structuredClone(rest), stream: false };
-    // Flatten tool turns to prose so panel models keep context without emitting tool_calls.
-    if (Array.isArray(panelBody.messages)) {
+    // Media tool histories must retain native call/result IDs and media blocks.
+    // Keep legacy prose flattening when media admission is off or unnecessary.
+    const hasMedia = requiredInput.length > 0;
+    if (!hasMedia && Array.isArray(panelBody.messages)) {
       panelBody.messages = ensureTrailingUserTurn(flattenToolHistory(panelBody.messages));
-    } else if (Array.isArray(panelBody.input)) {
+    } else if (!hasMedia && Array.isArray(panelBody.input)) {
       panelBody.input = ensureTrailingUserTurn(flattenToolHistory(panelBody.input));
     }
     return panelBody;
@@ -2034,6 +2061,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
 
   // 3. Degrade gracefully when the panel is too thin to fuse.
   if (answers.length === 0) {
+    if (pendingIndexes.length === 0 && settled.every((res) => res?.[LOCAL_POLICY_REJECTION] === true)) {
+      return comboPolicyRejection();
+    }
     log.warn("FUSION", "All panel models failed");
     return new Response(
       JSON.stringify({ error: { message: "All fusion panel models failed" } }),

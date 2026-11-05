@@ -1,9 +1,14 @@
 // #1090: images returned inside tool outputs must count for capability admission.
 import { describe, expect, it, vi } from "vitest";
+vi.hoisted(() => {
+  globalThis.fetch = () => { throw new Error("Unexpected network access in media admission tests"); };
+});
 import {
   detectRequiredCapabilities,
   detectToolOutputCapabilities,
   handleComboChat,
+  handleFusionChat,
+  LOCAL_POLICY_REJECTION,
 } from "../../open-sse/services/combo.js";
 import { applyVisionBridgeReroute } from "../../open-sse/services/model.js";
 
@@ -208,6 +213,151 @@ describe("combo admission for tool-output media", () => {
 
     expect(res.status).toBe(200);
     expect(handleSingleModel.mock.calls.map(([, model]) => model)).toEqual([VISION, TEXT]);
+  });
+});
+
+describe("fusion media admission", () => {
+  const secondVision = "p/second-vision";
+  const fusionCaps = new Map([...caps, [secondVision, { vision: true }]]);
+  const ok = () => Response.json({ choices: [{ message: { content: "answer" } }] });
+  const run = (body, handleSingleModel, options = {}) => handleFusionChat({
+    body, models: [TEXT, VISION, secondVision], handleSingleModel, log,
+    comboName: "mixed", capabilitiesMap: fusionCaps, ...options,
+  });
+
+  it.each(Object.entries(BODIES))("preserves %s media and call/result IDs in panel and judge payloads", async (_name, body) => {
+    const original = structuredClone(body);
+    const handle = vi.fn(async () => ok());
+    expect((await run(body, handle)).status).toBe(200);
+    expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision, VISION]);
+    for (const [sent] of handle.mock.calls) {
+      for (const [key, value] of Object.entries(original)) {
+        if (Array.isArray(value) && ["messages", "input", "contents"].includes(key)) {
+          expect(sent[key].slice(0, value.length)).toEqual(value);
+        } else expect(sent[key]).toEqual(value);
+      }
+    }
+    expect(body).toEqual(original);
+  });
+
+  it("filters top-level images before fan-out too", async () => {
+    const handle = vi.fn(async () => ok());
+    await run({ messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: PNG } }] }] }, handle);
+    expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision, VISION]);
+  });
+
+  it("returns capability_unavailable without dispatch when no panel member is capable", async () => {
+    const handle = vi.fn(async () => ok());
+    const res = await run(BODIES.chatTool, handle, { models: [TEXT] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("capability_unavailable");
+    expect(handle).not.toHaveBeenCalled();
+  });
+
+  it.each([TEXT, "p/unknown-judge"])("rejects incapable explicit judge %s before panel dispatch", async (judgeModel) => {
+    const handle = vi.fn(async () => ok());
+    const res = await run(BODIES.chatTool, handle, { judgeModel });
+    expect(res.status).toBe(400);
+    const error = (await res.json()).error;
+    expect(error.code).toBe("capability_unavailable");
+    expect(error.message).not.toContain(judgeModel);
+    expect(handle).not.toHaveBeenCalled();
+  });
+
+  it("honors an explicit capable judge outside the panel", async () => {
+    const handle = vi.fn(async () => ok());
+    await run(BODIES.chatTool, handle, { models: [VISION], judgeModel: secondVision });
+    expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision]);
+  });
+
+  it("preserves direct panel-of-one payload", async () => {
+    const handle = vi.fn(async () => ok());
+    await run(BODIES.chatTool, handle, { models: [TEXT, VISION] });
+    expect(handle.mock.calls).toHaveLength(1);
+    expect(handle.mock.calls[0].slice(0, 2)).toEqual([BODIES.chatTool, VISION]);
+  });
+
+  it("keeps explicit autoSwitch opt-out", async () => {
+    const handle = vi.fn(async () => ok());
+    await run(BODIES.chatTool, handle, { models: [TEXT], autoSwitch: false });
+    expect(handle.mock.calls[0][1]).toBe(TEXT);
+  });
+
+  it("keeps legacy panel flattening when autoSwitch is off", async () => {
+    const handle = vi.fn(async () => ok());
+    await run(BODIES.chatTool, handle, { autoSwitch: false });
+    expect(handle.mock.calls.map(([, model]) => model)).toEqual([TEXT, VISION, secondVision, TEXT]);
+    for (const [sent, , isPanel] of handle.mock.calls) {
+      if (isPanel) {
+        expect(sent.messages.some((message) => message.role === "tool" || message.tool_calls)).toBe(false);
+      }
+    }
+  });
+
+  it("returns generic 403 only when every capable panel member has an internal policy rejection", async () => {
+    const handle = vi.fn(async () => {
+      const res = Response.json({ error: { message: "private model name" } }, { status: 403 });
+      res[LOCAL_POLICY_REJECTION] = true;
+      return res;
+    });
+    const res = await run(BODIES.chatTool, handle);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("private model name");
+    expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision]);
+  });
+
+  it("does not interpret upstream 403 as local policy denial", async () => {
+    const handle = vi.fn(async () => new Response("upstream forbidden", { status: 403 }));
+    expect((await run(BODIES.chatTool, handle)).status).toBe(503);
+  });
+
+  it("does not interpret a drained timeout beside a policy rejection as all-denied", async () => {
+    const handle = vi.fn(async (_body, model, _isPanel, signal) => {
+      if (model === secondVision) return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      });
+      const response = new Response("denied", { status: 403 });
+      response[LOCAL_POLICY_REJECTION] = true;
+      return response;
+    });
+    const res = await run(BODIES.chatTool, handle, { tuning: { panelHardTimeoutMs: 20 } });
+    expect(res.status).toBe(503);
+    expect(handle).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts and drains a capable straggler before media reaches the judge", async () => {
+    let cleaned = false;
+    const handle = vi.fn(async (_body, model, isPanel, signal) => {
+      if (isPanel && model === secondVision) return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => {
+          cleaned = true;
+          reject(new DOMException("aborted", "AbortError"));
+        }, { once: true });
+      });
+      if (!isPanel) expect(cleaned).toBe(true);
+      return ok();
+    });
+    const res = await run(BODIES.chatTool, handle, {
+      judgeModel: VISION,
+      tuning: { minPanel: 1, stragglerGraceMs: 1, panelHardTimeoutMs: 100 },
+    });
+    expect(res.status).toBe(200);
+    expect(cleaned).toBe(true);
+    expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision, VISION]);
+    expect(handle.mock.calls.at(-1)[0].messages.slice(0, 3)).toEqual(BODIES.chatTool.messages);
+  });
+
+  it("uses an allowed survivor without replaying denied members", async () => {
+    const handle = vi.fn(async (_body, model) => {
+      if (model === VISION) {
+        const res = new Response("denied", { status: 403 });
+        res[LOCAL_POLICY_REJECTION] = true;
+        return res;
+      }
+      return ok();
+    });
+    expect((await run(BODIES.chatTool, handle)).status).toBe(200);
+    expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision, secondVision]);
   });
 });
 

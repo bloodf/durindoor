@@ -412,6 +412,7 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
     if (!probe.fallback) throw err;
   }
   if (probe.accepts === "non-auth-failure") {
+    if (res.status >= 500) return { valid: false, status: res.status, error: getChatProbeError(res.status) };
     return { valid: !AUTH_FAILURE_STATUSES.has(res.status), status: res.status };
   }
   if (probe.accepts === "chat-auth") {
@@ -425,6 +426,7 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
 
   try {
     const fallbackRes = await guardedProbeFetch(probe.fallback.url, probe.fallback.options, guard, fetcher);
+    if (fallbackRes.status >= 500) return { valid: false, status: fallbackRes.status, error: getChatProbeError(fallbackRes.status) };
     return { valid: !AUTH_FAILURE_STATUSES.has(fallbackRes.status), status: fallbackRes.status };
   } catch (err) {
     if (err instanceof OutboundUrlGuardError) return blockedResult(err);

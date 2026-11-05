@@ -1298,6 +1298,7 @@ export default function ProviderDetailPage() {
   // one of the writes. Reuse the atomic reorder endpoint that
   // handleReorderByStatus already relies on instead of duplicating that bug.
   const handleSwapPriority = async (index1, index2) => {
+    if (connectionFilter.length > 0) return;
     const newConnections = [...connections];
     [newConnections[index1], newConnections[index2]] = [newConnections[index2], newConnections[index1]];
     setConnections(newConnections);
@@ -1311,6 +1312,7 @@ export default function ProviderDetailPage() {
   };
 
   const handleReorderByStatus = async () => {
+    if (connectionFilter.length > 0) return;
     const sorted = sortConnectionsByAvailability(connections);
     setConnections(sorted);
 
@@ -1446,8 +1448,8 @@ export default function ProviderDetailPage() {
                 plan={codexPlans[conn.id]}
                 proxyPools={proxyPools}
                 isOAuth={isOAuth}
-                isFirst={index === 0}
-                isLast={index === connections.length - 1}
+                isFirst={connectionFilter.length > 0 || index === 0}
+                isLast={connectionFilter.length > 0 || index === connections.length - 1}
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
@@ -2042,6 +2044,7 @@ export default function ProviderDetailPage() {
               variant="secondary"
               icon="swap_vert"
               onClick={handleReorderByStatus}
+              disabled={connectionFilter.length > 0}
               title="Reorder by availability status">
               
                   Reorder
@@ -2180,7 +2183,7 @@ export default function ProviderDetailPage() {
           }
               {connections.length > 0 &&
           <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-dd-border-subtle pb-2">
-                  <Input aria-label="Filter connections" placeholder="Filter connections" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} />
+                  <Input aria-label="Filter connections" aria-describedby={connectionFilter.length > 0 ? "connection-filter-reorder-hint" : undefined} placeholder="Filter connections" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} />
                   <span aria-live="polite" className="text-xs text-dd-muted">{selectedConnectionIds.length} selected</span>
                   <label className="flex min-h-11 min-w-11 cursor-pointer items-center gap-1.5 text-xs text-dd-muted hover:text-dd-accent">
                     <input
@@ -2192,6 +2195,7 @@ export default function ProviderDetailPage() {
                   </label>
                 </div>
           }
+              {connectionFilter.length > 0 && <p id="connection-filter-reorder-hint" role="status" className="mb-3 text-sm text-dd-muted">Clear the connection filter to reorder priorities.</p>}
               {selectedConnections.length > 0 && <details className="mb-3 text-sm text-dd-muted"><summary className="min-h-11 cursor-pointer py-3">Review {selectedConnections.length} selected connections</summary><ul>{selectedConnections.map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id} ({conn.id})</li>)}</ul></details>}
               {bulkFailures.length > 0 && <div role="alert" className="mb-3 text-sm text-dd-danger"><p>Some connections could not be updated:</p><ul>{bulkFailures.map((failure) => <li key={failure.id}>{failure.name} ({failure.id}): {failure.reason}</li>)}</ul></div>}
               {connectionsList}

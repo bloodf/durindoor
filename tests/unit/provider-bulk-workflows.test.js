@@ -227,3 +227,31 @@ it("keeps per-account success and failure results in a selected test", async () 
   expect(host.textContent).toContain("Failed: 1");
   expect(host.textContent).toContain("failed: Credentials rejected");
 });
+
+it("prevents priority changes while filtered and reorders normally after clearing", async () => {
+  const filter = host.querySelector('[aria-label="Filter connections"]');
+  const setFilter = async (value) => {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(filter, value);
+      filter.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  await setFilter("Beta");
+  const up = host.querySelector('[aria-label="Move Beta up"]');
+  expect(up.disabled).toBe(true);
+  expect(button("Reorder").disabled).toBe(true);
+  const hint = document.getElementById(filter.getAttribute("aria-describedby"));
+  expect(hint?.textContent).toBe("Clear the connection filter to reorder priorities.");
+  await click(up);
+  await click(button("Reorder"));
+  expect(fetch.mock.calls.some(([url]) => url === "/api/providers/reorder")).toBe(false);
+
+  await setFilter("");
+  expect(host.querySelector('[aria-label="Move Beta up"]').disabled).toBe(false);
+  expect(button("Reorder").disabled).toBe(false);
+  await click(host.querySelector('[aria-label="Move Beta up"]'));
+  const [, options] = fetch.mock.calls.find(([url]) => url === "/api/providers/reorder");
+  expect(JSON.parse(options.body)).toEqual({ providerId: "openrouter", orderedIds: ["b", "a"] });
+  const labels = [...host.querySelectorAll('input[type="checkbox"][aria-label^="Select "]')].map((input) => input.getAttribute("aria-label"));
+  expect(labels).toEqual(["Select Beta", "Select Alpha"]);
+});

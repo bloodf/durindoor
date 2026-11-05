@@ -991,6 +991,7 @@ export default function ProviderDetailPage() {
     let passed = 0;
     let failed = 0;
     let skipped = 0;
+    let unavailable = 0;
 
     try {
       for (let index = 0; index < targets.length; index += 1) {
@@ -1002,6 +1003,7 @@ export default function ProviderDetailPage() {
             passed,
             failed,
             skipped,
+            unavailable,
             stopped: true
           });
           break;
@@ -1019,9 +1021,12 @@ export default function ProviderDetailPage() {
           const data = await res.json();
           if (!isCurrent()) return;
           const wasSkipped = !!data.skipped;
+          const wasUnavailable = data.unavailable === true;
           const valid = !!data.valid;
 
-          if (wasSkipped) {
+          if (wasUnavailable) {
+            unavailable += 1;
+          } else if (wasSkipped) {
             skipped += 1;
           } else if (valid) {
             passed += 1;
@@ -1032,7 +1037,7 @@ export default function ProviderDetailPage() {
           setOneByOneResults((prev) => ({
             ...prev,
             [connection.id]: {
-              state: wasSkipped ? "skipped" : valid ? "success" : "failed",
+              state: wasUnavailable ? "unavailable" : wasSkipped ? "skipped" : valid ? "success" : "failed",
               error: valid ? null : data.error || null
             }
           }));
@@ -1054,6 +1059,7 @@ export default function ProviderDetailPage() {
           passed,
           failed,
           skipped,
+          unavailable,
           stopped: false
         });
 
@@ -1329,7 +1335,7 @@ export default function ProviderDetailPage() {
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
   const visibleConnections = connections.filter((conn) => `${conn.name || ""} ${conn.email || ""}`.toLowerCase().includes(connectionFilter.trim().toLowerCase()));
   const allSelected = visibleConnections.length > 0 && visibleConnections.every((conn) => selectedConnectionIds.includes(conn.id));
-  const hiddenTestResultCount = connections.filter((conn) => !visibleConnections.includes(conn) && ["success", "failed", "skipped"].includes(oneByOneResults[conn.id]?.state)).length;
+  const hiddenTestResultCount = connections.filter((conn) => !visibleConnections.includes(conn) && ["success", "failed", "skipped", "unavailable"].includes(oneByOneResults[conn.id]?.state)).length;
 
   const toggleSelectConnection = (connectionId) => {
     setSelectedConnectionIds((prev) =>
@@ -2173,6 +2179,7 @@ export default function ProviderDetailPage() {
                     <span>Passed: {oneByOneSummary.passed}</span>
                     <span>Failed: {oneByOneSummary.failed}</span>
                     {oneByOneSummary.skipped > 0 && <span>Skipped: {oneByOneSummary.skipped}</span>}
+                    {oneByOneSummary.unavailable > 0 && <span>Unavailable: {oneByOneSummary.unavailable}</span>}
                     {oneByOneSummary.stopped &&
               <span className="text-dd-warning">Stopped</span>
               }
@@ -2180,6 +2187,9 @@ export default function ProviderDetailPage() {
               <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
               }
                   </div>
+                  {oneByOneSummary.unavailable > 0 && <ul aria-label="Unavailable connection tests" className="mt-2">
+                    {connections.filter((conn) => oneByOneResults[conn.id]?.state === "unavailable").map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id}: {oneByOneResults[conn.id].error || "Provider unavailable - try again later"}</li>)}
+                  </ul>}
                   {hiddenTestResultCount > 0 && <div className="mt-2 flex flex-wrap items-center gap-2" role="status">
                     <span>{hiddenTestResultCount} completed {hiddenTestResultCount === 1 ? "result" : "results"} hidden by the filter.</span>
                     <Button size="sm" variant="secondary" onClick={() => setConnectionFilter("")}>Clear filter to view results</Button>

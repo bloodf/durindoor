@@ -288,3 +288,32 @@ it("counts hidden selected-test results and lets the operator reveal them", asyn
   expect(alpha.parentElement.parentElement.textContent).toContain("failed: Credentials rejected");
   expect(beta.parentElement.parentElement.textContent).toContain("success");
 });
+
+it("reports unavailable separately from invalid credentials, including hidden results", async () => {
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => {
+    if (url === "/api/providers/a/test") return Promise.resolve(ok({ valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }));
+    if (url === "/api/providers/b/test") return Promise.resolve(ok({ valid: false, skipped: false, error: "Invalid API key", refreshed: false }));
+    return previous(url, options);
+  });
+  await click(host.querySelector('[aria-label="Select Alpha"]'));
+  await click(host.querySelector('[aria-label="Select Beta"]'));
+  const filter = host.querySelector('[aria-label="Filter connections"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(filter, "Beta");
+    filter.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  vi.useFakeTimers();
+  await click(button("Test Selected"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  expect(host.textContent).toContain("Total: 2");
+  expect(host.textContent).toContain("Completed: 2");
+  expect(host.textContent).toContain("Passed: 0");
+  expect(host.textContent).toContain("Failed: 1");
+  expect(host.textContent).toContain("Unavailable: 1");
+  expect(host.querySelector('[aria-label="Unavailable connection tests"]')?.textContent).toContain("Alpha: Provider unavailable - try again later");
+  expect(host.textContent).toContain("1 completed result hidden by the filter.");
+  expect(host.textContent).toContain("failed: Invalid API key");
+  expect(host.textContent).toContain("Operational: unknown");
+  expect(fetch.mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(0);
+});

@@ -1,6 +1,7 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { hasValidCliToken, hasValidToken, isAdminScopedKey } from "@/dashboardGuard";
 import { getActiveRequests } from "@/lib/db/index.js";
+import { getGateStats } from "open-sse/services/concurrencyGate.js";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,14 @@ export async function GET(request) {
     }
     const count = activeRequests.reduce((sum, item) => sum + item.count, 0);
     if (!Number.isSafeInteger(count)) throw new Error("Invalid active request total");
+    const queued = Object.values(getGateStats()).reduce((sum, gate) => sum + gate.queued, 0);
+    if (!Number.isSafeInteger(queued) || queued < 0) throw new Error("Invalid admission queue total");
     const delay = sampler.percentile(99) / 1e9;
     const body = [
       "# TYPE durindoor_active_requests gauge",
       `durindoor_active_requests ${count}`,
+      "# TYPE durindoor_admission_queued_requests gauge",
+      `durindoor_admission_queued_requests ${queued}`,
       "# TYPE durindoor_process_uptime_seconds gauge",
       `durindoor_process_uptime_seconds ${process.uptime()}`,
       "# TYPE durindoor_process_resident_memory_bytes gauge",

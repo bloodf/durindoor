@@ -169,6 +169,9 @@ Most OAuth providers use built-in client metadata. Set these only when you run y
 | `GITLAB_OAUTH_CLIENT_SECRET` | registry | GitLab OAuth client secret. |
 | `GITLAB_DUO_OAUTH_CLIENT_ID` | registry | GitLab Duo OAuth client id. |
 | `GITLAB_DUO_OAUTH_CLIENT_SECRET` | registry | GitLab Duo OAuth client secret. |
+| `ORCA_AUTH_BASE_URL` | `https://www.orcarouter.ai` | OrcaRouter PKCE authorize and key-exchange origin (preferred over `ORCA_BASE_URL`). Remote origins must be HTTPS; plain HTTP is allowed only for loopback. |
+| `ORCA_API_BASE_URL` | `https://api.orcarouter.ai` | OrcaRouter inference and `/v1/models` catalog origin (preferred over `ORCA_BASE_URL`). Remote origins must be HTTPS; plain HTTP is allowed only for loopback. |
+| `ORCA_BASE_URL` | unset | Shared fallback origin for both OrcaRouter auth and API when the split variables above are unset. |
 
 ## MCP gateway, tunnels, Headroom
 

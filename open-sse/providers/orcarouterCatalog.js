@@ -327,7 +327,7 @@ export const ORCAROUTER_SEED_MODELS = [
 {
   id: "openai/gpt-5.5",
   name: "GPT-5.5",
-  contextLength: 400000,
+  contextLength: 1050000,
   inputModalities: ["text", "image"],
   endpointTypes: ["openai"],
   reasoning: true,
@@ -352,7 +352,7 @@ export const ORCAROUTER_SEED_MODELS = [
 {
   id: "deepseek/deepseek-v4-pro",
   name: "DeepSeek V4 Pro",
-  contextLength: 1000000,
+  contextLength: 1048576,
   inputModalities: ["text"],
   endpointTypes: ["openai"],
   reasoning: true

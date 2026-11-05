@@ -40,6 +40,7 @@
 
 ## Fixes
 
+- fix(providers): Align OrcaRouter cold-start seed context windows for `openai/gpt-5.5` (1,050,000) and `deepseek/deepseek-v4-pro` (1,048,576) with the public `/v1/models` catalog and document `ORCA_AUTH_BASE_URL`, `ORCA_API_BASE_URL`, and `ORCA_BASE_URL` in the environment variable reference (#1224).
 - fix(translator): Parse Anthropic SSE when a provider that forces SSE on a Claude transport (Kimi Coding, Kimi Coding API Key, OpenCode Free `union-alpha`) serves a non-streaming request, instead of failing with 502 and a 30s cooldown on each failure. Claude clients keep signed thinking, tool_use, stop_reason, and cache usage.
 - fix(deps): clear runtime `npm audit` high findings: `undici` floor ^7.30.1 with an override (#1360, upstream 08ef047), `node-forge` 1.4.0→1.4.2 in root and CLI, `body-parser` 2.3.0→2.4.0, `qs` 6.16.0→6.17.1, and dev `zod` 4.4.3→4.6.7, CLI `brace-expansion` 5.0.7→5.0.12, Storybook 10.6.2→10.6.5 (#1302, #1310). The `tests/` lockfile is unchanged because happy-dom 20.14 previously regressed the full suite.
 - **DB**: strip NUL bytes from bound strings at the shared driver bind boundary so a value carrying raw binary no longer aborts the write on better-sqlite3 ("String contains null byte"), gets silently truncated at the first NUL on node:sqlite, or is rejected by PostgreSQL TEXT. Credential and other stored secrets are unchanged except that any embedded NUL is removed (#1358 / upstream 5a4e812).

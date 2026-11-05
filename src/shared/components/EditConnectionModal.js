@@ -47,6 +47,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const [awsData, setAwsData] = useState({ profile: "", accessKeyId: "", sessionToken: "" });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [testError, setTestError] = useState(null);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -105,6 +106,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         sessionToken: ""
       });
       setTestResult(null);
+      setTestError(null);
       setValidationResult(null);
     }
   }, [connection]);
@@ -194,10 +196,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     if (!connection?.provider) return;
     setTesting(true);
     setTestResult(null);
+    setTestError(null);
     try {
       const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST" });
       const data = await res.json();
-      setTestResult(data.skipped ? "skipped" : data.valid ? "success" : "failed");
+      setTestResult(data.skipped ? "skipped" : data.unavailable ? "unavailable" : data.valid ? "success" : "failed");
+      if (data.unavailable) setTestError(data.error);
     } catch {
       setTestResult("failed");
     } finally {
@@ -334,7 +338,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         </section>
         <PeakHourProtectionEditor value={peakHourProtection} onChange={setPeakHourProtection} />
         {formatPeakHourSummary(peakHourProtection) ? <p className="text-xs text-dd-muted">{formatPeakHourSummary(peakHourProtection)}</p> : null}
-        {!isCompatible && !isAzure && !requiresAccountId ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" icon="network_check" onClick={handleTest} loading={testing}>Test Connection</Button>{testResult ? <Badge tone={testResult === "success" ? "success" : testResult === "skipped" ? "neutral" : "danger"}>{testResult === "success" ? "Valid" : testResult === "skipped" ? "Skipped" : "Failed"}</Badge> : null}</div> : null}
+        {!isCompatible && !isAzure && !requiresAccountId ? <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" icon="network_check" onClick={handleTest} loading={testing}>Test Connection</Button>{testResult ? <Badge tone={testResult === "success" ? "success" : testResult === "skipped" || testResult === "unavailable" ? "neutral" : "danger"}>{testResult === "success" ? "Valid" : testResult === "skipped" ? "Skipped" : testResult === "unavailable" ? "Unavailable" : "Failed"}</Badge> : null}{testError ? <span role="status" className="text-xs text-dd-muted">{testError}</span> : null}</div> : null}
       </div>
     </Modal>);
 

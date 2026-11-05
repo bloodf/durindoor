@@ -1104,6 +1104,9 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             { sessionToken: connection.sessionToken }
           );
           if (result) {
+            if (result.status >= 500) {
+              return { valid: false, unavailable: true, error: "Provider unavailable - try again later" };
+            }
             return {
               valid: result.valid,
               error: result.valid ? null : result.error || "Invalid API key"
@@ -1160,6 +1163,11 @@ export async function testSingleConnection(id) {
   const resultError = result.valid ?
   null :
   sanitizeErrorMessage(result.error || "Connection validation failed");
+
+  // A provider outage says nothing about the stored credential or prior status.
+  if (result.unavailable) {
+    return { valid: false, unavailable: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
+  }
 
   const updateData = {
     testStatus: result.skipped ? "unknown" : result.valid ? "active" : "error",

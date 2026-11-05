@@ -59,6 +59,7 @@ describe("baseUrl-only API-key provider connection test", () => {
 
     expect(result.valid).toBe(true);
     expect(result.error).not.toBe("Provider test not supported");
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith("conn-glb", expect.objectContaining({ testStatus: "active", lastError: null }));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -128,6 +129,7 @@ describe("baseUrl-only API-key provider connection test", () => {
 
   it.each([
     [401, "Invalid API key"],
+    [403, "Invalid API key"],
     [404, "Provider validation endpoint not found"],
     [500, "Provider unavailable - try again later"],
   ])("propagates status %i without mislabeling the failure", async (status, error) => {
@@ -139,16 +141,34 @@ describe("baseUrl-only API-key provider connection test", () => {
     ]);
 
     const connectionResult = await testSingleConnection("conn-glb");
-    expect(connectionResult).toMatchObject({ valid: false, error });
-    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
-      "conn-glb",
-      expect.objectContaining({ testStatus: "error", lastError: error }),
-    );
+    expect(connectionResult).toMatchObject({ valid: false, error, ...(status >= 500 ? { unavailable: true } : {}) });
+    if (status >= 500) {
+      expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+    } else {
+      expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+        "conn-glb",
+        expect.objectContaining({ testStatus: "error", lastError: error }),
+      );
+    }
 
     const response = await POST(new Request("http://localhost/api/providers/validate", {
       method: "POST",
       body: JSON.stringify({ provider: "gitlawb-gmi", apiKey: "glb-test-key" }),
     }));
     expect(await response.json()).toEqual({ valid: false, error, ...(status >= 500 ? { unavailable: true } : {}) });
+  });
+
+  it.each([
+    [503, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
+    [401, { valid: false, skipped: false, error: "Invalid API key", refreshed: false }, "error"],
+    [403, { valid: false, skipped: false, error: "Invalid API key", refreshed: false }, "error"],
+    [200, { valid: true, skipped: false, error: null, refreshed: false }, "active"],
+  ])("preserves saved connection semantics for HTTP %i", async (status, expected, storedStatus) => {
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response("", { status }));
+    const { POST } = await import("../../src/app/api/providers/[id]/test/route.js");
+    const response = await POST(new Request("http://localhost/api/providers/conn-glb/test", { method: "POST" }), { params: Promise.resolve({ id: "conn-glb" }) });
+    expect(await response.json()).toEqual(expected);
+    if (storedStatus === null) expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+    else expect(mocks.updateProviderConnection).toHaveBeenCalledWith("conn-glb", expect.objectContaining({ testStatus: storedStatus, lastError: expected.error }));
   });
 });

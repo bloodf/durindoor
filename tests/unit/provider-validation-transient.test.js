@@ -1,10 +1,8 @@
-import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
-let probeRegistryProvider;
-beforeAll(async () => {
-  vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network request"); }));
-  ({ probeRegistryProvider } = await import("../../src/app/api/providers/providerProbe.js"));
-});
+vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
+vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network request"); }));
+const { probeRegistryProvider } = await import("../../src/app/api/providers/providerProbe.js");
 afterAll(() => vi.unstubAllGlobals());
 
 describe("provider validation during upstream outages", () => {

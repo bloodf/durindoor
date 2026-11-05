@@ -67,6 +67,13 @@ const BODIES = {
   },
 };
 
+const CHAT_TOOL_DISPATCH = { messages: [
+  { role: "user", content: "take a screenshot" },
+  { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "shot", arguments: "{}" } }] },
+  { role: "tool", tool_call_id: "call_1", content: [{ type: "text", text: "[tool returned an image; see attached]" }] },
+  { role: "user", content: [{ type: "image_url", image_url: { url: PNG } }] },
+] };
+
 describe("detectToolOutputCapabilities", () => {
   it.each(Object.entries(BODIES))("detects a nested tool-output image in %s", (_name, body) => {
     expect(detectToolOutputCapabilities(body)).toEqual(new Set(["vision"]));
@@ -225,13 +232,14 @@ describe("fusion media admission", () => {
     comboName: "mixed", capabilitiesMap: fusionCaps, ...options,
   });
 
-  it.each(Object.entries(BODIES))("preserves %s media and call/result IDs in panel and judge payloads", async (_name, body) => {
+  it.each(Object.entries(BODIES))("preserves %s media and call/result IDs in panel and judge payloads", async (name, body) => {
     const original = structuredClone(body);
+    const expected = name === "chatTool" ? CHAT_TOOL_DISPATCH : original;
     const handle = vi.fn(async () => ok());
     expect((await run(body, handle)).status).toBe(200);
     expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision, VISION]);
     for (const [sent] of handle.mock.calls) {
-      for (const [key, value] of Object.entries(original)) {
+      for (const [key, value] of Object.entries(expected)) {
         if (Array.isArray(value) && ["messages", "input", "contents"].includes(key)) {
           expect(sent[key].slice(0, value.length)).toEqual(value);
         } else expect(sent[key]).toEqual(value);
@@ -274,13 +282,54 @@ describe("fusion media admission", () => {
     const handle = vi.fn(async () => ok());
     await run(BODIES.chatTool, handle, { models: [TEXT, VISION] });
     expect(handle.mock.calls).toHaveLength(1);
-    expect(handle.mock.calls[0].slice(0, 2)).toEqual([BODIES.chatTool, VISION]);
+    expect(handle.mock.calls[0][0].messages).toEqual(CHAT_TOOL_DISPATCH.messages);
+    expect(handle.mock.calls[0][1]).toBe(VISION);
   });
 
   it("keeps explicit autoSwitch opt-out", async () => {
     const handle = vi.fn(async () => ok());
     await run(BODIES.chatTool, handle, { models: [TEXT], autoSwitch: false });
     expect(handle.mock.calls[0][1]).toBe(TEXT);
+  });
+
+  it.each(["tool", "function"])("does not classify a %s CSV file as PDF input", async (role) => {
+    const body = { messages: [{ role, tool_call_id: "csv", content: [
+      { type: "file", file: { filename: "report.csv", file_data: "data:text/csv;base64,YSxiCg==" } },
+    ] }] };
+    expect(detectToolOutputCapabilities(body)).toEqual(new Set());
+    expect(detectRequiredCapabilities(body)).toEqual(new Set());
+    const handle = vi.fn(async () => ok());
+    const res = await run(body, handle, { models: [TEXT], capabilitiesMap: new Map([[TEXT, { pdf: false, vision: false }]]) });
+    expect(res.status).toBe(200);
+    expect(handle.mock.calls[0][0]).toEqual(body);
+  });
+
+  it("still rejects an actual tool PDF on a PDF-incapable member", async () => {
+    const body = { messages: [{ role: "tool", tool_call_id: "pdf", content: [
+      { type: "file", file: { filename: "report.pdf", file_data: "data:application/pdf;base64,JVBERi0xLjcK" } },
+    ] }] };
+    expect(detectRequiredCapabilities(body)).toEqual(new Set(["pdf"]));
+    const handle = vi.fn();
+    const res = await run(body, handle, { models: [TEXT] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("capability_unavailable");
+    expect(handle).not.toHaveBeenCalled();
+  });
+
+  it.each([{ models: [VISION] }, { models: [VISION, secondVision] }])("keeps lifted tool images non-degradable through nested fallback ($models)", async ({ models }) => {
+    const attempts = vi.fn(async () => {
+      const response = new Response("denied", { status: 403 });
+      response[LOCAL_POLICY_REJECTION] = true;
+      return response;
+    });
+    const handle = (body) => handleComboChat({
+      body, models: [VISION, TEXT], handleSingleModel: attempts,
+      capabilitiesMap: caps, comboStrategy: "fallback", comboName: "inner", log,
+    });
+    const res = await run(BODIES.chatTool, handle, { models });
+    expect(res.status).toBe(403);
+    expect(attempts.mock.calls.map(([, model]) => model)).toEqual(models.map(() => VISION));
+    for (const [sent] of attempts.mock.calls) expect(sent.messages).toEqual(CHAT_TOOL_DISPATCH.messages);
   });
 
   it("keeps legacy panel flattening when autoSwitch is off", async () => {
@@ -370,7 +419,7 @@ describe("fusion media admission", () => {
     expect(res.status).toBe(200);
     expect(cleaned).toBe(true);
     expect(handle.mock.calls.map(([, model]) => model)).toEqual([VISION, secondVision, VISION]);
-    expect(handle.mock.calls.at(-1)[0].messages.slice(0, 3)).toEqual(BODIES.chatTool.messages);
+    expect(handle.mock.calls.at(-1)[0].messages.slice(0, 4)).toEqual(CHAT_TOOL_DISPATCH.messages);
   });
 
   it("uses an allowed survivor without replaying denied members", async () => {

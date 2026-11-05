@@ -222,6 +222,11 @@ describe("#1090 fusion tool media authorization", () => {
     { role: "assistant", content: null, tool_calls: [{ id: "shot", type: "function", function: { name: "shot", arguments: "{}" } }] },
     { role: "tool", tool_call_id: "shot", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
   ] });
+  const admittedMessages = () => [
+    ...mediaBody().messages.slice(0, 2),
+    { role: "tool", tool_call_id: "shot", content: [{ type: "text", text: "[tool returned an image; see attached]" }] },
+    { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+  ];
   beforeEach(() => {
     combo();
     fixture.combo.models = ["minimax/MiniMax-M2.1", "openai/gpt-4o", "openai/gpt-4.1"];
@@ -241,7 +246,7 @@ describe("#1090 fusion tool media authorization", () => {
     for (const [call] of fixture.core.mock.calls) {
       expect(call.modelInfo.provider).toBe("openai");
       expect(call.credentials.connectionId).toBe("openai-account");
-      expect(call.body.messages.slice(0, 3)).toEqual(mediaBody().messages);
+      expect(call.body.messages.slice(0, 4)).toEqual(admittedMessages());
     }
   });
 
@@ -272,7 +277,7 @@ describe("#1090 fusion tool media authorization", () => {
     const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
     expect(response.status).toBe(200);
     expect(fixture.core.mock.calls.map(([call]) => call.modelInfo.model)).toEqual(["gpt-4o", "custom-judge"]);
-    expect(fixture.core.mock.calls.at(-1)[0].body.messages.slice(0, 3)).toEqual(mediaBody().messages);
+    expect(fixture.core.mock.calls.at(-1)[0].body.messages.slice(0, 4)).toEqual(admittedMessages());
   });
 
   it("rejects a custom text-only judge before panel dispatch", async () => {

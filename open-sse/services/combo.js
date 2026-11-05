@@ -11,6 +11,7 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "./autoComboResolver.js";
 import { classifyTier } from "./jevClassifier.js";
@@ -48,6 +49,7 @@ export const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
 // In-process marker: upstream response bodies and headers cannot impersonate local failures.
 export const LOCAL_REQUEST_ERROR = Symbol("localRequestError");
 export const LOCAL_POLICY_REJECTION = Symbol("localPolicyRejection");
+const LIFTED_TOOL_IMAGES = Symbol("liftedToolImages");
 
 export function comboPolicyRejection() {
   const response = errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied");
@@ -181,6 +183,44 @@ function ensureTrailingUserTurn(messages) {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" && last?.role !== "model") return messages;
   return [...messages, { role: "user", content: "Continue from where the previous assistant message left off." }];
+}
+
+// Chat tool results accept text only. Keep every paired result contiguous,
+// then attach its images as user content after the complete tool-result run.
+function liftChatToolImages(body) {
+  if (!Array.isArray(body?.messages)) return body;
+  const messages = [];
+  let pendingImages = [];
+  let changed = false;
+  const flushImages = () => {
+    if (pendingImages.length === 0) return;
+    messages.push({ role: ROLE.USER, content: pendingImages });
+    pendingImages = [];
+  };
+  for (const message of body.messages) {
+    if (message?.role !== ROLE.TOOL) flushImages();
+    if (message?.role === ROLE.TOOL && Array.isArray(message.content)) {
+      const images = message.content.filter((block) => block?.type === OPENAI_BLOCK.IMAGE_URL);
+      if (images.length > 0) {
+        changed = true;
+        pendingImages.push(...images);
+        const text = message.content.filter((block) => block?.type !== OPENAI_BLOCK.IMAGE_URL);
+        messages.push({ ...message, content: text.length > 0 ? text : [
+          { type: OPENAI_BLOCK.TEXT, text: "[tool returned an image; see attached]" }
+        ] });
+        continue;
+      }
+    }
+    messages.push(message);
+  }
+  flushImages();
+  // Nested combos must still treat lifted tool images as non-degradable input.
+  // The symbol stays in process and cannot become a client/upstream JSON field.
+  return changed ? {
+    ...body,
+    messages: structuredClone(messages),
+    [LIFTED_TOOL_IMAGES]: detectToolOutputCapabilities(body).has("vision")
+  } : body;
 }
 
 function filterByInputCapabilities(models, required, capabilitiesMap) {
@@ -417,6 +457,7 @@ function isPdfFileBlock(b) {
 export function detectToolOutputCapabilities(body) {
   const found = new Set();
   if (!body || !isObject(body)) return found;
+  if (body[LIFTED_TOOL_IMAGES] === true) found.add("vision");
   const scan = (blocks) => {
     if (!Array.isArray(blocks)) return;
     for (const b of blocks) {
@@ -457,6 +498,9 @@ export function detectRequiredCapabilities(body) {
   // Hermes/Ollama/Vercel AI SDK message shapes (message-level, not content blocks).
   const scanMessage = (m) => {
     if (!m || !isObject(m)) return;
+    // Tool files use the actual-PDF classification in the nested scan below.
+    // The legacy function role shares the schema's function discriminator.
+    if (m.role === ROLE.TOOL || m.role === OPENAI_BLOCK.FUNCTION) return;
 
     // Downstream stripping handles structured blocks regardless of role. Message
     // fields and inline strings remain user-only routing signals.
@@ -1978,11 +2022,12 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // panel-of-one and the configured judge still synthesizes the answer, so a
   // persisted judgeModel is never silently discarded. Without an explicit
   // judge, answer directly (judge would equal panel[0], nothing to fuse).
+  const dispatchBody = autoSwitch ? liftChatToolImages(body) : body;
   if (panel.length === 1) {
     if (judgeModel && judgeModel.trim()) {
 
       // fall through to shared fan-out/judge path with a one-member panel
-    } else {return handleSingleModel(body, panel[0]);
+    } else {return handleSingleModel(dispatchBody, panel[0]);
     }
   }
 
@@ -1998,7 +2043,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   log.info("FUSION", `Combo "${comboName}" | panel=${panel.length} [${panel.join(", ")}] | judge=${judge} | quorum=${minPanel}`);
 
   // 1. Fan out to the panel in parallel: non-streaming, tools stripped (we want prose).
-  const { tools, tool_choice, stream_options, ...rest } = body;
+  const { tools, tool_choice, stream_options, ...rest } = dispatchBody;
   // Fusion runs panel models non-streaming; drop stream_options too, or providers
   // like DeepSeek reject it with "stream_options should be set along with stream = true".
   // See issue #3024.
@@ -2006,6 +2051,8 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     // Panel executors may translate or otherwise mutate their request. Each concurrent
     // call needs its own graph so mutations cannot leak to siblings or the original/judge.
     const panelBody = { ...structuredClone(rest), stream: false };
+    // structuredClone omits symbols; preserve admission provenance explicitly.
+    if (rest[LIFTED_TOOL_IMAGES] === true) panelBody[LIFTED_TOOL_IMAGES] = true;
     // Media tool histories must retain native call/result IDs and media blocks.
     // Keep legacy prose flattening when media admission is off or unnecessary.
     const hasMedia = requiredInput.length > 0;
@@ -2086,13 +2133,13 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     const explicitJudge = judgeModel && judgeModel.trim();
     if (!explicitJudge) {
       log.info("FUSION", `Only ${answers[0].model} succeeded — answering directly (no fusion)`);
-      return handleSingleModel(body, answers[0].model);
+      return handleSingleModel(dispatchBody, answers[0].model);
     }
     log.info("FUSION", `Only ${answers[0].model} succeeded — still judging with explicit ${judge}`);
   }
 
   // 4. Judge analyzes + writes one final answer (streams to client if requested).
-  const judgeBody = appendUserTurn(body, buildJudgePrompt(answers));
+  const judgeBody = appendUserTurn(dispatchBody, buildJudgePrompt(answers));
   log.info("FUSION", `Judging ${answers.length} answers with ${judge}`);
   return handleSingleModel(judgeBody, judge);
 }

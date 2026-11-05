@@ -119,8 +119,13 @@ export async function updateKimchiUserAgent(fetcher) {
   return uaState.currentAgent;
 }
 
-// Only trigger background fetching on server
-if (!isBrowser()) {
+/**
+ * Start the server-owned refresh lifecycle once per process, including HMR.
+ * Called by the Node runtime bootstrap, never by module imports or UA reads.
+ * Refresh immediately without blocking startup, then every four hours.
+ */
+export function startKimchiUserAgentUpdater() {
+  if (isBrowser()) return;
   if (!uaState.intervalStarted) {
     uaState.intervalStarted = true;
     updateKimchiUserAgent();

@@ -13,13 +13,9 @@
  * module loader) untouched. The no-argument transport and background startup
  * paths are covered in kimchi-updater-import.test.js.
  *
- * Importing the UA module fires a background `updateKimchiUserAgent()` and
- * arms a 4h interval. We preseed `globalThis.__kimchi_ua_state` with
- * `intervalStarted: true` BEFORE each dynamic import so that side effect is
- * skipped, then `vi.resetModules()` + dynamic-import to get a fresh module
- * that still shares the preseeded global state. All UA/registry access goes
- * through dynamic imports after the preseed — no static imports that would
- * capture a stale `uaState`.
+ * UA imports and getter reads are inert. Runtime startup is explicit and
+ * covered separately. Each test resets the shared state before importing so
+ * registry and updater references observe the same state object.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fileURLToPath, pathToFileURL } from "url";

@@ -61,6 +61,8 @@ vi.mock("../../open-sse/services/projectId.js", () => ({
 }));
 
 const { handleChat, isNonChatModel } = await import("../../src/sse/handlers/chat.js");
+const { modelKindError } = await import("../../src/sse/handlers/modelKind.js");
+const { handleComboChat, getComboModelQuotaHealth, resetComboScoring } = await import("../../open-sse/services/combo.js");
 
 function makeRequest(model) {
   return new Request("http://localhost/v1/chat/completions", {
@@ -133,6 +135,32 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
     if (kind === "multi-kind") mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }, { providerAlias: "openai", id: "catalog-only", kind: "llm" }]);
     await handleChat(makeRequest("openai/catalog-only"));
     expect(mocks.getProviderCredentials).toHaveBeenCalled();
+  });
+});
+
+describe("chat combo model-kind failure scoring", () => {
+  it.each(["metadata", "upstream"])("treats a %s 503 according to its source before a healthy fallback", async (source) => {
+    const comboName = `chat-kind-${source}`;
+    const member = "openai/catalog-only";
+    const sibling = "openai/gpt-4o";
+    resetComboScoring(comboName);
+    mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }]);
+    mocks.getSyncedModelCatalog.mockRejectedValue(new Error("metadata unavailable"));
+    const attempted = [];
+    const response = await handleComboChat({
+      body: { messages: [{ role: "user", content: "hello" }] },
+      models: [member, sibling], comboName, comboStrategy: "smart-scoring", autoSwitch: false,
+      log: { info() {}, warn() {}, debug() {}, error() {} },
+      handleSingleModel: async (_body, model) => {
+        attempted.push(model);
+        if (model === sibling) return Response.json({ choices: [{ message: { role: "assistant", content: "ok" } }] });
+        if (source === "metadata") return modelKindError("openai", "catalog-only", {}, "llm");
+        return Response.json({ error: { message: "upstream unavailable" } }, { status: 503 });
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(attempted).toEqual([member, sibling]);
+    expect(getComboModelQuotaHealth(comboName, member)).toBe(source === "metadata" ? "healthy" : "degraded");
   });
 });
 

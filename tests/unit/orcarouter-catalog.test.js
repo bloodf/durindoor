@@ -215,7 +215,7 @@ describe("orcarouter capability filtering", () => {
     const gpt = ORCAROUTER_SEED_MODELS.find((m) => m.id === "openai/gpt-5.5");
     expect(gpt.reasoning).toBe(true);
     expect(gpt.reasoningEfforts).toEqual(["low", "medium", "high", "xhigh"]);
-    expect(gpt.contextLength).toBe(1050000);
+    expect(gpt.contextLength).toBe(400000);
     expect(gpt.inputModalities).toContain("image");
 
     const deepseek = ORCAROUTER_SEED_MODELS.find((m) => m.id === "deepseek/deepseek-v4-pro");

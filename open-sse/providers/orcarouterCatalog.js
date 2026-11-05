@@ -327,7 +327,7 @@ export const ORCAROUTER_SEED_MODELS = [
 {
   id: "openai/gpt-5.5",
   name: "GPT-5.5",
-  contextLength: 1050000,
+  contextLength: 400000,
   inputModalities: ["text", "image"],
   endpointTypes: ["openai"],
   reasoning: true,

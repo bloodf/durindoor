@@ -10,7 +10,8 @@
  * `activePromise` dedup, propagation into getKimchiUserAgent(), and graceful
  * failure. The optional `fetcher` seam lets tests inject a fetch stub
  * directly, leaving the no-arg production path (proxyAwareFetch via the
- * native file loader) untouched.
+ * module loader) untouched. The no-argument transport and background startup
+ * paths are covered in kimchi-updater-import.test.js.
  *
  * Importing the UA module fires a background `updateKimchiUserAgent()` and
  * arms a 4h interval. We preseed `globalThis.__kimchi_ua_state` with

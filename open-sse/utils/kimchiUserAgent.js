@@ -63,11 +63,17 @@ export async function updateKimchiUserAgent(fetcher) {
 
         if (!isUndefined(globalThis.process) && isFunction(process.cwd)) {
           const filePath = path.join(process.cwd(), "open-sse", "utils", "proxyFetch.js");
-          const fileUrl = url.pathToFileURL(filePath).href;
+          const { existsSync } = await import("fs");
+          // Packaged servers retain their cwd-based sidecar. Source consumers
+          // can run from another directory, so resolve beside this module then.
+          const moduleUrl = import.meta.url;
+          const fileUrl = existsSync(filePath)
+            ? url.pathToFileURL(filePath).href
+            : new URL("./proxyFetch.js", moduleUrl).href;
 
-          // Use new Function to bypass Webpack's compiled import interceptor
-          const nativeImport = new Function("specifier", "return import(specifier)");
-          const { proxyAwareFetch } = await nativeImport(fileUrl);
+          // Keep the server transport out of browser bundles while letting the
+          // module loader handle import (generated functions lack VM callbacks).
+          const { proxyAwareFetch } = await import(/* webpackIgnore: true */ fileUrl);
           fetchImpl = proxyAwareFetch;
         }
       }

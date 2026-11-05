@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // #1085 acceptance: REAL image and embedding handlers, real policy enforcer and
 // real isolated SQLite. Direct, combo, binary and codex-stream image paths each
@@ -35,7 +35,59 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => f
 vi.mock("open-sse/handlers/embeddingsCore.js", () => ({ handleEmbeddingsCore: (...args) => state.embedding(...args) }));
 
 const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
-let directory; let originalEnv; let listeners; let adapter; let database; let handleImage; let handleEmbeddings;
+let adapter; let database; let handleImage; let handleEmbeddings;
+const envNames = ["HOME", "DATA_DIR", "TMPDIR", "TMP", "TEMP", "DURINDOOR_DATABASE_ENGINE", "DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE", "DURINDOOR_DATABASE_ENV_SOURCE_JSON"];
+const environment = () => Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
+const restoreEnvironment = (values) => {
+  for (const [name, value] of Object.entries(values)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+};
+const snapshotListeners = () => new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+const restoreListeners = (snapshot) => {
+  for (const signal of signals) for (const listener of process.listeners(signal)) if (!snapshot.get(signal).has(listener)) process.removeListener(signal, listener);
+};
+
+// A timed-out hook continues running. Keep the next case behind its cleanup.
+function createFixtureLifecycle() {
+  let barrier = Promise.resolve();
+  const cases = new WeakMap();
+  return {
+    begin(context, setup) {
+      const previous = barrier;
+      const entry = { state: null, pending: null, closed: false };
+      cases.set(context, entry);
+      entry.pending = (async () => {
+        await previous;
+        context.signal.throwIfAborted();
+        return setup(entry, context.signal);
+      })();
+      return entry.pending;
+    },
+    stage(context, operation) {
+      const entry = cases.get(context);
+      if (entry.closed) throw new Error("Fixture is already closing");
+      const previous = entry.pending;
+      entry.pending = (async () => {
+        await previous;
+        context.signal.throwIfAborted();
+        return operation(entry, context.signal);
+      })();
+      return entry.pending;
+    },
+    finish(context, dispose) {
+      const entry = cases.get(context);
+      if (!entry) return Promise.resolve();
+      entry.closed = true;
+      const pending = entry.pending;
+      const cleanup = (async () => {
+        try { await pending; } catch { /* The runner retains the setup failure. */ }
+        await dispose(entry);
+      })();
+      barrier = cleanup;
+      return cleanup;
+    },
+  };
+}
+const fixtureLifecycle = createFixtureLifecycle();
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const imageBody = (extra = {}) => JSON.stringify({ model: "openrouter/img", prompt: "fixture", ...extra });
 const imageRequest = (query = "", headers = {}) => new Request(`http://localhost/v1/images/generations${query}`, { method: "POST", headers, body: imageBody() });
@@ -47,15 +99,63 @@ const event = (type, data) => `event: ${type}\r\ndata: ${JSON.stringify(data)}\r
 const item = event("response.output_item.done", { item: { type: "image_generation_call", result: "aGk=" } });
 const completed = (cost) => event("response.completed", { response: { status: "completed", usage: { input_tokens: 11, output_tokens: 7, cost_usd: cost } } });
 
-beforeEach(async () => {
-  listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
-  originalEnv = Object.fromEntries(["HOME", "DATA_DIR", "TMPDIR", "TMP", "TEMP", "DURINDOOR_DATABASE_ENGINE"].map((name) => [name, process.env[name]]));
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), "image-embedding-budget-"));
+function privateEnvironment(prefix) {
+  const originalEnv = environment();
+  const listeners = snapshotListeners();
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  try {
   for (const name of ["home", "data", "tmp"]) fs.mkdirSync(path.join(directory, name));
   process.env.HOME = path.join(directory, "home");
   process.env.DATA_DIR = path.join(directory, "data");
   for (const name of ["TMPDIR", "TMP", "TEMP"]) process.env[name] = path.join(directory, "tmp");
   process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  delete process.env.DURINDOOR_PG_URL;
+  delete process.env.DURINDOOR_PG_SSLMODE;
+  delete process.env.DURINDOOR_DATABASE_ENV_SOURCE_JSON;
+  return { originalEnv, listeners, directory };
+  } catch (error) {
+    restoreEnvironment(originalEnv);
+    fs.rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function disposeEnvironment(owner) {
+  restoreListeners(owner.listeners);
+  restoreEnvironment(owner.originalEnv);
+  fs.rmSync(owner.directory, { recursive: true, force: true });
+}
+
+let coldLoad;
+beforeAll(() => {
+  const owner = privateEnvironment("image-embedding-cold-");
+  const previousAdapter = global._dbAdapter;
+  const previousLimitState = global._apiKeyLimitState;
+  delete global._dbAdapter;
+  delete global._apiKeyLimitState;
+  vi.stubGlobal("fetch", vi.fn());
+  coldLoad = (async () => {
+    try {
+      await import("@/lib/db/index.js");
+      await import("@/sse/handlers/imageGeneration.js");
+      await import("@/sse/handlers/embeddings.js");
+    } finally {
+      try { if (global._dbAdapter !== previousAdapter) await global._dbAdapter?.instance?.close?.(); }
+      finally {
+      if (previousAdapter === undefined) delete global._dbAdapter; else global._dbAdapter = previousAdapter;
+      if (previousLimitState === undefined) delete global._apiKeyLimitState; else global._apiKeyLimitState = previousLimitState;
+      vi.unstubAllGlobals();
+      disposeEnvironment(owner);
+      }
+    }
+  })();
+  return coldLoad;
+});
+afterAll(async () => { try { await coldLoad; } catch { /* The runner retains the cold-load failure. */ } });
+
+beforeEach((context) => fixtureLifecycle.begin(context, async (entry, signal) => {
+  const owner = privateEnvironment("image-embedding-budget-");
+  entry.state = owner;
   delete global._dbAdapter;
   delete global._apiKeyLimitState;
   vi.doMock("open-sse/handlers/embeddingsCore.js", () => ({ handleEmbeddingsCore: (...args) => state.embedding(...args) }));
@@ -65,21 +165,87 @@ beforeEach(async () => {
   state.combo = null;
   state.credentials.mockResolvedValue({ connectionId: "account-i", apiKey: "provider-secret", connectionName: "I" });
   vi.stubGlobal("fetch", vi.fn());
-  database = await import("@/lib/db/index.js");
-  adapter = await (await import("@/lib/db/driver.js")).getAdapter();
-  adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, policy, createdAt) VALUES(?, ?, ?, 1, '[]', ?, ?)",
+  let caseDatabase;
+  try { caseDatabase = await import("@/lib/db/index.js"); }
+  finally { owner.adapterState = global._dbAdapter; }
+  signal.throwIfAborted();
+  const driver = await import("@/lib/db/driver.js");
+  signal.throwIfAborted();
+  const caseAdapter = await driver.getAdapter();
+  signal.throwIfAborted();
+  caseAdapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, policy, createdAt) VALUES(?, ?, ?, 1, '[]', ?, ?)",
     ["media-key", "media-secret", "Image embedding budget", JSON.stringify({ maxCostUsd: 0.5 }), new Date().toISOString()]);
-  ({ handleImageGeneration: handleImage } = await import("@/sse/handlers/imageGeneration.js"));
-  ({ handleEmbeddings } = await import("@/sse/handlers/embeddings.js"));
-});
-afterEach(async () => {
-  await global._dbAdapter?.instance?.close?.();
-  delete global._dbAdapter;
+  const image = await import("@/sse/handlers/imageGeneration.js");
+  signal.throwIfAborted();
+  const embeddings = await import("@/sse/handlers/embeddings.js");
+  signal.throwIfAborted();
+  adapter = caseAdapter; database = caseDatabase; handleImage = image.handleImageGeneration; handleEmbeddings = embeddings.handleEmbeddings;
+}));
+afterEach((context) => fixtureLifecycle.finish(context, async (entry) => {
+  const owner = entry.state;
+  if (!owner) return;
+  if (global._dbAdapter && global._dbAdapter !== owner.adapterState) throw new Error("Fixture lost database adapter ownership");
+  if (global._dbAdapter === owner.adapterState) {
+    await owner.adapterState?.instance?.close?.();
+    delete global._dbAdapter;
+  }
   delete global._apiKeyLimitState;
   vi.unstubAllGlobals();
-  for (const signal of signals) for (const listener of process.listeners(signal)) if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);
-  for (const [name, value] of Object.entries(originalEnv)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
-  fs.rmSync(directory, { recursive: true, force: true });
+  disposeEnvironment(owner);
+}));
+
+it("keeps a cancelled setup and its cleanup ahead of the next case", async () => {
+  const lifecycle = createFixtureLifecycle();
+  const firstController = new AbortController();
+  const secondController = new AbortController();
+  const first = { signal: firstController.signal };
+  const second = { signal: secondController.signal };
+  const events = [];
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fixture-lifecycle-"));
+  let secondDirectory;
+  let release;
+  const delayedImport = new Promise((resolve) => { release = resolve; });
+  try {
+    const failedSetup = lifecycle.begin(first, async (entry, signal) => {
+      entry.state = fs.mkdtempSync(path.join(root, "first-"));
+      events.push("first allocated");
+      await delayedImport;
+      signal.throwIfAborted();
+      events.push("first published");
+    });
+    await Promise.resolve();
+    expect(events).toEqual(["first allocated"]);
+    const failure = new Error("setup cancelled");
+    firstController.abort(failure);
+    const observedFailure = expect(failedSetup).rejects.toBe(failure);
+    const firstCleanup = lifecycle.finish(first, async (entry) => {
+      fs.rmSync(entry.state, { recursive: true, force: true });
+      events.push("first cleaned");
+    });
+    expect(() => lifecycle.stage(first, () => {})).toThrow("Fixture is already closing");
+    const secondSetup = lifecycle.begin(second, async (entry) => {
+      secondDirectory = fs.mkdtempSync(path.join(root, "second-"));
+      entry.state = secondDirectory;
+      fs.writeFileSync(path.join(secondDirectory, "marker"), "second");
+      events.push("second allocated");
+    });
+    await Promise.resolve();
+    expect(events).toEqual(["first allocated"]);
+    release();
+    await observedFailure;
+    await firstCleanup;
+    await secondSetup;
+    expect(events).toEqual(["first allocated", "first cleaned", "second allocated"]);
+    expect(fs.readFileSync(path.join(secondDirectory, "marker"), "utf8")).toBe("second");
+    await lifecycle.finish(second, async (entry) => {
+      fs.rmSync(entry.state, { recursive: true, force: true });
+      events.push("second cleaned");
+    });
+    expect(events).toEqual(["first allocated", "first cleaned", "second allocated", "second cleaned"]);
+  } finally {
+    release();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 async function expectDeniedBeforeDispatch(send) {
@@ -223,27 +389,39 @@ describe("embedding raw provider receipt through real core and SQLite policy", (
     data: [{ object: "embedding", index: 0, embedding: [0.25, -0.5] },
       { object: "embedding", index: 1, embedding: [0.75, 0.125] }],
     ...(usage === undefined ? {} : { usage }) });
-  const reopen = async () => {
-    await global._dbAdapter.instance.close();
+  const reopen = (context) => fixtureLifecycle.stage(context, async (entry, signal) => {
+    await entry.state.adapterState.instance.close();
+    signal.throwIfAborted();
     delete global._dbAdapter;
     delete global._apiKeyLimitState;
     vi.resetModules();
-    adapter = await (await import("@/lib/db/driver.js")).getAdapter();
-    database = await import("@/lib/db/index.js");
-    ({ handleEmbeddings } = await import("@/sse/handlers/embeddings.js"));
-  };
-  beforeEach(async () => {
+    let driver;
+    try { driver = await import("@/lib/db/driver.js"); }
+    finally { entry.state.adapterState = global._dbAdapter; }
+    signal.throwIfAborted();
+    const reopened = await driver.getAdapter();
+    signal.throwIfAborted();
+    const reopenedDatabase = await import("@/lib/db/index.js");
+    signal.throwIfAborted();
+    const embeddings = await import("@/sse/handlers/embeddings.js");
+    signal.throwIfAborted();
+    adapter = reopened; database = reopenedDatabase; handleEmbeddings = embeddings.handleEmbeddings;
+  });
+  beforeEach((context) => fixtureLifecycle.stage(context, async (_entry, signal) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-10T12:00:00Z"));
     vi.doUnmock("open-sse/handlers/embeddingsCore.js");
     vi.doUnmock("open-sse/executors/index.js");
     vi.resetModules();
-    ({ handleEmbeddings } = await import("@/sse/handlers/embeddings.js"));
-    database = await import("@/lib/db/index.js");
-  });
+    const embeddings = await import("@/sse/handlers/embeddings.js");
+    signal.throwIfAborted();
+    const caseDatabase = await import("@/lib/db/index.js");
+    signal.throwIfAborted();
+    handleEmbeddings = embeddings.handleEmbeddings; database = caseDatabase;
+  }));
   afterEach(() => vi.useRealTimers());
 
-  it.each([["cost_usd", 0.5], ["cost_in_usd_ticks", 500_000_000_000]])("persists raw %s and denies before the next provider HTTP call", async (field, value) => {
+  it.for([["cost_usd", 0.5], ["cost_in_usd_ticks", 500_000_000_000]])("persists raw %s and denies before the next provider HTTP call", async ([field, value], context) => {
     const usage = { [field]: value, prompt_tokens: 9, total_tokens: 9 };
     const payload = raw(usage);
     fetch.mockResolvedValueOnce(json(payload));
@@ -252,7 +430,7 @@ describe("embedding raw provider receipt through real core and SQLite policy", (
     expect((await response.json()).data).toEqual(payload.data);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ model: "openai/text-embedding-3-small", input: ["first", "second"] });
-    await reopen();
+    await reopen(context);
     expect(rows()).toHaveLength(1);
     expect(rows()[0]).toMatchObject({ apiKey: "media-secret", provider: "openrouter", model: "openai/text-embedding-3-small", connectionId: "account-i", endpoint: "/v1/embeddings", cost: 0.5, promptTokens: 9 });
     expect(meta(rows()[0])).toMatchObject({ modality: "embedding", costStatus: "known", costSource: "provider",
@@ -264,7 +442,7 @@ describe("embedding raw provider receipt through real core and SQLite policy", (
     expect(await database.getApiKeyUsageTotals("media-key")).toEqual(totals);
   });
 
-  it("keeps missing and invalid receipts unknown, explicit zero known, and failed requests outside allowance", async () => {
+  it("keeps missing and invalid receipts unknown, explicit zero known, and failed requests outside allowance", async (context) => {
     adapter.run("UPDATE apiKeys SET policy = ? WHERE id = ?", [JSON.stringify({ maxCostUsd: 0.5, monthlyRequestLimit: 3 }), "media-key"]);
     fetch.mockResolvedValueOnce(json({ error: { message: "synthetic provider rejection" } }, 503));
     expect((await handleEmbeddings(send("failed"))).status).toBe(503);
@@ -277,7 +455,7 @@ describe("embedding raw provider receipt through real core and SQLite policy", (
       expect(response.status).toBe(200);
       expect((await response.json()).data).toEqual(payload.data);
     }
-    await reopen();
+    await reopen(context);
     expect(rows().map((row) => row.cost)).toEqual([null, null, 0]);
     expect(rows().map((row) => meta(row).costStatus)).toEqual(["unknown", "unknown", "known"]);
     expect(await database.getApiKeyUsageTotals("media-key")).toMatchObject({ totalRequests: 3, totalCost: 0, unknownCostRequests: 2 });

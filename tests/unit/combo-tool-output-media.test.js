@@ -332,6 +332,29 @@ describe("fusion media admission", () => {
     for (const [sent] of attempts.mock.calls) expect(sent.messages).toEqual(CHAT_TOOL_DISPATCH.messages);
   });
 
+  it.each([{ models: [VISION] }, { models: [VISION, secondVision] }])("keeps lifted tool PDFs non-degradable through nested fallback ($models)", async ({ models }) => {
+    const pdf = { type: "file", file: { filename: "report.pdf", file_data: "data:application/pdf;base64,JVBERi0xLjcK" } };
+    const body = structuredClone(BODIES.chatTool);
+    body.messages[2].content = [pdf];
+    const pdfCaps = new Map([[VISION, { pdf: true }], [secondVision, { pdf: true }], [TEXT, { pdf: false }]]);
+    const attempts = vi.fn(async () => {
+      const response = new Response("denied", { status: 403 });
+      response[LOCAL_POLICY_REJECTION] = true;
+      return response;
+    });
+    const handle = (sent) => handleComboChat({
+      body: sent, models: [VISION, TEXT], handleSingleModel: attempts,
+      capabilitiesMap: pdfCaps, comboStrategy: "fallback", comboName: "inner-pdf", log,
+    });
+    const res = await run(body, handle, { models, capabilitiesMap: pdfCaps });
+    expect(res.status).toBe(403);
+    expect(attempts.mock.calls.map(([, model]) => model)).toEqual(models.map(() => VISION));
+    for (const [sent] of attempts.mock.calls) expect(sent.messages.slice(2)).toEqual([
+      { role: "tool", tool_call_id: "call_1", content: [{ type: "text", text: "[tool returned media; see attached]" }] },
+      { role: "user", content: [pdf] },
+    ]);
+  });
+
   it("keeps legacy panel flattening when autoSwitch is off", async () => {
     const handle = vi.fn(async () => ok());
     await run(BODIES.chatTool, handle, { autoSwitch: false });

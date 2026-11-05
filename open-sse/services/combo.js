@@ -49,7 +49,7 @@ export const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
 // In-process marker: upstream response bodies and headers cannot impersonate local failures.
 export const LOCAL_REQUEST_ERROR = Symbol("localRequestError");
 export const LOCAL_POLICY_REJECTION = Symbol("localPolicyRejection");
-const LIFTED_TOOL_IMAGES = Symbol("liftedToolImages");
+const LIFTED_TOOL_MEDIA = Symbol("liftedToolMedia");
 
 export function comboPolicyRejection() {
   const response = errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied");
@@ -186,40 +186,43 @@ function ensureTrailingUserTurn(messages) {
 }
 
 // Chat tool results accept text only. Keep every paired result contiguous,
-// then attach its images as user content after the complete tool-result run.
-function liftChatToolImages(body) {
+// then attach supported images/PDFs as user content after the tool-result run.
+function liftChatToolMedia(body) {
   if (!Array.isArray(body?.messages)) return body;
   const messages = [];
-  let pendingImages = [];
+  let pendingMedia = [];
   let changed = false;
-  const flushImages = () => {
-    if (pendingImages.length === 0) return;
-    messages.push({ role: ROLE.USER, content: pendingImages });
-    pendingImages = [];
+  const isAttachment = (block) => block?.type === OPENAI_BLOCK.IMAGE_URL ||
+    block?.type === OPENAI_BLOCK.FILE && isPdfFileBlock(block);
+  const flushMedia = () => {
+    if (pendingMedia.length === 0) return;
+    messages.push({ role: ROLE.USER, content: pendingMedia });
+    pendingMedia = [];
   };
   for (const message of body.messages) {
-    if (message?.role !== ROLE.TOOL) flushImages();
+    if (message?.role !== ROLE.TOOL) flushMedia();
     if (message?.role === ROLE.TOOL && Array.isArray(message.content)) {
-      const images = message.content.filter((block) => block?.type === OPENAI_BLOCK.IMAGE_URL);
-      if (images.length > 0) {
+      const media = message.content.filter(isAttachment);
+      if (media.length > 0) {
         changed = true;
-        pendingImages.push(...images);
-        const text = message.content.filter((block) => block?.type !== OPENAI_BLOCK.IMAGE_URL);
+        pendingMedia.push(...media);
+        const text = message.content.filter((block) => !isAttachment(block));
         messages.push({ ...message, content: text.length > 0 ? text : [
-          { type: OPENAI_BLOCK.TEXT, text: "[tool returned an image; see attached]" }
+          { type: OPENAI_BLOCK.TEXT, text: media.some((block) => block.type === OPENAI_BLOCK.FILE) ?
+            "[tool returned media; see attached]" : "[tool returned an image; see attached]" }
         ] });
         continue;
       }
     }
     messages.push(message);
   }
-  flushImages();
-  // Nested combos must still treat lifted tool images as non-degradable input.
+  flushMedia();
+  // Nested combos must still treat lifted tool media as non-degradable input.
   // The symbol stays in process and cannot become a client/upstream JSON field.
   return changed ? {
     ...body,
     messages: structuredClone(messages),
-    [LIFTED_TOOL_IMAGES]: detectToolOutputCapabilities(body).has("vision")
+    [LIFTED_TOOL_MEDIA]: [...detectToolOutputCapabilities(body)]
   } : body;
 }
 
@@ -457,7 +460,7 @@ function isPdfFileBlock(b) {
 export function detectToolOutputCapabilities(body) {
   const found = new Set();
   if (!body || !isObject(body)) return found;
-  if (body[LIFTED_TOOL_IMAGES] === true) found.add("vision");
+  for (const cap of body[LIFTED_TOOL_MEDIA] || []) found.add(cap);
   const scan = (blocks) => {
     if (!Array.isArray(blocks)) return;
     for (const b of blocks) {
@@ -2022,7 +2025,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // panel-of-one and the configured judge still synthesizes the answer, so a
   // persisted judgeModel is never silently discarded. Without an explicit
   // judge, answer directly (judge would equal panel[0], nothing to fuse).
-  const dispatchBody = autoSwitch ? liftChatToolImages(body) : body;
+  const dispatchBody = autoSwitch ? liftChatToolMedia(body) : body;
   if (panel.length === 1) {
     if (judgeModel && judgeModel.trim()) {
 
@@ -2052,7 +2055,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     // call needs its own graph so mutations cannot leak to siblings or the original/judge.
     const panelBody = { ...structuredClone(rest), stream: false };
     // structuredClone omits symbols; preserve admission provenance explicitly.
-    if (rest[LIFTED_TOOL_IMAGES] === true) panelBody[LIFTED_TOOL_IMAGES] = true;
+    if (rest[LIFTED_TOOL_MEDIA]) panelBody[LIFTED_TOOL_MEDIA] = [...rest[LIFTED_TOOL_MEDIA]];
     // Media tool histories must retain native call/result IDs and media blocks.
     // Keep legacy prose flattening when media admission is off or unnecessary.
     const hasMedia = requiredInput.length > 0;

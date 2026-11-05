@@ -25,6 +25,7 @@ const AUTH_KEY = "sk-fusion-wire-fixture";
 const PNG_BYTES = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=";
 const IMAGE = `data:image/png;base64,${PNG_BYTES}`;
 const imagePart = () => ({ type: "image_url", image_url: { url: IMAGE } });
+const pdfPart = () => ({ type: "file", file: { filename: "report.pdf", file_data: "data:application/pdf;base64,JVBERi0xLjcK" } });
 const history = () => [
   { role: "user", content: "inspect the screenshot" },
   { role: "assistant", content: null, tool_calls: [{ id: "wire-shot", type: "function", function: { name: "shot", arguments: "{}" } }] },
@@ -67,9 +68,12 @@ beforeAll(async () => {
   adapter.run(`INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, createdAt)
     VALUES('wire-key', ?, 'wire', 'wire-machine', 1, '[]', ?)`, [AUTH_KEY, now]);
   for (const id of ["gpt-4o", "gpt-4.1"]) await db.addCustomModel({ providerAlias: "openai", id, capabilities: { vision: true, pdf: true } });
+  await db.addCustomModel({ providerAlias: "openai", id: "gpt-4o-mini", capabilities: { vision: true, pdf: false } });
   for (const [name, models] of [
     ["wire-panel", ["minimax/MiniMax-M2.1", "openai/gpt-4o", "openai/gpt-4.1"]],
     ["wire-single", ["minimax/MiniMax-M2.1", "openai/gpt-4o"]],
+    ["wire-inner", ["openai/gpt-4o", "openai/gpt-4o-mini"]],
+    ["wire-nested", ["wire-inner", "openai/gpt-4.1"]],
   ]) await db.createCombo({ name, models, allowedConnectionIds: ["wire-included"] });
   restoreFetch = __setOriginalFetchForTesting(async (url, init) => {
     const body = JSON.parse(init.body);
@@ -141,6 +145,80 @@ describe("fusion media at the real executor HTTP boundary", () => {
       { role: "tool", tool_call_id: "wire-second", content: [{ type: "text", text: "second screenshot" }] },
       { role: "user", content: [imagePart(), imagePart()] },
     ]);
+  });
+
+  it.each([
+    { model: "wire-panel", calls: 3, judgeModel: null },
+    { model: "wire-single", calls: 1, judgeModel: null },
+    { model: "wire-single", calls: 2, judgeModel: "openai/gpt-4.1" },
+  ])("sends legal PDF attachments and paired IDs for $model with judge $judgeModel", async ({ model, calls, judgeModel }) => {
+    if (judgeModel) await db.updateSettings({ comboStrategies: { [model]: { judgeModel } } });
+    const messages = history();
+    messages[2].content = [pdfPart()];
+    const response = await invoke({ model, stream: false, messages });
+    expect(response.status, await response.clone().text()).toBe(200);
+    await response.text();
+    expect(wire).toHaveLength(calls);
+    for (const sent of wire) {
+      expect(sent.authorization).toBe("Bearer fixture-wire-included");
+      expect(sent.body.messages.slice(0, 4)).toEqual([
+        messages[0], messages[1],
+        { role: "tool", tool_call_id: "wire-shot", content: [{ type: "text", text: "[tool returned media; see attached]" }] },
+        { role: "user", content: [pdfPart()] },
+      ]);
+    }
+    if (judgeModel) expect(wire.at(-1).body.model).toBe("gpt-4.1");
+    expect(messages[2].content).toEqual([pdfPart()]);
+  });
+
+  it("preserves attachment order and parallel IDs for mixed image/PDF results through the judge", async () => {
+    const messages = history();
+    messages[1].tool_calls.push({ id: "wire-second", type: "function", function: { name: "read", arguments: "{}" } });
+    messages[2].content = [imagePart(), { type: "text", text: "first result" }, pdfPart()];
+    messages.push({ role: "tool", tool_call_id: "wire-second", content: [pdfPart(), imagePart(), { type: "text", text: "second result" }] });
+    await db.updateSettings({ comboStrategies: { "wire-panel": { judgeModel: "openai/gpt-4.1" } } });
+    const response = await invoke({ model: "wire-panel", stream: false, messages });
+    expect(response.status, await response.clone().text()).toBe(200);
+    await response.text();
+    expect(wire).toHaveLength(3);
+    for (const sent of wire) expect(sent.body.messages.slice(0, 5)).toEqual([
+      messages[0], messages[1],
+      { role: "tool", tool_call_id: "wire-shot", content: [{ type: "text", text: "first result" }] },
+      { role: "tool", tool_call_id: "wire-second", content: [{ type: "text", text: "second result" }] },
+      { role: "user", content: [imagePart(), pdfPart(), pdfPart(), imagePart()] },
+    ]);
+    expect(wire.at(-1).body.model).toBe("gpt-4.1");
+  });
+
+  it.each([false, true])("keeps lifted PDFs hard requirements across nested fallback after local model denial (image=%s)", async (withImage) => {
+    await db.updateApiKey("wire-key", { policy: { allowedModels: ["openai/gpt-4.1", "openai/gpt-4o-mini"] } });
+    await db.updateSettings({ comboStrategies: {
+      "wire-inner": { fallbackStrategy: "fallback" }, "wire-nested": { judgeModel: "openai/gpt-4.1" },
+    } });
+    const messages = history();
+    messages[2].content = withImage ? [pdfPart(), imagePart()] : [pdfPart()];
+    const response = await invoke({ model: "wire-nested", stream: false, messages });
+    expect(response.status, await response.clone().text()).toBe(200);
+    await response.text();
+    expect(wire.map((sent) => sent.body.model)).toEqual(["gpt-4.1", "gpt-4.1"]);
+    for (const sent of wire) {
+      expect(sent.authorization).toBe("Bearer fixture-wire-included");
+      expect(sent.body.messages.slice(2, 4)).toEqual([
+        { role: "tool", tool_call_id: "wire-shot", content: [{ type: "text", text: "[tool returned media; see attached]" }] },
+        { role: "user", content: withImage ? [pdfPart(), imagePart()] : [pdfPart()] },
+      ]);
+    }
+  });
+
+  it("rejects an explicit PDF-incapable judge before transport", async () => {
+    await db.updateApiKey("wire-key", { policy: { allowedModels: ["openai/gpt-4o", "openai/gpt-4o-mini"] } });
+    await db.updateSettings({ comboStrategies: { "wire-single": { judgeModel: "openai/gpt-4o-mini" } } });
+    const messages = history();
+    messages[2].content = [pdfPart()];
+    const response = await invoke({ model: "wire-single", stream: false, messages });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe("capability_unavailable");
+    expect(wire).toHaveLength(0);
   });
 
   it("retains the documented Claude base64 tool-image conversion limitation", async () => {

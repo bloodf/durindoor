@@ -8,6 +8,7 @@ import { sanitizeSecrets } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import * as log from "../utils/logger.js";
 import { handleComboChat } from "open-sse/services/combo.js";
@@ -57,10 +58,10 @@ async function handleMusicGenerationHandler(request) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   if (wantsDefaultRoute(body.model)) {
@@ -146,7 +147,9 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
 async function handleMusicGetHandler(request, requestId) {
   const settings = await getSettings();
   const { apiKey, auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true });
-  if (!auth.ok) return errorResponse(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key");
+  if (!auth.ok) return annotateClientAdmissionFailure(
+    errorResponse(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key"),
+    auth.reason === "missing" ? "auth_missing" : "auth_invalid");
   const connectionId = request.headers.get("x-9router-connection-id") || request.headers.get("x-connection-id");
   if (!auth.apiKeyId || !connectionId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Music polling requires durable ownership and x-9router-connection-id");
   if (!isString(requestId) || !/^[\w-]+(?:,[\w-]+)*$/.test(requestId)) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid music request id");

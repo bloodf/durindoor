@@ -268,6 +268,7 @@ describe("client HTTP observations", () => {
       'outcome="completed"', 'outcome="http_error"', 'outcome="stream_error"', 'outcome="cancelled"', 'outcome="handler_error"',
       'le="0.01"', 'le="0.05"', 'le="0.1"', 'le="0.25"', 'le="0.5"', 'le="1"', 'le="2.5"', 'le="5"', 'le="10"', 'le="30"', 'le="60"', 'le="300"', 'le="+Inf"',
       'reason="timeout"', 'reason="aborted"',
+      'reason="auth_missing"', 'reason="auth_invalid"', 'reason="policy"', 'reason="client_limit"',
       'state="healthy"', 'state="degraded"', 'state="down"', 'state="blocked"', 'state="unconfigured"', 'state="unknown"',
     ]);
   });

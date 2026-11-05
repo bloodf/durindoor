@@ -28,7 +28,17 @@ const globalNames = [
 ];
 const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
 let directory, originalEnv, originalGlobals, listeners, adapter;
-let metrics, correlation, files, batches, batchDetail, fileContent, legacy, gemini, storage;
+let metrics, correlation, storage;
+const route = (load) => ({
+  GET: async (...args) => (await load()).GET(...args),
+  POST: async (...args) => (await load()).POST(...args),
+});
+const files = route(() => import("../../src/app/api/v1/files/route.js"));
+const batches = route(() => import("../../src/app/api/v1/batches/route.js"));
+const batchDetail = route(() => import("../../src/app/api/v1/batches/[id]/route.js"));
+const fileContent = route(() => import("../../src/app/api/v1/files/[id]/content/route.js"));
+const legacy = route(() => import("../../src/app/api/v1/completions/route.js"));
+const gemini = route(() => import("../../src/app/api/v1beta/models/[...path]/route.js"));
 let baseline;
 const ownedBatchIds = [];
 
@@ -115,23 +125,18 @@ beforeAll(async () => {
   for (const name of globalNames) delete globalThis[name];
   vi.resetModules();
   vi.stubGlobal("fetch", provider.fetch.mockImplementation(providerFetch));
-  const db = await import("@/lib/db/index.js");
+  const { updateSettings } = await import("@/lib/db/repos/settingsRepo.js");
+  const { createProviderConnection } = await import("@/lib/db/repos/connectionsRepo.js");
   adapter = await (await import("@/lib/db/driver.js")).getAdapter();
-  await db.updateSettings({ requireApiKey: false, enableProxyTimeline: false });
+  await updateSettings({ requireApiKey: false, enableProxyTimeline: false });
   for (const providerId of ["openai", "gemini"]) {
-    await db.createProviderConnection({
+    await createProviderConnection({
       provider: providerId, authType: "apikey", name: "metrics fixture", apiKey: "synthetic-fixture-only", isActive: true,
     });
   }
   metrics = await import("../../open-sse/services/operationalMetrics.js");
   correlation = await import("../../src/sse/utils/requestCorrelation.js");
   storage = await import("../../open-sse/services/localFilesBatches.js");
-  files = await import("../../src/app/api/v1/files/route.js");
-  batches = await import("../../src/app/api/v1/batches/route.js");
-  batchDetail = await import("../../src/app/api/v1/batches/[id]/route.js");
-  fileContent = await import("../../src/app/api/v1/files/[id]/content/route.js");
-  legacy = await import("../../src/app/api/v1/completions/route.js");
-  gemini = await import("../../src/app/api/v1beta/models/[...path]/route.js");
 });
 
 beforeEach(() => {

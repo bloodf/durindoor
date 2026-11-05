@@ -63,6 +63,7 @@ import { resolveProviderId } from "@/shared/constants/providers.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { validateChatRequestBody } from "open-sse/translator/validate.js";
@@ -436,10 +437,10 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return authErrorResponse(clientRawRequest.endpoint, "Missing API key");
+      return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Missing API key"), "auth_missing");
     }
     log.warn("AUTH", "Invalid API key");
-    return authErrorResponse(clientRawRequest.endpoint, "Invalid API key");
+    return annotateClientAdmissionFailure(authErrorResponse(clientRawRequest.endpoint, "Invalid API key"), "auth_invalid");
   }
   // Keep admission identity across retries, nested combos, and fusion callbacks.
   // An import during upstream work must not turn old usage into new-generation usage.

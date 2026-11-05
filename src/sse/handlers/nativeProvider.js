@@ -15,6 +15,7 @@ import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredential
 import { resolveResourceOwner } from "../services/resourceOwnership.js";
 import { applyEdits, findNodeAtLocation, modify, parseTree } from "jsonc-parser";
 import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 const { collectNativeModelSlots } = nativeModelSlots;
 
 const MAX_ERROR_BYTES = 8192;
@@ -57,7 +58,9 @@ export async function handleNativeProvider(request, provider, path) {
 
   const settings = await getSettings();
   const { apiKey, auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true });
-  if (!auth.ok) return fail(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key");
+  if (!auth.ok) return annotateClientAdmissionFailure(
+    fail(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key"),
+    auth.reason === "missing" ? "auth_missing" : "auth_invalid");
   const billingEpoch = auth.billingEpoch;
 
   const url = new URL(request.url);

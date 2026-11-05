@@ -1,4 +1,4 @@
-import { inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
+import { annotateClientAdmissionFailure, inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import {
   clearAccountError,
@@ -183,10 +183,12 @@ async function validateGeminiNativeClientKey(request) {
     required: settings.requireApiKey === true,
   });
   if (!auth.ok && auth.reason === "missing") {
-    return { apiKey, apiKeyId: auth.apiKeyId, error: Response.json({ error: { message: "Missing API key" } }, { status: 401 }) };
+    return { apiKey, apiKeyId: auth.apiKeyId, error: annotateClientAdmissionFailure(
+      Response.json({ error: { message: "Missing API key" } }, { status: 401 }), "auth_missing") };
   }
   if (!auth.ok) {
-    return { apiKey, apiKeyId: auth.apiKeyId, error: Response.json({ error: { message: "Invalid API key" } }, { status: 401 }) };
+    return { apiKey, apiKeyId: auth.apiKeyId, error: annotateClientAdmissionFailure(
+      Response.json({ error: { message: "Invalid API key" } }, { status: 401 }), "auth_invalid") };
   }
   return { apiKey, apiKeyId: auth.apiKeyId, billingEpoch: auth.billingEpoch, error: null };
 }

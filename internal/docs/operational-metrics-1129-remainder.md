@@ -8,6 +8,12 @@ audit verified the reported results; neither review approves runtime readiness.
 Historical evidence for `d9fbe83b` and correction evidence for `dfb3f2f` are
 separate series below. The full checkpoint remains independently blocked.
 
+The client-admission increment extends narrative-only publication
+`e832eeb34290e557dbc5fba8685cc3f51b7b1d4d`. Its new ordinary-author evidence is
+separate from the historical results below. The previous exact-head reviews do
+not cover it. Fresh independent review and the full checkpoint remain required.
+Its exact source inventory and remaining producers are recorded below.
+
 ## Acceptance and existing evidence
 
 [Issue #1129](https://github.com/bloodf/durindoor/issues/1129) includes transferred
@@ -24,7 +30,7 @@ issue #1132. It has no comments at discovery. Neither merged PR closes it:
 
 | Acceptance | Existing source | Remaining draft and proof obligation |
 | --- | --- | --- |
-| Counters, histograms, gauges and bounded labels | Metrics route, queue gauge | Client HTTP observations with fixed terminal outcomes and latency buckets; admission timeout/abort counts; cached provider connection states |
+| Counters, histograms, gauges and bounded labels | Metrics route, queue gauge | Client HTTP observations with fixed terminal outcomes and latency buckets; gate timeout/abort counts; selected client-denial increment with four fixed reasons; cached provider connection states; remaining admission producers still require integration |
 | Management authorization and scraping | Metrics route and operational guide; middleware/auth tests | Preserve the same credentials, 401/503 behavior and no-store headers; document each new series |
 | Reset/restart and privacy | Global sampler and gate state; metrics tests | Process-only aggregates, reload reuse, no scrape/reset coupling, no credential/session/prompt/model/URL dimensions |
 | Existing latency probes and overhead | Chat terminal handlers already save total/TTFT; health monitor records probe latency | Do not recount usage writes or treat probe/attempt latency as client latency; bound observations, timer and exported series |
@@ -46,8 +52,11 @@ publish/clear sites in `src/lib/healthMonitor.js`. The projection must not move
 cache authority or cause refreshes.
 
 `src/instrumentation.node.js` belongs to #1652. Its startup hook needs an
-additive recorder call after that owner's lifecycle fix lands. Other auth,
-chat, combo, native/media/stream implementations, DB, registry, updater, gate
+additive recorder call after that owner's lifecycle fix lands. The subsequent
+admission grant permits only weak denial annotations at the listed final auth
+Response returns, policy/limit Response construction and explicit delayed
+keepalive selection. `auth.js` credential evaluation remains read-only.
+Other chat, combo, native/media/stream behavior, DB, registry, updater, gate
 policy and dependencies remain read-only. No behavior of admission, queueing,
 cancellation or concurrency limits may change.
 
@@ -199,14 +208,15 @@ failure/retry, route-first/start-first/HMR reuse, existing Kimchi/Headroom
 lifecycle checks and independent updated-head app/website/CLI/standalone/packed
 artifact coverage. #1652's old evidence cannot establish this draft's readiness.
 
-## Read-only proposal for remaining admission signals
+## Admission signal discovery and integration
 
-No auth, quota, policy, chat, media or stream implementation was edited for this
-discovery. Current gate telemetry covers actual concurrency timeout and abort
-rejections only. An intentional abort is explicitly separate from HTTP errors
-and provider failure evidence. HTTP status 401/403/429 alone cannot identify a
-local admission denial: providers also return those statuses, and a rejected
-candidate may be followed by successful fallback.
+The original discovery below used published `e832eeb3` source positions. It
+identified actual denial Responses separately from credential candidates and
+provider attempts. This increment adds the assigned local producers only.
+Existing gate telemetry still counts concurrency timeout and abort rejections
+separately. HTTP status 401/403/429 alone cannot identify a local admission
+denial. Providers also return those statuses, and a rejected candidate may be
+followed by successful fallback.
 
 | Existing bounded source | Exact integration point to consider after assignment | Counting boundary |
 | --- | --- | --- |
@@ -216,34 +226,137 @@ candidate may be followed by successful fallback.
 | Daily key token limit | Chat `:454-469`; `src/sse/services/nativeUsage.js:78-82`, called by native provider `:137-138` | Mark actual denial Response with a fixed `client_limit` reason; no token totals or key identifiers in telemetry |
 | Provider selection returns `providerDisabled`, `allRateLimited`; quota capacity has typed code `QUOTA_DISPATCH_UNAVAILABLE` | `src/sse/services/auth.js:530-539,677-683,763-769`; chat final selection `:1091-1145`; native provider `:176-177`; `open-sse/handlers/chatCore.js:369-373,1372-1376,1498-1502,1511-1515` | Selection/dispatch failures are candidate/attempt evidence until the outer handler chooses the final result; map typed local capacity to one constant, never export arbitrary `error.reason` |
 
-Minimal proposed integration, subject to root's assignment:
+Assigned integration:
 
-1. Add an internal weak Response-to-fixed-reason annotation at the existing
-   denial construction sites. Keep it out of headers, bodies, serialized errors
-   and routing decisions. Reasons can be a small fixed set such as `auth_missing`,
-   `auth_invalid`, `policy`, `client_limit`, `provider_unavailable`,
-   `quota_capacity`. No message parsing or credential/DB IDs are needed.
-2. Preserve that annotation when `correlateResponse` rebuilds a selected response
-   (`src/sse/utils/requestCorrelation.js:86-95`). Count only the final selected
-   outer client denial once, in a separate client-admission series. A candidate
-   policy failure followed by successful fallback contributes zero denials.
-3. Assign the delayed-response bridge separately:
-   `open-sse/utils/earlyStreamKeepalive.js:160-295` can send HTTP 200 keepalive
-   before a later denial is converted into a protocol error frame. That source
-   knows the final selected denial; the HTTP observer does not. Preserve its
-   bytes/status/timing/cancellation and transfer only the opaque observation
-   token plus fixed reason. Without this bridge, delayed streaming admission
-   denials remain unknown rather than being inferred from HTTP 200.
+1. `open-sse/services/operationalMetrics.js` reuses the existing global state
+   with additive HMR initialization for four counters and a weak Response map.
+   Each entry holds an opaque selection cell with one fixed reason. Only
+   `auth_missing`, `auth_invalid`, `policy` and `client_limit` are accepted.
+   No headers, payload fields, IDs or routing decisions carry this metadata.
+2. Actual auth-denial returns are annotated after credential selection.
+   `resolveClientApiKey` returns an auth result, not a Response, so `auth.js`
+   stays unchanged. Rejected credentials followed by a valid candidate and
+   operator bypass are not annotated. Model-policy denials are `policy`;
+   lifetime token/cost and window/RPM/TPM denials are `client_limit`.
+3. `correlateResponse` copies the same cell through both JSON-error and ordinary
+   Response reconstruction. Only clean terminal observation of the selected
+   outer client Response increments the separate client-admission series.
+   HEAD/bodyless Responses finish at handler return without reading their
+   bodies. Abort, cancellation, body error and escaping handler error add zero.
+   An unread non-HEAD denial stays pending until terminal observation.
+4. Delayed keepalive binds a fresh cell to its output HTTP 200. The producer
+   copies only the chosen annotated denial's reason after successful in-band
+   enqueue. A failed denial-body read retains the existing fallback bytes but
+   transfers no reason. This cell is attached to that output, never to the
+   entire async context. Cancellation even after enqueue contributes zero;
+   only clean outer EOF counts. Fast-path Responses remain unchanged.
 
-Before adding these hooks, assign the exact affected producer paths and test
-ownership. Required regressions: optional auth and valid CLI/operator bypass;
+The Gemini JSON/SSE converters return non-success Responses unchanged, as does
+legacy completions, so denial metadata survives those transformations without
+editing either bridge. Their real derived Requests still share only their
+explicit outer observation. Independent nested Requests remain independent.
+Internal default batch rows use correlation alone and cannot create a client
+denial, even when their policy/auth Responses are consumed by the executor.
+
+Exact 26-path admission inventory:
+
+- Core and transfer: `open-sse/services/operationalMetrics.js`,
+  `src/sse/utils/requestCorrelation.js`,
+  `open-sse/utils/earlyStreamKeepalive.js`.
+- Denial producers: `src/sse/services/apiKeyPolicy.js`,
+  `src/lib/apiKeyLimits.js`; imports and existing final auth returns only in
+  `src/sse/handlers/{chat,nativeProvider,embeddings,imageGeneration,imageEdit,tts,stt,music,video,rerank,search,fetch,moderations,systemone,countTokens}.js`;
+  native TTS auth returns in `src/app/api/v1beta/models/[...path]/route.js`.
+- Regressions: `tests/unit/operational-metrics-admission.test.js`,
+  `tests/unit/operational-metrics-runtime.test.js`,
+  `tests/unit/operational-metrics-http-boundary.test.js`. The existing runtime
+  privacy assertion adds only the four literal reason labels and retains strict
+  equality. The existing boundary fixture uses narrow real repositories and
+  literal lazy route imports, preserving all assertions, provider-only mock
+  boundaries and the configured timeouts and worker cap.
+- Docs: this file and `docs/operations/operational-metrics.mdx`.
+
+The added imports are on existing server handlers and Node routes. Source
+search found no Edge runtime declaration among their API consumers. The keys
+usage management route also imports `apiKeyLimits.js`; its read-only status
+path does not annotate or count denials. No additional sampler or runtime
+bootstrap is started by the new producer imports. Artifact/runtime support
+still requires authorized validation.
+
+Regression coverage includes optional auth and valid CLI/operator bypass;
 multiple credential candidates; denied vision bridge with successful original
-model; denied combo member with successful fallback; same-Request limit reuse;
-local capacity versus upstream 429/503; intentional client abort; final native/
-media/chat denial; and denial after early keepalive. No policy enforcement,
+model; same-Request limit reuse; intentional client abort; final native/media/
+chat denial; and denial after early keepalive. Selected provider/capacity and
+daily-limit producer coverage remains pending below. No policy enforcement,
 credential selection, allowance mutation, quota settlement or retry changes are
-part of this proposal. WebSocket sessions remain a separate protocol and are
+part of this increment. The new test exercises actual public decorators,
+credential selection, policy/limits, recovered vision denial, default batch
+execution, legacy derivation, Gemini parse/native TTS denial, delayed EOF/cancel/
+body error, HEAD unread-body accounting and fixed labels. No mocks replace
+auth/policy/correlation; only provider work is replaced. Private ordinary-author
+execution is recorded separately below and does not establish hosted behavior.
+
+Pending producers remain mandatory issue acceptance, not waived exclusions:
+direct Files/Batches ownership denial Responses; realtime credential/auth
+denials; pre-handler middleware denials; legacy daily-token denial in chat and
+`nativeUsage.js`; selected provider-unavailable and quota-capacity results in
+protected chat/combo/native paths. Upstream 429/503 and candidate capacity
+signals are not client denials. Those hooks need separate exact ownership.
+Startup integration, complete HTTP lifecycle gaps, overhead, fresh independent
+head review and the owner-run full checkpoint remain open. Old `dfb3f2f` test
+results cannot establish this draft's behavior. WebSocket sessions remain a
+separate protocol and are
 explicitly excluded from the HTTP contract, not fabricated as HTTP coverage.
+
+## Admission increment ordinary-author evidence
+
+Parent: `e832eeb34290e557dbc5fba8685cc3f51b7b1d4d`. PR base:
+`f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`. This series is retained at
+`/private/tmp/dd1656-admission-y9yajk1i`; its numbered attempt names belong to
+this admission series only. Neither original nor correction evidence is reused
+as new-head runtime proof.
+
+Every candidate command used a fresh private Node 26.13.0 copy, ABI 147,
+with an `env -i` allowlist and an explicit OS sandbox on the same launch path.
+Before candidate imports, both parent and spawned child attempted external TCP
+and synthetic outside-home reads/writes; all three operations returned EPERM.
+Private dependencies were acquired with scripts disabled: 783 root packages,
+61 test packages and 176 pinned commitlint-tool packages. An explicit offline
+native SQLite rebuild and in-memory smoke verified the new binary on ABI 147.
+No previous dependency tree was reused. HOME, DATA_DIR, cache, temporary files
+and reports stayed private. Commands retained a ceiling below 300 seconds
+including termination, and focused Vitest commands kept `--maxWorkers=2` with
+forks. The failure baseline, timeouts, loader and concurrency policy are unchanged.
+
+| Attempt | Result and interpretation |
+| --- | --- |
+| 08, 10, 14, 17 | Exact old `e832eeb3` application source reproduced 14 missing selected-denial counts, with 3 passes; 20 other cases were outside the old-head selector. Attempt 17 uses the final fixture. |
+| 09 | 35/37 passed. The provider fixture did not honor upstream streaming and the double-correlation assertion omitted the existing `upstream_request_id` behavior. Both fixture assumptions were corrected. |
+| 11, 13, 15 | Setup exceeded the unchanged 10-second hook limit; no assertions executed. Narrow repository setup and lazy real-route imports remove the eager fixture dependency. |
+| 12 | Variable dynamic imports failed resolution. Literal lazy imports replaced them. This is failed fixture evidence, not denial-count proof. |
+| 16 | 36/37 passed. Phase timings identified setup costs; the remaining fixture assertion confused internal upstream streaming with the final requested JSON response. The unconsumed failed assertion also triggered the active-count cleanup guard. |
+| 18 | All 37 new admission assertions passed, with no skips, before the two existing-test corrections were added to the inventory. |
+| 21 | Failed mapped run: 404 passed, 1 strict label assertion failed, 12 did not execute because the old boundary fixture timed out. This is retained failed evidence. |
+| 22 | All 3,071 assertions in the separate 15-file admission/security caller selection passed before the two test corrections. |
+| 23 | Both corrected existing files passed all 42 assertions against the frozen 26-path source. |
+| 24 | Final combined selection: all 3,525 repository assertions across 39 files passed, zero skipped, against the frozen 26-path application/test/config inputs. |
+
+Attempt 24 raw output retains **19 Kimchi errors** and **four expected stale
+billing epoch errors**. No error output was suppressed. Assertion success is
+not a clean-runtime or full-checkpoint claim. The prior `dfb3f2f` series still
+has its separate 417-assertion result with 10 Kimchi and four expected stale
+epoch errors; those historical figures are not replaced by this series.
+
+Root lint passed with zero errors and 327 existing warnings; anti-slop reported
+zero diagnostics. Per-command before/after source/test/config hashes, raw
+stdout/stderr, JSON/JUnit, timestamps and exits are retained. Final publication
+requires docs checks, changed-file ESLint, actual staged inner lint-staged,
+the unchanged mandatory hook, and exact base-to-head/title commitlint. Their
+receipts and the final commit/tree binding belong to this same artifact series.
+Only documentation may change after the successful application/test inputs;
+those final docs need their own current check. No gate/boundary runner, real
+provider/DB, bootstrap, server, deployment, status, approval or merge action is
+part of this ordinary-author evidence.
 
 ## Original author validation plan and evidence
 

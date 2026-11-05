@@ -4,6 +4,7 @@ import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 export const HTTP_DURATION_BUCKETS = Object.freeze([0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300]);
 export const HTTP_OUTCOMES = Object.freeze(["completed", "http_error", "stream_error", "cancelled", "handler_error"]);
+export const CLIENT_ADMISSION_REASONS = Object.freeze(["auth_missing", "auth_invalid", "policy", "client_limit"]);
 export const HEALTH_STATES = Object.freeze(["healthy", "degraded", "down", "blocked", "unconfigured", "unknown"]);
 
 // Aggregates survive server module reloads, never process restarts. No request
@@ -24,6 +25,45 @@ const metrics = globalThis.__durindoorOperationalMetrics ??= {
   events: [],
   warnedSampler: false,
 };
+
+// Additive initialization also preserves counters and pending selections across
+// HMR from a module version that predates client-admission instrumentation.
+metrics.clientAdmission ??= Object.fromEntries(CLIENT_ADMISSION_REASONS.map((reason) => [reason, 0]));
+metrics.responseAdmission ??= new WeakMap();
+
+/** Mark an actual local denial Response, without counting a candidate result.
+ * Metadata is weak, private and never added to the wire response or diagnostics.
+ */
+export function annotateClientAdmissionFailure(response, reason) {
+  if (response instanceof Response && CLIENT_ADMISSION_REASONS.includes(reason)) {
+    metrics.responseAdmission.set(response, { reason });
+  }
+  return response;
+}
+
+/** Preserve the same opaque selection when correlation rebuilds a Response. */
+export function copyClientAdmissionFailure(source, target) {
+  const selection = metrics.responseAdmission.get(source);
+  if (selection && target instanceof Response) metrics.responseAdmission.set(target, selection);
+  return target;
+}
+
+/** The delayed keepalive producer selects a denial after its HTTP 200 exists.
+ * Bind the cell to that output; select only after forwarding the chosen denial.
+ * This never marks the async context or other candidate/nested Responses.
+ */
+export function createClientAdmissionSelection() {
+  const selection = { reason: null };
+  return {
+    bind(response) {
+      metrics.responseAdmission.set(response, selection);
+      return response;
+    },
+    select(response) {
+      selection.reason = metrics.responseAdmission.get(response)?.reason ?? null;
+    },
+  };
+}
 
 /** Bind an explicitly derived Request to the currently executing observation.
  * Called by the legacy trusted-ID copy and the Gemini route's explicit bridge.
@@ -49,12 +89,17 @@ export async function observeHttpRequest(request, callback) {
   metrics.started++;
   metrics.active++;
   const startedAt = performance.now();
+  let response;
   const finish = (outcome) => {
     if (scope.finished) return;
     scope.finished = true;
     request.signal?.removeEventListener("abort", onAbort);
     metrics.active--;
     metrics.outcomes[outcome]++;
+    if (outcome === "completed" || outcome === "http_error") {
+      const reason = metrics.responseAdmission.get(response)?.reason;
+      if (CLIENT_ADMISSION_REASONS.includes(reason)) metrics.clientAdmission[reason]++;
+    }
     const seconds = (performance.now() - startedAt) / 1000;
     if (Number.isFinite(seconds) && seconds >= 0) {
       metrics.durationCount++;
@@ -66,7 +111,6 @@ export async function observeHttpRequest(request, callback) {
   request.signal?.addEventListener("abort", onAbort, { once: true });
   if (request.signal?.aborted) onAbort();
 
-  let response;
   try {
     response = await metrics.context.run(scope, callback);
   } catch (error) {
@@ -109,7 +153,8 @@ export async function observeHttpRequest(request, callback) {
       return upstream().cancel(reason);
     },
   }, { highWaterMark: 0 });
-  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  return copyClientAdmissionFailure(response,
+    new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers }));
 }
 
 function rememberEvent(event) {
@@ -209,6 +254,8 @@ export function operationalMetricsText(now = Date.now()) {
     `durindoor_http_request_duration_seconds_sum ${metrics.durationSum}`);
   lines.push("# TYPE durindoor_admission_failures_total counter");
   for (const reason of ["timeout", "aborted"]) lines.push(`durindoor_admission_failures_total{reason="${reason}"} ${metrics.admission[reason]}`);
+  lines.push("# TYPE durindoor_client_admission_failures_total counter");
+  for (const reason of CLIENT_ADMISSION_REASONS) lines.push(`durindoor_client_admission_failures_total{reason="${reason}"} ${metrics.clientAdmission[reason]}`);
   const health = metrics.health && now < metrics.health.expiresAt ? metrics.health : null;
   gauge("provider_health_snapshot_available", health ? 1 : 0);
   if (health) {

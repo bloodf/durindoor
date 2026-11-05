@@ -14,6 +14,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 
@@ -45,10 +46,10 @@ async function handleTtsHandler(request) {
   });
   // Capture once for combo retries and delayed stream EOF, preserving null.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   // Per-key combo access control
   if (apiKey && modelStr) {

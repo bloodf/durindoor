@@ -13,6 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { wantsDefaultRoute, resolveMediaRoute } from "../services/mediaRoutes.js";
 
 /**
@@ -52,10 +53,10 @@ async function handleEmbeddingsHandler(request) {
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
+      return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"), "auth_missing");
     }
     log.warn("AUTH", "Invalid API key");
-    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+    return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), "auth_invalid");
   }
 
   if (!body.input) {

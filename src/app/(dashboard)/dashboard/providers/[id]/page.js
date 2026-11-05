@@ -186,6 +186,7 @@ export default function ProviderDetailPage() {
   const [oneByOneResults, setOneByOneResults] = useState({});
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
+  const oneByOneRunRef = useRef(null);
   const [importingQoderModels, setImportingQoderModels] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
@@ -203,6 +204,12 @@ export default function ProviderDetailPage() {
     setBulkStatusAction(null);
     setBulkUpdatingProxy(false);
     setShowBulkProxyModal(false);
+    setOneByOneRunning(false);
+    setOneByOneStopping(false);
+    setOneByOneCurrentConnectionId(null);
+    setOneByOneResults({});
+    setOneByOneSummary(null);
+    stopOneByOneRef.current = false;
     setCodexPlans({});
     setProviderApiKeyConnectionNames([]);
     // The visible-models modal saves under the provider it was opened for;
@@ -210,6 +217,10 @@ export default function ProviderDetailPage() {
     setShowVisibleModels(false);
     setEnabledModelIds([]);
     setLoading(true);
+    return () => {
+      oneByOneRunRef.current?.abort();
+      oneByOneRunRef.current = null;
+    };
   }, [providerId]);
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
@@ -961,7 +972,10 @@ export default function ProviderDetailPage() {
   };
 
   const handleRunOneByOneTest = async (targets = connections) => {
-    if (oneByOneRunning || targets.length === 0) return;
+    if (oneByOneRunning || targets.length === 0 || oneByOneRunRef.current) return;
+    const run = new AbortController();
+    oneByOneRunRef.current = run;
+    const isCurrent = () => oneByOneRunRef.current === run;
 
     const queuedState = Object.fromEntries(
       targets.map((connection) => [connection.id, { state: "queued", error: null }])
@@ -980,6 +994,7 @@ export default function ProviderDetailPage() {
 
     try {
       for (let index = 0; index < targets.length; index += 1) {
+        if (!isCurrent()) return;
         if (stopOneByOneRef.current) {
           setOneByOneSummary({
             total: targets.length,
@@ -1000,8 +1015,9 @@ export default function ProviderDetailPage() {
         }));
 
         try {
-          const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST" });
+          const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST", signal: run.signal });
           const data = await res.json();
+          if (!isCurrent()) return;
           const wasSkipped = !!data.skipped;
           const valid = !!data.valid;
 
@@ -1021,6 +1037,7 @@ export default function ProviderDetailPage() {
             }
           }));
         } catch (error) {
+          if (!isCurrent()) return;
           failed += 1;
           setOneByOneResults((prev) => ({
             ...prev,
@@ -1045,10 +1062,13 @@ export default function ProviderDetailPage() {
         }
       }
     } finally {
-      setOneByOneCurrentConnectionId(null);
-      setOneByOneRunning(false);
-      setOneByOneStopping(false);
-      stopOneByOneRef.current = false;
+      if (isCurrent()) {
+        oneByOneRunRef.current = null;
+        setOneByOneCurrentConnectionId(null);
+        setOneByOneRunning(false);
+        setOneByOneStopping(false);
+        stopOneByOneRef.current = false;
+      }
     }
   };
 

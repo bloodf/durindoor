@@ -36,7 +36,7 @@ beforeEach(async () => {
   }));
   await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { vi.useRealTimers(); await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 it("keeps selection across filtering and tests only the selected accounts", async () => {
   await click(host.querySelector('[aria-label="Select Alpha"]'));
@@ -157,4 +157,73 @@ it("stops applying proxy assignments after switching providers", async () => {
   await act(async () => { finish({ ok: false, status: 500 }); await Promise.resolve(); });
   expect(fetch.mock.calls.some(([url, options]) => url === "/api/providers/b" && options?.method === "PUT")).toBe(false);
   expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("cancels a selected test on provider switch and ignores a late result after switching back", async () => {
+  let finish;
+  let firstSignal;
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => {
+    if (url === "/api/providers/a/test") {
+      firstSignal = options.signal;
+      return new Promise((resolve) => { finish = resolve; });
+    }
+    if (url === "/api/providers" && route.id === "siliconflow") return Promise.resolve(ok({ connections: [{ id: "c", provider: "siliconflow", name: "Gamma", authType: "apikey", isActive: true }] }));
+    return previous(url, options);
+  });
+  await click(host.querySelector('[aria-label="Select Alpha"]'));
+  await click(host.querySelector('[aria-label="Select Beta"]'));
+  await click(button("Test Selected"));
+  expect(firstSignal.aborted).toBe(false);
+  route.id = "siliconflow";
+  await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
+  expect(firstSignal.aborted).toBe(true);
+  route.id = "openrouter";
+  await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
+  vi.useFakeTimers();
+  await act(async () => { finish(ok({ valid: true })); await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  expect(fetch.mock.calls.some(([url]) => url === "/api/providers/b/test")).toBe(false);
+  expect(host.textContent).not.toContain("Completed:");
+  expect(host.textContent).not.toContain("Passed:");
+  expect(host.textContent).not.toContain("Testing Connection One-by-One");
+});
+
+it("aborts a selected test on unmount and does not schedule the next account", async () => {
+  let finish;
+  let signal;
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => {
+    if (url === "/api/providers/a/test") {
+      signal = options.signal;
+      return new Promise((resolve) => { finish = resolve; });
+    }
+    return previous(url, options);
+  });
+  await click(host.querySelector('[aria-label="Select Alpha"]'));
+  await click(host.querySelector('[aria-label="Select Beta"]'));
+  await click(button("Test Selected"));
+  await act(async () => root.unmount());
+  expect(signal.aborted).toBe(true);
+  vi.useFakeTimers();
+  await act(async () => { finish(ok({ valid: true })); await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  expect(fetch.mock.calls.some(([url]) => url === "/api/providers/b/test")).toBe(false);
+  root = createRoot(host);
+});
+
+it("keeps per-account success and failure results in a selected test", async () => {
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => url === "/api/providers/b/test"
+    ? Promise.resolve(ok({ valid: false, error: "Credentials rejected" })) : previous(url, options));
+  await click(host.querySelector('[aria-label="Select Alpha"]'));
+  await click(host.querySelector('[aria-label="Select Beta"]'));
+  vi.useFakeTimers();
+  await click(button("Test Selected"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  expect(fetch.mock.calls.some(([url]) => url === "/api/providers/a/test")).toBe(true);
+  expect(fetch.mock.calls.some(([url]) => url === "/api/providers/b/test")).toBe(true);
+  expect(host.textContent).toContain("Passed: 1");
+  expect(host.textContent).toContain("Failed: 1");
+  expect(host.textContent).toContain("failed: Credentials rejected");
 });

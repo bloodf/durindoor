@@ -37,6 +37,7 @@ const rows = () => adapter.all("SELECT apiKey, status, cost, meta FROM usageHist
 const failures = [
   ["a thrown tool error", () => state.dispatch.mockRejectedValue(new Error("upstream down"))],
   ["an isError tool result", () => state.dispatch.mockResolvedValue({ result: { content: [{ type: "text", text: "nope" }], isError: true } })],
+  ["a coded tool error", () => state.dispatch.mockRejectedValue(Object.assign(new Error("denied"), { code: -32602 }))],
 ];
 
 beforeAll(async () => {
@@ -68,9 +69,29 @@ afterAll(async () => {
 it.each(failures)("%s keeps its error row but uses none of the key's limits", async (_name, arrange) => {
   arrange();
   for (let i = 0; i < 2; i++) await call();
-  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[null, "error"], [null, "error"]]);
+  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[KEY, "error"], [KEY, "error"]]);
   expect(await checkApiKeyLimits(RECORD)).toBeNull();
-  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, unknownCostRequests: 0 });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });
+  const window = await database.getApiKeyWindowUsageTotals(KEY, "2000-01-01T00:00:00.000Z", "2000-01-01T00:00:00.000Z");
+  expect(window.day).toEqual({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
+  expect(window.month).toEqual(window.day);
+  const stats = await database.getUsageStats("all");
+  expect(stats.totalRequests).toBe(2);
+  expect(Object.values(stats.byApiKey)).toEqual(expect.arrayContaining([expect.objectContaining({ keyName: "MCP limits", requests: 2 })]));
+});
+
+it("backfills billable rows while retaining null fields and partial chat errors", async () => {
+  const start = "2000-01-01T00:00:00.000Z";
+  await database.saveRequestUsage({ provider: "mcp-gateway", status: "error", apiKey: KEY, tokens: { prompt_tokens: 5 }, cost: null });
+  await database.saveRequestUsage({ provider: "openai", status: "error", apiKey: KEY, tokens: { prompt_tokens: 3 }, cost: 1 });
+  await database.saveRequestUsage({ provider: null, status: "error", apiKey: KEY, tokens: {}, cost: 0 });
+  await database.saveRequestUsage({ provider: "mcp-gateway", status: "ok", apiKey: KEY, tokens: {}, cost: 0 });
+  adapter.run("UPDATE usageHistory SET status = NULL WHERE provider = ? AND status = ?", ["mcp-gateway", "ok"]);
+  const totals = await database.getApiKeyWindowUsageTotals(KEY, start, start);
+  expect(totals.day).toMatchObject({ requests: 3, inputTokens: 3, cost: 1, unknownCostRequests: 0 });
+  const { backfillApiKeyUsageTotals } = await import("@/lib/db/helpers/apiKeyUsageTotals.js");
+  backfillApiKeyUsageTotals(adapter, { overwrite: true });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 3, totalTokens: 3, totalCost: 1 });
 });
 
 it("successful calls still count toward the key's request limit", async () => {

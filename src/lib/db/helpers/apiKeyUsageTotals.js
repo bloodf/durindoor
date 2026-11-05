@@ -22,9 +22,9 @@ export function backfillApiKeyUsageTotals(db, { overwrite = false } = {}) {
   const keys = db.all(`SELECT id, key FROM apiKeys`);
   for (const key of keys) {
     const history = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, tokens, cost FROM usageHistory WHERE apiKey = ?`,
+      `SELECT * FROM usageHistory WHERE apiKey = ?`,
       [key.key],
-    );
+    ).filter((row) => !(row.provider === "mcp-gateway" && row.status === "error"));
     const totals = history.reduce((sum, row) => {
       let tokens = {};
       try { tokens = row.tokens ? JSON.parse(row.tokens) : {}; } catch { tokens = {}; }

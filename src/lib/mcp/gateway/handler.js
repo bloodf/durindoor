@@ -117,7 +117,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           provider: "mcp-gateway",
           model: toolName,
           connectionId: instance.id,
-          apiKey: failed ? null : rawKey,
+          apiKey: rawKey,
           endpoint: "/api/mcp-gateway",
           tokens: {},
           cost: 0,

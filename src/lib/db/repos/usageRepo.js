@@ -939,7 +939,8 @@ export async function saveRequestUsage(entry) {
       // Atomic counter increment in same transaction
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', '1')
         ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(_meta.value AS BIGINT) + 1 AS TEXT)`);
-      if (apiKeyId) {
+      // Failed MCP calls remain observable, but consume no per-key allowance.
+      if (apiKeyId && !(entry.provider === "mcp-gateway" && entry.status === "error")) {
         incrementApiKeyUsageSync(db, apiKeyId, {
           tokens: tokens.total_tokens,
           cost: entry.cost
@@ -1028,8 +1029,9 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
        COUNT(*) AS monthRequests,
        COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS monthUnknown,
        COALESCE(SUM(cost), 0) AS monthCost
-     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso]
+     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?
+       AND (provider IS NULL OR provider <> ? OR status IS NULL OR status <> ?)`,
+    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso, "mcp-gateway", "error"]
   );
   const n = (v) => Number(v) || 0;
   return {

@@ -1,5 +1,6 @@
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { errorResponse, readBoundedResponseText, sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 
 const PROVIDER_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const requestIds = new WeakMap();
@@ -32,6 +33,7 @@ export function getRequestId(request, trustedRequestId = null) {
   if (!requestId) {
     requestId = trustedRequestId || createRequestId();
     requestIds.set(request, requestId);
+    if (trustedRequestId) inheritHttpObservation(request);
   }
   return requestId;
 }
@@ -98,10 +100,12 @@ export async function correlateResponse(response, requestId = createRequestId())
 export function withRequestCorrelation(handler) {
   return async function correlatedRequestHandler(...args) {
     const requestId = getRequestId(args[0]);
-    try { return await correlateResponse(await handler(...args), requestId); }
-    catch (error) {
-      console.error(`[RequestCorrelation] ${requestId}: ${sanitizeErrorMessage(error?.stack || error?.message || error)}`);
-      return correlateResponse(errorResponse(500, "Request failed"), requestId);
-    }
+    return observeHttpRequest(args[0], async () => {
+      try { return await correlateResponse(await handler(...args), requestId); }
+      catch (error) {
+        console.error(`[RequestCorrelation] ${requestId}: ${sanitizeErrorMessage(error?.stack || error?.message || error)}`);
+        return correlateResponse(errorResponse(500, "Request failed"), requestId);
+      }
+    });
   };
 }

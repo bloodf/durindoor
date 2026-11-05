@@ -1216,7 +1216,10 @@ export async function getUsageStats(period = "all", opts = {}) {
         apiKeyMasked: maskApiKey(apiKey)
       };
     }
-    const keyInfo = apiKey ? apiKeyMap[apiKey] : null;
+    // A shared secret cannot prove that old MCP history used an ordinary key.
+    // Keep unmatched MCP rows opaque, including after gateway deletion, rather
+    // than assigning a surviving/imported ordinary key's identity to them.
+    const keyInfo = provider !== "mcp-gateway" && apiKey ? apiKeyMap[apiKey] : null;
     if (keyInfo?.id) {
       return {
         id: `api-key:${keyInfo.id}`,

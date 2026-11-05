@@ -291,7 +291,7 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     const failedStats = await a.call('stats');
     expect(failedStats.ok).toBe(true);
     expect(failedStats.value.totalRequests).toBe(1);
-    expect(Object.values(failedStats.value.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: `api-key:${keyId}`, keyName: 'Synthetic fixture', requests: 1 })]);
+    expect(Object.values(failedStats.value.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: expect.stringMatching(/^api-key:hmac-sha256:[a-f0-9]{64}$/), keyName: 'Deleted API key 1', apiKeyMasked: '***', requests: 1, lastUsed: timestamp })]);
     expect(Object.values(failedStats.value.byAccount)).toEqual([expect.objectContaining({ requests: 1 })]);
     expect(JSON.stringify(failedStats.value)).not.toContain(apiKey);
 

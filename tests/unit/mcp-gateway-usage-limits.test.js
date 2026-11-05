@@ -178,6 +178,62 @@ it("preserves the salted HMAC identity after a gateway-only key is deleted", asy
   }
 });
 
+it.each([
+  ["same", "before"], ["different", "before"],
+  ["same", "after"], ["different", "after"],
+])("keeps deleted MCP history opaque with a %s ordinary row ID imported %s deletion", async (rowId, imported) => {
+  const now = new Date(2026, 10, 5, 12, 0, 0);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
+  try {
+    const gateway = await database.createGatewayKey("Gateway collision", "mcp-fixture-machine");
+    await database.setGrants(gateway.id, ["instance-1"], [["echo"]]);
+    const ordinaryId = rowId === "same" ? gateway.id : `ordinary-${gateway.id}`;
+    const importOrdinary = () => adapter.run(
+      "INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, 'Surviving API key', 1, '[]', ?)",
+      [ordinaryId, gateway.key, now.toISOString()],
+    );
+    if (imported === "before") importOrdinary();
+    state.dispatch.mockRejectedValue(new Error("upstream down"));
+    expect((await call(gateway.key)).status).toBe(200);
+    expect(state.dispatch).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: "instance-1", slug: "tools" })],
+      [{ instanceId: "instance-1", slug: "tools", toolAllowlist: ["echo"] }],
+      "tools__echo", {},
+    );
+    expect(Object.values((await database.getUsageStats("all")).byApiKey)).toEqual([
+      expect.objectContaining({ apiKeyKey: `mcp-gateway-key:${gateway.id}`, keyName: "Gateway collision", lastUsed: now.toISOString() }),
+    ]);
+    await database.deleteGatewayKey(gateway.id);
+    const [deleted] = Object.values((await database.getUsageStats("all")).byApiKey);
+    expect(deleted.apiKeyKey).toMatch(/^api-key:hmac-sha256:[a-f0-9]{64}$/);
+    if (imported === "after") importOrdinary();
+    const ordinaryLastUsed = new Date(now.getTime() - 60_000).toISOString();
+    await database.saveRequestUsage({ timestamp: ordinaryLastUsed, apiKey: gateway.key, provider: "fixture", model: "tools__echo", tokens: {}, cost: 0, strict: true });
+    const assertView = (stats) => {
+      const json = JSON.stringify(stats);
+      const entries = Object.values(JSON.parse(json).byApiKey);
+      expect(entries).toHaveLength(2);
+      expect(entries.find((entry) => entry.rawProvider === "mcp-gateway")).toMatchObject({
+        apiKeyKey: deleted.apiKeyKey, keyName: "Deleted API key 1", apiKeyMasked: "***", requests: 1, lastUsed: now.toISOString(),
+      });
+      expect(entries.find((entry) => entry.rawProvider === "fixture")).toMatchObject({
+        apiKeyKey: `api-key:${ordinaryId}`, keyName: "Surviving API key", apiKeyMasked: "***", requests: 1, lastUsed: ordinaryLastUsed,
+      });
+      expect(json).not.toContain(gateway.key);
+    };
+    for (const period of ["all", "today", "24h"]) assertView(await database.getUsageStats(period));
+    expect(adapter.get("SELECT key FROM apiKeys WHERE id = ?", [ordinaryId]).key).toBe(gateway.key);
+    // Retained daily data supplies counts; the interior-day last-seen summary
+    // must supply exact timestamps after raw history is no longer available.
+    adapter.run("DELETE FROM usageHistory");
+    vi.setSystemTime(new Date(now.getTime() + 2 * 86_400_000));
+    assertView(await database.getUsageStats("all"));
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it.each([[{}, 0], [{ prompt_tokens: 5 }, null]])("excludes failed MCP ledger usage %j/%s from lifetime and windows", async (tokens, cost) => {
   await database.saveRequestUsage({ provider: "mcp-gateway", status: "error", apiKey: KEY, model: "tools__echo", tokens, cost, strict: true });
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });

@@ -16,7 +16,7 @@ The default response is an OpenAI list with model IDs in `data`. Provider models
 
 Provider detail shows catalog or configured models separately from connection operational status. Neither verifies authentication or inference. Manual model test results last only for the current page session; skipped tests are not successful inference. Tests can use provider quota or incur charges. Catalog source and degradation appear only when returned by the provider discovery response.
 
-Registry-backed Claude validation probes and OpenAI-compatible fallback probes report server errors as provider unavailability. Retry when the provider is available; these errors do not establish that the credential is invalid.
+Registry-backed Claude validation probes and OpenAI-compatible fallback probes report server errors as provider unavailability. Add and edit dialogs show **Unavailable** for these responses. Retry when the provider is available; these errors do not establish that the credential is invalid.
 
 | Model string | Routes to |
 | --- | --- |

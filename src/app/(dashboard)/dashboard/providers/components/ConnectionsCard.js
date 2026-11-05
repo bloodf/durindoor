@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getConnectionErrorDisplay, getStatusVariant as getConnectionStatusVariant, replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
+import { providerValidationOutcome } from "@/shared/utils/providerValidationOutcome";
 import { isGooglePseProvider, isGooglePseReadyForSave, buildGooglePseProviderSpecificData, buildGooglePseValidationPayload } from "@/shared/utils/googlePseProviderSpecificData.js";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
@@ -223,7 +224,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
         body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx))
       });
       const data = await res.json();
-      setValidationResult(data.skipped ? "skipped" : data.valid ? "success" : "failed");
+      setValidationResult(providerValidationOutcome(data));
     } catch {setValidationResult("failed");} finally
     {setValidating(false);}
   };
@@ -242,7 +243,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
         });
         const data = await res.json();
         isValid = !!data.valid;
-        setValidationResult(data.skipped ? "skipped" : isValid ? "success" : "failed");
+        setValidationResult(providerValidationOutcome(data));
       } catch {setValidationResult("failed");} finally
       {setValidating(false);}
       const providerSpecificData = isGooglePseProvider(provider) ? buildGooglePseProviderSpecificData(formData.cx) : undefined;
@@ -286,8 +287,8 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
           </div>
         }
         {validationResult &&
-        <Badge variant={validationResult === "success" ? "success" : validationResult === "skipped" ? "default" : "error"}>
-            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : "Invalid"}
+        <Badge variant={validationResult === "success" ? "success" : validationResult === "skipped" || validationResult === "unavailable" ? "default" : "error"}>
+            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}
           </Badge>
         }
         <div>

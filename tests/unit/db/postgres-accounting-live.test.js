@@ -206,6 +206,56 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
       finally { if (directory) fs.rmSync(directory, { recursive: true, force: true }); }
     }
   });
+  it('keeps failed MCP attribution without consuming key policy totals', async () => {
+    const a = await worker('mcp-attribution');
+    const mcp = (id, status, extra = {}) => event(id, 0, {
+      provider: 'mcp-gateway', model: 'tools__echo', endpoint: '/api/mcp-gateway',
+      modality: undefined, nativeUnits: undefined, tokens: {}, status, ...extra
+    });
+    expect(await a.call('save', [mcp('mcp-failed', 'error')])).toMatchObject({ ok: true, value: [true] });
+    const summary = () => a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' });
+    expect(await summary()).toMatchObject({ ok: true, value: {
+      totals: { totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 },
+      window: { day: { requests: 0 }, month: { requests: 0 } }
+    } });
+    expect((await sql.query('SELECT "apiKey", status FROM "usageHistory"')).rows).toEqual([{ apiKey, status: 'error' }]);
+    const failedStats = await a.call('stats');
+    expect(failedStats.ok).toBe(true);
+    expect(failedStats.value.totalRequests).toBe(1);
+    expect(Object.values(failedStats.value.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: `api-key:${keyId}`, keyName: 'Synthetic fixture', requests: 1 })]);
+    expect(Object.values(failedStats.value.byAccount)).toEqual([expect.objectContaining({ requests: 1 })]);
+    expect(JSON.stringify(failedStats.value)).not.toContain(apiKey);
+
+    expect(await a.call('save', [
+      mcp('mcp-ok', 'ok'),
+      mcp('other-error', 'error', { provider: 'fixture', cost: null, costStatus: 'unknown', tokens: { input_tokens: 3, output_tokens: 2 } }),
+      mcp('null-provider', 'error', { provider: null }),
+      mcp('null-status', null),
+      mcp('both-null', null, { provider: null })
+    ])).toMatchObject({ ok: true, value: [true, true, true, true, true] });
+    // Retain historical NULL statuses rather than the writer's default ok.
+    await sql.query('UPDATE "usageHistory" SET status = NULL WHERE "usageEventId" IN ($1, $2)',
+      [JSON.stringify(['billing', epoch, 'null-status']), JSON.stringify(['billing', epoch, 'both-null'])]);
+    expect(await summary()).toMatchObject({ ok: true, value: {
+      totals: { totalRequests: 5, totalTokens: 5, totalCost: 0, unknownCostRequests: 1 },
+      window: {
+        day: { requests: 5, inputTokens: 3, outputTokens: 2, cost: 0, unknownCostRequests: 1 },
+        month: { requests: 5, inputTokens: 3, outputTokens: 2, cost: 0, unknownCostRequests: 1 }
+      }
+    } });
+    const stats = await a.call('stats');
+    expect(stats.ok).toBe(true);
+    expect(stats.value.totalRequests).toBe(6);
+    expect(Object.values(stats.value.byApiKey).reduce((sum, row) => sum + row.requests, 0)).toBe(6);
+
+    for (const mode of ['missing', 'overwrite', 'legacy']) {
+      if (mode === 'missing') await sql.query('DELETE FROM "apiKeyUsageTotals"');
+      expect(await a.call('backfill', mode)).toMatchObject({ ok: true, value: true });
+      expect(await summary()).toMatchObject({ ok: true, value: { totals: { totalRequests: 5, totalTokens: 5, totalCost: 0 } } });
+    }
+    expect((await sql.query('SELECT key FROM "apiKeys" WHERE id = $1', [keyId])).rows).toEqual([{ key: apiKey }]);
+    await closeWorker(a);
+  });
   it.each(['COMMIT', 'ROLLBACK'])('serializes absent and existing counters behind a third connection %s', async release => {
     const [a, b] = await pair();
     for (let round = 0; round < 2; round++) {

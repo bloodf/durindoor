@@ -939,7 +939,9 @@ export async function saveRequestUsage(entry) {
       // Atomic counter increment in same transaction
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', '1')
         ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(_meta.value AS BIGINT) + 1 AS TEXT)`);
-      if (apiKeyId) {
+      // Failed MCP calls remain attributed in history/daily stats, but do not
+      // consume key policy totals. Other providers' errors still count.
+      if (apiKeyId && !(entry.provider === "mcp-gateway" && entry.status === "error")) {
         incrementApiKeyUsageSync(db, apiKeyId, {
           tokens: tokens.total_tokens,
           cost: entry.cost
@@ -1012,6 +1014,7 @@ export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
 
 // Usage totals for one API key: today and this month (used by per-key limits).
 // Today always falls inside this month, so one scan from monthStart covers both.
+// COALESCE preserves historical NULL provider/status rows; only explicit MCP errors are exempt.
 export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso) {
   const empty = () => ({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
   if (!apiKey) return { day: empty(), month: empty() };
@@ -1028,7 +1031,8 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
        COUNT(*) AS monthRequests,
        COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS monthUnknown,
        COALESCE(SUM(cost), 0) AS monthCost
-     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
+     FROM usageHistory WHERE apiKey = ? AND timestamp >= ?
+       AND NOT (COALESCE(provider, '') = 'mcp-gateway' AND COALESCE(status, '') = 'error')`,
     [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso]
   );
   const n = (v) => Number(v) || 0;

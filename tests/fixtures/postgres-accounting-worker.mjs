@@ -1,8 +1,10 @@
 // Separate OS process using the production synchronous PostgreSQL adapter.
 import { updatePricing } from '../../src/lib/db/repos/pricingRepo.js';
 import { getAdapter } from '../../src/lib/db/driver.js';
-import { saveRequestUsage, getBillingEpoch, getApiKeyWindowUsageTotals, retractAcceptedUsage } from '../../src/lib/db/repos/usageRepo.js';
+import { saveRequestUsage, getUsageStats, getBillingEpoch, getApiKeyWindowUsageTotals, retractAcceptedUsage } from '../../src/lib/db/repos/usageRepo.js';
 import { getApiKeyUsageTotals } from '../../src/lib/db/repos/apiKeyUsageTotalsRepo.js';
+import { backfillApiKeyUsageTotals } from '../../src/lib/db/helpers/apiKeyUsageTotals.js';
+import { ensureAndBackfillApiKeyUsageTotals } from '../../src/lib/db/migrations/apiKeyUsageTotalsBackfill.js';
 import { createMediaJob, finishMediaJob, getMediaJob } from '../../src/lib/db/repos/mediaJobsRepo.js';
 const adapter = await getAdapter();
 process.send({
@@ -46,6 +48,11 @@ process.on('message', async ({
         ...entry,
         strict: true
       }));
+    } else if (action === 'stats') value = await getUsageStats('all');
+    else if (action === 'backfill') {
+      if (args === 'legacy') ensureAndBackfillApiKeyUsageTotals(adapter);
+      else backfillApiKeyUsageTotals(adapter, { overwrite: args === 'overwrite' });
+      value = true;
     } else if (action === 'retract') value = await retractAcceptedUsage(args);
     else if (action === 'epoch') value = await getBillingEpoch();else if (action === 'summary') value = {
       totals: await getApiKeyUsageTotals(args.keyId),

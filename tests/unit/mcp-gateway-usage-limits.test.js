@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 // #1085: real handler, ledger and limit check. A failed tool call must not use up
-// the key's limits, and a tool call is never an unpriced LLM request.
+// the key's limits, and a tool call is never an unpriced LLM request. #1619:
+// failures must keep their originating key in history and the by-key view.
 const state = vi.hoisted(() => ({ dispatch: vi.fn(), writes: [] }));
 vi.mock("../../src/lib/mcp/gateway/aggregator", () => ({ dispatchToolCall: (...args) => state.dispatch(...args) }));
 vi.mock("@/lib/localDb", async () => {
@@ -68,9 +69,22 @@ afterAll(async () => {
 it.each(failures)("%s keeps its error row but uses none of the key's limits", async (_name, arrange) => {
   arrange();
   for (let i = 0; i < 2; i++) await call();
-  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[null, "error"], [null, "error"]]);
+  expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[KEY, "error"], [KEY, "error"]]);
   expect(await checkApiKeyLimits(RECORD)).toBeNull();
-  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, unknownCostRequests: 0 });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });
+  const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
+  expect(window.day).toMatchObject({ requests: 0, cost: 0, unknownCostRequests: 0 });
+  expect(window.month).toMatchObject({ requests: 0, cost: 0, unknownCostRequests: 0 });
+  // Cover both daily rollups and the direct history path used for today's view.
+  for (const period of ["all", "today"]) {
+    const stats = await database.getUsageStats(period);
+    expect(stats.totalRequests).toBe(2);
+    expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({
+      apiKeyKey: "api-key:mcp-key", keyName: "MCP limits", apiKeyMasked: "***", requests: 2,
+    })]);
+    expect(JSON.stringify(stats)).not.toContain(KEY);
+    expect(Object.values(stats.byAccount)).toEqual([expect.objectContaining({ requests: 2 })]);
+  }
 });
 
 it("successful calls still count toward the key's request limit", async () => {
@@ -80,6 +94,70 @@ it("successful calls still count toward the key's request limit", async () => {
   expect(rows().map((row) => [row.apiKey, row.status])).toEqual([[KEY, "ok"], [KEY, "ok"]]);
   expect((await checkApiKeyLimits(RECORD))?.message || "").toContain("monthly requests limit reached");
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 2 });
+});
+
+it("counts only successful calls for a key with mixed results", async () => {
+  state.dispatch.mockRejectedValue(new Error("upstream down"));
+  await call();
+  state.dispatch.mockResolvedValue({ result: { content: [], isError: false } });
+  await call();
+  expect(await checkApiKeyLimits(RECORD)).toBeNull();
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1 });
+  await call();
+  expect((await checkApiKeyLimits(RECORD))?.message || "").toContain("monthly requests limit reached");
+  const stats = await database.getUsageStats("all");
+  expect(Object.values(stats.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: "api-key:mcp-key", requests: 3 })]);
+});
+
+it("excludes an attributed failed MCP ledger event from lifetime and window totals", async () => {
+  await database.saveRequestUsage({ provider: "mcp-gateway", status: "error", apiKey: KEY, model: "tools__echo", tokens: {}, cost: 0, strict: true });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });
+  const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
+  expect(window.day.requests).toBe(0);
+  expect(window.month.requests).toBe(0);
+  expect(rows()).toEqual([expect.objectContaining({ apiKey: KEY, status: "error" })]);
+});
+
+it.each([
+  ["another provider's error", "fixture", "error"],
+  ["a NULL provider error", null, "error"],
+  ["a NULL MCP status", "mcp-gateway", null],
+  ["NULL provider and status", null, null],
+])("preserves counting and unknown costs for %s", async (_name, provider, status) => {
+  await database.saveRequestUsage({ provider, status, apiKey: KEY, model: "historical", tokens: { prompt_tokens: 3, completion_tokens: 2 }, cost: null, strict: true });
+  // The writer defaults missing statuses to ok; retain the historical NULL
+  // shape explicitly so SQL three-valued logic is exercised by the window scan.
+  adapter.run("UPDATE usageHistory SET status = ?", [status]);
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1, totalTokens: 5, totalCost: 0, unknownCostRequests: 1 });
+  const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
+  for (const period of [window.day, window.month]) {
+    expect(period).toEqual({ requests: 1, inputTokens: 3, outputTokens: 2, cost: 0, unknownCostRequests: 1 });
+  }
+});
+
+it.each(["missing", "overwrite", "legacy"])("keeps failed calls out of the %s lifetime rebuild", async (mode) => {
+  state.dispatch.mockRejectedValue(new Error("upstream down"));
+  await call();
+  // Imported history already has attribution, independently of the handler fix.
+  adapter.run("UPDATE usageHistory SET apiKey = ?", [KEY]);
+  const at = new Date().toISOString();
+  // Non-MCP errors and incomplete historical attribution must still count.
+  for (const [provider, status] of [["mcp-gateway", "ok"], ["fixture", "error"], [null, "error"], ["mcp-gateway", null], [null, null]]) {
+    adapter.run("INSERT INTO usageHistory(timestamp, apiKey, provider, status, promptTokens, completionTokens, cost, tokens) VALUES(?, ?, ?, ?, 3, 2, 0.25, ?)",
+      [at, KEY, provider, status, JSON.stringify({ prompt_tokens: 3, completion_tokens: 2 })]);
+  }
+  if (mode === "missing") adapter.run("DELETE FROM apiKeyUsageTotals");
+  else adapter.run("INSERT INTO apiKeyUsageTotals(apiKeyId, totalRequests) VALUES('mcp-key', 99)");
+  if (mode === "legacy") {
+    const { ensureAndBackfillApiKeyUsageTotals } = await import("@/lib/db/migrations/apiKeyUsageTotalsBackfill.js");
+    ensureAndBackfillApiKeyUsageTotals(adapter);
+  } else {
+    const { backfillApiKeyUsageTotals } = await import("@/lib/db/helpers/apiKeyUsageTotals.js");
+    backfillApiKeyUsageTotals(adapter, { overwrite: mode === "overwrite" });
+  }
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 5, totalTokens: 25, totalCost: 1.25 });
+  expect(adapter.get("SELECT key FROM apiKeys WHERE id = 'mcp-key'").key).toBe(KEY);
+  expect(rows()).toHaveLength(6);
 });
 
 it.each([

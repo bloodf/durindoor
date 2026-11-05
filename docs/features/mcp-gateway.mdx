@@ -99,6 +99,8 @@ Token endpoints and refresh redirects go through the outbound URL guard. Cross-o
 
 Every `tools/call`, ok or error, writes a usage row with `provider: "mcp-gateway"` and `model` set to the namespaced tool name. Watch it on **Dashboard → Usage**.
 
+Failed calls stay attributed to the key that made them in the by-key view, but do not count toward that key's request limits or lifetime usage totals. Successful calls count toward request limits. Both are zero-cost tool usage, not unknown-cost LLM requests. Global and per-connection usage still include failures.
+
 ## Connect a client
 
 Point any streamable-HTTP MCP client at the gateway. Replace the host with your DurinDoor base URL and the key with a gateway key from **MCP Gateway → Keys**.

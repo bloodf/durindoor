@@ -17,7 +17,7 @@
 import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
 
 /** @type {Map<string, {current: number, queue: Array<{resolve, reject, timer}>}>} */
-const gates = new Map();
+const gates = globalThis.__durindoorConcurrencyGates ??= new Map();
 
 /**
  * Default maximum wait time for a concurrency slot (ms).

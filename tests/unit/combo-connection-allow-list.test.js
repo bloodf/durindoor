@@ -113,6 +113,9 @@ beforeAll(async () => {
     nestedOuter: await createCombo("nested-outer", ["nested-inner"], [connectionIds.openai.included]),
     nestedMediaInner: await createCombo("nested-media-inner", ["openai/gpt-4o"], [connectionIds.openai.excluded]),
     nestedMediaOuter: await createCombo("nested-media-outer", ["nested-media-inner"], [connectionIds.openai.included]),
+    nestedMediaWideA: await createCombo("nested-media-wide-a", ["openai/gpt-4o", "openai/gpt-4.1"], [connectionIds.openai.excluded]),
+    nestedMediaWideB: await createCombo("nested-media-wide-b", ["openai/gpt-4o", "openai/gpt-4.1"], [connectionIds.openai.excluded]),
+    nestedMediaWideOuter: await createCombo("nested-media-wide-outer", ["nested-media-wide-a", "nested-media-wide-b"], [connectionIds.openai.included]),
   };
 });
 
@@ -257,17 +260,21 @@ describe("combo connection allow-list dispatch (#747)", () => {
   });
 
   it.each([
-    ["fusion", "fallback"],
-    ["fallback", "fusion"],
-    ["fusion", "fusion"],
-  ])("keeps generic fusion denial through %s → %s nesting", async (outerStrategy, innerStrategy) => {
-    await db.updateSettings({ comboStrategies: {
-      [combos.nestedMediaOuter.name]: { fallbackStrategy: outerStrategy },
-      [combos.nestedMediaInner.name]: { fallbackStrategy: innerStrategy },
-    } });
+    ["fusion", "fallback", "single"],
+    ["fallback", "fusion", "single"],
+    ["fusion", "fusion", "single"],
+    ["fusion", "fallback", "multi"],
+    ["fallback", "fusion", "multi"],
+    ["fusion", "fusion", "multi"],
+  ])("keeps generic fusion denial through %s → %s nesting (%s)", async (outerStrategy, innerStrategy, width) => {
+    const outer = width === "multi" ? combos.nestedMediaWideOuter : combos.nestedMediaOuter;
+    const inners = width === "multi" ? [combos.nestedMediaWideA, combos.nestedMediaWideB] : [combos.nestedMediaInner];
+    const comboStrategies = { [outer.name]: { fallbackStrategy: outerStrategy } };
+    for (const inner of inners) comboStrategies[inner.name] = { fallbackStrategy: innerStrategy };
+    await db.updateSettings({ comboStrategies });
     try {
       const response = await handlers.chat(request("http://router.example.test/v1/chat/completions", {
-        model: combos.nestedMediaOuter.name,
+        model: outer.name,
         messages: [
           { role: "user", content: "inspect the screenshot" },
           { role: "assistant", content: null, tool_calls: [{ id: "shot", type: "function", function: { name: "shot", arguments: "{}" } }] },

@@ -1434,6 +1434,7 @@ export async function handleComboChat({
   let earliestRetryError = null;
   let lastStatus = null;
   let requestScopedResult = null;
+  let localPolicyRejections = 0;
 
   // #6733: release the round-robin conversation-affinity pin when the
   // affinity-pinned FIRST member fails. Affinity only exists when the sticky
@@ -1627,6 +1628,7 @@ export async function handleComboChat({
         requestScopedResult ??= result;
         continue;
       }
+      if (result[LOCAL_POLICY_REJECTION]) localPolicyRejections++;
 
       // Check if should fallback to next model
       const { shouldFallback, cooldownMs, requestScoped } = checkFallbackError(
@@ -1705,6 +1707,10 @@ export async function handleComboChat({
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
   }
+
+  // Nested fusion callers need the trusted marker after fallback aggregation.
+  // Every candidate must reject locally; upstream failures and timeouts do not count.
+  if (localPolicyRejections > 0 && localPolicyRejections === rotatedModels.length) return comboPolicyRejection();
 
   // A member rejected the request itself: return its own response (status and
   // body) instead of the synthesized envelope, so the client sees the real cause.

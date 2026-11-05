@@ -311,6 +311,32 @@ describe("fusion media admission", () => {
     expect((await run(BODIES.chatTool, handle)).status).toBe(503);
   });
 
+  it.each([
+    ["unanimous policy denial", null, 403],
+    ["upstream 403", 403, 503],
+    ["quota rejection", 429, 503],
+    ["timeout", "timeout", 503],
+  ])("classifies nested multi-member fallback with %s", async (_name, otherFailure, expectedStatus) => {
+    const handle = (body) => handleComboChat({
+      body, models: [VISION, secondVision], capabilitiesMap: fusionCaps,
+      log, comboName: "nested", comboStrategy: "fallback",
+      handleSingleModel: async (_body, model) => {
+        if (model === VISION || otherFailure === null) {
+          const response = new Response("denied", { status: 403 });
+          response[LOCAL_POLICY_REJECTION] = true;
+          return response;
+        }
+        if (otherFailure === "timeout") {
+          const error = new Error("nested timeout");
+          error.isComboTimeout = true;
+          throw error;
+        }
+        return Response.json({ error: { message: "upstream failure" } }, { status: otherFailure });
+      },
+    });
+    expect((await run(BODIES.chatTool, handle)).status).toBe(expectedStatus);
+  });
+
   it("does not interpret a drained timeout beside a policy rejection as all-denied", async () => {
     const handle = vi.fn(async (_body, model, _isPanel, signal) => {
       if (model === secondVision) return new Promise((_resolve, reject) => {

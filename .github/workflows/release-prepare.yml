@@ -4,7 +4,7 @@ name: Release Prepare
 # compute the next version, bump both package.json files (and both
 # lockfiles), regenerate the CHANGELOG.md section, commit, validate the
 # commit with commitlint (AGENTS.md §6.3 pre-push gate), push branch
-# release/vX.Y.Z, open the PR, and optionally enable auto-merge. Merging
+# release/vX.Y.Z and open a draft PR for owner validation. Merging
 # that PR makes release-tag.yml tag the release and create the GitHub
 # Release, whose `published` event fires release.yml to publish the CLI
 # to npm.
@@ -12,14 +12,9 @@ name: Release Prepare
 # Preparation is ALWAYS computed from main (checkout is pinned to main),
 # no matter which ref the dispatch UI selects.
 #
-# CRITICAL — token choice: events created with GITHUB_TOKEN do NOT trigger
-# other workflows, so a release branch pushed / PR created with GITHUB_TOKEN
-# never runs ci.yml / test.yml / commitlint.yml, and the ruleset's required
-# checks can never go green. Set the RELEASE_PAT secret (fine-grained PAT,
-# contents:write + pull-requests:write on this repo) for the fully automated
-# chain. Without it the workflow still works but prints a loud warning and
-# the release PR must be checked/merged manually (see
-# internal/docs/release-process.mdx).
+# Release PRs require independent review and an owner-validated full local gate.
+# No workflow enables auto-merge. RELEASE_PAT still controls downstream event
+# propagation; it does not establish validation of the prepared release.
 #
 # Retry policy: the release branch content is fully derived from origin/main
 # + the version, so if a previous run left a stale release/vX.Y.Z branch
@@ -41,10 +36,6 @@ on:
           - patch
           - minor
           - major
-      automerge:
-        description: "Enable squash auto-merge on the release PR"
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -128,26 +119,20 @@ jobs:
           npx commitlint --from=origin/main --to=HEAD
           echo "chore(release): bump version to $NEXT" | npx commitlint
 
-      - name: Check for RELEASE_PAT
-        id: pat
+      # Guard a retry before updating its branch: an old run may have enabled
+      # auto-merge. Fail rather than push if we cannot return it to draft.
+      - name: Hold existing release PR for owner validation
         env:
-          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: |
-          if [ -n "$RELEASE_PAT" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::============================================================"
-            echo "::warning::RELEASE_PAT secret is not configured. The release branch"
-            echo "::warning::push and PR will authenticate with GITHUB_TOKEN, whose"
-            echo "::warning::events do NOT trigger other workflows — ci.yml, test.yml"
-            echo "::warning::and commitlint.yml will NOT run on the release PR, so the"
-            echo "::warning::required checks can never go green and auto-merge stalls."
-            echo "::warning::Manual fallback: run the §6.4 checks locally (npm run lint,"
-            echo "::warning::cd tests && npm run test:ci, npx commitlint --from=origin/main"
-            echo "::warning::--to=HEAD), record them in the PR, and merge with a maintainer"
-            echo "::warning::account. See internal/docs/release-process.mdx."
-            echo "::warning::============================================================"
+          NEXT="${{ steps.version.outputs.next }}"
+          EXISTING=$(gh pr list --repo bloodf/durindoor --head "release/v$NEXT" --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh pr merge "$EXISTING" --repo bloodf/durindoor --disable-auto
+            IS_DRAFT=$(gh pr view "$EXISTING" --repo bloodf/durindoor --json isDraft --jq '.isDraft')
+            if [ "$IS_DRAFT" != "true" ]; then
+              gh pr ready "$EXISTING" --repo bloodf/durindoor --undo
+            fi
           fi
 
       - name: Push release branch
@@ -180,7 +165,7 @@ jobs:
           ### Review contract (AGENTS.md §6.3)
 
           - **Scope:** version bump of the root and cli manifests + lockfiles, and the generated \`CHANGELOG.md\` section. No runtime code changes.
-          - **Test coverage:** no behavior change to cover; the release tooling itself is unit-tested in \`tests/unit/release-notes.test.js\`. The full \`test.yml\` gate runs on this PR (requires RELEASE_PAT so the PR event fires workflows).
+          - **Test coverage:** no behavior change to cover; the release tooling itself is unit-tested in \`tests/unit/release-notes.test.js\`. The integration owner must independently review this head, freeze the runner and imported helpers, and validate the full local gate against the current base/head before marking ready or merging. See \`internal/docs/local-ci.md\`.
           - **Doc coverage:** process and rollback documented in \`internal/docs/release-process.mdx\`.
           - **Baseline impact:** none — no test changes; \`tests/__baseline__/known-fails.txt\` untouched.
           - **Wire-format / migration concerns:** none — manifests, lockfiles, and changelog only; stored API keys, \`[providers.9router]\` labels, \`X-Msh-Platform\` headers, and the \`~/.9router\` data dir are unaffected.
@@ -206,20 +191,10 @@ jobs:
               --title "chore(release): bump version to $NEXT" \
               --body-file pr-body.md
           else
-            gh pr create \
+            gh pr create --draft \
               --repo bloodf/durindoor \
               --base main \
               --head "release/v$NEXT" \
               --title "chore(release): bump version to $NEXT" \
               --body-file pr-body.md
-          fi
-
-      - name: Enable auto-merge
-        if: inputs.automerge
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-        run: |
-          NEXT="${{ steps.version.outputs.next }}"
-          if ! gh pr merge --auto --squash "release/v$NEXT"; then
-            echo "::warning::Auto-merge is not allowed on this repo or failed; merge the PR manually when CI is green, keeping the squash title 'chore(release): bump version to $NEXT'."
           fi

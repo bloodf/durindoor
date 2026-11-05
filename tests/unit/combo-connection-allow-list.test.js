@@ -27,7 +27,10 @@ vi.mock("open-sse/services/liveModelLimits.js", async (importOriginal) => ({
 
 const AUTH_KEY = "sk-combo-allow-list-test";
 const originalDataDir = process.env.DATA_DIR;
-let tempDir;
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-combo-allow-list-"));
+process.env.DATA_DIR = tempDir;
+delete global._dbAdapter;
+vi.resetModules();
 let adapter;
 let db;
 let handlers;
@@ -64,13 +67,18 @@ async function createCombo(name, models, allowedConnectionIds) {
   return db.createCombo({ name, models, allowedConnectionIds });
 }
 
-beforeAll(async () => {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-combo-allow-list-"));
-  process.env.DATA_DIR = tempDir;
-  delete global._dbAdapter;
-  vi.resetModules();
+// Load the handler graph during collection, as static imports would, rather
+// than charging its transform time to the bounded database setup hook.
+db = await import("../../src/lib/db/index.js");
+handlers = {
+  chat: await import("../../src/sse/handlers/chat.js").then((module) => module.handleChat),
+  fetch: await import("../../src/sse/handlers/fetch.js").then((module) => module.handleFetch),
+  search: await import("../../src/sse/handlers/search.js").then((module) => module.handleSearch),
+  image: await import("../../src/sse/handlers/imageGeneration.js").then((module) => module.handleImageGeneration),
+  tts: await import("../../src/sse/handlers/tts.js").then((module) => module.handleTts),
+};
 
-  db = await import("../../src/lib/db/index.js");
+beforeAll(async () => {
   await db.initDb();
   adapter = await import("../../src/lib/db/driver.js").then((module) => module.getAdapter());
   await db.updateSettings({
@@ -91,6 +99,8 @@ beforeAll(async () => {
     insertConnection(provider, ids.included, 1);
     insertConnection(provider, ids.excluded, 2);
   }
+  // Nested capability maps aggregate persisted member declarations.
+  await db.addCustomModel({ providerAlias: "openai", id: "gpt-4o", capabilities: { vision: true } });
 
   combos = {
     chat: await createCombo("allow-chat", ["openai/gpt-test"], [connectionIds.openai.included]),
@@ -101,14 +111,8 @@ beforeAll(async () => {
     legacy: await createCombo("legacy-unrestricted", ["openai/gpt-test"], []),
     nestedInner: await createCombo("nested-inner", ["openai/gpt-test"], [connectionIds.openai.excluded]),
     nestedOuter: await createCombo("nested-outer", ["nested-inner"], [connectionIds.openai.included]),
-  };
-
-  handlers = {
-    chat: await import("../../src/sse/handlers/chat.js").then((module) => module.handleChat),
-    fetch: await import("../../src/sse/handlers/fetch.js").then((module) => module.handleFetch),
-    search: await import("../../src/sse/handlers/search.js").then((module) => module.handleSearch),
-    image: await import("../../src/sse/handlers/imageGeneration.js").then((module) => module.handleImageGeneration),
-    tts: await import("../../src/sse/handlers/tts.js").then((module) => module.handleTts),
+    nestedMediaInner: await createCombo("nested-media-inner", ["openai/gpt-4o"], [connectionIds.openai.excluded]),
+    nestedMediaOuter: await createCombo("nested-media-outer", ["nested-media-inner"], [connectionIds.openai.included]),
   };
 });
 
@@ -250,6 +254,32 @@ describe("combo connection allow-list dispatch (#747)", () => {
       error: expect.objectContaining({ message: expect.stringContaining("No active credentials") }),
     });
     expect(core.chat).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["fusion", "fallback"],
+    ["fallback", "fusion"],
+    ["fusion", "fusion"],
+  ])("keeps generic fusion denial through %s → %s nesting", async (outerStrategy, innerStrategy) => {
+    await db.updateSettings({ comboStrategies: {
+      [combos.nestedMediaOuter.name]: { fallbackStrategy: outerStrategy },
+      [combos.nestedMediaInner.name]: { fallbackStrategy: innerStrategy },
+    } });
+    try {
+      const response = await handlers.chat(request("http://router.example.test/v1/chat/completions", {
+        model: combos.nestedMediaOuter.name,
+        messages: [
+          { role: "user", content: "inspect the screenshot" },
+          { role: "assistant", content: null, tool_calls: [{ id: "shot", type: "function", function: { name: "shot", arguments: "{}" } }] },
+          { role: "tool", tool_call_id: "shot", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgo=" } }] },
+        ],
+      }));
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect((await response.json()).error.message).toBe("Access denied");
+      expect(core.chat).not.toHaveBeenCalled();
+    } finally {
+      await db.updateSettings({ comboStrategies: {} });
+    }
   });
 
   it("rejects an unauthenticated remote request before combo dispatch", async () => {

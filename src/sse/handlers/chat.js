@@ -603,7 +603,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, reportComboPolicyRejections: true }
           );
         },
         log,
@@ -766,9 +766,11 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
 
 /**
  * Handle single model chat request
+ * Fusion opts into local policy markers through nested attempts; ordinary
+ * fallback combos retain their existing model/account error responses.
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, reportComboPolicyRejections = false } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -818,7 +820,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, reportComboPolicyRejections: true }
             );
           },
           log,
@@ -854,7 +856,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, reportComboPolicyRejections }
           );
         },
         log,
@@ -913,7 +915,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Enforce per-API-key model policy against the resolved underlying model when
   // the request started as a combo; the top-level combo name is not a model id.
   const policyError2 = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (policyError2) return comboRouting && policyError2.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError2;
+  if (policyError2) return reportComboPolicyRejections && policyError2.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError2;
 
   // Vision Bridge (#6640): after policy passes, resolve custom capabilities and
   // reroute vision requests to the configured vision-capable model. Denied
@@ -1074,7 +1076,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           apiKeyId,
           allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
           restrictionApplied: comboRouting?.restrictionApplied === true,
-          reportScopeDenied: Boolean(comboRouting)
+          reportScopeDenied: reportComboPolicyRejections
         });
       } catch (error) {
         if (error?.name === "AbortError" || requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");

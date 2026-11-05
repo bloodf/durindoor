@@ -1329,6 +1329,7 @@ export default function ProviderDetailPage() {
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
   const visibleConnections = connections.filter((conn) => `${conn.name || ""} ${conn.email || ""}`.toLowerCase().includes(connectionFilter.trim().toLowerCase()));
   const allSelected = visibleConnections.length > 0 && visibleConnections.every((conn) => selectedConnectionIds.includes(conn.id));
+  const hiddenTestResultCount = connections.filter((conn) => !visibleConnections.includes(conn) && ["success", "failed", "skipped"].includes(oneByOneResults[conn.id]?.state)).length;
 
   const toggleSelectConnection = (connectionId) => {
     setSelectedConnectionIds((prev) =>
@@ -2179,6 +2180,10 @@ export default function ProviderDetailPage() {
               <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
               }
                   </div>
+                  {hiddenTestResultCount > 0 && <div className="mt-2 flex flex-wrap items-center gap-2" role="status">
+                    <span>{hiddenTestResultCount} completed {hiddenTestResultCount === 1 ? "result" : "results"} hidden by the filter.</span>
+                    <Button size="sm" variant="secondary" onClick={() => setConnectionFilter("")}>Clear filter to view results</Button>
+                  </div>}
                 </div>
           }
               {connections.length > 0 &&

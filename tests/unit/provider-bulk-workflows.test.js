@@ -255,3 +255,36 @@ it("prevents priority changes while filtered and reorders normally after clearin
   const labels = [...host.querySelectorAll('input[type="checkbox"][aria-label^="Select "]')].map((input) => input.getAttribute("aria-label"));
   expect(labels).toEqual(["Select Beta", "Select Alpha"]);
 });
+
+it("counts hidden selected-test results and lets the operator reveal them", async () => {
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => url === "/api/providers/a/test"
+    ? Promise.resolve(ok({ valid: false, error: "Credentials rejected" })) : previous(url, options));
+  await click(host.querySelector('[aria-label="Select Alpha"]'));
+  await click(host.querySelector('[aria-label="Select Beta"]'));
+  const filter = host.querySelector('[aria-label="Filter connections"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(filter, "Beta");
+    filter.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  vi.useFakeTimers();
+  await click(button("Test Selected"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  expect(host.textContent).toContain("Total: 2");
+  expect(host.textContent).toContain("Completed: 2");
+  expect(host.textContent).toContain("Passed: 1");
+  expect(host.textContent).toContain("Failed: 1");
+  expect(host.textContent).toContain("1 completed result hidden by the filter.");
+  expect(filter.value).toBe("Beta");
+  expect(host.textContent).toContain("2 selected");
+  expect(host.querySelector('[aria-label="Select Alpha"]')).toBeNull();
+  await click(button("Clear filter to view results"));
+  expect(filter.value).toBe("");
+  expect(host.textContent).not.toContain("result hidden by the filter");
+  const alpha = host.querySelector('[aria-label="Select Alpha"]');
+  const beta = host.querySelector('[aria-label="Select Beta"]');
+  expect(alpha.checked).toBe(true);
+  expect(beta.checked).toBe(true);
+  expect(alpha.parentElement.parentElement.textContent).toContain("failed: Credentials rejected");
+  expect(beta.parentElement.parentElement.textContent).toContain("success");
+});

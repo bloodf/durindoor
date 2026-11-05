@@ -34,7 +34,7 @@ Deleting the final selected account for any key returns HTTP 409 with `API_KEY_S
 
 Before retrying, revoke the affected key or select another account for it. Clear its account selection only when you intend unrestricted account access. An empty selection restores broad access rather than denying all access.
 
-On a provider page, filter connections by name or email and select visible rows. Selections remain when the filter changes; expand the selection summary to review them. Clear the filter before reordering connection priorities. The selected actions enable, disable, test, or delete those accounts; deletion asks for confirmation. Switching providers or leaving the page aborts an in-flight test request, stops scheduling further accounts, and clears the session results. Failed bulk updates are listed by account and failed status updates stay selected for retry. The separate Apply Proxy action targets all connections shown in its dialog.
+On a provider page, filter connections by name or email and select visible rows. Selections remain when the filter changes; expand the selection summary to review them. Clear the filter before reordering connection priorities. The selected actions enable, disable, test, or delete those accounts; deletion asks for confirmation. The test summary counts completed results hidden by the filter and offers a control to reveal them. Switching providers or leaving the page aborts an in-flight test request, stops scheduling further accounts, and clears the session results. Failed bulk updates are listed by account and failed status updates stay selected for retry. The separate Apply Proxy action targets all connections shown in its dialog.
 
 ## Check native resource boundaries
 

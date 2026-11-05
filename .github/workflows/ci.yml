@@ -1,10 +1,8 @@
 name: "✅ CI"
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  # Local validation is the ordinary PR path. See internal/docs/local-ci.md.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}

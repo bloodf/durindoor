@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execSync, execFileSync } = require("child_process");
 const { resolveCliAppDir } = require("./cliBuildPaths");
 const { copyRequiredStandaloneSidecars } = require("./standaloneSidecars");
 
@@ -231,7 +231,8 @@ if (fs.existsSync(buildDistDir)) {
 }
 console.log("1️⃣  Building Next.js app...");
 try {
-  execSync("npm run build", {
+  // Avoid a redundant npm/shell layer within the CLI build's process budget.
+  execFileSync(process.execPath, [path.join(appDir, "scripts", "build-app.mjs")], {
     stdio: "inherit",
     cwd: appDir,
     env: {

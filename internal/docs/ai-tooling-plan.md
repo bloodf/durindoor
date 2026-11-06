@@ -2,7 +2,7 @@
 
 Product remains HOLD until explicit user approval, including after tooling completes.
 
-- Integrate pinned standalone CodeGraph 1.6.2 without application dependencies; follow [the tooling guide](internal/docs/ai-tooling.md).
+- Integrate pinned standalone CodeGraph 1.6.2 without application dependencies; follow [the tooling guide](ai-tooling.md).
 - Validate real index/query/explore and obtain independent exact-head review plus the required full checkpoint before merging the tooling PR.
 - After that merge, propagate only the tooling payload to every local/origin branch, including historical branches and open PRs. Back up original heads, preserve ancestry and dirty work, use resumable receipts and fast-forward pushes only.
 - Apply the guide's Google-only Antigravity account reservations, parked Argon and bounded MiniMax policy. Global harness configuration remains centrally owned.

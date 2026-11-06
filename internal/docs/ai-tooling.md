@@ -2,6 +2,8 @@
 
 Product development remains HOLD until the user explicitly resumes it. Completing tooling does not resume product work.
 
+The repository-only [preparation plan](ai-tooling-plan.md) records rollout steps and preserved product work.
+
 ## Reproducible installation
 
 Reviewed release: `1.6.2`. Upstream source inspected at `f72c9d2efb14454ff4f9fd7b8460abd82f19a287`; that source is newer than the release, so use installed CLI help for flags.

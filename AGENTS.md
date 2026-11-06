@@ -53,3 +53,7 @@ Target `bloodf/durindoor:main`. Do not send PRs to `decolua/9router:dev` from th
 `npx commitlint --from=origin/main --to=HEAD` must exit 0. The PR title must also pass `echo "<title>" | npx commitlint`, because squash-merge uses the title as the commit subject.
 
 `npm run lint` and `cd tests && npm run test:ci` need to be green, or the PR waits. The body lists scope, tests, docs, and baseline impact. One branch per PR. Force-push only on that branch.
+
+## Agent tooling
+
+Read [the tooling guide](internal/docs/ai-tooling.md) before repository work. Product remains HOLD until explicit user approval.

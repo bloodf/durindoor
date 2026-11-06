@@ -120,7 +120,9 @@ function copyRuntimeModules(sources, dest, sourceRoot) {
       if (entry.name === "node_modules" || shouldExclude(entry.name)) continue;
       const file = checkedRealpath(path.join(real, entry.name));
       const output = path.join(target, entry.name);
-      if (fs.statSync(file).isDirectory()) copyPayload(file, output, next);
+      // Dirents carry non-link types; resolved symlinks still need stat.
+      const directory = entry.isSymbolicLink() ? fs.statSync(file).isDirectory() : entry.isDirectory();
+      if (directory) copyPayload(file, output, next);
       else fs.copyFileSync(file, output);
     }
   };

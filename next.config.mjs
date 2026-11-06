@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { availableParallelism } from "node:os";
 import { resolveTracingRoot } from "./tracing-root.mjs";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,8 @@ const nextConfig = {
   },
   env: {},
   experimental: {
+    // Leave one effective CPU spare, with at least one build worker under a quota.
+    cpus: Math.max(1, availableParallelism() - 1),
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
     // Cache fetch responses across HMR refreshes for faster dev reloads.

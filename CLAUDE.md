@@ -100,3 +100,7 @@ Replace `<pr-title>` with the actual PR title; rewrite the title if it fails.
 `main` is the default branch (post v2.2.0) and the source for both production releases and nightly pre-releases. Release flow: feature PR to `main`, then tag (`vX.Y.Z`). `release.yml` publishes to npm. `docker-publish.yml` builds multi-arch images. `nightly.yml` declares a daily 02:00 UTC schedule and a `nightly-YYYY-MM-DD` GitHub pre-release. Its header notes that repository settings disable the schedule during development recovery. Verify the enabled state before assuming nightly runs are active.
 
 Default PR target is `main`. PR checklist, commit rules, and test workflow are in `AGENTS.md`.
+
+## Agent tooling
+
+Read [the tooling guide](internal/docs/ai-tooling.md) before repository work. Product remains HOLD until explicit user approval.

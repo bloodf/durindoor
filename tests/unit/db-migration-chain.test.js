@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
-import { SCHEMA_VERSION } from "../../src/lib/db/schema.js";
+import { SCHEMA_VERSION, TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
 
 import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 let tempDir;
@@ -29,6 +29,116 @@ afterEach(async () => {
 });
 
 describe("Schema migrations", () => {
+  async function seedVersion27() {
+    const { createBetterSqliteAdapter } = await import("@/lib/db/adapters/betterSqliteAdapter.js");
+    const { applyVersionedMigrations } = await import("@/lib/db/migrate.js");
+    const { MIGRATIONS } = await import("@/lib/db/migrations/index.js");
+    const dbDir = path.join(tempDir, "db");
+    fs.mkdirSync(dbDir, { recursive: true });
+    const db = createBetterSqliteAdapter(path.join(dbDir, "data.sqlite"));
+    try {
+      db.exec(buildCreateTableSql("_meta", TABLES._meta));
+      // Apply the real registry through 027. Migration 028 has never run on
+      // this fixture; 026 has already created/seeded its durable column.
+      applyVersionedMigrations(db, MIGRATIONS.filter((migration) => migration.version <= 27));
+      expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("27");
+      const applied = JSON.parse(db.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value);
+      expect(applied).toContain(26);
+      expect(applied).toContain(27);
+      expect(applied).not.toContain(28);
+      for (const id of ["repair-a", "repair-b"]) {
+        db.run(`INSERT INTO apiKeys(id, key, name, createdAt) VALUES(?, ?, ?, ?)`,
+          [id, `secret-${id}`, id, "2026-01-01T00:00:00.000Z"]);
+        db.run(`INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests, updatedAt)
+          VALUES(?, 40, 1.5, 12, 0, '2026-01-03T00:00:00.000Z')`, [id]);
+      }
+      return db;
+    } catch (error) {
+      db.close();
+      throw error;
+    }
+  }
+
+  async function reopen() {
+    global._dbAdapter?.instance?.close();
+    delete global._dbAdapter;
+    vi.resetModules();
+    return (await import("@/lib/db/driver.js")).getAdapter();
+  }
+
+  it("upgrades v27 with absent history, preserving durable totals before additive recovery", async () => {
+    const seeded = await seedVersion27();
+    let before, appliedBefore;
+    try {
+      seeded.run(`UPDATE apiKeyUsageTotals SET unknownCostRequests = 5`);
+      before = seeded.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`);
+      appliedBefore = JSON.parse(seeded.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value);
+      seeded.exec(`DROP TABLE usageHistory`);
+      expect(seeded.all(`PRAGMA table_info(usageHistory)`)).toHaveLength(0);
+    } finally {
+      seeded.close();
+    }
+
+    const db = await reopen();
+    expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory`).count).toBe(0);
+    expect(db.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(before);
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("28");
+    expect(JSON.parse(db.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
+      .toEqual([...appliedBefore, 28]);
+
+    const again = await reopen();
+    expect(again.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(before);
+    expect(again.get(`SELECT COUNT(*) AS count FROM usageHistory`).count).toBe(0);
+    expect(JSON.parse(again.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
+      .toEqual([...appliedBefore, 28]);
+  });
+
+  it("rolls back real 028 after its first repair write, then retries and reopens", async () => {
+    const seeded = await seedVersion27();
+    let before, markersBefore;
+    try {
+      for (const id of ["repair-a", "repair-b"]) {
+        seeded.run(`INSERT INTO usageHistory(timestamp, apiKey, provider, status, cost)
+          VALUES('2026-01-02T00:00:00.000Z', ?, 'openai', 'ok', NULL)`, [`secret-${id}`]);
+      }
+      before = seeded.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`);
+      markersBefore = seeded.all(`SELECT * FROM _meta WHERE key IN ('schemaVersion', 'appliedMigrations') ORDER BY key`);
+      // No row-order assumption: this trigger can fail only after a previous
+      // repair write became visible inside the real migration transaction.
+      seeded.exec(`CREATE TRIGGER fail_second_repair BEFORE UPDATE OF unknownCostRequests ON apiKeyUsageTotals
+        WHEN EXISTS (SELECT 1 FROM apiKeyUsageTotals WHERE unknownCostRequests > 0)
+        BEGIN SELECT RAISE(ABORT, '028 failure after first repair'); END`);
+    } finally {
+      seeded.close();
+    }
+
+    await expect(reopen()).rejects.toThrow("028 failure after first repair");
+    const physical = new Database(path.join(tempDir, "db", "data.sqlite"));
+    try {
+      expect(physical.prepare(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`).all()).toEqual(before);
+      expect(physical.prepare(`SELECT * FROM _meta WHERE key IN ('schemaVersion', 'appliedMigrations') ORDER BY key`).all())
+        .toEqual(markersBefore);
+      physical.exec(`DROP TRIGGER fail_second_repair`);
+    } finally {
+      physical.close();
+    }
+
+    const repaired = await reopen();
+    const expected = before.map((row) => ({ ...row, unknownCostRequests: 1 }));
+    expect(repaired.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(expected);
+    expect(repaired.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("28");
+    const appliedBefore = JSON.parse(markersBefore.find((row) => row.key === "appliedMigrations").value);
+    expect(JSON.parse(repaired.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
+      .toEqual([...appliedBefore, 28]);
+    repaired.exec(`CREATE TRIGGER forbid_repair_repeat BEFORE UPDATE OF unknownCostRequests ON apiKeyUsageTotals
+      BEGIN SELECT RAISE(ABORT, 'recorded 028 must not run again'); END`);
+
+    const again = await reopen();
+    expect(again.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(expected);
+    expect(JSON.parse(again.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
+      .toEqual([...appliedBefore, 28]);
+  });
+
   it("fresh DB → applies migrations & stamps schemaVersion", async () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const { latestVersion } = await import("@/lib/db/migrations/index.js");

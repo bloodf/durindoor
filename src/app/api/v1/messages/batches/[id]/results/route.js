@@ -1,9 +1,10 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // Anthropic Message Batch results — JSONL stream.
 import { getAnthropicResultsJsonl } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -18,7 +19,7 @@ async function OPTIONSHandler() {
 /** GET /v1/messages/batches/<id>/results — JSONL {custom_id,result:{type,message|error}}. */
 async function GETHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!ownership.authorized) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), ownership.denialReason);
   const { id } = await context.params;
   let text;
   try {
@@ -33,4 +34,4 @@ async function GETHandler(request, context) {
   });
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const GET = withRequestCorrelation(GETHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);

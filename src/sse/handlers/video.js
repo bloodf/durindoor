@@ -13,6 +13,7 @@ import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } 
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import * as log from "../utils/logger.js";
 import { isString } from "@/shared/utils/typeChecks.js";
@@ -78,10 +79,10 @@ async function handleVideoGenerationHandler(request) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   if (wantsDefaultRoute(body.model)) {
     const route = await resolveMediaRoute("video", { settings, supports: supportsVideoGeneration, apiKeyId: apiKeyAuth.apiKeyId });
@@ -255,10 +256,10 @@ async function handleVideoCreateHandler(request, action) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
   // Anonymous/operator requests have no durable caller key identity. Reject
   // before submission rather than creating a job anyone could later claim.
   if (!apiKeyAuth.apiKeyId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Video jobs require a stored caller API key");
@@ -372,10 +373,10 @@ async function handleVideoGetHandler(request, requestId) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 

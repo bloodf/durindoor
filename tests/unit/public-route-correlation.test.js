@@ -8,6 +8,8 @@ vi.mock("../../src/sse/utils/requestCorrelation.js", async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
+    withHttpRequestCorrelation: (handler) => actual.withHttpRequestCorrelation((...args) =>
+      harness.response ? harness.response(...args) : handler(...args)),
     withRequestCorrelation: (handler) => actual.withRequestCorrelation((...args) =>
       harness.response ? harness.response(...args) : handler(...args)),
   };

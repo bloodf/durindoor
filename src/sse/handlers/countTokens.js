@@ -7,6 +7,7 @@ import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 /**
  * Handle /v1/messages/count_tokens. Calls the provider's native count_tokens
@@ -26,7 +27,8 @@ async function handleCountTokensHandler(request) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
-  if (!apiKeyAuth.ok) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"),
+    apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   const modelStr = body.model;
   // No model (or unresolvable) → estimate directly from the body.

@@ -32,7 +32,7 @@ src/lib/db/
   secrets.js                        encrypted postgresUrl on the settings row
 ```
 
-Both engines reach version 25 (`025-proxy-timeline.js`). Shared versions must use the same `{version,name}` pair. Additive main-database tables in `schema.js` `TABLES` (including `apiKeyGroups`) come from PG `001-initial.js` on a fresh cluster. The PostgreSQL timeline tables come from migration 025; SQLite 025 is a version stamp because SQLite keeps its existing timeline sidecar.
+Both engines reach version 28 (`028-usage-unknown-cost-repair.js`). Shared versions must use the same `{version,name}` pair. Additive main-database tables in `schema.js` `TABLES` (including `apiKeyGroups`) come from PG `001-initial.js` on a fresh cluster. The PostgreSQL timeline tables come from migration 025; SQLite 025 is a version stamp because SQLite keeps its existing timeline sidecar. Migration 028 re-exports the shared, dialect-aware repair of the durable unknown-cost count.
 
 ## Numbering
 

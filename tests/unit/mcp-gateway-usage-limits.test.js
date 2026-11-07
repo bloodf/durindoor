@@ -335,9 +335,9 @@ it.each([
 it.each(["mcp-gateway", "openai"])("deduplicates failed %s events while retaining paid replay totals", async (provider) => {
   const start = "2000-01-01T00:00:00.000Z";
   const paid = { apiKey: KEY, provider: "openai", model: "paid-fixture", status: "ok", cost: 0.25,
-    tokens: { prompt_tokens: 3, completion_tokens: 2 }, usageEventId: "integration-paid", strict: true };
+    tokens: { prompt_tokens: 3, completion_tokens: 2 }, usageEventId: `integration-paid-${provider}`, strict: true };
   const failed = { apiKey: KEY, provider, model: "failed-fixture", status: "error", cost: 0,
-    tokens: { prompt_tokens: 1 }, usageEventId: "integration-failed", strict: true };
+    tokens: { prompt_tokens: 1 }, usageEventId: `integration-failed-${provider}`, strict: true };
   for (let replay = 0; replay < 2; replay++) {
     await database.saveRequestUsage(paid);
     await database.saveRequestUsage(failed);

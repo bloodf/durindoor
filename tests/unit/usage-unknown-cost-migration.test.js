@@ -20,6 +20,28 @@ beforeEach(() => {
 });
 afterEach(() => db?.close());
 
+it.each([null, 0].flatMap((cost) => [
+  [cost, "mcp-gateway", "error", 0],
+  [cost, "MCP-GATEWAY", "error", 1],
+  [cost, "mcp-gateway ", "error", 1],
+  [cost, "mcp-gateway", "Error", 1],
+  [cost, "mcp-gateway", "error ", 1],
+  [cost, null, "error", 1],
+  [cost, "mcp-gateway", null, 1],
+  [cost, null, null, 1],
+  [cost, "fixture", "error", 1],
+]))("counts historical unknown cost %s for %s/%s as %s", (cost, provider, status, expected) => {
+  db.exec("ALTER TABLE usageHistory ADD COLUMN provider TEXT; ALTER TABLE usageHistory ADD COLUMN status TEXT");
+  db.run("INSERT INTO usageHistory(apiKey, provider, status, cost, meta) VALUES (?, ?, ?, ?, ?)",
+    ["secret-existing", provider, status, cost, JSON.stringify({ costStatus: "unknown" })]);
+  const history = db.all("SELECT * FROM usageHistory");
+  migration.up(db);
+  migration.up(db);
+  expect(db.get("SELECT totalRequests, unknownCostRequests FROM apiKeyUsageTotals WHERE apiKeyId = 'existing'"))
+    .toEqual({ totalRequests: 12, unknownCostRequests: expected });
+  expect(db.all("SELECT * FROM usageHistory")).toEqual(history);
+});
+
 it("backfills NULL and legacy unknown costs once, tolerates malformed metadata, and preserves durable totals", () => {
   const history = [
     ["secret-existing", null, null],

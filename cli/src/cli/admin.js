@@ -22,7 +22,9 @@ async function runAdmin(args, { loadApi = () => require("./api/client"), stdout 
   api.configure({ host: "127.0.0.1", protocol: "http:", port });
   const result = await api.getComboById(id);
   if (!result.success) {
-    stderr(JSON.stringify({ error: result.error, ...(result.statusCode ? { statusCode: result.statusCode } : {}) }));
+    const failure = { error: result.error };
+    if (result.statusCode) failure.statusCode = result.statusCode;
+    stderr(JSON.stringify(failure));
     return 1;
   }
   stdout(JSON.stringify(result.data));

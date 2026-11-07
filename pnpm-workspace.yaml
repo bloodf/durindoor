@@ -1,0 +1,20 @@
+# pnpm 12 settings for the root app project. Security floors previously held in
+# npm's package.json "overrides" (which pnpm does not read) live here so they
+# bind during resolution. They must be in place BEFORE `pnpm import` or any
+# resolution run, or floors silently lapse.
+overrides:
+  dompurify: 3.4.17
+  sharp: ^0.35.5
+  nanoid@<3.3.18: 3.3.18
+  js-yaml@<4.3.2: 4.3.2
+  ip-address: ^10.7.4
+  brace-expansion@<1.1.21: 1.1.21
+  brace-expansion@>=4.0.0 <5.0.12: 5.0.12
+  postcss: ^8.5.28
+  undici: ^7.30.1
+# Dependency build-script approvals (allowBuilds) are deliberately absent here.
+# pnpm 12 strictDepBuilds makes the first install exit with ERR_PNPM_IGNORED_BUILDS
+# and writes candidates into this file. Approve ONLY packages listed by
+# `pnpm ignored-builds` after that install, one by one with a written
+# justification in the PR body. Never use dangerouslyAllowAllBuilds or
+# `pnpm approve-builds --all`.

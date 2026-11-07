@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG NODE_IMAGE=node:26.13.0-alpine
+ARG NODE_IMAGE=node:24.22.2-alpine
 ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
 ARG APP_VERSION=unknown
 
@@ -20,13 +20,14 @@ FROM base AS builder
 # cmake: koffi (tls-client-node) ships no musl arm64 prebuilt and compiles from source there.
 RUN apk add --no-cache python3 make g++ linux-headers cmake
 
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-  npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable
+RUN --mount=type=cache,target=/root/.pnpm-store \
+  pnpm install --frozen-lockfile --store-dir=/root/.pnpm-store
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+RUN pnpm run build
 # wreq-js (OpenCode TLS transport) is optional: if npm skipped it, the empty
 # dirs keep the runner COPY below working and the app falls back to fetch.
 RUN mkdir -p node_modules/wreq-js node_modules/@wreq-js

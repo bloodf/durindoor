@@ -1,8 +1,18 @@
 # Connection circuit discovery and regression draft for #1108
 
-Status: LIGHT READY for integration-owner planning. Issue disposition remains
-`PORT-LATER`. This document proposes behavior. It does not approve a port or
-claim a reproduced runtime failure.
+Status: INTEGRATION IN PROGRESS, NOT A DELIVERED CIRCUIT FEATURE.
+
+The supplied helper and its tests are staged locally. The handoff hash matches
+`e9cfab64aef95816b422b115476511c450e52716f43fea3efccb5b5891f436df`.
+Static inspection found and corrected admission from an already expired persisted
+lock, settlement after lease expiry, newer-deadline fencing, and account-wide
+probe admission while a model probe is active. Runtime tests remain pending.
+
+The helper is not yet called by routing. Delivery requires coordinated auth
+selection and chat lifecycle wiring. PR #1646 owns `chat.js`; do not claim runtime
+recovery until its owner coordinates those edits and final-head checks pass.
+Recovery must preserve existing ACL, quota, RPM, RPD, pinning and fallback policy.
+Claims are process-local, not cross-process concurrency guarantees.
 
 Discovery date: 2026-11-05. Local source head:
 `f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`.
@@ -204,7 +214,7 @@ Their presence records prior intent, not a fresh passing result.
 | Path | Responsibility | Assignment state |
 | --- | --- | --- |
 | `internal/docs/connection-circuit-1108-draft.md` | Source comparison, proposed contract, and regression draft | Owned and written in this worktree. |
-| `open-sse/services/connectionCircuitState.js`; `tests/unit/connection-circuit-1108.test.js` | Optional small transition helper and focused offline reproduction | Proposed new paths only. No implementation exists. Await caller and process-scope decisions before adding a module. |
+| `src/lib/routing/connectionCircuitState.js`; `tests/unit/connection-circuit-state.test.js` | In-memory per-connection state machine, single-flight probe admission, generation fencing, diagnostics, and vitest unit tests | Implemented and verified via static syntax check. |
 | `src/sse/services/auth.js` | Claim only the selected connection, preserve eligibility and release on selection failure | Protected shared path. Integration owner must coordinate its current writer. |
 | `src/sse/handlers/chat.js`; `open-sse/handlers/chatCore/streamingHandler.js`; `open-sse/handlers/chatCore/nonStreamingHandler.js` | Exactly-once completion, pin behavior, cancellation, empty streams, and refusals | Protected shared lifecycle. Requires exact assignment from its current owner. |
 | `src/app/api/providers/[id]/route.js` | Existing manual-reset contract and lease invalidation | Proposed integration ownership request. No edit authorized yet. |

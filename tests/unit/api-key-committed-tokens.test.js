@@ -40,12 +40,12 @@ describe("API-key committed token accounting", () => {
       );
 
       backfillApiKeyUsageTotals(db);
-      expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({ totalTokens: 17, totalCost: 0.5, totalRequests: 1 });
+      expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({ totalTokens: 17, totalCost: 0.5, totalRequests: 1, unknownCostRequests: 0 });
       database.incrementApiKeyUsageSync(db, "key-1", { tokens: 4, cost: 0.25 });
       backfillApiKeyUsageTotals(db);
-      expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({ totalTokens: 21, totalCost: 0.75, totalRequests: 2 });
+      expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({ totalTokens: 21, totalCost: 0.75, totalRequests: 2, unknownCostRequests: 0 });
       backfillApiKeyUsageTotals(db, { overwrite: true });
-      expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({ totalTokens: 17, totalCost: 0.5, totalRequests: 1 });
+      expect(await database.getApiKeyUsageTotals("key-1")).toMatchObject({ totalTokens: 17, totalCost: 0.5, totalRequests: 1, unknownCostRequests: 0 });
       expect(db.get(`SELECT key FROM apiKeys WHERE id='key-1'`).key).toBe(secret);
     } finally {
       try { global._dbAdapter?.instance?.close?.(); } catch {}

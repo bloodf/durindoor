@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { LLM_KIND, buildModelsList } from "../buildModelsList.js";
 import { buildModelsResponse } from "../_shared.js";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
@@ -122,5 +122,5 @@ async function HEADHandler(_request, { params }) {
 }
 
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const GET = withRequestCorrelation(GETHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);

@@ -4,6 +4,7 @@ import { API_KEY_LIMIT_FIELDS } from "@/lib/db/helpers/apiKeyPolicy.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage } from "./apiKeyPolicy.js";
 import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { mediaAccounting } from "../../../open-sse/handlers/mediaAccounting.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const METADATA_FIELDS = new Set(["id", "task_id", "request_id", "file_id", "voice_id", "status", "type", "event", "object"]);
 const TOKEN_FIELDS = new Set([
@@ -78,7 +79,8 @@ export function isNativeTerminalUsageEvent(event, details = {}) {
 export async function nativeUsageAdmission(apiKey) {
   if (!apiKey) return null;
   const status = await getApiKeyUsageLimitStatus(apiKey);
-  return status.exceeded ? new Response("API key daily token limit reached", { status: 429 }) : null;
+  return status.exceeded ? annotateClientAdmissionFailure(
+    new Response("API key daily token limit reached", { status: 429 }), "client_limit") : null;
 }
 
 export async function nativeDirectSessionAllowed(apiKey) {

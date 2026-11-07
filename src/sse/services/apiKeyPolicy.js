@@ -6,6 +6,7 @@ import * as log from "../utils/logger.js";
 import { validateApiKeyPolicy } from "@/lib/db/helpers/apiKeyPolicy.js";
 import { canonicalizePolicyModelIdentity } from "./apiKeyPolicyIdentity.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 /**
  * Check if a model is allowed by the API key policy.
@@ -138,20 +139,20 @@ export async function enforceApiKeyModelPolicy(request, modelStr, apiKey, { limi
   const policyResult = validateApiKeyPolicy(keyRecord.policy);
   if (!policyResult.ok) {
     log.warn("AUTH", `Invalid policy for API key "${keyRecord.name}": ${policyResult.error}`);
-    return errorResponse(
+    return annotateClientAdmissionFailure(errorResponse(
       HTTP_STATUS.FORBIDDEN,
       "API key policy is invalid; contact the administrator"
-    );
+    ), "policy");
   }
   const policy = policyResult.value || {};
 
   // Check model allowlist
   if (!isModelAllowed(policy, modelStr)) {
     log.warn("AUTH", `Model "${modelStr}" not allowed for API key "${keyRecord.name}"`);
-    return errorResponse(
+    return annotateClientAdmissionFailure(errorResponse(
       HTTP_STATUS.FORBIDDEN,
       `Model "${modelStr}" is not allowed for this API key`
-    );
+    ), "policy");
   }
 
   // Loaded on demand: both pull in the provider registry and the usage
@@ -161,10 +162,10 @@ export async function enforceApiKeyModelPolicy(request, modelStr, apiKey, { limi
     const candidatesFor = await getModelAccessCandidateBuilder();
     if (!isModelAccessAllowed(policy.modelAccess, candidatesFor(modelStr))) {
       log.warn("AUTH", `Model "${modelStr}" blocked by model access rules for API key "${keyRecord.name}"`);
-      return errorResponse(
+      return annotateClientAdmissionFailure(errorResponse(
         HTTP_STATUS.FORBIDDEN,
         `Model "${modelStr}" is not allowed for this API key`
-      );
+      ), "policy");
     }
   }
 
@@ -186,18 +187,18 @@ export async function enforceApiKeyModelPolicy(request, modelStr, apiKey, { limi
 
     if (maxTokens != null && usage.totalTokens >= maxTokens) {
       log.warn("AUTH", `Token limit reached for API key "${keyRecord.name}" (${usage.totalTokens}/${maxTokens})`);
-      return errorResponse(
+      return annotateClientAdmissionFailure(errorResponse(
         HTTP_STATUS.RATE_LIMITED,
         `API key token limit reached (${usage.totalTokens}/${maxTokens} tokens)`
-      );
+      ), "client_limit");
     }
 
     if (maxCostUsd != null && usage.totalCost >= maxCostUsd) {
       log.warn("AUTH", `Cost limit reached for API key "${keyRecord.name}" ($${usage.totalCost.toFixed(4)}/$${maxCostUsd})`);
-      return errorResponse(
+      return annotateClientAdmissionFailure(errorResponse(
         HTTP_STATUS.RATE_LIMITED,
         `API key cost limit reached ($${usage.totalCost.toFixed(4)}/$${maxCostUsd})`
-      );
+      ), "client_limit");
     }
   }
 

@@ -1,7 +1,8 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { transformToOllama } from "open-sse/utils/ollamaTransform.js";
+import { copyClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 let initialized = false;
 
@@ -33,7 +34,7 @@ async function POSTHandler(request) {
   } catch {}
 
   const response = await handleChat(request);
-  return transformToOllama(response, modelName);
+  return copyClientAdmissionFailure(response, transformToOllama(response, modelName));
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

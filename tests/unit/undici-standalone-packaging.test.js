@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { materializeStandaloneDependencies } from "../../scripts/build-app.mjs";
 const { copyRecursive } = createRequire(import.meta.url)("../../cli/scripts/build-cli.js");
 
@@ -40,6 +40,179 @@ function snapshot(root) {
 }
 
 describe("standalone dependency closure", () => {
+  it("uses Dirent types for payload entries and stats only resolved symlink targets", () => {
+    const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cli-payload-metadata-")));
+    try {
+      const source = path.join(temp, "source");
+      const pkg = path.join(source, "node_modules", "payload");
+      const nested = path.join(pkg, "nested");
+      fs.mkdirSync(nested, { recursive: true, mode: 0o750 });
+      fs.writeFileSync(path.join(pkg, "package.json"), '{"name":"payload"}');
+      const binary = path.join(pkg, "binary");
+      const plain = path.join(pkg, "plain.txt");
+      const child = path.join(nested, "child.txt");
+      fs.writeFileSync(binary, Buffer.from([0, 255, 1, 13, 10]));
+      fs.chmodSync(binary, 0o751);
+      fs.writeFileSync(plain, "plain\n");
+      fs.writeFileSync(child, "nested\n");
+      fs.chmodSync(child, 0o640);
+      fs.symlinkSync("binary", path.join(pkg, "file-link"));
+      fs.symlinkSync("nested", path.join(pkg, "directory-link"), "dir");
+      const before = snapshot(source);
+      const paths = [pkg, nested, binary, plain, child, path.join(pkg, "file-link"), path.join(pkg, "directory-link")];
+      const modes = paths.map(file => fs.lstatSync(file).mode);
+      const staged = path.join(temp, "staged");
+      const stat = vi.spyOn(fs, "statSync");
+      const realpath = vi.spyOn(fs, "realpathSync");
+      let statQueries;
+      let realpathQueries;
+      try {
+        copyRecursive(source, staged);
+        statQueries = stat.mock.calls.map(([file]) => String(file)).filter(file => file.startsWith(pkg + path.sep));
+        realpathQueries = realpath.mock.calls.map(([file]) => String(file));
+      } finally {
+        stat.mockRestore();
+        realpath.mockRestore();
+      }
+      const output = path.join(staged, "node_modules", "payload");
+      expect(fs.readFileSync(path.join(output, "binary"))).toEqual(Buffer.from([0, 255, 1, 13, 10]));
+      expect(fs.readFileSync(path.join(output, "file-link"))).toEqual(fs.readFileSync(binary));
+      expect(fs.readFileSync(path.join(output, "directory-link", "child.txt"), "utf8")).toBe("nested\n");
+      expect(fs.readFileSync(path.join(output, "plain.txt"), "utf8")).toBe("plain\n");
+      expect(fs.statSync(path.join(output, "binary")).mode & 0o777).toBe(0o751);
+      expect(fs.statSync(path.join(output, "file-link")).mode & 0o777).toBe(0o751);
+      expect(fs.statSync(path.join(output, "nested", "child.txt")).mode & 0o777).toBe(0o640);
+      expect(fs.statSync(path.join(output, "nested")).mode & 0o777).toBe(0o777 & ~process.umask());
+      expect(Object.values(snapshot(staged)).some(value => value && typeof value === "object" && "link" in value)).toBe(false);
+      expect(fs.statSync(path.join(output, "binary")).nlink).toBe(1);
+      expect(fs.statSync(path.join(output, "binary")).ino).not.toBe(fs.statSync(binary).ino);
+      expect(snapshot(source)).toEqual(before);
+      expect(paths.map(file => fs.lstatSync(file).mode)).toEqual(modes);
+      expect(realpathQueries).toEqual(expect.arrayContaining(paths));
+      // These are fs API calls, not a count of underlying kernel syscalls.
+      expect(statQueries.sort()).toEqual([binary, nested].sort());
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    // Darwin copyfile may classify a directory source as ENOTSUP; both reject it.
+    ["file", process.platform === "darwin" ? ["EISDIR", "ENOTSUP"] : ["EISDIR"]],
+    ["directory", ["ENOTDIR"]],
+  ])("fails closed when a %s Dirent becomes stale", (kind, codes) => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cli-stale-dirent-"));
+    try {
+      const source = path.join(temp, "source");
+      const pkg = path.join(source, "node_modules", "payload");
+      fs.mkdirSync(pkg, { recursive: true });
+      fs.writeFileSync(path.join(pkg, "package.json"), '{"name":"payload"}');
+      const victim = path.join(pkg, "victim");
+      if (kind === "file") fs.writeFileSync(victim, "original");
+      else fs.mkdirSync(victim);
+      const readDirectory = fs.readdirSync;
+      let changed = false;
+      const read = vi.spyOn(fs, "readdirSync").mockImplementation((dir, ...args) => {
+        const entries = readDirectory(dir, ...args);
+        if (String(dir) === pkg && !changed) {
+          changed = true;
+          fs.rmSync(victim, { recursive: true });
+          if (kind === "file") {
+            fs.mkdirSync(victim);
+            fs.writeFileSync(path.join(victim, "replacement.txt"), "replacement must not be copied");
+          }
+          else fs.writeFileSync(victim, "replacement must not be copied");
+        }
+        return entries;
+      });
+      try {
+        let failure;
+        try { copyRecursive(source, path.join(temp, "staged")); }
+        catch (error) { failure = error; }
+        expect(failure).toBeDefined();
+        expect(codes).toContain(failure?.code);
+        const output = path.join(temp, "staged");
+        expect(Object.values(snapshot(output))).not.toContain(
+          Buffer.from("replacement must not be copied").toString("base64"),
+        );
+        expect(fs.existsSync(path.join(output, "node_modules", "payload", "victim", "replacement.txt"))).toBe(false);
+      } finally {
+        read.mockRestore();
+      }
+      expect(changed).toBe(true);
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["external-file", "external-directory", "directory-cycle"])("rejects payload %s links", (kind) => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cli-payload-link-"));
+    try {
+      const source = path.join(temp, "source");
+      const pkg = path.join(source, "node_modules", "payload");
+      const outside = path.join(temp, "outside");
+      fs.mkdirSync(pkg, { recursive: true });
+      fs.mkdirSync(outside);
+      fs.writeFileSync(path.join(pkg, "package.json"), '{"name":"payload"}');
+      fs.writeFileSync(path.join(outside, "private.txt"), "must not ship");
+      const target = kind === "directory-cycle" ? pkg : kind === "external-file" ? path.join(outside, "private.txt") : outside;
+      fs.symlinkSync(target, path.join(pkg, "link"), kind === "external-file" ? "file" : "dir");
+      const before = snapshot(source);
+      const privateBefore = snapshot(outside);
+      expect(() => copyRecursive(source, path.join(temp, "staged"))).toThrow(
+        kind === "directory-cycle" ? "Runtime payload directory cycle" : "Copy link escapes its runtime bundle",
+      );
+      expect(snapshot(source)).toEqual(before);
+      expect(snapshot(outside)).toEqual(privateBefore);
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps rejecting directory links outside a package payload", () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cli-top-level-link-"));
+    try {
+      const source = path.join(temp, "source");
+      fs.mkdirSync(path.join(source, "nested"), { recursive: true });
+      fs.symlinkSync("nested", path.join(source, "alias"), "dir");
+      const before = snapshot(source);
+      expect(() => copyRecursive(source, path.join(temp, "staged"))).toThrow("Runtime payload directory symlink is not supported");
+      expect(snapshot(source)).toEqual(before);
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("places sibling version conflicts before resolving their children", () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cli-sibling-versions-"));
+    try {
+      const source = path.join(temp, "source");
+      const modules = path.join(source, "node_modules");
+      const makePackage = (dir, name, version, code, dependencies = {}) => {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name, version, main: "index.js", dependencies }));
+        fs.writeFileSync(path.join(dir, "index.js"), code);
+      };
+      makePackage(path.join(modules, "leaf"), "leaf", "1.0.0", 'module.exports = "root";');
+      makePackage(path.join(modules, "reader"), "reader", "1.0.0", 'module.exports = "root-reader";');
+      const consumer = path.join(modules, "consumer");
+      makePackage(consumer, "consumer", "1.0.0", 'module.exports = require("reader");', { reader: "2", leaf: "2" });
+      makePackage(path.join(consumer, "node_modules", "reader"), "reader", "2.0.0", 'module.exports = require("leaf");', { leaf: "2" });
+      makePackage(path.join(consumer, "node_modules", "leaf"), "leaf", "2.0.0", 'module.exports = "nested";');
+      const before = snapshot(source);
+      const staged = path.join(temp, "staged");
+      copyRecursive(source, staged);
+      const require = createRequire(path.join(staged, "server.js"));
+      expect(require("consumer")).toBe("nested");
+      expect(require("reader")).toBe("root-reader");
+      expect(require("leaf")).toBe("root");
+      expect(fs.existsSync(path.join(staged, "node_modules", "consumer", "node_modules", "reader", "node_modules", "leaf"))).toBe(false);
+      expect(snapshot(source)).toEqual(before);
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
   it.each(["root", "package"])("materializes external %s links without changing the source pool", (topology) => {
     const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "standalone-closure-")));
     try {

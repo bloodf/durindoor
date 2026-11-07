@@ -55,6 +55,12 @@ export function bootstrapNodejsRuntime() {
     process.title = process.title.replace("next-server", "9router");
   }
 
+  // The process-global recorder is idempotent across repeated boot calls and
+  // module reloads. Its unref'd timer does not hold the process open at exit.
+  void import("../open-sse/services/operationalMetrics.js")
+    .then(({ startOperationalMetricsRuntime }) => startOperationalMetricsRuntime())
+    .catch(() => console.warn("[metrics] Runtime recorder not started"));
+
   // Warn when the server that answers /v1 inference is bound to a
   // non-loopback interface (HOSTNAME=0.0.0.0 or a LAN/WAN address) while
   // "Require API key" is off — the anonymous proxy is then reachable from

@@ -88,3 +88,8 @@ API key model policies still apply to each route model, the same way they do whe
 ## Recover an unavailable route
 
 Check active connections and hidden or disabled models. Update the saved route, or choose **Use automatic order**. A saved but unavailable list is not replaced automatically. For embeddings, changing the model changes the vector space; rebuild downstream indexes deliberately. For async video, poll the original job instead of creating another billable job.
+
+Video and music combo model pickers show only catalog entries of the requested
+service kind, including passthrough providers. Chat models from the same provider
+are excluded. When paid models are hidden, each picker uses its matching video
+or music catalog rather than the chat catalog.

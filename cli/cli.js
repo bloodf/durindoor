@@ -72,9 +72,21 @@ function hasFlag(flag, shortFlag) {
   return false;
 }
 
+// Administration never enters launcher startup, updates, or runtime repair.
+if (args[0] === "admin") {
+  require("./src/cli/admin").runAdmin(args.slice(1)).then((code) => {
+    process.exitCode = code;
+  }).catch(() => {
+    console.error(JSON.stringify({ error: "Administration request failed" }));
+    process.exitCode = 1;
+  });
+  return;
+}
+
 if (hasFlag("--help", "-h")) {
   console.log(`
 Usage: ${APP_NAME} [options]
+       ${APP_NAME} admin combos get <id> [--port <port>]
 
 Options:
   -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
@@ -82,6 +94,7 @@ Options:
   -n, --no-browser    Don't open browser automatically
   -l, --log           Show server logs (default: hidden)
   -t, --tray          Run in system tray mode (background)
+  --headless          Run without browser, tray or menu (overrides --tray)
   --skip-update       Skip auto-update check
   -h, --help          Show this help message
   -v, --version       Show version
@@ -96,7 +109,6 @@ if (hasFlag("--version", "-v")) {
 
 const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
 const { buildNodeArgs } = require("./hooks/nodeFlags");
-const { ensureTrayRuntime } = require("./hooks/trayRuntime");
 const { killByPidFile } = require("./hooks/killByPidFile");
 
 
@@ -104,9 +116,6 @@ const { killByPidFile } = require("./hooks/killByPidFile");
 // required fallback; optional better-sqlite3 installation is postinstall-only so
 // ordinary startup never blocks on npm/node-gyp.
 try { ensureSqliteRuntime({ silent: true }); } catch {}
-
-// Self-heal tray runtime (systray for macOS/Linux only). Windows skipped.
-try { ensureTrayRuntime({ silent: true }); } catch {}
 
 const DISPLAY_NAME = "DurinDoor";
 // First non-internal IPv4 — the address remote peers actually reach when bound to 0.0.0.0.
@@ -141,6 +150,7 @@ let noBrowser = false;
 let skipUpdate = false;
 let showLog = false;
 let trayMode = false;
+let headless = false;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--port" || args[i] === "-p") {
@@ -155,6 +165,8 @@ for (let i = 0; i < args.length; i++) {
     showLog = true;
   } else if (args[i] === "--skip-update") {
     skipUpdate = true;
+  } else if (args[i] === "--headless") {
+    headless = true;
   } else if (args[i] === "--tray" || args[i] === "-t") {
     trayMode = true;
     process.env.TRAY_MODE = "1";
@@ -162,9 +174,16 @@ for (let i = 0; i < args.length; i++) {
 }
 
 // Auto-relaunch after update: detached process has no TTY → fallback to tray
-if (skipUpdate && !trayMode && !process.stdin.isTTY) {
+if (!headless && skipUpdate && !trayMode && !process.stdin.isTTY) {
   trayMode = true;
   process.env.TRAY_MODE = "1";
+}
+
+// Explicit headless mode wins regardless of flag order or inherited tray state.
+if (headless) {
+  trayMode = false;
+  noBrowser = true;
+  delete process.env.TRAY_MODE;
 }
 
 // Always use Node.js runtime with absolute path
@@ -685,7 +704,10 @@ function startServer(updatePromise) {
 
   // Initialize tray icon (runs alongside TUI)
   const initTrayIcon = () => {
+    if (headless) return;
     try {
+      const { ensureTrayRuntime } = require("./hooks/trayRuntime");
+      ensureTrayRuntime({ silent: true });
       const { initTray } = require("./src/cli/tray/tray");
       initTray({
         port,
@@ -700,6 +722,13 @@ function startServer(updatePromise) {
       // Tray not available - continue without it
     }
   };
+
+  // Headless keeps the server lifecycle handlers, without optional UI preparation.
+  if (headless) {
+    attachServerEvents();
+    console.log(`Server: http://${displayHost}:${port}`);
+    return;
+  }
 
   // Tray-only mode: no TUI, just tray icon
   if (trayMode) {

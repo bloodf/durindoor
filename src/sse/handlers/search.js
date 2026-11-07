@@ -18,6 +18,7 @@ import { getAutoComboCatalog } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 
@@ -56,10 +57,10 @@ async function handleSearchHandler(request) {
   if (!apiKeyAuth.ok) {
     if (apiKeyAuth.reason === "missing") {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
+      return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"), "auth_missing");
     }
     log.warn("AUTH", "Invalid API key");
-    return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+    return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), "auth_invalid");
   }
 
   if (!wantsDefaultRoute(providerInput) && !isString(providerInput)) {

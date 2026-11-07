@@ -1,3 +1,4 @@
+import { installExecutorContract } from "../fixtures/omniroute-executor-audit/install.js";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -41,6 +42,7 @@ function makeFixture() {
   mkdirSync(join(durin, "public/providers"), { recursive: true });
   mkdirSync(join(omni, "open-sse/config/providers/registry"), { recursive: true });
   mkdirSync(join(omni, "public/providers"), { recursive: true });
+  installExecutorContract(omni);
 
   writeFileSync(join(durin, "open-sse/providers/registry/index.js"), `
     import p0 from "./present.js";

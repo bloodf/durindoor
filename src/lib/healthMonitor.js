@@ -32,6 +32,7 @@ import { probeConnectionHealth, sanitizeErrorMessage, AUTH_FAILURE_STATUSES } fr
 import { inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 import { getRecentlyActiveConnectionIds } from "@/lib/db/repos/usageRepo";
 import { resolveProviderAlias } from "open-sse/services/model.js";
+import { clearProviderHealth, getProviderHealthGeneration, publishProviderHealth } from "open-sse/services/operationalMetrics.js";
 
 // A connection that served a successful request within this window is treated
 // as reachable even when its independent probe says otherwise (real traffic is
@@ -66,6 +67,7 @@ let buildGeneration = 0;
 /** Drop the cached payload and detach any in-flight build so reads rebuild. */
 export function invalidateHealthCache() {
   payloadCache = null;
+  clearProviderHealth();
   buildGeneration += 1;
   pendingBuild = null;
 }
@@ -259,9 +261,11 @@ export async function getHealthPayload(opts = {}) {
   // instead of overwriting the fresh forced payload on a slower probe.
   if (opts.force) {
     payloadCache = null;
+    clearProviderHealth();
     buildGeneration += 1;
   }
   const generationAtStart = buildGeneration;
+  const projectionGeneration = getProviderHealthGeneration();
   const build = (async () => {
     try {
       const payload = await buildPayload(opts);
@@ -269,6 +273,7 @@ export async function getHealthPayload(opts = {}) {
       // builds publish too (they own the bumped generation).
       if (buildGeneration === generationAtStart) {
         payloadCache = { payload, expiresAt: (opts.now ?? Date.now)() + HEALTH_PAYLOAD_TTL_MS };
+        publishProviderHealth(payload.summary, payloadCache.expiresAt, projectionGeneration);
       }
       return payload;
     } finally {

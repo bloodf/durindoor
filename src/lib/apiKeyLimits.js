@@ -13,6 +13,7 @@
 import { getApiKeyWindowUsageTotals, statsEmitter } from "@/lib/db/index.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const RPM_WINDOW_MS = 60 * 1000;
 const USAGE_CACHE_TTL_MS = 10 * 1000;
@@ -172,7 +173,8 @@ export async function enforceApiKeyLimits(request, record) {
     return null;
   }
   if (!limited) return null;
-  return errorResponse(HTTP_STATUS.RATE_LIMITED, limited.message, null, limited.retryAfter);
+  return annotateClientAdmissionFailure(
+    errorResponse(HTTP_STATUS.RATE_LIMITED, limited.message, null, limited.retryAfter), "client_limit");
 }
 
 /** Current usage against every limit, for the dashboard. */

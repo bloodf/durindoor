@@ -55,7 +55,8 @@ vi.mock("../../src/sse/services/auth.js", async (importOriginal) => ({
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig, pickProxyPoolId: () => null,
 }));
-vi.mock("@/shared/services/providerRateLimitEvidence", () => ({
+vi.mock("@/shared/services/providerRateLimitEvidence", async (importOriginal) => ({
+  ...(await importOriginal()),
   clearProviderRateLimitEvidence: async () => {}, recordProviderRateLimitEvidence: vi.fn(),
 }));
 
@@ -108,6 +109,7 @@ vi.mock("../../open-sse/services/transientBackendRetry.js", async (importOrigina
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(),
   appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}),
+  recordTokenSaverEvent: vi.fn(async () => {}),
 }));
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({
   createRequestLogger: async () => ({ logClientRawRequest: vi.fn(), logRawRequest: vi.fn(),

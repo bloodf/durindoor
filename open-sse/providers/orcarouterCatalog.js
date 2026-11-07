@@ -352,7 +352,7 @@ export const ORCAROUTER_SEED_MODELS = [
 {
   id: "deepseek/deepseek-v4-pro",
   name: "DeepSeek V4 Pro",
-  contextLength: 1048576,
+  contextLength: 1000000,
   inputModalities: ["text"],
   endpointTypes: ["openai"],
   reasoning: true

@@ -15,6 +15,27 @@ function rebindToMetadata() {
   ]));
 }
 describe("probeConnectionHealth", () => {
+  it.each([null, { vercelRelayUrl: "https://relay.example.test" }])(
+    "blocks a remote HTTP OrcaRouter origin before sending credentials, proxy=%j",
+    async (proxyConfig) => {
+      const previous = process.env.ORCA_API_BASE_URL;
+      process.env.ORCA_API_BASE_URL = "http://public.example.test";
+      const fetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+      try {
+        const result = await probeConnectionHealth(
+          { id: "orca-http", provider: "orcarouter", apiKey: "fixture-private-key" },
+          { fetcher, proxyConfig },
+        );
+        expect(result).toMatchObject({ valid: false, status: null, blocked: true });
+        expect(fetcher).not.toHaveBeenCalled();
+        expect(result.error).not.toContain("fixture-private-key");
+      } finally {
+        if (previous === undefined) delete process.env.ORCA_API_BASE_URL;
+        else process.env.ORCA_API_BASE_URL = previous;
+      }
+    },
+  );
+
   it("blocks a private OpenAI-compatible base URL via the SSRF guard", async () => {
     const conn = {
       id: "c1",

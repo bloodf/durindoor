@@ -173,6 +173,8 @@ Most OAuth providers use built-in client metadata. Set these only when you run y
 | `ORCA_API_BASE_URL` | `https://api.orcarouter.ai` | OrcaRouter `/v1/models` catalog and proxied health-probe origin (preferred over `ORCA_BASE_URL`). Does not change the chat inference endpoint. Remote origins must be HTTPS; plain HTTP is allowed only for loopback. |
 | `ORCA_BASE_URL` | unset | Shared fallback origin for OrcaRouter auth, catalog and proxied health probes when the split variables above are unset. Does not change the chat inference endpoint. |
 
+The same origin policy applies before authenticated health probes, including saved proxy and relay paths.
+
 ## MCP gateway, tunnels, Headroom
 
 MCP OAuth needs a public https URL. If the dashboard is reached through a tunnel, set that origin here.

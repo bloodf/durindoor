@@ -219,7 +219,7 @@ describe("orcarouter capability filtering", () => {
     expect(gpt.inputModalities).toContain("image");
 
     const deepseek = ORCAROUTER_SEED_MODELS.find((m) => m.id === "deepseek/deepseek-v4-pro");
-    expect(deepseek.contextLength).toBe(1048576);
+    expect(deepseek.contextLength).toBe(1000000);
   });
 
   it("documents the OrcaRouter origin override variables in docs/reference/environment.mdx", async () => {

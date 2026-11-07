@@ -103,6 +103,18 @@ describe("saved legacy routes", () => {
   });
 });
 
+describe("model-kind filtering", () => {
+  it.each(["tts", "stt", "embedding", "video", "webSearch", "music"])("excludes explicitly different kinds from %s routes", async (kind) => {
+    const provider = kind === "embedding" ? "openai" : "xai";
+    mocks.buildModelsList.mockResolvedValue([
+      model(`${provider}/right`, { kind }),
+      model(`${provider}/wrong`, { kind: "llm" }),
+    ]);
+    const route = await describeMediaRoute(kind, { settings: {} });
+    expect(route.candidates.map((row) => row.id)).toEqual([`${provider}/right`]);
+  });
+});
+
 describe("adapter coverage", () => {
   it("leaves out image and embedding models of providers the gateway has no adapter for", async () => {
     mocks.buildModelsList.mockResolvedValue([model("topaz/upscale"), model("xai/grok-imagine-image")]);

@@ -51,6 +51,22 @@ describe("#1332 Chat→Responses tool-result media", () => {
     expect(output.some((part) => part.type === "input_image" && !part.image_url)).toBe(false);
   });
 
+  it("keeps media on a custom tool's output", () => {
+    const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "m", {
+      tools: [{ type: "custom", custom: { name: "shot" } }],
+      messages: [
+        { role: "user", content: "look" },
+        { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "custom", custom: { name: "shot", input: "x" } }] },
+        { role: "tool", tool_call_id: "c1", content: [{ type: "image_url", image_url: { url: "https://example.invalid/a.png" } }] },
+      ],
+    }, false);
+    expect(out.input.find((item) => item.call_id === "c1" && item.type.endsWith("_output"))).toEqual({
+      type: "custom_tool_call_output",
+      call_id: "c1",
+      output: [{ type: "input_image", image_url: "https://example.invalid/a.png", detail: "auto" }],
+    });
+  });
+
   it("leaves text-only and string tool output as a string", () => {
     expect(outputOf({ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] })).toBe("ab");
     expect(outputOf({ is_error: true, content: "boom" })).toBe("[Tool error]\nboom");

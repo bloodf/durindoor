@@ -63,7 +63,7 @@ const USAGE_HANDLERS = {
   xai: async (c) => {
     const local = await getXaiUsage(c.connectionId);
     const snapshot = await fetchXaiQuota({ connection: c.connection, proxyOptions: c.proxyOptions });
-    return { ...local, ...snapshot, quotas: { ...local.quotas, ...snapshot.quotas } };
+    return { ...local, ...snapshot, message: snapshot.outcome === "unknown" ? local.message : snapshot.message, quotaMessage: snapshot.message, quotas: { ...local.quotas, ...snapshot.quotas } };
   },
   "grok-web": () => getGrokWebUsage(),
   "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),

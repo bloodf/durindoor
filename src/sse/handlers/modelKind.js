@@ -6,11 +6,15 @@ import { getProviderByAlias, resolveProviderId } from "@/shared/constants/provid
 import { effectiveSyncedModels, isModelAutoSyncEnabled } from "@/lib/modelAutoSync/catalog.js";
 import { getCustomModels, getSyncedModelCatalog, getProviderNodes } from "@/lib/localDb";
 
-/** Reject declared wrong kinds; untyped and unknown IDs remain dispatchable. */
-export async function modelKindError(provider, model, settings, kind) {
+/**
+ * Reject declared wrong kinds; untyped and unknown IDs remain dispatchable.
+ * Chat opts into llm + imageToText because vision models use chat completions.
+ * Other endpoints keep exact-kind matching by default.
+ */
+export async function modelKindError(provider, model, settings, kind, acceptedKinds = [kind]) {
   const entry = REGISTRY.find((item) => item.id === provider);
   const matches = (entry?.models || []).filter((item) => item.id === model || item.aliases?.includes(model));
-  if (matches.some((item) => (item.kind || item.type || "llm") === kind)) return null;
+  if (matches.some((item) => acceptedKinds.includes(item.kind || item.type || "llm"))) return null;
   const ids = new Set([model, ...matches.map((item) => item.id)]);
   let knownWrong = matches.length > 0;
   let unavailable = false;
@@ -27,7 +31,7 @@ export async function modelKindError(provider, model, settings, kind) {
   try {
     const custom = await getCustomModels();
     const rows = custom.filter((item) => (providerIds.has(item.providerAlias) || providerIds.has(resolveProviderId(item.providerAlias))) && ids.has(item.id) && (item.kind || item.type));
-    if (rows.some((item) => (item.kind || item.type) === kind)) return null;
+    if (rows.some((item) => acceptedKinds.includes(item.kind || item.type))) return null;
     knownWrong ||= rows.length > 0;
   } catch {
     unavailable = true;
@@ -35,7 +39,7 @@ export async function modelKindError(provider, model, settings, kind) {
   try {
     const synced = entry && isModelAutoSyncEnabled(provider, settings) ? effectiveSyncedModels(await getSyncedModelCatalog(provider), entry.models) : null;
     const rows = synced?.filter((item) => (ids.has(item.id) || item.aliases?.some((alias) => ids.has(alias))) && (item.kind || item.type)) || [];
-    if (rows.some((item) => (item.kind || item.type) === kind)) return null;
+    if (rows.some((item) => acceptedKinds.includes(item.kind || item.type))) return null;
     knownWrong ||= rows.length > 0;
   } catch {
     unavailable = true;

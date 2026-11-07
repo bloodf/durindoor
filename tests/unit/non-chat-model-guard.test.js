@@ -119,6 +119,35 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
   });
 
+  it.each(["MiniMaxAI/MiniMax-M3", "Qwen/Qwen3.5-9B"])("allows Together vision chat for %s through to account selection", async (model) => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "together", model });
+    await handleChat(makeRequest(`together/${model}`));
+    expect(mocks.getProviderCredentials).toHaveBeenCalled();
+  });
+
+  it.each(["custom", "synced"])("allows a %s imageToText model through to account selection", async (source) => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
+    if (source === "custom") mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "imageToText" }]);
+    else mocks.getSyncedModelCatalog.mockResolvedValue({ syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "catalog-only", kind: "imageToText" }] });
+    await handleChat(makeRequest("openai/catalog-only"));
+    expect(mocks.getProviderCredentials).toHaveBeenCalled();
+  });
+
+  it.each(["image", "tts", "stt", "video", "music", "embedding", "rerank", "systemone", "realtime", "audio"])("rejects catalog-only %s before account selection", async (kind) => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
+    mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind }]);
+    const response = await handleChat(makeRequest("openai/catalog-only"));
+    expect(response.status).toBe(400);
+    expect(mocks.getProviderCredentials).not.toHaveBeenCalled();
+    expect(mocks.handleChatCore).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+  });
+
+  it.each(["tts", "stt", "embedding", "video", "music", "rerank"])("keeps imageToText rejected for %s", async (kind) => {
+    const response = await modelKindError("together", "MiniMaxAI/MiniMax-M3", {}, kind);
+    expect(response.status).toBe(400);
+  });
+
   it("marks unavailable local metadata without selecting or penalizing an account", async () => {
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
     mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "embedding" }]);

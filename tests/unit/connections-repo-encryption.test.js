@@ -50,6 +50,7 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
       idToken: "ID-secret-4",
       firecrawlHeaders: JSON.stringify({ "x-secret": "header-value" }),
       sessionToken: "STS-secret-5",
+      managementApiKey: "management-private-fixture",
       email: "enc@example.com",
     });
 
@@ -73,6 +74,22 @@ describe("connectionsRepo encryption (SEC-B-02)", () => {
     expect(row.data).not.toContain("x-secret");
     expect(row.data).not.toContain("header-value");
     expect(row.data).not.toContain("STS-secret-5");
+    expect(row.data).not.toContain("management-private-fixture");
+    expect((await repo.getProviderConnectionById(conn.id)).managementApiKey).toBe("management-private-fixture");
+  });
+
+  it("never persists a plaintext nested management credential", async () => {
+    const repo = await freshRepo();
+    const conn = await repo.createProviderConnection({ provider: "xai", authType: "apikey", name: "nested-fixture", apiKey: "inference-fixture", managementApiKey: "management-fixture", providerSpecificData: { teamId: "team-fixture", managementApiKey: "nested-unsafe-fixture" } });
+    const db = await freshDb();
+    const row = db.get(`SELECT data FROM providerConnections WHERE id = ?`, [conn.id]);
+    expect(row.data).not.toContain("nested-unsafe-fixture");
+    expect(row.data).not.toContain("management-fixture");
+    expect((await repo.getProviderConnectionById(conn.id)).managementApiKey).toBe("management-fixture");
+    await repo.updateProviderConnection(conn.id, { managementApiKey: "management-updated-fixture" });
+    expect((await repo.getProviderConnectionById(conn.id)).managementApiKey).toBe("management-updated-fixture");
+    const exported = await (await freshLocalDb()).exportDb();
+    expect(JSON.stringify(exported)).not.toContain("management-updated-fixture");
   });
 
   it("decrypts on read so callers see plaintext", async () => {

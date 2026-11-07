@@ -1176,6 +1176,35 @@ describe("chat quota fallback orchestration", () => {
     );
   });
 
+  it.each(["QUEUE_FULL", "TIMEOUT"])("returns local admission %s unchanged without account cooldown or rotation", async (reason) => {
+    mocks.getProviderCredentials.mockImplementation(async (_provider, excluded) =>
+      excluded?.has("healthy-account") ? null : selected("healthy-account"));
+    const original = new Response(JSON.stringify({ error: {
+      message: "Local admission pressure", type: "admission_error", code: reason,
+    } }), { status: 503, headers: { "content-type": "application/json" } });
+    mocks.handleChatCore.mockResolvedValueOnce({
+      success: false, status: 503, error: "Local admission pressure",
+      localAdmissionRejected: true, response: original,
+    });
+    const response = await handleChat(request());
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).toBe("application/json");
+    const requestId = response.headers.get("x-request-id");
+    expect(requestId).toEqual(expect.any(String));
+    expect(requestId.length).toBeGreaterThan(0);
+    const payload = await response.json();
+    expect(payload.error.request_id).toBe(requestId);
+    const { request_id, ...admissionError } = payload.error;
+    expect({ ...payload, error: admissionError }).toEqual({ error: {
+      message: "Local admission pressure", type: "admission_error", code: reason,
+    } });
+    expect(original.localAdmissionRejected).toBe(true);
+    expect(mocks.getProviderCredentials).toHaveBeenCalledOnce();
+    expect(mocks.handleChatCore).toHaveBeenCalledOnce();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    expect(mocks.clearAccountError).not.toHaveBeenCalled();
+  });
+
   it("retries a sibling after a local quota reservation race without poisoning provider health", async () => {
     const first = selected("conn-one");
     const second = selected("conn-two");

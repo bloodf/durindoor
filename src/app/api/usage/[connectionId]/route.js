@@ -3,6 +3,7 @@ import "open-sse/index.js";
 
 import { getProviderConnectionById } from "@/lib/localDb";
 import { getConnectionUsageSummary } from "@/lib/db/repos/monitoringUsageRepo.js";
+import { fetchXaiQuota } from "@/lib/usage/xaiQuotaAdapter.js";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { fetchGrokCliCreditsConfig } from "open-sse/services/usage/grok-cli.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -109,6 +110,10 @@ export async function GET(request, { params }) {
         } catch {
           /* fail-open: keep local-history-only card */
         }
+      }
+      if (!isOAuth) {
+        const snapshot = await fetchXaiQuota({ connection, proxyOptions });
+        return Response.json({ ...local, ...snapshot, message: snapshot.outcome === "success" ? null : local.message, quotas: { ...local.quotas, ...snapshot.quotas } });
       }
       return Response.json(local);
     }

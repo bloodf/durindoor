@@ -20,7 +20,7 @@ Registry-backed Claude validation probes and OpenAI-compatible fallback probes r
 
 The provider validation API returns `valid: false` and `unavailable: true` for server errors from registry-backed probes. An unavailable result does not identify an invalid credential.
 
-Testing a saved connection returns the same unavailable marker for those server errors and leaves its stored status unchanged. Batch tests count unavailable connections separately from invalid credentials. Retry when the provider is available.
+Testing a saved registry connection returns the unavailable marker for server errors and network failures reported with a null probe status, and leaves its stored status unchanged. HTTP 401 and 403 still persist a credential failure. A blocked outbound URL remains a validation error. Batch tests count unavailable connections separately from invalid credentials. Retry when the provider is available.
 
 | Model string | Routes to |
 | --- | --- |

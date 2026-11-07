@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // full-endpoint registry convention.
 const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
+  getProviderConnections: vi.fn(),
   updateProviderConnection: vi.fn(),
 }));
+
+vi.mock("@/models", () => ({ getProviderConnections: mocks.getProviderConnections }));
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
@@ -159,6 +162,9 @@ describe("baseUrl-only API-key provider connection test", () => {
   });
 
   it.each([
+    [500, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
+    [502, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
+    [504, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
     [503, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
     [401, { valid: false, skipped: false, error: "Invalid API key", refreshed: false }, "error"],
     [403, { valid: false, skipped: false, error: "Invalid API key", refreshed: false }, "error"],
@@ -171,4 +177,30 @@ describe("baseUrl-only API-key provider connection test", () => {
     if (storedStatus === null) expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
     else expect(mocks.updateProviderConnection).toHaveBeenCalledWith("conn-glb", expect.objectContaining({ testStatus: storedStatus, lastError: expected.error }));
   });
+  it("preserves saved readiness when the real probe reports a network failure with null status", async () => {
+    global.fetch = vi.fn(async () => { throw new Error("network failure for glb-test-key"); });
+    const { POST } = await import("../../src/app/api/providers/[id]/test/route.js");
+    const response = await POST(new Request("http://localhost/api/providers/conn-glb/test", { method: "POST" }), { params: Promise.resolve({ id: "conn-glb" }) });
+    expect(await response.json()).toEqual({ valid: false, skipped: false, unavailable: true, error: "Provider unavailable - network request failed", refreshed: false });
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([null, 500, 502, 503, 504, 401, 403])("runs the batch caller through the real probe for status %s", async (status) => {
+    mocks.getProviderConnections.mockResolvedValue([{ id: "conn-glb", provider: "gitlawb-gmi", authType: "apikey" }]);
+    global.fetch = vi.fn(async () => {
+      if (status === null) throw new Error("offline");
+      return new Response("", { status });
+    });
+    const { POST } = await import("../../src/app/api/providers/test-batch/route.js");
+    const response = await POST(new Request("http://localhost/api/providers/test-batch", { method: "POST", body: JSON.stringify({ mode: "all" }) }));
+    const body = await response.json();
+    const unavailable = status === null || status >= 500;
+    expect(body.summary).toEqual({ total: 1, passed: 0, failed: unavailable ? 0 : 1, skipped: 0, unavailable: unavailable ? 1 : 0 });
+    expect(body.results[0]).toMatchObject({ valid: false, unavailable, error: unavailable ? status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" : "Invalid API key" });
+    if (unavailable) expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+    else expect(mocks.updateProviderConnection).toHaveBeenCalledWith("conn-glb", expect.objectContaining({ testStatus: "error", lastError: "Invalid API key" }));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
 });

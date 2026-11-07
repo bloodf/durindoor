@@ -1104,8 +1104,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             { sessionToken: connection.sessionToken }
           );
           if (result) {
-            if (result.status >= 500) {
-              return { valid: false, unavailable: true, error: "Provider unavailable - try again later" };
+            if (!result.blocked && (result.status === null || result.status >= 500)) {
+              return { valid: false, unavailable: true, error: result.error || "Provider unavailable - try again later" };
             }
             return {
               valid: result.valid,

@@ -316,3 +316,18 @@ it.each([
   expect(await database.getUsageStats("all")).toMatchObject({ totalRequests: 1, unknownCostRequests: 0 });
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ unknownCostRequests: 0 });
 });
+
+
+it("rejects accepted MCP writes without claiming a receipt or changing accounting", async () => {
+  const entry = { apiKey: KEY, provider: "mcp-gateway", model: "tools__echo",
+    usageEventId: "unsupported-mcp-accepted", status: "accepted", tokens: {}, cost: null, strict: true };
+  const receipts = adapter.all("SELECT * FROM kv WHERE scope = 'usageEventReceipts'");
+  await expect(database.saveRequestUsage(entry)).rejects.toThrow("MCP usage must be terminal");
+  expect(rows()).toEqual([]);
+  expect(adapter.all("SELECT * FROM kv WHERE scope = 'usageEventReceipts'")).toEqual(receipts);
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0 });
+  // A rejected provisional event must not consume the later terminal identity.
+  await database.saveRequestUsage({ ...entry, status: "error", cost: 0 });
+  expect(rows()).toHaveLength(1);
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0 });
+});

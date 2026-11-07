@@ -144,3 +144,5 @@ Then `tools/list` with the same key. Call a tool as `"name": "<slug>__<toolName>
 - **Instance shows needs login.** The upstream OAuth token expired and could not refresh. Click **Login** again.
 - **URL not allowed.** The outbound URL guard rejected the upstream URL, for example an address prohibited by the outbound policy.
 - **Stdio spawn failed.** The command is not on the local plugin allowlist, or the process exited.
+
+The usage writer rejects provisional `accepted` MCP records before accounting or receipt creation. The gateway records terminal tool calls only, with empty token usage.

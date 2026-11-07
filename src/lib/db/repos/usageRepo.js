@@ -771,6 +771,10 @@ export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
 export async function saveRequestUsage(entry) {
   entry = { ...entry };
   try {
+    // MCP records terminal tool calls only; accepted-job settlement is unsupported.
+    if (entry.provider === "mcp-gateway" && entry.status === "accepted") {
+      throw new TypeError("MCP usage must be terminal");
+    }
     const db = await getAdapter();
 
     if (entry.usageEventId != null && (!isString(entry.usageEventId) || !entry.usageEventId.trim())) {

@@ -126,6 +126,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
     }
   };
 
+  /** Announce asynchronous Check failures while retaining the visible result in the dialog. */
   const renderValidationResult = () => {
     if (!validationResult) return null;
     const { valid, error, method } = validationResult;
@@ -138,7 +139,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
       );
     }
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1" role="alert">
         <Badge tone="danger">Invalid</Badge>
         {error ? <span className="text-sm text-dd-danger">{error}</span> : null}
       </div>

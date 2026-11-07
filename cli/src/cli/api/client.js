@@ -323,7 +323,7 @@ async function getCombos() {
  * @returns {Promise<Object>} { success, data: combo }
  */
 async function getComboById(id) {
-  return makeRequest("GET", `/api/combos/${id}`);
+  return makeRequest("GET", `/api/combos/${encodeURIComponent(id)}`);
 }
 
 /**

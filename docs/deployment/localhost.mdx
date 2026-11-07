@@ -3,7 +3,7 @@ title: Laptop
 description: Start a local gateway, verify a provider, and connect desktop clients.
 ---
 
-Run DurinDoor on your computer to connect desktop clients to one local gateway. Install Node.js 26.13.0 and npm 11.20.0 before using the CLI or source package.
+Run DurinDoor on your computer to connect desktop clients to one local gateway. Install Node.js 24.22.2 (engines `>=24.22.2 <25`) before using the CLI or source package; source checkouts use pnpm 12.18.0.
 
 ## Prepare a local install
 
@@ -45,12 +45,12 @@ durindoor --host 127.0.0.1
 ```bash
 git clone https://github.com/bloodf/durindoor.git
 cd durindoor
-npm install --no-audit --no-fund
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 HOSTNAME=127.0.0.1 npm start
 ```
 
-For development, use `npm run dev`. It listens on port `20127` instead of `20128`.
+For development, use `pnpm run dev`. It listens on port `20127` instead of `20128`.
 
 </Tab>
 </Tabs>

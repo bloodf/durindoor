@@ -24,31 +24,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
       - name: "⚙️ Setup Node.js"
         uses: actions/setup-node@v5
         with:
-          node-version: 26.13.0
-          cache: npm
+          node-version: 24.22.2
+          cache: pnpm
           cache-dependency-path: |
-            package-lock.json
-            website/package-lock.json
-            tests/package-lock.json
+            pnpm-lock.yaml
+            website/pnpm-lock.yaml
+            tests/pnpm-lock.yaml
 
-      - name: "📌 Pin npm"
-        run: |
-          npm install --global npm@11.20.0
-          test "$(npm --version)" = "11.20.0"
+      - name: Verify pnpm
+        run: test "$(pnpm --version)" = "12.18.0"
 
       - name: "📦 Install app dependencies"
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: "📦 Install website dependencies"
         working-directory: website
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: "📦 Install test dependencies"
         working-directory: tests
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Select baseline comparison ref
         env:
@@ -63,7 +65,7 @@ jobs:
         env:
           HOME: ${{ runner.temp }}/durindoor-home
           DATA_DIR: ${{ runner.temp }}/durindoor-data
-        run: mkdir -p "$HOME" "$DATA_DIR" && npm run test:ci
+        run: mkdir -p "$HOME" "$DATA_DIR" && pnpm run test:ci
 
       - name: Verify test reports
         if: always()

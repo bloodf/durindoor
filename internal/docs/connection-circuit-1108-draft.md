@@ -133,6 +133,35 @@ ordering contracts. This requires a separately assigned repository API and
 cross-engine evidence. A process-local first version needs an explicit scope
 decision from the integration owner. Neither design is approved by this draft.
 
+## Minimum real-caller experiment (2026-11-07)
+
+Compared with local `origin/main` at `044632eb8bc4cd51a65340fb6c87100879969e70`,
+the connection-circuit implementation and proposed test file are absent. The
+main tree does contain the unrelated Headroom circuit. In main's chat handler,
+`getProviderCredentialsWithQuotaPreflight()` selects credentials before
+`handleChatCore()` dispatches; `getProviderCredentials()` releases its
+provider-scoped selection mutex when selection returns. This supports a race
+hypothesis, not proof that concurrent requests actually reach the provider.
+
+Start with one offline test through the exported `handleChat` caller, using
+synthetic connection A with an expired model lock, controlled local DB and
+quota dependencies, and a held fake provider response. Start a second request
+after the first reaches dispatch. Observe dispatches for A before releasing
+the response. Compare with a control using an active lock and a healthy sibling.
+Use existing handler test fixtures where possible and intercept transport only
+at the provider boundary; do not mock selection or the handler under test.
+Assert the connection identities and number of dispatches, not private mutex
+state. Avoid sleeps, real credentials, network access, and real provider calls.
+
+Before an owner approves the recovery policy, record the observed current
+behavior rather than adding a test that asserts the proposed single claim.
+After approval and implementation, the same held-response case can assert one
+current recovery claim, with a separate test for its settlement. A process-local
+test cannot establish cross-process exclusion. Fixture feasibility and the
+actual dispatch result remain unverified; no test was run for this proposal.
+The remaining scenarios below are follow-up candidates, not prerequisites for
+the initial reproduction.
+
 ## Bounded regression draft
 
 The candidate test path is `tests/unit/connection-circuit-1108.test.js`. The 14

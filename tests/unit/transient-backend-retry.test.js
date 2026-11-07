@@ -42,6 +42,20 @@ describe("transientBackendRetry", () => {
     expect(result.status).toBe(200);
   });
 
+  it("returns explicitly local admission responses unchanged without retry or sleep", async () => {
+    let calls = 0;
+    let sleeps = 0;
+    const response = Object.assign(new Response("local pressure", { status: 503 }), { localAdmissionRejected: true });
+    const result = await runWithTransientBackendRetry(async () => {
+      calls++;
+      return response;
+    }, { sleep: async () => { sleeps++; } });
+    expect(result).toBe(response);
+    expect(await result.text()).toBe("local pressure");
+    expect(calls).toBe(1);
+    expect(sleeps).toBe(0);
+  });
+
   it("returns the last error response when the budget is exhausted", async () => {
     let calls = 0;
     const result = await runWithTransientBackendRetry(async () => {

@@ -72,9 +72,21 @@ function hasFlag(flag, shortFlag) {
   return false;
 }
 
+// Administration never enters launcher startup, updates, or runtime repair.
+if (args[0] === "admin") {
+  require("./src/cli/admin").runAdmin(args.slice(1)).then((code) => {
+    process.exitCode = code;
+  }).catch(() => {
+    console.error(JSON.stringify({ error: "Administration request failed" }));
+    process.exitCode = 1;
+  });
+  return;
+}
+
 if (hasFlag("--help", "-h")) {
   console.log(`
 Usage: ${APP_NAME} [options]
+       ${APP_NAME} admin combos get <id> [--port <port>]
 
 Options:
   -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})

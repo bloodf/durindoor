@@ -121,7 +121,7 @@ export function readCompareSelections(storage) {
   try {
     const saved = JSON.parse((storage || globalThis.sessionStorage).getItem(COMPARE_SELECTIONS_KEY));
     if (!Array.isArray(saved) || saved.length < MIN_COMPARE_COLUMNS || saved.length > MAX_COMPARE_COLUMNS) return null;
-    if (!saved.every((item) => item && typeof item.modelId === "string" && typeof item.connectionId === "string")) return null;
+    if (!saved.every((item) => item && isString(item.modelId) && isString(item.connectionId))) return null;
     return saved.map(({ modelId, connectionId }) => ({ modelId, connectionId }));
   } catch {
     return null;

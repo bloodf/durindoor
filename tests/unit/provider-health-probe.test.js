@@ -36,6 +36,47 @@ describe("probeConnectionHealth", () => {
     },
   );
 
+  it("rejects remote HTTP before reading credentials or resolving proxy configuration", async () => {
+    const previous = process.env.ORCA_API_BASE_URL;
+    process.env.ORCA_API_BASE_URL = "http://public.example.test";
+    const connection = {
+      provider: "orcarouter",
+      get apiKey() { throw new Error("credential read"); },
+      get providerSpecificData() { throw new Error("proxy configuration read"); },
+    };
+    try {
+      await expect(probeConnectionHealth(connection)).resolves.toMatchObject({ blocked: true });
+    } finally {
+      if (previous === undefined) delete process.env.ORCA_API_BASE_URL;
+      else process.env.ORCA_API_BASE_URL = previous;
+    }
+  });
+
+  it("blocks a loopback OrcaRouter probe under the public-only SSRF policy", async () => {
+    const previousBase = process.env.ORCA_API_BASE_URL;
+    const previousLocal = process.env.OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS;
+    const previousPrivate = process.env.OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS;
+    process.env.ORCA_API_BASE_URL = "http://127.0.0.1:8080";
+    process.env.OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS = "false";
+    delete process.env.OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS;
+    const fetcher = vi.fn();
+    try {
+      const result = await probeConnectionHealth(
+        { provider: "orcarouter", apiKey: "fixture-private-key" },
+        { fetcher, proxyConfig: { vercelRelayUrl: "https://relay.example.test" } },
+      );
+      expect(result).toMatchObject({ valid: false, status: null, blocked: true });
+      expect(fetcher).not.toHaveBeenCalled();
+    } finally {
+      if (previousBase === undefined) delete process.env.ORCA_API_BASE_URL;
+      else process.env.ORCA_API_BASE_URL = previousBase;
+      if (previousLocal === undefined) delete process.env.OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS;
+      else process.env.OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS = previousLocal;
+      if (previousPrivate === undefined) delete process.env.OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS;
+      else process.env.OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS = previousPrivate;
+    }
+  });
+
   it("blocks a private OpenAI-compatible base URL via the SSRF guard", async () => {
     const conn = {
       id: "c1",

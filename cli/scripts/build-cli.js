@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
+const { execSync, execFileSync } = require("child_process");
 const { resolveCliAppDir } = require("./cliBuildPaths");
 const { copyRequiredStandaloneSidecars } = require("./standaloneSidecars");
 
@@ -120,7 +120,9 @@ function copyRuntimeModules(sources, dest, sourceRoot) {
       if (entry.name === "node_modules" || shouldExclude(entry.name)) continue;
       const file = checkedRealpath(path.join(real, entry.name));
       const output = path.join(target, entry.name);
-      if (fs.statSync(file).isDirectory()) copyPayload(file, output, next);
+      // Dirents carry non-link types; resolved symlinks still need stat.
+      const directory = entry.isSymbolicLink() ? fs.statSync(file).isDirectory() : entry.isDirectory();
+      if (directory) copyPayload(file, output, next);
       else fs.copyFileSync(file, output);
     }
   };
@@ -231,7 +233,8 @@ if (fs.existsSync(buildDistDir)) {
 }
 console.log("1️⃣  Building Next.js app...");
 try {
-  execSync("npm run build", {
+  // Avoid a redundant npm/shell layer within the CLI build's process budget.
+  execFileSync(process.execPath, [path.join(appDir, "scripts", "build-app.mjs")], {
     stdio: "inherit",
     cwd: appDir,
     env: {

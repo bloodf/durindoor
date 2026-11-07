@@ -5,3 +5,5 @@ Registry connection probes return `valid: false, unavailable: true` when the pro
 The single-test and batch APIs preserve `unavailable`. Bulk and detail summaries count these results separately from failed credentials and show the provider error. A successful catalog fallback can still complete validation. Generic Claude and fallback HTTP errors no longer prove key validity merely because they are not 401/403. Existing provider-specific chat validation contracts are unchanged.
 
 Unavailable is an observation of this probe, not proof of account identity, key ownership, operational readiness or permission to delete an account. Retry later. Existing selection, filtering, scoped deletion and cancellation rules still apply.
+
+The add/edit credential check also preserves explicit registry `unavailable === true`, including network failures with `status: null`, and HTTP 5xx. Both forms display a neutral "Unavailable" result. A null status alone does not imply unavailability; blocked and unsupported probes retain their existing outcomes. HTTP 401/403 still displays "Invalid". Saving behavior is unchanged.

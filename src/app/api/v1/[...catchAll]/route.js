@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { jsonNotFoundResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 
 /**
@@ -41,9 +41,9 @@ async function HEADHandler() {
   return headNotFoundResponse();
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const GET = withRequestCorrelation(GETHandler);
-export const POST = withRequestCorrelation(POSTHandler);
-export const PUT = withRequestCorrelation(PUTHandler);
-export const PATCH = withRequestCorrelation(PATCHHandler);
-export const DELETE = withRequestCorrelation(DELETEHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);
+export const PUT = withHttpRequestCorrelation(PUTHandler);
+export const PATCH = withHttpRequestCorrelation(PATCHHandler);
+export const DELETE = withHttpRequestCorrelation(DELETEHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);

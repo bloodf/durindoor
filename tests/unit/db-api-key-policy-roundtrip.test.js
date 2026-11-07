@@ -143,10 +143,11 @@ describe("apiKeyUsageTotals table lifecycle", () => {
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
     expect(db.get(`SELECT value FROM _meta WHERE key = 'schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
-    expect(db.get(`SELECT totalTokens, totalCost, totalRequests FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [keyId])).toEqual({
+    expect(db.get(`SELECT totalTokens, totalCost, totalRequests, unknownCostRequests FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [keyId])).toEqual({
       totalTokens: 42,
       totalCost: 0.75,
       totalRequests: 2,
+      unknownCostRequests: 0,
     });
   });
 
@@ -183,10 +184,11 @@ describe("apiKeyUsageTotals table lifecycle", () => {
 
     const { getAdapter } = await import("@/lib/db/driver.js");
     const db = await getAdapter();
-    expect(db.get(`SELECT totalTokens, totalCost, totalRequests FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [keyId])).toEqual({
+    expect(db.get(`SELECT totalTokens, totalCost, totalRequests, unknownCostRequests FROM apiKeyUsageTotals WHERE apiKeyId = ?`, [keyId])).toEqual({
       totalTokens: 42,
       totalCost: 0.75,
       totalRequests: 2,
+      unknownCostRequests: 0,
     });
   });
 

@@ -94,6 +94,8 @@ Asynchronous video (`/v1/videos`) and music (Suno, Udio) jobs get the same accep
 
 Restoring or importing a database starts a new billing epoch. A request admitted before the restore whose provider call finishes after it is not recorded in the new epoch. Chat usage from such a request is dropped. Media and other non-chat routes fail the response with a usage-accounting error (`USAGE_ACCOUNTING_FAILED`) even though the provider already did the work, and the gateway does not retry the call. Avoid restoring while paid requests are in flight.
 
+The unknown-cost count is a lifetime counter for the key. When DurinDoor rebuilds the per-key totals from retained usage history, which happens after a legacy import or when the totals table is missing, it reconstructs that count from the history it still holds. Retained history is only a lower bound: pruning, a history reset, or a restored backup can leave fewer rows than the lifetime count, so a rebuild raises the count to what the retained history supports and never lowers it. Migration 026 seeded the count on the first upgrade, and migration 028 repairs a count that an older rebuild dropped. A count that was seeded too high is not corrected downward.
+
 
 ## Native-unit rate overrides
 
@@ -123,3 +125,5 @@ Media response bodies and any provider usage fields remain provider evidence. Du
 
 
 For chat responses, a generated `usage.cost_usd` carries `cost_details.status: "estimated"`, `source: "builtin"`, the builtin rate snapshot and `basis: "response_token_counts"`. Those client token counts may include the existing response buffer. The accounting ledger uses recorded counts and applicable operator overrides, so its estimate can differ. A provider USD receipt is retained without replacing it with this builtin estimate. Do not treat a generated response estimate as a provider invoice or as proof of the ledger's exact committed amount.
+
+Migration 028 holds database locks from before reconstruction until its repair transaction completes. SQLite acquires the database writer lock without changing any rows. PostgreSQL locks history, lifetime totals and API keys in SHARE ROW EXCLUSIVE mode, which conflicts with ordinary writers across connections and processes, including inserts for keys without a totals row. PostgreSQL requires READ COMMITTED isolation; other isolation levels abort the migration so a snapshot taken before the locks cannot supply stale history. Lock failures propagate and leave the migration unapplied for retry. A writer waiting behind the repair adds its increment to the repaired count. Retried repairs and history pruning never lower that count. This serialization applies to migration 028; it does not add locking to other rebuild helpers.

@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { availableParallelism } from "node:os";
 import { resolveTracingRoot } from "./tracing-root.mjs";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,8 @@ const nextConfig = {
   },
   env: {},
   experimental: {
+    // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
+    cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
     // Cache fetch responses across HMR refreshes for faster dev reloads.

@@ -17,6 +17,7 @@
  */
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { ERROR_TYPES } from "../config/errorConfig.js";
+import { createClientAdmissionSelection } from "../services/operationalMetrics.js";
 
 const ENCODER = new TextEncoder();
 const DEFAULT_KEEPALIVE_FRAME = ENCODER.encode(": keepalive\n\n");
@@ -188,6 +189,7 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
   let stopKeepalive = () => {};
   let upstreamReader = null;
   let aborted = false;
+  const admissionSelection = createClientAdmissionSelection();
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -247,14 +249,16 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
               if (value) controller.enqueue(value);
             }
           } else {
+            let bodyReadFailed = false;
             const text = response.body ?
-            await response.text().catch(() => "") :
+            await response.text().catch(() => { bodyReadFailed = true; return ""; }) :
             "";
             controller.enqueue(buildKeepaliveErrorFrame(errorFormat, {
               text,
               status: response.status,
               retryAfterSeconds: readRetryAfterSeconds(response.headers)
             }));
+            if (!aborted && !bodyReadFailed) admissionSelection.select(response);
           }
         }
       } catch {
@@ -282,12 +286,12 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
     }
   });
 
-  return new Response(stream, {
+  return admissionSelection.bind(new Response(stream, {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive"
     }
-  });
+  }));
 }

@@ -3,7 +3,7 @@ title: Installation
 description: Install DurinDoor with npm, from source, or Docker, and set DATA_DIR and JWT_SECRET.
 ---
 
-Choose npm, a source checkout, or Docker. Native installs use Node.js 26.13.0 and npm 11.20.0. Docker includes Node.js. You need disk for persistent data, a browser for the dashboard and OAuth, and access to your upstream providers.
+Choose npm, a source checkout, or Docker. Native installs use Node.js 24.22.2 (engines `>=24.22.2 <25`): pnpm 12.18.0 for source checkouts, npm for the published CLI. Docker includes Node.js. You need disk for persistent data, a browser for the dashboard and OAuth, and access to your upstream providers.
 
 Before a native start, set a strong `INITIAL_PASSWORD` and a persistent `JWT_SECRET` in the process environment. For a source install, copy `.env.example` to `.env` and replace its `CHANGE_ME` values. Keep the same signing secrets on later starts. A source deployment without an explicit `DATA_DIR` also needs `API_KEY_SECRET` to create client keys.
 
@@ -38,17 +38,17 @@ Use this for a one-off run. For daily use, install globally or run from source.
 ```bash
 git clone https://github.com/bloodf/durindoor.git
 cd durindoor
-npm install --no-audit --no-fund
-npm run build
-npm run start
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run start
 ```
 
-`npm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that server binds `127.0.0.1`, not all interfaces.
+`pnpm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that server binds `127.0.0.1`, not all interfaces.
 
 Development:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Dev listens on port 20127. Production uses 20128.

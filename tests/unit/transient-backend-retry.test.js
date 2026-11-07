@@ -20,6 +20,21 @@ describe("transientBackendRetry", () => {
     expect(TRANSIENT_BACKEND_STATUS_CODES.has(429)).toBe(false);
   });
 
+  it("returns a locally terminal 503 unchanged while retaining ordinary upstream retries", async () => {
+    const local = Object.assign(new Response("Local queue timeout", { status: 503 }), { localAdmissionRejected: true });
+    let calls = 0;
+    let sleeps = 0;
+    const result = await runWithTransientBackendRetry(async () => {
+      calls++;
+      return calls === 1 ? new Response("Upstream unavailable", { status: 503 }) : local;
+    }, { sleep: async () => { sleeps++; } });
+    expect(result).toBe(local);
+    expect(result.status).toBe(503);
+    expect(await result.text()).toBe("Local queue timeout");
+    expect(calls).toBe(2);
+    expect(sleeps).toBe(1);
+  });
+
   it("returns the first success without retrying", async () => {
     let calls = 0;
     const result = await runWithTransientBackendRetry(async () => {
@@ -40,6 +55,20 @@ describe("transientBackendRetry", () => {
     expect(calls).toBe(3);
     expect(result.ok).toBe(true);
     expect(result.status).toBe(200);
+  });
+
+  it("returns explicitly local admission responses unchanged without retry or sleep", async () => {
+    let calls = 0;
+    let sleeps = 0;
+    const response = Object.assign(new Response("local pressure", { status: 503 }), { localAdmissionRejected: true });
+    const result = await runWithTransientBackendRetry(async () => {
+      calls++;
+      return response;
+    }, { sleep: async () => { sleeps++; } });
+    expect(result).toBe(response);
+    expect(await result.text()).toBe("local pressure");
+    expect(calls).toBe(1);
+    expect(sleeps).toBe(0);
   });
 
   it("returns the last error response when the budget is exhausted", async () => {

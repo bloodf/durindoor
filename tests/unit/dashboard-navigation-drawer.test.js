@@ -55,6 +55,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("dashboard navigation drawer", () => {
+  it("closes and restores trigger focus when the brand home link is selected", async () => {
+    await act(async () =>
+      root.render(React.createElement(DashboardLayout, null, "Endpoint content")),
+    );
+    const trigger = [...host.querySelectorAll("button")].find(
+      (el) => el.textContent === "Open navigation",
+    );
+    trigger.focus();
+    await act(async () => trigger.click());
+    const dialog = document.querySelector("dialog[open]");
+    expect(dialog).not.toBeNull();
+    const home = dialog.querySelector('a[href="/dashboard"]');
+    expect(home).not.toBeNull();
+    await act(async () => home.click());
+    expect(document.querySelector("dialog[open]")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("opens, closes after selecting a lower navigation route, and restores focus", async () => {
     await act(async () =>
       root.render(

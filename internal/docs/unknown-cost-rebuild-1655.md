@@ -313,3 +313,19 @@ Case 7, the legacy numeric-unknown row.
 - History for one key: one row with `cost` 0 and `meta.costStatus` unknown, plus one row with `cost` NULL and the same metadata.
 - U1 rule 3 branch 1 counts the first row, branch 2 counts the second row, and the branches are disjoint, so the reconstruction is 2.
 - A second rebuild recomputes 2 and applies `MAX(2, 2)` = 2. The count does not double.
+
+## Main composition, 2026-11-07
+
+Composed with main `ba634c54f894d969b3f3225d2cb856014f14262e`, including
+accepted MCP writer rejection and identity/replay regressions. The reconstruction
+helpers retain the exact NULL-safe failed-MCP exemption and legacy-column
+reflection. Migration 028 and its transaction/isolation locks are unchanged.
+Main's usage writer, billing epoch, receipts and identity behavior are retained,
+including the stronger token-rate assertion and concurrent replay tests.
+
+This composition has source and syntax checks only. Affected unit tests, root
+lint and the relevant application build are NOT_RUN pending resource allocation.
+PostgreSQL ef27 remains uninvoked. The latest explicit user order waives the
+local PostgreSQL and full campaigns; this is not a PostgreSQL PASS claim.
+The objective source approval for `3ce6de38` is historical input to this
+composition, not an independent approval of the new merge tree.

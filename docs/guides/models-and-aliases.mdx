@@ -16,6 +16,12 @@ The default response is an OpenAI list with model IDs in `data`. Provider models
 
 Provider detail shows catalog or configured models separately from connection operational status. Neither verifies authentication or inference. Manual model test results last only for the current page session; skipped tests are not successful inference. Tests can use provider quota or incur charges. Catalog source and degradation appear only when returned by the provider discovery response.
 
+Registry-backed Claude validation probes and OpenAI-compatible fallback probes report server errors as provider unavailability. Add and edit dialogs show **Unavailable** for these responses. Retry when the provider is available; these errors do not establish that the credential is invalid.
+
+The provider validation API returns `valid: false` and `unavailable: true` for server errors from registry-backed probes. An unavailable result does not identify an invalid credential.
+
+Testing a saved registry connection returns the unavailable marker for server errors and network failures explicitly marked unavailable by the probe, and leaves its stored status unchanged. HTTP 401 and 403 still persist a credential failure. A null status alone does not indicate an outage. Malformed session cookies and blocked outbound URLs remain validation errors. Batch tests count unavailable connections separately from invalid credentials. Retry when the provider is available.
+
 | Model string | Routes to |
 | --- | --- |
 | `openai/gpt-4.1` | An OpenAI connection with upstream model `gpt-4.1` |

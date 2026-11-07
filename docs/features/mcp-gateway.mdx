@@ -99,7 +99,7 @@ Token endpoints and refresh redirects go through the outbound URL guard. Cross-o
 
 Every `tools/call`, ok or error, writes a usage row with `provider: "mcp-gateway"` and `model` set to the namespaced tool name. Watch it on **Dashboard → Usage**.
 
-Failed calls stay attributed to the key that made them in the by-key view, but do not count toward that key's request limits or lifetime usage totals. Successful calls count toward request limits. Both are zero-cost tool usage, not unknown-cost LLM requests. Global and per-connection usage still include failures.
+Failed calls stay attributed to the key that made them in the by-key view, but do not count toward that key's request limits, token-per-minute limit, or lifetime usage totals. Successful calls count toward request limits. Both are zero-cost tool usage, not unknown-cost LLM requests. Global and per-connection usage still include failures.
 
 The by-key view uses the configured gateway key name for MCP usage. Gateway key identities remain separate from ordinary API key identities, even if imported records share a key string or row ID. Deleted keys retain a masked historical identity.
 
@@ -144,3 +144,7 @@ Then `tools/list` with the same key. Call a tool as `"name": "<slug>__<toolName>
 - **Instance shows needs login.** The upstream OAuth token expired and could not refresh. Click **Login** again.
 - **URL not allowed.** The outbound URL guard rejected the upstream URL, for example an address prohibited by the outbound policy.
 - **Stdio spawn failed.** The command is not on the local plugin allowlist, or the process exited.
+
+Integration coverage also checks paid-event and failed-event receipt replay: each event keeps one history row, paid usage remains counted, and only failed MCP calls are excluded from policy totals. Truncated native JSON responses must not commit usage.
+
+The usage writer rejects provisional `accepted` MCP records before accounting or receipt creation. The gateway records terminal tool calls only, with empty token usage.

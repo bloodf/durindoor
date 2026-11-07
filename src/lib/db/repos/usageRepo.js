@@ -771,6 +771,10 @@ export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
 export async function saveRequestUsage(entry) {
   entry = { ...entry };
   try {
+    // MCP records terminal tool calls only; accepted-job settlement is unsupported.
+    if (entry.provider === "mcp-gateway" && entry.status === "accepted") {
+      throw new TypeError("MCP usage must be terminal");
+    }
     const db = await getAdapter();
 
     if (entry.usageEventId != null && (!isString(entry.usageEventId) || !entry.usageEventId.trim())) {
@@ -956,7 +960,7 @@ export async function saveRequestUsage(entry) {
       recentRing.items = recentRing.items.map((item) => item.storedEventId === usageEventId && item.status === "accepted" ?
         { ...item, cost: entry.cost, status: entry.status || "ok", tokens: entry.tokens, meta: entry.meta, completedAt: entry.timestamp } : item);
       scheduleStatsEvent("update", 250);
-      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
+      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, entry.provider === "mcp-gateway" && entry.status === "error" ? 0 : (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
     }
 
     if (inserted) {
@@ -969,7 +973,7 @@ export async function saveRequestUsage(entry) {
       scheduleStatsEvent("update", 250);
       // Not debounced: per-key limit caches must see new usage immediately,
       // and the tokens-per-minute window is fed from this event.
-      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
+      if (entry.apiKey) statsEmitter.emit("apiKeyUsage", entry.apiKey, entry.provider === "mcp-gateway" && entry.status === "error" ? 0 : (Number(promptTokens) || 0) + (Number(completionTokens) || 0));
     }
     return true;
   } catch (e) {

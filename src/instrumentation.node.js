@@ -73,6 +73,14 @@ export function bootstrapNodejsRuntime() {
     console.log(`[headroom] proxy autostart skipped: ${error?.message || error}`);
   });
 
+  // Provider metadata imports are inert. Start release refresh only when the
+  // Node server boots, across dev, production and the packaged CLI server.
+  void import("../open-sse/utils/kimchiUserAgent.js")
+    .then(({ startKimchiUserAgentUpdater }) => startKimchiUserAgentUpdater())
+    .catch((error) => {
+      console.error("[KimchiUA Error]", error);
+    });
+
   // Hourly sweep of old local data; a no-op until the operator enables it.
   void import("@/lib/dataRetention/scheduler.js")
     .then(({ startDataRetentionScheduler }) => startDataRetentionScheduler())

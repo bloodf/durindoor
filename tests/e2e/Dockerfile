@@ -1,17 +1,18 @@
 # Provisioning may use network; the resulting QA runtime has no external network.
-FROM node:26.13.0-bookworm-slim AS deps
+FROM node:24.22.2-bookworm-slim AS deps
 WORKDIR /usr/src/app
 RUN apt-get update \
  && apt-get install --no-install-recommends -y python3 make g++ ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable
+RUN --mount=type=cache,target=/root/.pnpm-store pnpm install --frozen-lockfile --store-dir=/root/.pnpm-store
 
 FROM deps AS build
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY . .
-RUN npm run build
-RUN npm run storybook:build
+RUN pnpm run build
+RUN pnpm run storybook:build
 
 FROM deps AS browsers
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/src/app/.ms-playwright

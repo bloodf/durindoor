@@ -1,6 +1,7 @@
 {
   "name": "durindoor",
   "version": "4.11.0",
+  "packageManager": "pnpm@12.18.0",
   "description": "DurinDoor CLI - Start and manage DurinDoor server",
   "bin": {
     "durindoor": "./cli.js"
@@ -31,7 +32,7 @@
   "comment_sqlite": "sql.js + better-sqlite3 are NOT bundled here. They are installed into <<~/.durindoor>>/runtime/node_modules by hooks/postinstall.js (and re-checked at runtime by cli.js). This avoids Windows EBUSY errors when updating the global CLI, since native .node files no longer live under the locked install dir.",
   "comment_systray": "systray2 is NOT bundled here. It is lazy-installed into <<~/.durindoor>>/runtime/node_modules by hooks/postinstall.js on macOS/Linux only. Windows uses PowerShell NotifyIcon (zero binary). This avoids shipping unsigned Go binaries that trigger antivirus false positives (Kaspersky). We use the systray2 fork because the legacy systray@1.0.5 ships a 2017 x86_64 binary that fails on modern macOS dyld.",
   "engines": {
-    "node": ">=26.13.0"
+    "node": ">=24.22.2 <25"
   },
   "keywords": [
     "durindoor",

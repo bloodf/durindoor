@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Local CI runner: mirrors the former ci.yml, test.yml and commitlint.yml gates
 // against an exact, caller-supplied base/head commit pair. It runs everything
-// in a private snapshot with private HOME/npm cache/DATA_DIR, writes JSON
+// in a private snapshot with private HOME/pnpm store/DATA_DIR, writes JSON
 // evidence, and NEVER publishes a GitHub status. See AGENTS.md.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -77,7 +77,7 @@ export function testEnvironment(source, privatePaths) {
 // Shared dashboard imports and build configuration can affect the website too.
 export function requiresWebsiteBuild(paths) {
   return paths.some(p => /^(docs|website|src|open-sse|public)\//.test(p)
-    || /^(package(?:-lock)?\.json|\.nvmrc|next\.config\.[^/]+|postcss\.config\.[^/]+)$/.test(p)
+    || /^(package(?:-lock)?\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.nvmrc|next\.config\.[^/]+|postcss\.config\.[^/]+)$/.test(p)
     || p.startsWith("scripts/") || p.startsWith(".github/workflows/"));
 }
 
@@ -86,11 +86,11 @@ export function requiresWebsiteBuild(paths) {
 export function artifactCommands(src, packDirectory, version) {
   if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error("invalid package version");
   return [
-    ["smoke-standalone", "npm", ["run", "verify:installed", "--", path.join(src, ".next/standalone/custom-server.js")]],
-    ["npm-ci-cli", "npm", ["ci", "--include=dev", "--no-audit", "--no-fund"], { cwd: path.join(src, "cli") }],
-    ["build-cli", "npm", ["--prefix", "cli", "run", "build"]],
+    ["smoke-standalone", "pnpm", ["run", "verify:installed", path.join(src, ".next/standalone/custom-server.js")]],
+    ["pnpm-install-cli", "pnpm", ["install", "--frozen-lockfile"], { cwd: path.join(src, "cli") }],
+    ["build-cli", "pnpm", ["-C", "cli", "run", "build"]],
     ["pack-cli", "npm", ["pack", "./cli", "--pack-destination", packDirectory]],
-    ["smoke-packed", "npm", ["run", "verify:packed", "--", path.join(packDirectory, `durindoor-${version}.tgz`)]],
+    ["smoke-packed", "pnpm", ["run", "verify:packed", path.join(packDirectory, `durindoor-${version}.tgz`)]],
   ];
 }
 
@@ -144,8 +144,8 @@ export function terminateCommandGroup(pid) {
 
 export async function main() {
 
-const NODE_VERSION = "26.13.0";
-const NPM_VERSION = "11.20.0";
+const NODE_VERSION = "24.22.2";
+const PNPM_VERSION = "12.18.0";
 const COMMITLINT_CLI_VERSION = "18.6.1"; // pins from wagoid/commitlint-github-action v5.5.1 / commitlint.yml
 const COMMITLINT_CONFIG_VERSION = "18.6.3";
 const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -153,7 +153,7 @@ const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const USAGE = `Usage: node scripts/local-ci.mjs --base <full-sha> --head <full-sha> [options]
   --repo <dir>         source repository (default: cwd)
   --out <dir>          new evidence/workspace dir (default: ~/.cache/durindoor-local-ci/<head12>-<utc>)
-  --path-prepend <dir> directory with Node ${NODE_VERSION} (and npm ${NPM_VERSION}) put first on PATH
+  --path-prepend <dir> directory with Node ${NODE_VERSION} (and pnpm ${PNPM_VERSION}) put first on PATH
   --mode full|scoped   full (default) retains the bootstrap/checkpoint gate
   --selection <file>   externally reviewed JSON with base/head/policySha256/runnerSha256/reviewer/tests
   --policy-sha <hash>  independently frozen base-policy SHA256 (required in scoped mode)
@@ -225,7 +225,7 @@ const evidence = {
   note: "Produced by scripts/local-ci.mjs. This runner never publishes GitHub statuses.",
   repo, base: BASE, head: HEAD, out,
   options: { website: opts.website, title: opts.title ?? null, pathPrepend: opts["path-prepend"] ?? null },
-  identities: {}, toolchain: { required: { node: NODE_VERSION, npm: NPM_VERSION } },
+  identities: {}, toolchain: { required: { node: NODE_VERSION, pnpm: PNPM_VERSION } },
   steps: [],
 };
 const save = () => {
@@ -413,7 +413,7 @@ if (![snapHeadR, snapTreeR, dirtyR].every((r) => ok(r.s)) || snapHead !== HEAD |
 }
 evidence.identities.files = {};
 for (const f of [
-  "package-lock.json", "website/package-lock.json", "tests/package-lock.json", "cli/package-lock.json", ".nvmrc", ".commitlintrc.cjs",
+  "pnpm-lock.yaml", "website/pnpm-lock.yaml", "tests/pnpm-lock.yaml", "cli/pnpm-lock.yaml", ".nvmrc", ".commitlintrc.cjs",
 ]) {
   const p = path.join(dirs.src, f);
   evidence.identities.files[f] = existsSync(p) ? sha256(p) : null;
@@ -422,15 +422,15 @@ save();
 
 // ---- toolchain: refuse a wrong Node/npm instead of silently running ---------
 const nodeStep = await run("toolchain-node", "setup", "node", ["--version"]);
-const npmStep = await run("toolchain-npm", "setup", "npm", ["--version"]);
+const pnpmStep = await run("toolchain-pnpm", "setup", "pnpm", ["--version"]);
 // (readLog defined above)
 evidence.toolchain.node = readLog(nodeStep);
-evidence.toolchain.npm = readLog(npmStep);
+evidence.toolchain.pnpm = readLog(pnpmStep);
 const nvmrc = readFileSync(path.join(dirs.src, ".nvmrc"), "utf8").trim();
-if (process.version !== `v${NODE_VERSION}` || evidence.toolchain.node !== `v${NODE_VERSION}` || evidence.toolchain.npm !== NPM_VERSION || nvmrc !== NODE_VERSION) {
+if (process.version !== `v${NODE_VERSION}` || evidence.toolchain.node !== `v${NODE_VERSION}` || evidence.toolchain.pnpm !== PNPM_VERSION || nvmrc !== NODE_VERSION) {
   skip(
     "toolchain-check", "setup",
-    `need node v${NODE_VERSION} (.nvmrc=${nvmrc}) and npm ${NPM_VERSION}; got node ${evidence.toolchain.node || "?"}, npm ${evidence.toolchain.npm || "?"}. Use --path-prepend.`,
+    `need node v${NODE_VERSION} (.nvmrc=${nvmrc}) and pnpm ${PNPM_VERSION}; got node ${evidence.toolchain.node || "?"}, pnpm ${evidence.toolchain.pnpm || "?"}. Use --path-prepend.`,
     "failed",
   );
   finish(2, "prerequisite-error");
@@ -456,7 +456,7 @@ evidence.policySha256 = digest(JSON.stringify(policyParts));
 evidence.changedPaths = changedPaths;
 evidence.riskFloor = selectRiskFloor(changedPaths, inventory, deletions.text.split("\0").filter(Boolean));
 evidence.selectionSha256 = null;
-evidence.toolchain.identity = { node: evidence.toolchain.node, npm: evidence.toolchain.npm,
+evidence.toolchain.identity = { node: evidence.toolchain.node, pnpm: evidence.toolchain.pnpm,
   abi: process.versions.modules, platform: process.platform, arch: process.arch,
   lockfiles: evidence.identities.files };
 evidence.toolchainSha256 = digest(JSON.stringify(evidence.toolchain.identity));
@@ -473,7 +473,7 @@ if (opts.mode === "scoped") {
 save();
 
 // ---- jobs ------------------------------------------------------------------
-const npmCi = ["ci", "--no-audit", "--no-fund"];
+const pnpmInstall = ["install", "--frozen-lockfile"];
 const web = path.join(dirs.src, "website");
 const tests = path.join(dirs.src, "tests");
 
@@ -488,14 +488,14 @@ save();
 if (opts.mode === "full") {
 // lint-and-build
 const appBuilt = await job("lint-and-build", [
-  ["npm-ci-root", "npm", npmCi],
-  ["lint", "npm", ["run", "lint"]],
-  ["check-agent-index", "npm", ["run", "check:agent-index"]],
-  ["check-postgres-migrations", "npm", ["run", "check:postgres-migrations"]],
-  ["check-registry-index", "npm", ["run", "check:registry-index"]],
-  ["check-docs", "npm", ["run", "check:docs"]],
-  ["check-provider-catalog", "npm", ["run", "check:provider-catalog"]],
-  ["build-isolated-state", "npm", ["run", "build"]],
+  ["pnpm-install-root", "pnpm", pnpmInstall],
+  ["lint", "pnpm", ["run", "lint"]],
+  ["check-agent-index", "pnpm", ["run", "check:agent-index"]],
+  ["check-postgres-migrations", "pnpm", ["run", "check:postgres-migrations"]],
+  ["check-registry-index", "pnpm", ["run", "check:registry-index"]],
+  ["check-docs", "pnpm", ["run", "check:docs"]],
+  ["check-provider-catalog", "pnpm", ["run", "check:provider-catalog"]],
+  ["build-isolated-state", "pnpm", ["run", "build"]],
 ]);
 
 // Each CI job did its own checkout + installs, so each job here runs its own
@@ -505,9 +505,9 @@ if (!websiteRun) {
   skip("website-build", "website-build", `conditional job skipped: ${websiteReason}`, "skipped");
 } else {
   await job("website-build", [
-    ["npm-ci-root", "npm", npmCi],
-    ["npm-ci-website", "npm", npmCi, { cwd: web }],
-    ["website-build", "npm", ["run", "build"], { cwd: web }],
+    ["pnpm-install-root", "pnpm", pnpmInstall],
+    ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
+    ["website-build", "pnpm", ["run", "build"], { cwd: web }],
   ]);
 }
 
@@ -528,9 +528,9 @@ if (rootVersion !== cliVersion) {
 
 // vitest + no-regression gate (independent of lint-and-build / website-build outcome)
 await job("vitest", [
-  ["npm-ci-root", "npm", npmCi],
-  ["npm-ci-website", "npm", npmCi, { cwd: web }],
-  ["npm-ci-tests", "npm", npmCi, { cwd: tests }],
+  ["pnpm-install-root", "pnpm", pnpmInstall],
+  ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
+  ["pnpm-install-tests", "pnpm", pnpmInstall, { cwd: tests }],
 ]);
 // Discover with the same configuration as execution; never substitute tracked-file globs.
 const testEnv = { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE };
@@ -586,10 +586,10 @@ if (ok(discovery)) {
 
 } else {
   await job("scoped-checks", [
-    ["npm-ci-root", "npm", npmCi],
-    ["npm-ci-tests", "npm", npmCi, { cwd: tests }],
-    ["lint", "npm", ["run", "lint"]],
-    ["check-docs", "npm", ["run", "check:docs"]],
+    ["pnpm-install-root", "pnpm", pnpmInstall],
+    ["pnpm-install-tests", "pnpm", pnpmInstall, { cwd: tests }],
+    ["lint", "pnpm", ["run", "lint"]],
+    ["check-docs", "pnpm", ["run", "check:docs"]],
   ]);
   if (evidence.riskFloor.risk === "upstream-watch") {
     await run("check-upstream-watch-shell", "scoped-checks", "bash", ["-n", "scripts/upstream-ported-ids.sh"]);
@@ -617,8 +617,10 @@ if (readFileSync(path.join(tests, "__baseline__/known-fails.txt"), "utf8").trim(
 // so @commitlint/config-conventional resolves from the tool dir, hash checked).
 const configCopy = path.join(dirs.tool, ".commitlintrc.cjs");
 writeFileSync(configCopy, readFileSync(path.join(dirs.src, ".commitlintrc.cjs")));
-const toolInstalled = ok(await run("commitlint-install", "commitlint", "npm", [
-  "install", "--no-audit", "--no-fund", "--no-save", "--no-package-lock", "--prefix", dirs.tool,
+// pnpm requires a manifest in the target dir (npm installed with --prefix did not).
+writeFileSync(path.join(dirs.tool, "package.json"), JSON.stringify({ name: "commitlint-tool", private: true }));
+const toolInstalled = ok(await run("commitlint-install", "commitlint", "pnpm", [
+  "--dir", dirs.tool, "add",
   `@commitlint/cli@${COMMITLINT_CLI_VERSION}`, `@commitlint/config-conventional@${COMMITLINT_CONFIG_VERSION}`,
 ], { cwd: dirs.tool }));
 if (toolInstalled) {

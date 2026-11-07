@@ -8,7 +8,8 @@ describe("local workflow parity", () => {
   });
   it("builds the website for shared dashboard, runtime, dependency and build inputs", () => {
     for (const file of ["docs/start.mdx", "website/app/page.js", "src/shared/Card.jsx",
-      "open-sse/config/providers.js", "public/logo.svg", "package-lock.json", "package.json",
+      "open-sse/config/providers.js", "public/logo.svg", "package-lock.json", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml",
+      "website/pnpm-lock.yaml", "website/pnpm-workspace.yaml",
       ".nvmrc", "next.config.mjs", "postcss.config.mjs", "scripts/build-app.mjs", ".github/workflows/ci.yml"]) {
       expect(requiresWebsiteBuild([file]), file).toBe(true);
     }
@@ -20,10 +21,13 @@ describe("local workflow parity", () => {
     const pack = "/private/pack";
     const commands = artifactCommands(src, pack, "4.11.0-rc.1");
     expect(commands.map(([id]) => id)).toEqual([
-      "smoke-standalone", "npm-ci-cli", "build-cli", "pack-cli", "smoke-packed",
+      "smoke-standalone", "pnpm-install-cli", "build-cli", "pack-cli", "smoke-packed",
     ]);
     expect(commands[0][2].at(-1)).toBe(path.join(src, ".next/standalone/custom-server.js"));
-    expect(commands[1][2]).toContain("ci");
+    expect(commands[1][1]).toBe("pnpm");
+    expect(commands[1][2]).toEqual(["install", "--frozen-lockfile"]);
+    expect(commands[0][2]).toEqual(["run", "verify:installed", path.join(src, ".next/standalone/custom-server.js")]);
+    expect(commands[4][2]).toEqual(["run", "verify:packed", path.join(pack, "durindoor-4.11.0-rc.1.tgz")]);
     expect(commands[1][3].cwd).toBe(path.join(src, "cli"));
     expect(commands[3][2]).toEqual(["pack", "./cli", "--pack-destination", pack]);
     expect(commands[4][2].at(-1)).toBe(path.join(pack, "durindoor-4.11.0-rc.1.tgz"));

@@ -3,6 +3,8 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { providerValidationOutcome } from "@/shared/utils/providerValidationOutcome.js";
+
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
 let AddApiKeyModal, EditConnectionModal, ConnectionsCard, ProvidersPage;
 let host, root, validation, providerConnections;
@@ -90,5 +92,11 @@ describe.each(cases)("%s", (name, element) => {
     await click("Check");
     expect(document.body.textContent).toContain(label);
     if (result.unavailable) expect(document.body.textContent).not.toContain("Invalid");
+  });
+});
+
+describe("strict unavailable flag", () => {
+  it.each([false, null, undefined, "true", 1])("rejects non-boolean unavailable %s", (unavailable) => {
+    expect(providerValidationOutcome({ valid: false, unavailable })).toBe("failed");
   });
 });

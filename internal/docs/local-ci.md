@@ -13,11 +13,11 @@ The integration owner first obtains an independent review, freezes the reviewed
 checkout outside the candidate, and records every imported file's SHA256 in an
 external manifest. This includes the runner, baseline helpers and their recursive
 imports, including `src/shared/utils/typeChecks.js`. Keep this bundle and the
-manifest inaccessible to candidate subprocesses. Use Node 26.13.0, npm 11.20.0,
+manifest inaccessible to candidate subprocesses. Use Node 24.22.2, pnpm 12.18.0,
 an ownership-correct unprivileged POSIX account, and a new private output path.
 
 ```sh
-command fnm exec --using=26.13.0 node "$FROZEN/scripts/local-ci.mjs" \
+command fnm exec --using=24.22.2 node "$FROZEN/scripts/local-ci.mjs" \
   --repo "$CHECKOUT" --base "$BASE_SHA" --head "$HEAD_SHA" \
   --runner-sha "$FROZEN_RUNNER_SHA256" --website always \
   --title "$PR_TITLE" --out "$NEW_PRIVATE_OUTPUT"

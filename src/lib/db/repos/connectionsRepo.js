@@ -22,7 +22,7 @@ import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../sh
 export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
 "accessToken",
 "refreshToken",
-"apiKey",
+"apiKey", "managementApiKey",
 "idToken",
 "firecrawlHeaders",
 // STS session token for temporary AWS keys (Bedrock static-key mode).
@@ -32,7 +32,7 @@ export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
 const OPTIONAL_FIELDS = [
 "displayName", "email", "globalPriority", "defaultModel",
 "accessToken", "refreshToken", "expiresAt", "tokenType",
-"scope", "projectId", "apiKey", "testStatus", "firecrawlHeaders",
+"scope", "projectId", "apiKey", "managementApiKey", "testStatus", "firecrawlHeaders",
 "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
 "consecutiveUseCount", "idToken", "lastRefreshAt", "sessionToken"];
 
@@ -144,6 +144,12 @@ function rowToConn(row) {
 
 function connToRow(c) {
   const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+  // Management credentials are top-level encrypted fields, never metadata.
+  // Discard nested copies rather than silently promoting untrusted metadata.
+  if (rest.providerSpecificData && Object.hasOwn(rest.providerSpecificData, "managementApiKey")) {
+    rest.providerSpecificData = { ...rest.providerSpecificData };
+    delete rest.providerSpecificData.managementApiKey;
+  }
   // Derive (not inherit) the redacted handle on every write, so replacing a
   // connection's key can never leave a hint describing the previous secret.
   // Runs before encryption, which is the only point the plaintext is still here.
@@ -787,7 +793,7 @@ export async function cleanupProviderConnections() {
   const fieldsToCheck = [
   "displayName", "email", "globalPriority", "defaultModel",
   "accessToken", "refreshToken", "expiresAt", "tokenType",
-  "scope", "projectId", "apiKey", "testStatus",
+  "scope", "projectId", "apiKey", "managementApiKey", "testStatus",
   "lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn",
   "consecutiveUseCount"];
 

@@ -28,7 +28,9 @@ export function materializeStandaloneDependencies(standaloneDir, distDir, source
   };
   const addTrace = (file) => {
     const marker = `${path.sep}node_modules${path.sep}`;
-    const index = file.indexOf(marker);
+    // pnpm nests packages at node_modules/.pnpm/<name>@<ver>/node_modules/<name>:
+    // match the LAST node_modules segment so the real package root is kept.
+    const index = file.lastIndexOf(marker);
     if (index < 0) return; // A trace of node_modules itself is not the whole pool.
     const parts = file.slice(index + marker.length).split(path.sep);
     const name = parts.slice(0, parts[0].startsWith("@") ? 2 : 1).join("/");
@@ -185,7 +187,7 @@ try {
     // Runtime server code imports from `open-sse/*` via bare aliases that
     // Next's NFT does not fully trace. The Dockerfile already repairs this by
     // copying the whole open-sse tree; do the same for standalone builds from
-    // source so `npm run build && npm start` does not 500 on missing modules.
+    // source so `pnpm run build && pnpm start` does not 500 on missing modules.
     const openSseSource = path.join(process.cwd(), "open-sse");
     const openSseDest = path.join(standaloneDir, "open-sse");
     if (fs.existsSync(openSseDest)) {

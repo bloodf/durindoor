@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
+import ModelCatalogProvenance from "./ModelCatalogProvenance";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
 
 /**
@@ -23,7 +24,7 @@ export default function ModelAutoSyncPanel({ providerId, hasConnection, onModels
       const res = await fetch(`/api/models/auto-sync?provider=${encodeURIComponent(providerId)}`, { cache: "no-store" });
       const data = res.ok ? await res.json() : null;
       const next = data?.providers?.[providerId] || null;
-      setStatus(next);
+      setStatus(next ? { ...next, intervalHours: data.intervalHours } : null);
       onModelsChange(next?.eligible && Array.isArray(next.models) ? next.models : null);
     } catch {
       setStatus(null);
@@ -93,6 +94,7 @@ export default function ModelAutoSyncPanel({ providerId, hasConnection, onModels
           {busy ? "Syncing…" : "Sync now"}
         </Button>
       </div>
+      <ModelCatalogProvenance providerId={providerId} status={status} />
       <p className="text-[11px] text-dd-muted">{summary}</p>
       {status.newModelIds.length > 0 &&
       <p className="break-words text-[11px] text-dd-success">New: {status.newModelIds.join(", ")}</p>

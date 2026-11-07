@@ -1405,6 +1405,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         excludeConnectionIds.add(credentials.connectionId);
         continue;
       }
+      // Process-local admission pressure is terminal for this request. Retrying a
+      // sibling would hit the same queue and must not cool a healthy account.
+      if (result.localAdmissionRejected === true) return result.response;
       // A client-side abort (named AbortError, or a bare request_signal_aborted /
       // "Client disconnected" / "operation was aborted" that defaulted to 502) is a
       // local stream lifecycle event, NOT a provider failure. Return without cooling

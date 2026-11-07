@@ -26,3 +26,10 @@ A failed or aborted concurrency-tier acquisition rolls back payload capacity and
 all previously acquired tiers. Releases are idempotent. Concurrency tier queues
 remain separate from the payload queue; sequential acquisition can hold payload
 capacity while waiting for a provider slot.
+
+Stream reservations follow the resolved upstream dispatch mode. Providers that
+force streaming reserve stream capacity even when the client requests JSON;
+hard non-streaming overrides do not reserve it. Local admission rejections carry
+`admission_error` and the rejection code. The gateway returns that original
+response without account cooldown, circuit failure accounting or sibling-account
+rotation, because all accounts in the process share the same admission queue.

@@ -1339,7 +1339,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
 
         undefined,
         providerSignal,
-        { body, stream: Boolean(body?.stream) }
+        { body, stream }
       );
       // A disconnect may finish the request while acquireMany is returning its lease.
       if (providerRequestFinished) releaseConcurrencySlots();
@@ -1350,7 +1350,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       if (e instanceof PayloadAdmissionError) {
         finishTimeline("error", "error", "payload admission rejected");
         await settleQuota(false, "admission_rejected");
-        return createErrorResult(e.status, e.message, undefined, { error: { message: e.message, type: "admission_error", code: e.reason } });
+        return {
+          ...createErrorResult(e.status, e.message, undefined, { error: { message: e.message, type: "admission_error", code: e.reason } }),
+          localAdmissionRejected: true,
+        };
       }
       if (e instanceof ConcurrencyGateTimeoutError) {
         log?.warn?.("CONCURRENCY", `${provider} | gate timeout after ${e.timeoutMs}ms (${e.limit} max)`);

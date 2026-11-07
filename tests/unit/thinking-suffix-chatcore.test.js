@@ -163,7 +163,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       credentials: { apiKey: "test-key", providerSpecificData: {} },
       log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     });
-    expect(result).toMatchObject({ success: false, status: 413 });
+    expect(result).toMatchObject({ success: false, status: 413, localAdmissionRejected: true });
     expect(mocks.execute).not.toHaveBeenCalled();
     expect(getPayloadAdmissionStats()).toEqual({ activeBytes: 0, activeStreams: 0, activeRequests: 0, queuedRequests: 0 });
   });
@@ -509,6 +509,33 @@ describe("thinking suffix at the chatCore provider boundary", () => {
       log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     };
   }
+
+  it.each([false, undefined])("reserves forced upstream streams when client stream is %s", async (bodyStream) => {
+    let activeStreams;
+    mocks.execute.mockImplementationOnce(async () => {
+      activeStreams = getPayloadAdmissionStats().activeStreams;
+      throw new Error("stop after admission capture");
+    });
+    const options = abortOptions(undefined);
+    options.body.stream = bodyStream;
+    await handleChatCore(options);
+    expect(activeStreams).toBe(1);
+    expect(getPayloadAdmissionStats().activeStreams).toBe(0);
+  });
+
+  it("does not reserve a stream for a hard non-streaming model override", async () => {
+    let activeStreams;
+    mocks.execute.mockImplementationOnce(async () => {
+      activeStreams = getPayloadAdmissionStats().activeStreams;
+      throw new Error("stop after admission capture");
+    });
+    const options = abortOptions(undefined);
+    options.modelInfo = { provider: "openai", model: "o3-pro" };
+    options.body.model = "o3-pro";
+    await handleChatCore(options);
+    expect(activeStreams).toBe(0);
+    expect(getPayloadAdmissionStats().activeRequests).toBe(0);
+  });
 
   it("propagates caller abort through the initial provider dispatch", async () => {
     const controller = new AbortController();

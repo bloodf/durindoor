@@ -22,11 +22,14 @@ correction. Handler regressions cover sibling cleanup,
 pinned timeout, and healthy unpinned timeout with no account cooldown or sibling
 attempt. Runtime safety remains unverified here until affected checks pass on the
 integrated inputs. PR #1665 must merge before this dependent PR.
-Local admission responses retain the explicit internal `localAdmissionRejected`
+Local admission and terminal recovery-busy responses retain the explicit internal `localAdmissionRejected`
 marker through the outer single-model transient-backend retry loop. This leaves
 HTTP bodies/headers/status unchanged and preserves ordinary upstream 503 retries.
 The real handler timeout regression must assert one logical attempt, not just zero
-cooldown writes inside an individual attempt.
+cooldown writes inside an individual attempt. Focused handler tests observe outer
+retry sleeps and selector calls for busy selection, pinned selection and a pinned
+dispatch-claim race. Unpinned dispatch-claim races still exclude and continue to a
+sibling inside the current attempt.
 
 
 The supplied helper hash was verified. Its expired-deadline admission, late

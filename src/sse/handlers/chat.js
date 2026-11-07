@@ -1121,7 +1121,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
       // All accounts unavailable or provider disabled
       if (credentials?.connectionRecoveryBusy) {
-        return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress");
+        const response = errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress");
+        response.localAdmissionRejected = true;
+        return response;
       }
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
         if (earlyEofOriginal) return earlyEofOriginal;
@@ -1403,7 +1405,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }, activeConnection, model, resolveFallbackModelScope(provider, model), requestSignal);
 
       if (result.connectionRecoveryBusy) {
-        if (preferredConnectionId) return result.response;
+        if (preferredConnectionId) {
+          result.response.localAdmissionRejected = true;
+          return result.response;
+        }
         excludeConnectionIds.add(credentials.connectionId);
         continue;
       }

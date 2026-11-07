@@ -5,6 +5,8 @@ import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
 vi.mock("open-sse/index.js", () => ({}), { virtual: true });
 
 const mocks = vi.hoisted(() => ({
+  retrySleep: vi.fn(async () => {}),
+  resolveConnectionProxyConfig: vi.fn(async () => ({})),
   execute: vi.fn(),
   getProviderConnections: vi.fn(),
   updateProviderConnection: vi.fn(),
@@ -51,7 +53,7 @@ vi.mock("../../src/sse/services/auth.js", async (importOriginal) => ({
   resolveClientApiKey: async () => ({ apiKey: null, auth: { ok: true, stored: false } }),
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({
-  resolveConnectionProxyConfig: async () => ({}), pickProxyPoolId: () => null,
+  resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig, pickProxyPoolId: () => null,
 }));
 vi.mock("@/shared/services/providerRateLimitEvidence", () => ({
   clearProviderRateLimitEvidence: async () => {}, recordProviderRateLimitEvidence: vi.fn(),
@@ -96,6 +98,13 @@ import { acquireSlot, releaseSlot, _resetGates, getGateStats } from "../../open-
 import { resetPayloadAdmission } from "../../open-sse/services/payloadAdmission.js";
 import "../translator/registerAll.js";
 
+// Exercise the real outer retry policy while observing any backoff directly.
+vi.mock("../../open-sse/services/transientBackendRetry.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, runWithTransientBackendRetry: (action, options) =>
+    actual.runWithTransientBackendRetry(action, { ...options, sleep: mocks.retrySleep }) };
+});
+
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(),
   appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}),
@@ -114,6 +123,7 @@ function request(model = "gpt-5.4", pinned = false) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.resolveConnectionProxyConfig.mockReset().mockResolvedValue({});
   globalCircuitManager.reset("recovery-caller-account");
   _resetGates(); resetPayloadAdmission();
   row = { id: "recovery-caller-account", provider: "codex", authType: "apikey", apiKey: "fixture-only", isActive: true,
@@ -129,6 +139,40 @@ beforeEach(() => {
 });
 
 describe("real chat recovery selection", () => {
+  it.each([false, true])("returns selection-busy once without outer reselection, sleep or dispatch, pinned=%s", async (pinned) => {
+    const lease = globalCircuitManager.acquireRecoveryLease(row.id, "gpt-5.4", row["modelLock_gpt-5.4"]);
+    expect(lease.acquired).toBe(true);
+    const response = await handleChat(request("gpt-5.4", pinned));
+    expect(response.status).toBe(503);
+    expect(await response.text()).toContain("Connection recovery in progress");
+    expect(mocks.getProviderConnections).toHaveBeenCalledTimes(pinned ? 2 : 1);
+    expect(mocks.retrySleep).not.toHaveBeenCalled();
+    expect(mocks.handleChatCore).not.toHaveBeenCalled();
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    globalCircuitManager.releaseLease(row.id, "gpt-5.4", lease.leaseToken);
+  });
+
+  it("returns pinned dispatch-claim contention once without outer reselection, sleep or dispatch", async () => {
+    // Acquire after eligibility filtering but before dispatch, during the actual
+    // selector's credential projection. This exercises the second busy return.
+    let lease;
+    mocks.resolveConnectionProxyConfig.mockImplementationOnce(async () => {
+      lease = globalCircuitManager.acquireRecoveryLease(row.id, "gpt-5.4", row["modelLock_gpt-5.4"]);
+      return {};
+    });
+    const response = await handleChat(request("gpt-5.4", true));
+    expect(lease.acquired).toBe(true);
+    expect(response.status).toBe(503);
+    expect(await response.text()).toContain("Connection recovery in progress");
+    expect(mocks.getProviderConnections).toHaveBeenCalledTimes(2);
+    expect(mocks.retrySleep).not.toHaveBeenCalled();
+    expect(mocks.handleChatCore).not.toHaveBeenCalled();
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+    globalCircuitManager.releaseLease(row.id, "gpt-5.4", lease.leaseToken);
+  });
+
   it.each([false, true])("reports a busy probe as 503 after sibling success lazily clears its lock, pinned=%s", async (pinned) => {
     mocks.handleChatCore.mockImplementation(async (options) => {
       if (options.modelInfo.model === "gpt-5.4") {

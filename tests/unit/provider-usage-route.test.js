@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   isNonAdminApiKeyCaller: vi.fn(),
   getProviderConnectionById: vi.fn(),
   getUsageHistory: vi.fn(),
+  getConnectionUsageSummary: vi.fn(),
+  fetchXaiQuota: vi.fn(),
   getUsageForProvider: vi.fn(),
   resolveConnectionProxyConfig: vi.fn(),
   backfillCursorConnectionIdentity: vi.fn(async (connection) => connection),
@@ -11,13 +13,15 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("open-sse/index.js", () => ({}));
+vi.mock("@/lib/usage/xaiQuotaAdapter.js", () => ({ fetchXaiQuota: mocks.fetchXaiQuota }));
+vi.mock("@/lib/db/repos/monitoringUsageRepo.js", () => ({ getConnectionUsageSummary: mocks.getConnectionUsageSummary }));
 
 vi.mock("@/dashboardGuard", () => ({ isNonAdminApiKeyCaller: mocks.isNonAdminApiKeyCaller }));
 vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: mocks.getProviderConnectionById }));
 vi.mock("@/lib/db/repos/usageRepo.js", () => ({ getUsageHistory: mocks.getUsageHistory }));
 vi.mock("open-sse/services/usage.js", () => ({ getUsageForProvider: mocks.getUsageForProvider }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig }));
-vi.mock("@/shared/constants/providers", () => ({ USAGE_APIKEY_PROVIDERS: ["glm"] }));
+vi.mock("@/shared/constants/providers", () => ({ USAGE_APIKEY_PROVIDERS: ["glm", "gemini", "xai"] }));
 vi.mock("@/lib/oauth/services/cursorLocalStore.js", () => ({
   backfillCursorConnectionIdentity: mocks.backfillCursorConnectionIdentity,
 }));
@@ -124,4 +128,26 @@ describe("provider usage route credential service integration", () => {
     expect(response.status).toBe(403);
     expect(mocks.refreshAndUpdateCredentials).not.toHaveBeenCalled();
   });
+  it("routes Gemini API-key connections to the usage dispatcher without OAuth refresh", async () => {
+    const connection = { id: "g", provider: "gemini", authType: "apikey", apiKey: "inference" };
+    mocks.getProviderConnectionById.mockResolvedValue(connection);
+    mocks.getUsageForProvider.mockResolvedValue({ outcome: "unknown", quotas: {} });
+    const { GET } = await import("../../src/app/api/usage/[connectionId]/route.js");
+    const res = await GET(new Request("http://localhost/api/usage/g"), { params: Promise.resolve({ connectionId: "g" }) });
+    expect(await res.json()).toMatchObject({ outcome: "unknown", quotas: {} });
+    expect(mocks.getUsageForProvider).toHaveBeenCalledWith(connection, expect.any(Object), { force: false });
+    expect(mocks.refreshAndUpdateCredentials).not.toHaveBeenCalled();
+  });
+  it("adds xAI management prepaid credit through the real route", async () => {
+    const connection = { id: "x", provider: "xai", authType: "apikey", apiKey: "inference", managementApiKey: "management", providerSpecificData: { teamId: "t" } };
+    mocks.getProviderConnectionById.mockResolvedValue(connection);
+    mocks.getConnectionUsageSummary.mockResolvedValue({ requests: 0 });
+    mocks.fetchXaiQuota.mockResolvedValue({ outcome: "success", quotas: { "Prepaid credit (USD)": { total: 10, isCreditBalance: true } } });
+    const { GET } = await import("../../src/app/api/usage/[connectionId]/route.js");
+    const res = await GET(new Request("http://localhost/api/usage/x"), { params: Promise.resolve({ connectionId: "x" }) });
+    expect(await res.json()).toMatchObject({ outcome: "success", quotas: { "Prepaid credit (USD)": { total: 10 } } });
+    expect(mocks.fetchXaiQuota).toHaveBeenCalledWith({ connection, proxyOptions: expect.any(Object) });
+    expect(mocks.refreshAndUpdateCredentials).not.toHaveBeenCalled();
+  });
+
 });

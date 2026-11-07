@@ -1187,10 +1187,18 @@ describe("chat quota fallback orchestration", () => {
       localAdmissionRejected: true, response: original,
     });
     const response = await handleChat(request());
-    expect(response).toBe(original);
-    expect(await response.json()).toEqual({ error: {
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).toBe("application/json");
+    const requestId = response.headers.get("x-request-id");
+    expect(requestId).toEqual(expect.any(String));
+    expect(requestId.length).toBeGreaterThan(0);
+    const payload = await response.json();
+    expect(payload.error.request_id).toBe(requestId);
+    const { request_id, ...admissionError } = payload.error;
+    expect({ ...payload, error: admissionError }).toEqual({ error: {
       message: "Local admission pressure", type: "admission_error", code: reason,
     } });
+    expect(original.localAdmissionRejected).toBe(true);
     expect(mocks.getProviderCredentials).toHaveBeenCalledOnce();
     expect(mocks.handleChatCore).toHaveBeenCalledOnce();
     expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();

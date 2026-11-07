@@ -1,3 +1,4 @@
+import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   resolveClientApiKey,
@@ -114,6 +115,8 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const kindError = await modelKindError(provider, model, await getSettings(), "tts");
+  if (kindError) return kindError;
   /** Reuse request identity across retries; never parse or buffer audio for usage.
    * Streaming EOF waits for completed accounting and a durable ledger write.
    * Failed billing errors the response stream instead of reporting clean EOF.

@@ -1,3 +1,4 @@
+import { canSelectConnection } from "@/lib/routing/connectionRecovery.js";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { isProviderModelDisabled } from "@/sse/services/disabledModelGate.js";
 import {
@@ -724,6 +725,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (excludeSet.has(c.id)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
+      if (!canSelectConnection(c, model, boundedModel, selectionNow)) return false;
       if (isConnectionGated(c, selectionNow)) return false;
       return true;
     });

@@ -1,3 +1,5 @@
+import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
+import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { isChatProvider, isNativeOnlyModel } from "open-sse/providers/chatCapability.js";
 import { KIMI_CODING_MODELS_URL } from "../../../open-sse/providers/shared.js";
 import "open-sse/index.js";
@@ -1260,7 +1262,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         routeKey: `${provider}/${model}`,
         config: chatSettings.quotaSelection || {}
       });
-      const result = await handleChatCore({
+      const result = await runWithConnectionRecovery(handleChatCore, {
         body: { ...structuredClone(body), model: `${provider}/${model}` },
         modelInfo: { provider, model },
         modelCapabilities: resolvedModelCapabilities,
@@ -1394,7 +1396,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             signal: requestSignal
           });
         }
-      });
+      }, activeConnection, model, resolveFallbackModelScope(provider, model), requestSignal);
+
+      if (result.connectionRecoveryBusy) {
+        if (preferredConnectionId) return result.response;
+        excludeConnectionIds.add(credentials.connectionId);
+        continue;
+      }
 
       if (result.success) {
         if (earlyEofOriginal || preferredConnectionId) return result.response;

@@ -1,18 +1,19 @@
 # Connection circuit discovery and regression draft for #1108
 
-Status: INTEGRATION IN PROGRESS, NOT A DELIVERED CIRCUIT FEATURE.
+Status: caller implementation complete; runtime checks and independent review pending.
 
-The supplied helper and its tests are staged locally. The handoff hash matches
-`e9cfab64aef95816b422b115476511c450e52716f43fea3efccb5b5891f436df`.
-Static inspection found and corrected admission from an already expired persisted
-lock, settlement after lease expiry, newer-deadline fencing, and account-wide
-probe admission while a model probe is active. Runtime tests remain pending.
+`src/lib/routing/connectionRecovery.js` observes persisted fallback deadlines in
+credential selection and claims an expired scope immediately before chat core
+execution. Account-wide recovery excludes model probes. Claims are process-local.
+ACL, quota, RPM, RPD, model-kind and media boundaries retain their existing order.
+Successful core completion settles recovery after the existing success callback.
+Abort, stream cancellation/end, thrown errors and unsuccessful core results release
+claims without creating cooldown evidence. Existing fallback classification remains
+authoritative, including the separate local-admission rejection short circuit.
+A pinned account does not rotate when its recovery claim is busy.
 
-The helper is not yet called by routing. Delivery requires coordinated auth
-selection and chat lifecycle wiring. PR #1646 owns `chat.js`; do not claim runtime
-recovery until its owner coordinates those edits and final-head checks pass.
-Recovery must preserve existing ACL, quota, RPM, RPD, pinning and fallback policy.
-Claims are process-local, not cross-process concurrency guarantees.
+The supplied helper hash was verified. Its expired-deadline admission, late
+settlement and account/model exclusion defects were corrected with regression tests.
 
 Discovery date: 2026-11-05. Local source head:
 `f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`.

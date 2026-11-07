@@ -102,7 +102,7 @@ describe.each(["wafer", "qiniu", "gitlawb-gmi"])("%s credential-check outcomes",
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "fixture-key");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    const check = Array.from(dialog.querySelectorAll("button")).find((node) => node.textContent === "Check");
+    const check = Array.from(dialog.querySelectorAll("button")).find((node) => node.textContent.trim().endsWith("Check"));
     expect(check).toBeDefined();
     await act(async () => check.click());
     const unavailable = status === null || status === 503;
@@ -121,7 +121,11 @@ describe.each(["wafer", "qiniu", "gitlawb-gmi"])("%s credential-check outcomes",
     expect(common.onSave).not.toHaveBeenCalled();
     const save = [...dialog.querySelectorAll("button")].find((node) => node.textContent === "Save");
     expect(save.disabled).toBe(false);
-    await act(async () => save.click());
+    await act(async () => {
+      save.click();
+      await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+      await persist.mock.results[0].value;
+    });
     expect(common.onSave).toHaveBeenCalledTimes(1);
     const updates = common.onSave.mock.calls[0][0];
     expect(updates.apiKey).toBe("fixture-key");

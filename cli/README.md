@@ -19,3 +19,22 @@ The CLI performs startup cleanup before launching. Use the [CLI reference](../do
 - [npm package](https://www.npmjs.com/package/durindoor)
 - [Docker image](https://github.com/bloodf/durindoor/pkgs/container/durindoor)
 - [MIT license](LICENSE)
+
+## Read a local combo from scripts
+
+With the gateway already running, use its combo ID (not its name):
+
+```bash
+durindoor admin combos get <id>
+durindoor admin combos get <id> --port 20129
+```
+
+This prints the existing `/api/combos/{id}` response as JSON to stdout. IDs are
+encoded as a single path parameter. Errors are JSON on stderr: exit status `1`
+means an API or connection failure, and `2` means invalid arguments. Use
+`durindoor admin --help` for syntax.
+
+The command uses loopback HTTP and the existing local CLI management token from
+the same `DATA_DIR` as the server. It does not start the gateway, run updates, or
+contact model providers. Remote profiles and credential provisioning remain
+outside this command's scope. Launcher flags such as `--host` are not accepted.

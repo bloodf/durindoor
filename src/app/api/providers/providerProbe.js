@@ -64,7 +64,7 @@ export async function validateChatgptWebSession({ apiKey, fetcher = fetch }) {
     if (err instanceof OutboundUrlGuardError) {
       return { valid: false, status: null, blocked: true, error: err.message };
     }
-    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
   }
   if (!response.ok) {
     return { valid: false, status: response.status, error: `chatgpt.com rejected the session cookie (HTTP ${response.status})` };
@@ -100,7 +100,7 @@ export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch 
     if (err instanceof OutboundUrlGuardError) {
       return { valid: false, status: null, blocked: true, error: err.message };
     }
-    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
   }
   if (AUTH_FAILURE_STATUSES.has(response.status)) {
     return { valid: false, status: response.status, error: "Invalid API key" };
@@ -123,7 +123,7 @@ export async function validateDifyProvider({ apiKey, fetcher = fetch }) {
     }, guard, fetcher)));
   } catch (err) {
     if (err instanceof OutboundUrlGuardError) return { valid: false, status: null, blocked: true, error: err.message };
-    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
   }
   const failed = responses.find((response) => !response.ok);
   if (!failed) return { valid: true, status: 200 };
@@ -406,6 +406,7 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
       return {
         valid: false,
         status: null,
+        unavailable: true,
         error: "Provider unavailable - network request failed",
       };
     }

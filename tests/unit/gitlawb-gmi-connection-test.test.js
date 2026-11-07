@@ -125,6 +125,7 @@ describe("baseUrl-only API-key provider connection test", () => {
     expect(result).toEqual({
       valid: false,
       status: null,
+      unavailable: true,
       error: "Provider unavailable - network request failed",
     });
     expect(JSON.stringify(result)).not.toContain("glb-test-key");
@@ -201,6 +202,42 @@ describe("baseUrl-only API-key provider connection test", () => {
     if (unavailable) expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
     else expect(mocks.updateProviderConnection).toHaveBeenCalledWith("conn-glb", expect.objectContaining({ testStatus: "error", lastError: "Invalid API key" }));
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["single", "batch"])("persists malformed saved ChatGPT cookies as errors through %s", async (caller) => {
+    const connection = { id: "conn-glb", provider: "chatgpt-web", apiKey: "foo=bar; theme=dark", authType: "cookie", providerSpecificData: {} };
+    mocks.getProviderConnectionById.mockResolvedValue(connection);
+    mocks.getProviderConnections.mockResolvedValue([connection]);
+    const { probeRegistryProvider } = await import("../../src/app/api/providers/providerProbe.js");
+    const probe = await probeRegistryProvider(connection.provider, connection.apiKey);
+    expect(probe).toEqual({ valid: false, status: null, error: "No __Secure-next-auth.session-token cookie found in the pasted value" });
+    const { POST } = await import(caller === "single" ? "../../src/app/api/providers/[id]/test/route.js" : "../../src/app/api/providers/test-batch/route.js");
+    const response = await POST(new Request("http://localhost/api/providers/test", { method: "POST", body: JSON.stringify({ mode: "all" }) }), { params: Promise.resolve({ id: connection.id }) });
+    const body = await response.json();
+    expect(caller === "single" ? body : body.results[0]).toMatchObject({ valid: false, error: probe.error });
+    expect((caller === "single" ? body : body.results[0]).unavailable).not.toBe(true);
+    if (caller === "batch") expect(body.summary).toEqual({ total: 1, passed: 0, failed: 1, skipped: 0, unavailable: 0 });
+    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(connection.id, expect.objectContaining({ testStatus: "error", lastError: probe.error }));
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["network", "blocked"])("distinguishes %s null-status ChatGPT probes in saved callers", async (failure) => {
+    const connection = { id: "conn-glb", provider: "chatgpt-web", apiKey: "__Secure-next-auth.session-token=test-session", authType: "cookie", providerSpecificData: {} };
+    mocks.getProviderConnectionById.mockResolvedValue(connection);
+    mocks.getProviderConnections.mockResolvedValue([connection]);
+    const { OutboundUrlGuardError } = await import("../../open-sse/utils/outboundUrlGuard.js");
+    global.fetch = vi.fn(async () => { throw failure === "blocked" ? new OutboundUrlGuardError("Blocked test URL") : new Error("offline"); });
+    const { probeRegistryProvider } = await import("../../src/app/api/providers/providerProbe.js");
+    const probe = await probeRegistryProvider(connection.provider, connection.apiKey);
+    expect(probe).toMatchObject({ valid: false, status: null, ...(failure === "blocked" ? { blocked: true } : { unavailable: true }) });
+    const { POST } = await import("../../src/app/api/providers/test-batch/route.js");
+    const response = await POST(new Request("http://localhost/api/providers/test-batch", { method: "POST", body: JSON.stringify({ mode: "all" }) }));
+    const body = await response.json();
+    const unavailable = failure === "network";
+    expect(body.results[0]).toMatchObject({ valid: false, unavailable, error: probe.error });
+    expect(body.summary).toEqual({ total: 1, passed: 0, failed: unavailable ? 0 : 1, skipped: 0, unavailable: unavailable ? 1 : 0 });
+    if (unavailable) expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+    else expect(mocks.updateProviderConnection).toHaveBeenCalledWith(connection.id, expect.objectContaining({ testStatus: "error", lastError: probe.error }));
   });
 
 });

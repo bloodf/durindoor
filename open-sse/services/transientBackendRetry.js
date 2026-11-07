@@ -17,6 +17,16 @@
 import { isNumber } from "../../src/shared/utils/typeChecks.js";
 
 
+// Internal response identity survives the caller's result-to-Response projection.
+// No header/body inspection: an upstream 503 cannot opt out by supplying text.
+const nonRetryableResponses = new WeakSet();
+
+/** Preserve a local terminal decision without changing the HTTP response. */
+export function markResponseNonRetryable(response) {
+  nonRetryableResponses.add(response);
+  return response;
+}
+
 export const TRANSIENT_BACKEND_STATUS_CODES = new Set([502, 503, 504]);
 
 export function isResponseStatusRetryable(status) {
@@ -86,7 +96,7 @@ export async function runWithTransientBackendRetry(action, options = {}) {
     try {
       const result = await action();
       lastResult = result;
-      if (result.ok) return result;
+      if (result.ok || nonRetryableResponses.has(result)) return result;
       if (!isResponseStatusRetryable(result.status)) return result;
       // Exhausted: return the last result rather than throwing
       if (attempt >= maxAttempts) return result;

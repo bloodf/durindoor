@@ -21,6 +21,11 @@ guard and concurrency-timeout correction are integrated by normal peer merge of
 pinned timeout, and healthy unpinned timeout with no account cooldown or sibling
 attempt. Runtime safety remains unverified here until affected checks pass on the
 integrated inputs. PR #1665 must merge before this dependent PR.
+Local admission and recovery-busy responses also retain an internal non-retryable
+identity through the outer single-model transient-backend retry loop. This leaves
+HTTP bodies/headers/status unchanged and preserves ordinary upstream 503 retries.
+The real handler timeout regression must assert one logical attempt, not just zero
+cooldown writes inside an individual attempt.
 
 
 The supplied helper hash was verified. Its expired-deadline admission, late

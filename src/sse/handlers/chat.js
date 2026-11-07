@@ -915,7 +915,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
   // Mixed providers also expose speech and embedding models; reject declared
   // non-chat kinds before selecting an account, while allowing unknown IDs.
-  const kindError = await modelKindError(provider, model, settings, "llm", ["llm", "imageToText"]);
+  const kindError = await modelKindError(provider, model, settings, "llm", ["llm", "imageToText", "audio"]);
   if (kindError) return kindError;
 
   // Vision Bridge (#6640): after policy passes, resolve custom capabilities and

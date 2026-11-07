@@ -125,15 +125,21 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
     expect(mocks.getProviderCredentials).toHaveBeenCalled();
   });
 
-  it.each(["custom", "synced"])("allows a %s imageToText model through to account selection", async (source) => {
+  it.each(["gpt-audio", "gpt-audio-mini"])("allows OpenAI audio chat for %s through to account selection", async (model) => {
+    mocks.getModelInfo.mockResolvedValue({ provider: "openai", model });
+    await handleChat(makeRequest(`openai/${model}`));
+    expect(mocks.getProviderCredentials).toHaveBeenCalled();
+  });
+
+  it.each([["custom", "imageToText"], ["synced", "imageToText"], ["custom", "audio"], ["synced", "audio"]])("allows a %s %s chat model through to account selection", async (source, kind) => {
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
-    if (source === "custom") mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind: "imageToText" }]);
-    else mocks.getSyncedModelCatalog.mockResolvedValue({ syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "catalog-only", kind: "imageToText" }] });
+    if (source === "custom") mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind }]);
+    else mocks.getSyncedModelCatalog.mockResolvedValue({ syncedAt: "2026-01-01T00:00:00Z", models: [{ id: "catalog-only", kind }] });
     await handleChat(makeRequest("openai/catalog-only"));
     expect(mocks.getProviderCredentials).toHaveBeenCalled();
   });
 
-  it.each(["image", "tts", "stt", "video", "music", "embedding", "rerank", "systemone", "realtime", "audio"])("rejects catalog-only %s before account selection", async (kind) => {
+  it.each(["image", "tts", "stt", "video", "music", "embedding", "rerank", "systemone", "realtime"])("rejects catalog-only %s before account selection", async (kind) => {
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "catalog-only" });
     mocks.getCustomModels.mockResolvedValue([{ providerAlias: "openai", id: "catalog-only", kind }]);
     const response = await handleChat(makeRequest("openai/catalog-only"));
@@ -145,6 +151,11 @@ describe("chat endpoints reject non-chat models before credentials or dispatch",
 
   it.each(["tts", "stt", "embedding", "video", "music", "rerank"])("keeps imageToText rejected for %s", async (kind) => {
     const response = await modelKindError("together", "MiniMaxAI/MiniMax-M3", {}, kind);
+    expect(response.status).toBe(400);
+  });
+
+  it.each(["tts", "stt", "embedding", "video", "music", "rerank"])("keeps audio chat models rejected for %s", async (kind) => {
+    const response = await modelKindError("openai", "gpt-audio", {}, kind);
     expect(response.status).toBe(400);
   });
 

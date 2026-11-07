@@ -8,7 +8,7 @@ import { getCustomModels, getSyncedModelCatalog, getProviderNodes } from "@/lib/
 
 /**
  * Reject declared wrong kinds; untyped and unknown IDs remain dispatchable.
- * Chat opts into llm + imageToText because vision models use chat completions.
+ * Chat also accepts imageToText and audio models that use chat completions.
  * Other endpoints keep exact-kind matching by default.
  */
 export async function modelKindError(provider, model, settings, kind, acceptedKinds = [kind]) {

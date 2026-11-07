@@ -69,7 +69,7 @@ describe("#1175 devin-desktop is not installed devin", () => {
     const fetcher = vi.fn(async () => { throw new Error("offline-private-host"); });
     vi.stubGlobal("fetch", fetcher);
     await expect(probeRegistryProvider("devin", "offline-cloud-token", fetcher))
-      .resolves.toEqual({ valid: false, status: null, error: "Provider unavailable - network request failed" });
+      .resolves.toEqual({ valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 

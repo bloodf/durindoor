@@ -822,8 +822,9 @@ export async function POST(request) {
             if (!registryResult) {
               return NextResponse.json({ error: "Provider validation not supported" }, { status: 400 });
             }
-            if (registryResult.status >= 500) {
-              return NextResponse.json({ valid: false, unavailable: true, error: "Provider unavailable - try again later" });
+            // Preserve explicit network uncertainty (status null) and upstream outages.
+            if (registryResult.unavailable === true || registryResult.status >= 500) {
+              return NextResponse.json({ valid: false, unavailable: true, error: registryResult.error || "Provider unavailable - try again later" });
             }
             isValid = registryResult.valid;
             if (!isValid && registryResult.error) error = registryResult.error;

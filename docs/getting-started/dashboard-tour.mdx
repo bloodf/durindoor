@@ -60,3 +60,22 @@ Some pages open from detail views rather than the sidebar: provider and timeline
 A healthy HTTP server does not prove a provider works. Confirm a real request in **Usage**. Estimated costs are gateway estimates; provider billing remains authoritative. Missing quota can mean that a provider has no quota API.
 
 If a page or connection is missing, check the [provider guide](../providers/index.mdx), account active state, and [troubleshooting guide](../troubleshooting.mdx).
+
+### Playground comparisons
+
+Compare runs the composer prompt and its images in two to four independent
+columns. Select a model and, when available, a provider connection per column.
+Run all queues columns with at most two requests in flight. Stop cancels only
+that column; responses scroll and copy independently. On narrow screens the
+columns stack vertically.
+
+The browser tab remembers column model and connection selections when switching
+between Chat and Compare or reloading. Saved selections are checked against the
+current catalog and account options before sending. Prompts, images, responses,
+and running requests are not saved by Compare. Storage being unavailable does
+not prevent a comparison.
+
+Latency and first-token time measure each dispatched request, excluding queue
+wait. Token usage comes from the completion stream. Authoritative cost stays
+Unknown because that stream does not supply an authoritative charge; configured
+model tariffs are not proof of a billed amount.

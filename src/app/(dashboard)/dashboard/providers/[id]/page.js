@@ -20,6 +20,7 @@ import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
 import ModelRow from "./ModelRow";
+import NativeProviderReadiness from "./NativeProviderReadiness.jsx";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
 import VisibleModelsModal from "./VisibleModelsModal";
@@ -1906,6 +1907,8 @@ export default function ProviderDetailPage() {
         }
         </div>
       }
+
+      <NativeProviderReadiness providerId={providerId} connections={connections} />
 
       {isCompatible && providerNode &&
       <Card>

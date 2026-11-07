@@ -6,9 +6,8 @@ import { Badge } from "@/shared/ui/components/Badge.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
-import { calculateCostBreakdown } from "open-sse/providers/pricing.js";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
-import { createLimiter, findModelPricing, MAX_COMPARE_COLUMNS, MAX_PARALLEL_COMPARE_RUNS, MIN_COMPARE_COLUMNS, streamCompletion } from "@/lib/playground/compare";
+import { createLimiter, readCompareSelections, writeCompareSelections, MAX_COMPARE_COLUMNS, MAX_PARALLEL_COMPARE_RUNS, MIN_COMPARE_COLUMNS, streamCompletion } from "@/lib/playground/compare";
 import { getConnectionOptions, getModelReasoningOptions } from "./playgroundHelpers";
 
 const GRID_CLASSES = {
@@ -28,7 +27,7 @@ const STATUS_BADGE = {
 let columnSeq = 0;
 function newColumn(modelId = "") {
   columnSeq += 1;
-  return { id: `col-${columnSeq}`, modelId, connectionId: "auto", status: "idle", text: "", error: "", latencyMs: null, ttftMs: null, usage: null, costUsd: null };
+  return { id: `col-${columnSeq}`, modelId, connectionId: "auto", status: "idle", text: "", error: "", latencyMs: null, ttftMs: null, usage: null };
 }
 
 function formatMs(value) {
@@ -44,7 +43,7 @@ function formatMs(value) {
  */
 export default function PlaygroundCompare({ providerGroups = [], modelOptions = [], content = "", reasoningEffort = "auto", fetchImpl }) {
   const [columns, setColumns] = useState(() => [newColumn(modelOptions[0]?.id), newColumn(modelOptions[1]?.id || modelOptions[0]?.id)]);
-  const [pricing, setPricing] = useState(null);
+  const [selectionsLoaded, setSelectionsLoaded] = useState(false);
   const controllers = useRef(new Map());
   const limiter = useMemo(() => createLimiter(MAX_PARALLEL_COMPARE_RUNS), []);
   const modelById = useMemo(() => new Map(modelOptions.map((model) => [model.id, model])), [modelOptions]);
@@ -54,15 +53,16 @@ export default function PlaygroundCompare({ providerGroups = [], modelOptions = 
   // back to a catalog model by position, derived at render time.
   const modelIdFor = (column, index) => modelById.has(column.modelId) ? column.modelId : modelOptions[Math.min(index, modelOptions.length - 1)]?.id;
 
-  // Pricing is optional: without it the cost cell shows "—".
+  // Session storage holds selectors only; responses and prompts stay in memory.
   useEffect(() => {
-    const controller = new AbortController();
-    (fetchImpl || globalThis.fetch)("/api/pricing", { cache: "no-store", signal: controller.signal }).
-    then((res) => res.ok ? res.json() : null).
-    then((data) => setPricing(data)).
-    catch(() => {});
-    return () => controller.abort();
-  }, [fetchImpl]);
+    const saved = readCompareSelections();
+    if (saved) setColumns(saved.map((selection) => ({ ...newColumn(), ...selection })));
+    setSelectionsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (selectionsLoaded) writeCompareSelections(columns);
+  }, [columns, selectionsLoaded]);
 
   useEffect(() => () => {
     for (const controller of controllers.current.values()) controller.abort();
@@ -78,7 +78,7 @@ export default function PlaygroundCompare({ providerGroups = [], modelOptions = 
     controllers.current.get(column.id)?.abort();
     const controller = new AbortController();
     controllers.current.set(column.id, controller);
-    patch(column.id, { status: "queued", text: "", error: "", latencyMs: null, ttftMs: null, usage: null, costUsd: null });
+    patch(column.id, { status: "queued", text: "", error: "", latencyMs: null, ttftMs: null, usage: null });
 
     const body = { model: model.requestModel || model.id, messages: [{ role: "user", content }] };
     const effortOptions = getModelReasoningOptions(model.providerId, model.requestModel, { getThinkingLevels });
@@ -94,9 +94,7 @@ export default function PlaygroundCompare({ providerGroups = [], modelOptions = 
     }).
     then((result) => {
       if (!result) return;
-      const rates = findModelPricing(pricing, model.providerId, model.requestModel);
-      const cost = result.usage && rates ? calculateCostBreakdown(result.usage, rates).totalCost : null;
-      patch(column.id, { status: "done", text: result.text, latencyMs: result.latencyMs, ttftMs: result.ttftMs, usage: result.usage, costUsd: cost });
+      patch(column.id, { status: "done", text: result.text, latencyMs: result.latencyMs, ttftMs: result.ttftMs, usage: result.usage });
     }).
     catch((error) => {
       patch(column.id, error?.name === "AbortError" ? { status: "cancelled" } : { status: "error", error: error?.message || "Request failed" });
@@ -164,7 +162,7 @@ export default function PlaygroundCompare({ providerGroups = [], modelOptions = 
                 <dt className="text-dd-subtle">Latency</dt><dd className="dd-tnum text-end text-dd-muted">{formatMs(column.latencyMs)}</dd>
                 <dt className="text-dd-subtle">First token</dt><dd className="dd-tnum text-end text-dd-muted">{formatMs(column.ttftMs)}</dd>
                 <dt className="text-dd-subtle">Tokens</dt><dd className="dd-tnum text-end text-dd-muted">{tokens}</dd>
-                <dt className="text-dd-subtle">Est. cost</dt><dd className="dd-tnum text-end text-dd-muted">{Number.isFinite(column.costUsd) ? `$${column.costUsd.toFixed(6)}` : "—"}</dd>
+                <dt className="text-dd-subtle">Authoritative cost</dt><dd className="text-end text-dd-muted" title="The completion stream does not report an authoritative charge.">Unknown</dd>
               </dl>
             </li>);
         })}

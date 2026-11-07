@@ -52,3 +52,15 @@ describe("cli fast-path for --help / --version", () => {
     expect(v.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
   });
 });
+
+
+describe("cli administration fast path", () => {
+  it("rejects invalid admin arguments without starting launcher hooks", () => {
+    const res = spawnSync("node", [CLI_PATH, "admin", "combos", "get"], {
+      timeout: 10_000, encoding: "utf8",
+    });
+    expect(res.status).toBe(2);
+    expect(res.stdout).toBe("");
+    expect(JSON.parse(res.stderr).error).toContain("admin combos get");
+  });
+});

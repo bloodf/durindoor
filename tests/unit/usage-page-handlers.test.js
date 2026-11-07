@@ -108,3 +108,59 @@ describe("usage reset", () => {
       .toEqual(["2026-02-03", "2026-02-09"]);
   });
 });
+
+
+describe("usage reset failure feedback", () => {
+  it.each(["http", "network"])("retains usage after %s failure and allows a successful retry", async (failure) => {
+    let settleReset;
+    let resetCount = 0;
+    let statsCount = 0;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn((input) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/usage/reset") {
+        resetCount++;
+        return new Promise((resolve, reject) => {
+          settleReset = (ok) => ok ? resolve(response({ success: true }))
+            : failure === "http" ? resolve({ ok: false }) : reject(new Error("Offline"));
+        });
+      }
+      if (path === "/api/usage/stats") {
+        statsCount++;
+        return Promise.resolve(response(stats(137, 983)));
+      }
+      const bodies = {
+        "/api/providers": { connections: [] }, "/api/provider-nodes": { nodes: [] },
+        "/api/settings": { disabledFreeProviders: [] }, "/api/usage/chart": [],
+        "/api/monitoring": { runtime: {}, activity: {}, health: [] },
+      };
+      if (!Object.hasOwn(bodies, path)) throw new Error(`Unexpected request: ${path}`);
+      return Promise.resolve(response(bodies[path]));
+    }));
+    try {
+      await act(async () => root.render(React.createElement(UsagePage)));
+      await click(button(host, "Reset"));
+      const dialog = document.body.querySelector("dialog");
+      const beforeReset = statsCount;
+      await click(button(dialog, "Reset"));
+      expect(dialog.querySelector('[role="status"]').textContent).toBe("Resetting usage data…");
+      expect(button(dialog, "Cancel").disabled).toBe(true);
+      await act(async () => settleReset(false));
+      expect(dialog.open).toBe(true);
+      expect(dialog.querySelector('[role="alert"]').textContent)
+        .toBe("Reset failed. Your displayed usage is unchanged. Try again.");
+      expect(statsCount).toBe(beforeReset);
+      expect(displayedNumber(137)).toBe(true);
+      expect(displayedNumber(983)).toBe(true);
+      expect(button(dialog, "Reset").disabled).toBe(false);
+      await click(button(dialog, "Reset"));
+      expect(dialog.querySelector('[role="alert"]')).toBeNull();
+      expect(resetCount).toBe(2);
+      await act(async () => settleReset(true));
+      expect(document.body.querySelector("dialog")).toBeNull();
+      expect(statsCount).toBe(beforeReset + 1);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});

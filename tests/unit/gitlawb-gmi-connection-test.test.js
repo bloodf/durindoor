@@ -226,7 +226,7 @@ describe("baseUrl-only API-key provider connection test", () => {
     mocks.getProviderConnectionById.mockResolvedValue(connection);
     mocks.getProviderConnections.mockResolvedValue([connection]);
     const { OutboundUrlGuardError } = await import("../../open-sse/utils/outboundUrlGuard.js");
-    global.fetch = vi.fn(async () => { throw failure === "blocked" ? new OutboundUrlGuardError("Blocked test URL") : new Error("offline"); });
+    global.fetch = vi.fn(async () => { throw failure === "blocked" ? new OutboundUrlGuardError("Blocked test URL", { code: "OUTBOUND_URL_GUARD_BLOCKED", url: "https://chatgpt.com/api/auth/session" }) : new Error("offline"); });
     const { probeRegistryProvider } = await import("../../src/app/api/providers/providerProbe.js");
     const probe = await probeRegistryProvider(connection.provider, connection.apiKey);
     expect(probe).toMatchObject({ valid: false, status: null, ...(failure === "blocked" ? { blocked: true } : { unavailable: true }) });

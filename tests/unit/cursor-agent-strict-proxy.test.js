@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
+import { ROLE } from "../../open-sse/translator/schema/index.js";
+
 import { CursorExecutor } from "../../open-sse/executors/cursor.js";
 
 const credentials = {
@@ -120,6 +122,42 @@ describe("Cursor AgentService proxy enforcement (h2 duplex cannot carry a proxy)
       proxyOptions: { disableEnvProxy: true },
     });
     expect(connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes proxied text and tool-result history through ChatService without direct h2", async () => {
+    vi.stubEnv("CURSOR_AGENT_SERVICE", "on");
+    const executor = new CursorExecutor();
+    const { connect } = stubSession(executor);
+    const agentSpy = vi.spyOn(executor, "executeAgent");
+    const h2Spy = vi.spyOn(executor, "makeHttp2Request");
+    const fetchSpy = vi.spyOn(executor, "makeFetchRequest").mockResolvedValue({ status: 418 });
+    const proxyOptions = {
+      strictProxy: true,
+      connectionProxyEnabled: true,
+      connectionProxyUrl: "http://127.0.0.1:9",
+      disableEnvProxy: true,
+    };
+    const result = await executor.execute({
+      model: "gpt-5.2",
+      body: { messages: [
+        { role: ROLE.USER, content: "Read the file" },
+        { role: ROLE.ASSISTANT, content: null, tool_calls: [
+          { id: "call-1", type: "function", function: { name: "read_file", arguments: "{}" } },
+        ] },
+        { role: ROLE.TOOL, tool_call_id: "call-1", content: "file contents" },
+      ] },
+      stream: false,
+      credentials,
+      proxyOptions,
+    });
+    expect(result.response.status).toBe(418);
+    expect(result.url).toBe(executor.buildUrl());
+    expect(fetchSpy).toHaveBeenCalledExactlyOnceWith(
+      executor.buildUrl(), expect.any(Object), expect.anything(), undefined, proxyOptions,
+    );
+    expect(agentSpy).not.toHaveBeenCalled();
+    expect(h2Spy).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
   });
 
   it("CURSOR_AGENT_SERVICE=off keeps text requests off the h2 AgentService path", async () => {

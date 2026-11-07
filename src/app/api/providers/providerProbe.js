@@ -430,7 +430,9 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   }
   if (res && (res.ok || !probe.fallback || AUTH_FAILURE_STATUSES.has(res.status))) {
     if (res.status >= 500) return temporaryFailure(res.status);
-    return { valid: res.ok, status: res.status, ...(res.ok ? {} : { error: getChatProbeError(res.status) }) };
+    const result = { valid: res.ok, status: res.status };
+    if (!res.ok) result.error = getChatProbeError(res.status);
+    return result;
   }
 
   try {

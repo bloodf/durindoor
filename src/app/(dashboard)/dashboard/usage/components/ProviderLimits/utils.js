@@ -993,6 +993,9 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               remaining: quota.remaining !== undefined ? quota.remaining : undefined,
               unlimited: quota.unlimited || false,
+              isCreditBalance: quota.isCreditBalance === true,
+              currency: quota.currency,
+              remainingPercentage: quota.remainingPercentage,
               resetAt: quota.resetAt || null
             });
           });

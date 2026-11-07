@@ -80,7 +80,7 @@ it.each(failures)("%s keeps its error row but uses none of the key's limits", as
   expect(await checkApiKeyLimits(RECORD)).toBeNull();
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });
   const window = await database.getApiKeyWindowUsageTotals(KEY, new Date(0).toISOString(), new Date(0).toISOString());
-  expect(window.day).toMatchObject({ requests: 0, cost: 0, unknownCostRequests: 0 });
+  expect(window.day).toEqual({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
   expect(window.month).toMatchObject({ requests: 0, cost: 0, unknownCostRequests: 0 });
   // Cover both daily rollups and the direct history path used for today's view.
   for (const period of ["all", "today"]) {
@@ -92,6 +92,20 @@ it.each(failures)("%s keeps its error row but uses none of the key's limits", as
     expect(JSON.stringify(stats)).not.toContain(KEY);
     expect(Object.values(stats.byAccount)).toEqual([expect.objectContaining({ requests: 2 })]);
   }
+});
+
+it("backfills billable rows while retaining null fields and partial chat errors", async () => {
+  const start = "2000-01-01T00:00:00.000Z";
+  await database.saveRequestUsage({ provider: "mcp-gateway", status: "error", apiKey: KEY, tokens: { prompt_tokens: 5 }, cost: null });
+  await database.saveRequestUsage({ provider: "openai", status: "error", apiKey: KEY, tokens: { prompt_tokens: 3 }, cost: 1 });
+  await database.saveRequestUsage({ provider: null, status: "error", apiKey: KEY, tokens: {}, cost: 0 });
+  await database.saveRequestUsage({ provider: "mcp-gateway", status: "ok", apiKey: KEY, tokens: {}, cost: 0 });
+  adapter.run("UPDATE usageHistory SET status = NULL WHERE provider = ? AND status = ?", ["mcp-gateway", "ok"]);
+  const totals = await database.getApiKeyWindowUsageTotals(KEY, start, start);
+  expect(totals.day).toMatchObject({ requests: 3, inputTokens: 3, cost: 1, unknownCostRequests: 0 });
+  const { backfillApiKeyUsageTotals } = await import("@/lib/db/helpers/apiKeyUsageTotals.js");
+  backfillApiKeyUsageTotals(adapter, { overwrite: true });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 3, totalTokens: 3, totalCost: 1 });
 });
 
 it("successful calls still count toward the key's request limit", async () => {
@@ -315,6 +329,28 @@ it.each([
   expect(JSON.parse(row.meta)).toMatchObject({ costStatus: "known", costSource: "mcp-gateway" });
   expect(await database.getUsageStats("all")).toMatchObject({ totalRequests: 1, unknownCostRequests: 0 });
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ unknownCostRequests: 0 });
+});
+
+// Integration #1658/#1653: receipt replay must preserve ledger and policy totals.
+it.each(["mcp-gateway", "openai"])("deduplicates failed %s events while retaining paid replay totals", async (provider) => {
+  const start = "2000-01-01T00:00:00.000Z";
+  const paid = { apiKey: KEY, provider: "openai", model: "paid-fixture", status: "ok", cost: 0.25,
+    tokens: { prompt_tokens: 3, completion_tokens: 2 }, usageEventId: `integration-paid-${provider}`, strict: true };
+  const failed = { apiKey: KEY, provider, model: "failed-fixture", status: "error", cost: 0,
+    tokens: { prompt_tokens: 1 }, usageEventId: `integration-failed-${provider}`, strict: true };
+  for (let replay = 0; replay < 2; replay++) {
+    await database.saveRequestUsage(paid);
+    await database.saveRequestUsage(failed);
+  }
+  const countedFailure = provider === "openai" ? 1 : 0;
+  expect(rows()).toHaveLength(2);
+  expect(await database.getUsageStats("all")).toMatchObject({ totalRequests: 2, totalCost: 0.25 });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({
+    totalRequests: 1 + countedFailure, totalTokens: 5 + countedFailure, totalCost: 0.25, unknownCostRequests: 0,
+  });
+  const window = await database.getApiKeyWindowUsageTotals(KEY, start, start);
+  expect(window.day).toEqual({ requests: 1 + countedFailure, inputTokens: 3 + countedFailure, outputTokens: 2, cost: 0.25, unknownCostRequests: 0 });
+  expect(window.month).toEqual(window.day);
 });
 
 

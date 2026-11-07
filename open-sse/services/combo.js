@@ -1,3 +1,4 @@
+import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 /**
  * Shared combo (model combo) handling with fallback support
  */
@@ -58,7 +59,7 @@ export function getFusionRequiredInput(body) {
 }
 
 export function comboPolicyRejection() {
-  const response = errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied");
+  const response = annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied"), "policy");
   response[LOCAL_POLICY_REJECTION] = true;
   return response;
 }

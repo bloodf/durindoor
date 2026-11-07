@@ -15,6 +15,7 @@ import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredential
 import { resolveResourceOwner } from "../services/resourceOwnership.js";
 import { applyEdits, findNodeAtLocation, modify, parseTree } from "jsonc-parser";
 import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 const { collectNativeModelSlots } = nativeModelSlots;
 
 const MAX_ERROR_BYTES = 8192;
@@ -57,7 +58,9 @@ export async function handleNativeProvider(request, provider, path) {
 
   const settings = await getSettings();
   const { apiKey, auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true });
-  if (!auth.ok) return fail(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key");
+  if (!auth.ok) return annotateClientAdmissionFailure(
+    fail(HTTP_STATUS.UNAUTHORIZED, auth.reason === "missing" ? "Missing API key" : "Invalid API key"),
+    auth.reason === "missing" ? "auth_missing" : "auth_invalid");
   const billingEpoch = auth.billingEpoch;
 
   const url = new URL(request.url);
@@ -131,7 +134,7 @@ export async function handleNativeProvider(request, provider, path) {
   const observeCompletion = operation.completionPoll === true;
   if ((parsed?.background === true || operation.kind === "batches" && request.method === "POST" && !operation.accountBound) &&
     !await nativeDirectSessionAllowed(apiKey)) {
-    return fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot delegate native background or batch inference");
+    return annotateClientAdmissionFailure(fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot delegate native background or batch inference"), "policy");
   }
   if (dispatchInference) {
     const dailyError = await nativeUsageAdmission(apiKey);
@@ -143,7 +146,7 @@ export async function handleNativeProvider(request, provider, path) {
   const asynchronousCreation = operation.createsResource && ["task_id", "request_id"].includes(operation.resourceResponseField) || parsed?.background === true;
   if (["realtime", "realtime-translation", "realtime-transcription", "live"].includes(operation.kind) &&
     !await nativeDirectSessionAllowed(apiKey)) {
-    return fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot mint direct native sessions");
+    return annotateClientAdmissionFailure(fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot mint direct native sessions"), "policy");
   }
   const trackedResource = operation.resourceParam || operation.resourceQuery || operation.resourceBodyField;
   const requestOwner = operation.createsResource || trackedResource || operation.listsResources ? await resolveResourceOwner(request, auth) : null;

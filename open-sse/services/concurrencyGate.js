@@ -15,6 +15,7 @@
  * (Redis, SQLite), but for the typical 9router deployment this is sufficient.
  */
 import { isNumber, isObject } from "../../src/shared/utils/typeChecks.js";
+import { recordAdmissionFailure } from "./operationalMetrics.js";
 
 /** @type {Map<string, {current: number, queue: Array<{resolve, reject, timer}>}>} */
 const gates = globalThis.__durindoorConcurrencyGates ??= new Map();
@@ -73,7 +74,10 @@ export function getConcurrencyLimit(provider, limitsMap) {
  * @throws {ConcurrencyGateTimeoutError}
  */
 export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS, signal = null) {
-  if (signal?.aborted) return Promise.reject(new DOMException("Concurrency wait aborted", "AbortError"));
+  if (signal?.aborted) {
+    recordAdmissionFailure("aborted");
+    return Promise.reject(new DOMException("Concurrency wait aborted", "AbortError"));
+  }
   if (!limit || limit <= 0) return Promise.resolve();
 
   const gate = getGate(provider);
@@ -97,6 +101,7 @@ export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS, sig
       const idx = gate.queue.indexOf(entry);
       if (idx !== -1) gate.queue.splice(idx, 1);
       cleanup();
+      if (idx !== -1) recordAdmissionFailure("timeout");
       reject(new ConcurrencyGateTimeoutError(provider, limit, timeoutMs));
     }, timeoutMs);
 
@@ -107,6 +112,7 @@ export function acquireSlot(provider, limit, timeoutMs = DEFAULT_TIMEOUT_MS, sig
       const idx = gate.queue.indexOf(entry);
       if (idx !== -1) gate.queue.splice(idx, 1);
       cleanup();
+      if (idx !== -1) recordAdmissionFailure("aborted");
       reject(new DOMException("Concurrency wait aborted", "AbortError"));
     };
     gate.queue.push(entry);

@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleVideoGeneration } from "@/sse/handlers/video.js";
 
 async function OPTIONSHandler() {
@@ -16,4 +16,4 @@ async function POSTHandler(request) {
   return await handleVideoGeneration(request);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

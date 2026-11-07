@@ -34,9 +34,12 @@ Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX
 
 ## Test workflow
 
-Install root deps, then the deps under `tests/`. Pass `--config tests/vitest.config.js` unless you already run from `tests/` (Vitest picks that config up on its own).
+Install root, CLI (`cli/`), and test (`tests/`) dependencies before collecting the suite. The root/CLI advisory compatibility tests load the real CLI-only `nodemon` dependency. Pass `--config tests/vitest.config.js` unless you already run from `tests/` (Vitest picks that config up on its own).
 
 ```bash
+pnpm install --frozen-lockfile
+pnpm -C cli install --frozen-lockfile
+pnpm -C tests install --frozen-lockfile
 cd tests && pnpm run test:ci
 ```
 

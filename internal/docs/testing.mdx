@@ -3,7 +3,7 @@ title: Testing
 description: Vitest in tests/, the fail-closed baseline gate, and credential-backed real runs.
 ---
 
-The suite lives in `tests/`, its own npm package (`9router-tests`). Root `package.json` has no `test` script. Install root deps, then the deps under `tests/`.
+The suite lives in `tests/`, its own npm package (`9router-tests`). Root `package.json` has no `test` script. Install root, CLI (`cli/`), and test (`tests/`) dependencies. The root/CLI advisory compatibility suite loads the real CLI-only `nodemon` dependency.
 
 ## Setup
 
@@ -11,6 +11,7 @@ Node at the repo root is `24.22.2` (`.nvmrc`; engines `>=24.22.2 <25`) and pnpm 
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm -C cli install --frozen-lockfile
 cd tests
 pnpm install --frozen-lockfile
 ```

@@ -52,7 +52,7 @@ const DEFAULT_SLEEP = (ms, signal) =>
  * a non-ok status means the action produced an error response, not bytes
  * already handed off, so re-running it cannot double-send content.
  *
- * @param {() => Promise<{ok: boolean, status: number}>} action
+ * @param {() => Promise<{ok: boolean, status: number, localAdmissionRejected?: boolean}>} action
  * @param {{maxAttempts?: number, baseMs?: number, capMs?: number, source?: string,
  *   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>, signal?: AbortSignal,
  *   onRetry?: (info: object) => void}} [options]
@@ -86,6 +86,8 @@ export async function runWithTransientBackendRetry(action, options = {}) {
     try {
       const result = await action();
       lastResult = result;
+      // Internal gateway metadata, never inferred from upstream status or text.
+      if (result.localAdmissionRejected === true) return result;
       if (result.ok) return result;
       if (!isResponseStatusRetryable(result.status)) return result;
       // Exhausted: return the last result rather than throwing

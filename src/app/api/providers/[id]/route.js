@@ -20,6 +20,7 @@ import { AI_PROVIDERS, isSystemoneCompatibleProvider } from "@/shared/constants/
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+"managementApiKey",
 "clientSecret",
 "qwenCloudCookie",
 "alibabaConsoleCookie",
@@ -74,6 +75,7 @@ function sanitizeProviderConnection(connection) {
     ...connection,
     ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
   };
+  delete result.managementApiKey;
   delete result.apiKey;
   delete result.accessToken;
   delete result.refreshToken;
@@ -312,6 +314,7 @@ export async function PUT(request, { params }) {
     }
 
     const updateData = {};
+    if (existing.provider === "xai" && isString(body.managementApiKey)) updateData.managementApiKey = body.managementApiKey.trim();
     if (name !== undefined) updateData.name = name;
     if (priority !== undefined) updateData.priority = coercedPriority;
     if (globalPriority !== undefined) {

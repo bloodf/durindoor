@@ -37,3 +37,7 @@ rotation, because all accounts in the process share the same admission queue.
 Concurrency-tier wait timeouts also carry the local admission marker. They return
 503 without upstream dispatch and follow the same terminal gateway handling as
 payload queue pressure; ordinary upstream 503 responses retain account fallback.
+The gateway preserves the explicit local-admission marker as internal response
+metadata for the outer transient retry loop. That loop returns the same response
+without retrying. This metadata is not an upstream header or a client input;
+unmarked upstream 502/503/504 responses retain transient retries.

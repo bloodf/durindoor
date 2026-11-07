@@ -66,6 +66,24 @@ describe("Kimchi updater default transport import", () => {
     expect(globalThis[stateKey].activePromise).toBeNull();
   });
 
+  it("uses refreshed headers in an executor constructed before the refresh", async () => {
+    const { PROVIDERS } = await import("../../open-sse/providers/index.js");
+    const { DefaultExecutor } = await import("../../open-sse/executors/default.js");
+    const executor = new DefaultExecutor("kimchi");
+    expect(PROVIDERS.kimchi.headers["User-Agent"]).toBe("kimchi/0.1.01");
+    expect(executor.buildHeaders()["User-Agent"]).toBe("kimchi/0.1.01");
+    expect(transport.fetch).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+
+    const { updateKimchiUserAgent } = await import("../../open-sse/utils/kimchiUserAgent.js");
+    await updateKimchiUserAgent();
+
+    expect(executor.buildHeaders()["User-Agent"]).toBe("kimchi/1.2.3");
+    expect(transport.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it("runs source startup and four-hour refresh from outside the application root", async () => {
     vi.spyOn(process, "cwd").mockReturnValue(fileURLToPath(new URL("../", import.meta.url)));
     globalThis[stateKey].intervalStarted = false;

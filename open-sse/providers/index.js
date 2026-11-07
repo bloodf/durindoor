@@ -14,6 +14,10 @@ const OAUTH_INJECT_FIELDS = ["clientId", "clientSecret", "tokenUrl"];
 function buildTransport(entry, oauth) {
   const transport = entry.transport;
   const t = { ...transport };
+  // Keep dynamic headers live after registry construction so executors see
+  // refreshed metadata, while ordinary transport values retain spread semantics.
+  const headers = Object.getOwnPropertyDescriptor(transport, "headers");
+  if (headers?.get) Object.defineProperty(t, "headers", headers);
   if (!t.format) t.format = PROVIDER_DEFAULTS.format;
   if (entry.thinkingFormat !== undefined) t.thinkingFormat = entry.thinkingFormat;
   if (entry.authType !== undefined) t.authType = entry.authType;

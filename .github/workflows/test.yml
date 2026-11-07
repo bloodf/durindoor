@@ -37,6 +37,7 @@ jobs:
             pnpm-lock.yaml
             website/pnpm-lock.yaml
             tests/pnpm-lock.yaml
+            cli/pnpm-lock.yaml
 
       - name: Verify pnpm
         run: test "$(pnpm --version)" = "12.18.0"
@@ -46,6 +47,10 @@ jobs:
 
       - name: "📦 Install website dependencies"
         working-directory: website
+        run: pnpm install --frozen-lockfile
+
+      - name: "📦 Install CLI dependencies"
+        working-directory: cli
         run: pnpm install --frozen-lockfile
 
       - name: "📦 Install test dependencies"

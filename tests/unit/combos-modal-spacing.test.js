@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { within } from "@testing-library/dom";
+import { within, fireEvent } from "@testing-library/dom";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -48,6 +48,38 @@ describe("Create Combo modal spacing", () => {
   });
 
   const flush = async () => { await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
+
+  it.each(["", "0", "-1"])("explains invalid weight %j without losing focus and saves the corrected draft", async (invalid) => {
+    const combo = { id: "weighted", name: "weighted", models: ["openai/model"], members: [{ id: "openai/model", weight: 2 }] };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url, options) => {
+      if (url === "/api/combos") return json({ combos: [combo] });
+      return originalFetch(url, options);
+    });
+    await act(async () => { root.render(React.createElement(CombosPage)); });
+    await flush();
+    await act(async () => { within(container).getByRole("button", { name: "Edit", exact: true }).click(); });
+    const dialog = document.body.querySelector("dialog");
+    const input = within(dialog).getByRole("spinbutton", { name: "Weight" });
+    const save = within(dialog).getByRole("button", { name: "Save", exact: true });
+    input.focus();
+    await act(async () => { fireEvent.input(input, { target: { value: invalid } }); });
+    expect(document.activeElement).toBe(input);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(input.getAttribute("aria-describedby")).textContent).toBe("Use a positive weight");
+    expect(save.disabled).toBe(true);
+    await act(async () => { save.click(); });
+    expect(globalThis.fetch.mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(0);
+    await act(async () => { fireEvent.input(input, { target: { value: "3" } }); });
+    expect(document.activeElement).toBe(input);
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+    expect(within(dialog).queryByText("Use a positive weight")).toBeNull();
+    expect(save.disabled).toBe(false);
+    await act(async () => { save.click(); });
+    const writes = globalThis.fetch.mock.calls.filter(([, options]) => options?.method === "PUT");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][1].body)).toEqual({ name: "weighted", models: ["openai/model"], members: [{ id: "openai/model", weight: 3 }], capabilities: {} });
+  });
 
   it("renders Cancel and Create inside the dialog footer", async () => {
     await act(async () => { root.render(React.createElement(CombosPage)); });

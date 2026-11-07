@@ -103,6 +103,26 @@ describe("model auto-sync panel discovery response", () => {
     expect(vi.getTimerCount()).toBe(timers);
   });
 
+  it("reconciles a boundary crossed between render and its passive effect", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    let committedLabel;
+    function BoundaryCrossingProvenance() {
+      React.useLayoutEffect(() => {
+        committedLabel = container.querySelector("dl").textContent;
+        vi.setSystemTime(now + 3600000);
+      }, []);
+      return React.createElement(ModelCatalogProvenance, { providerId: "openai", status });
+    }
+
+    await act(async () => root.render(React.createElement(BoundaryCrossingProvenance)));
+
+    expect(committedLabel).toContain("Discovery freshness: Within the configured sync interval. Availability is not verified.");
+    expect(container.querySelector("dl").textContent).toContain("Discovery freshness: STALE. The stored snapshot is older than the configured sync interval.");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("replaces the boundary timer on status change and clears it on unmount", async () => {
     const render = (patch) => root.render(React.createElement(ModelCatalogProvenance, { providerId: "openai", status: { ...status, ...patch } }));
     await act(async () => render({}));

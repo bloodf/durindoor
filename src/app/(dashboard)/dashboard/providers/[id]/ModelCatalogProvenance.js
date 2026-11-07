@@ -10,12 +10,17 @@ export default function ModelCatalogProvenance({ providerId, status }) {
   const discovery = catalogDiscoveryStatus(status);
   useEffect(() => {
     const now = Date.now();
-    if (catalogDiscoveryStatus(status, now) !== "Within the configured sync interval. Availability is not verified.") return;
+    const currentDiscovery = catalogDiscoveryStatus(status, now);
+    if (currentDiscovery !== discovery) {
+      refreshClock();
+      return;
+    }
+    if (currentDiscovery !== "Within the configured sync interval. Availability is not verified.") return;
     const delay = Date.parse(status.syncedAt) + status.intervalHours * 3600000 - now;
     if (!Number.isFinite(delay)) return;
     const timer = setTimeout(refreshClock, Math.min(Math.max(1, delay), 2147483647));
     return () => clearTimeout(timer);
-  }, [status, clock]);
+  }, [status, clock, discovery]);
   return (
     <dl aria-label="Model list provenance" className="text-[11px] text-dd-muted">
       <div><dt className="inline">Provider identity: </dt><dd className="inline">{providerId}</dd></div>

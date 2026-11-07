@@ -3,6 +3,7 @@ import "open-sse/index.js";
 
 import { getProviderConnectionById } from "@/lib/localDb";
 import { getConnectionUsageSummary } from "@/lib/db/repos/monitoringUsageRepo.js";
+import { fetchXaiQuota } from "@/lib/usage/xaiQuotaAdapter.js";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { fetchGrokCliCreditsConfig } from "open-sse/services/usage/grok-cli.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -48,7 +49,7 @@ export async function GET(request, { params }) {
     const isApikeyAuth =
       connection.authType === "apikey" || connection.authType === "api_key";
     const isApikeyEligible =
-      isApikeyAuth && USAGE_APIKEY_PROVIDERS.includes(connection.provider);
+      isApikeyAuth && (USAGE_APIKEY_PROVIDERS.includes(connection.provider) || ["gemini", "xai"].includes(connection.provider));
 
     if (!isOAuth && !isApikeyEligible) {
       return Response.json({ message: "Usage not available for this connection" });
@@ -109,6 +110,10 @@ export async function GET(request, { params }) {
         } catch {
           /* fail-open: keep local-history-only card */
         }
+      }
+      if (!isOAuth) {
+        const snapshot = await fetchXaiQuota({ connection, proxyOptions });
+        return Response.json({ ...local, ...snapshot, quotas: { ...local.quotas, ...snapshot.quotas } });
       }
       return Response.json(local);
     }

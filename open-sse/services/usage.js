@@ -2,6 +2,8 @@
  * Usage Fetcher - Get usage data from provider APIs
  */
 
+import { fetchGeminiApiKeyQuota } from "../../src/lib/usage/geminiApiKeyQuotaAdapter.js";
+import { fetchXaiQuota } from "../../src/lib/usage/xaiQuotaAdapter.js";
 import { getGitHubUsage } from "./usage/github.js";
 import { getGeminiUsage, getAntigravityUsage } from "./usage/google.js";
 import { getClaudeUsage, consumeClaudeResetGrant } from "./usage/claude.js";
@@ -57,7 +59,12 @@ const USAGE_HANDLERS = {
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
-  xai: (c) => getXaiUsage(c.connectionId),
+  gemini: () => fetchGeminiApiKeyQuota(),
+  xai: async (c) => {
+    const local = await getXaiUsage(c.connectionId);
+    const snapshot = await fetchXaiQuota({ connection: c.connection, proxyOptions: c.proxyOptions });
+    return { ...local, ...snapshot, quotas: { ...local.quotas, ...snapshot.quotas } };
+  },
   "grok-web": () => getGrokWebUsage(),
   "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "kimi-coding": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),

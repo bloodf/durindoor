@@ -231,7 +231,7 @@ if (fs.existsSync(buildDistDir)) {
 }
 console.log("1️⃣  Building Next.js app...");
 try {
-  execSync("npm run build", {
+  execSync("pnpm run build", {
     stdio: "inherit",
     cwd: appDir,
     env: {

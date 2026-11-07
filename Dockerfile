@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG NODE_IMAGE=node:26.13.0-alpine
+ARG NODE_IMAGE=node:24.22.2-alpine
 ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
 ARG APP_VERSION=unknown
 
@@ -20,17 +20,14 @@ FROM base AS builder
 # cmake: koffi (tls-client-node) ships no musl arm64 prebuilt and compiles from source there.
 RUN apk add --no-cache python3 make g++ linux-headers cmake
 
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-  npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable
+RUN --mount=type=cache,target=/root/.pnpm-store \
+  pnpm install --frozen-lockfile --store-dir=/root/.pnpm-store
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
-# wreq-js (OpenCode TLS transport) is optional: if npm skipped it, the empty
-# dirs keep the runner COPY below working and the app falls back to fetch.
-RUN mkdir -p node_modules/wreq-js node_modules/@wreq-js
-
+RUN pnpm run build
 FROM ${NODE_IMAGE} AS runner
 ARG ALPINE_MIRROR
 ARG APP_VERSION
@@ -67,23 +64,9 @@ COPY --from=builder /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/type
 COPY --from=builder /app/open-sse ./open-sse
 # Next file tracing can omit sibling files; MITM runs server.js as a separate process.
 COPY --from=builder /app/src/mitm ./src/mitm
-# Standalone node_modules may omit deps only required by the MITM child process.
-COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
-# Ensure `next` is available at runtime in case tracing did not include it.
-COPY --from=builder /app/node_modules/next ./node_modules/next
-# sql.js ships `dist/sql-wasm.wasm` as a runtime-loaded sibling that Next's tracer
-# omits, so the pure-JS DB fallback cannot start without it (upstream 27f3710c8).
-COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
-# ChatGPT Web loads these with dynamic import(): the browser transport needs
-# playwright, the HTTP fallback needs tls-client-node (its native library is
-# downloaded into $DATA_DIR/tls-client/bin on first use).
-COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
-COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-core
-COPY --from=builder /app/node_modules/tls-client-node ./node_modules/tls-client-node
-# OpenCode's free tier loads wreq-js (+ its prebuilt @wreq-js/binding-*) with
-# dynamic import(); tracing omits it (upstream 3b7acf72).
-COPY --from=builder /app/node_modules/wreq-js ./node_modules/wreq-js
-COPY --from=builder /app/node_modules/@wreq-js ./node_modules/@wreq-js
+# scripts/build-app.mjs materializes every runtime dependency and its closure
+# into .next/standalone above, including sql.js assets and optional native bindings.
+# Copying the isolated pnpm source tree here would replace that relocatable closure.
 
 RUN mkdir -p /app/data && chown -R node:node /app && \
   mkdir -p /app/data-home && chown node:node /app/data-home && \

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
@@ -32,8 +33,8 @@ describe("undici security floor (#1360)", () => {
   });
 
   it(`overrides pin nested undici to ^${UNDICI_FLOOR}`, () => {
-    const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
-    expect(pkg.overrides?.undici).toBe(`^${UNDICI_FLOOR}`);
+    const workspace = parse(readFileSync(path.join(ROOT, "pnpm-workspace.yaml"), "utf8"));
+    expect(workspace.overrides?.undici).toBe(`^${UNDICI_FLOOR}`);
   });
 
   it(`resolved node_modules/undici is >=${UNDICI_FLOOR}`, () => {

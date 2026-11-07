@@ -35,7 +35,7 @@ const STEPS = [
   {
     n: "I",
     title: "Install the CLI",
-    body: "Node.js 26.13.0 and npm 11.20.0. One global package, no accounts.",
+    body: "Node.js 24.22.2 or later. One global package, no accounts.",
     code: (
       <Code label="shell" copy="npm install -g durindoor">
         <span className="c-dim">$ </span>

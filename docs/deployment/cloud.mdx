@@ -3,7 +3,7 @@ title: VPS and cloud
 description: Run a Linux service with a persistent data directory and HTTPS proxy.
 ---
 
-This procedure runs a source build on Linux with systemd and a reverse proxy on the same host. You need administrator access, Node.js 26.13.0, npm 11.20.0, a TLS-capable proxy, and a persistent disk. For containers, use [Docker](./docker.mdx).
+This procedure runs a source build on Linux with systemd and a reverse proxy on the same host. You need administrator access, Node.js 24.22.2, pnpm 12.18.0, a TLS-capable proxy, and a persistent disk. For containers, use [Docker](./docker.mdx).
 
 ## Build the app
 
@@ -11,9 +11,9 @@ Clone the repository into `/opt/durindoor`, then build:
 
 ```bash
 cd /opt/durindoor
-npm install --no-audit --no-fund
-npm run build
-npm run verify:static
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run verify:static
 ```
 
 The build creates `.next/standalone/custom-server.js`. The static check must exit zero before you use this build.

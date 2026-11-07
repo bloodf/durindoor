@@ -1,0 +1,6 @@
+# pnpm 12 settings for the tests project. Floor previously held in npm's
+# package.json "overrides"; must exist BEFORE `pnpm import` or resolution.
+overrides:
+  postcss@<8.5.23: 8.5.23
+# allowBuilds: filled only from real `pnpm ignored-builds` output, per package,
+# with justification in the PR body. Never bulk-approve.

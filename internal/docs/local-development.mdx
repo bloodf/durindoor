@@ -3,14 +3,14 @@ title: Local development
 description: Dev server on port 20127, lint including anti-slop, Storybook, and Playwright.
 ---
 
-Pin Node.js `26.13.0` and npm `11.20.0`. You also need Git, and a browser if you are changing the dashboard.
+Pin Node.js `24.22.2` (`.nvmrc`; engines `>=24.22.2 <25`) and pnpm `12.18.0` (`packageManager`). You also need Git, and a browser if you are changing the dashboard.
 
 ## Install
 
 ```bash
 nvm use
-npm ci --no-audit --no-fund
-cd tests && npm ci --no-audit --no-fund
+pnpm install --frozen-lockfile
+cd tests && pnpm install --frozen-lockfile
 ```
 
 ## Isolate development data
@@ -32,15 +32,15 @@ Those directories hold credentials and databases. Keep them untracked. Delete th
 ## Run the app
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
-`npm run dev` is `node scripts/next-owner-server.cjs --dev --port 20127`. The wrapper binds `127.0.0.1` unless `HOSTNAME` is set. Open `http://localhost:20127/dashboard`.
+`pnpm run dev` is `node scripts/next-owner-server.cjs --dev --port 20127`. The wrapper binds `127.0.0.1` unless `HOSTNAME` is set. Open `http://localhost:20127/dashboard`.
 
 Production from source:
 
 ```bash
-npm run build
+pnpm run build
 npm start
 ```
 
@@ -66,16 +66,16 @@ npm start
 ## Lint and anti-slop
 
 ```bash
-npm run lint
+pnpm run lint
 ```
 
-That command is `eslint src && npm run lint:anti-slop`. `lint:anti-slop` rebuilds the plugin and runs oxlint:
+That command is `eslint src && pnpm run lint:anti-slop`. `lint:anti-slop` rebuilds the plugin and runs oxlint:
 
 ```bash
 node scripts/build-anti-slop-plugin.mjs && node scripts/check-anti-slop.mjs
 ```
 
-Husky `pre-commit` runs lint-staged, then `npm run lint:anti-slop`. lint-staged runs eslint with `--max-warnings=0` on staged `src/**/*.{js,jsx,mjs}`. Either step failing blocks the commit.
+Husky `pre-commit` runs lint-staged, then `pnpm run lint:anti-slop`. lint-staged runs eslint with `--max-warnings=0` on staged `src/**/*.{js,jsx,mjs}`. Either step failing blocks the commit.
 
 The plugin is vendored at `tools/oxlint/anti-slop/`. It is not an npm package. oxlint loads `tools/oxlint/anti-slop/index.bundle.js`. After you edit the TypeScript sources, rebuild with `node scripts/build-anti-slop-plugin.mjs` (the first command inside `lint:anti-slop`).
 
@@ -90,10 +90,10 @@ Refresh notes and the vendored SHA live in [tools/oxlint/anti-slop/VENDOR.md](ht
 ## Storybook
 
 ```bash
-npm run storybook
+pnpm run storybook
 ```
 
-That is `storybook dev -p 6006`. Open `http://localhost:6006`. Tokens and primitives live under `src/shared/ui/`. `npm run storybook:build` writes `storybook-static/`. Coverage against that build is `npm run check:storybook-coverage`.
+That is `storybook dev -p 6006`. Open `http://localhost:6006`. Tokens and primitives live under `src/shared/ui/`. `pnpm run storybook:build` writes `storybook-static/`. Coverage against that build is `pnpm run check:storybook-coverage`.
 
 The source catalog in `tests/e2e/storybook-surfaces.json` separates proposed classification and parent-story ownership from independent source approval and runtime acceptance. Refresh hashes from the actual accepted source, archive superseded approval scope, and leave changed contracts pending review. Historical census counts and absent planning paths are not current inventory limits or recreated snapshots. Source-only approval never certifies the full browser matrix.
 
@@ -113,14 +113,14 @@ Apply the same retained-versus-transition boundary to Combos errors. The retaine
 
 ## Playwright
 
-`npm run test:ui` is `playwright test --config playwright.config.mjs`. A real run needs `DURIN_QA_HARD_DIR` set to an absolute path under `qa/runs`. The config throws if that variable is missing or points outside `qa/runs`.
+`pnpm run test:ui` is `playwright test --config playwright.config.mjs`. A real run needs `DURIN_QA_HARD_DIR` set to an absolute path under `qa/runs`. The config throws if that variable is missing or points outside `qa/runs`.
 
 The intended runner is `tests/e2e/compose.yml`, which starts `tests/e2e/qa-child-entry.mjs`. That entry refuses to run unless `DURIN_QA_HARDENED=1`. Specs live in `tests/e2e`. Default workers: 1. Projects cover chromium, firefox, and webkit, each in dark and light, desktop and mobile.
 
 Storybook stories:
 
 ```bash
-npm run test:storybook
+pnpm run test:storybook
 ```
 
 That sets `DURINDOOR_QA_MODE=storybook` and runs `tests/e2e/storybook.spec.js`.
@@ -146,13 +146,13 @@ Translator tests that call `translateRequest` or `translateResponse` must import
 ## Full checks
 
 ```bash
-npm run lint
-npm run build
-npm run check:docs
-npm run check:agent-index
-npm run check:registry-index
-npm run catalog:diff
-cd tests && npm run test:ci
+pnpm run lint
+pnpm run build
+pnpm run check:docs
+pnpm run check:agent-index
+pnpm run check:registry-index
+pnpm run catalog:diff
+cd tests && pnpm run test:ci
 ```
 
 ## Generated indexes
@@ -160,15 +160,15 @@ cd tests && npm run test:ci
 After provider registry changes:
 
 ```bash
-npm run gen:registry-index
-npm run check:registry-index
+pnpm run gen:registry-index
+pnpm run check:registry-index
 ```
 
 After provider or executor navigation changes:
 
 ```bash
-npm run gen:agent-index
-npm run check:agent-index
+pnpm run gen:agent-index
+pnpm run check:agent-index
 ```
 
 Commit generated output when it changes. Do not hand-edit `open-sse/providers/registry/index.js` (header: `Auto-generated: static imports of all registry entries`) or `open-sse/AGENT-INDEX.md`. Details on [Provider registry](./provider-registry.mdx).

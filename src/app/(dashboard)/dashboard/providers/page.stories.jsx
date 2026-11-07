@@ -102,6 +102,32 @@ export const AllStatusScenarios = {
   },
 };
 
+export const BatchProviderUnavailable = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/providers",
+      routes: {
+        ...baseRoutes,
+        "POST /api/providers/test-batch": {
+          body: {
+            mode: "apikey",
+            summary: { total: 1, passed: 0, failed: 0, skipped: 0, unavailable: 1 },
+            results: [{ connectionId: "openai-main", connectionName: "Production", provider: "openai", valid: false, unavailable: true, error: "Provider unavailable - try again later" }],
+          },
+        },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Test all API Key connections" }));
+    await expect(await canvas.findByText("1 unavailable")).toBeVisible();
+    await expect(canvas.getByText("UNAVAILABLE", { exact: true })).toBeVisible();
+    await expect(canvas.getByText("Provider unavailable - try again later")).toBeVisible();
+  },
+};
+
 export const LoadFailureAndRetry = failedReadStory({ routes: baseRoutes, url: "/api/providers", pathname: "/dashboard/providers", params: {}, failure: "http", loadedText: "OpenAI" });
 
 export const MalformedResponseAndRetry = failedReadStory({ routes: baseRoutes, url: "/api/providers", pathname: "/dashboard/providers", params: {}, failure: "malformed", loadedText: "OpenAI" });

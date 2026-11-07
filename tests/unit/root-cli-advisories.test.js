@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -44,6 +44,30 @@ describe("scoped security major compatibility", () => {
       absolute: true, cwd: dir, ignore: ["**/*.stories.tsx"], nodir: true,
     }).map(file => file.slice(dir.length + 1)).sort()).toEqual(["Button.tsx", "nested/Label.tsx"]);
   });
+
+  for (const entry of ["default bundle", "raw", "ESM default bundle", "ESM raw"]) {
+    it(`glob ${entry} bounds globstar expansion and preserves matching`, async () => {
+      const resolved = docgenRequire.resolve("glob");
+      const bundled = entry.endsWith("default bundle");
+      const { Glob, globSync } = entry.startsWith("ESM")
+        ? await import(pathToFileURL(join(dirname(resolved).replace("/commonjs", "/esm"), bundled ? "index.min.js" : "index.js")).href)
+        : bundled ? docgenRequire("glob") : docgenRequire(join(dirname(resolved), "index.js"));
+      const amplified = "a/**/../b/**/../c/**/../d";
+      if (bundled) {
+        // The bundled 11.0.3 matcher stops splitting; external 11.0.5 throws instead.
+        expect(new Glob(amplified, { braceExpandMax: 1 }).patterns).toHaveLength(1);
+      } else {
+        expect(() => new Glob(amplified, { braceExpandMax: 1 })).toThrow(/too many patterns/);
+      }
+      const dir = fixture();
+      mkdirSync(join(dir, "a/b"), { recursive: true });
+      writeFileSync(join(dir, "a/b/file.tsx"), "");
+      writeFileSync(join(dir, "a/root.tsx"), "");
+      expect(globSync("**/a/**/b/**/*.tsx", { cwd: dir })).toEqual(["a/b/file.tsx"]);
+      expect(globSync("a/**/../*.tsx", { cwd: dir }).sort()).toEqual(["a/root.tsx"]);
+      expect(globSync("**/*.tsx", { cwd: dir, ignore: ["**/b/**"] })).toEqual(["a/root.tsx"]);
+    });
+  }
 
   it("the real docgen plugin transforms a component without a tsconfig", async () => {
     const dir = fixture();

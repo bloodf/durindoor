@@ -33,3 +33,7 @@ hard non-streaming overrides do not reserve it. Local admission rejections carry
 `admission_error` and the rejection code. The gateway returns that original
 response without account cooldown, circuit failure accounting or sibling-account
 rotation, because all accounts in the process share the same admission queue.
+
+Concurrency-tier wait timeouts also carry the local admission marker. They return
+503 without upstream dispatch and follow the same terminal gateway handling as
+payload queue pressure; ordinary upstream 503 responses retain account fallback.

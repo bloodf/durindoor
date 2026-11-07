@@ -1358,7 +1358,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       if (e instanceof ConcurrencyGateTimeoutError) {
         log?.warn?.("CONCURRENCY", `${provider} | gate timeout after ${e.timeoutMs}ms (${e.limit} max)`);
         finishTimeline("error", "error", "concurrency gate timeout");
-        return createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, e.message);
+        return {
+          ...createErrorResult(HTTP_STATUS.SERVICE_UNAVAILABLE, e.message),
+          localAdmissionRejected: true,
+        };
       }
       if (e?.name === "AbortError") {
         finishTimeline("aborted", "abort", "concurrency gate aborted");

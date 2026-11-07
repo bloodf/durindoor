@@ -158,7 +158,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
 
   it("enforces payload admission with concurrency limits disabled before dispatch", async () => {
     const result = await handleChatCore({
-      body: { model: "gpt-4o", messages: [{ role: "user", content: "x".repeat(17 * 1024 * 1024) }] },
+      body: { model: "gpt-4o", messages: [{ role: "user", content: "hello" }], metadata: { padding: "x".repeat(17 * 1024 * 1024) } },
       modelInfo: { provider: "openai", model: "gpt-4o" },
       credentials: { apiKey: "test-key", providerSpecificData: {} },
       log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -166,6 +166,28 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     expect(result).toMatchObject({ success: false, status: 413, localAdmissionRejected: true });
     expect(mocks.execute).not.toHaveBeenCalled();
     expect(getPayloadAdmissionStats()).toEqual({ activeBytes: 0, activeStreams: 0, activeRequests: 0, queuedRequests: 0 });
+  });
+
+  it("marks an actual concurrency timeout as local admission and rolls back payload capacity", async () => {
+    vi.useFakeTimers();
+    await acquireSlot("codex", 1);
+    try {
+      const pending = handleChatCore({
+        ...abortOptions(undefined),
+        providerConcurrencyLimit: { codex: 1 },
+      });
+      await vi.waitFor(() => expect(getGateStats().codex?.queued).toBe(1));
+      await vi.advanceTimersByTimeAsync(120_000);
+      const result = await pending;
+      expect(result).toMatchObject({ success: false, status: 503, localAdmissionRejected: true });
+      expect(result.response.status).toBe(503);
+      expect(mocks.execute).not.toHaveBeenCalled();
+      expect(getGateStats().codex).toEqual({ current: 1, queued: 0 });
+      expect(getPayloadAdmissionStats()).toEqual({ activeBytes: 0, activeStreams: 0, activeRequests: 0, queuedRequests: 0 });
+    } finally {
+      releaseSlot("codex");
+      vi.useRealTimers();
+    }
   });
 
   it("dispatches a native Kiro envelope with clean routing and accounting IDs", async () => {

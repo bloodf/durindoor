@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
   getNoAuthProviderCredentials,
@@ -13,7 +13,7 @@ import { runWithModelFallback } from "open-sse/services/modelFallback.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
+import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 
 /**
@@ -48,15 +48,17 @@ async function handleRerankHandler(request) {
   if (body.query === undefined || body.query === null) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
   if (!Array.isArray(body.documents)) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: documents (array)");
 
+  // Model and account fallbacks retain the original admission epoch.
+  const usageContext = { billingEpoch: apiKeyAuth.billingEpoch, usageEventId: `${getRequestId(request)}:${url.pathname}`, endpoint: url.pathname };
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelRerank(m, body, request, apiKey, apiKeyAuth.apiKeyId),
+    (m) => handleSingleModelRerank(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext),
     log
   );
 }
 
-async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId) {
+async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId, usageContext) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) {
     log.warn("RERANK", "Invalid model format", { model: modelStr });
@@ -69,7 +71,15 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
   const connectionId = request.headers.get("x-connection-id") || null;
   const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
 
-  const estimatedTokens = (String(body.query).length + JSON.stringify(body.documents).length) / 4;
+  /** Record the core receipt without consuming the response or guessing document charges. */
+  const recordSuccess = (result, credentials) => recordApiKeyUsageForResponse(apiKey, result.response, {
+    ...result.accounting,
+    ...usageContext,
+    provider,
+    model,
+    connectionId: credentials.connectionId || null,
+    modality: "rerank"
+  });
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
   } else {
@@ -89,11 +99,8 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
         credentials?.lastError || `No credentials for provider: ${provider}`,
       );
     }
-    const result = toCoreResult(
-      await handleRerankCore({ body, modelInfo: { provider, model }, credentials, log }),
-      "Rerank failed",
-    );
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    const result = await handleRerankCore({ body, modelInfo: { provider, model }, credentials, log });
+    if (result.success) return recordSuccess(result, credentials);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Rerank failed");
   }
 
@@ -124,20 +131,17 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = toCoreResult(
-      await handleRerankCore({
-        body,
-        modelInfo: { provider, model },
-        credentials: toExecutorCredentials({ ...credentials }),
-        log,
-        onRequestSuccess: async () => {
-          await clearAccountError(credentials.connectionId, credentials, model);
-        },
-      }),
-      "Rerank failed",
-    );
+    const result = await handleRerankCore({
+      body,
+      modelInfo: { provider, model },
+      credentials: toExecutorCredentials({ ...credentials }),
+      log,
+      onRequestSuccess: async () => {
+        await clearAccountError(credentials.connectionId, credentials, model);
+      },
+    });
 
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) return recordSuccess(result, credentials);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key

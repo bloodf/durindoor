@@ -14,13 +14,19 @@ import cloudflareAi from "./cloudflareAi.js";
 import antigravity from "./antigravity.js";
 import minimax from "./minimax.js";
 import together from "./together.js";
+import magnific from "./magnific.js";
+import deepai from "./deepai.js";
+import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const ADAPTERS = {
   openai: createOpenAIAdapter("openai"),
   // Dedicated adapter (OmniRoute #7108): MiniMax image_generation is not
   // OpenAI-compatible (aspect_ratio request, data.image_urls response).
   minimax,
+  // Same API on the China host the registry declares.
+  "minimax-cn": { ...minimax, buildUrl: () => PROVIDER_MEDIA["minimax-cn"]?.imageConfig?.baseUrl },
   openrouter: createOpenAIAdapter("openrouter"),
+  venice: createOpenAIAdapter("venice"),
   recraft: createOpenAIAdapter("recraft"),
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),
   together,
@@ -37,6 +43,8 @@ const ADAPTERS = {
   "stability-ai": stabilityAi,
   "black-forest-labs": blackForestLabs,
   runwayml,
+  magnific,
+  deepai,
   "cloudflare-ai": cloudflareAi,
 };
 

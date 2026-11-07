@@ -1,6 +1,8 @@
 import React from "react";
 import { expect, userEvent, within } from "storybook/test";
 import { GenericExampleCard } from "./GenericExampleCard";
+import { getModelsByProviderId } from "@/shared/constants/models";
+import { effectiveSyncedModels, mergeSyncedCatalog, normalizeSyncedModels } from "@/lib/modelAutoSync/catalog.js";
 
 // Real RGBA PNGs: partial preview is 32×32, completed generation is 64×64.
 const partialPng = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAANUlEQVR4nO3XMREAAAgDMZzWAUrwDDJYMnT/y9ZKz36uBBAgQIAAAQIECBAgQIAAAQJ5vucHgepgiB6GLQcAAAAASUVORK5CYII=";
@@ -50,6 +52,42 @@ export const ImageGen = {
         "POST /api/v1/images/generations": { body: { data: [{ b64_json: generatedPng }] }, status: 200 },
       },
     },
+  },
+};
+
+export const SyncedImageModel = {
+  args: { providerId: "openai", kind: "image" },
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-providers/image/openai",
+      params: { kind: "image", id: "openai" },
+      routes: {
+        "GET /api/tunnel/status": { body: {}, status: 200 },
+        "GET /api/providers/client": { body: { connections: [] }, status: 200 },
+        "GET /api/models/custom": { body: { models: [] }, status: 200 },
+        "GET /api/models/auto-sync?provider=openai": () => {
+          const staticModels = getModelsByProviderId("openai");
+          const rows = normalizeSyncedModels([{ id: "gpt-image-sync-fixture", kind: "image", display_name: "Synced Image Fixture" }], staticModels);
+          const catalog = mergeSyncedCatalog(null, rows, { now: Date.parse("2026-01-01T00:00:00Z"), staticModels });
+          const models = effectiveSyncedModels(catalog, staticModels).filter((row) => row.kind === "image");
+          return { body: { providers: { openai: { eligible: true, models } } }, status: 200 };
+        },
+        "POST /api/v1/images/generations": async (request) => {
+          const body = await request.json();
+          if (body.model !== "openai/gpt-image-sync-fixture") return { body: { error: "Unexpected image model" }, status: 400 };
+          return { body: { data: [{ b64_json: generatedPng }] }, status: 200 };
+        },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("combobox", { name: "Model" }));
+    await userEvent.click(await within(document.body).findByRole("option", { name: "Synced Image Fixture" }));
+    await expect(canvas.getByRole("region", { name: "Request example" })).toHaveTextContent("openai/gpt-image-sync-fixture");
+    await userEvent.click(canvas.getByRole("button", { name: "Run" }));
+    await expect(await canvas.findByRole("img", { name: "Generated" })).toBeVisible();
   },
 };
 

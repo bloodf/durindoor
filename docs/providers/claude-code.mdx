@@ -52,6 +52,14 @@ npm install -g @anthropic-ai/claude-code@latest
 
 If you updated the CLI and still see old-version behaviour, restart DurinDoor to clear the cached headers.
 
+### Beta flags by route
+
+The outbound `anthropic-beta` set depends on how the request authenticates and where it goes, following the Claude Code 2.1.312 capture:
+
+- `cc/` with an OAuth token (Bearer) sends the OAuth set: the first-party flags plus `oauth-2025-04-20` (second in the list) and `extended-cache-ttl-2025-04-11`. The Claude quota auto-ping uses the same set.
+- `cc/` with an API key (`x-api-key`) sends the first-party set without the OAuth flags.
+- AgentRouter and `anthropic-compatible-*` nodes on any host other than `api.anthropic.com` never receive the flags Claude Code only sends to Anthropic's own host: `prompt-caching-scope-2026-01-05`, `thinking-binding-controls-2026-08-01` and `cache-diagnosis-2026-04-07`. An `anthropic-compatible-*` node whose base URL is empty or `api.anthropic.com` keeps `prompt-caching-scope-2026-01-05`.
+
 ### Betas passed through from the client
 
 DurinDoor builds the outbound `anthropic-beta` header itself. Three flags from the incoming request are always added to it when the client sends them, because the body fields they unlock return 400 without them:
@@ -69,6 +77,15 @@ The same allowlist applies to Claude models on Anthropic-compatible nodes.
 The connection uses the Claude subscription Messages endpoint. DurinDoor adds Claude Code compatibility metadata and can rename tools upstream, then maps tool names back for the client. This is distinct from the API-key Anthropic provider.
 
 Use a current Claude Code client when a model requires newer request headers. The gateway preserves required beta flags from compatible clients, but model entitlement still depends on the account.
+
+`cc/claude-haiku-5-5` (Claude Haiku 5.5) is listed alongside the 4.5 Haiku.
+
+Haiku 5-series models use adaptive thinking and `output_config.effort` on both
+native `/v1/messages` requests and translated OpenAI or Responses requests.
+Haiku 3/4 and unversioned Haiku aliases keep budget thinking: native adaptive
+requests are downgraded to enabled thinking with a 10,000-token budget and the
+effort field is removed. Dotted and dashed version identifiers are recognized.
+Forced tool choice is still normalized to automatic choice while thinking is on.
 
 ## Models
 

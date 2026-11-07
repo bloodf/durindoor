@@ -1,0 +1,245 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// #1085 / #1548: a provider-accepted async image job can bill even when DurinDoor
+// never sees its terminal state. Real handler, core, adapter, policy and SQLite;
+// only credentials, model parsing and the provider HTTP transport are synthetic.
+
+const state = vi.hoisted(() => ({ credentials: vi.fn(), markUnavailable: vi.fn(), combo: null }));
+vi.mock("@/sse/services/auth.js", () => ({
+  resolveClientApiKey: async () => ({ apiKey: "job-secret", auth: { ok: true, apiKeyId: "job-key" } }),
+  hasValidCliToken: async () => false,
+  extractApiKey: () => "job-secret",
+  getProviderCredentialsWithQuotaPreflight: (...args) => state.credentials(...args),
+  getNoAuthProviderCredentials: vi.fn(),
+  markAccountUnavailable: (...args) => state.markUnavailable(...args),
+  clearAccountError: vi.fn(),
+}));
+vi.mock("@/sse/services/model.js", () => ({
+  getModelInfo: async (value) => { const [provider, ...model] = value.split("/"); return { provider, model: model.join("/") }; },
+  getComboModels: async () => state.combo,
+  getComboCanonicalName: async () => (state.combo ? "image-combo" : null),
+}));
+vi.mock("@/sse/services/mediaRoutes.js", () => ({ wantsDefaultRoute: (model) => !model, resolveMediaRoute: vi.fn(), defaultRouteComboOptions: () => ({}) }));
+vi.mock("@/sse/services/tokenRefresh.js", () => ({ checkAndRefreshToken: async (_p, c) => c, updateProviderCredentials: vi.fn() }));
+vi.mock("open-sse/executors/index.js", () => ({ getExecutor: () => ({ noAuth: false }) }));
+vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetch(...args) }));
+vi.mock("open-sse/handlers/imageProviders/_base.js", async (original) => ({ ...(await original()), POLL_INTERVAL_MS: 1 }));
+
+const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
+let directory; let originalEnv; let listeners; let adapter; let database; let handleImage; let policy;
+const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+const rows = () => adapter.all("SELECT * FROM usageHistory ORDER BY id");
+const send = (controller = new AbortController()) => handleImage(new Request("http://localhost/v1/images/generations", {
+  method: "POST", signal: controller.signal, body: JSON.stringify({ model: "runwayml/gen4_image", prompt: "fixture" }),
+}));
+const expectAcceptedUnknown = (row, connectionId = "account-a") => {
+  expect(row).toMatchObject({ provider: "runwayml", model: "gen4_image", connectionId, apiKey: "job-secret", endpoint: "/v1/images/generations", status: "accepted", cost: null, promptTokens: 0, completionTokens: 0 });
+  expect(JSON.parse(row.meta)).toMatchObject({ modality: "image", costStatus: "unknown", costSource: "accepted-job", jobState: "accepted", nativeUnits: {} });
+};
+
+// Transforming the handler, DB and policy graph is the slow part. Warm it once so
+// beforeEach keeps the default hook timeout and a real hang still fails.
+beforeAll(async () => {
+  const before = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+  const env = Object.fromEntries(["DATA_DIR", "DURINDOOR_DATABASE_ENGINE"].map((name) => [name, process.env[name]]));
+  const warm = fs.mkdtempSync(path.join(os.tmpdir(), "image-accepted-job-warm-"));
+  process.env.DATA_DIR = warm;
+  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  delete global._dbAdapter;
+  try {
+    await import("@/lib/db/index.js");
+    await import("@/sse/handlers/imageGeneration.js");
+    await import("@/sse/services/apiKeyPolicy.js");
+    await import("@/lib/db/repos/monitoringUsageRepo.js");
+  } finally {
+    await global._dbAdapter?.instance?.close?.();
+    delete global._dbAdapter;
+    for (const signal of signals) for (const listener of process.listeners(signal)) if (!before.get(signal).has(listener)) process.removeListener(signal, listener);
+    for (const [name, value] of Object.entries(env)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+    fs.rmSync(warm, { recursive: true, force: true });
+  }
+}, 60_000);
+
+beforeEach(async () => {
+  listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+  originalEnv = Object.fromEntries(["HOME", "DATA_DIR", "TMPDIR", "TMP", "TEMP", "DURINDOOR_DATABASE_ENGINE"].map((name) => [name, process.env[name]]));
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), "image-accepted-job-"));
+  for (const name of ["home", "data", "tmp"]) fs.mkdirSync(path.join(directory, name));
+  process.env.HOME = path.join(directory, "home");
+  process.env.DATA_DIR = path.join(directory, "data");
+  for (const name of ["TMPDIR", "TMP", "TEMP"]) process.env[name] = path.join(directory, "tmp");
+  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  delete global._dbAdapter;
+  delete global._apiKeyLimitState;
+  vi.resetModules();
+  vi.clearAllMocks();
+  state.credentials.mockReset().mockResolvedValue({ connectionId: "account-a", apiKey: "provider-secret", connectionName: "A" });
+  state.markUnavailable.mockReset().mockResolvedValue({ shouldFallback: false });
+  state.combo = null;
+  vi.stubGlobal("fetch", vi.fn());
+  database = await import("@/lib/db/index.js");
+  adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+  adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, policy, createdAt) VALUES(?, ?, ?, 1, '[]', ?, ?)",
+    ["job-key", "job-secret", "Accepted jobs", JSON.stringify({ maxCostUsd: 0.5 }), new Date().toISOString()]);
+  ({ handleImageGeneration: handleImage } = await import("@/sse/handlers/imageGeneration.js"));
+  policy = await import("@/sse/services/apiKeyPolicy.js");
+});
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await global._dbAdapter?.instance?.close?.();
+  delete global._dbAdapter;
+  delete global._apiKeyLimitState;
+  vi.unstubAllGlobals();
+  for (const signal of signals) for (const listener of process.listeners(signal)) if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);
+  for (const [name, value] of Object.entries(originalEnv)) { if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+describe("accepted async image jobs without a terminal observation", () => {
+  it("records a client abort during polling as accepted with unknown cost, not as spend or free", async () => {
+    const controller = new AbortController();
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => { controller.abort(); throw controller.signal.reason; });
+    const response = await send(controller);
+    expect(response.status).toBe(499);
+    expect(state.markUnavailable).not.toHaveBeenCalled();
+    expect(rows()).toHaveLength(1);
+    expectAcceptedUnknown(rows()[0]);
+    expect(await database.getApiKeyUsageTotals("job-key")).toMatchObject({ totalRequests: 1, totalCost: 0, unknownCostRequests: 1 });
+    const request = new Request("http://localhost/v1/images/generations", { method: "POST" });
+    expect(await policy.enforceApiKeyModelPolicy(request, "runwayml/gen4_image", "job-secret")).toBeNull();
+    const { getMonitoringUsage } = await import("@/lib/db/repos/monitoringUsageRepo.js");
+    const monitoring = await getMonitoringUsage({ activityStart: "2000-01-01T00:00:00.000Z", healthStart: "2000-01-01T00:00:00.000Z" });
+    expect(monitoring.successRate).toBe(100);
+    expect(monitoring.health[0]).toMatchObject({ id: "runwayml", requests: 1, errors: 0 });
+  });
+
+  it("keeps the budget unknown even when an operator image tariff exists: nothing was measured", async () => {
+    const { updatePricing } = await import("@/lib/db/repos/pricingRepo.js");
+    await updatePricing({ runwayml: { gen4_image: { native: { unit: "image", rate: 0.5 } } } });
+    const controller = new AbortController();
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => { controller.abort(); throw controller.signal.reason; });
+    await send(controller);
+    expectAcceptedUnknown(rows()[0]);
+  });
+
+  it("records nothing when the client aborts before the provider accepted the job", async () => {
+    const controller = new AbortController();
+    fetch.mockImplementationOnce(async () => { controller.abort(); throw controller.signal.reason; });
+    expect((await send(controller)).status).toBe(499);
+    expect(rows()).toEqual([]);
+  });
+
+  it("records a polling timeout once and keeps the normal failure handling", async () => {
+    const now = Date.now();
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(now + 600_000);
+      return json({ status: "RUNNING" });
+    });
+    const response = await send();
+    expect(response.status).toBe(502);
+    expect(state.markUnavailable).toHaveBeenCalledTimes(1);
+    expect(rows()).toHaveLength(1);
+    expectAcceptedUnknown(rows()[0]);
+  });
+
+  it("does not resubmit to another account once a job was accepted", async () => {
+    state.credentials.mockReset()
+      .mockResolvedValueOnce({ connectionId: "account-a", apiKey: "a", connectionName: "A" })
+      .mockResolvedValue({ connectionId: "account-b", apiKey: "b", connectionName: "B" });
+    state.markUnavailable.mockResolvedValue({ shouldFallback: true });
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockResolvedValueOnce(json({}, 500));
+    expect((await send()).status).toBe(502);
+    expect(state.markUnavailable).toHaveBeenCalledTimes(1);
+    expect(state.credentials).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(rows()).toHaveLength(1);
+    expectAcceptedUnknown(rows()[0], "account-a");
+  });
+
+  it("still falls back to another account when the first one refused the submission", async () => {
+    state.credentials.mockReset()
+      .mockResolvedValueOnce({ connectionId: "account-a", apiKey: "a", connectionName: "A" })
+      .mockResolvedValueOnce({ connectionId: "account-b", apiKey: "b", connectionName: "B" });
+    state.markUnavailable.mockResolvedValueOnce({ shouldFallback: true });
+    fetch
+      .mockResolvedValueOnce(json({ error: { message: "quota" } }, 429))
+      .mockResolvedValueOnce(json({ id: "task-2" })).mockResolvedValueOnce(json({ status: "SUCCEEDED", output: ["https://x.test/i.png"] }));
+    expect((await send()).status).toBe(200);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ connectionId: "account-b", status: "ok" });
+  });
+
+  it("records a malformed status body after acceptance", async () => {
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockResolvedValueOnce(new Response("{not json", { status: 200 }));
+    expect((await send()).status).toBe(502);
+    expectAcceptedUnknown(rows()[0]);
+  });
+
+  it.each([
+    ["provider reports failure", () => json({ status: "FAILED", failure: "nope" })],
+    ["provider reports cancellation", () => json({ status: "CANCELLED" })],
+  ])("consumes nothing when the %s", async (_name, poll) => {
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => poll());
+    expect((await send()).status).toBe(502);
+    expect(rows()).toEqual([]);
+  });
+
+  it("consumes nothing when the provider refuses the submission", async () => {
+    fetch.mockResolvedValueOnce(json({ error: { message: "no" } }, 400));
+    expect((await send()).status).toBe(400);
+    expect(rows()).toEqual([]);
+  });
+
+  it("consumes nothing when an accepted response carries no job id", async () => {
+    fetch.mockResolvedValueOnce(json({}));
+    expect((await send()).status).toBe(502);
+    expect(rows()).toEqual([]);
+  });
+
+  it("does not let a ledger failure replace the abort outcome", async () => {
+    const controller = new AbortController();
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => { controller.abort(); throw controller.signal.reason; });
+    adapter.run("DROP TABLE usageHistory");
+    expect((await send(controller)).status).toBe(499);
+  });
+});
+
+describe("combo fallback after an accepted async image job", () => {
+  const comboSend = () => handleImage(new Request("http://localhost/v1/images/generations", {
+    method: "POST", body: JSON.stringify({ model: "image-combo", prompt: "fixture" }),
+  }));
+
+  it("surfaces the timeout instead of starting a job on the next member", async () => {
+    state.combo = ["runwayml/gen4_image", "fal-ai/flux"];
+    const now = Date.now();
+    fetch.mockResolvedValueOnce(json({ id: "task-1" })).mockImplementationOnce(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(now + 600_000);
+      return json({ status: "RUNNING" });
+    });
+    const response = await comboSend();
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-durindoor-accepted-job")).toBe("1");
+    expect(await response.text()).toContain("Runway polling timeout");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(state.credentials).toHaveBeenCalledTimes(1);
+    expect(rows()).toHaveLength(1);
+    expectAcceptedUnknown(rows()[0]);
+  });
+
+  it("still moves to the next member when the first refused the submission", async () => {
+    state.combo = ["runwayml/gen4_image", "fal-ai/flux"];
+    fetch
+      .mockResolvedValueOnce(json({ error: { message: "upstream down" } }, 503))
+      .mockResolvedValueOnce(json({ status_url: "https://q.test/s", response_url: "https://q.test/r" }))
+      .mockResolvedValueOnce(json({ status: "COMPLETED" }))
+      .mockResolvedValueOnce(json({ images: [{ url: "https://x.test/i.png" }] }));
+    const response = await comboSend();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-durindoor-accepted-job")).toBeNull();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ provider: "fal-ai", status: "ok" });
+  });
+});

@@ -20,6 +20,7 @@ import {
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { fixMissingToolResponses } from "../concerns/toolCall.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
@@ -523,8 +524,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   if (body.tools && Array.isArray(body.tools)) {
     result.tools = body.tools.
     flatMap((tool) => {
-      // Already in Chat Completions format: { type: "function", function: { name, ... } }
-      if (tool.function) return tool;
+      // Already in Chat Completions format: { type: "function", function: { name, ... } }.
+      // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.
+      if (tool.function) {
+        if (tool.function.parameters === undefined) return tool;
+        return { ...tool, function: { ...tool.function, parameters: normalizeToolSchema(tool.function.parameters, tool.function.name) } };
+      }
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
       // Dotted names stay dotted here: translateRequest aliases the OpenAI intermediate
@@ -538,7 +543,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           function: {
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(subtool.parameters),
+            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name)),
             strict: subtool.strict
           }
         }));
@@ -565,6 +570,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Responses API function tool: { type: "function", name, description, parameters }
       // Only convert when a non-empty name is present; skip hosted tools without one.
+      // Responses clients get the same schema validation/coercion as Chat clients (#1334).
       const name = tool.name;
       if (!name || !isString(name) || name.trim() === "") return null;
       return {
@@ -572,7 +578,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         function: {
           name,
           description: String(tool.description || ""),
-          parameters: normalizeToolParameters(tool.parameters),
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name)),
           strict: tool.strict
         }
       };
@@ -856,7 +862,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           type: OPENAI_BLOCK.FUNCTION,
           name,
           description: String(tool.function.description || ""),
-          parameters: normalizeToolParameters(tool.function.parameters),
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.function.parameters, name)),
           // The Responses API requires `strict` on every function tool; default to
           // false (non-strict) instead of forwarding an undefined field.
           strict: tool.function.strict ?? false

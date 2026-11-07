@@ -1,4 +1,4 @@
-import { KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
+import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
@@ -216,7 +216,7 @@ function parseProviderErrorMessage(bodyText, fallback) {
 
 async function probeCloudCodeAssistAccess(connection, accessToken, effectiveProxy = null) {
   const userAgent = connection.provider === "antigravity" || connection.provider === "agy" ?
-  "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0" :
+  ANTIGRAVITY_IDE_USER_AGENT :
   "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0";
 
   const res = await fetchWithConnectionProxy(CLOUD_CODE_ASSIST_TEST_URL, {
@@ -532,6 +532,7 @@ const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
 "lemonade",
 "llamafile",
 "llama-cpp",
+"mlx",
 "triton",
 "docker-model-runner",
 "xinference",

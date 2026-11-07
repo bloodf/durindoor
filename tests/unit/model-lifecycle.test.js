@@ -9,8 +9,22 @@ import { checkModelLifecycle } from "../../open-sse/handlers/chatCore/modelLifec
 const CURRENT_DATE = new Date("2026-07-26T00:00:00.000Z");
 
 describe("model lifecycle", () => {
-  it("keeps all 33 source-verified lifecycle records", () => {
-    expect(MODEL_LIFECYCLE_RECORDS).toHaveLength(33);
+  it("keeps all 36 source-verified lifecycle records", () => {
+    expect(MODEL_LIFECYCLE_RECORDS).toHaveLength(36);
+  });
+
+  it("rejects retired Codex gpt-5.5 ids with a gpt-6.1-sol replacement", () => {
+    for (const [model, replacement] of [["gpt-5.5", "gpt-6.1-sol"], ["gpt-5.5-review", "gpt-6.1-sol"], ["gpt-5.5-image", "gpt-6-sol-image"]]) {
+      expect(getModelLifecycleDecision("codex", model, "2026-10-14T00:00:00.000Z")).toMatchObject({
+        provider: "codex", model, status: "shutdown", action: "reject",
+        replacement: { provider: "codex", model: replacement },
+      });
+    }
+    expect(getModelLifecycleDecision("codex", "gpt-5.5", "2026-10-13T00:00:00.000Z").status).toBe("deprecated");
+    expect(getModelLifecycleDecision("bazaarlink", "gpt-5.5", "2026-11-01T00:00:00.000Z").status).toBe("untracked");
+    const result = checkModelLifecycle({ provider: "codex", canonicalModel: "gpt-5.5", asOf: "2026-11-01T00:00:00.000Z" });
+    expect(result.status).toBe(410);
+    expect(result.error).toMatch(/codex\/gpt-6\.1-sol/);
   });
 
   it("flags Kimi Platform K2 models as deprecated until 2026-12-31", () => {

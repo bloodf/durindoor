@@ -6,6 +6,7 @@ import path from "node:path";
 import { describe, it, beforeAll, afterAll, vi } from "vitest";
 import { createRequire } from "node:module";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 // lowdb was removed when the DB layer migrated to SQLite; it's only used by
 // this legacy comparison benchmark. Skip the whole suite when it's not present
 // instead of failing collection with ERR_MODULE_NOT_FOUND.
@@ -52,7 +53,8 @@ beforeAll(async () => {
   await lowDb.read();
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await disposeLoadedRequestDetailsRepo();
   if (tempSqlite) fs.rmSync(tempSqlite, { recursive: true, force: true });
   if (tempLowdb) fs.rmSync(tempLowdb, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;

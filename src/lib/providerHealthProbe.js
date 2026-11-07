@@ -135,7 +135,7 @@ async function probeAnthropicCompatible(connection, effectiveProxy, fetcher) {
 }
 
 const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
-  "9router", "ollama-local", "lm-studio", "vllm", "lemonade", "llamafile", "llama-cpp",
+  "9router", "ollama-local", "lm-studio", "vllm", "lemonade", "llamafile", "llama-cpp", "mlx",
   "triton", "docker-model-runner", "xinference", "oobabooga",
 ]);
 

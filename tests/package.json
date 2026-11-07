@@ -12,12 +12,14 @@
     "test:ci": "node __baseline__/run-ci.mjs"
   },
   "devDependencies": {
-    "happy-dom": "^20.11.2",
+    "@axe-core/playwright": "4.13.0",
+    "happy-dom": "^21.0.4",
     "jsonc-parser": "^3.3.1",
-    "vitest": "^4.1.10"
+    "playwright": "1.63.0",
+    "vitest": "^4.1.12"
   },
   "engines": {
-    "node": "^20.19.0 || >=22.12.0",
+    "node": "26.13.0",
     "npm": "11.20.0"
   },
   "dependencies": {

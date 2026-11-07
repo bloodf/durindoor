@@ -1,17 +1,19 @@
-import { withRequestCorrelation } from "../utils/requestCorrelation.js";
+import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   resolveClientApiKey,
   getNoAuthProviderCredentials,
-  getProviderCredentialsWithQuotaPreflight, markAccountUnavailable,
+  getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleSttCore } from "open-sse/handlers/sttCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
 
@@ -23,6 +25,7 @@ const CREDENTIALED_PROVIDERS = new Set(
 );
 
 async function handleSttHandler(request, { kind = "transcription" } = {}) {
+  await captureRequestBillingEpoch(request);
   let formData;
   try {
     formData = await request.formData();
@@ -37,6 +40,8 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
   const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
     required: settings.requireApiKey === true,
   });
+  // Keep the admission epoch, including null, through combo and account retries.
+  const { billingEpoch } = apiKeyAuth;
   if (!apiKeyAuth.ok) return errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
@@ -52,27 +57,46 @@ async function handleSttHandler(request, { kind = "transcription" } = {}) {
     return handleComboChat({
       body: {},
       models: route.models,
-      handleSingleModel: (_b, m) => handleSingleModelStt(formData, m, kind, request, apiKey, apiKeyAuth.apiKeyId),
+      handleSingleModel: (_b, m) => handleSingleModelStt(formData, m, kind, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),
       log,
       ...defaultRouteComboOptions("stt")
     });
   }
-  return handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyAuth.apiKeyId);
+  return handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch);
 }
 
-async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyId) {
+async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, apiKeyId, billingEpoch) {
   const modelInfo = await getModelInfo(modelStr);
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
 
   const { provider, model } = modelInfo;
+  if (provider === "codex" && model !== "transcribe") return errorResponse(HTTP_STATUS.BAD_REQUEST, "Use model cx/transcribe for Codex STT");
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
   const connectionId = request.headers.get("x-connection-id") || null;
   const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
 
-  // Audio bytes are not model tokens. Stage 1 records the successful request;
-  // authoritative speech usage accounting is completed in the quota program.
-  const estimatedTokens = 0;
+  /** One logical event survives account/combo retries. Only successful execution
+   * reaches the ledger; provider tokens are validated there without inventing a split.
+   * Whisper's published $0.006/minute rate applies only to the official endpoint:
+   * https://developers.openai.com/api/docs/pricing (2026-10-09).
+   */
+  const recordSuccess = (result, credentials) => {
+    const nativeUnits = result.nativeUnits || {};
+    const priced = provider === "openai" && model === "whisper-1" &&
+      AI_PROVIDERS[provider]?.sttConfig?.baseUrl === "https://api.openai.com/v1/audio/transcriptions" &&
+      nativeUnits.audioSeconds !== undefined;
+    return recordApiKeyUsageForResponse(apiKey, result.response, {
+      billingEpoch,
+      usageEventId: `${getRequestId(request)}:stt`, provider, model,
+      connectionId: credentials.connectionId || null,
+      endpoint: kind === "translation" ? "/v1/audio/translations" : "/v1/audio/transcriptions",
+      modality: "stt", tokens: nativeUsageFromValue(result.usageValue) || {}, nativeUnits,
+      cost: priced ? nativeUnits.audioSeconds * 0.006 / 60 : null,
+      costStatus: priced ? "estimated" : "unknown",
+      costSource: priced ? "https://developers.openai.com/api/docs/pricing#whisper" : "unavailable",
+    });
+  };
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   // Local/no-auth execution remains unrestricted only for keys with zero
@@ -91,7 +115,7 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
     const coreOptions = { provider, model, formData, kind, sttConfig: AI_PROVIDERS[provider]?.sttConfig };
     if (credentials.connectionId) coreOptions.credentials = credentials;
     const result = await handleSttCore(coreOptions);
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) return recordSuccess(result, credentials);
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "STT failed");
   }
 
@@ -119,9 +143,31 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
 
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
-    const result = await handleSttCore({ provider, model, formData, kind, credentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig });
+    const isCodex = provider === "codex";
+    let result;
+    try {
+      const attemptCredentials = isCodex ? await checkAndRefreshToken(provider, credentials) : credentials;
+      const args = { provider, model, formData, kind, credentials: attemptCredentials, sttConfig: AI_PROVIDERS[provider]?.sttConfig, signal: request.signal, log };
+      result = await handleSttCore(args);
+      // One forced refresh when a Codex token is rejected mid-validity.
+      if (isCodex && result.status === 401 && attemptCredentials.refreshToken && !request.signal.aborted) {
+        const refreshed = await checkAndRefreshToken(provider, attemptCredentials, null, { force: true });
+        if (refreshed.accessToken !== attemptCredentials.accessToken) result = await handleSttCore({ ...args, credentials: refreshed });
+      }
+    } catch (error) {
+      if (!isCodex) throw error;
+      return errorResponse(HTTP_STATUS.BAD_GATEWAY, "STT credential or transport failure");
+    }
 
-    if (result.success) return recordApiKeyUsageForResponse(apiKey, result.response, { tokens: estimatedTokens, cost: 0 });
+    if (result.success) {
+      if (isCodex) await clearAccountError(credentials.connectionId, credentials, model);
+      return recordSuccess(result, credentials);
+    }
+    if (isCodex) {
+      if (request.signal?.aborted) return errorResponse(HTTP_STATUS.GATEWAY_TIMEOUT, "Transcription cancelled");
+    }
+    // Bad audio, unsupported options, a missing ffmpeg and local capacity are not account faults.
+    if (result.local) return result.response || errorResponse(result.status, result.error);
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
       // The credential this attempt actually presented, so a durable-key

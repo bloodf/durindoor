@@ -773,6 +773,13 @@ export async function serializeBypassRequestBody(body) {
  * dispatcher and resolves the CONNECT target beyond that boundary.
  */
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  // `directFetch` lets an executor replace the no-proxy transport (OpenCode's
+  // TLS fingerprint, upstream ce060c79). Proxies and relays still take priority.
+  const { directFetch: directTransport, ...fetchOptions } = options;
+  options = fetchOptions;
+  const sendDirect = () => isFunction(directTransport) ?
+  runProviderAttemptDispatch(() => directTransport(url, options)) :
+  directFetch(url, options);
   // Native fetch can hide method-preserving 307/308 redirects inside one call,
   // which would send a second quota-bearing request under the first dispatch
   // ticket. Provider runtime endpoints are fixed configuration, so redirects
@@ -882,13 +889,13 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         throw new Error("[ProxyFetch] Proxy required but failed (strictProxy=true)");
       }
       logTransportDiagnostic(console.debug, "proxy_direct_fallback", proxyError);
-      return directFetch(url, options);
+      return sendDirect();
     }
   }
 
   // got-scraping disabled — use undici direct egress with Happy Eyeballs.
   // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
-  return directFetch(url, options);
+  return sendDirect();
 }
 
 /**

@@ -172,6 +172,9 @@ export const MODEL_PRICING = {
   // === Anthropic / Claude ===
   /** Opus 5.5 list price: $4 in / $20 out, $0.20 cache read, $5 5-minute cache write. */
   "claude-opus-5-5": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00, cache_creation: 5.00 },
+  /** Haiku 5.5 list price (platform.claude.com/docs/en/about-claude/pricing): prompts over 100K tokens bill every rate at 5x. */
+  "claude-haiku-5-5": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
+  "claude-haiku-5.5": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
   "claude-sonnet-5-5": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50 },
   "claude-sonnet-5": { input: 3.00, output: 15.00, cached: 0.30, reasoning: 15.00, cache_creation: 3.75 },
   "claude-opus-4-6": { input: 5.00, output: 25.00, cached: 0.50, reasoning: 25.00, cache_creation: 6.25 },
@@ -278,6 +281,8 @@ export const MODEL_PRICING = {
 
   // === Kimi (third-party registries; first-party Kimi Code subscriptions remain quota-based) ===
   "kimi-k3": { input: 3.00, output: 15.00, cached: 0.30 },
+  // Global row (matches any provider): upstream 5cd4a756 publishes these rates for OpenCode Go; without it kimi-k3.1-pro fell to the kimi-* fallback.
+  "kimi-k3.1-pro": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.00 },
   "kimi-k2": { input: 1.00, output: 4.00, cached: 0.50, reasoning: 6.00, cache_creation: 1.00 },
   "kimi-k2-thinking": { input: 1.50, output: 6.00, cached: 0.75, reasoning: 9.00, cache_creation: 1.50 },
   "kimi-k2.5": { input: 1.20, output: 4.80, cached: 0.60, reasoning: 7.20, cache_creation: 1.20 },

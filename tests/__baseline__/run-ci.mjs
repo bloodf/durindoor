@@ -6,6 +6,8 @@ import { analyzeVitestReport, printAnalysis } from "./verify-no-regression.mjs";
 import { verifyBaselineDiff } from "./verify-baseline-diff.mjs";
 import { writeDiagnosticJunit, writeJunitReport } from "./junit.mjs";
 
+import { validateCompletedReportStates } from "./report-states.mjs";
+
 const testsDir = fileURLToPath(new URL("../", import.meta.url));
 const reportPath = path.join(testsDir, ".test-results.json");
 const junitPath = path.join(testsDir, ".test-results.junit.xml");
@@ -26,6 +28,7 @@ export function validateVitestExecution(report, exitCode, signal = null) {
   if (!Array.isArray(report?.testResults)) throw new Error("Vitest report has no testResults[]");
   if (![0, 1].includes(exitCode)) throw new Error(`Vitest exited with infrastructure status ${exitCode}`);
   if (report.testResults.length === 0) throw new Error("Vitest collected zero test suites");
+  validateCompletedReportStates(report);
   const assertions = report.testResults.flatMap((suite) => suite.assertionResults || []);
   if (assertions.length === 0) throw new Error("Vitest collected zero tests");
   const collectionFailures = report.testResults.filter(
@@ -72,8 +75,8 @@ export function runCi() {
   if (result.error) throw result.error;
 
   const report = readFreshReport(reportPath, startedAt);
-  writeJunitReport(report, junitPath);
   validateVitestExecution(report, result.status ?? 1, result.signal);
+  writeJunitReport(report, junitPath);
   const analysis = analyzeVitestReport(report);
   printAnalysis(analysis);
   verifyBaselineDiff();

@@ -6,8 +6,10 @@ import { CardSkeleton } from "@/shared/components";
 import { CLI_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
+import Button from "@/shared/ui/components/Button.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
+import { loadToolConfiguration } from "../toolConfiguration.js";
 import { fallbackConnectionModels } from "../connectionModels";
 import {
   ClaudeToolCard, CodexToolCard, DroidToolCard, OpenClawToolCard,
@@ -23,6 +25,8 @@ export default function ToolDetailClient({ toolId, machineId }) {
   const tool = CLI_TOOLS[toolId];
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [modelMappings, setModelMappings] = useState({});
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [tunnelEnabled, setTunnelEnabled] = useState(false);
@@ -33,33 +37,25 @@ export default function ToolDetailClient({ toolId, machineId }) {
 
   useEffect(() => {
     let mounted = true;
+    setLoading(true);
     (async () => {
       try {
-        const [provRes, settingsRes, tunnelRes, keysRes] = await Promise.all([
-          fetch("/api/providers"),
-          fetch("/api/settings"),
-          fetch("/api/tunnel/status"),
-          fetch("/api/keys"),
-        ]);
+        const { providers, settings, tunnel, keys } = await loadToolConfiguration();
         if (!mounted) return;
-        if (provRes.ok) { const data = await provRes.json(); setConnections(data.connections || []); }
-        if (settingsRes.ok) { const data = await settingsRes.json(); setCloudEnabled(data.cloudEnabled || false); }
-        if (tunnelRes.ok) {
-          const data = await tunnelRes.json();
-          setTunnelEnabled(!!(data.tunnel?.enabled || data.tunnel?.settingsEnabled));
-          setTunnelPublicUrl(data.tunnel?.publicUrl || "");
-          setTailscaleEnabled(!!(data.tailscale?.enabled || data.tailscale?.settingsEnabled));
-          setTailscaleUrl(data.tailscale?.tunnelUrl || "");
-        }
-        if (keysRes.ok) { const data = await keysRes.json(); setApiKeys(data.keys || []); }
+        setConnections(providers.connections); setCloudEnabled(settings.cloudEnabled === true);
+        setTunnelEnabled(!!(tunnel.tunnel?.enabled || tunnel.tunnel?.settingsEnabled));
+        setTunnelPublicUrl(tunnel.tunnel?.publicUrl || "");
+        setTailscaleEnabled(!!(tunnel.tailscale?.enabled || tunnel.tailscale?.settingsEnabled));
+        setTailscaleUrl(tunnel.tailscale?.tunnelUrl || ""); setApiKeys(keys.keys);
+        setLoadError("");
       } catch (error) {
-        console.log("Error loading tool data:", error);
+        if (mounted) setLoadError(error.message);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [loadAttempt]);
 
   const getActiveProviders = () => connections.filter((c) => c.isActive !== false);
 
@@ -155,7 +151,7 @@ export default function ToolDetailClient({ toolId, machineId }) {
         Back to CLI Tools
       </Link>
       <PageHeader icon={tool.icon || "terminal"} title={tool.name} subtitle={tool.description} />
-      {loading ? <CardSkeleton /> : renderToolCard()}
+      {loading ? <CardSkeleton /> : loadError ? <div role="alert" className="space-y-3 rounded-dd border border-dd-danger p-4"><p>{loadError}</p><Button icon="refresh" onClick={() => setLoadAttempt((value) => value + 1)}>Retry configuration</Button></div> : renderToolCard()}
     </div>
   );
 }

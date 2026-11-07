@@ -9,10 +9,11 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
-import { ANTHROPIC_API_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
+import { ANTHROPIC_API_VERSION, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import {
   discoverOrcaRouterModels,
@@ -450,6 +451,21 @@ export const PROVIDER_MODELS_CONFIG = {
       };
     }
   },
+  cursor: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const result = await resolveCursorModels({
+        accessToken: connection.accessToken,
+        providerSpecificData: connection.providerSpecificData || {}
+      }, { forceRefresh: true, log: console, proxyOptions });
+      if (result?.models?.length) {
+        return { models: result.models.map((m) => ({ id: m.id, name: m.name })) };
+      }
+      return {
+        models: getStaticProviderModels("cursor"),
+        warning: "Cursor returned no live models; falling back to static catalog."
+      };
+    }
+  },
   kiro: {
     customResolver: async (connection, proxyOptions = null) => {
       const credentials = {
@@ -540,8 +556,11 @@ export const PROVIDER_MODELS_CONFIG = {
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${token}`,
-            "User-Agent": "google-api-nodejs-client/9.15.1 vscode-antigravity/1.107.0",
-            "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1"
+            // Same Hub identity as the Antigravity quota call to this endpoint
+            // (open-sse/services/usage/google.js).
+            "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
+            "X-Client-Name": "antigravity",
+            "X-Client-Version": ANTIGRAVITY_IDE_VERSION
           },
           body: JSON.stringify(body)
         }, proxyOptions);

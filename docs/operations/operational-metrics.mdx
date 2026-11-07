@@ -1,0 +1,10 @@
+---
+title: Operational metrics
+description: Authenticated Prometheus metrics for process health and active requests.
+---
+
+`GET /api/monitoring/metrics` exports Prometheus text format. Scrape with an admin-scoped API key in `Authorization: Bearer <key>`, a dashboard session, or a CLI token. Unlike the dashboard, this endpoint never permits an unauthenticated loopback request when login is disabled. Protect the scrape connection with TLS or a trusted network. Do not put credentials in scrape URLs.
+
+All metrics have zero labels. `durindoor_active_requests` is the current in-flight count, not queued work. `durindoor_admission_queued_requests` is the number waiting for a concurrency slot across the serving process's admission gates; it excludes requests that bypass those limits and resets on restart. Each waiter occupies one gate at a time. `durindoor_process_uptime_seconds` and `durindoor_process_resident_memory_bytes` describe the serving Node process. `durindoor_event_loop_delay_p99_seconds` is the process-lifetime 99th percentile from Node's event-loop histogram at 20 ms resolution; it includes the sampling interval and resets on process restart. Scrapes do not reset it. Each serving process has its own sampler. An unusable reading is omitted rather than logged. A failed data collection returns HTTP 503 rather than fabricated values.
+
+The export currently does not report request/error counters, latency histograms, admission failures, provider availability, or stall events. These remain open under issue #1129. It does not contain request logs, identifiers, or credential values.

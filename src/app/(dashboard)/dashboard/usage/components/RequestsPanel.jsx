@@ -47,7 +47,9 @@ export default function RequestsPanel({ recentRequests = [], activeSessions = []
   );
   const columns = tab === "recent"
     ? [
-        { key: "status", label: "", render: (request) => <StatusDot tone={!request.status || request.status === "ok" || request.status === "success" ? "success" : "danger"} /> },
+        { key: "status", label: "", render: (request) => request.status === "accepted"
+          ? <StatusDot tone="warning" label="Accepted" title="Provider accepted the job; outcome not observed" />
+          : <StatusDot tone={!request.status || request.status === "ok" || request.status === "success" ? "success" : "danger"} /> },
         { key: "model", label: "Model", mono: true, rowHeader: true, render: (request) => <span title={request.model}>{request.model}</span> },
         { key: "tokens", label: "In / Out", align: "right", mono: true, render: (request) => <>{tokens(request.promptTokens, formatToken)} / {tokens(request.completionTokens, formatToken)}</> },
         { key: "timestamp", label: "When", align: "right", render: (request) => timeAgo(request.timestamp) },

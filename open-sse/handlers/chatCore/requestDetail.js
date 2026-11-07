@@ -106,10 +106,34 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
 }
 
 /**
+ * The ledger rejects a total other than input + output, and chat writes are not
+ * strict, so a disagreeing provider would lose the whole row. A larger total is
+ * output missing from completion_tokens and joins it once, priced at the output
+ * rate. Gemini is the known case: totalTokenCount includes thoughtsTokenCount while
+ * candidatesTokenCount excludes it, and the thoughts stay reasoning_tokens, so that
+ * subset keeps the reasoning rate. Excess from other fields (for example tool-use
+ * prompt tokens) is also priced as output. A smaller total is ignored with a warning.
+ * The reported value stays in meta.
+ */
+function reconcileReportedTotal(usage) {
+  const expected = Math.ceil(usage.prompt_tokens ?? 0) + Math.ceil(usage.completion_tokens ?? 0);
+  const reported = usage.total_tokens === undefined ? expected : Math.ceil(usage.total_tokens);
+  if (reported === expected) return { tokens: usage };
+  if (reported < expected) console.warn(`[USAGE] reported total_tokens ${reported} is below input + output ${expected}; using the components`);
+  const total = Math.max(reported, expected);
+  return {
+    tokens: { ...usage, completion_tokens: Math.ceil(usage.completion_tokens ?? 0) + total - expected, total_tokens: total },
+    reportedTotalTokens: usage.total_tokens,
+  };
+}
+
+/**
  * Persist normalized usage. A non-success status keeps billable accounting
  * without allowing persistence to complete an errored live session.
+ * billingEpoch is the original admission stamp, including pre-cutover null.
+ * Never read the current epoch here: the ledger rejects stale in-flight usage.
  */
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, usageEventId, billingEpoch, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
   if (!tokens || !isObject(tokens)) return;
 
   const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
@@ -119,10 +143,10 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
   // Canonicalize before deciding what to persist. Cache-only, reasoning-only,
   // total-only, cost-only, and zero-token successful requests are all valid
   // committed events even when their visible input/output counters are zero.
-  const normalized = canonicalizeUsage(providerNormalized) || {
+  const { tokens: normalized, reportedTotalTokens } = reconcileReportedTotal(canonicalizeUsage(providerNormalized) || {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
-  };
+  });
   const inTokens = normalized.prompt_tokens ?? 0;
   const outTokens = normalized.completion_tokens ?? 0;
 
@@ -135,7 +159,9 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
   saveRequestUsage({
     provider: provider || "unknown",
     model: model || "unknown",
+    modality: "chat",
     tokens: normalized,
+    ...(reportedTotalTokens === undefined ? null : { meta: { reportedTotalTokens } }),
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
@@ -147,6 +173,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     ttftMs: latency?.ttft || 0,
     status: status || undefined,
     usageEventId: usageEventId || undefined,
+    billingEpoch,
     // #747: set only for requests dispatched through a combo. Historic rows
     // (and requests with no combo) stay NULL; never inferred/backfilled.
     comboId: comboId || undefined,

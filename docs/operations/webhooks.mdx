@@ -1,0 +1,60 @@
+---
+title: Operator webhooks
+description: Send signed account, quota and provider events to your own HTTPS endpoint.
+---
+
+DurinDoor can POST operational events to HTTPS endpoints you control. No webhook exists by default, so nothing is sent until you add one.
+
+## Events
+
+| Event | Sent when |
+| --- | --- |
+| `account.cooldown` | An account is locked for a model or for all models after a provider error. |
+| `quota.exhausted` | A provider reports that an account's quota is exhausted. |
+| `account.reauth_required` | An account is quarantined until you sign in again. |
+| `provider.unavailable` | A request finds no usable account for a provider and model. |
+| `test.ping` | You send a test delivery. |
+
+Identical events for the same account and model, or the same provider and model, are sent at most once per minute. Connection IDs are truncated to 8 characters. Payload data passes through the same redactor as logs, so keys, tokens and authorization values become `[redacted]`. Prompts and responses are never included.
+
+## Manage webhooks
+
+These routes require a dashboard session or the machine-bound CLI token. An inference API key is not accepted.
+
+| Method | Path | Body |
+| --- | --- | --- |
+| `GET` | `/api/settings/webhooks` | Lists webhooks and delivery history. Secrets are never returned. |
+| `POST` | `/api/settings/webhooks` | `{ "url", "events": [...], "name"?, "enabled"? }`. The response includes `secret` once. |
+| `PATCH` | `/api/settings/webhooks/<id>` | Any of `url`, `events`, `name`, `enabled`. |
+| `DELETE` | `/api/settings/webhooks/<id>` | Removes the webhook. |
+| `POST` | `/api/settings/webhooks/<id>/test` | Sends a signed `test.ping`. |
+
+The URL must use `https` and resolve only to public addresses. Loopback, private, link-local and cloud-metadata targets are rejected, as are URLs with embedded credentials. The address check also runs on every connection, so a hostname that resolves to a private address later is still blocked. Redirects are not followed. You can register up to 20 webhooks.
+
+## Verify a delivery
+
+Each delivery is a JSON body `{ "id", "event", "timestamp", "data" }` with these headers:
+
+- `X-DurinDoor-Event`: the event name
+- `X-DurinDoor-Delivery`: a unique delivery ID, the same as `id`
+- `X-DurinDoor-Signature`: `t=<unix seconds>,v1=<hex>`
+
+`v1` is the HMAC-SHA256 of `<t>.<raw body>` keyed with the webhook secret. Recompute it over the raw bytes, compare in constant time, and reject a `t` more than 300 seconds from your clock. Store each processed delivery ID so a replayed delivery inside that window is ignored.
+
+```js
+import crypto from "node:crypto";
+
+function verify(secret, header, rawBody, nowSec = Math.floor(Date.now() / 1000)) {
+  const { t, v1 } = Object.fromEntries(header.split(",").map((p) => p.split("=", 2)));
+  if (Math.abs(nowSec - Number(t)) > 300) return false;
+  const mac = crypto.createHmac("sha256", secret).update(`${t}.${rawBody}`).digest();
+  const got = Buffer.from(v1 ?? "", "hex");
+  return got.length === mac.length && crypto.timingSafeEqual(got, mac);
+}
+```
+
+## Retries and failures
+
+DurinDoor waits up to 10 seconds per attempt. After a network error, HTTP 429 or a 5xx, it retries up to 3 more times, after 1, 2 and 4 seconds. Any other 3xx or 4xx response, and any blocked destination, ends the delivery at once.
+
+The 20 most recent results are kept per webhook. After 10 failed deliveries in a row, the webhook is disabled. Re-enabling it with `PATCH { "enabled": true }` resets the count. Deliveries never delay or fail an inference request.

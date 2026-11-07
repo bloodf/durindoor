@@ -44,5 +44,8 @@
   "devDependencies": {
     "esbuild": "^0.25.12",
     "nodemon": "^3.1.14"
+  },
+  "optionalDependencies": {
+    "wreq-js": "3.2.0"
   }
 }

@@ -1,5 +1,5 @@
 // NanoBanana API — async submit + poll record-info
-import { sleep, nowSec, sizeToAspectRatio, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from "./_base.js";
+import { sleep, nowSec, sizeToAspectRatio, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, fetchJobStatus, jobOutcomeUnknown, readJobBody } from "./_base.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 const IMG_CFG = PROVIDER_MEDIA["nanobanana"]?.imageConfig || {};
@@ -34,7 +34,7 @@ export default {
     return req;
   },
   // Async: parse submit → poll until SUCCESS, return raw poll data
-  async parseResponse(response, { headers }) {
+  async parseResponse(response, { headers, signal }) {
     const submitData = await response.json();
     if (submitData.code !== 200) throw new Error(submitData.msg || "NanoBanana submit failed");
     const taskId = submitData.data?.taskId;
@@ -42,15 +42,14 @@ export default {
     const pollUrl = `${POLL_BASE}?taskId=${encodeURIComponent(taskId)}`;
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      await sleep(POLL_INTERVAL_MS);
-      const r = await fetch(pollUrl, { headers });
-      if (!r.ok) throw new Error(`NanoBanana status ${r.status}`);
-      const s = await r.json();
+      await sleep(POLL_INTERVAL_MS, signal);
+      const r = await fetchJobStatus(pollUrl, { headers, signal }, "NanoBanana");
+      const s = await readJobBody(() => r.json(), signal);
       const flag = s.data?.successFlag;
       if (flag === 1) return s.data;
       if (flag === 2 || flag === 3) throw new Error(s.data?.errorMessage || "NanoBanana generation failed");
     }
-    throw new Error("NanoBanana polling timeout");
+    throw jobOutcomeUnknown("NanoBanana polling timeout");
   },
   normalize: (responseBody, prompt) => {
     const url = responseBody.response?.resultImageUrl || responseBody.response?.originImageUrl;

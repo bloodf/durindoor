@@ -223,7 +223,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {object} [params.credentials] - selected credentials redacted from the persisted stream error.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -292,7 +292,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
     // The TTFT fallback above keeps request logs readable, but stored usage
     // needs one "not measured" value: 0, as the other handlers write.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     // A streamed Claude refusal (stop_reason "refusal") never accumulates delta
@@ -354,7 +354,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // Partial provider/estimated usage is billable even when client cancellation
     // prevents transform flush. Mark it cancelled so persistence cannot convert
     // chatCore's asynchronously finalized error session back to done.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 

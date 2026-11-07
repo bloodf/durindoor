@@ -17,6 +17,11 @@ vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
   ...await importOriginal(),
   proxyAwareFetch: vi.fn((url, init) => globalThis.fetch(url, init)),
 }));
+// The live catalog is an h2 call; keep this offline suite off the network.
+vi.mock("../../open-sse/services/cursorModels.js", () => ({
+  resolveCursorModels: vi.fn(async () => null),
+  resolveAutoModelSelection: vi.fn(() => null),
+}));
 import { CursorExecutor, __setCursorHttp2ForTesting } from "../../open-sse/executors/cursor.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { decodeMessage, encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";
@@ -72,6 +77,8 @@ async function execute(stream = false) {
 }
 
 beforeEach(() => {
+  // These cases pin the legacy ChatService wire format.
+  vi.stubEnv("CURSOR_AGENT_SERVICE", "off");
   vi.clearAllMocks();
   mocks.proxy.mockResolvedValue({ connectionProxyEnabled: false, connectionProxyUrl: "", vercelRelayUrl: "" });
   mocks.update.mockResolvedValue(undefined);
@@ -81,6 +88,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   restoreHttp2();
   vi.unstubAllGlobals();
 });
@@ -91,9 +99,11 @@ describe("#1170 cursor-api native identity acceptance (offline partial)", () => 
     expect(await testSingleConnection("offline-cursor")).toMatchObject({ valid: true, error: null });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getModelsByProviderId("cursor")).toContainEqual(expect.objectContaining({ id: model }));
-    expect(await fetchConnectionModels({ provider: "cursor", ...credentials })).toEqual({
-      error: "Provider cursor does not support models listing", status: 400,
-    });
+    // Native cursor lists models: the live account catalog, or the static registry
+    // catalog with a warning when the live fetch yields nothing. cursor-api stays unsupported.
+    const listed = await fetchConnectionModels({ provider: "cursor", ...credentials });
+    expect(listed.models).toContainEqual(expect.objectContaining({ id: model }));
+    expect(listed.warning).toMatch(/static catalog/u);
 
     mocks.connection.mockResolvedValue({ id: "offline-candidate", provider: "cursor-api", authType: "oauth", ...credentials });
     expect(await testSingleConnection("offline-candidate")).toMatchObject({ valid: false, error: "Provider test not supported" });

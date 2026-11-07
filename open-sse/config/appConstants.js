@@ -2,6 +2,14 @@ import { platform, arch } from "os";
 import { PROVIDERS, PROVIDER_OAUTH } from "./providers.js";
 import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
 
+// Nous Portal requires attribution tags for some API-key models. Neutral gateway identity,
+// no credential and no claim to be another client (upstream 9router 90f89471). Unverified live.
+export const NOUS_ATTRIBUTION = {
+  hostname: "inference-api.nousresearch.com",
+  chatCompletionsPath: "/v1/chat/completions",
+  tags: ["product=durindoor", "client=durindoor", "user=durindoor"],
+};
+
 // === Gemini CLI === derive từ registry gemini-cli.transport
 import { isUndefined } from "../../src/shared/utils/typeChecks.js";
 export const GEMINI_CLI_VERSION = PROVIDERS["gemini-cli"]?.cliVersion;
@@ -171,9 +179,11 @@ export const ANTIGRAVITY_DEFAULT_SYSTEM = "You are Antigravity, a powerful agent
 // handles the OpenCode rename and the Claude Agent SDK marker inline; these two cover
 // the remaining known identity leaks.
 // Hermes Agent's own identity line reads as a competitor system prompt to Antigravity.
+// Covers every known variant ("Hermes"/"Hermes Agent", assistant/agent phrasing,
+// built/created by Nous Research), not just the legacy sentence (upstream a61fc6a0).
 export const ANTIGRAVITY_HERMES_IDENTITY_REWRITE = {
-  from: /You are Hermes Agent,\s*(an intelligent AI assistant)(?: created by Nous Research)?\./gi,
-  to: "You are Hermes Agent. You are $1."
+  from: /You are Hermes(?: Agent)?(?:,\s*(?:an intelligent AI assistant|an AI assistant|an AI agent))?(?:,?\s*(?:built|created)\s+by\s+Nous Research)?\./gi,
+  to: "You are an AI assistant."
 };
 // Claude Code prepends this line to its system prompt. The Claude-format translator strips it,
 // but OpenAI-format clients (e.g. proxies that convert Claude Code to /v1/chat/completions)

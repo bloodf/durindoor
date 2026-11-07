@@ -7,6 +7,7 @@ import orcarouter from "../../src/lib/oauth/orcarouterProvider.js";
 import { durableCredentialReauthFields } from "../../open-sse/services/accountFallback.js";
 import { credentialHint } from "../../open-sse/providers/orcarouterCatalog.js";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let repos;
@@ -21,7 +22,8 @@ beforeAll(async () => {
   repos = await import("@/lib/db/repos/connectionsRepo.js");
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await disposeLoadedRequestDetailsRepo();
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

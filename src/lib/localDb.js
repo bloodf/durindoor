@@ -3,7 +3,7 @@
 export {
   getSettings, getSettingsSync, updateSettings, updateSettingsWithPasswordEpoch, PasswordEpochMismatchError, isCloudEnabled, getCloudUrl,
   getProviderConnections, getProviderConnectionById,
-  createProviderConnection, updateProviderConnection,
+  createProviderConnection, updateProviderConnection, claimProviderConnectionPing,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
   reorderProviderConnections, cleanupProviderConnections,

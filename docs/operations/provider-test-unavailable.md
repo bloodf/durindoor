@@ -7,3 +7,5 @@ The single-test and batch APIs preserve `unavailable`. Bulk and detail summaries
 Unavailable is an observation of this probe, not proof of account identity, key ownership, operational readiness or permission to delete an account. Retry later. Existing selection, filtering, scoped deletion and cancellation rules still apply.
 
 The add/edit credential check also preserves explicit registry `unavailable === true`, including network failures with `status: null`, and HTTP 5xx. Both forms display a neutral "Unavailable" result. A null status alone does not imply unavailability; blocked and unsupported probes retain their existing outcomes. HTTP 401/403 still displays "Invalid". Saving behavior is unchanged.
+
+Save rechecks add credentials before persisting them. Unavailable or rejected add credentials can be saved with status `unknown`; a successful check saves `active`. Editing a credential after an unavailable or rejected check preserves the existing saved status and error. A successful edit check clears the previous error and saves `active`. The neutral Unavailable badge does not block Save or assert credential validity.

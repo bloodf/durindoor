@@ -140,3 +140,24 @@ describe.each(["wafer", "qiniu", "gitlawb-gmi"])("%s credential-check outcomes",
     if (form === "edit") expect(reloaded.lastError).toBe(status === 200 ? null : "Previous rejection");
   });
 });
+
+describe("provider validation API outage evidence", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it.each(["wafer", "qiniu"])("preserves unavailability from the %s probe", async (provider) => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 })));
+    const result = await POST(new Request("http://localhost/api/providers/validate", { method: "POST", body: JSON.stringify({ provider, apiKey: "test-key" }) }));
+    expect(await result.json()).toMatchObject({ valid: false, unavailable: true, error: "Provider unavailable - try again later" });
+  });
+  it.each([401, 403])("keeps HTTP %s as invalid credentials", async (status) => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status })));
+    const result = await POST(new Request("http://localhost/api/providers/validate", { method: "POST", body: JSON.stringify({ provider: "wafer", apiKey: "test-key" }) }));
+    const data = await result.json();
+    expect(data).toMatchObject({ valid: false, error: "Invalid API key" });
+    expect(data.unavailable).not.toBe(true);
+  });
+  it("reports ChatGPT Web server errors as unavailable rather than rejected credentials", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503 })));
+    const result = await POST(new Request("http://localhost/api/providers/validate", { method: "POST", body: JSON.stringify({ provider: "chatgpt-web", apiKey: "test-token" }) }));
+    expect(await result.json()).toEqual({ valid: false, unavailable: true, error: "Provider unavailable - try again later" });
+  });
+});

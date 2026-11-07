@@ -13,6 +13,7 @@ import WebLoginModal from "@/shared/components/WebLoginModal";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { providerValidationOutcome } from "@/shared/utils/providerValidationOutcome";
 import { parseBulkApiKeyLine, requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { LAYA_DEFAULT_HOST } from "open-sse/config/laya.js";
 import {
@@ -177,7 +178,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
       });
       const data = await res.json();
-      setValidationResult(data.unavailable === true ? "unavailable" : data.skipped ? "skipped" : data.valid ? "success" : "failed");
+      setValidationResult(providerValidationOutcome(data));
     } catch {
       setValidationResult("failed");
     } finally {
@@ -207,7 +208,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         });
         const data = await res.json();
         isValid = !!data.valid;
-        setValidationResult(data.unavailable === true ? "unavailable" : data.skipped ? "skipped" : isValid ? "success" : "failed");
+        setValidationResult(providerValidationOutcome(data));
       } catch {
         setValidationResult("failed");
       } finally {
@@ -447,7 +448,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </p>
           }
         {validationResult &&
-          <Badge tone={validationResult === "success" ? "success" : (validationResult === "skipped" || validationResult === "unavailable") ? "neutral" : "danger"}>
+          <Badge tone={validationResult === "success" ? "success" : validationResult === "skipped" || validationResult === "unavailable" ? "neutral" : "danger"}>
             {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}
           </Badge>
           }

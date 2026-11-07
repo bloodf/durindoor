@@ -1104,9 +1104,11 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             { sessionToken: connection.sessionToken }
           );
           if (result) {
+            if (!result.blocked && (result.unavailable === true || result.status >= 500)) {
+              return { valid: false, unavailable: true, error: result.error || "Provider unavailable - try again later" };
+            }
             return {
               valid: result.valid,
-              ...(result.unavailable ? { unavailable: true } : {}),
               error: result.valid ? null : result.error || "Invalid API key"
             };
           }
@@ -1162,8 +1164,10 @@ export async function testSingleConnection(id) {
   null :
   sanitizeErrorMessage(result.error || "Connection validation failed");
 
-  // A failed probe cannot change the saved credential state.
-  if (result.unavailable) return { valid: false, unavailable: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
+  // A provider outage says nothing about the stored credential or prior status.
+  if (result.unavailable === true) {
+    return { valid: false, unavailable: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
+  }
 
   const updateData = {
     testStatus: result.skipped ? "unknown" : result.valid ? "active" : "error",

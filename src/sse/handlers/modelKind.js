@@ -1,3 +1,4 @@
+import { isString } from "@/shared/utils/typeChecks.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -18,8 +19,8 @@ export async function modelKindError(provider, model, settings, kind, acceptedKi
   const ids = new Set([model, ...matches.map((item) => item.id)]);
   const endpointMatches = acceptedKinds.flatMap((k) => entry?.[`${k}Config`]?.models || []);
   if (endpointMatches.some((item) => {
-    const id = typeof item === "string" ? item : item?.id;
-    const aliases = typeof item === "string" ? [] : item?.aliases || [];
+    const id = isString(item) ? item : item?.id;
+    const aliases = isString(item) ? [] : item?.aliases || [];
     return ids.has(id) || aliases.some((alias) => ids.has(alias));
   })) return null;
   let knownWrong = matches.length > 0;

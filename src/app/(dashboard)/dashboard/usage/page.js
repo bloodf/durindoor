@@ -64,6 +64,7 @@ function UsageContent() {
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetPeriod, setResetPeriod] = useState("all");
   const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState("");
   const [resetNonce, setResetNonce] = useState(0);
 
   // Select shows "custom" whenever the calendar diverges from the active preset.
@@ -94,7 +95,9 @@ function UsageContent() {
     router.push(`/dashboard/usage?${params.toString()}`, { scroll: false });
   };
 
+  /** Failed resets retain the displayed snapshot and range, with feedback for retry. */
   const handleReset = async () => {
+    setResetError("");
     setResetting(true);
     try {
       const res = await fetch("/api/usage/reset", {
@@ -108,12 +111,14 @@ function UsageContent() {
       setResetNonce((n) => n + 1);
     } catch (e) {
       console.error("Reset failed:", e);
+      setResetError("Reset failed. Your displayed usage is unchanged. Try again.");
     } finally {
       setResetting(false);
     }
   };
 
   const openResetModal = () => {
+    setResetError("");
     setResetPeriod("all");
     setResetModalOpen(true);
   };
@@ -177,6 +182,8 @@ function UsageContent() {
       >
         <div className="flex flex-col gap-3 text-[13px] text-dd-muted">
           <p>Select how far back to delete usage data. This action cannot be undone.</p>
+          {resetting ? <p role="status">Resetting usage data…</p> : null}
+          {resetError ? <p role="alert">{resetError}</p> : null}
           <Select aria-label="Usage reset period" value={resetPeriod} options={RESET_PERIODS} onChange={setResetPeriod} disabled={resetting} />
         </div>
       </Modal>

@@ -15,20 +15,28 @@ const SYSTRAY_PKG = "systray2";
 const SYSTRAY_VERSION = "2.1.4";
 const LEGACY_SYSTRAY_PKG = "systray";
 
-function hasSystray() {
-  return fs.existsSync(path.join(getRuntimeNodeModules(), SYSTRAY_PKG, "package.json"));
+// Match the tray consumer's resolution order. Loading the real export avoids
+// treating a stray package.json as an installed tray implementation.
+function findSystray() {
+  const runtime = getRuntimeNodeModules();
+  for (const [name, inRuntime] of [
+    [path.join(runtime, SYSTRAY_PKG), true],
+    [SYSTRAY_PKG, false],
+    [LEGACY_SYSTRAY_PKG, false],
+    [path.join(runtime, LEGACY_SYSTRAY_PKG), true],
+  ]) {
+    try {
+      if (require(name).default) return { name, inRuntime };
+    } catch {}
+  }
+  return null;
 }
 
-// Remove the legacy `systray` package from all known locations.
-// On Windows it was an AV false-positive risk; on macOS/Linux its bundled
-// binary is broken on modern OS versions.
+// Remove an unloadable legacy runtime copy before repairing user-owned deps.
+// Installed package payloads may be immutable and are never removed here.
 function cleanupLegacySystray({ silent = false } = {}) {
-  // 1) Runtime dir: ~/.9router/runtime/node_modules/systray (or %APPDATA% on Win)
-  // 2) npm global nested: <npm_prefix>/node_modules/9router/node_modules/systray
-  //    __dirname here = <pkg root>/hooks → up 1 = pkg root
   const targets = [
-    path.join(getRuntimeNodeModules(), LEGACY_SYSTRAY_PKG),
-    path.join(__dirname, "..", "node_modules", LEGACY_SYSTRAY_PKG)
+    path.join(getRuntimeNodeModules(), LEGACY_SYSTRAY_PKG)
   ];
   for (const dir of targets) {
     if (fs.existsSync(dir)) {
@@ -87,21 +95,22 @@ function npmInstall(pkgs, { silent = false } = {}) {
 // Public: ensure systray2 is installed on macOS/Linux only.
 // Windows skips entirely (uses PowerShell tray).
 function ensureTrayRuntime({ silent = false } = {}) {
-  // Always evict the legacy `systray` package — its binary is broken on
-  // modern macOS and an AV false-positive on Windows.
-  cleanupLegacySystray({ silent });
-
   if (process.platform === "win32") {
     return { systray: false, skipped: true };
   }
-  if (hasSystray()) {
-    chmodSystrayBin({ silent });
+  const installed = findSystray();
+  if (installed) {
+    // Only repair the existing user runtime binary, never a package/store path.
+    if (installed.inRuntime && installed.name === path.join(getRuntimeNodeModules(), SYSTRAY_PKG)) {
+      chmodSystrayBin({ silent });
+    }
     if (!silent) console.log("✅ System tray ready");
     return { systray: true };
   }
+  cleanupLegacySystray({ silent });
   const ok = npmInstall([`${SYSTRAY_PKG}@${SYSTRAY_VERSION}`], { silent });
   if (ok) chmodSystrayBin({ silent });
-  return { systray: ok && hasSystray() };
+  return { systray: ok && Boolean(findSystray()) };
 }
 
 module.exports = { ensureTrayRuntime };

@@ -67,3 +67,11 @@ Use authenticated management requests. The settings payload is:
 
 - `GET /api/models/auto-sync[?provider=id]` returns each provider's status, its effective model list (or `null` when the registry is in use), and the combo members and aliases that point at removed models.
 - `POST /api/models/auto-sync` with `{ "provider": "openai" }` syncs that provider now; with no body it syncs every provider that has auto-update on.
+
+## Model list provenance
+
+The provider auto-update panel identifies the provider and the runtime list source. With auto-update off, or before a successful sync, the runtime uses the built-in registry. A stored discovery snapshot can remain visible in the sync history even when that registry list is active. Custom models remain separate additions.
+
+Discovery freshness describes the stored snapshot at render time. `STALE` means the last attempt failed after a successful sync, or the snapshot has reached the configured sync interval. Missing, invalid or future timestamps and missing intervals show `UNKNOWN`. A recent timestamp does not verify live model availability. Reopen the provider page to read the current status.
+
+Vendor verification remains `UNKNOWN`: the existing list-models status does not attest to a model vendor. This summary describes list provenance only, not per-field capability or price provenance. It does not change model limits, user overrides, routing or provider selection, and adds no discovery requests.

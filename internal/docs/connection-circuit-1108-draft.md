@@ -21,7 +21,8 @@ guard and concurrency-timeout correction are integrated by normal peer merge of
 correction. Handler regressions cover sibling cleanup,
 pinned timeout, and healthy unpinned timeout with no account cooldown or sibling
 attempt. Runtime safety remains unverified here until affected checks pass on the
-integrated inputs. PR #1665 must merge before this dependent PR.
+integrated inputs. PR #1665 merged as `612480b13773405e9c3b8e2360796906d410198a`;
+actual main containing that prerequisite is now normally integrated.
 Local admission and terminal recovery-busy responses retain the explicit internal `localAdmissionRejected`
 marker through the outer single-model transient-backend retry loop. This leaves
 HTTP bodies/headers/status unchanged and preserves ordinary upstream 503 retries.

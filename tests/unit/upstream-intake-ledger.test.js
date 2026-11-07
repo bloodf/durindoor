@@ -372,3 +372,25 @@ describe("Intake safety regressions", () => {
       "--ported", join(testDir, "absent.json")])).toThrow();
   });
 });
+
+
+describe("Persisted reviewed provenance", () => {
+  it("reports serialized dedup output using the repository ledger shape", () => {
+    const candidates = join(testDir, "roundtrip-input.json");
+    const reviewed = join(testDir, "roundtrip-reviewed.json");
+    const ledger = join(ROOT, ".github/upstream-ported.json");
+    const out = join(testDir, "roundtrip-report");
+    writeFileSync(candidates, JSON.stringify([{ number: 2533 }, { number: 999999 }]));
+    execFileSync(process.execPath, [SCRIPT, "dedup", "--candidates", candidates,
+      "--ported", ledger, "--out", reviewed]);
+    const rows = JSON.parse(readFileSync(reviewed, "utf8"));
+    expect(rows[0].disposition).toBe("ported");
+    expect(rows[0].why).toContain("decolua/9router#PR2533");
+    expect(validateRecord(rows[0]).valid).toBe(true);
+    const stdout = execFileSync(SCAN_REPORT_SH, ["--intake", reviewed, out, ledger], { encoding: "utf8" });
+    expect(stdout).toContain("total=2 ported=1 new=1 pages=1");
+    const body = readFileSync(join(out, "body.md"), "utf8");
+    expect(body).toContain("#999999");
+    expect(body).not.toContain("#2533");
+  });
+});

@@ -228,6 +228,8 @@ export function deduplicateCandidates(candidates, existingPorted = []) {
     // If already ported in the reference ledger, mark disposition or skip duplicate
     if (portedSet.has(key)) {
       record.disposition = "ported";
+      // Membership in the supplied reviewed ledger is itself retained evidence.
+      if (!record.why) record.why = `Reviewed ported ledger membership: ${key}`;
     }
 
     if (!seen.has(key)) {

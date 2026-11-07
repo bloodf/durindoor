@@ -30,54 +30,71 @@ const migration = {
   version: 28,
   name: "usage-unknown-cost-repair",
   up(db) {
-    // Migration 026 owns creating the column and seeding the count. Without it
-    // there is nothing to repair yet.
-    if (!hasUnknownCostColumn(db)) return;
+    return db.transaction(() => {
+      // Migration 026 owns creating the column and seeding the count. Without it
+      // there is nothing to repair yet.
+      if (!hasUnknownCostColumn(db)) return;
 
-    const historyColumns = tableColumnNames(db, "usageHistory");
-    // SQLite startup runs migrations before additive schema repair. An absent
-    // source supplies no reconstruction; preserve every durable value and let
-    // SQLite recreate the table. Reflection and SQL errors still propagate.
-    if (!historyColumns.size || !tableColumnNames(db, "apiKeys").size) return;
+      const historyColumns = tableColumnNames(db, "usageHistory");
+      // SQLite startup runs migrations before additive schema repair. An absent
+      // source supplies no reconstruction; preserve every durable value and let
+      // SQLite recreate the table. Reflection and SQL errors still propagate.
+      if (!historyColumns.size || !tableColumnNames(db, "apiKeys").size) return;
 
-    const eligibility = unknownCostEligibilitySql(db, "h");
-    const counts = new Map();
+      // Hold database locks through reconstruction and upsert, including direct
+      // callers. A max upsert alone can swallow an increment after the read.
+      if (db.driver === "pg") {
+        // Reflection may already have taken a snapshot in a nondefault isolation
+        // level. Refuse it rather than reconstruct from a stale snapshot.
+        if (db.get("SHOW transaction_isolation").transaction_isolation !== "read committed") {
+          throw new Error("Migration 028 requires PostgreSQL READ COMMITTED isolation");
+        }
+        db.exec('LOCK TABLE "usageHistory", "apiKeyUsageTotals", "apiKeys" IN SHARE ROW EXCLUSIVE MODE');
+      } else {
+        // Even with no matching rows SQLite acquires its database writer lock.
+        // No rows change, so existing update triggers do not fire.
+        db.run('UPDATE "apiKeyUsageTotals" SET "unknownCostRequests" = "unknownCostRequests" WHERE 1 = 0');
+      }
 
-    // Branch one: a null cost.
-    for (const row of db.all(`
-      SELECT k.id AS "apiKeyId", COUNT(h.id) AS "unknownCostRequests"
-      FROM "apiKeys" k
-      JOIN "usageHistory" h ON h."apiKey" = k.key
-      WHERE h.cost IS NULL ${eligibility}
-      GROUP BY k.id
-    `)) {
-      counts.set(row.apiKeyId, Number(row.unknownCostRequests) || 0);
-    }
+      const eligibility = unknownCostEligibilitySql(db, "h");
+      const counts = new Map();
 
-    // Branch two: a numeric legacy cost whose metadata marks it unknown. The
-    // current writer cannot produce that shape, so it only covers imported and
-    // legacy rows. Malformed metadata is tolerated and counts as priced.
-    if (historyColumns.has("meta")) {
+      // Branch one: a null cost.
       for (const row of db.all(`
-        SELECT k.id AS "apiKeyId", h.meta
+        SELECT k.id AS "apiKeyId", COUNT(h.id) AS "unknownCostRequests"
         FROM "apiKeys" k
         JOIN "usageHistory" h ON h."apiKey" = k.key
-        WHERE h.cost IS NOT NULL AND h.meta IS NOT NULL ${eligibility}
+        WHERE h.cost IS NULL ${eligibility}
+        GROUP BY k.id
       `)) {
-        if (parseJson(row.meta)?.costStatus === "unknown") {
-          counts.set(row.apiKeyId, (counts.get(row.apiKeyId) || 0) + 1);
+        counts.set(row.apiKeyId, Number(row.unknownCostRequests) || 0);
+      }
+
+      // Branch two: a numeric legacy cost whose metadata marks it unknown. The
+      // current writer cannot produce that shape, so it only covers imported and
+      // legacy rows. Malformed metadata is tolerated and counts as priced.
+      if (historyColumns.has("meta")) {
+        for (const row of db.all(`
+          SELECT k.id AS "apiKeyId", h.meta
+          FROM "apiKeys" k
+          JOIN "usageHistory" h ON h."apiKey" = k.key
+          WHERE h.cost IS NOT NULL AND h.meta IS NOT NULL ${eligibility}
+        `)) {
+          if (parseJson(row.meta)?.costStatus === "unknown") {
+            counts.set(row.apiKeyId, (counts.get(row.apiKeyId) || 0) + 1);
+          }
         }
       }
-    }
 
-    for (const [apiKeyId, unknownCostRequests] of counts) {
-      db.run(`
-        INSERT INTO "apiKeyUsageTotals" ("apiKeyId", "unknownCostRequests") VALUES (?, ?)
-        ON CONFLICT ("apiKeyId") DO UPDATE SET "unknownCostRequests" =
-          CASE WHEN "apiKeyUsageTotals"."unknownCostRequests" < excluded."unknownCostRequests"
-          THEN excluded."unknownCostRequests" ELSE "apiKeyUsageTotals"."unknownCostRequests" END
-      `, [apiKeyId, unknownCostRequests]);
-    }
+      for (const [apiKeyId, unknownCostRequests] of counts) {
+        db.run(`
+          INSERT INTO "apiKeyUsageTotals" ("apiKeyId", "unknownCostRequests") VALUES (?, ?)
+          ON CONFLICT ("apiKeyId") DO UPDATE SET "unknownCostRequests" =
+            CASE WHEN "apiKeyUsageTotals"."unknownCostRequests" < excluded."unknownCostRequests"
+            THEN excluded."unknownCostRequests" ELSE "apiKeyUsageTotals"."unknownCostRequests" END
+        `, [apiKeyId, unknownCostRequests]);
+      }
+    });
   },
 };
 

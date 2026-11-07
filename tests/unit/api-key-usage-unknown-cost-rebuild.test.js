@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { incrementApiKeyUsageSync } from "../../src/lib/db/repos/apiKeyUsageTotalsRepo.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { createBetterSqliteAdapter } from "../../src/lib/db/adapters/betterSqliteAdapter.js";
 import { TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
@@ -439,6 +443,55 @@ describe("API-key usage rebuild: unknown-cost count preservation", () => {
   });
 
   describe("migration 028 repairs the durable count", () => {
+    it("serializes repair and a second connection's increment across history pruning", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "migration028-lock-"));
+      const file = path.join(dir, "data.sqlite");
+      const repair = createBetterSqliteAdapter(file);
+      const writer = createBetterSqliteAdapter(file);
+      try {
+        writer.exec("PRAGMA busy_timeout = 0");
+        for (const name of ["apiKeys", "usageHistory", "apiKeyUsageTotals"]) {
+          repair.exec(buildCreateTableSql(name, TABLES[name]));
+        }
+        insertKey(repair, "key-1");
+        setTotals(repair, "key-1");
+        for (let i = 0; i < 10; i++) insertHistory(repair, {});
+        let attempted = false;
+        const observed = new Proxy(repair, {
+          get(target, prop) {
+            if (prop === "all") return (sql, params) => {
+              const rows = target.all(sql, params);
+              if (sql.includes('COUNT(h.id)')) {
+                attempted = true;
+                // Deterministic barrier: history10 has been read, repair has
+                // not upserted. The other real connection must fail to write.
+                expect(() => incrementApiKeyUsageSync(writer, "key-1", { tokens: 0, cost: null }))
+                  .toThrow(/locked|busy/i);
+              }
+              return rows;
+            };
+            const value = target[prop];
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+        migration028.up(observed);
+        expect(attempted).toBe(true);
+        expect(unknownCount(repair, "key-1")).toBe(10);
+        writer.transaction(() => {
+          insertHistory(writer, {});
+          incrementApiKeyUsageSync(writer, "key-1", { tokens: 0, cost: null });
+        });
+        expect(unknownCount(repair, "key-1")).toBe(11);
+        writer.run("DELETE FROM usageHistory");
+        migration028.up(repair);
+        expect(unknownCount(repair, "key-1")).toBe(11);
+      } finally {
+        writer.close();
+        repair.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     it.each(["usageHistory", "apiKeys"])("preserves every durable value when %s is absent", (table) => {
       const db = minimalDb();
       insertMinimalKey(db, "key-1");

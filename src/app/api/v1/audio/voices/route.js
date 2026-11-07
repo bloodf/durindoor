@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 
@@ -87,4 +87,4 @@ async function GETHandler(request) {
   }
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const GET = withRequestCorrelation(GETHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);

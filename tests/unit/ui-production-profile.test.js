@@ -207,3 +207,86 @@ it("rejects a JSON null settings response without exposing policy defaults", asy
   expect(document.querySelector('[role="alert"]').textContent).toContain("Settings could not be loaded");
   expect(document.querySelector('[role="tab"]')).toBeNull();
 });
+
+function controlWithLabel(text) {
+  const label = [...document.querySelectorAll("label")].find((node) => node.textContent === text);
+  return document.getElementById(label.htmlFor);
+}
+
+const routingCases = [
+  { label: "Cache Affinity", patch: { fallbackStrategy: "cache-affinity" }, initial: {}, summary: "Currently using accounts in priority order", saved: "Currently pinning each conversation to one account (Cache Affinity)" },
+  { label: "Round Robin", patch: { fallbackStrategy: "round-robin" }, initial: {}, summary: "Currently using accounts in priority order", saved: "Currently distributing requests with 3 calls per account." },
+  { label: "Combo Round Robin", patch: { comboStrategy: "round-robin" }, initial: {}, summary: "Combos always start with their first model.", saved: "Combos rotate after 1 calls per model." },
+  { label: "Sticky Limit", patch: { stickyRoundRobinLimit: 5 }, initial: { fallbackStrategy: "round-robin", stickyRoundRobinLimit: 3 }, summary: "Currently distributing requests with 3 calls per account.", saved: "Currently distributing requests with 5 calls per account.", draft: "5" },
+  { label: "Combo Sticky Limit", patch: { comboStickyRoundRobinLimit: 8 }, initial: { comboStrategy: "round-robin", comboStickyRoundRobinLimit: 1 }, summary: "Combos rotate after 1 calls per model.", saved: "Combos rotate after 8 calls per model.", draft: "8" },
+];
+
+describe.each(routingCases)("routing save feedback: $label", (scenario) => {
+  it.each(["HTTP", "network"])("retains accepted values and rejected drafts after %s failure, then retries", async (failure) => {
+    let settle;
+    const patches = [];
+    globalThis.fetch.mockImplementation(async (url, init = {}) => {
+      if (url === "/api/settings" && init.method === "PATCH") {
+        patches.push(JSON.parse(init.body));
+        expect(init.headers).toEqual({ "Content-Type": "application/json" });
+        return new Promise((resolve, reject) => {
+          settle = (ok) => ok ? resolve(new Response("{}")) : failure === "HTTP"
+            ? resolve(new Response('{"error":"Unavailable"}', { status: 503 }))
+            : reject(new TypeError("Network unavailable"));
+        });
+      }
+      return new Response(JSON.stringify(url === "/api/settings" ? { ...settings, ...scenario.initial } : {}));
+    });
+    render(h(ProfilePage)); await flush(); await selectTab("Routing");
+    const panel = document.querySelector('[aria-label="Routing settings"]');
+    const control = controlWithLabel(scenario.label);
+    if (scenario.draft) setValue(control, scenario.draft);
+    else await act(async () => control.click());
+    expect(panel.querySelector('[role="status"]').textContent).toBe("Saving routing preference…");
+    expect(control.disabled).toBe(true);
+    expect(controlWithLabel("Round Robin").disabled).toBe(true);
+    expect(controlWithLabel("Combo Round Robin").disabled).toBe(true);
+    expect(panel.textContent).toContain(scenario.summary);
+    expect(patches).toEqual([scenario.patch]);
+    await act(async () => settle(false));
+    expect(panel.querySelector('[role="alert"]').textContent).toContain("Could not confirm the routing save");
+    expect(panel.querySelector('[role="status"]')).toBeNull();
+    expect(control.disabled).toBe(false);
+    expect(panel.textContent).toContain(scenario.summary);
+    if (scenario.draft) expect(control.value).toBe(scenario.draft);
+    else expect(control.getAttribute("aria-checked")).toBe("false");
+    await selectTab("General"); await selectTab("Routing");
+    if (scenario.draft) expect(controlWithLabel(scenario.label).value).toBe(scenario.draft);
+    const retry = [...panel.querySelectorAll("button")].find((button) => button.textContent === "Retry routing save");
+    await act(async () => retry.click());
+    expect(panel.querySelector('[role="alert"]')).toBeNull();
+    expect(patches).toEqual([scenario.patch, scenario.patch]);
+    await act(async () => settle(true));
+    expect(panel.querySelector('[role="alert"]')).toBeNull();
+    expect(panel.querySelector('[role="status"]')).toBeNull();
+    expect(panel.textContent).toContain(scenario.saved);
+    if (scenario.draft) expect(controlWithLabel(scenario.label).value).toBe(scenario.draft);
+    else expect(controlWithLabel(scenario.label).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+it.each([true, false])("ignores routing save completion after unmount, success=%s", async (ok) => {
+  let settle;
+  globalThis.fetch.mockImplementation(async (url, init = {}) => {
+    if (init.method === "PATCH") return new Promise((resolve, reject) => {
+      settle = () => ok ? resolve(new Response("{}")) : reject(new TypeError("Disconnected"));
+    });
+    return new Response(JSON.stringify(url === "/api/settings" ? settings : {}));
+  });
+  render(h(ProfilePage)); await flush(); await selectTab("Routing");
+  await act(async () => controlWithLabel("Round Robin").click());
+  const [root, container] = roots.pop();
+  act(() => root.unmount()); container.remove();
+  await act(async () => settle());
+  render(h(ProfilePage)); await flush(); await selectTab("Routing");
+  expect(controlWithLabel("Round Robin").getAttribute("aria-checked")).toBe("false");
+  const panel = document.querySelector('[aria-label="Routing settings"]');
+  expect(panel.querySelector('[role="alert"]')).toBeNull();
+  expect(panel.querySelector('[role="status"]')).toBeNull();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
+});

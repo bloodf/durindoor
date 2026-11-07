@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleVideoCreate, handleVideoGet } from "@/sse/handlers/video.js";
 
 /**
@@ -53,5 +53,5 @@ async function GETHandler(request, { params }) {
   return await handleVideoGet(request, path[0]);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const POST = withRequestCorrelation(POSTHandler);
-export const GET = withRequestCorrelation(GETHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);

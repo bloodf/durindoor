@@ -11,7 +11,10 @@ export async function resolveResourceOwner(request, auth) {
     const settings = await getSettings();
     ({ auth } = await resolveClientApiKey(request, { required: settings.requireApiKey === true }));
   }
-  if (!auth.ok) return { authorized: false, ownerId: null, allowAllOwners: false };
+  if (!auth.ok) return {
+    authorized: false, ownerId: null, allowAllOwners: false,
+    denialReason: auth.reason === "missing" ? "auth_missing" : "auth_invalid",
+  };
   if (auth.operator) return { authorized: true, ownerId: "operator", allowAllOwners: true };
   return { authorized: true, ownerId: auth.stored ? auth.apiKeyId : "local", allowAllOwners: false };
 }

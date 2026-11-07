@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleImageEdit } from "@/sse/handlers/imageEdit.js";
 
 export const maxDuration = 300;
@@ -18,4 +18,4 @@ async function POSTHandler(request) {
   return await handleImageEdit(request);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

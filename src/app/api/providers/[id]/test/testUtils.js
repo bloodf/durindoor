@@ -31,7 +31,7 @@ import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
-import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
+import { OutboundUrlGuardError, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 import { normalizeGheUrl } from "open-sse/config/gheCopilot.js";
 
@@ -472,6 +472,12 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     const accepted = res.ok || config.acceptStatuses && config.acceptStatuses.includes(res.status);
     if (accepted) return { valid: true, error: null, refreshed, newTokens };
 
+    // Generic OAuth endpoint failures do not establish credential rejection.
+    // Preserve saved metadata through testSingleConnection's unavailable boundary.
+    if (res.status === 429 || res.status >= 500) {
+      return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false };
+    }
+
     if (res.status === 401 && config.refreshable && !refreshed && connection.refreshToken) {
       const tokens = await refreshOAuthToken(connection, effectiveProxy);
       if (tokens) {
@@ -487,6 +493,9 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
         const retryRes = await fetchWithConnectionProxy(retryUrl, retryOpts, effectiveProxy);
         const retryAccepted = retryRes.ok || config.acceptStatuses && config.acceptStatuses.includes(retryRes.status);
         if (retryAccepted) return { valid: true, error: null, refreshed: true, newTokens: tokens };
+        if (retryRes.status === 429 || retryRes.status >= 500) {
+          return { valid: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false };
+        }
       }
       return { valid: false, error: "Token invalid or revoked", refreshed: false };
     }
@@ -495,6 +504,10 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     if (res.status === 403) return { valid: false, error: "Access denied", refreshed };
     return { valid: false, error: `API returned ${res.status}`, refreshed };
   } catch (err) {
+    // Do not turn SSRF blocks or arbitrary application errors into outages.
+    if (!(err instanceof OutboundUrlGuardError) && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      return { valid: false, unavailable: true, error: "Provider unavailable - request interrupted", refreshed: false };
+    }
     return { valid: false, error: err.message, refreshed };
   }
 }

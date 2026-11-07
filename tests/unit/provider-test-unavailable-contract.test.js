@@ -53,3 +53,71 @@ it("keeps successful catalog fallback and marks exhausted network probes uncerta
   expect(await probeRegistryProvider("qiniu", "key", transport)).toMatchObject({ valid: true, status: 200 });
   expect(await probeRegistryProvider("qiniu", "key", async () => { throw new Error("secret transport detail"); })).toMatchObject({ valid: false, unavailable: true, status: null });
 });
+
+const oauthOutcomes = [503, 429, "TimeoutError", "AbortError", 401, 403, 200, "blocked", "application"];
+const unavailableOAuthOutcomes = [503, 429, "TimeoutError", "AbortError"];
+function savedOAuthRow(id) {
+  return {
+    id, provider: "github", authType: "oauth", accessToken: `private-oauth-${id}`,
+    expiresAt: "2099-01-01T00:00:00.000Z", providerSpecificData: {},
+    testStatus: "active", lastError: "prior metadata", lastErrorAt: "2026-01-01T00:00:00.000Z"
+  };
+}
+async function oauthProbeOutcome(outcome) {
+  if (typeof outcome === "number") return new Response("", { status: outcome });
+  if (outcome === "blocked") {
+    const { OutboundUrlGuardError } = await import("../../open-sse/utils/outboundUrlGuard.js");
+    throw new OutboundUrlGuardError("Outbound URL blocked", { code: "OUTBOUND_URL_GUARD_BLOCKED", url: "http://127.0.0.1" });
+  }
+  if (outcome === "application") throw new Error("Invalid probe configuration");
+  throw new DOMException("private transport detail", outcome);
+}
+
+it.each(oauthOutcomes)("preserves saved GitHub OAuth metadata only for transient outcome %s", async (outcome) => {
+  const row = savedOAuthRow("oauth");
+  const original = structuredClone(row);
+  db.get.mockResolvedValue(row);
+  const restore = __setProviderTestFetchForTesting(async (_url, _options, proxy) => {
+    expect(proxy).toEqual({ connectionProxyEnabled: false });
+    return oauthProbeOutcome(outcome);
+  });
+  try {
+    const response = await POST(new Request("http://localhost/api/providers/oauth/test", { method: "POST" }), { params: Promise.resolve({ id: "oauth" }) });
+    const result = await response.json();
+    const unavailable = unavailableOAuthOutcomes.includes(outcome);
+    expect(result).toMatchObject({ valid: outcome === 200, unavailable, refreshed: false });
+    expect(JSON.stringify(result)).not.toContain(row.accessToken);
+    expect(JSON.stringify(result)).not.toContain("private transport detail");
+    expect(row).toEqual(original);
+    if (unavailable) expect(db.update).not.toHaveBeenCalled();
+    else {
+      expect(db.update).toHaveBeenCalledTimes(1);
+      expect(db.update).toHaveBeenCalledWith("oauth", expect.objectContaining({
+        testStatus: outcome === 200 ? "active" : "error",
+        lastError: outcome === 200 ? null : expect.any(String),
+        lastErrorAt: outcome === 200 ? null : expect.any(String)
+      }));
+    }
+    if (outcome === 401) expect(result.error).toBe("Token invalid or revoked");
+    if (outcome === 403) expect(result.error).toBe("Access denied");
+  } finally { restore(); }
+});
+
+it("counts GitHub OAuth transient probes separately in batch and writes only definitive outcomes", async () => {
+  const rows = oauthOutcomes.map((_, i) => savedOAuthRow(String(i)));
+  const original = structuredClone(rows);
+  db.list.mockResolvedValue(rows);
+  db.get.mockImplementation(async (id) => rows.find((row) => row.id === id));
+  const restore = __setProviderTestFetchForTesting(async (_url, options) => {
+    const id = options.headers.Authorization.replace("Bearer private-oauth-", "");
+    return oauthProbeOutcome(oauthOutcomes[Number(id)]);
+  });
+  try {
+    const response = await batch(new Request("http://localhost/api/providers/test-batch", { method: "POST", body: JSON.stringify({ mode: "all" }) }));
+    const result = await response.json();
+    expect(result.summary).toEqual({ total: 9, passed: 1, failed: 4, skipped: 0, unavailable: 4 });
+    expect(db.update.mock.calls.map(([id]) => id).sort()).toEqual(["4", "5", "6", "7", "8"]);
+    expect(rows).toEqual(original);
+    for (const row of rows) expect(JSON.stringify(result)).not.toContain(row.accessToken);
+  } finally { restore(); }
+});

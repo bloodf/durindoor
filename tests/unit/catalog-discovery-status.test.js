@@ -38,7 +38,7 @@ describe("model auto-sync panel discovery response", () => {
 
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     vi.setSystemTime(now);
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -77,7 +77,47 @@ describe("model auto-sync panel discovery response", () => {
     const provenance = container.querySelector('dl[aria-label="Model list provenance"]');
     const valueFor = (label) => [...provenance.querySelectorAll("dt")].find((element) => element.textContent === label).nextElementSibling.textContent;
     expect(valueFor("Discovery freshness: ")).toBe(expected);
+    await act(async () => { vi.advanceTimersByTime(3600000); });
+    expect(valueFor("Discovery freshness: ")).toBe(
+      expected === "Within the configured sync interval. Availability is not verified." ?
+        "STALE. The stored snapshot is older than the configured sync interval." : expected
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(valueFor("Runtime list source: ")).toBe(provider.enabled ? "Provider discovery with derived registry variants" : "Built-in registry");
     expect(container.querySelector('[role="switch"]').getAttribute("aria-checked")).toBe(String(provider.enabled));
   });
+
+  it.each([
+    [{ syncedAt: null }, "UNKNOWN", 0],
+    [{ syncedAt: "invalid" }, "UNKNOWN", 0],
+    [{ syncedAt: "2027-01-01" }, "UNKNOWN", 0],
+    [{ intervalHours: 0 }, "UNKNOWN", 0],
+    [{ intervalHours: Number.MAX_VALUE }, "Within the configured sync interval. Availability is not verified.", 0],
+    [{ intervalHours: 10000 }, "Within the configured sync interval. Availability is not verified.", 1],
+  ])("handles unschedulable or long evidence %j without overflow", async (patch, expected, timers) => {
+    await act(async () => root.render(React.createElement(ModelCatalogProvenance, { providerId: "openai", status: { ...status, ...patch } })));
+    expect(container.querySelector("dl").textContent).toContain(`Discovery freshness: ${expected}`);
+    expect(vi.getTimerCount()).toBe(timers);
+    await act(async () => { vi.advanceTimersByTime(3600000); });
+    expect(container.querySelector("dl").textContent).toContain(`Discovery freshness: ${expected}`);
+    expect(vi.getTimerCount()).toBe(timers);
+  });
+
+  it("replaces the boundary timer on status change and clears it on unmount", async () => {
+    const render = (patch) => root.render(React.createElement(ModelCatalogProvenance, { providerId: "openai", status: { ...status, ...patch } }));
+    await act(async () => render({}));
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => render({ intervalHours: 3 }));
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { vi.advanceTimersByTime(3600000); });
+    expect(container.querySelector("dl").textContent).toContain("Discovery freshness: Within the configured sync interval. Availability is not verified.");
+    await act(async () => render({ syncedAt: null }));
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => render({ intervalHours: 3 }));
+    expect(vi.getTimerCount()).toBe(1);
+    act(() => root.unmount());
+    expect(vi.getTimerCount()).toBe(0);
+    root = createRoot(container);
+  });
+
 });

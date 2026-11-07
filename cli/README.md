@@ -16,6 +16,7 @@ Replace the password before running the command. Keep the signing secret stable 
 For unattended startup, use `durindoor --headless --skip-update --host 127.0.0.1`.
 `--headless` disables the browser, tray preparation and tray launch, and interactive menu.
 It overrides `--tray` regardless of flag order and clears inherited `TRAY_MODE`.
+Worker crash restarts, validated handoff and MITM recovery remain active in headless mode.
 Without `--headless`, detached `--skip-update` launches retain the existing tray fallback;
 `--no-browser` keeps its existing meaning and does not select headless mode.
 Tray preparation runs when the interactive or tray UI initializes. A loadable tray

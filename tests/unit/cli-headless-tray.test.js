@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import { describe, expect, it, vi } from "vitest";
 
@@ -77,17 +78,6 @@ describe("explicit headless startup", () => {
     expect(run.sqlite).toHaveBeenCalledOnce();
   });
 
-  it("returns before menu and tray dispatch in headless server startup", () => {
-    const dispatch = source.slice(source.indexOf("  // Headless keeps"), source.indexOf("  // Tray-only mode"));
-    const ui = vi.fn();
-    const log = vi.fn();
-    vm.runInNewContext(`(function () { ${dispatch}; ui(); })()`, {
-      headless: true, console: { log }, displayHost: "127.0.0.1", port: 20128, ui,
-    });
-    expect(log).toHaveBeenCalledWith("Server: http://127.0.0.1:20128");
-    expect(ui).not.toHaveBeenCalled();
-  });
-
   it("retains non-TTY updater tray fallback without headless", () => {
     const run = startup(["--skip-update"]);
     expect(run.mode.trayMode).toBe(true);
@@ -107,6 +97,123 @@ describe("explicit headless startup", () => {
     expect(run.exit).toBe(0);
     expect(run.sqlite).not.toHaveBeenCalled();
     expect(run.tray).not.toHaveBeenCalled();
+  });
+});
+
+// Run the complete production startServer function, including its nested worker
+// event/restart/recovery functions. Only external effects are mocked.
+function startHeadlessWorker({ staleOwnership = false, cleanupOk = true } = {}) {
+  const children = [];
+  const timers = [];
+  const process = new EventEmitter();
+  process.env = {};
+  process.exit = vi.fn();
+  process.kill = vi.fn();
+  const spawn = vi.fn(() => {
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.pid = 4000 + children.length;
+    child.exitCode = null;
+    child.signalCode = null;
+    children.push(child);
+    return child;
+  });
+  const stopMitm = vi.fn(() => cleanupOk);
+  const identity = vi.fn(() => Promise.resolve());
+  const ui = vi.fn(() => { throw new Error("Headless must not initialize UI"); });
+  const log = { log: vi.fn(), error: vi.fn() };
+  vm.runInNewContext(source.slice(source.indexOf("const MAX_RESTARTS =")) + ";startServer(null)", {
+    headless: true, trayMode: false, showLog: false,
+    host: "127.0.0.1", DEFAULT_HOST: "0.0.0.0", port: 20128,
+    getDisplayHost: () => "127.0.0.1", console: log, process, spawn,
+    RUNTIME: "/node", serverPath: "/app/custom-server.js", standaloneDir: "/app",
+    buildNodeArgs: (serverPath) => [serverPath], buildEnvWithRuntime: (env) => env,
+    Date: { now: () => 100 }, setTimeout: (fn, delay) => timers.push({ fn, delay }),
+    crypto: { randomBytes: () => Buffer.alloc(24, 1) },
+    isIntentionalWorkerHandoff: require("../../cli/src/cli/workerExit.js").isIntentionalWorkerHandoff,
+    INTENTIONAL_HANDOFF_EXIT_CODE: 75, hasStaleMitmOwnership: () => staleOwnership,
+    waitForWorkerIdentity: identity, stopMitmViaManagerSync: stopMitm,
+    path, getAppDataDir: () => "/data", killByPidFile: vi.fn(),
+    killTunnelByPidFile: vi.fn(), sleepSync: vi.fn(),
+    waitServerReady: ui, showInterfaceMenu: ui, openBrowser: ui,
+    require: (name) => {
+      if (name === "./src/cli/tray/tray") return { killTray: vi.fn() };
+      return ui(name);
+    },
+  });
+  return { children, timers, process, spawn, stopMitm, identity, ui, log };
+}
+
+describe("complete headless worker lifecycle", () => {
+  it("attaches initial error/close handlers exactly once without starting UI", () => {
+    const run = startHeadlessWorker();
+    expect(run.children).toHaveLength(1);
+    expect(run.children[0].listenerCount("error")).toBe(1);
+    expect(run.children[0].listenerCount("close")).toBe(1);
+    expect(run.log.log).toHaveBeenCalledWith("Server: http://127.0.0.1:20128");
+    expect(run.ui).not.toHaveBeenCalled();
+  });
+
+  it.each(["error", "close"])("restarts after worker %s and attaches replacement handlers", (event) => {
+    const run = startHeadlessWorker();
+    run.children[0].emit(event, event === "error" ? new Error("spawn failed") : 1);
+    expect(run.timers.map(({ delay }) => delay)).toEqual([1000]);
+    run.timers.shift().fn();
+    expect(run.children).toHaveLength(2);
+    expect(run.spawn).toHaveBeenLastCalledWith("/node", ["/app/custom-server.js"],
+      expect.objectContaining({ env: { PORT: "20128", HOSTNAME: "127.0.0.1" } }));
+    expect(run.children[1].listenerCount("error")).toBe(1);
+    expect(run.children[1].listenerCount("close")).toBe(1);
+    expect(run.process.exit).not.toHaveBeenCalled();
+  });
+
+  it("exits cleanly for a validated intentional handoff", () => {
+    const run = startHeadlessWorker();
+    run.children[0].emit("close", 75);
+    expect(run.process.exit).toHaveBeenCalledWith(0);
+    expect(run.timers).toEqual([]);
+    expect(run.stopMitm).not.toHaveBeenCalled();
+  });
+
+  it("rejects a handoff with stale MITM ownership and restarts", () => {
+    const run = startHeadlessWorker({ staleOwnership: true });
+    run.children[0].emit("close", 75);
+    expect(run.process.exit).not.toHaveBeenCalled();
+    expect(run.timers.map(({ delay }) => delay)).toEqual([1000]);
+    run.timers.shift().fn();
+    expect(run.children).toHaveLength(2);
+  });
+
+  it.each([true, false])("performs bounded recovery after restart exhaustion, cleanup=%s", async (cleanupOk) => {
+    const run = startHeadlessWorker({ cleanupOk });
+    run.children[0].emit("close", 1);
+    run.timers.shift().fn();
+    run.children[1].emit("close", 1);
+    expect(run.timers[0].delay).toBe(2000);
+    run.timers.shift().fn();
+    run.children[2].emit("close", 1);
+    expect(run.children).toHaveLength(4);
+    const recovery = run.children[3];
+    const nonce = "01".repeat(24);
+    expect(run.spawn).toHaveBeenLastCalledWith("/node", ["/app/custom-server.js"],
+      expect.objectContaining({ env: { PORT: "20128", HOSTNAME: "127.0.0.1", DURINDOOR_WORKER_NONCE: nonce } }));
+    expect(run.identity).toHaveBeenCalledWith(recovery, nonce);
+    expect(run.stopMitm).not.toHaveBeenCalled();
+    await run.identity.mock.results[0].value;
+    expect(run.stopMitm).toHaveBeenCalledWith(20128, { preserveDesiredState: false });
+    expect(recovery.listenerCount("error")).toBe(1);
+    expect(recovery.listenerCount("close")).toBe(1);
+    if (cleanupOk) {
+      expect(run.process.exit).toHaveBeenCalledWith(1);
+      expect(run.process.kill).toHaveBeenCalledWith(recovery.pid, "SIGTERM");
+    } else {
+      expect(run.process.exit).not.toHaveBeenCalled();
+      expect(run.process.kill).not.toHaveBeenCalled();
+      // The recovery worker stays owned rather than entering another crash loop.
+      recovery.emit("close", 1);
+    }
+    expect(run.timers).toEqual([]);
+    expect(run.ui).not.toHaveBeenCalled();
   });
 });
 

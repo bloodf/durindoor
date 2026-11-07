@@ -713,6 +713,7 @@ function startServer(updatePromise) {
 
   // Headless keeps the server lifecycle handlers, without optional UI preparation.
   if (headless) {
+    attachServerEvents();
     console.log(`Server: http://${displayHost}:${port}`);
     return;
   }

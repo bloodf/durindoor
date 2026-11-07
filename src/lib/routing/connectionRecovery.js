@@ -2,15 +2,18 @@ import { globalCircuitManager, CIRCUIT_STATE, SCOPE_ALL } from "./connectionCirc
 
 // Persisted fallback deadlines remain authoritative. Selection only observes;
 // dispatch claims synchronously after ACL/quota admission has selected a row.
-function recoveryScopes(connection, model, boundedModel) {
+// Missing persisted locks may be lazy cleanup by sibling success. Keep pending
+// recovery until settlement/expiry; only an explicit manager.reset invalidates it.
+function recoveryScopes(connection, model, boundedModel, manager, now = Date.now()) {
   if (!connection?.id) return [];
   return [...new Set([SCOPE_ALL, boundedModel || SCOPE_ALL, model].filter(Boolean))]
-    .map((scope) => [scope, connection[`modelLock_${scope}`] ?? null])
-    .filter(([, deadline]) => deadline !== null);
+    .map((scope) => [scope, connection[`modelLock_${scope}`] ?? undefined])
+    .filter(([scope, deadline]) => deadline !== undefined ||
+      manager.getDiagnostics(connection.id, scope, now).state !== CIRCUIT_STATE.CLOSED);
 }
 
 export function canSelectConnection(connection, model, boundedModel, now = Date.now(), manager = globalCircuitManager) {
-  return recoveryScopes(connection, model, boundedModel).every(([scope, deadline]) =>
+  return recoveryScopes(connection, model, boundedModel, manager, now).every(([scope, deadline]) =>
     manager.canExecute(connection.id, scope, deadline, now));
 }
 
@@ -31,7 +34,7 @@ export async function runWithConnectionRecovery(core, options, connection, model
     }
   };
   const abort = () => finish();
-  for (const [scope, deadline] of recoveryScopes(connection, model, boundedModel)) {
+  for (const [scope, deadline] of recoveryScopes(connection, model, boundedModel, manager)) {
     const state = manager.evaluateState(connection.id, scope, deadline);
     if (state === CIRCUIT_STATE.CLOSED) continue;
     const lease = manager.acquireRecoveryLease(connection.id, scope, deadline);

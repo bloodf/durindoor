@@ -725,7 +725,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (excludeSet.has(c.id)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
-      if (!canSelectConnection(c, model, boundedModel, selectionNow)) return false;
+      if (options?.connectionRecovery && !canSelectConnection(c, model, boundedModel, selectionNow)) return false;
       if (isConnectionGated(c, selectionNow)) return false;
       return true;
     });
@@ -744,6 +744,16 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? "legacy_lock" : ""} ${quotaBlocked ? `quota_${quotaDecisions.get(c.id).reason}` : ""} ${rpmBlocked ? `rpm_${rpmLimit}` : ""} ${gated ? "peak_hour_or_rpd" : ""}`);
       }
     });
+
+    const recoveryBlocked = options?.connectionRecovery ? connections.filter((c) =>
+      !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
+      !quotaDecisions.get(c.id)?.skip && !isConnectionGated(c, selectionNow) &&
+      !isOverLimit(c.id, rpmLimit, selectionNow) &&
+      !canSelectConnection(c, model, boundedModel, selectionNow)) : [];
+    if (recoveryBlocked.some((c) => c.id === preferredConnectionId) ||
+        availableConnections.length === 0 && recoveryBlocked.length > 0) {
+      return { connectionRecoveryBusy: true };
+    }
 
     if (availableConnections.length === 0) {
       // For no-auth providers with a real saved key that is now excluded/locked,

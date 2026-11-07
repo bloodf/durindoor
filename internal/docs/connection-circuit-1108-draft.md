@@ -1,6 +1,6 @@
 # Connection circuit discovery and regression draft for #1108
 
-Status: caller implementation complete; runtime checks and independent review pending.
+Status: review findings addressed in source; runtime checks and final review pending.
 
 `src/lib/routing/connectionRecovery.js` observes persisted fallback deadlines in
 credential selection and claims an expired scope immediately before chat core
@@ -11,6 +11,14 @@ Abort, stream cancellation/end, thrown errors and unsuccessful core results rele
 claims without creating cooldown evidence. Existing fallback classification remains
 authoritative, including the separate local-admission rejection short circuit.
 A pinned account does not rotate when its recovery claim is busy.
+Recovery exclusions return HTTP 503 without invented quota/reset evidence, including
+pinned selection. Selection and dispatch consult pending in-memory scopes even if
+healthy sibling-model success lazily deletes the persisted expired lock. A missing
+lock is not an explicit reset; explicit `ConnectionCircuitManager.reset` separately
+invalidates its lease generation. Local queue rejection uses PR #1665's actual core
+marker and caller guard, integrated normally before this delivery. The handler test
+covers sibling cleanup with real selection and a real core concurrency timeout.
+
 
 The supplied helper hash was verified. Its expired-deadline admission, late
 settlement and account/model exclusion defects were corrected with regression tests.
@@ -210,7 +218,10 @@ Existing regression anchors include `model-lock-precedence.test.js`,
 `claude-refusal-stream-empty-cooldown.test.js`, and `admission-abort-race.test.js`.
 Their presence records prior intent, not a fresh passing result.
 
-## Integration-owner ownership map
+## Historical integration-owner ownership map
+
+The table below records the original discovery assignment, superseded by the
+exclusive full-cycle caller assignment and implementation described above.
 
 | Path | Responsibility | Assignment state |
 | --- | --- | --- |

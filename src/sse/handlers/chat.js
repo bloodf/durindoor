@@ -1092,6 +1092,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       let credentials;
       try {
         credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
+          connectionRecovery: true,
           signal: requestSignal,
           modelCandidates,
           quotaFamily,
@@ -1119,6 +1120,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
 
       // All accounts unavailable or provider disabled
+      if (credentials?.connectionRecoveryBusy) {
+        return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress");
+      }
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
         if (earlyEofOriginal) return earlyEofOriginal;
         if (credentials?.providerDisabled) {

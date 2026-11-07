@@ -6,7 +6,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const BETTER_SQLITE3_VERSION = "12.10.1";
+// Exact on purpose: this is passed to npm through a shell on Windows, where a "^" range is mangled.
+// Must satisfy the app's better-sqlite3 range in package.json (guarded by tests/unit/node-version-alignment.test.js).
+const BETTER_SQLITE3_VERSION = "12.11.1";
 const BETTER_SQLITE3_INSTALL_TIMEOUT = 30000;
 const SQL_JS_VERSION = "1.14.1";
 

@@ -4,8 +4,8 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas } from "../providers/shared.js";
-import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
+import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta } from "../providers/shared.js";
+import { OAUTH_ENDPOINTS, buildKimiHeaders, NOUS_ATTRIBUTION } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -187,6 +187,15 @@ function applyExtraHeaders(headers, extraHeaders, credentials) {
 
 // Provider-specific header quirks kept as small hooks (not pure auth).
 const HEADER_HOOKS = {
+  // CodeBuddy: the gateway's channel check rejects requests lacking the plugin's
+  // conversation/request identifiers with 400 / 11128 "request illegal".
+  codebuddyHeaders: (h) => {
+    const requestId = crypto.randomUUID();
+    h["X-Request-ID"] = requestId;
+    h["X-Conversation-ID"] = crypto.randomUUID();
+    h["X-Conversation-Request-ID"] = requestId;
+    h["X-Conversation-Message-ID"] = requestId;
+  },
   kimiHeaders: (h) => Object.assign(h, buildKimiHeaders()),
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken)),
   kilocodeOrg: (h, c) => {if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId;},
@@ -234,6 +243,7 @@ export const LOCAL_PROVIDER_DEFAULT_BASE_URLS = {
   lemonade: "http://localhost:13305/api/v1",
   llamafile: "http://127.0.0.1:8080/v1",
   "llama-cpp": "http://127.0.0.1:8080/v1",
+  mlx: "http://127.0.0.1:8080/v1",
   triton: "http://localhost:8000/v1",
   "docker-model-runner": "http://localhost:12434/v1",
   xinference: "http://localhost:9997/v1",
@@ -303,9 +313,11 @@ export class DefaultExecutor extends BaseExecutor {
     this.applyRequestDefaults(body);
     // Provider-specific request hook (e.g. SenseNova Token Plan clamps
     // max_tokens / max_completion_tokens above its 65536 ceiling).
-    this.config?.clampRequestBody?.(body);
+    // The hook may return a new body (non-mutating hooks) or the same one.
+    const clamped = this.config?.clampRequestBody?.(body);
+    if (clamped && isObject(clamped) && !Array.isArray(clamped)) body = clamped;
     applyGlmtModelAlias(this.provider, model, body);
-    let transformed = this.applyJsonSchemaFallback(body);
+    let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
 
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
     transformed = applyDeepSeekV4ProAlias({
@@ -439,6 +451,30 @@ export class DefaultExecutor extends BaseExecutor {
     body.text = { ...text, format: { type: "text" } };
   }
 
+  applyNousAttribution(model, body, stream, credentials) {
+    if (!this.provider?.startsWith?.("openai-compatible-") || !credentials?.apiKey
+      || !isObject(body) || Array.isArray(body)
+      || (body.tags != null && !Array.isArray(body.tags))) return body;
+
+    try {
+      const url = new URL(this.buildUrl(model, stream, 0, credentials));
+      if (url.protocol !== "https:" || url.hostname !== NOUS_ATTRIBUTION.hostname
+        || url.pathname !== NOUS_ATTRIBUTION.chatCompletionsPath) return body;
+    } catch {
+      return body;
+    }
+
+    // Parse once at the boundary: only string tags can carry attribution.
+    let tags = (body.tags ?? []).filter(isString);
+    for (const fallback of NOUS_ATTRIBUTION.tags) {
+      const prefix = fallback.slice(0, fallback.indexOf("=") + 1);
+      // Empty attribution values do not satisfy the upstream requirement.
+      tags = tags.filter((tag) => !tag.startsWith(prefix) || tag.slice(prefix.length).trim());
+      if (!tags.some((tag) => tag.startsWith(prefix))) tags.push(fallback);
+    }
+    return { ...body, tags: [...new Set(tags)] };
+  }
+
   // Fallback json_schema → json_object for openai-compatible providers without native Structured Output.
   applyJsonSchemaFallback(body) {
     if (!this.provider?.startsWith?.("openai-compatible-")) return body;
@@ -547,6 +583,13 @@ export class DefaultExecutor extends BaseExecutor {
     for (const hook of desc.hooks || []) HEADER_HOOKS[hook]?.(headers, credentials);
     applyAuth(headers, desc, credentials);
 
+    // Claude Code OAuth Messages send `oauth-2025-04-20` (+ extended-cache-ttl);
+    // the API-key path keeps the plain first-party pin (#1383).
+    if (this.provider === "claude" && !credentials.apiKey && credentials.accessToken) {
+      const betaKey = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
+      headers[betaKey] = buildClaudeOAuthAnthropicBeta(headers[betaKey]);
+    }
+
     /** Emit only client-provided session identity, never generated fallback affinity. */
     if (this.provider === "claude" && credentials?._clientSessionId && !credentials._clientSessionIsGenerated) {
       delete headers["x-claude-code-session-id"];
@@ -571,11 +614,14 @@ export class DefaultExecutor extends BaseExecutor {
     // claudeOverlay live-header merge — so this block only covers
     // anthropic-compatible-* nodes.)
     const isClaudeModel = isString(model) && /^claude-/.test(model);
+    const compatBaseUrl = credentials?.providerSpecificData?.baseUrl || "";
+    // `claude` always targets api.anthropic.com; compat nodes only when their host is official.
+    const firstPartyHost = this.provider === "claude" || compatBaseUrl === "" || isOfficialAnthropicBaseUrl(compatBaseUrl);
     if (model && this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel) {
-      headers["Anthropic-Beta"] = selectAnthropicBeta(model);
+      headers["Anthropic-Beta"] = selectAnthropicBeta(model, { firstParty: firstPartyHost });
     }
     if (this.provider === "claude" || (this.provider?.startsWith?.("anthropic-compatible-") && isClaudeModel)) {
-      mergeForwardableClientBetas(headers, requestContext?.clientHeaders);
+      mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });
     }
 
     // Strip first-party Claude Code identity headers for non-Anthropic anthropic-compatible upstreams

@@ -5,7 +5,7 @@ import ConsoleLogClient from "./ConsoleLogClient";
 const LINES = [
   "[17:48:00] ℹ️  [BOOT] durindoor gateway listening on :20128",
   "[17:48:01] ℹ️  [HEADROOM] compression proxy online at :11435",
-  "[17:48:02] 🟢 → POST gpt-5.5 → codex/gpt-5.5",
+  "[17:48:02] 🟢 → POST gpt-6.1-sol → codex/gpt-6.1-sol",
   "[17:48:03] 🟢 📊 DONE 812ms · TTFT 210ms · IN 1,204 · OUT 388",
   "[17:48:04] ⚠️  [HEADROOM] compression skipped: payload under threshold",
   "[17:48:05] ❌ [TIER] provider timeout after 30000ms",
@@ -35,7 +35,7 @@ let polls = 0;
 const pollingRoutes = {
   "GET /api/translator/console-logs/stream": null,
   "GET /api/translator/console-logs": () => {
-    const extra = Array.from({ length: polls }, (_, index) => `[17:49:${String(index % 60).padStart(2, "0")}] 🟣 → POST gpt-5.5 poll ${index + 1}`);
+    const extra = Array.from({ length: polls }, (_, index) => `[17:49:${String(index % 60).padStart(2, "0")}] 🟣 → POST gpt-6.1-sol poll ${index + 1}`);
     polls += 1;
     return { body: { success: true, logs: [...LINES, ...extra].slice(-2000) } };
   },
@@ -99,7 +99,7 @@ export const ResumeFromPause = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Jump to latest" }));
     await waitFor(() => expect(canvas.queryByText(/^\d+ new$/)).not.toBeInTheDocument());
-    await expect(canvas.getByText("Streaming")).toBeVisible();
+    await expect(canvas.getByText("Polling")).toBeVisible();
   },
 };
 
@@ -110,4 +110,13 @@ export const Empty = {
     await expect(await canvas.findByText("No console logs yet.")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Copy visible" })).toBeDisabled();
   },
+};
+
+export const TransportUnavailable = {
+  parameters: fixture({ ...routes, "GET /api/translator/console-logs": { status: 503, body: { error: "Console offline" } }, "GET /api/translator/console-logs/stream": null }),
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText("Unavailable", { exact: true })).toBeVisible(); await expect(canvas.queryByText("No console logs yet.")).not.toBeInTheDocument(); await expect(canvas.queryByText("Streaming")).not.toBeInTheDocument(); },
+};
+export const ClearRejected = {
+  parameters: fixture({ ...routes, "DELETE /api/translator/console-logs": { status: 500, body: { error: "Clear rejected" } } }),
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await canvas.findByText(/CANCELLED 1200ms/); await userEvent.click(canvas.getByRole("button", { name: "Clear", exact: true })); await expect(await canvas.findByText(/Console logs were not cleared/)).toBeVisible(); await expect(canvas.getByText(/CANCELLED 1200ms/)).toBeVisible(); },
 };

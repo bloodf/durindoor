@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
 vi.mock("@/lib/localDb", () => ({ getApiKeyProviderConnectionIds: mocks.allowedIds, getProviderConnections: mocks.connections }));
 vi.mock("../../src/sse/services/keylessAvailability.js", () => ({ isKeylessProviderWorking: mocks.working }));
+vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetch(...args) }));
 
 const {
   wantsDefaultRoute,
@@ -57,11 +58,56 @@ describe("route validation", () => {
   });
 });
 
+describe("saved legacy routes", () => {
+  it("dispatches a saved NVIDIA model with its default voice", async () => {
+    const { handleTtsCore } = await import("../../open-sse/handlers/ttsCore.js");
+    const { parseModel } = await import("../../open-sse/services/model.js");
+    mocks.buildModelsList.mockResolvedValue([model("nvidia/nvidia/magpie-tts-multilingual")]);
+    const route = await describeMediaRoute("tts", { settings: { mediaRoutes: { tts: ["nvidia/magpie-tts-multilingual"] } } });
+    const fetch = vi.fn(async () => new Response(new Uint8Array(2048), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const { provider, model: modelId } = parseModel(route.models[0]);
+      const result = await handleTtsCore({ provider, model: modelId, input: "Hello", credentials: { apiKey: "test" } });
+      expect(result.success).toBe(true);
+      expect(fetch.mock.calls[0][0]).toBe("https://877104f7-e885-42b9-8de8-f6e4c6303969.invocation.api.nvcf.nvidia.com/v1/audio/synthesize");
+      expect(fetch.mock.calls[0][1].body.get("voice")).toBe("Magpie-Multilingual.EN-US.Aria");
+      expect(fetch.mock.calls[0][1].body.get("text")).toBe("Hello");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("dispatches a saved Fal route to its original upstream path", async () => {
+    const { handleImageGenerationCore } = await import("../../open-sse/handlers/imageGenerationCore.js");
+    const { parseModel } = await import("../../open-sse/services/model.js");
+    mocks.buildModelsList.mockResolvedValue([model("fal-ai/fal-ai/flux/schnell")]);
+    const route = await describeMediaRoute("image", { settings: { mediaRoutes: { image: ["fal/flux/schnell"] } } });
+    const fetch = vi.fn(async () => new Response("upstream rejected", { status: 500 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      await handleImageGenerationCore({ body: { prompt: "test" }, modelInfo: parseModel(route.models[0]), credentials: { apiKey: "test" } });
+      expect(fetch.mock.calls[0][0]).toBe("https://queue.fal.run/flux/schnell");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it.each([
+    ["image", "fal/flux/schnell", "fal-ai/fal-ai/flux/schnell"],
+    ["embedding", "nvidia/nv-embedqa-e5-v5", "nvidia/nvidia/nv-embedqa-e5-v5"],
+    ["tts", "nvidia/magpie-tts-multilingual", "nvidia/nvidia/magpie-tts-multilingual"],
+  ])("resolves %s legacy identity", async (kind, oldId, publishedId) => {
+    mocks.buildModelsList.mockResolvedValue([model(publishedId)]);
+    const route = await describeMediaRoute(kind, { settings: { mediaRoutes: { [kind]: [oldId] } } });
+    expect(route.models).toEqual([oldId]);
+    expect(route.saved).toEqual([oldId]);
+  });
+});
+
 describe("adapter coverage", () => {
   it("leaves out image and embedding models of providers the gateway has no adapter for", async () => {
-    mocks.buildModelsList.mockResolvedValue([model("venice/venice-sd35"), model("xai/grok-imagine-image")]);
+    mocks.buildModelsList.mockResolvedValue([model("topaz/upscale"), model("xai/grok-imagine-image")]);
     expect((await describeMediaRoute("image", { settings: {} })).models).toEqual(["xai/grok-imagine-image"]);
-    mocks.buildModelsList.mockResolvedValue([model("venice/text-embedding-3-large"), model("gemini/embedding-001")]);
+    mocks.buildModelsList.mockResolvedValue([model("orcarouter/text-embedding-3-small"), model("gemini/embedding-001")]);
     expect((await describeMediaRoute("embedding", { settings: {} })).models).toEqual(["gemini/embedding-001"]);
   });
 });

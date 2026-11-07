@@ -220,7 +220,7 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
       result.tools.push({
         name: toolName,
         description: toolData.description || "",
-        input_schema: toClaudeInputSchema(toolData.parameters, toolData.input_schema),
+        input_schema: toClaudeInputSchema(toolData.parameters, toolData.input_schema, originalName),
         ...(toolData.strict !== undefined && { strict: toolData.strict })
       });
     }
@@ -285,6 +285,61 @@ function claudePdfDocumentSource(part) {
   return null;
 }
 
+/**
+ * Port 9router 9500965: tool output uses Claude content blocks, not OpenAI
+ * image_url parts. Keep strings and error flags unchanged. Unlike the upstream
+ * fallback, never forward an all-invalid array back to Claude (#1356).
+ */
+function isToolResultImageUrl(value) {
+  if (!isString(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const NATIVE_TOOL_RESULT_BLOCKS = new Set(["document", "search_result"]);
+
+function convertToolResultContent(content) {
+  if (!Array.isArray(content)) return content;
+  const parts = [];
+  for (const part of content) {
+    const cache = part?.cache_control ? { cache_control: part.cache_control } : {};
+    if (part?.type === OPENAI_BLOCK.TEXT && isString(part.text)) {
+      // Claude 400s on empty text blocks (upstream 9500965 skips falsy text too).
+      if (part.text) parts.push({ type: CLAUDE_BLOCK.TEXT, text: part.text, ...cache });
+    } else if (part?.type === OPENAI_BLOCK.IMAGE_URL) {
+      const url = part.image_url?.url;
+      if (!isString(url)) continue;
+      const parsed = parseDataUri(url);
+      if (parsed?.mimeType.startsWith("image/")) {
+        parts.push({
+          type: CLAUDE_BLOCK.IMAGE,
+          source: { type: "base64", media_type: parsed.mimeType, data: parsed.base64 },
+          ...cache
+        });
+      } else if (isToolResultImageUrl(url)) {
+        parts.push({ type: CLAUDE_BLOCK.IMAGE, source: { type: "url", url }, ...cache });
+      }
+    } else if (part?.type === CLAUDE_BLOCK.IMAGE) {
+      const source = part.source;
+      if (!source || !isObject(source) || Array.isArray(source)) continue;
+      if (source.type === "url" && isToolResultImageUrl(source.url)) {
+        parts.push({ ...part, source: { ...source } });
+      } else if (source.type === "base64" && isString(source.media_type) &&
+        source.media_type.startsWith("image/") && isString(source.data) && source.data.length > 0) {
+        parts.push({ ...part, source: { ...source } });
+      }
+    } else if (NATIVE_TOOL_RESULT_BLOCKS.has(part?.type)) {
+      // Claude accepts these inside tool_result; main forwarded them verbatim.
+      parts.push(part);
+    }
+  }
+  return parts;
+}
+
 function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
   const blocks = [];
 
@@ -292,7 +347,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     blocks.push({
       type: CLAUDE_BLOCK.TOOL_RESULT,
       tool_use_id: msg.tool_call_id,
-      content: msg.content,
+      content: convertToolResultContent(msg.content),
       // Reverse of claude-to-openai: restore the Claude-native error flag carried on the tool message.
       ...(msg.is_error === true && { is_error: true })
     });

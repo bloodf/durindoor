@@ -6,7 +6,7 @@ import { applyCloaking } from "../../utils/claudeCloaking.js";
 import { resolveSessionId } from "../../utils/sessionManager.js";
 import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { PROVIDERS } from "../../providers/index.js";
-import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { getCapabilitiesForModel, isLegacyHaikuModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
@@ -52,6 +52,23 @@ function normalizeMessageContent(msg) {
     msg.content = [content];
   }
   return msg;
+}
+
+/**
+ * After a turn is dropped, the user turns on either side become adjacent. Merge them so
+ * strict Claude-wire upstreams that require alternating roles accept the history.
+ * tool_result blocks stay first, as Anthropic requires.
+ */
+function mergeAdjacentUserTurns(messages, index) {
+  const a = messages[index];
+  const b = messages[index + 1];
+  if (a?.role !== ROLE.USER || b?.role !== ROLE.USER) return;
+  const blocks = (m) => Array.isArray(m.content) ? m.content :
+    isString(m.content) && m.content ? [{ type: CLAUDE_BLOCK.TEXT, text: m.content }] : [];
+  const all = [...blocks(a), ...blocks(b)];
+  const results = all.filter((x) => x?.type === CLAUDE_BLOCK.TOOL_RESULT);
+  a.content = [...results, ...all.filter((x) => x?.type !== CLAUDE_BLOCK.TOOL_RESULT)];
+  messages.splice(index + 1, 1);
 }
 
 /** Count request-wide Anthropic cache breakpoints. */
@@ -312,9 +329,6 @@ function demoteUnpairedToolResult(block) {
   return text;
 }
 
-// Models that reject thinking.type "adaptive" + output_config.effort (Opus 4.5+/Sonnet 4.6+ only)
-const ADAPTIVE_THINKING_UNSUPPORTED = /haiku/i;
-
 // Adaptive-thinking models (Fable/Mythos) do not support unsigned or default-
 // signature historical thinking blocks and must never receive synthetic placeholders.
 function isAdaptiveThinkingModel(model) {
@@ -452,8 +466,8 @@ export function enforceClaudeToolChoiceThinking(body, model = "", provider = "cl
 
 // Normalize a native Claude passthrough body to match Anthropic Messages API spec.
 // Newer Cowork/Claude Code clients emit beta-only shapes that OAuth endpoints reject:
-// 1. thinking.type "adaptive" → unsupported on Haiku
-// 2. output_config.effort → unsupported on Haiku
+// 1. thinking.type "adaptive" → unsupported on older/unversioned Haiku
+// 2. output_config.effort → unsupported on older/unversioned Haiku
 // 3. role "system" messages (mid-conversation-system beta) → only top-level system is allowed
 // 4. server_tool_use blocks carrying foreign IDs → rejected outright
 // 5. forced tool_choice while thinking is on → rejected by every thinking model
@@ -461,12 +475,12 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   if (!body || !isObject(body)) return body;
 
   // 1. Downgrade adaptive thinking for models that don't support it
-  if (body.thinking?.type === "adaptive" && ADAPTIVE_THINKING_UNSUPPORTED.test(model)) {
+  if (body.thinking?.type === "adaptive" && isLegacyHaikuModel(model)) {
     body.thinking = { type: "enabled", budget_tokens: 10000 };
   }
 
   // 2. Strip effort param for models that don't support it (keep other output_config fields)
-  if (ADAPTIVE_THINKING_UNSUPPORTED.test(model) && body.output_config?.effort != null) {
+  if (isLegacyHaikuModel(model) && body.output_config?.effort != null) {
     delete body.output_config.effort;
     if (Object.keys(body.output_config).length === 0) delete body.output_config;
   }
@@ -546,18 +560,27 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
   const thinkingEnabled = body.thinking?.type === "enabled";
   const removedServerToolIds = new Set();
   const emptiedByServerToolFilter = new Set();
+  const emptiedByBlankThinking = new Set();
   if (Array.isArray(body.messages)) {
     for (const msg of body.messages) {
       if (msg.role !== ROLE.ASSISTANT || !Array.isArray(msg.content)) continue;
       let hasToolUse = false;
       let hasKeptThinking = false;
       let removedServerTool = false;
+      let removedBlankThinking = false;
       const kept = [];
       for (const block of msg.content) {
         // Opaque redacted data has no readable-thinking signature to validate.
         if (block.type === CLAUDE_BLOCK.REDACTED_THINKING && (provider === "claude" || provider?.startsWith("anthropic-compatible"))) {
           hasKeptThinking = true;
           kept.push(block);
+          continue;
+        }
+        // Anthropic rejects a thinking block with no visible text (400 "each thinking block must
+        // contain non-whitespace thinking"), even with a valid signature, and a replayed one
+        // would 400 every later turn. Redacted blocks carry `data`, not text, and are exempt.
+        if (block.type === CLAUDE_BLOCK.THINKING && !String(block.thinking ?? "").trim()) {
+          removedBlankThinking = true;
           continue;
         }
         if (block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING) {
@@ -585,9 +608,16 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       }
       msg.content = kept;
       if (removedServerTool && kept.length === 0) emptiedByServerToolFilter.add(msg);
+      if (removedBlankThinking && kept.length === 0) emptiedByBlankThinking.add(msg);
       if (thinkingEnabled && !hasKeptThinking && hasToolUse && !isAdaptiveThinkingModel(model)) {
         msg.content.unshift(buildThinkingPlaceholder("claude"));
       }
+    }
+
+    // A mid-history turn that held only blank thinking would otherwise go out as `content: []`
+    // (Anthropic 400s on empty content); drop it like the translated path does.
+    if (emptiedByBlankThinking.size > 0) {
+      body.messages = body.messages.filter((msg) => !emptiedByBlankThinking.has(msg));
     }
 
     if (removedServerToolIds.size > 0) {
@@ -709,6 +739,15 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       const msg = filtered[i];
 
       if (msg.role === ROLE.ASSISTANT && Array.isArray(msg.content)) {
+        // Every Claude-wire provider: a thinking block with no visible text is rejected upstream
+        // (400 "each thinking block must contain non-whitespace thinking"). Redacted blocks carry
+        // `data` and are exempt. A turn left empty is dropped rather than padded.
+        msg.content = msg.content.filter((block) => !(block?.type === CLAUDE_BLOCK.THINKING && !String(block.thinking ?? "").trim()));
+        if (msg.content.length === 0) {
+          filtered.splice(i, 1);
+          mergeAdjacentUserTurns(filtered, i - 1);
+          continue;
+        }
         // Add cache_control to last non-thinking block of first (from end) assistant with content
         // thinking/redacted_thinking blocks do not support cache_control
         if (allowCacheControl && !lastAssistantProcessed && msg.content.length > 0) {
@@ -800,7 +839,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
           return {
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: toClaudeInputSchema(tool.function.parameters),
+            input_schema: toClaudeInputSchema(tool.function.parameters, undefined, tool.function.name),
             ...(tool.function.strict !== undefined && { strict: tool.function.strict })
           };
         }

@@ -541,9 +541,12 @@ options)
       allAppliedRules.push(...appliedRules);
 
       const normalized = recapitalizeSentences(cleanupArtifacts(rulesApplied));
+      // Restore AFTER cleanup: re-running cleanupArtifacts on restored text
+      // rewrote preserved blocks (stripped indentation, collapsed "..",
+      // recapitalized diff/code lines) — #1468.
       const cleaned =
       blocks.length > 0 ?
-      cleanupArtifacts(restorePreservedBlocks(normalized, blocks)) :
+      restorePreservedBlocks(normalized, blocks) :
       normalized;
       if (shouldPreserve || blocks.length > 0) {
         const validation = validateCompression(textPart, cleaned);

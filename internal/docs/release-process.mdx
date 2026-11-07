@@ -6,13 +6,13 @@ description: Release Prepare, Release Tag, npm publish of the durindoor CLI, and
 Releases are a three-workflow chain on `bloodf/durindoor`. A human triggers **Release Prepare**. Merging the release PR to `main` fires **Release Tag**, which tags `vX.Y.Z` and creates the GitHub Release. Publishing that Release fires **Release**, which publishes the CLI to npm.
 
 ```text
-workflow_dispatch (bump, automerge)
+workflow_dispatch (bump)
         |
         v
 Release Prepare (release-prepare.yml)
-  compute version, bump package.json (root + cli), changelog, PR to main
+  compute version, bump package.json (root + cli), changelog, draft PR to main
         |
-        | squash merge
+        | independent review, owner full local validation, squash merge
         v
 Release Tag (release-tag.yml)
   tag vX.Y.Z, gh release create
@@ -34,7 +34,7 @@ Events created with `GITHUB_TOKEN` do not trigger other workflows. Both prepare 
 
 Without `RELEASE_PAT`:
 
-- Prepare still pushes the branch and opens the PR, but `ci.yml`, `test.yml`, and `commitlint.yml` never run on that PR. Required checks stay red and auto-merge stalls. The workflow prints a warning. Run the gates locally, record them in the PR, and merge with a maintainer account.
+- Prepare still pushes the branch and opens a draft PR. CI, Tests and Commitlint are manual fallbacks regardless of token. The integration owner must validate the exact reviewed base/head using the externally frozen full local gate before marking ready or merging. See [local CI](./local-ci.md).
 - Tag still creates the GitHub Release, but `release.yml` never fires, so npm publish does not run. See [Manual fallback](#manual-fallback).
 
 ## Cutting a release
@@ -42,15 +42,15 @@ Without `RELEASE_PAT`:
 ### From the UI
 
 1. Actions, Release Prepare, Run workflow.
-2. Pick `bump` (`auto` derives it from conventional commits since the last tag; `patch` / `minor` / `major` force it) and leave `automerge` on unless you want to review the PR first.
-3. The workflow opens a PR titled `chore(release): bump version to X.Y.Z`.
+2. Pick `bump` (`auto` derives it from conventional commits since the last tag; `patch` / `minor` / `major` force it).
+3. The workflow opens a draft PR titled `chore(release): bump version to X.Y.Z`.
 
 Checkout is pinned to `main` no matter which ref the dispatch UI selects.
 
 ### From the CLI
 
 ```bash
-gh workflow run release-prepare.yml --repo bloodf/durindoor -f bump=auto -f automerge=true
+gh workflow run release-prepare.yml --repo bloodf/durindoor -f bump=auto
 ```
 
 Merging the release PR is the automation cutover: the push to `main` fires Release Tag, which tags `vX.Y.Z`, extracts that version's section from `CHANGELOG.md` (`node scripts/release-notes.mjs extract X.Y.Z`), and creates the GitHub Release. Publishing the Release fires `release.yml`, which runs lint, `check:agent-index`, build, the tests package CI script with `BASELINE_BASE_REF=HEAD^`, then `npm run cli:publish`.
@@ -119,3 +119,5 @@ NPM_TOKEN=... npm run cli:publish
 ```
 
 A maintainer can also re-run **Actions, Release Tag, Run workflow** with an explicit `version` input.
+
+Release Prepare never enables auto-merge. On retry it disables previously enabled auto-merge and returns an existing release PR to draft before updating the branch. Failures in that hold step block the push. Only the integration owner may mark the PR ready and merge after independent review, exact-head full validation and the final live base/head check.

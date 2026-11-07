@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
+import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
@@ -17,7 +18,7 @@ import {
 
 // SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
 // inside providerConnections.data. All other fields stay plaintext.
-import { isBoolean, isFunction, isNumber, isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
 export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
 "accessToken",
 "refreshToken",
@@ -92,7 +93,10 @@ const AUTO_PING_SETTINGS_KEYS = {
   codex: "codexAutoPing"
 };
 
-function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
+// `enabled`: undefined keeps the reactive flag. `schedule`: undefined keeps the
+// stored schedule, null removes it, an object replaces it. Disabling a
+// connection (enabled false, schedule null) clears both.
+function updateAutoPingEntryInTx(db, provider, connectionId, enabled, schedule = undefined) {
   const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
   if (!settingsKey) return null;
   const row = db.get(`SELECT data FROM settings WHERE id = 1`);
@@ -100,8 +104,11 @@ function updateAutoPingEntryInTx(db, provider, connectionId, enabled) {
   const currentConfig = current[settingsKey] || {};
   const connections = { ...(currentConfig.connections || {}) };
   if (enabled === true) connections[connectionId] = true;else
-  delete connections[connectionId];
-  const config = { ...currentConfig, connections };
+  if (enabled === false) delete connections[connectionId];
+  const schedules = { ...(currentConfig.schedules || {}) };
+  if (schedule) schedules[connectionId] = schedule;else
+  if (schedule === null) delete schedules[connectionId];
+  const config = { ...currentConfig, connections, schedules };
   db.run(
     `INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
     [stringifyJson({ ...current, [settingsKey]: config })]
@@ -252,6 +259,10 @@ function reorderInTx(db, providerId) {
   });
 }
 
+/**
+ * iFlow cookie reimports reuse the row for the same normalized BXAuth session,
+ * not its display name or refreshed API key. Distinct sessions stay separate.
+ */
 export async function createProviderConnection(data, { shouldCommit, requireNewName, createOnly = false } = {}) {
   const db = await getAdapter();
   // OAuth flows can be cancelled while an upstream exchange is in flight.
@@ -312,6 +323,13 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
         if (incomingUsername || existingUsername) return false;
         return true;
       });
+    }
+    if (!existing && data.provider === "iflow" && data.authType === "cookie") {
+      const session = extractCookieValue(data.providerSpecificData?.cookie, "BXAuth");
+      if (session) {
+        existing = all.find((c) => c.authType === "cookie" &&
+          extractCookieValue(c.providerSpecificData?.cookie, "BXAuth") === session);
+      }
     }
     if (!existing && data.provider === "cursor" && data.providerSpecificData?.userId) {
       existing = all.find(
@@ -433,11 +451,30 @@ export async function updateProviderConnection(id, data, {
     }
     const merged = { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: new Date().toISOString() };
     upsert(db, merged);
-    if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false);
+    if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false, null);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = returnCommitResult ? { applied: true, connection: merged } : merged;
   });
   return result;
+}
+
+// Atomic compare-and-set on ping markers so two processes cannot both send the
+// same scheduled/reactive ping. Applies `next` only when every `expected` field
+// still matches (missing counts as null). Returns true when claimed.
+export async function claimProviderConnectionPing(id, expected, next) {
+  const db = await getAdapter();
+  let claimed = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Provider ping claim requires an initialized schema");
+    const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+    if (!row) return;
+    const existing = rowToConn(row);
+    if (Object.entries(expected).some(([field, value]) => (existing[field] ?? null) !== (value ?? null))) return;
+    upsert(db, { ...existing, ...next });
+    claimed = true;
+  });
+  return claimed;
 }
 
 const MODEL_STATE_VERSION_PREFIX = "modelStateObserved_";
@@ -659,15 +696,20 @@ export async function deleteProviderConnection(id) {
     const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     assertDeletionDoesNotBroadenScopedKeys(db, [id]);
-    updateAutoPingEntryInTx(db, row.provider, id, false);
+    updateAutoPingEntryInTx(db, row.provider, id, false, null);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider);
     ok = true;
   });
   return ok;
 }
-export async function setProviderConnectionAutoPing(id, enabled) {
-  if (!isBoolean(enabled)) throw new TypeError("enabled must be a boolean");
+export async function setProviderConnectionAutoPing(id, enabled, schedule = undefined) {
+  if (!isBoolean(enabled) && !(enabled === undefined && schedule !== undefined)) {
+    throw new TypeError("enabled must be a boolean");
+  }
+  if (schedule !== undefined && schedule !== null && (!isObject(schedule) || schedule.enabled !== true)) {
+    throw new TypeError("schedule must be an enabled schedule object or null");
+  }
   const db = await getAdapter();
   let result = null;
   db.transaction(() => {
@@ -677,16 +719,18 @@ export async function setProviderConnectionAutoPing(id, enabled) {
     );
     if (!row) return;
     const settingsKey = AUTO_PING_SETTINGS_KEYS[row.provider];
-    if (!settingsKey || row.authType !== "oauth" || enabled === true && row.isActive !== 1) {
+    const activating = enabled === true || Boolean(schedule);
+    if (!settingsKey || row.authType !== "oauth" || activating && row.isActive !== 1) {
       const error = new Error("Auto-ping is available only for active Claude or Codex OAuth connections");
       error.code = "AUTO_PING_INELIGIBLE";
       throw error;
     }
-    const updated = updateAutoPingEntryInTx(db, row.provider, id, enabled);
+    const updated = updateAutoPingEntryInTx(db, row.provider, id, enabled, schedule);
     result = {
       connectionId: id,
       provider: row.provider,
-      enabled,
+      enabled: updated.config.connections[id] === true,
+      schedule: updated.config.schedules[id] || null,
       settingsKey,
       config: updated.config
     };
@@ -705,7 +749,7 @@ export async function deleteProviderConnectionsByProvider(providerId) {
       });
     }
     assertDeletionDoesNotBroadenScopedKeys(db, rows.map((row) => row.id));
-    for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false);
+    for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false, null);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
     count = rows.length;
   });

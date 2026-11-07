@@ -3,6 +3,7 @@ import REGISTRY from "./registry/index.js";
 import { PROVIDER_DEFAULTS } from "./schema.js";
 import { normalizeModel } from "./models/schema.js";
 import { buildTtsProviderModels } from "../config/ttsModels.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 // oauth block is canonical for these fields; inject into transport so executors reading
 // this.config.{clientId,clientSecret,tokenUrl} keep working without duplicating in transport
@@ -31,6 +32,27 @@ const MEDIA_KEYS = new Set([
   "modelsFetcher", "mediaPriority", "hiddenKinds",
 ]);
 
+// Media-only providers often list models only under `<kind>Config.models`.
+// Publish those as catalog rows of that kind, so /v1/models/{kind} and the
+// media route pickers see the same models the dispatcher accepts.
+const CONFIG_MODEL_KINDS = [
+  ["ttsConfig", "tts"], ["sttConfig", "stt"], ["embeddingConfig", "embedding"],
+  ["imageConfig", "image"], ["videoConfig", "video"],
+];
+
+function catalogModels(entry) {
+  const models = (entry.models || []).map(normalizeModel);
+  const ids = new Set(models.map((m) => m.id));
+  for (const [key, kind] of CONFIG_MODEL_KINDS) {
+    for (const m of entry[key]?.models || []) {
+      if (!isString(m?.id) || ids.has(m.id)) continue;
+      ids.add(m.id);
+      models.push(normalizeModel({ ...m, kind }));
+    }
+  }
+  return models;
+}
+
 export const PROVIDERS = {};
 export const PROVIDER_MODELS = {};
 export const PROVIDER_OAUTH = {};
@@ -41,8 +63,9 @@ for (const entry of REGISTRY) {
     if (entry.transports) PROVIDERS[entry.id].transports = entry.transports;
     if (entry.usage) PROVIDERS[entry.id].usage = entry.usage;
   }
-  if (entry.models !== undefined && !(entry.category === "system" && !entry.transport)) {
-    PROVIDER_MODELS[entry.alias || entry.id] = entry.models.map(normalizeModel);
+  if (!(entry.category === "system" && !entry.transport)) {
+    const models = catalogModels(entry);
+    if (entry.models !== undefined || models.length > 0) PROVIDER_MODELS[entry.alias || entry.id] = models;
   }
   if (entry.oauth) PROVIDER_OAUTH[entry.id] = entry.oauth;
   // Build PROVIDER_MEDIA from top-level fields (post-migration) + legacy entry.media

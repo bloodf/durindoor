@@ -135,7 +135,9 @@ describe("runCompressionSeam (real F-1a modules)", () => {
       planToEngineIds: () => ["a", "b"],
       getEngine: (id) => ({
         apply: async (b) => {
-          if (id === "a") return { body: { ...b, messages: b.messages.slice(1) }, compressed: true, stats: { savingsPercent: 50 } };
+          // Shorten the user turn; dropping the system message would be rolled
+          // back by the protected-block gate (#1099).
+          if (id === "a") return { body: { ...b, messages: [b.messages[0], { role: "user", content: "hello" }] }, compressed: true, stats: { savingsPercent: 50 } };
           // b reports compressed but does not change the body -> must NOT appear.
           return { body: clonedIdentical(b), compressed: true, stats: { savingsPercent: 0 } };
         },

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PROVIDER_MODELS, getModelSupportedFormats, getModelTargetFormat, getModelUpstreamId } from "../../open-sse/config/providerModels.js";
+import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
+import { getPricingForModel } from "../../open-sse/providers/pricing.js";
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { resolveTransport } from "../../open-sse/services/provider.js";
@@ -12,7 +14,9 @@ const OPENAI_URL = "https://opencode.ai/zen/go/v1/chat/completions";
 const CLAUDE_URL = "https://opencode.ai/zen/go/v1/messages";
 const RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
 
-const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro"];
+const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro", "kimi-k3.1-pro"];
+// Served from /messages only (upstream c8644368).
+const CLAUDE_ONLY = "claude-haiku-5-5";
 const MODEL_WITHOUT_FORMATS = "glm-5.2";
 const RESPONSES_CAPABLE = ["deepseek-v4-pro", "deepseek-v4-flash"];
 const CLAUDE_CAPABLE = ["minimax-m3", "minimax-m2.7", "minimax-m2.5", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus"];
@@ -32,8 +36,27 @@ describe("OpenCode Go model catalog", () => {
       ...CHAT_ONLY.slice(3),
       ...MUSE_SPARK_CONTRIBUTORS,
       ...CLAUDE_CAPABLE,
+      CLAUDE_ONLY,
       OX_ALPHA,
     ]);
+  });
+});
+
+describe("OpenCode Go claude-haiku-5-5 and kimi-k3.1-pro", () => {
+  it("pins claude-haiku-5-5 to the claude /messages transport", () => {
+    expect(getModelSupportedFormats("opencode-go", CLAUDE_ONLY)).toEqual(["claude"]);
+    expect(getModelTargetFormat("opencode-go", CLAUDE_ONLY)).toBe("claude");
+  });
+
+  it("states claude-haiku-5-5 limits", () => {
+    const caps = getCapabilitiesForModel("opencode-go", CLAUDE_ONLY);
+    expect(caps.contextWindow).toBe(1000000);
+    expect(caps.maxOutput).toBe(128000);
+    expect(caps.pdf).toBe(true);
+  });
+
+  it("prices kimi-k3.1-pro below the kimi-k3 row", () => {
+    expect(getPricingForModel("opencode-go", "kimi-k3.1-pro")).toMatchObject({ input: 2, output: 10, cached: 0.2 });
   });
 });
 

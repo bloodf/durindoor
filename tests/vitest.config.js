@@ -1,8 +1,9 @@
 import { defineConfig } from "vitest/config";
 import { transformWithOxc } from "vite";
-import { resolve } from "path";
+import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
+import { createRequire } from "module";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -10,6 +11,11 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 // which is not part of this repo checkout. Skip its test when absent so the
 // suite doesn't fail at collection with ERR_MODULE_NOT_FOUND.
 const hasCloud = existsSync(resolve(__dirname, "../cloud"));
+
+// tests/ and the repo root both install playwright (storybook e2e vs browserPool).
+// Pin every "playwright" import to the root copy that production code resolves, so
+// vi.mock("playwright") in a test hits the module open-sse actually imports.
+const playwrightDir = dirname(createRequire(resolve(__dirname, "../package.json")).resolve("playwright/package.json"));
 
 export default defineConfig({
   oxc: {
@@ -24,6 +30,12 @@ export default defineConfig({
     // Number formatting assertions (`2,402 results`, `1.0k`) assume the en-US
     // locale; pin it so a pt-BR or de-DE host does not fail them.
     env: { LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" },
+    // Node 25+ enables the global Web Storage API; without --localstorage-file
+    // its `localStorage` getter is undefined and shadows the DOM environment's
+    // window.localStorage. Disable it where the flag exists (not on Node 20).
+    execArgv: process.allowedNodeEnvironmentFlags.has("--no-experimental-webstorage")
+      ? ["--no-experimental-webstorage"]
+      : [],
     include: ["**/*.test.js"],
     // Don't scan into git worktrees nested under .omc/ or .claude/ — they carry
     // their own copies of the test files but lack an installed node_modules
@@ -74,6 +86,7 @@ export default defineConfig({
     alias: [
       { find: /^open-sse\//, replacement: resolve(__dirname, "../open-sse") + "/" },
       { find: "open-sse", replacement: resolve(__dirname, "../open-sse") },
+      { find: /^playwright$/, replacement: resolve(playwrightDir, "index.mjs") },
       { find: "jsonc-parser", replacement: resolve(__dirname, "node_modules/jsonc-parser/lib/umd/main.js") },
       // Mirrors website/next.config.mjs, so website components under test
       // resolve their own sources the same way the app builds them.

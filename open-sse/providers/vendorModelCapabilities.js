@@ -9,6 +9,11 @@
 
 const OPENAI_API_CAPABILITIES = {
   "gpt-6-astra": {"vision":true,"tools":true,"reasoning":true,"contextWindow":1050000,"maxInput":922000,"maxOutput":128000,"search":true,"audioInput":false,"videoInput":false,"pdf":true,"imageOutput":false,"audioOutput":false,"videoOutput":false,"structuredOutput":true,"promptCaching":true,"supportedTools":["web_search","file_search","image_generation","code_interpreter","hosted_shell","apply_patch","skills","computer_use","mcp","tool_search"],"thinkingFormat":"openai","thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingCanDisable":false},
+  // GPT-6.1 Sol and Terra: 1,050,000 context, 922,000 max input, 128,000 max output, per
+  // https://developers.openai.com/api/docs/models/gpt-6.1-sol and
+  // https://developers.openai.com/api/docs/models/gpt-6.1-terra (Codex and ChatGPT Work default to 500K,
+  // codex-rs lists max_context_window 872000; the highest documented API figure is used on every route).
+  "gpt-6.1-terra": {"vision":true,"tools":true,"reasoning":true,"contextWindow":1050000,"maxInput":922000,"maxOutput":128000,"search":true,"audioInput":false,"videoInput":false,"imageOutput":false,"audioOutput":false,"videoOutput":false,"supportedTools":["web_search","file_search","computer_use"],"thinkingFormat":"openai","thinkingEfforts":["none","low","medium","high","xhigh","max"],"thinkingCanDisable":true},
   "gpt-6.1-sol": {"vision":true,"tools":true,"reasoning":true,"contextWindow":1050000,"maxInput":922000,"maxOutput":128000,"search":true,"audioInput":false,"videoInput":false,"pdf":true,"imageOutput":false,"audioOutput":false,"videoOutput":false,"structuredOutput":true,"promptCaching":true,"supportedTools":["web_search","file_search","image_generation","code_interpreter","hosted_shell","apply_patch","skills","computer_use","mcp","tool_search"],"thinkingFormat":"openai","thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingCanDisable":false},
   "gpt-6-sol": {"vision":true,"tools":true,"reasoning":true,"contextWindow":1050000,"maxInput":922000,"maxOutput":128000,"search":true,"audioInput":false,"videoInput":false,"pdf":true,"imageOutput":false,"audioOutput":false,"videoOutput":false,"structuredOutput":true,"promptCaching":true,"supportedTools":["web_search","file_search","image_generation","code_interpreter","hosted_shell","apply_patch","skills","computer_use","mcp","tool_search"],"thinkingFormat":"openai","thinkingEfforts":["none","low","medium","high","xhigh","max"],"thinkingCanDisable":true},
   "gpt-6-luna": {"vision":true,"tools":true,"reasoning":true,"contextWindow":1050000,"maxInput":922000,"maxOutput":128000,"search":true,"audioInput":false,"videoInput":false,"pdf":true,"imageOutput":false,"audioOutput":false,"videoOutput":false,"structuredOutput":true,"promptCaching":true,"supportedTools":["web_search","file_search","image_generation","code_interpreter","hosted_shell","apply_patch","skills","computer_use","mcp","tool_search"],"thinkingFormat":"openai","thinkingEfforts":["none","low","medium","high","xhigh","max"],"thinkingCanDisable":true},
@@ -83,6 +88,7 @@ const OPENAI_API_CAPABILITIES = {
 };
 
 const MINIMAX_API_CAPABILITIES = {
+  "MiniMax-M3.1-Flash": {"vision":true,"audioInput":false,"videoInput":true,"reasoning":true,"thinkingFormat":"openai","thinkingCanDisable":false,"contextWindow":1000000,"maxOutput":null,"tools":true,"supportedTools":["function_calling"],"thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingType":"adaptive"},
   "MiniMax-M3.1-Flash-Preview": {"vision":true,"audioInput":false,"videoInput":true,"reasoning":true,"thinkingFormat":"openai","thinkingCanDisable":false,"contextWindow":1000000,"maxOutput":null,"tools":true,"supportedTools":["function_calling"],"thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingType":"adaptive"},
   "MiniMax-M3": {"vision":true,"audioInput":false,"videoInput":true,"reasoning":true,"thinkingFormat":"minimax","thinkingCanDisable":true,"contextWindow":1000000,"maxOutput":null,"tools":true,"search":true,"promptCaching":true,"supportedTools":["function_calling","web_search"]},
   "MiniMax-M2.7": {"vision":false,"audioInput":false,"videoInput":false,"reasoning":true,"thinkingFormat":"minimax","thinkingCanDisable":false,"contextWindow":204800,"maxOutput":null,"tools":true},
@@ -166,6 +172,7 @@ const CODEX_CATALOG_CAPABILITIES = Object.fromEntries([
 }));
 
 const CLAUDE_CODE_CAPABILITIES = {
+  "claude-haiku-5-5": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","defaultEffort":"medium","structuredOutput":true,"contextWindow":1000000,"maxOutput":128000},
   "claude-sonnet-5-5": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"structuredOutput":true,"contextWindow":1000000,"maxOutput":128000,"thinkingEfforts":["low","medium","high","xhigh","max"],"thinkingModes":["adaptive","between_tools"],"search":true},
   "claude-opus-5-5": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"structuredOutput":true,"contextWindow":1000000,"maxOutput":128000,"thinkingEfforts":["low","medium","high","xhigh","max"]},
   "claude-fable-5-1": {"vision":true,"pdf":true,"tools":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"structuredOutput":true,"contextWindow":1000000,"maxOutput":128000,"thinkingEfforts":["low","medium","high","xhigh","max"]},
@@ -229,6 +236,7 @@ export const AUDITED_PROVIDER_CAPABILITIES = {
   codex: CODEX_CATALOG_CAPABILITIES,
   cx: CODEX_CATALOG_CAPABILITIES,
   anthropic: {
+    "claude-haiku-5-5": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","defaultEffort":"medium","search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},
     "claude-fable-5-1": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},
     "claude-mythos-5-1": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},
     "claude-fable-5": {"vision":true,"pdf":true,"reasoning":true,"thinkingFormat":"claude-adaptive","thinkingCanDisable":false,"search":true,"contextWindow":1000000,"maxOutput":128000,"structuredOutput":true},

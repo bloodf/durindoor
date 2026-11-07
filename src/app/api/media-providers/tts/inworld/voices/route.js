@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderConnections } from "@/lib/localDb";
+import { readableProviderConnections } from "@/lib/mediaProviderConnections.js";
 
 const langNames = new Intl.DisplayNames(["en"], { type: "language" });
 
@@ -12,7 +12,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const langFilter = searchParams.get("lang");
 
-    const connections = await getProviderConnections({ provider: "inworld", isActive: true });
+    const connections = await readableProviderConnections(request, "inworld");
     const apiKey = connections[0]?.apiKey;
     if (!apiKey) return NextResponse.json({ error: "No Inworld connection found" }, { status: 400 });
 

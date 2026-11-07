@@ -23,4 +23,23 @@ describe("account-scoped provider input", () => {
       providerSpecificData: { accountId: "org_account" },
     });
   });
+
+  it.each(["LLM|1412752987604207|PYVRCdb9ZAnsZZk63R", "llm|1412752987604207|PYVRCdb9ZAnsZZk63R"])(
+    "keeps %s whole as the apiKey",
+    (line) => {
+      expect(parseBulkApiKeyLine(line, 0, "openai")).toEqual({ name: "LLM 1", apiKey: line, providerSpecificData: undefined });
+    }
+  );
+
+  it.each([
+    ["LLM|sk-abc", "LLM 1", "sk-abc"],
+    ["LLM|", "LLM 1", ""],
+  ])("does not treat %s as an opaque token", (line, name, key) => {
+    if (!key) return expect(() => parseBulkApiKeyLine(line, 0, "openai")).toThrow();
+    expect(parseBulkApiKeyLine(line, 0, "openai")).toMatchObject({ name, apiKey: key });
+  });
+
+  it("still parses name|key|accountId for account-scoped providers", () => {
+    expect(parseBulkApiKeyLine("LLM|sk-key|acc123", 0, "snowflake").providerSpecificData).toEqual({ accountId: "acc123" });
+  });
 });

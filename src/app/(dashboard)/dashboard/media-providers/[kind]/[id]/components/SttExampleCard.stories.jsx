@@ -22,6 +22,39 @@ export default {
 };
 
 export const Default = { args: { providerId: "openai" } };
+export const CustomSttModel = {
+  args: { providerId: "local-whisper" },
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/media-providers/stt/local-whisper",
+      params: { kind: "stt", id: "local-whisper" },
+      routes: {
+        "GET /api/tunnel/status": { body: {}, status: 200 },
+        "GET /api/models/custom": { body: { models: [{ id: "custom-whisper", name: "Custom Whisper", providerAlias: "local-whisper", kind: "stt" }] }, status: 200 },
+        "POST /api/v1/audio/transcriptions": async (request) => {
+          const body = await request.formData();
+          if (body.get("model") !== "local-whisper/custom-whisper" || body.get("file")?.name !== "sample.wav") {
+            return { body: { error: "Unexpected transcription request" }, status: 400 };
+          }
+          return { body: { text: "Custom transcription complete" }, status: 200 };
+        },
+      },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("combobox", { name: "Model" }));
+    await userEvent.click(await within(document.body).findByRole("option", { name: "Custom Whisper" }));
+    const file = new File(["audio"], "sample.wav", { type: "audio/wav" });
+    await userEvent.upload(canvas.getByLabelText("Audio file"), file);
+    await expect(canvas.getByRole("region", { name: "Request example" })).toHaveTextContent('model=local-whisper/custom-whisper');
+    await expect(canvas.getByRole("region", { name: "Request example" })).toHaveTextContent('file=@sample.wav');
+    await userEvent.click(canvas.getByRole("button", { name: "Run" }));
+    await expect(await canvas.findByText(/Custom transcription complete/)).toBeVisible();
+  },
+};
+
 export const CurlCopies = {
   args: { providerId: "openai" },
   play: async ({ canvasElement }) => {

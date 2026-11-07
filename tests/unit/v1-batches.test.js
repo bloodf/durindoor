@@ -306,3 +306,51 @@ describe("cross-surface isolation", () => {
     expect(anthList.data).toHaveLength(1);
   });
 });
+
+describe("default files root", () => {
+  let home;
+  let data;
+  const env = {};
+  beforeEach(() => {
+    env.HOME = process.env.HOME; env.DATA_DIR = process.env.DATA_DIR;
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "files-home-"));
+    data = fs.mkdtempSync(path.join(os.tmpdir(), "files-data-"));
+    process.env.HOME = home;
+    process.env.DATA_DIR = data;
+  });
+  afterEach(() => {
+    for (const name of ["HOME", "DATA_DIR"]) {
+      if (env[name] === undefined) delete process.env[name];
+      else process.env[name] = env[name];
+    }
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(data, { recursive: true, force: true });
+  });
+
+  it("stores new files under DATA_DIR", async () => {
+    const meta = await uploadFile({ filename: "a.txt", bytes: "a" }, { ownerId: "k" });
+    expect(fs.existsSync(path.join(data, "files", meta.id, "content"))).toBe(true);
+    expect(fs.existsSync(path.join(home, ".9router", "files", meta.id))).toBe(false);
+  });
+
+  it("keeps files from the earlier home location reachable without moving them", async () => {
+    const legacy = await uploadFile({ filename: "old.txt", bytes: "old" }, { filesRoot: path.join(home, ".9router", "files"), ownerId: "k" });
+    const fresh = await uploadFile({ filename: "new.txt", bytes: "new" }, { ownerId: "k" });
+    expect((await getFile(legacy.id, { ownerId: "k" }))?.id).toBe(legacy.id);
+    expect((await getFileContent(legacy.id, { ownerId: "k" })).buffer.toString()).toBe("old");
+    expect((await getFile(legacy.id, { ownerId: "other" }))).toBeNull();
+    expect((await listFiles({ ownerId: "k" })).data.map((f) => f.id).sort()).toEqual([legacy.id, fresh.id].sort());
+    expect(fs.existsSync(path.join(home, ".9router", "files", legacy.id, "content"))).toBe(true);
+    expect(fs.existsSync(path.join(data, "files", legacy.id))).toBe(false);
+    expect((await deleteFile(legacy.id, { ownerId: "k" }))?.deleted).toBe(true);
+  });
+
+  it("builds a batch from an earlier-location input file", async () => {
+    const jsonl = JSON.stringify({ custom_id: "a", method: "POST", url: "/v1/chat/completions", body: { model: "m", messages: [] } });
+    const legacy = await uploadFile({ filename: "in.jsonl", bytes: jsonl, purpose: "batch" }, { filesRoot: path.join(home, ".9router", "files"), ownerId: "k" });
+    const batch = await createOpenAIBatch({ input_file_id: legacy.id, endpoint: "/v1/chat/completions" }, { executor: okExecutor, ownerId: "k" });
+    await _waitForBatch(batch.id);
+    const view = await getBatch(batch.id, { ownerId: "k" });
+    expect(fs.existsSync(path.join(data, "files", view.output_file_id, "content"))).toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
 {
   "title": "Operations",
-  "description": "Startup, upgrades, data, Postgres, security, and API-key scoping.",
+  "description": "Startup, upgrades, data, Postgres, security, API-key scoping, and webhooks.",
   "icon": "Settings",
   "pages": [
     "index",
@@ -9,6 +9,9 @@
     "data-management",
     "postgres",
     "security",
-    "api-key-scoping"
+    "opentelemetry",
+    "operational-metrics",
+    "api-key-scoping",
+    "webhooks"
   ]
 }

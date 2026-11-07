@@ -341,8 +341,13 @@ describe("Cursor long-session empty-turn recovery", () => {
     expect(trimmed[1].content).toContain("94 messages trimmed");
     expect(trimmed[2].content).toBe("final ask");
 
-    // Idempotent: prior [9router] notes are stripped on re-trim.
+    // Idempotent: prior [durindoor] notes are stripped on re-trim.
     const again = tailOnlyCursorMessages(trimmed);
-    expect(again.filter((m) => String(m.content).includes("[9router]"))).toHaveLength(1);
+    expect(again.filter((m) => String(m.content).includes("[durindoor]"))).toHaveLength(1);
+
+    // Legacy [9router] notes are stripped too.
+    const legacy = [{ role: "system", content: "[9router] Long session: 9 messages trimmed" }, ...trimmed.slice(1)];
+    const stripped = tailOnlyCursorMessages(legacy);
+    expect(stripped.filter((m) => String(m.content).includes("[9router]"))).toHaveLength(0);
   });
 });

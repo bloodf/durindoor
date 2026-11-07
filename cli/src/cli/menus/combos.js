@@ -5,6 +5,7 @@ const { clearScreen, showStatus, showHeader } = require("../utils/display");
 const { formatDate } = require("../utils/format");
 const { selectModelFromList } = require("../utils/modelSelector");
 const { showMenuWithBack } = require("../utils/menuHelper");
+const { comboModelId } = require("../utils/comboModelId");
 
 /**
  * Format model to string (handle both string and object)
@@ -233,7 +234,9 @@ async function handleCreateCombo() {
     return;
   }
 
-  const availableModels = modelsResult.data.models || [];
+  // Older servers omit kind; unknown future kinds remain selectable.
+  const nonChatKinds = new Set(["image", "imageToText", "tts", "embedding", "stt", "rerank", "video", "music", "audio", "realtime", "realtimeTranslation", "realtimeTranscription", "live", "moderation", "systemone", "documentParsing", "webSearch", "webFetch", "agent"]);
+  const availableModels = (modelsResult.data.models || []).filter((model) => !nonChatKinds.has(model.kind));
 
   if (availableModels.length === 0) {
     showStatus("No models available. Please add providers first.", "warning");
@@ -254,7 +257,7 @@ async function handleCreateCombo() {
 
     if (selectedModels.length > 0) {
       selectedModels.forEach((m, i) => {
-        console.log(`  ${i + 1}. ${m.provider}/${m.model}`);
+        console.log(`  ${i + 1}. ${m}`);
       });
     } else {
       console.log("  (none)");
@@ -263,7 +266,7 @@ async function handleCreateCombo() {
     console.log();
     console.log("Available models:");
     availableModels.forEach((m, i) => {
-      console.log(`  ${i + 1}. ${m.provider}/${m.model}`);
+      console.log(`  ${i + 1}. ${comboModelId(m) || "Invalid model"}`);
     });
 
     console.log();
@@ -296,7 +299,13 @@ async function handleCreateCombo() {
       continue;
     }
 
-    selectedModels.push(availableModels[num - 1]);
+    const modelId = comboModelId(availableModels[num - 1]);
+    if (!modelId) {
+      showStatus("Selected model has no valid identifier", "error");
+      await pause();
+      continue;
+    }
+    selectedModels.push(modelId);
   }
 
   // Create combo

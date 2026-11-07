@@ -2,6 +2,7 @@
 
 import { safeParseJSON } from "../concerns/json.js";
 import { OPENAI_BLOCK } from "../schema/index.js";
+import { isGemini4Model } from "../../providers/capabilities.js";
 
 // Unsupported JSON Schema constraints that should be removed for Antigravity
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -783,4 +784,28 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   enforceTypeConstraints(cleaned);
 
   return cleaned;
+}
+
+// Gemini 4 rejects a user turn whose last part is not a functionResponse.
+function moveFunctionResponsesLast(content) {
+  if (content?.role !== "user" || !content.parts?.some((part) => part?.functionResponse)) return content;
+  return {
+    ...content,
+    parts: [...content.parts.filter((part) => !part?.functionResponse), ...content.parts.filter((part) => part?.functionResponse)]
+  };
+}
+
+/**
+ * Gemini 4 (Argon) request rules (upstream 9router eb373017 / #4802): drop the
+ * removed sampling params and order functionResponse parts last in user turns.
+ * Returns the request unchanged for other models, otherwise a new object.
+ */
+export function applyGemini4RequestRules(request, model) {
+  if (!isGemini4Model(model) || !request) return request;
+  const { temperature: _temperature, topP: _topP, topK: _topK, ...generationConfig } = request.generationConfig || {};
+  return {
+    ...request,
+    ...(request.generationConfig && { generationConfig }),
+    ...(Array.isArray(request.contents) && { contents: request.contents.map(moveFunctionResponsesLast) })
+  };
 }

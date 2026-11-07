@@ -55,6 +55,7 @@ describe("local OpenAI-compatible providers connection test", () => {
       "lemonade",
       "llamafile",
       "llama-cpp",
+      "mlx",
       "triton",
       "docker-model-runner",
       "xinference",

@@ -63,7 +63,7 @@ describe("CLI startup does not trigger native SQLite install (#3314)", () => {
     });
     expect(spawnSync).toHaveBeenCalledWith(
       expect.stringMatching(/^npm(?:\.cmd)?$/),
-      expect.arrayContaining(["better-sqlite3@12.10.1", "--no-save"]),
+      expect.arrayContaining(["better-sqlite3@12.11.1", "--no-save"]),
       expect.objectContaining({ timeout: 30000 }),
     );
   });

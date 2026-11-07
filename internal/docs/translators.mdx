@@ -50,6 +50,75 @@ Import them from `open-sse/translator/schema/index.js`.
 
 Endpoint detection (`detectFormatByEndpoint`): `/v1/responses` is `openai-responses`, `/v1/messages` is `claude`. `/v1/chat/completions` with an `input[]` body still counts as OpenAI (Cursor CLI).
 
+Haiku thinking capability is decided once, by `isLegacyHaikuModel` in
+`open-sse/providers/capabilities.js` (9router `0ad0a722`, the Haiku slice of #1367).
+`getCapabilitiesForModel` returns `claude-adaptive` for Haiku 5+ ahead of the
+budget-shaped `*claude*haiku*` pattern, so `applyThinking` emits adaptive thinking on
+the translated path, and `normalizeClaudePassthrough` uses the same helper to decide
+the native downgrade. Exact and provider-specific capability entries still win.
+Haiku 3/4 and unversioned aliases keep budget thinking. Version-before-name,
+version-after-name, provider prefixes, and date suffixes are covered. The Copilot
+dotted-model and GPT max-effort rules tracked by the same issue are not part of this
+change, and the forced-tool-choice guard is unchanged.
+
+OpenAI tool-name normalization reserves all original names from declarations,
+choices, and history before allocating aliases. Allocation order is sorted and
+collision retries are deterministic; a valid original that happens to equal a
+generated hash alias retains its identity. Successive provider-specific alias
+maps still compose back to the client's original names. Chat-to-Claude OAuth
+requests reserve room for the final configured tool suffix before the direct
+translation, so suffixing does not exceed the 64-character wire limit.
+
+## OpenAI token-cap normalization
+
+Port `decolua/9router@7c42d8f87bac934184f633f985c8a944c8c6336e`
+(#1366) adds a provider-scoped `renameParams` rule in `paramSupport.js`.
+Renames run before a matching rule's output ceiling clamp and keep an explicit
+destination value. `DefaultExecutor` calls `applyParamRenames` before
+`stripUnsupportedParams`, so the earlier helper also selects OpenAI's forward
+rename. Otherwise GPT-6's explicit `max_completion_tokens` would be lost to the
+fork's legacy reverse normalization before the final guard runs. Non-OpenAI
+provider/model behavior remains unchanged. Tests cover the Chat executor transform,
+both field spellings, explicit zero, compatibility controls, and clamp order.
+The separate Chat-to-Responses translation is outside this port; native
+Responses `max_output_tokens` remains untouched by these helpers.
+
+## Non-streaming SSE errors
+
+Port `decolua/9router@56dbf466f10787d284b09bd28e35c0f7171b6d06`
+(#1355) preserves explicit OpenAI-style SSE error envelopes before the fork's
+terminal-coherence aggregation. `createSSEErrorResult` is shared by
+`handleNonStreamingResponse` and the standard `handleForcedSSEToJson` path.
+It accepts integer numeric/string 400–599 statuses, uses 502 otherwise, and
+passes only the selected message to `createErrorResult` for redaction.
+`chatCore` supplies the selected credentials directly to these two buffered
+handlers (not to the shared logging context), so opaque credential values are
+redacted just as they are on the existing HTTP-error path.
+Both paths log FAILED before any success accounting or cleanup callback;
+their existing finally blocks still call `trackDone` once. The existing
+finish-reason error and native Responses conversion contracts are unchanged.
+
+## Forced SSE with a Claude transport
+
+`handleForcedSSEToJson` buffers the stream when a provider forces SSE and the
+client asked for JSON. For `targetFormat: "claude"` (`kimi-coding`,
+`kimi-coding-apikey`, and `opencode`'s `union-alpha`) it feeds each Anthropic event to
+`claudeToOpenAIResponse`, then aggregates a Chat completion for classification,
+accounting, and non-Claude clients. The terminal tracker sees the raw events with
+format `claude`: a stream without `message_stop` stays a 502, and an `error` event
+is an error even after partial content or a terminal.
+
+Tool input that does not parse is a 502 for every client unless `stop_reason` is
+`max_tokens`; then the incomplete block is dropped and the turn succeeds. A stream
+without `message_start`, or a block event with a non-integer `index`, is a 502. A
+coherent turn with no usable output succeeds and calls `onEmptyStream`, as the
+streaming path does.
+
+Claude clients do not take the Chat hop's content. `foldClaudeEventsToMessage`
+rebuilds the message so thinking signatures, redacted thinking, block order,
+`stop_reason`, `stop_sequence`, and exclusive cache usage survive. A provider that
+answers with Chat chunks on this transport keeps the Chat parser.
+
 ## Tests
 
 Every test that calls `translateRequest` or `translateResponse` must import `tests/translator/registerAll.js` at the top of the file. That file re-imports every translator module so `register()` runs under Vitest ESM.
@@ -68,3 +137,14 @@ RTK compresses `tool_result` bodies in place. `handleChatCore` calls `compressMe
 It skips Claude blocks with `is_error === true` and Kiro tool results with `status: "error"`. Blobs under 500 bytes are left alone (`MIN_COMPRESS_SIZE`). Filter panics go through `safeApply`, which returns the original text.
 
 Token-saver and Headroom behaviour for operators is on [Compression](../../docs/features/compression.mdx).
+
+## NVIDIA reasoning aliases
+
+Port `decolua/9router@ced0cf6e6c5583e82d7d66e2555712b5dbbf7809` adds an
+assistant-only message rename rule for NVIDIA in `paramSupport.js`. It runs
+before `DefaultExecutor` injects DeepSeek reasoning placeholders. Canonical
+undefined/null/blank-string values can be filled from the alias; other canonical
+values are retained without coercion. A defined alias is removed afterward.
+This intentionally differs from top-level token-parameter renaming, whose
+explicit destination precedence includes zero and is undefined-only (#1394).
+The existing GLM top-level stripping and other vendors' drop rules remain.

@@ -14,6 +14,8 @@ curl http://localhost:20128/v1/models \
 
 The default response is an OpenAI list with model IDs in `data`. Provider models use `prefix/model-id`; combos use their saved name. Listing models confirms discovery, not successful inference. Send a [first request](../getting-started/first-request.mdx) before configuring a tool.
 
+Provider detail shows catalog or configured models separately from connection operational status. Neither verifies authentication or inference. Manual model test results last only for the current page session; skipped tests are not successful inference. Tests can use provider quota or incur charges. Catalog source and degradation appear only when returned by the provider discovery response.
+
 | Model string | Routes to |
 | --- | --- |
 | `openai/gpt-4.1` | An OpenAI connection with upstream model `gpt-4.1` |

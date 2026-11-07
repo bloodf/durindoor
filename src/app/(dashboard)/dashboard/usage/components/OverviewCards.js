@@ -23,9 +23,15 @@ function speedHint(stats) {
   return parts.join(" | ");
 }
 
+function costHint(unknownCostRequests) {
+  const unknown = Number(unknownCostRequests) || 0;
+  if (unknown <= 0) return "Estimated, not actual billing";
+  return `Estimated, not actual billing. Excludes ${fmt(unknown)} request${unknown === 1 ? "" : "s"} with unknown cost`;
+}
+
 export default function OverviewCards({ stats }) {
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+    <div data-usage-overview className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
       <StatCard icon="query_stats" label="Total requests" value={fmt(stats.totalRequests)} />
       <StatCard
         icon="input"
@@ -45,7 +51,7 @@ export default function OverviewCards({ stats }) {
         tone="success"
         value={<span role="img" title={compactToken(stats.totalCompletionTokens).title} aria-label={compactToken(stats.totalCompletionTokens).title}>{compactToken(stats.totalCompletionTokens).display}</span>}
       />
-      <StatCard icon="payments" label="Est. cost" tone="warning" value={`~${fmtCost(stats.totalCost)}`} hint="Estimated, not actual billing" />
+      <StatCard icon="payments" label="Est. cost" tone="warning" value={`~${fmtCost(stats.totalCost)}`} hint={costHint(stats.unknownCostRequests)} />
       <StatCard icon="speed" label="Output speed" value={`${formatTps(stats.avgTps)} tok/s`} hint={speedHint(stats)} />
     </div>
   );

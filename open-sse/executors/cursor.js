@@ -219,11 +219,12 @@ function decodeAgentFrames(buffer, onFrame) {
   while (pending.length >= 5) {
     const flags = pending[0];
     const length = pending.readUInt32BE(1);
+    if (length > MAX_PROVIDER_BODY_BYTES) throw cursorBodyLimitError();
     if (pending.length < 5 + length) break;
     let payload = pending.subarray(5, 5 + length);
     pending = pending.subarray(5 + length);
     if (flags & COMPRESS_FLAG.GZIP) {
-      payload = zlib.gunzipSync(payload);
+      payload = zlib.gunzipSync(payload, { maxOutputLength: MAX_PROVIDER_BODY_BYTES });
     }
     if (!(flags & COMPRESS_FLAG.TRAILER)) onFrame(payload);
   }
@@ -501,7 +502,7 @@ const CURSOR_EMPTY_TURN_RETRY_DELAY_MS = (() => {
 export function tailOnlyCursorMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return messages || [];
   const systemMessages = messages.filter(
-    (message) => message?.role === ROLE.SYSTEM && !String(message?.content || "").includes("[9router]"),
+    (message) => message?.role === ROLE.SYSTEM && !/\[(durindoor|9router)\] Long session/.test(String(message?.content || "")),
   );
   const chatMessages = messages.filter((message) => message?.role !== ROLE.SYSTEM);
   let anchor = chatMessages.length - 1;
@@ -515,7 +516,7 @@ export function tailOnlyCursorMessages(messages) {
   const tail = chatMessages.slice(Math.max(0, tailStart));
   const note = {
     role: ROLE.SYSTEM,
-    content: `[9router] Long session: ${messages.length} messages trimmed to the latest turn. Answer the current request; re-read files if needed.`,
+    content: `[durindoor] Long session: ${messages.length} messages trimmed to the latest turn. Answer the current request; re-read files if needed.`,
   };
   return [...systemMessages, note, ...tail];
 }
@@ -714,6 +715,7 @@ export class CursorExecutor extends BaseExecutor {
     let ended = false;
     let streamError = null;
     let req = null;
+    const idleMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
     const wake = (result) => {
       if (!waiting) return;
@@ -765,14 +767,25 @@ export class CursorExecutor extends BaseExecutor {
 
     const responseHeaders = new Promise((resolve, reject) => {
       const onEarlyError = (error) => reject(error);
+      // Abort or stream close before headers must settle the promise, else the
+      // caller waits for the full headers timeout.
+      const onEarlyClose = () => reject(cursorAbortError(signal?.reason));
+      const onEarlyAbort = () => reject(cursorAbortError(signal?.reason));
       client.once("error", onEarlyError);
       req.once("error", onEarlyError);
+      req.once("close", onEarlyClose);
+      signal?.addEventListener?.("abort", onEarlyAbort, { once: true });
+      if (signal?.aborted) onEarlyAbort();
       req.once("response", (hdrs) => {
         client.off("error", onEarlyError);
         req.off("error", onEarlyError);
+        req.off("close", onEarlyClose);
+        signal?.removeEventListener?.("abort", onEarlyAbort);
         resolve(hdrs);
       });
     });
+    // Callers that never await (early throw paths) must not trigger unhandled rejection.
+    responseHeaders.catch(() => {});
 
     return {
       responseHeaders,
@@ -789,7 +802,17 @@ export class CursorExecutor extends BaseExecutor {
           if (streamError) throw streamError;
           return { value: undefined, done: true };
         }
-        const result = await new Promise((resolve) => { waiting = resolve; });
+        // Idle timeout per read: a stalled stream must not hang the turn forever.
+        const idleTimer = setTimeout(() => {
+          fail(new Error("Cursor AgentService stream idle timed out"));
+          close();
+        }, idleMs);
+        let result;
+        try {
+          result = await new Promise((resolve) => { waiting = resolve; });
+        } finally {
+          clearTimeout(idleTimer);
+        }
         if (streamError) throw streamError;
         return result || { value: undefined, done: true };
       },
@@ -1048,16 +1071,18 @@ export class CursorExecutor extends BaseExecutor {
           attempt++;
           log?.info?.("CURSOR", `empty_turn on ${originalMessages.length}-message session; retry ${attempt}/${CURSOR_EMPTY_TURN_MAX_RETRIES} with tail-only frame`);
           workingMessages = tailOnlyCursorMessages(originalMessages);
-          session = openAgentSession(workingMessages);
           let retryHeaders;
           try {
-            retryHeaders = await withCursorTimeout(
-              session.responseHeaders,
-              headersTimeoutMs,
-              "Cursor AgentService response headers timed out"
-            );
+            retryHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
+              session = openAgentSession(workingMessages);
+              return withCursorTimeout(
+                session.responseHeaders,
+                headersTimeoutMs,
+                "Cursor AgentService response headers timed out"
+              );
+            }));
           } catch (error) {
-            try { session.close(); } catch {}
+            try { session?.close(); } catch {}
             throw error;
           }
           const retryStatus = Number(retryHeaders[":status"] || 0);
@@ -1184,8 +1209,9 @@ export class CursorExecutor extends BaseExecutor {
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
     if (signal?.aborted) throw cursorAbortError(signal.reason);
+    // The h2 AgentService stream cannot carry a proxy. When any proxy applies,
+    // stay on the legacy ChatService path, which honors it, and never connect directly.
     const agentUrl = `${PROVIDER_OAUTH.cursor?.agentEndpoint || ""}${AGENT_RUN_PATH}`;
-    // Keep proxied text/tool-result turns on proxy-capable ChatService; AgentService cannot honor proxies.
     if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body) && !shouldUseProxyAwareTransport(agentUrl, proxyOptions)) {
       const agentAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
       attemptStartedAt :

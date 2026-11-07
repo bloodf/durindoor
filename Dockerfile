@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG NODE_IMAGE=node:20.20.2-alpine
+ARG NODE_IMAGE=node:26.13.0-alpine
 ARG ALPINE_MIRROR=dl-cdn.alpinelinux.org
 ARG APP_VERSION=unknown
 
@@ -27,6 +27,9 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
+# wreq-js (OpenCode TLS transport) is optional: if npm skipped it, the empty
+# dirs keep the runner COPY below working and the app falls back to fetch.
+RUN mkdir -p node_modules/wreq-js node_modules/@wreq-js
 
 FROM ${NODE_IMAGE} AS runner
 ARG ALPINE_MIRROR
@@ -77,6 +80,10 @@ COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
 COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
 COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-core
 COPY --from=builder /app/node_modules/tls-client-node ./node_modules/tls-client-node
+# OpenCode's free tier loads wreq-js (+ its prebuilt @wreq-js/binding-*) with
+# dynamic import(); tracing omits it (upstream 3b7acf72).
+COPY --from=builder /app/node_modules/wreq-js ./node_modules/wreq-js
+COPY --from=builder /app/node_modules/@wreq-js ./node_modules/@wreq-js
 
 RUN mkdir -p /app/data && chown -R node:node /app && \
   mkdir -p /app/data-home && chown node:node /app/data-home && \
@@ -98,7 +105,9 @@ ENV CHATGPT_WEB_CHROME_PATH=/usr/bin/chromium-browser
 # the builder stage note above. When Xvfb is present and
 # no DISPLAY is set, start it so the headed ChatGPT Web browser has a screen;
 # DURINDOOR_XVFB=0 turns that off.
-RUN apk add --no-cache su-exec && \
+# ffmpeg converts audio for Codex speech-to-text (cx/transcribe). Alpine ships it as
+# one package with no slimmer variant; it adds roughly 100 MiB to the image.
+RUN apk add --no-cache su-exec ffmpeg && \
   printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nif [ -z "$DISPLAY" ] && [ "$DURINDOOR_XVFB" != "0" ] && command -v Xvfb >/dev/null 2>&1; then\n  su-exec node Xvfb :99 -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &\n  export DISPLAY=:99\nfi\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
 

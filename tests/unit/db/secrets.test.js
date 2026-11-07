@@ -112,6 +112,7 @@ describe("db/secrets — resolvePostgresSecret env precedence", () => {
 
   it("returns null when nothing is configured", async () => {
     expect(await resolvePostgresSecret()).toBeNull();
+    expect(fs.existsSync(path.join(dir, "db"))).toBe(false);
   });
 
   it("falls back to the legacy file when neither env nor settings row is set", async () => {
@@ -124,5 +125,6 @@ describe("db/secrets — resolvePostgresSecret env precedence", () => {
     fs.writeFileSync(p, JSON.stringify({ [POSTGRES_URL_KEY]: blob }));
     try { fs.chmodSync(p, 0o600); } catch { /* noop on win32 */ }
     expect(await resolvePostgresSecret()).toBe("postgres://from-legacy-file@h/db");
+    expect(fs.existsSync(path.join(dir, "db"))).toBe(false);
   });
 });

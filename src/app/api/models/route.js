@@ -38,6 +38,7 @@ export async function GET() {
           provider,
           model: row.id,
           name: row.name || row.id,
+          kind: row.kind || row.type || "llm",
           fullModel,
           alias: modelAliases[fullModel] || row.id,
           // Includes independently known limits/defaults and every resolved

@@ -141,7 +141,7 @@ show `laya:<TIER>` instead of `jev:<TIER>`.
 
 ## Fallback triggers
 
-A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, prepaid credit exhaustion (case-insensitive message substrings `insufficient credit` and `credit balance is too low`, including Anthropic's HTTP 400 billing envelope and OpenRouter/reseller insufficient-credits bodies; same long terminal account cooldown as `insufficient balance`, not a short transient backoff), and HTTP 200 with no usable output. Ordinary request-scoped 4xx (malformed body, context too long, other `invalid_request_error` messages) still stop on that member. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
+A member fails through on provider errors, account cooldowns, rate limits, quota skip, missing credentials, prepaid credit exhaustion (case-insensitive message substrings `insufficient credit` and `credit balance is too low`, including Anthropic's HTTP 400 billing envelope and OpenRouter/reseller insufficient-credits bodies; same long terminal account cooldown as `insufficient balance`, not a short transient backoff; on an HTTP 400 `invalid_request_error` only the provider's `error.message` is matched, never other body fields), and HTTP 200 with no usable output. Ordinary request-scoped 4xx (malformed body, context too long, other `invalid_request_error` messages) move to the next member with no cooldown and no account fallback; if no member serves the request, the client gets the first rejecting member's own status and body, unless another member failed with a retry hint (`retryAfter`), in which case the client gets that retryable status and `Retry-After`. SSE peek consumes a bounded prefix until the first meaningful frame, then replays those bytes; keepalive-only, `[DONE]`-only, and empty streams fall through.
 
 A malformed client body is rejected before combo dispatch. Fix the request before testing fallback.
 
@@ -154,6 +154,10 @@ Optional `capabilities` on create/update is an operator cap over member-derived 
 Unknown keys and non-positive integers return HTTP 400. Send `null` to clear a saved ceiling.
 
 With capability-aware routing on, a request that carries images, audio, video, or PDF on the current user turn prefers a member that advertises that modality. Unsupported media fields are stripped before translation.
+
+Media returned by a tool on the current turn counts too: images, or PDFs (declared `application/pdf`, a `.pdf` name, or PDF bytes; text and CSV files are forwarded unchanged), in Chat `tool` messages, Claude `tool_result` blocks, Responses `function_call_output` and `custom_tool_call_output` items, and Gemini `functionResponse.parts`. That nested media cannot be stripped, so only members that advertise the modality are tried. Each attempt still applies the API key, connection, and combo allow-list checks, and a denied member never falls back to one that cannot read the output. When no member advertises the modality, the combo returns HTTP 400 with `error.code: "capability_unavailable"`. A model with unknown capabilities counts as unsupported; set the modality in its capability editor under **Dashboard → Providers** to opt in.
+
+On a single-model request with Vision Bridge enabled, a tool-output image that the model cannot read goes to the Vision Bridge target. If no valid target is configured, or the API key may not use it, the request returns the same HTTP 400 `capability_unavailable` error instead of reaching the text-only model.
 
 ## Allow-list
 

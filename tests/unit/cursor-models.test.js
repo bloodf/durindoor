@@ -20,6 +20,8 @@ function stubH2(status, payload) {
   const client = new EventEmitter();
   client.request = vi.fn(() => req);
   client.close = vi.fn();
+  client.destroy = vi.fn();
+  req.destroy = vi.fn();
   http2Mock.connect.mockReturnValue(client);
   return client;
 }
@@ -120,5 +122,38 @@ describe("Cursor live model catalog", () => {
       accessToken: "cursor-token",
       providerSpecificData: { machineId: "machine-id" },
     })).resolves.toBeNull();
+  });
+
+  it("negative-caches a failed lookup so repeated calls do not re-dial", async () => {
+    stubH2(403, "no");
+    const creds = { accessToken: "cursor-token", providerSpecificData: { machineId: "machine-id" } };
+
+    await expect(resolveCursorModels(creds)).resolves.toBeNull();
+    await expect(resolveCursorModels(creds)).resolves.toBeNull();
+    expect(http2Mock.connect).toHaveBeenCalledTimes(1);
+
+    await expect(resolveCursorModels(creds, { forceRefresh: true })).resolves.toBeNull();
+    expect(http2Mock.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("destroys the h2 request and client when the lookup is aborted", async () => {
+    const req = new EventEmitter();
+    req.end = vi.fn();
+    req.destroy = vi.fn();
+    const client = new EventEmitter();
+    client.request = vi.fn(() => req);
+    client.close = vi.fn();
+    client.destroy = vi.fn();
+    http2Mock.connect.mockReturnValue(client);
+    const controller = new AbortController();
+    const pending = resolveCursorModels(
+      { accessToken: "cursor-token", providerSpecificData: { machineId: "machine-id" } },
+      { signal: controller.signal },
+    );
+    await vi.waitFor(() => expect(req.end).toHaveBeenCalled());
+    controller.abort();
+    await expect(pending).resolves.toBeNull();
+    expect(req.destroy).toHaveBeenCalled();
+    expect(client.destroy).toHaveBeenCalled();
   });
 });

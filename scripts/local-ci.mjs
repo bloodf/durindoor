@@ -21,7 +21,7 @@ const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Unknown or shared-risk paths deliberately require the existing full gate.
 export function selectRiskFloor(paths, inventory, deleted = []) {
   const full = { mode: "full", risk: "shared-or-unknown", tests: [] };
-  if (deleted.length || paths.some(p => ["AGENTS.md", "internal/docs/testing.mdx", "internal/docs/agent-workflow.md"].includes(p))) return full;
+  if (deleted.length || paths.some(p => ["AGENTS.md", "internal/docs/testing.mdx", "internal/docs/agent-workflow.md", "internal/docs/local-ci.md"].includes(p))) return full;
   // Exact helper domain only; the base caller is mandatory, with its adjacent suite when present.
   if (paths.length && paths.every(p => ["scripts/upstream-ported-ids.sh", "tests/unit/upstream-watch-filter.test.js",
     "internal/docs/upstream-sync.mdx"].includes(p))) {
@@ -74,6 +74,26 @@ export function testEnvironment(source, privatePaths) {
     ...privatePaths, CI: "true" };
 }
 
+// Shared dashboard imports and build configuration can affect the website too.
+export function requiresWebsiteBuild(paths) {
+  return paths.some(p => /^(docs|website|src|open-sse|public)\//.test(p)
+    || /^(package(?:-lock)?\.json|\.nvmrc|next\.config\.[^/]+|postcss\.config\.[^/]+)$/.test(p)
+    || p.startsWith("scripts/") || p.startsWith(".github/workflows/"));
+}
+
+// Every full checkpoint exercises the same artifacts that release.yml publishes.
+// Commands stay separate so each retains the supervisor's 300-second ceiling.
+export function artifactCommands(src, packDirectory, version) {
+  if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error("invalid package version");
+  return [
+    ["smoke-standalone", "npm", ["run", "verify:installed", "--", path.join(src, ".next/standalone/custom-server.js")]],
+    ["npm-ci-cli", "npm", ["ci", "--include=dev", "--no-audit", "--no-fund"], { cwd: path.join(src, "cli") }],
+    ["build-cli", "npm", ["--prefix", "cli", "run", "build"]],
+    ["pack-cli", "npm", ["pack", "./cli", "--pack-destination", packDirectory]],
+    ["smoke-packed", "npm", ["run", "verify:packed", "--", path.join(packDirectory, `durindoor-${version}.tgz`)]],
+  ];
+}
+
 export function scopedTestArgs(tests, selected) {
   return [path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...selected, "--maxWorkers=2",
     "--reporter=json", `--outputFile=${path.join(tests, ".scoped-results.json")}`];
@@ -124,8 +144,8 @@ export function terminateCommandGroup(pid) {
 
 export async function main() {
 
-const NODE_VERSION = "20.20.2";
-const NPM_VERSION = "10.8.2";
+const NODE_VERSION = "26.13.0";
+const NPM_VERSION = "11.20.0";
 const COMMITLINT_CLI_VERSION = "18.6.1"; // pins from wagoid/commitlint-github-action v5.5.1 / commitlint.yml
 const COMMITLINT_CONFIG_VERSION = "18.6.3";
 const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -138,7 +158,7 @@ const USAGE = `Usage: node scripts/local-ci.mjs --base <full-sha> --head <full-s
   --selection <file>   externally reviewed JSON with base/head/policySha256/runnerSha256/reviewer/tests
   --policy-sha <hash>  independently frozen base-policy SHA256 (required in scoped mode)
   --runner-sha <hash>  independently frozen runner SHA256 (required in scoped mode)
-  --website auto|always  auto (default): build website only if docs/ or website/ differ base..head
+  --website auto|always  auto (default): build website when content or shared build inputs differ
   --title <text>       also commitlint this PR title (squash-merge subject)
 Exit: 0 all required steps passed, 1 failure, 130 interrupted, 2 usage/prerequisite error.`;
 
@@ -393,7 +413,7 @@ if (![snapHeadR, snapTreeR, dirtyR].every((r) => ok(r.s)) || snapHead !== HEAD |
 }
 evidence.identities.files = {};
 for (const f of [
-  "package-lock.json", "website/package-lock.json", "tests/package-lock.json", ".nvmrc", ".commitlintrc.cjs",
+  "package-lock.json", "website/package-lock.json", "tests/package-lock.json", "cli/package-lock.json", ".nvmrc", ".commitlintrc.cjs",
 ]) {
   const p = path.join(dirs.src, f);
   evidence.identities.files[f] = existsSync(p) ? sha256(p) : null;
@@ -457,53 +477,53 @@ const npmCi = ["ci", "--no-audit", "--no-fund"];
 const web = path.join(dirs.src, "website");
 const tests = path.join(dirs.src, "tests");
 
-// Website decision: exact base/head diff of docs/ and website/ (old rule: git diff --quiet).
-let websiteRun = true;
-let websiteReason = "--website always";
-if (opts.website === "auto") {
-  const d = await run("website-diff", "website-changes", "git", ["diff", "--quiet", BASE, HEAD, "--", "docs", "website"], {
-    expectOk: (c) => c === 0 || c === 1,
-  });
-  if (!ok(d)) { websiteRun = null; }
-  else {
-    websiteRun = d.exitCode === 1;
-    websiteReason = websiteRun ? "docs/ or website/ changed between base and head" : "no docs/ or website/ change between base and head";
-  }
-}
+// Compare the already recorded exact base/head paths, including shared imports.
+const websiteRun = opts.website === "always" || requiresWebsiteBuild(changedPaths);
+const websiteReason = opts.website === "always" ? "--website always"
+  : websiteRun ? "website content or shared build inputs changed" : "no website inputs changed";
 evidence.identities.websiteDecision = { run: websiteRun, reason: websiteReason };
 save();
 
 // Full mode retains every old job.
 if (opts.mode === "full") {
 // lint-and-build
-await job("lint-and-build", [
+const appBuilt = await job("lint-and-build", [
   ["npm-ci-root", "npm", npmCi],
   ["lint", "npm", ["run", "lint"]],
   ["check-agent-index", "npm", ["run", "check:agent-index"]],
   ["check-postgres-migrations", "npm", ["run", "check:postgres-migrations"]],
+  ["check-registry-index", "npm", ["run", "check:registry-index"]],
+  ["check-docs", "npm", ["run", "check:docs"]],
+  ["check-provider-catalog", "npm", ["run", "check:provider-catalog"]],
   ["build-isolated-state", "npm", ["run", "build"]],
 ]);
 
 // Each CI job did its own checkout + installs, so each job here runs its own
 // installs in order and is independent of the other jobs' outcome.
 // website-build (conditional)
-if (websiteRun === null) {
-  for (const id of ["npm-ci-root", "npm-ci-website", "website-build", "check-docs", "check-provider-catalog"]) {
-    skip(id, "website-build", "website diff could not be evaluated", "not-run");
-  }
-} else if (!websiteRun) {
-  // Explicit skip: not a pass. check:docs / check:provider-catalog lived in this CI job.
-  for (const id of ["npm-ci-root", "npm-ci-website", "website-build", "check-docs", "check-provider-catalog"]) {
-    skip(id, "website-build", `conditional job skipped: ${websiteReason}`, "skipped");
-  }
+if (!websiteRun) {
+  skip("website-build", "website-build", `conditional job skipped: ${websiteReason}`, "skipped");
 } else {
   await job("website-build", [
     ["npm-ci-root", "npm", npmCi],
     ["npm-ci-website", "npm", npmCi, { cwd: web }],
     ["website-build", "npm", ["run", "build"], { cwd: web }],
-    ["check-docs", "npm", ["run", "check:docs"]],
-    ["check-provider-catalog", "npm", ["run", "check:provider-catalog"]],
   ]);
+}
+
+const packDirectory = path.join(out, "pack");
+mkdirSync(packDirectory, { mode: 0o700 });
+const rootVersion = JSON.parse(readFileSync(path.join(dirs.src, "package.json"), "utf8")).version;
+const cliVersion = JSON.parse(readFileSync(path.join(dirs.src, "cli/package.json"), "utf8")).version;
+if (rootVersion !== cliVersion) {
+  anyFail = true;
+  skip("artifact-version", "artifacts", "root and CLI versions differ", "failed");
+} else if (!appBuilt) {
+  skip("artifact-build", "artifacts", "standalone build did not pass", "not-run");
+} else if (await job("artifacts", artifactCommands(dirs.src, packDirectory, cliVersion))) {
+  const file = path.join(packDirectory, `durindoor-${cliVersion}.tgz`);
+  evidence.artifacts = [{ file, bytes: statSync(file).size, sha256: sha256(file) }];
+  save();
 }
 
 // vitest + no-regression gate (independent of lint-and-build / website-build outcome)

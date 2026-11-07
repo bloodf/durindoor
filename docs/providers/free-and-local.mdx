@@ -91,7 +91,11 @@ for guarded System One/Laya URLs.
 
 OpenCode Free uses provider ID `opencode` and alias `oc`. It needs no upstream key and can join eligible auto combos. The static catalog currently lists Ox Alpha Free as `oc/x-preview-f-free` over Chat Completions. OpenCode Go subscribers can use the same model as `ocg/ox-alpha-free`. Catalog rows can change; `GET /v1/models` is the live list.
 
-OpenCode's free tier requires an official-client request shape. DurinDoor adds the required headers and unavailable tool definitions. Your exact lowercase `bash`, `glob`, `grep`, or `read` tool wins over a generated definition. Test tools before relying on this fallback; upstream requirements can change.
+OpenCode's free tier lives at `opencode.ai/inference/v1` and requires an official OpenCode v2 client request shape. DurinDoor adds the required headers and OpenCode's own `read` and `shell` tool definitions, and tells the model in the system prompt not to call the ones it added. If you send a tool named exactly `read` or `shell` whose parameters fit OpenCode's, it takes OpenCode's definition and keeps its name. If its parameters differ, it is sent as `read_client` or `shell_client` and renamed back in the response. Test tools before relying on this fallback; upstream requirements can change.
+
+DurinDoor also appends OpenCode's `<env>` environment block to the system prompt, with neutral values (`/workspace`, Linux) rather than the server's own. Upstream refuses free requests without it.
+
+Upstream also checks the TLS handshake. DurinDoor sends the free-tier requests through the optional `wreq-js` package, which presents the handshake upstream accepts. npm installs it with DurinDoor and the Docker image includes it. If it cannot load on your platform, DurinDoor logs `wreq-js unavailable` once and uses the normal Node fetch, which upstream may answer with 429 `FreeUsageLimitError`. A configured proxy or relay takes priority over `wreq-js`.
 
 Muse Spark contributor models only accept `tool_choice: "auto"`; the gateway normalizes explicit choices for those IDs.
 
@@ -133,3 +137,14 @@ OpenRouter's documented free-model limits ([rate limits](https://openrouter.ai/d
 OAuth free tiers still need an account. Quota rules change without a DurinDoor release. Keep a paid or local fallback for work that cannot wait on a free pool. Watch usage on the dashboard and reconnect if the upstream revokes the token.
 
 After connecting, use the exact discovered ID in a chat or media request and check **Usage**. For local failures, verify the server from the gateway host first. Free-tier availability and billing rules belong to the upstream provider and can change independently of this build.
+
+## Free.ai
+
+`free-ai` talks to `https://api.free.ai/v1/chat/` (note the trailing slash; there is no `/chat/completions`). Models are discovered from `/v1/models`. Create an `sk-free-...` key on the Free.ai dashboard. Published free-tier limits are roughly 30K tokens per day, 60 requests per minute and 1000 requests per month.
+
+Free.ai's terms do not allow resale or redistribution of access without written consent. Use your own key for your own calls, for example on a self-hosted gateway. Check their current terms before sharing a DurinDoor instance with other people.
+
+### Unverified
+
+- No live call was made. The `/v1/models` response shape, streaming, tool calls and error bodies are unconfirmed.
+- The free-tier limits come from Free.ai's public pages and can change.

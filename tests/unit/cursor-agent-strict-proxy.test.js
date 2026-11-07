@@ -75,6 +75,55 @@ describe("Cursor AgentService proxy enforcement (h2 duplex cannot carry a proxy)
     expect(connect).toHaveBeenCalledTimes(1);
   });
 
+  for (const [label, proxyOptions] of proxied) {
+    it(`execute() routes text requests to the proxy-honoring legacy path: ${label}`, async () => {
+      const executor = new CursorExecutor();
+      const { connect } = stubSession(executor);
+      const fetchSpy = vi.spyOn(executor, "makeFetchRequest").mockResolvedValue({ status: 500, headers: {}, body: Buffer.alloc(0) });
+      const h2Spy = vi.spyOn(executor, "makeHttp2Request");
+      await executor.execute({
+        model: "gpt-5.2",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials,
+        proxyOptions,
+      });
+      expect(connect).not.toHaveBeenCalled();
+      expect(h2Spy).not.toHaveBeenCalled();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy.mock.calls[0][4]).toBe(proxyOptions);
+    });
+  }
+
+  it("execute() uses legacy fetch when only an environment proxy applies", async () => {
+    vi.stubEnv("HTTPS_PROXY", "http://127.0.0.1:9");
+    const executor = new CursorExecutor();
+    const { connect } = stubSession(executor);
+    const fetchSpy = vi.spyOn(executor, "makeFetchRequest").mockResolvedValue({ status: 500, headers: {}, body: Buffer.alloc(0) });
+    await executor.execute({
+      model: "gpt-5.2",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials,
+      proxyOptions: null,
+    });
+    expect(connect).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("execute() without a proxy still uses the AgentService h2 path", async () => {
+    const executor = new CursorExecutor();
+    const { connect } = stubSession(executor);
+    await executor.execute({
+      model: "gpt-5.2",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials,
+      proxyOptions: { disableEnvProxy: true },
+    });
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+
   it("routes proxied text and tool-result history through ChatService without direct h2", async () => {
     vi.stubEnv("CURSOR_AGENT_SERVICE", "on");
     const executor = new CursorExecutor();

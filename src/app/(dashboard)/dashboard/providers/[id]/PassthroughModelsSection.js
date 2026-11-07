@@ -6,6 +6,7 @@ import { Button, ConfirmModal } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
+import InferenceStatus from "./InferenceStatus.jsx";
 
 function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, deleteStatus, isTesting, checkbox }) {
   const borderColor = deleteStatus === "deleting"
@@ -37,6 +38,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{modelId}</p>
+        <InferenceStatus status={testStatus} testing={isTesting} />
 
         <div className="flex items-center gap-1 mt-1">
         <code className="text-xs text-dd-muted font-mono bg-dd-surface-2 px-1.5 py-0.5 rounded">{fullModel}</code>

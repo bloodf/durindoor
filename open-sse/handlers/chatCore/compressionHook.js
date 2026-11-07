@@ -13,7 +13,10 @@
 //   planToEngineIds(planOrWrapper) -> string[]   (handles stacked + single-mode reverse map)
 //   isEngineAvailable(id) -> boolean
 //   getEngine(id).apply(body, { config, stepConfig }) -> Promise<{ body, compressed, stats }>
-//   Engines NEVER mutate the caller's body; getEngine throws on unknown ids.
+//   Engines NEVER mutate the caller's body (contract): per-step rollback and the
+//   fidelity gate compare against stepInput, so an in-place mutation would defeat
+//   both. The offline eval (eval/runFidelityEval.js) flags "input-mutated".
+//   getEngine throws on unknown ids.
 //
 // Returns { body, headerValue }:
 //   - body: possibly-compressed body; original reference on disabled/no-op.
@@ -36,6 +39,7 @@ import {
 import { deriveDefaultPlan as realDeriveDefaultPlan } from "../../services/compression/deriveDefaultPlan.js";
 import { resolveAdaptivePlan as realResolveAdaptivePlan } from "../../services/compression/adaptiveCompression/resolveAdaptivePlan.js";
 import { estimateCompressionTokens } from "../../services/compression/stats.js";
+import { gateStep } from "../../services/compression/fidelityGate.js";
 import { isObject } from "../../../src/shared/utils/typeChecks.js";
 
 try {
@@ -45,12 +49,35 @@ try {
   // Registration must never break module load; getEngine self-registers on demand too.
 }
 /**
+ * Per-engine options from the compressionEngines toggle map (e.g. lite
+ * truncateToolResults / maxToolLength). Only keys the engine declares in
+ * getConfigSchema() are forwarded (never `enabled`), and the result must pass
+ * the engine's validateConfig(); invalid options are dropped with a warning.
+ */
+function engineStepOptions(engine, entry, log) {
+  if (!isObject(entry) || !entry) return {};
+  const declared = new Set((engine.getConfigSchema?.() ?? []).map((f) => f?.key).filter((k) => k && k !== "enabled"));
+  const options = Object.fromEntries(Object.entries(entry).filter(([key]) => declared.has(key)));
+  if (Object.keys(options).length === 0) return {};
+  const verdict = engine.validateConfig?.(options);
+  if (verdict && verdict.valid === false) {
+    log?.warn?.("COMPRESS", `engine ${engine.id} options ignored: ${(verdict.errors || []).join("; ")}`);
+    return {};
+  }
+  return options;
+}
+
+/**
  * Run the compression engine loop.
  *
  * @param {object} body translatedBody (final provider shape)
  * @param {object} [deps] optional DI override { isEngineAvailable, getEngine,
  *        deriveDefaultPlan, resolveAdaptivePlan, planToEngineIds } (tests only)
- * @param {object} cfg  { enabled, engines, applyOpts, adaptive, log }
+ * @param {object} cfg  { enabled, engines, applyOpts, adaptive, fidelityGate, log }
+ *        fidelityGate: { textInvariants?: boolean } — protected blocks (tool
+ *        schemas, media, signatures, error results, instructions, fenced code)
+ *        are always gated per step; textInvariants adds the opt-in number /
+ *        URL / JSON-key / negation checks. A failing step is rolled back.
  * @returns {Promise<{body: object, headerValue: string|null}>}
  */
 export async function runCompressionSeam(body, deps, cfg = {}) {
@@ -80,9 +107,22 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       estimatedTokens: adaptive.estimatedTokens ?? 0,
       modelContextLimit: adaptive.modelContextLimit ?? 0,
       requestMaxTokens: adaptive.requestMaxTokens ?? 0,
-      config
+      config,
+      // Credit only engines that will actually do work on this request: an
+      // unconfigured engine (headroom without a proxy URL) or RTK that already
+      // ran at its dedicated position would otherwise claim a fit for free.
+      isAvailable: (id) => {
+        if (!isEngineAvailable(id)) return false;
+        if (id === "rtk" && cfg.applyOpts?.rtkApplied === true) return false;
+        const engine = getEngine(id);
+        return engine.isConfigured?.({ config: cfg.applyOpts || {}, stepConfig: engineStepOptions(engine, cfg.engines?.[id]) }) ?? true;
+      }
     });
     const plan = resolved?.plan ?? resolved ?? basePlan;
+    const t = resolved?.telemetry;
+    if (t) {
+      cfg.log?.debug?.("COMPRESS", `adaptive ${t.policy} target=${t.target} headroom=${t.headroomBefore}->${t.headroomAfter} stages=${t.stagesApplied.join(",") || "none"} fit=${t.fit}`);
+    }
     engineIds = planToEngineIds(plan);
     for (const step of plan?.stackedPipeline || []) {
       if (step && step.engine) stepById[step.engine] = step;
@@ -109,11 +149,16 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       // Always forward stepConfig per contract {config, stepConfig}. Stacked steps
       // carry the real planner step (with intensity); single-mode plans have an
       // empty stackedPipeline, so synthesize a minimal {engine} step.
-      const step = stepById[id] ?? { engine: id };
+      const engine = getEngine(id);
+      const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
       const opts = { config: cfg.applyOpts || {}, stepConfig: step };
-      const res = await getEngine(id).apply(working, opts);
+      const res = await engine.apply(working, opts);
       if (!res || !isObject(res) || !res.body || !isObject(res.body)) {
         throw new Error(`engine ${id} returned malformed result`);
+      }
+      const verdict = gateStep(stepInput, res.body, cfg.fidelityGate);
+      if (!verdict.passed) {
+        throw new Error(`fidelity gate rejected step (${verdict.failedInvariant}: ${verdict.detail})`);
       }
       const stepOutSerialized = JSON.stringify(res.body);
       working = res.body;

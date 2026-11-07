@@ -20,16 +20,58 @@ Open **Dashboard → Token Saver → Settings** (`/dashboard/token-saver/setting
 
 | Option | Behavior |
 | --- | --- |
-| RTK | Compress eligible tool-result content. Skip explicit error results. |
+| RTK | Compress eligible tool-result content. Skip explicit error results. For OpenAI Responses, cover `function_call_output` and `custom_tool_call_output` text only. Keep call IDs and media parts. Skip error outputs (flagged items and Codex `Exit code: <non-zero>`), JSON documents, and fenced code. |
 | Headroom | Call the optional Python proxy. Follow [Headroom setup](./headroom.mdx). |
 | Session dedup | Remove eligible repeated blocks across turns in the compression stack. |
 | Caveman | Inject the selected output-style instruction into eligible text-only requests; settings preview shows the exact instruction block. |
 | Ponytail | Apply its configured prompt treatment and slash commands. |
 | PXPIPE | Apply the bundled image transform where eligible. |
 
-Stack engines currently available are `session-dedup`, `caveman`, and `headroom`. Catalog entries `rtk`, `lite`, `ccr`, `relevance`, `aggressive`, `llmlingua`, and `ultra` are not dispatched as stack engines. The dedicated RTK toggle still works.
+Stack engines currently available are `session-dedup`, `lite`, `rtk`, `caveman`, and `headroom`. Catalog entries `ccr`, `relevance`, `aggressive`, `llmlingua`, and `ultra` are not dispatched as stack engines.
+
+RTK runs at most once per request. If the RTK toggle is on, or the stack includes `rtk`, RTK runs at its dedicated position: before translation for Cursor, after translation for every other provider. The stack's `rtk` step then does nothing, so RTK savings always appear in **Token Saver → Statistics**. They are not listed in the `X-DurinDoor-Compression` header. The `rtk` step does its own work only when RTK has not already run, such as in Test Savers. When `rtk` is a stack step, the fidelity gate also checks the dedicated RTK pass and rolls it back if it fails; the RTK toggle alone is not gated. RTK levels do not change the filters. RTK always skips error tool results.
+
+`lite` cleans up whitespace in user and assistant prose. It collapses three or more blank lines and strips trailing spaces outside fenced code. It also drops exact consecutive duplicate turns that carry no tool calls. It never changes tool outputs, media, or system and developer messages. Truncating older tool results is off by default. Enable it per engine with `compressionEngines.lite = { "enabled": true, "truncateToolResults": true, "maxToolLength": 2000 }`. `maxToolLength` must be from 256 to 1,000,000; out-of-range values fall back to 2000. Truncation cuts at a word boundary and appends `...[truncated]`. It skips error results, JSON, fenced code, and results from the current turn.
 
 Headroom processes the source-format chat body before translation. RTK normally processes the translated body; Cursor needs RTK before its translator rewrites tool results. The compression stack follows those steps, then the separate Caveman, Ponytail, and PXPIPE toggles apply. Enabling overlapping options can apply more than one transform, so compare results before using a stack on important traffic.
+
+## Fidelity gate
+
+Every compression-stack step is checked before its output is kept. If a step changes any of these, the stack discards that step's output and continues with its input:
+
+- tool schemas (`tools`, `functions`, `tool_choice`, `response_format`)
+- system and developer instructions (`system`, `instructions`, system or developer messages)
+- images, PDFs and other documents, audio, tool calls, and thinking blocks, plus any block that carries a signature
+- error tool results
+- fenced code blocks
+
+Set `compressionFidelityGate` to `true` in settings to add text checks. With text checks on, a step is also discarded when it drops a number, a URL, a file path or an identifier, a JSON key, a diff hunk header, or a negation word such as "not" or "não". This setting is off by default.
+
+The gate runs locally. It does not call a provider. Repository maintainers keep a pinned offline corpus in `open-sse/services/compression/eval/`. Each stack engine must pass it, or have its known failures recorded as a baseline in the test, before it is marked available. That corpus reports estimated token savings, not provider-reported usage or cost.
+
+## Plan precedence and context budgets
+
+The stack picks its plan in this order:
+
+1. The per-request bypass, `X-DurinDoor-Token-Saver: off`, disables every token saver.
+2. The explicit stack from settings: `compressionEnabled` plus the `compressionEngines` toggle map.
+3. Adaptive context budgets from `compressionAdaptive`. These are off by default.
+
+DurinDoor has no per-combo or named compression profiles yet. If they are added, they will sit between the bypass and the settings stack.
+
+`compressionAdaptive` takes `{ "mode", "policy", "outputReserve", "safetyMargin", "pct", "absoluteBudget", "ladderOverride" }`. Invalid fields fall back to safe defaults.
+
+| `mode` | Behavior |
+| --- | --- |
+| `off` | Run only the explicit stack. |
+| `replace-autotrigger` | Escalate through the ladder when no explicit stack engine is enabled. Otherwise the explicit stack is used as is. |
+| `floor` | Keep the explicit stack and add more aggressive engines after it. |
+
+Escalation starts only when the estimated prompt exceeds the target. The target is the model context window minus the output reserve and the safety margin. You can also set it as a percentage of the window, or as an absolute budget. The output reserve is what the resolved model will actually generate: the request's own cap clamped to the model maximum, or else the provider default. It falls back to `outputReserve` only when neither is known. When the model's context window is unknown, adaptive escalation is skipped and the request runs the explicit stack. The ladder counts only engines that will do work on this request. Catalog placeholders, Headroom without a proxy URL, and RTK that already ran at its dedicated position are skipped. With `floor`, an explicit stack ranks at its most aggressive engine, and escalation adds only engines that are not already in it. An `absolute` policy needs an `absoluteBudget` above 0; otherwise `reserve-output` is used. If none of the remaining ladder engines can run, the plan does not change. Escalation never drops content beyond what each engine already does, and the fidelity gate still applies to every step.
+
+## Custom system prompt
+
+**Dashboard → Token Saver → Settings** has a **Custom system prompt** toggle and text box (`customPromptEnabled`, default false; `customPrompt`, default empty, at most 8000 characters). When enabled and non-blank, the text is appended to the system prompt of every request after the savers above, for every provider and model, and is sent upstream as written. It does not depend on Caveman or Ponytail, but `X-DurinDoor-Token-Saver: off` skips it for that request. A blank prompt injects nothing, and injecting the same text twice is a no-op.
 
 ## Bypass compression for one request
 

@@ -1,10 +1,12 @@
 name: "🧪 Tests"
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
+    inputs:
+      base:
+        description: "Exact comparison base commit (40 lowercase hex characters)"
+        required: true
+        type: string
 
 concurrency:
   group: tests-${{ github.event.pull_request.number || github.ref }}
@@ -25,7 +27,7 @@ jobs:
       - name: "⚙️ Setup Node.js"
         uses: actions/setup-node@v5
         with:
-          node-version: 20.20.2
+          node-version: 26.13.0
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -34,8 +36,8 @@ jobs:
 
       - name: "📌 Pin npm"
         run: |
-          npm install --global npm@10.8.2
-          test "$(npm --version)" = "10.8.2"
+          npm install --global npm@11.20.0
+          test "$(npm --version)" = "11.20.0"
 
       - name: "📦 Install app dependencies"
         run: npm ci --no-audit --no-fund
@@ -49,7 +51,12 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Select baseline comparison ref
-        run: echo "BASELINE_BASE_REF=${{ github.event.pull_request.base.sha || github.event.before }}" >> "$GITHUB_ENV"
+        env:
+          BASE_SHA: ${{ inputs.base }}
+        run: |
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse --verify "$BASE_SHA^{commit}")" = "$BASE_SHA"
+          echo "BASELINE_BASE_REF=$BASE_SHA" >> "$GITHUB_ENV"
 
       - name: "🧪 Run Vitest + fail-closed no-regression gate"
         working-directory: tests

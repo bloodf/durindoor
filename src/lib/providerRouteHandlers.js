@@ -18,6 +18,7 @@ import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js"
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+"managementApiKey",
 "clientSecret",
 "qwenCloudCookie",
 "alibabaConsoleCookie",
@@ -50,6 +51,7 @@ function sanitizeProviderConnection(connection) {
 
   return {
     ...connection,
+    managementApiKey: undefined,
     apiKey: undefined,
     accessToken: undefined,
     refreshToken: undefined,
@@ -345,6 +347,7 @@ export async function createProvider(request, { shouldCommit } = {}) {
         authType: isWebCookieProvider ? "cookie" : "apikey",
         name: connectionName,
         apiKey: apiKey || "",
+        managementApiKey: provider === "xai" && isString(body.managementApiKey) ? body.managementApiKey.trim() : undefined,
         sessionToken: usesAwsCredentials ? awsSessionToken(sessionToken, body.providerSpecificData) : undefined,
         priority: priority || 1,
         globalPriority: globalPriority || null,

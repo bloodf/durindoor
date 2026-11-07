@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { fork } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
+import { build } from 'esbuild';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 const adminUrl = process.env.DURINDOOR_TEST_PG_URL;
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
@@ -18,14 +19,15 @@ const timestamp = '2026-10-19T12:00:00.000Z';
 const databaseName = `dd_accounting_${process.pid}_${Date.now()}`;
 let admin, sql, holder, url, directory;
 let databaseCreated = false;
+let workerEntry, bundleDirectory, diagnosticsDirectory;
 const workers = new Set();
 async function worker(label) {
   const home = fs.mkdtempSync(path.join(directory, `${label}-`));
   const workerUrl = new URL(url);
   workerUrl.searchParams.set('application_name', `dd-accounting-${label}`);
-  const child = fork(path.join(repo, 'tests/fixtures/postgres-accounting-worker.mjs'), [], {
+  const child = fork(workerEntry, [], {
     cwd: repo,
-    execArgv: ['--experimental-loader', path.join(repo, 'tests/fixtures/postgres-accounting-loader.mjs')],
+    execArgv: [],
     env: {
       PATH: process.env.PATH,
       HOME: home,
@@ -46,7 +48,14 @@ async function worker(label) {
     next: 0
   };
   workers.add(state);
-  child.stdout.resume();
+  const stdoutLog = fs.createWriteStream(path.join(diagnosticsDirectory, `${label}-${child.pid}.stdout.log`), { flags: 'wx', mode: 0o600 });
+  const stderrLog = fs.createWriteStream(path.join(diagnosticsDirectory, `${label}-${child.pid}.stderr.log`), { flags: 'wx', mode: 0o600 });
+  state.logsClosed = Promise.all([stdoutLog, stderrLog].map(stream => new Promise((resolve, reject) => {
+    stream.once('close', resolve);
+    stream.once('error', reject);
+  })));
+  child.stdout.pipe(stdoutLog);
+  child.stderr.pipe(stderrLog);
   child.stderr.on('data', chunk => {
     state.stderr += chunk;
   });
@@ -76,6 +85,9 @@ async function worker(label) {
   });
   await ready;
   expect(state.identity.driver).toBe('pg');
+  expect(state.identity.execArgv).toEqual([]);
+  expect(state.identity.nodeOptions).toBeNull();
+  fs.writeFileSync(path.join(diagnosticsDirectory, `${label}-${child.pid}.identity.json`), JSON.stringify(state.identity, null, 2), { mode: 0o600 });
   state.call = (action, args) => new Promise((resolve, reject) => {
     const id = ++state.next;
     state.pending.set(id, {
@@ -96,6 +108,8 @@ async function closeWorker(state, crash = false) {
     ok: true
   });
   const ended = await state.exited;
+  await state.logsClosed;
+  if (state.stderr) process.stderr.write(state.stderr);
   expect(ended).toEqual(crash ? {
     code: null,
     signal: 'SIGKILL'
@@ -156,6 +170,26 @@ async function snapshot() {
 describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
   beforeAll(async () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-pg-accounting-'));
+    diagnosticsDirectory = process.env.DURINDOOR_TEST_PG_LOG_DIR || path.join(os.tmpdir(), `${databaseName}-worker-logs`);
+    fs.mkdirSync(diagnosticsDirectory, { recursive: true, mode: 0o700 });
+    // Compile the same production imports for a plain Node child. Runtime
+    // aliases and the shared CommonJS source need no loader hooks or flags.
+    const cache = path.join(repo, 'tests/node_modules/.cache');
+    fs.mkdirSync(cache, { recursive: true });
+    bundleDirectory = fs.mkdtempSync(path.join(cache, 'pg-accounting-'));
+    workerEntry = path.join(bundleDirectory, 'worker.mjs');
+    const realtimeConfig = path.join(bundleDirectory, 'realtimeConfig.cjs');
+    fs.copyFileSync(path.join(repo, 'src/shared/utils/realtimeConfig.js'), realtimeConfig);
+    await build({
+      entryPoints: [path.join(repo, 'tests/fixtures/postgres-accounting-worker.mjs')],
+      outfile: workerEntry, bundle: true, platform: 'node', format: 'esm', packages: 'external',
+      alias: { '@': path.join(repo, 'src'), 'open-sse': path.join(repo, 'open-sse') },
+      plugins: [{ name: 'shared-commonjs-source', setup(builder) {
+        builder.onResolve({ filter: /realtimeConfig\.js$/ }, () => ({ path: realtimeConfig }));
+      } }],
+    });
+    fs.copyFileSync(workerEntry, path.join(diagnosticsDirectory, 'worker.bundle.mjs'));
+    console.log(`PostgreSQL worker stdout/stderr retained in ${diagnosticsDirectory}`);
     admin = new pg.Client({
       connectionString: adminUrl,
       connectionTimeoutMillis: 2000
@@ -189,6 +223,8 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     for (const state of [...workers]) {
       state.child.kill('SIGKILL');
       await state.exited;
+      await state.logsClosed;
+      if (state.stderr) process.stderr.write(state.stderr);
       workers.delete(state);
     }
   });
@@ -196,6 +232,8 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     for (const state of [...workers]) {
       state.child.kill('SIGKILL');
       await state.exited;
+      await state.logsClosed;
+      if (state.stderr) process.stderr.write(state.stderr);
       workers.delete(state);
     }
     try {
@@ -203,9 +241,130 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
       if (databaseCreated) await admin.query(`DROP DATABASE ${databaseName} WITH (FORCE)`);
     } finally {
       try { await admin?.end(); }
-      finally { if (directory) fs.rmSync(directory, { recursive: true, force: true }); }
+      finally {
+        if (directory) fs.rmSync(directory, { recursive: true, force: true });
+        if (bundleDirectory) fs.rmSync(bundleDirectory, { recursive: true, force: true });
+      }
     }
   });
+  it('resolves a real gateway-only key from PostgreSQL without API-key fixtures', async () => {
+    const a = await worker('gateway-identity');
+    const created = await a.call('gatewayKey', { name: 'Postgres gateway', machineId: 'pg-fixture-machine' });
+    expect(created.ok).toBe(true);
+    const gateway = created.value;
+    expect(await a.call('save', [event('gateway-only', 0, { apiKey: gateway.key, provider: 'mcp-gateway', model: 'tools__echo', status: 'error', tokens: {}, modality: undefined, nativeUnits: undefined })]))
+      .toMatchObject({ ok: true, value: [true] });
+    const stats = await a.call('stats');
+    expect(stats.ok).toBe(true);
+    expect(Object.values(stats.value.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: `mcp-gateway-key:${gateway.id}`, keyName: 'Postgres gateway', requests: 1 })]);
+    expect(JSON.stringify(stats.value)).not.toContain(gateway.key);
+    expect((await sql.query('SELECT id FROM "apiKeys" WHERE key = $1', [gateway.key])).rows).toEqual([]);
+    await closeWorker(a);
+  });
+  it.each([null, 0])('migration 026 excludes failed MCP history with unknown cost %s', async cost => {
+    const a = await worker('migration-unknown');
+    await sql.query('INSERT INTO "usageHistory"(timestamp,"apiKey",provider,status,cost,meta) VALUES($1,$2,$3,$4,$5,$6)',
+      [timestamp, apiKey, 'mcp-gateway', 'error', cost, JSON.stringify({ costStatus: 'unknown' })]);
+    expect(await a.call('migrateUnknown')).toMatchObject({ ok: true, value: true });
+    expect((await a.call('summary', { keyId, apiKey, dayStart: timestamp, monthStart: timestamp })).value.totals.unknownCostRequests).toBe(0);
+    for (const [provider, status] of [['fixture', 'error'], [null, 'error'], ['mcp-gateway', null]]) {
+      await sql.query('INSERT INTO "usageHistory"(timestamp,"apiKey",provider,status,cost,meta) VALUES($1,$2,$3,$4,$5,$6)',
+        [timestamp, apiKey, provider, status, cost, JSON.stringify({ costStatus: 'unknown' })]);
+    }
+    for (let i = 0; i < 2; i++) expect(await a.call('migrateUnknown')).toMatchObject({ ok: true, value: true });
+    expect((await a.call('summary', { keyId, apiKey, dayStart: timestamp, monthStart: timestamp })).value.totals.unknownCostRequests).toBe(3);
+    await closeWorker(a);
+  });
+  it('keeps failed MCP attribution without consuming key policy totals', async () => {
+    const a = await worker('mcp-attribution');
+    const mcp = (id, status, extra = {}) => event(id, 0, {
+      provider: 'mcp-gateway', model: 'tools__echo', endpoint: '/api/mcp-gateway',
+      modality: undefined, nativeUnits: undefined, tokens: {}, status, ...extra
+    });
+    expect(await a.call('save', [mcp('mcp-failed', 'error')])).toMatchObject({ ok: true, value: [true] });
+    const summary = () => a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' });
+    expect(await summary()).toMatchObject({ ok: true, value: {
+      totals: { totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 },
+      window: { day: { requests: 0 }, month: { requests: 0 } }
+    } });
+    expect((await sql.query('SELECT "apiKey", status FROM "usageHistory"')).rows).toEqual([{ apiKey, status: 'error' }]);
+    const failedStats = await a.call('stats');
+    expect(failedStats.ok).toBe(true);
+    expect(failedStats.value.totalRequests).toBe(1);
+    expect(Object.values(failedStats.value.byApiKey)).toEqual([expect.objectContaining({ apiKeyKey: expect.stringMatching(/^api-key:hmac-sha256:[a-f0-9]{64}$/), keyName: 'Deleted API key 1', apiKeyMasked: '***', requests: 1, lastUsed: timestamp })]);
+    expect(Object.values(failedStats.value.byAccount)).toEqual([expect.objectContaining({ requests: 1 })]);
+    expect(JSON.stringify(failedStats.value)).not.toContain(apiKey);
+
+    expect(await a.call('save', [
+      mcp('mcp-ok', 'ok'),
+      mcp('other-error', 'error', { provider: 'fixture', cost: null, costStatus: 'unknown', tokens: { input_tokens: 3, output_tokens: 2 } }),
+      mcp('null-provider', 'error', { provider: null }),
+      mcp('null-status', null),
+      mcp('both-null', null, { provider: null })
+    ])).toMatchObject({ ok: true, value: [true, true, true, true, true] });
+    // Retain historical NULL statuses rather than the writer's default ok.
+    await sql.query('UPDATE "usageHistory" SET status = NULL WHERE "usageEventId" IN ($1, $2)',
+      [JSON.stringify(['billing', epoch, 'null-status']), JSON.stringify(['billing', epoch, 'both-null'])]);
+    expect(await summary()).toMatchObject({ ok: true, value: {
+      totals: { totalRequests: 5, totalTokens: 5, totalCost: 0, unknownCostRequests: 1 },
+      window: {
+        day: { requests: 5, inputTokens: 3, outputTokens: 2, cost: 0, unknownCostRequests: 1 },
+        month: { requests: 5, inputTokens: 3, outputTokens: 2, cost: 0, unknownCostRequests: 1 }
+      }
+    } });
+    const stats = await a.call('stats');
+    expect(stats.ok).toBe(true);
+    expect(stats.value.totalRequests).toBe(6);
+    expect(Object.values(stats.value.byApiKey).reduce((sum, row) => sum + row.requests, 0)).toBe(6);
+
+    for (const mode of ['missing', 'overwrite', 'legacy']) {
+      if (mode === 'missing') await sql.query('DELETE FROM "apiKeyUsageTotals"');
+      expect(await a.call('backfill', mode)).toMatchObject({ ok: true, value: true });
+      expect(await summary()).toMatchObject({ ok: true, value: { totals: { totalRequests: 5, totalTokens: 5, totalCost: 0 } } });
+    }
+    expect((await sql.query('SELECT key FROM "apiKeys" WHERE id = $1', [keyId])).rows).toEqual([{ key: apiKey }]);
+    await closeWorker(a);
+  });
+  it.each(['COMMIT', 'ROLLBACK'])('serializes failed MCP, paid and replayed receipts across processes after %s', async release => {
+    const [a, b] = await pair();
+    for (let round = 0; round < 2; round++) {
+      const failed = event(`mcp-shared-${round}`, null, {
+        provider: 'mcp-gateway', status: 'error', tokens: { input_tokens: 99, output_tokens: 7 },
+        modality: undefined, nativeUnits: undefined
+      });
+      const paid = event(`paid-shared-${round}`, 0.25);
+      const batch = name => [failed, paid, event(`mcp-${name}-${round}`, 0.5, {
+        provider: 'mcp-gateway', status: 'error', tokens: { input_tokens: 11 },
+        modality: undefined, nativeUnits: undefined
+      })];
+      await holder.query('BEGIN');
+      await holder.query("SELECT value FROM _meta WHERE key='schemaVersion' FOR UPDATE");
+      const writes = [a.call('save', batch('a')), b.call('save', batch('b'))];
+      await lockedWriters();
+      await holder.query(release);
+      for (const result of await Promise.all(writes)) expect(result).toMatchObject({ ok: true, value: [true, true, true] });
+      const n = round + 1;
+      const summary = await a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' });
+      expect(summary).toMatchObject({ ok: true, value: {
+        totals: { totalRequests: n, totalTokens: 5 * n, totalCost: 0.25 * n, unknownCostRequests: 0 },
+        window: { month: { requests: n, inputTokens: 2 * n, outputTokens: 3 * n, cost: 0.25 * n, unknownCostRequests: 0 } }
+      } });
+      const state = await snapshot();
+      expect(state.usageHistory).toHaveLength(4 * n);
+      expect(state.receipts).toHaveLength(4 * n);
+      expect(state.lifetime).toEqual([{ value: String(4 * n) }]);
+      const day = JSON.parse(state.usageDaily[0].data);
+      expect(day).toMatchObject({ requests: 4 * n, cost: 1.25 * n, unknownCostRequests: n });
+      expect((await sql.query('SELECT key FROM "apiKeys" WHERE id = $1', [keyId])).rows).toEqual([{ key: apiKey }]);
+    }
+    const committed = await snapshot();
+    await closeWorker(a);
+    await closeWorker(b);
+    const reopened = await worker('mcp-reopened');
+    expect(await reopened.call('save', [event('paid-shared-0', 0.25)])).toMatchObject({ ok: true, value: [true] });
+    expect(await snapshot()).toEqual(committed);
+    await closeWorker(reopened);
+  }, 30_000);
   it.each(['COMMIT', 'ROLLBACK'])('serializes absent and existing counters behind a third connection %s', async release => {
     const [a, b] = await pair();
     for (let round = 0; round < 2; round++) {

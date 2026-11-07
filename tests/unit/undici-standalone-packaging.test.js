@@ -97,9 +97,10 @@ describe("standalone dependency closure", () => {
   });
 
   it.each([
-    ["file", "EISDIR"],
-    ["directory", "ENOTDIR"],
-  ])("fails closed when a %s Dirent becomes stale", (kind, code) => {
+    // Darwin copyfile may classify a directory source as ENOTSUP; both reject it.
+    ["file", process.platform === "darwin" ? ["EISDIR", "ENOTSUP"] : ["EISDIR"]],
+    ["directory", ["ENOTDIR"]],
+  ])("fails closed when a %s Dirent becomes stale", (kind, codes) => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cli-stale-dirent-"));
     try {
       const source = path.join(temp, "source");
@@ -116,13 +117,25 @@ describe("standalone dependency closure", () => {
         if (String(dir) === pkg && !changed) {
           changed = true;
           fs.rmSync(victim, { recursive: true });
-          if (kind === "file") fs.mkdirSync(victim);
+          if (kind === "file") {
+            fs.mkdirSync(victim);
+            fs.writeFileSync(path.join(victim, "replacement.txt"), "replacement must not be copied");
+          }
           else fs.writeFileSync(victim, "replacement must not be copied");
         }
         return entries;
       });
       try {
-        expect(() => copyRecursive(source, path.join(temp, "staged"))).toThrow(code);
+        let failure;
+        try { copyRecursive(source, path.join(temp, "staged")); }
+        catch (error) { failure = error; }
+        expect(failure).toBeDefined();
+        expect(codes).toContain(failure?.code);
+        const output = path.join(temp, "staged");
+        expect(Object.values(snapshot(output))).not.toContain(
+          Buffer.from("replacement must not be copied").toString("base64"),
+        );
+        expect(fs.existsSync(path.join(output, "node_modules", "payload", "victim", "replacement.txt"))).toBe(false);
       } finally {
         read.mockRestore();
       }

@@ -9,13 +9,19 @@ import { getCustomModels, getSyncedModelCatalog, getProviderNodes } from "@/lib/
 /**
  * Reject declared wrong kinds; untyped and unknown IDs remain dispatchable.
  * Chat also accepts imageToText and audio models that use chat completions.
- * Other endpoints keep exact-kind matching by default.
+ * Other endpoints keep exact-kind matching by default, including endpoint-specific model declarations.
  */
 export async function modelKindError(provider, model, settings, kind, acceptedKinds = [kind]) {
   const entry = REGISTRY.find((item) => item.id === provider);
   const matches = (entry?.models || []).filter((item) => item.id === model || item.aliases?.includes(model));
   if (matches.some((item) => acceptedKinds.includes(item.kind || item.type || "llm"))) return null;
   const ids = new Set([model, ...matches.map((item) => item.id)]);
+  const endpointMatches = acceptedKinds.flatMap((k) => entry?.[`${k}Config`]?.models || []);
+  if (endpointMatches.some((item) => {
+    const id = typeof item === "string" ? item : item?.id;
+    const aliases = typeof item === "string" ? [] : item?.aliases || [];
+    return ids.has(id) || aliases.some((alias) => ids.has(alias));
+  })) return null;
   let knownWrong = matches.length > 0;
   let unavailable = false;
   const providerIds = new Set([provider]);

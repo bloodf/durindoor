@@ -50,6 +50,12 @@ export const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
 export const LOCAL_REQUEST_ERROR = Symbol("localRequestError");
 export const LOCAL_POLICY_REJECTION = Symbol("localPolicyRejection");
 const LIFTED_TOOL_MEDIA = Symbol("liftedToolMedia");
+const FUSION_REQUIRED_INPUT = Symbol("fusionRequiredInput");
+
+// Only fusion can mint this provenance; JSON bodies and headers cannot supply it.
+export function getFusionRequiredInput(body) {
+  return body?.[FUSION_REQUIRED_INPUT] || [];
+}
 
 export function comboPolicyRejection() {
   const response = errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied");
@@ -1424,21 +1430,25 @@ export async function handleComboChat({
       }
       rotatedModels = reordered;
     }
-    // Tool-output media cannot be stripped, so members that cannot read it are
-    // never dispatched. Survivors still pass key/connection/combo ACLs per attempt.
-    const toolMedia = [...detectToolOutputCapabilities(body)];
-    if (toolMedia.length > 0) {
-      const capable = filterByInputCapabilities(rotatedModels, toolMedia, capabilitiesMap);
-      if (capable.length === 0) {
-        const msg = `Combo "${comboName}" has no member that supports [${toolMedia.join(",")}] input returned by a tool`;
-        log.warn("COMBO", msg);
-        return new Response(
-          JSON.stringify({ error: { message: msg, type: "invalid_request_error", code: "capability_unavailable" } }),
-          { status: HTTP_STATUS.BAD_REQUEST, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      rotatedModels = capable;
+  }
+  // Fusion requirements survive nested routing even when the nested router's
+  // own auto-switch is off. Ordinary fallback keeps its tool-only admission.
+  const inputMedia = [...new Set([
+    ...getFusionRequiredInput(body),
+    ...(autoSwitch ? detectToolOutputCapabilities(body) : [])
+  ])];
+  if (inputMedia.length > 0) {
+    const capable = filterByInputCapabilities(rotatedModels, inputMedia, capabilitiesMap);
+    if (capable.length === 0) {
+      const inputSource = getFusionRequiredInput(body).length > 0 ? "required input" : "input returned by a tool";
+      const msg = `Combo "${comboName}" has no member that supports [${inputMedia.join(",")}] ${inputSource}`;
+      log.warn("COMBO", msg);
+      return new Response(
+        JSON.stringify({ error: { message: msg, type: "invalid_request_error", code: "capability_unavailable" } }),
+        { status: HTTP_STATUS.BAD_REQUEST, headers: { "Content-Type": "application/json" } }
+      );
     }
+    rotatedModels = capable;
   }
 
   // Task-aware reordering (smart/task strategies) runs after context sort.
@@ -1999,7 +2009,10 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // branch in chat.js returns before handleComboChat, so without this call a
   // configured min-context filter would be silently ignored for fusion combos.
   const eligibleModels = filterByContextRequirements(allModels, contextRequirements, log, capabilitiesMap);
-  const requiredInput = autoSwitch ? [...detectRequiredCapabilities(body)].filter((cap) => HARD_CAPS.has(cap)) : [];
+  const requiredInput = [...new Set([
+    ...getFusionRequiredInput(body),
+    ...(autoSwitch ? [...detectRequiredCapabilities(body)].filter((cap) => HARD_CAPS.has(cap)) : [])
+  ])];
   const capableModels = filterByInputCapabilities(eligibleModels, requiredInput, capabilitiesMap);
   // Fusion cannot synthesize missing media. Validate the panel and any explicit
   // judge before fan-out; never silently replace an operator-selected judge.
@@ -2025,7 +2038,9 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
   // panel-of-one and the configured judge still synthesizes the answer, so a
   // persisted judgeModel is never silently discarded. Without an explicit
   // judge, answer directly (judge would equal panel[0], nothing to fuse).
-  const dispatchBody = autoSwitch ? liftChatToolMedia(body) : body;
+  const mediaBody = autoSwitch ? liftChatToolMedia(body) : body;
+  const dispatchBody = requiredInput.length > 0 ? { ...mediaBody,
+    [FUSION_REQUIRED_INPUT]: requiredInput } : mediaBody;
   if (panel.length === 1) {
     if (judgeModel && judgeModel.trim()) {
 
@@ -2056,6 +2071,7 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     const panelBody = { ...structuredClone(rest), stream: false };
     // structuredClone omits symbols; preserve admission provenance explicitly.
     if (rest[LIFTED_TOOL_MEDIA]) panelBody[LIFTED_TOOL_MEDIA] = [...rest[LIFTED_TOOL_MEDIA]];
+    if (requiredInput.length > 0) panelBody[FUSION_REQUIRED_INPUT] = [...requiredInput];
     // Media tool histories must retain native call/result IDs and media blocks.
     // Keep legacy prose flattening when media admission is off or unnecessary.
     const hasMedia = requiredInput.length > 0;

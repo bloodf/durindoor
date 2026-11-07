@@ -25,6 +25,8 @@ import { recordTokenSaverEvent } from "@/lib/usageDb";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
 import { applyVisionBridgeReroute } from "open-sse/services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
+import { enforceCursorCapabilities, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { warmLiveModelLimits } from "open-sse/services/liveModelLimits.js";
 import { decodeClaudeCodeModelId } from "../../app/api/v1/models/_claudeCompat.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -38,6 +40,7 @@ import {
   getComboModelQuotaHealth,
   handleComboChat,
   handleFusionChat,
+  getFusionRequiredInput,
   comboPolicyRejection } from
 "open-sse/services/combo.js";
 import { getComboRoutingPolicy, mergeComboRouting } from "open-sse/services/comboRoutingPolicy.js";
@@ -1029,6 +1032,20 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const resolvedModelCapabilities = modelCapabilities !== undefined ?
   modelCapabilities :
   await loadCustomCapabilities(provider, model, requestPrefix);
+
+  // Recheck concrete leaves after alias/custom-capability resolution. Nested
+  // combo capability unions are admission hints, not proof this leaf can read it.
+  const fusionRequiredInput = getFusionRequiredInput(body);
+  const effectiveFusionCapabilities = enforceCursorCapabilities(provider, {
+    ...getCapabilitiesForModel(provider, parseSuffix(model).cleanModel),
+    ...(resolvedModelCapabilities || {}),
+  });
+  if (fusionRequiredInput.some((cap) => effectiveFusionCapabilities[cap] !== true)) {
+    return new Response(
+      JSON.stringify({ error: { message: `Fusion requires [${fusionRequiredInput.join(",")}] input support`, type: "invalid_request_error", code: "capability_unavailable" } }),
+      { status: HTTP_STATUS.BAD_REQUEST, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();

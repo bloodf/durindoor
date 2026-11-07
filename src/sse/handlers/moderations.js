@@ -16,6 +16,7 @@ import * as log from "../utils/logger.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 /**
  * Handle moderations request — OpenAI-compatible /v1/moderations passthrough.
@@ -46,10 +47,10 @@ async function handleModerationsHandler(request) {
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!body.input) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");

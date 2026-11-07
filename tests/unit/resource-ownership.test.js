@@ -47,7 +47,10 @@ describe.each([false, true])("Files/Batches ownership (accepted auth supplied=%s
   it.each([{}, { authorization: "Bearer sk_durindoor" }])("permits local fallback only with enforcement off: %j", async (headers) => {
     await expect(owner(request(headers))).resolves.toEqual({ authorized: true, ownerId: "local", allowAllOwners: false });
     mocks.getSettings.mockResolvedValue({ requireApiKey: true });
-    await expect(owner(request(headers))).resolves.toEqual({ authorized: false, ownerId: null, allowAllOwners: false });
+    await expect(owner(request(headers))).resolves.toEqual({
+      authorized: false, ownerId: null, allowAllOwners: false,
+      denialReason: headers.authorization ? "auth_invalid" : "auth_missing",
+    });
   });
 
   it.each([false, true])("uses the valid x-api-key owner despite stale Bearer (required=%s)", async (required) => {
@@ -69,10 +72,20 @@ describe.each([false, true])("Files/Batches ownership (accepted auth supplied=%s
   ])("rejects a stored %s key without another valid credential", async (_label, record) => {
     mocks.keys.set("sk-bearer", { id: "bearer-owner", ...record });
     await expect(owner(request({ authorization: "Bearer sk-bearer" }))).resolves.toEqual({
-      authorized: false, ownerId: null, allowAllOwners: false,
+      authorized: false, ownerId: null, allowAllOwners: false, denialReason: "auth_invalid",
     });
     await expect(owner(request({ authorization: "Bearer sk-bearer", "x-api-key": "sk-header" }))).resolves.toEqual({
       authorized: true, ownerId: "header-owner", allowAllOwners: false,
     });
+  });
+
+  it.each([
+    ["missing", "auth_missing"], ["invalid", "auth_invalid"],
+  ])("forwards only the accepted %s denial reason without changing ownership", async (reason, denialReason) => {
+    const auth = { ok: false, reason, stored: false };
+    await expect(resolveResourceOwner(request(), auth)).resolves.toEqual({
+      authorized: false, ownerId: null, allowAllOwners: false, denialReason,
+    });
+    expect(auth).toEqual({ ok: false, reason, stored: false });
   });
 });

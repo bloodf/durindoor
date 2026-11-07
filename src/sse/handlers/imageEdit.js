@@ -14,6 +14,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { imageModelKindError } from "./imageModelKind.js";
 
 // Allow large image uploads (mask + image can be several MB).
@@ -59,10 +60,10 @@ async function handleImageEditHandler(request) {
   });
   // Model and account fallbacks retain the admission epoch, including null.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key"
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   if (!modelStr) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   if (!formData.get("image")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: image");

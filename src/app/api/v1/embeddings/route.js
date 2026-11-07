@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleEmbeddings } from "@/sse/handlers/embeddings.js";
 
 /**
@@ -21,4 +21,4 @@ async function POSTHandler(request) {
   return await handleEmbeddings(request);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

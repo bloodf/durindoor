@@ -1,4 +1,5 @@
 import { handleNativeProvider } from "@/sse/handlers/nativeProvider.js";
+import { observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 
 export const runtime = "nodejs";
 
@@ -14,9 +15,10 @@ async function dispatch(request, context) {
   return handleNativeProvider(request, provider, path);
 }
 
-export const GET = dispatch;
-export const POST = dispatch;
-export const DELETE = dispatch;
+const observedDispatch = (request, context) => observeHttpRequest(request, () => dispatch(request, context));
+export const GET = observedDispatch;
+export const POST = observedDispatch;
+export const DELETE = observedDispatch;
 
 export async function OPTIONS() {
   return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type, x-connection-id" } });

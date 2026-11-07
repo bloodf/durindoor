@@ -24,6 +24,13 @@ describe("credential metadata isolation", () => {
     };
     const original = structuredClone(credentials);
 
+    // Stop at the transport response while exercising real provider dispatch offline.
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: { message: "isolation fixture stops after provider dispatch" } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
     await handleChatCore({
       body: { messages: [{ role: "user", content: NON_BYPASS_PROMPT }] },
       modelInfo: { provider: "openai", model: "gpt-4o" },
@@ -40,6 +47,11 @@ describe("credential metadata isolation", () => {
     expect(credentials.runtimeTransport).toBeUndefined();
     expect(credentials.rawHeaders).toBeUndefined();
     expect(credentials._clientSessionId).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages).toEqual([
+      { role: "user", content: NON_BYPASS_PROMPT },
+    ]);
   });
 
   it("keeps Kiro profileArn write off caller providerSpecificData", async () => {

@@ -16,6 +16,7 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
@@ -52,10 +53,10 @@ async function handleImageGenerationHandler(request) {
   });
   // Capture once for combo retries and delayed stream completion, preserving null.
   const { billingEpoch } = apiKeyAuth;
-  if (!apiKeyAuth.ok) return errorResponse(
+  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
     HTTP_STATUS.UNAUTHORIZED,
     apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  );
+  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
 
   // Per-key combo access control
   if (apiKey && modelStr) {

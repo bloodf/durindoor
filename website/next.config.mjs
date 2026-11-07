@@ -18,8 +18,8 @@ const nextConfig = {
   // The demo re-uses the real dashboard UI from ../src. Everything resolves
   // from website/node_modules so there is exactly one React instance.
   experimental: {
-    // Leave one effective CPU spare, with at least one build worker under a quota.
-    cpus: Math.max(1, availableParallelism() - 1),
+    // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
+    cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),
     externalDir: true,
   },
   outputFileTracingRoot: repoRoot,

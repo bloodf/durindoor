@@ -30,8 +30,8 @@ const nextConfig = {
   },
   env: {},
   experimental: {
-    // Leave one effective CPU spare, with at least one build worker under a quota.
-    cpus: Math.max(1, availableParallelism() - 1),
+    // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
+    cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
     // Cache fetch responses across HMR refreshes for faster dev reloads.

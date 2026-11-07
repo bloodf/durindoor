@@ -25,7 +25,7 @@ const ROOT = path.resolve(HERE, "..", "..");
  * never referenced by an import statement, so Next's file tracer copies the JS
  * entry into `.next/standalone` and silently drops the wasm beside it. Both
  * packaging surfaces must repair this explicitly:
- *   - scripts/build-app.mjs for `npm run build` / systemd standalone deploys
+ *   - scripts/build-app.mjs for `pnpm run build` / systemd standalone deploys
  *   - Dockerfile for the container image
  */
 describe("sql.js pure-JS DB fallback packaging (upstream 27f3710c8)", () => {
@@ -50,11 +50,12 @@ describe("sql.js pure-JS DB fallback packaging (upstream 27f3710c8)", () => {
     expect(buildSrc).toContain('"sql-wasm.wasm"');
   });
 
-  it("Dockerfile copies the sql.js package into the runtime stage", () => {
+  it("Dockerfile preserves the materialized standalone sql.js package in the runtime stage", () => {
     const dockerSrc = readFileSync(path.join(ROOT, "Dockerfile"), "utf8");
     expect(dockerSrc).toContain(
-      "COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js",
+      "COPY --from=builder /app/.next/standalone ./",
     );
+    expect(dockerSrc).not.toContain("COPY --from=builder /app/node_modules/sql.js");
   });
 
   it("copies both assets, not just the traced JS entry", () => {

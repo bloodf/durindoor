@@ -44,6 +44,7 @@ import { buildTimelineHref } from "../../timeline/href.js";
 import { replaceUpdatedConnections } from "@/shared/utils/connectionStatus";
 import { useNotificationStore } from "@/store/notificationStore";
 import { deleteConnection, deleteConnections, bulkDeleteFailureMessage } from "./connectionDelete";
+import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isBrowser, isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
@@ -96,22 +97,6 @@ export default function ProviderDetailPage() {
   const [enabledModelIds, setEnabledModelIds] = useState([]);
   const [showVisibleModels, setShowVisibleModels] = useState(false);
 
-  useEffect(() => {
-    currentProviderIdRef.current = providerId;
-    providerGenerationRef.current += 1;
-    // Clear the previous provider's rows immediately on switch. Without this the
-    // old connections and plan badges stay rendered under the new provider's
-    // header until its fetch resolves — and a stale in-flight response is
-    // discarded rather than clearing them, so they can persist indefinitely.
-    setConnections([]);
-    setCodexPlans({});
-    setProviderApiKeyConnectionNames([]);
-    // The visible-models modal saves under the provider it was opened for;
-    // close it and drop the old allowlist count so neither carries over.
-    setShowVisibleModels(false);
-    setEnabledModelIds([]);
-    setLoading(true);
-  }, [providerId]);
   const [providerNode, setProviderNode] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
   const [proxyPoolsReadyForProvider, setProxyPoolsReadyForProvider] = useState(null);
@@ -143,6 +128,8 @@ export default function ProviderDetailPage() {
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [editingCustomModel, setEditingCustomModel] = useState(null);
   const [selectedConnectionIds, setSelectedConnectionIds] = useState([]);
+  const [connectionFilter, setConnectionFilter] = useState("");
+  const [bulkFailures, setBulkFailures] = useState([]);
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
   const [bulkStatusAction, setBulkStatusAction] = useState(null);
@@ -199,8 +186,42 @@ export default function ProviderDetailPage() {
   const [oneByOneResults, setOneByOneResults] = useState({});
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
+  const oneByOneRunRef = useRef(null);
   const [importingQoderModels, setImportingQoderModels] = useState(false);
   const { copied, copy } = useCopyToClipboard();
+
+  useEffect(() => {
+    currentProviderIdRef.current = providerId;
+    providerGenerationRef.current += 1;
+    // Clear the previous provider's rows immediately on switch. Without this the
+    // old connections and plan badges stay rendered under the new provider's
+    // header until its fetch resolves — and a stale in-flight response is
+    // discarded rather than clearing them, so they can persist indefinitely.
+    setConnections([]);
+    setSelectedConnectionIds([]);
+    setConnectionFilter("");
+    setBulkFailures([]);
+    setBulkStatusAction(null);
+    setBulkUpdatingProxy(false);
+    setShowBulkProxyModal(false);
+    setOneByOneRunning(false);
+    setOneByOneStopping(false);
+    setOneByOneCurrentConnectionId(null);
+    setOneByOneResults({});
+    setOneByOneSummary(null);
+    stopOneByOneRef.current = false;
+    setCodexPlans({});
+    setProviderApiKeyConnectionNames([]);
+    // The visible-models modal saves under the provider it was opened for;
+    // close it and drop the old allowlist count so neither carries over.
+    setShowVisibleModels(false);
+    setEnabledModelIds([]);
+    setLoading(true);
+    return () => {
+      oneByOneRunRef.current?.abort();
+      oneByOneRunRef.current = null;
+    };
+  }, [providerId]);
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -950,11 +971,14 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleRunOneByOneTest = async () => {
-    if (oneByOneRunning || connections.length === 0) return;
+  const handleRunOneByOneTest = async (targets = connections) => {
+    if (oneByOneRunning || targets.length === 0 || oneByOneRunRef.current) return;
+    const run = new AbortController();
+    oneByOneRunRef.current = run;
+    const isCurrent = () => oneByOneRunRef.current === run;
 
     const queuedState = Object.fromEntries(
-      connections.map((connection) => [connection.id, { state: "queued", error: null }])
+      targets.map((connection) => [connection.id, { state: "queued", error: null }])
     );
 
     stopOneByOneRef.current = false;
@@ -962,27 +986,30 @@ export default function ProviderDetailPage() {
     setOneByOneStopping(false);
     setOneByOneCurrentConnectionId(null);
     setOneByOneResults(queuedState);
-    setOneByOneSummary({ total: connections.length, completed: 0, passed: 0, failed: 0, stopped: false });
+    setOneByOneSummary({ total: targets.length, completed: 0, passed: 0, failed: 0, stopped: false });
 
     let passed = 0;
     let failed = 0;
     let skipped = 0;
+    let unavailable = 0;
 
     try {
-      for (let index = 0; index < connections.length; index += 1) {
+      for (let index = 0; index < targets.length; index += 1) {
+        if (!isCurrent()) return;
         if (stopOneByOneRef.current) {
           setOneByOneSummary({
-            total: connections.length,
+            total: targets.length,
             completed: index,
             passed,
             failed,
             skipped,
+            unavailable,
             stopped: true
           });
           break;
         }
 
-        const connection = connections[index];
+        const connection = targets[index];
         setOneByOneCurrentConnectionId(connection.id);
         setOneByOneResults((prev) => ({
           ...prev,
@@ -990,12 +1017,16 @@ export default function ProviderDetailPage() {
         }));
 
         try {
-          const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST" });
+          const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST", signal: run.signal });
           const data = await res.json();
+          if (!isCurrent()) return;
           const wasSkipped = !!data.skipped;
+          const wasUnavailable = data.unavailable === true;
           const valid = !!data.valid;
 
-          if (wasSkipped) {
+          if (wasUnavailable) {
+            unavailable += 1;
+          } else if (wasSkipped) {
             skipped += 1;
           } else if (valid) {
             passed += 1;
@@ -1006,11 +1037,12 @@ export default function ProviderDetailPage() {
           setOneByOneResults((prev) => ({
             ...prev,
             [connection.id]: {
-              state: wasSkipped ? "skipped" : valid ? "success" : "failed",
+              state: wasUnavailable ? "unavailable" : wasSkipped ? "skipped" : valid ? "success" : "failed",
               error: valid ? null : data.error || null
             }
           }));
         } catch (error) {
+          if (!isCurrent()) return;
           failed += 1;
           setOneByOneResults((prev) => ({
             ...prev,
@@ -1022,23 +1054,27 @@ export default function ProviderDetailPage() {
         }
 
         setOneByOneSummary({
-          total: connections.length,
+          total: targets.length,
           completed: index + 1,
           passed,
           failed,
           skipped,
+          unavailable,
           stopped: false
         });
 
-        if (index < connections.length - 1) {
+        if (index < targets.length - 1) {
           await sleep(ONE_BY_ONE_DELAY_MS);
         }
       }
     } finally {
-      setOneByOneCurrentConnectionId(null);
-      setOneByOneRunning(false);
-      setOneByOneStopping(false);
-      stopOneByOneRef.current = false;
+      if (isCurrent()) {
+        oneByOneRunRef.current = null;
+        setOneByOneCurrentConnectionId(null);
+        setOneByOneRunning(false);
+        setOneByOneStopping(false);
+        stopOneByOneRef.current = false;
+      }
     }
   };
 
@@ -1064,16 +1100,21 @@ export default function ProviderDetailPage() {
   const handleBulkDelete = () => {
     const count = selectedConnectionIds.length;
     if (count === 0) return;
+    const generation = providerGenerationRef.current;
     setConfirmState({
       title: `Delete ${count} Connection${count > 1 ? "s" : ""}`,
       message: `Delete ${count} connection${count > 1 ? "s" : ""}? This cannot be undone.`,
       onConfirm: async () => {
         setConfirmState(null);
+        if (generation !== providerGenerationRef.current) return;
+        setBulkFailures([]);
         const result = await deleteConnections([...selectedConnectionIds]);
+        if (generation !== providerGenerationRef.current) return;
+        setBulkFailures(result.failures.map(({ id, error }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason: sanitizeErrorMessage(error) })));
         const deleted = new Set(result.deletedIds);
         setConnections((prev) => prev.filter((c) => !deleted.has(c.id)));
         // Failed rows stay listed and selected so the operator can fix and retry them.
-        setSelectedConnectionIds(result.failures.map((failure) => failure.id));
+        setSelectedConnectionIds((prev) => prev.filter((id) => !deleted.has(id)));
         if (result.failures.length > 0) notify.error(bulkDeleteFailureMessage(result), "Some connections were not deleted");
       }
     });
@@ -1215,7 +1256,9 @@ export default function ProviderDetailPage() {
   const handleBulkSetConnectionStatus = async (isActive) => {
     const idsToUpdate = [...selectedConnectionIds];
     if (idsToUpdate.length === 0) return;
+    const generation = providerGenerationRef.current;
 
+    setBulkFailures([]);
     setBulkStatusAction(isActive ? "on" : "off");
     try {
       const results = await Promise.all(
@@ -1226,31 +1269,31 @@ export default function ProviderDetailPage() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ isActive })
             });
-            if (!res.ok) return { id, ok: false };
+            if (!res.ok) return { id, ok: false, reason: `HTTP ${res.status}` };
             const { connection } = await res.json();
             return { id, ok: true, connection };
           } catch (error) {
             console.log("Error updating connection status:", error);
-            return { id, ok: false };
+            return { id, ok: false, reason: "Network error" };
           }
         })
       );
 
+      if (generation !== providerGenerationRef.current) return;
       const successfulConnections = results.
       filter((result) => result.ok && result.connection).
       map((result) => result.connection);
-      const successfulIds = results.filter((result) => result.ok).map((result) => result.id);
-      const failed = results.length - successfulIds.length;
+      const failures = results.filter((result) => !result.ok);
 
       if (successfulConnections.length > 0) {
         setConnections((prev) => replaceUpdatedConnections(prev, successfulConnections));
       }
 
-      if (failed > 0) {
-        alert(`${isActive ? "Enabled" : "Disabled"} ${successfulIds.length} connection(s), ${failed} failed.`);
-      }
+      setBulkFailures(failures.map(({ id, reason }) => ({ id, name: connections.find((c) => c.id === id)?.name || id, reason })));
+      const succeeded = new Set(results.filter((result) => result.ok).map(({ id }) => id));
+      setSelectedConnectionIds((prev) => prev.filter((id) => !succeeded.has(id)));
     } finally {
-      setBulkStatusAction(null);
+      if (generation === providerGenerationRef.current) setBulkStatusAction(null);
     }
   };
 
@@ -1261,6 +1304,7 @@ export default function ProviderDetailPage() {
   // one of the writes. Reuse the atomic reorder endpoint that
   // handleReorderByStatus already relies on instead of duplicating that bug.
   const handleSwapPriority = async (index1, index2) => {
+    if (connectionFilter.length > 0) return;
     const newConnections = [...connections];
     [newConnections[index1], newConnections[index2]] = [newConnections[index2], newConnections[index1]];
     setConnections(newConnections);
@@ -1274,6 +1318,7 @@ export default function ProviderDetailPage() {
   };
 
   const handleReorderByStatus = async () => {
+    if (connectionFilter.length > 0) return;
     const sorted = sortConnectionsByAvailability(connections);
     setConnections(sorted);
 
@@ -1288,7 +1333,9 @@ export default function ProviderDetailPage() {
   const selectedConnections = connections.filter((conn) => selectedConnectionIds.includes(conn.id));
   const selectedActiveCount = selectedConnections.filter((conn) => conn.isActive !== false).length;
   const selectedInactiveCount = selectedConnections.length - selectedActiveCount;
-  const allSelected = connections.length > 0 && selectedConnectionIds.length === connections.length;
+  const visibleConnections = connections.filter((conn) => `${conn.name || ""} ${conn.email || ""}`.toLowerCase().includes(connectionFilter.trim().toLowerCase()));
+  const allSelected = visibleConnections.length > 0 && visibleConnections.every((conn) => selectedConnectionIds.includes(conn.id));
+  const hiddenTestResultCount = connections.filter((conn) => !visibleConnections.includes(conn) && ["success", "failed", "skipped", "unavailable"].includes(oneByOneResults[conn.id]?.state)).length;
 
   const toggleSelectConnection = (connectionId) => {
     setSelectedConnectionIds((prev) =>
@@ -1299,11 +1346,10 @@ export default function ProviderDetailPage() {
   };
 
   const toggleSelectAllConnections = () => {
-    if (allSelected) {
-      setSelectedConnectionIds([]);
-      return;
-    }
-    setSelectedConnectionIds(connections.map((conn) => conn.id));
+    const visibleIds = new Set(visibleConnections.map((conn) => conn.id));
+    setSelectedConnectionIds((prev) => allSelected
+      ? prev.filter((id) => !visibleIds.has(id))
+      : [...new Set([...prev, ...visibleIds])]);
   };
 
   const clearSelection = () => {
@@ -1340,27 +1386,31 @@ export default function ProviderDetailPage() {
   };
 
   const applyProxyAssignments = async (assignments) => {
+    const generation = providerGenerationRef.current;
     setBulkUpdatingProxy(true);
+    setBulkFailures([]);
     try {
-      let failed = 0;
+      const failures = [];
       for (const { connectionId, proxyPoolId } of assignments) {
+        if (generation !== providerGenerationRef.current) return;
         try {
           const res = await fetch(`/api/providers/${connectionId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ proxyPoolId })
           });
-          if (!res.ok) failed += 1;
+          if (!res.ok) failures.push({ id: connectionId, reason: `HTTP ${res.status}` });
         } catch (e) {
           console.log("Error applying proxy for", connectionId, e);
-          failed += 1;
+          failures.push({ id: connectionId, reason: "Network error" });
         }
       }
-      if (failed > 0) alert(`Updated with ${failed} failed request(s).`);
+      if (generation !== providerGenerationRef.current) return;
+      setBulkFailures(failures.map((failure) => ({ ...failure, name: connections.find((c) => c.id === failure.id)?.name || failure.id })));
       await fetchConnections();
-      setShowBulkProxyModal(false);
+      if (generation === providerGenerationRef.current) setShowBulkProxyModal(false);
     } finally {
-      setBulkUpdatingProxy(false);
+      if (generation === providerGenerationRef.current) setBulkUpdatingProxy(false);
     }
   };
 
@@ -1388,12 +1438,12 @@ export default function ProviderDetailPage() {
   const connectionsList =
   <div role="region" aria-label="Connections" tabIndex={0} className="flex min-w-0 flex-col divide-y divide-black/[0.03] dark:divide-white/[0.03] max-h-[500px] overflow-y-auto pr-1">
       {connections.
-    map((conn, index) =>
+    map((conn, index) => ({ conn, index })).filter(({ conn }) => visibleConnections.includes(conn)).map(({ conn, index }) =>
     <div key={conn.id} className="flex min-w-0 items-stretch">
             <label className="flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center pl-1 sm:pl-2">
               <input
           type="checkbox"
-          aria-label={`Select ${conn.name}`}
+          aria-label={`Select ${conn.name || conn.email || conn.id}`}
           checked={isSelected(conn.id)}
           onChange={() => toggleSelectConnection(conn.id)}
           className="h-4 w-4 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
@@ -1405,8 +1455,8 @@ export default function ProviderDetailPage() {
                 plan={codexPlans[conn.id]}
                 proxyPools={proxyPools}
                 isOAuth={isOAuth}
-                isFirst={index === 0}
-                isLast={index === connections.length - 1}
+                isFirst={connectionFilter.length > 0 || index === 0}
+                isLast={connectionFilter.length > 0 || index === connections.length - 1}
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
@@ -1466,7 +1516,7 @@ export default function ProviderDetailPage() {
           <button
           onClick={handleApplyOneToOne}
           disabled={bulkUpdatingProxy || activePools.length === 0}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
+          className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
           
             <span className="material-symbols-outlined text-dd-muted text-[18px]">sync_alt</span>
             <span className="text-sm text-dd-text">One-to-one (rotate)</span>
@@ -1474,7 +1524,7 @@ export default function ProviderDetailPage() {
           <button
           onClick={() => handleApplySinglePool(null)}
           disabled={bulkUpdatingProxy}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
+          className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
           
             <span className="material-symbols-outlined text-dd-muted text-[18px]">link_off</span>
             <span className="text-sm text-dd-text">None (unbind all)</span>
@@ -1484,7 +1534,7 @@ export default function ProviderDetailPage() {
           key={pool.id}
           onClick={() => handleApplySinglePool(pool.id)}
           disabled={bulkUpdatingProxy || pool.isActive !== true}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
+          className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-dd-surface-2 disabled:cursor-not-allowed disabled:opacity-50">
           
               <span className="material-symbols-outlined text-dd-muted text-[18px]">lan</span>
               <span className="truncate text-sm text-dd-text">{pool.name}</span>
@@ -1959,6 +2009,9 @@ export default function ProviderDetailPage() {
                   
                         {bulkStatusAction === "off" ? "Turning Off..." : `Off Selected (${selectedConnectionIds.length})`}
                       </Button>
+                      <Button size="sm" variant="secondary" icon="sync" onClick={() => handleRunOneByOneTest(selectedConnections)} disabled={oneByOneRunning}>
+                        Test Selected ({selectedConnectionIds.length})
+                      </Button>
                       <Button
                   size="sm"
                   variant="danger"
@@ -1974,7 +2027,7 @@ export default function ProviderDetailPage() {
                 size="sm"
                 variant="secondary"
                 icon="sync"
-                onClick={handleRunOneByOneTest}
+                onClick={() => handleRunOneByOneTest()}
                 disabled={oneByOneRunning}>
                 
                     {oneByOneRunning ? "Testing Connection One-by-One..." : "Test Connection One-by-One"}
@@ -1998,6 +2051,7 @@ export default function ProviderDetailPage() {
               variant="secondary"
               icon="swap_vert"
               onClick={handleReorderByStatus}
+              disabled={connectionFilter.length > 0}
               title="Reorder by availability status">
               
                   Reorder
@@ -2125,6 +2179,7 @@ export default function ProviderDetailPage() {
                     <span>Passed: {oneByOneSummary.passed}</span>
                     <span>Failed: {oneByOneSummary.failed}</span>
                     {oneByOneSummary.skipped > 0 && <span>Skipped: {oneByOneSummary.skipped}</span>}
+                    {oneByOneSummary.unavailable > 0 && <span>Unavailable: {oneByOneSummary.unavailable}</span>}
                     {oneByOneSummary.stopped &&
               <span className="text-dd-warning">Stopped</span>
               }
@@ -2132,20 +2187,32 @@ export default function ProviderDetailPage() {
               <span>Running: {connections.find((conn) => conn.id === oneByOneCurrentConnectionId)?.name || oneByOneCurrentConnectionId}</span>
               }
                   </div>
+                  {oneByOneSummary.unavailable > 0 && <ul aria-label="Unavailable connection tests" className="mt-2">
+                    {connections.filter((conn) => oneByOneResults[conn.id]?.state === "unavailable").map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id}: {oneByOneResults[conn.id].error || "Provider unavailable - try again later"}</li>)}
+                  </ul>}
+                  {hiddenTestResultCount > 0 && <div className="mt-2 flex flex-wrap items-center gap-2" role="status">
+                    <span>{hiddenTestResultCount} completed {hiddenTestResultCount === 1 ? "result" : "results"} hidden by the filter.</span>
+                    <Button size="sm" variant="secondary" onClick={() => setConnectionFilter("")}>Clear filter to view results</Button>
+                  </div>}
                 </div>
           }
               {connections.length > 0 &&
-          <div className="mb-3 flex items-center gap-2 border-b border-dd-border-subtle pb-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-dd-border-subtle pb-2">
+                  <Input aria-label="Filter connections" aria-describedby={connectionFilter.length > 0 ? "connection-filter-reorder-hint" : undefined} placeholder="Filter connections" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)} />
+                  <span aria-live="polite" className="text-xs text-dd-muted">{selectedConnectionIds.length} selected</span>
                   <label className="flex min-h-11 min-w-11 cursor-pointer items-center gap-1.5 text-xs text-dd-muted hover:text-dd-accent">
                     <input
                       type="checkbox"
                       checked={allSelected}
                       onChange={toggleSelectAllConnections}
                       className="h-3.5 w-3.5 rounded border-dd-border text-dd-accent focus:shadow-dd-focus" />
-                    Select All
+                    Select visible
                   </label>
                 </div>
           }
+              {connectionFilter.length > 0 && <p id="connection-filter-reorder-hint" role="status" className="mb-3 text-sm text-dd-muted">Clear the connection filter to reorder priorities.</p>}
+              {selectedConnections.length > 0 && <details className="mb-3 text-sm text-dd-muted"><summary className="min-h-11 cursor-pointer py-3">Review {selectedConnections.length} selected connections</summary><ul>{selectedConnections.map((conn) => <li key={conn.id}>{conn.name || conn.email || conn.id} ({conn.id})</li>)}</ul></details>}
+              {bulkFailures.length > 0 && <div role="alert" className="mb-3 text-sm text-dd-danger"><p>Some connections could not be updated:</p><ul>{bulkFailures.map((failure) => <li key={failure.id}>{failure.name} ({failure.id}): {failure.reason}</li>)}</ul></div>}
               {connectionsList}
               {!isCompatible &&
           <div className="mt-4 grid grid-cols-1 gap-2 sm:flex">

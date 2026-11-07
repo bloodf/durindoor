@@ -320,7 +320,8 @@ import p317 from "./zai.js";
 import p318 from "./zed.js";
 import p319 from "./zenmux-free.js";
 import p320 from "./zenmux.js";
-import p321 from "./zylo-api.js";
+import p321 from "./zerolimitai.js";
+import p322 from "./zylo-api.js";
 
 export default [
   p0,
@@ -645,4 +646,5 @@ export default [
   p319,
   p320,
   p321,
+  p322,
 ];

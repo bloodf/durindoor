@@ -106,7 +106,7 @@ describe("baseUrl-only API-key provider connection test", () => {
       "glb-test-key",
       async () => new Response("", { status }),
     );
-    expect(result).toEqual({ valid, status, ...(error ? { error } : {}) });
+    expect(result).toEqual({ valid, status, ...(status >= 500 ? { unavailable: true } : {}), ...(error ? { error } : {}) });
     expect(JSON.stringify(result)).not.toContain("glb-test-key");
   });
 
@@ -145,8 +145,9 @@ describe("baseUrl-only API-key provider connection test", () => {
     ]);
 
     const connectionResult = await testSingleConnection("conn-glb");
-    expect(connectionResult).toMatchObject({ valid: false, error, ...(status >= 500 ? { unavailable: true } : {}) });
+    expect(connectionResult).toMatchObject({ valid: false, error });
     if (status >= 500) {
+      expect(connectionResult.unavailable).toBe(true);
       expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
     } else {
       expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
@@ -167,9 +168,9 @@ describe("baseUrl-only API-key provider connection test", () => {
     [502, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
     [504, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
     [503, { valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }, null],
-    [401, { valid: false, skipped: false, error: "Invalid API key", refreshed: false }, "error"],
-    [403, { valid: false, skipped: false, error: "Invalid API key", refreshed: false }, "error"],
-    [200, { valid: true, skipped: false, error: null, refreshed: false }, "active"],
+    [401, { valid: false, skipped: false, unavailable: false, error: "Invalid API key", refreshed: false }, "error"],
+    [403, { valid: false, skipped: false, unavailable: false, error: "Invalid API key", refreshed: false }, "error"],
+    [200, { valid: true, skipped: false, unavailable: false, error: null, refreshed: false }, "active"],
   ])("preserves saved connection semantics for HTTP %i", async (status, expected, storedStatus) => {
     vi.spyOn(global, "fetch").mockResolvedValue(new Response("", { status }));
     const { POST } = await import("../../src/app/api/providers/[id]/test/route.js");

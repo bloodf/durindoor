@@ -1165,7 +1165,7 @@ export async function testSingleConnection(id) {
   sanitizeErrorMessage(result.error || "Connection validation failed");
 
   // A provider outage says nothing about the stored credential or prior status.
-  if (result.unavailable) {
+  if (result.unavailable === true) {
     return { valid: false, unavailable: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
   }
 

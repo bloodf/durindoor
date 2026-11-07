@@ -23,7 +23,7 @@
  * rather than `down`.
  */
 import { PROVIDERS } from "open-sse/config/providers.js";
-import { resolveApiBase as resolveOrcaRouterApiBase } from "open-sse/providers/orcarouterCatalog.js";
+import { resolveApiBase as resolveOrcaRouterApiBase, isAllowedOrcaOrigin } from "open-sse/providers/orcarouterCatalog.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import {
   guardedProbeFetch,
@@ -234,6 +234,11 @@ async function probeRegistry(connection, fetcher, effectiveProxy) {
 export async function probeConnectionHealth(connection, opts = {}) {
   const fetcher = opts.fetcher;
   if (!connection) return { valid: false, status: null, error: "no connection" };
+
+  // Match catalog and OAuth origin policy before any health transport can attach credentials.
+  if (connection.provider === "orcarouter" && !isAllowedOrcaOrigin(resolveOrcaRouterApiBase(process.env))) {
+    return { valid: false, status: null, blocked: true, error: "OrcaRouter remote origins require HTTPS" };
+  }
 
   // Health probes must use the SAME credential the live chat path uses. OAuth
   // connections (claude, codex, gemini-cli, …) store their bearer token in

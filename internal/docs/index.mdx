@@ -22,8 +22,8 @@ One focused branch per change. A behaviour change needs a doc update and a test.
 
 ## Requirements
 
-- Node.js `26.13.0` (`.nvmrc` and `package.json` `engines.node`)
-- npm `11.20.0` (`packageManager` and `engines.npm`)
+- Node.js `24.22.2` (`.nvmrc` and `package.json` `engines.node`)
+- pnpm `12.18.0` (`packageManager`)
 - Git
 
 ## Setup
@@ -34,8 +34,8 @@ Pin Node, then install both packages.
 
 ```bash
 nvm use
-npm ci --no-audit --no-fund
-cd tests && npm ci --no-audit --no-fund
+pnpm install --frozen-lockfile
+cd tests && pnpm install --frozen-lockfile
 ```
 
 The Vitest suite is a separate package under `tests/`. Root `package.json` has no `test` script.
@@ -104,16 +104,16 @@ Do not push to `main`. Force-push only on the PR branch.
 ## Required gates
 
 ```bash
-npm run lint
-npm run build
-npm run check:docs
-npm run check:agent-index
-npm run check:registry-index
-npm run catalog:diff
-cd tests && npm run test:ci
+pnpm run lint
+pnpm run build
+pnpm run check:docs
+pnpm run check:agent-index
+pnpm run check:registry-index
+pnpm run catalog:diff
+cd tests && pnpm run test:ci
 ```
 
-`npm run lint` is `eslint src` then `lint:anti-slop`. Husky `pre-commit` runs lint-staged (eslint on staged `src/**/*.{js,jsx,mjs}`) and then `lint:anti-slop` on its own. Zero oxlint diagnostics. Do not baseline them.
+`pnpm run lint` is `eslint src` then `lint:anti-slop`. Husky `pre-commit` runs lint-staged (eslint on staged `src/**/*.{js,jsx,mjs}`) and then `lint:anti-slop` on its own. Zero oxlint diagnostics. Do not baseline them.
 
 `test:ci` must not add lines to `tests/__baseline__/known-fails.txt`. That file is empty in this tree, so every failing assertion is a regression.
 
@@ -123,9 +123,9 @@ The PR body lists scope, tests, docs, and baseline impact. Reviewers check corre
 
 ## Documentation
 
-Public user and operator docs are MDX under `docs/`. Repository-only implementation and AI references live under `internal/docs/`. The public build in `website/` reads only `docs/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `npm run check:docs`. Vercel builds a pull request preview only when the change touches `docs/` or `website/` (`website/scripts/vercel-ignore-build.sh`); `main` always deploys. The `Website build` CI job follows the same rule on pull requests and always runs on `main`.
+Public user and operator docs are MDX under `docs/`. Repository-only implementation and AI references live under `internal/docs/`. The public build in `website/` reads only `docs/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `pnpm run check:docs`. Vercel builds a pull request preview only when the change touches `docs/` or `website/` (`website/scripts/vercel-ignore-build.sh`); `main` always deploys. The `Website build` CI job follows the same rule on pull requests and always runs on `main`.
 
-Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX.md`. Run `npm run gen:registry-index` and `npm run gen:agent-index`. Those flows are on [Provider registry](./provider-registry.mdx). Translator work is on [Translators](./translators.mdx). The Vitest layout is on [Testing](./testing.mdx).
+Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX.md`. Run `pnpm run gen:registry-index` and `pnpm run gen:agent-index`. Those flows are on [Provider registry](./provider-registry.mdx). Translator work is on [Translators](./translators.mdx). The Vitest layout is on [Testing](./testing.mdx).
 
 ## License
 

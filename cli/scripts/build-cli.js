@@ -233,7 +233,7 @@ if (fs.existsSync(buildDistDir)) {
 }
 console.log("1️⃣  Building Next.js app...");
 try {
-  // Avoid a redundant npm/shell layer within the CLI build's process budget.
+  // Invoke the build script directly under the active Node runtime, without a package-manager shell.
   execFileSync(process.execPath, [path.join(appDir, "scripts", "build-app.mjs")], {
     stdio: "inherit",
     cwd: appDir,

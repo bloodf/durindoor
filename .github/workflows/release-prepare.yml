@@ -56,13 +56,20 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 26.13.0
-          cache: npm
+          node-version: 24.22.2
+          cache: pnpm
           cache-dependency-path: |
-            package-lock.json
-            tests/package-lock.json
+            pnpm-lock.yaml
+            tests/pnpm-lock.yaml
+
+      - name: Verify pnpm
+        run: test "$(pnpm --version)" = "12.18.0"
 
       - name: Resolve last tag and next version
         id: version
@@ -105,9 +112,8 @@ jobs:
       - name: Commit release bump
         run: |
           NEXT="${{ steps.version.outputs.next }}"
-          # npm version also rewrites the "version" field in both lockfiles;
-          # they must be committed with their manifests.
-          git add package.json cli/package.json package-lock.json cli/package-lock.json CHANGELOG.md
+          # pnpm lockfiles do not carry the root version; only the manifests change.
+          git add package.json cli/package.json pnpm-lock.yaml cli/pnpm-lock.yaml CHANGELOG.md
           git commit -m "chore(release): bump version to $NEXT"
 
       # AGENTS.md §6.3 pre-push gate: validate the generated commit subjects
@@ -115,9 +121,14 @@ jobs:
       - name: Validate commit and PR title with commitlint
         run: |
           NEXT="${{ steps.version.outputs.next }}"
-          npm install --no-save --no-package-lock --no-audit --no-fund @commitlint/cli @commitlint/config-conventional
-          npx commitlint --from=origin/main --to=HEAD
-          echo "chore(release): bump version to $NEXT" | npx commitlint
+          mkdir -p "$RUNNER_TEMP/commitlint"
+          cd "$RUNNER_TEMP/commitlint"
+          pnpm init
+          pnpm add @commitlint/cli @commitlint/config-conventional
+          cp "$GITHUB_WORKSPACE/.commitlintrc.cjs" "$RUNNER_TEMP/commitlint/.commitlintrc.cjs"
+          cd "$GITHUB_WORKSPACE"
+          node "$RUNNER_TEMP/commitlint/node_modules/@commitlint/cli/cli.js" --config "$RUNNER_TEMP/commitlint/.commitlintrc.cjs" --cwd "$GITHUB_WORKSPACE" --from=origin/main --to=HEAD
+          echo "chore(release): bump version to $NEXT" | node "$RUNNER_TEMP/commitlint/node_modules/@commitlint/cli/cli.js" --config "$RUNNER_TEMP/commitlint/.commitlintrc.cjs" --cwd "$GITHUB_WORKSPACE"
 
       # Guard a retry before updating its branch: an old run may have enabled
       # auto-merge. Fail rather than push if we cannot return it to draft.

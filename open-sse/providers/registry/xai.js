@@ -70,6 +70,7 @@ export default {
   videoConfig: { baseUrl: "https://api.x.ai/v1/videos" },
   features: {
     usage: true,
+    usageApikey: true,
   },
   searchViaChat: {
     defaultModel: "grok-4.7",

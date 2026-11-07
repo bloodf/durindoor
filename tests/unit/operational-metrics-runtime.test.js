@@ -312,6 +312,26 @@ describe("client HTTP observations", () => {
 });
 
 describe("cached provider and admission signals", () => {
+  it.each([false, true])("counts a pre-aborted multi-tier acquisition once, limited=%s", async (limited) => {
+    const gate = await import("../../open-sse/services/concurrencyGate.js");
+    const abort = new AbortController();
+    abort.abort();
+    await expect(gate.acquireMany([{ key: "metrics-abort", limit: limited ? 1 : 0 }], 100, abort.signal))
+      .rejects.toMatchObject({ name: "AbortError" });
+    expect(gate.getGateStats()).toEqual({});
+    expect(metrics.operationalMetricsText()).toContain('durindoor_admission_failures_total{reason="aborted"} 1\n');
+  });
+
+  it("counts abort after a granted tier once and releases its slot", async () => {
+    const gate = await import("../../open-sse/services/concurrencyGate.js");
+    const abort = new AbortController();
+    const pending = gate.acquireMany([{ key: "metrics-abort-race", limit: 1 }], 100, abort.signal);
+    abort.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(gate.getGateStats()).toEqual({});
+    expect(metrics.operationalMetricsText()).toContain('durindoor_admission_failures_total{reason="aborted"} 1\n');
+  });
+
   it("exports fresh numeric cache projection, omits expired/invalidated states and never probes on scrape", async () => {
     const health = await import("../../src/lib/healthMonitor.js");
     await health.getHealthPayload({ now: () => 1000, connectionsLoader: async () => [] });

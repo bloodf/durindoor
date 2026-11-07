@@ -32,42 +32,44 @@ jobs:
           HEAD_SHA=$(git rev-parse HEAD)
           echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 26.13.0
-          cache: npm
+          node-version: 24.22.2
+          cache: pnpm
           cache-dependency-path: |
-            package-lock.json
-            website/package-lock.json
-            tests/package-lock.json
+            pnpm-lock.yaml
+            website/pnpm-lock.yaml
+            tests/pnpm-lock.yaml
 
-      - name: Pin npm
-        run: |
-          npm install --global npm@11.20.0
-          test "$(npm --version)" = "11.20.0"
+      - name: Verify pnpm
+        run: test "$(pnpm --version)" = "12.18.0"
 
       - name: Install app dependencies
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Install website dependencies
         working-directory: website
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Install test dependencies
         working-directory: tests
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Agent index drift gate
-        run: npm run check:agent-index
+        run: pnpm run check:agent-index
 
       - name: Build with isolated application state
         env:
           HOME: ${{ runner.temp }}/durindoor-build-home
           DATA_DIR: ${{ runner.temp }}/durindoor-build-data
-        run: mkdir -p "$HOME" "$DATA_DIR" && npm run build
+        run: mkdir -p "$HOME" "$DATA_DIR" && pnpm run build
 
       - name: Run blocking Vitest gate
         working-directory: tests
@@ -75,7 +77,7 @@ jobs:
           BASELINE_BASE_REF: HEAD^
           HOME: ${{ runner.temp }}/durindoor-home
           DATA_DIR: ${{ runner.temp }}/durindoor-data
-        run: mkdir -p "$HOME" "$DATA_DIR" && npm run test:ci
+        run: mkdir -p "$HOME" "$DATA_DIR" && pnpm run test:ci
 
       - name: Verify test reports
         if: always()

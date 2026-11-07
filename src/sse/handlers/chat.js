@@ -1,3 +1,5 @@
+import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
+import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { isChatProvider, isNativeOnlyModel } from "open-sse/providers/chatCapability.js";
 import { KIMI_CODING_MODELS_URL } from "../../../open-sse/providers/shared.js";
 import "open-sse/index.js";
@@ -1091,6 +1093,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       let credentials;
       try {
         credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
+          connectionRecovery: true,
           signal: requestSignal,
           modelCandidates,
           quotaFamily,
@@ -1118,6 +1121,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
 
       // All accounts unavailable or provider disabled
+      if (credentials?.connectionRecoveryBusy) {
+        const response = errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress");
+        response.localAdmissionRejected = true;
+        return response;
+      }
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
         if (earlyEofOriginal) return earlyEofOriginal;
         if (credentials?.providerDisabled) {
@@ -1261,7 +1269,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         routeKey: `${provider}/${model}`,
         config: chatSettings.quotaSelection || {}
       });
-      const result = await handleChatCore({
+      const result = await runWithConnectionRecovery(handleChatCore, {
         body: { ...structuredClone(body), model: `${provider}/${model}` },
         modelInfo: { provider, model },
         modelCapabilities: resolvedModelCapabilities,
@@ -1395,7 +1403,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             signal: requestSignal
           });
         }
-      });
+      }, activeConnection, model, resolveFallbackModelScope(provider, model), requestSignal);
+
+      if (result.connectionRecoveryBusy) {
+        if (preferredConnectionId) {
+          result.response.localAdmissionRejected = true;
+          return result.response;
+        }
+        excludeConnectionIds.add(credentials.connectionId);
+        continue;
+      }
 
       if (result.success) {
         if (earlyEofOriginal || preferredConnectionId) return result.response;
@@ -1405,6 +1422,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         earlyEofOriginal = held.response;
         excludeConnectionIds.add(credentials.connectionId);
         continue;
+      }
+      // Process-local admission pressure is terminal for this request. Retrying a
+      // sibling would hit the same queue and must not cool a healthy account.
+      if (result.localAdmissionRejected === true) {
+        // Keep explicit locality on the Response across the outer transient retry.
+        result.response.localAdmissionRejected = true;
+        return result.response;
       }
       // A client-side abort (named AbortError, or a bare request_signal_aborted /
       // "Client disconnected" / "operation was aborted" that defaulted to 502) is a

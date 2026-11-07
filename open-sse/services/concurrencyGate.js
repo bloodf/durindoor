@@ -212,17 +212,39 @@ export class ConcurrencyGateTimeoutError extends Error {
  * @param {Array<{key: string, limit?: number|null}>} tiers
  * @param {number} [timeoutMs]
  * @param {AbortSignal|null} [signal]
+ * @param {Object} [payloadOptions] - Optional payload admission options { body, payloadBytes, stream, limits }
  * @returns {Promise<() => void>} idempotent release function for every acquired tier
  */
-export async function acquireMany(tiers, timeoutMs = DEFAULT_TIMEOUT_MS, signal = null) {
+export async function acquireMany(tiers, timeoutMs = DEFAULT_TIMEOUT_MS, signal = null, payloadOptions = null) {
   const acquiredKeys = [];
+  let payloadLease = null;
   try {
+    if (payloadOptions && (payloadOptions.body !== undefined || payloadOptions.payloadBytes !== undefined || payloadOptions.stream !== undefined)) {
+      const { acquirePayloadAdmission } = await import("./payloadAdmission.js");
+      payloadLease = await acquirePayloadAdmission({
+        ...payloadOptions,
+        timeoutMs,
+        signal,
+      });
+    }
+
+    if (signal?.aborted) {
+      recordAdmissionFailure("aborted");
+      throw new DOMException("Concurrency wait aborted", "AbortError");
+    }
     for (const tier of tiers) {
       if (!tier.limit || tier.limit <= 0) continue;
       await acquireSlot(tier.key, tier.limit, timeoutMs, signal);
       acquiredKeys.push(tier.key);
+      if (signal?.aborted) {
+        recordAdmissionFailure("aborted");
+        throw new DOMException("Concurrency wait aborted", "AbortError");
+      }
     }
   } catch (error) {
+    if (payloadLease && !payloadLease.released) {
+      payloadLease.release();
+    }
     for (const key of acquiredKeys) releaseSlot(key);
     throw error;
   }
@@ -231,6 +253,9 @@ export async function acquireMany(tiers, timeoutMs = DEFAULT_TIMEOUT_MS, signal 
   return () => {
     if (released) return;
     released = true;
+    if (payloadLease && !payloadLease.released) {
+      payloadLease.release();
+    }
     for (const key of acquiredKeys) releaseSlot(key);
   };
 }

@@ -211,7 +211,7 @@ describe("baseUrl-only API-key provider connection test", () => {
     const { probeRegistryProvider } = await import("../../src/app/api/providers/providerProbe.js");
     const probe = await probeRegistryProvider(connection.provider, connection.apiKey);
     expect(probe).toEqual({ valid: false, status: null, error: "No __Secure-next-auth.session-token cookie found in the pasted value" });
-    const { POST } = await import(caller === "single" ? "../../src/app/api/providers/[id]/test/route.js" : "../../src/app/api/providers/test-batch/route.js");
+    const { POST } = caller === "single" ? await import("../../src/app/api/providers/[id]/test/route.js") : await import("../../src/app/api/providers/test-batch/route.js");
     const response = await POST(new Request("http://localhost/api/providers/test", { method: "POST", body: JSON.stringify({ mode: "all" }) }), { params: Promise.resolve({ id: connection.id }) });
     const body = await response.json();
     expect(caller === "single" ? body : body.results[0]).toMatchObject({ valid: false, error: probe.error });

@@ -111,13 +111,29 @@ export async function streamCompletion({ fetchImpl = globalThis.fetch, body, hea
   return { text, usage, latencyMs: now() - started, ttftMs };
 }
 
-/**
- * Per-million rates for a compare model from the /api/pricing map, or null.
- * requestModel is "<provider>/<model>"; pricing is keyed provider -> model.
+const COMPARE_SELECTIONS_KEY = "durindoor.playground.compare.selections.v1";
+
+/** Session-only selectors, never prompt/response content or request status.
+ * Stored IDs are untrusted preferences: the panel rechecks them against the
+ * current model catalog and connection options before dispatch.
  */
-export function findModelPricing(pricing, providerId, requestModel) {
-  if (!pricing || !isObject(pricing) || !providerId || !requestModel) return null;
-  const modelId = requestModel.startsWith(`${providerId}/`) ? requestModel.slice(providerId.length + 1) : requestModel;
-  const rates = pricing[providerId]?.[modelId];
-  return rates && isObject(rates) ? rates : null;
+export function readCompareSelections(storage) {
+  try {
+    const saved = JSON.parse((storage || globalThis.sessionStorage).getItem(COMPARE_SELECTIONS_KEY));
+    if (!Array.isArray(saved) || saved.length < MIN_COMPARE_COLUMNS || saved.length > MAX_COMPARE_COLUMNS) return null;
+    if (!saved.every((item) => item && typeof item.modelId === "string" && typeof item.connectionId === "string")) return null;
+    return saved.map(({ modelId, connectionId }) => ({ modelId, connectionId }));
+  } catch {
+    return null;
+  }
+}
+
+export function writeCompareSelections(columns, storage) {
+  try {
+    (storage || globalThis.sessionStorage).setItem(COMPARE_SELECTIONS_KEY, JSON.stringify(
+      columns.map(({ modelId = "", connectionId = "auto" }) => ({ modelId, connectionId }))
+    ));
+  } catch {
+    // Storage may be unavailable or full; comparison still works in memory.
+  }
 }

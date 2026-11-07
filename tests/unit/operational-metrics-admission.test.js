@@ -420,6 +420,23 @@ describe("selected client-admission failures", () => {
     }
   });
 
+  it.each(["cancel", "EOF"])("counts only a delivered fusion local policy denial at %s", async (terminal) => {
+    const { comboPolicyRejection } = await import("../../open-sse/services/combo.js");
+    // An unselected candidate adds nothing, even if its body is consumed internally.
+    await comboPolicyRejection().text();
+    expectDelta();
+    const response = await metrics.observeHttpRequest(request({}), () => comboPolicyRejection());
+    expect(response.status).toBe(403);
+    expectDelta({ starts: 1, active: 1 });
+    if (terminal === "cancel") {
+      await response.body.cancel();
+      expectDelta({ starts: 1 });
+    } else {
+      expect((await response.json()).error.message).toBe("Access denied");
+      expectDelta({ starts: 1, policy: 1 });
+    }
+  });
+
   it("retains actual legacy derived Request identity through selected denial", async () => {
     const outer = request({ model, prompt: "fixture" }, {}, "/v1/completions");
     const response = await legacy.POST(outer);

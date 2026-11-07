@@ -25,12 +25,20 @@ export default {
     if (!columns.some((column) => column.name === "unknownCostRequests")) {
       db.exec(`ALTER TABLE "apiKeyUsageTotals" ADD COLUMN "unknownCostRequests" ${pg ? "BIGINT" : "INTEGER"} NOT NULL DEFAULT 0`);
     }
+    // Only explicit MCP failures are exempt. Older history shapes without
+    // attribution columns cannot prove an exemption and keep their counts.
+    const historyColumns = new Set((pg ?
+      db.all("SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?", ["usageHistory"]) :
+      db.all("PRAGMA table_info(usageHistory)")).map((column) => column.name));
+    const eligibility = historyColumns.has("provider") && historyColumns.has("status")
+      ? `AND NOT (COALESCE(h.provider, '') = 'mcp-gateway' AND COALESCE(h.status, '') = 'error')`
+      : "";
 
     const counts = new Map(db.all(`
       SELECT k.id AS "apiKeyId", COUNT(h.id) AS "unknownCostRequests"
       FROM "apiKeys" k
       JOIN "usageHistory" h ON h."apiKey" = k.key
-      WHERE h.cost IS NULL
+      WHERE h.cost IS NULL ${eligibility}
       GROUP BY k.id
     `).map((row) => [row.apiKeyId, Number(row.unknownCostRequests)]));
     // Parse legacy metadata tolerantly in JS on both engines. Numeric legacy
@@ -39,7 +47,7 @@ export default {
       SELECT k.id AS "apiKeyId", h.meta
       FROM "apiKeys" k
       JOIN "usageHistory" h ON h."apiKey" = k.key
-      WHERE h.cost IS NOT NULL AND h.meta IS NOT NULL
+      WHERE h.cost IS NOT NULL AND h.meta IS NOT NULL ${eligibility}
     `)) {
       if (parseJson(row.meta)?.costStatus === "unknown") {
         counts.set(row.apiKeyId, (counts.get(row.apiKeyId) || 0) + 1);

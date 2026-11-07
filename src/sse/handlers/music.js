@@ -1,3 +1,4 @@
+import { modelKindError } from "./modelKind.js";
 import { withRequestCorrelation, getRequestId } from "../utils/requestCorrelation.js";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
 import { getProviderCredentialsWithQuotaPreflight, resolveClientApiKey, markAccountUnavailable } from "../services/auth.js";
@@ -84,6 +85,8 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
   const { provider, model } = modelInfo;
   const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (policyError) return policyError;
+  const kindError = await modelKindError(provider, model, await getSettings(), "music");
+  if (kindError) return kindError;
   if (asyncProviders.has(provider) && !apiKeyId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Music jobs require a stored caller API key");
   const usageEventId = `${getRequestId(request)}:music`;
 

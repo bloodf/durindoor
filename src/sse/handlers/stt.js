@@ -1,3 +1,4 @@
+import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   resolveClientApiKey,
@@ -74,6 +75,8 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
   if (provider === "codex" && model !== "transcribe") return errorResponse(HTTP_STATUS.BAD_REQUEST, "Use model cx/transcribe for Codex STT");
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const kindError = await modelKindError(provider, model, await getSettings(), "stt");
+  if (kindError) return kindError;
   const connectionId = request.headers.get("x-connection-id") || null;
   const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
 

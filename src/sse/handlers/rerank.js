@@ -1,3 +1,4 @@
+import { modelKindError } from "./modelKind.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getProviderCredentialsWithQuotaPreflight,
@@ -69,6 +70,8 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
   const { provider, model } = modelInfo;
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
+  const kindError = await modelKindError(provider, model, await getSettings(), "rerank");
+  if (kindError) return kindError;
   const connectionId = request.headers.get("x-connection-id") || null;
   const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
 

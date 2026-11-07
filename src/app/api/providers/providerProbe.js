@@ -64,7 +64,7 @@ export async function validateChatgptWebSession({ apiKey, fetcher = fetch }) {
     if (err instanceof OutboundUrlGuardError) {
       return { valid: false, status: null, blocked: true, error: err.message };
     }
-    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
   }
   if (!response.ok) {
     return { valid: false, status: response.status, error: `chatgpt.com rejected the session cookie (HTTP ${response.status})` };
@@ -100,7 +100,7 @@ export async function validateDevinCloudAgentProvider({ apiKey, fetcher = fetch 
     if (err instanceof OutboundUrlGuardError) {
       return { valid: false, status: null, blocked: true, error: err.message };
     }
-    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
   }
   if (AUTH_FAILURE_STATUSES.has(response.status)) {
     return { valid: false, status: response.status, error: "Invalid API key" };
@@ -123,7 +123,7 @@ export async function validateDifyProvider({ apiKey, fetcher = fetch }) {
     }, guard, fetcher)));
   } catch (err) {
     if (err instanceof OutboundUrlGuardError) return { valid: false, status: null, blocked: true, error: err.message };
-    return { valid: false, status: null, error: "Provider unavailable - network request failed" };
+    return { valid: false, status: null, unavailable: true, error: "Provider unavailable - network request failed" };
   }
   const failed = responses.find((response) => !response.ok);
   if (!failed) return { valid: true, status: 200 };
@@ -406,12 +406,14 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
       return {
         valid: false,
         status: null,
+        unavailable: true,
         error: "Provider unavailable - network request failed",
       };
     }
     if (!probe.fallback) throw err;
   }
   if (probe.accepts === "non-auth-failure") {
+    if (res.status >= 500) return { valid: false, status: res.status, error: getChatProbeError(res.status) };
     return { valid: !AUTH_FAILURE_STATUSES.has(res.status), status: res.status };
   }
   if (probe.accepts === "chat-auth") {
@@ -425,6 +427,7 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
 
   try {
     const fallbackRes = await guardedProbeFetch(probe.fallback.url, probe.fallback.options, guard, fetcher);
+    if (fallbackRes.status >= 500) return { valid: false, status: fallbackRes.status, error: getChatProbeError(fallbackRes.status) };
     return { valid: !AUTH_FAILURE_STATUSES.has(fallbackRes.status), status: fallbackRes.status };
   } catch (err) {
     if (err instanceof OutboundUrlGuardError) return blockedResult(err);

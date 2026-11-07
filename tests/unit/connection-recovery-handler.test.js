@@ -5,6 +5,7 @@ import { checkFallbackError } from "../../open-sse/services/accountFallback.js";
 vi.mock("open-sse/index.js", () => ({}), { virtual: true });
 
 const mocks = vi.hoisted(() => ({
+  execute: vi.fn(),
   getProviderConnections: vi.fn(),
   updateProviderConnection: vi.fn(),
   getSettings: vi.fn(),
@@ -66,6 +67,11 @@ vi.mock("@/shared/services/providerQuotaTracker", () => ({
 
 vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
   updateProviderCredentials: vi.fn(),
+}));
+
+// Keep the real core/admission path, but fail before any external dispatch.
+vi.mock("../../open-sse/executors/index.js", () => ({
+  getExecutor: () => ({ noAuth: false, execute: mocks.execute }),
 }));
 
 vi.mock("../../open-sse/handlers/chatCore.js", () => ({
@@ -150,6 +156,35 @@ describe("real chat recovery selection", () => {
     await first.body.cancel();
     await sibling.body.cancel();
     expect((await getProviderCredentials("codex", null, "gpt-5.4", { connectionRecovery: true })).connectionId).toBe(row.id);
+  });
+
+  it("keeps healthy unpinned accounts eligible after real core queue timeout without trying a sibling", async () => {
+    const { handleChatCore } = await vi.importActual("../../open-sse/handlers/chatCore.js");
+    mocks.handleChatCore.mockImplementation(handleChatCore);
+    // Both saved accounts are healthy. The saturated provider gate is local
+    // pressure, not evidence against either connection's credentials.
+    delete row["modelLock_gpt-5.4"];
+    const sibling = { ...row, id: "healthy-sibling-account" };
+    mocks.getProviderConnections.mockImplementation(async () => structuredClone([row, sibling]));
+    mocks.getSettings.mockResolvedValue({ requireApiKey: false, providerConcurrencyLimits: { codex: 1 } });
+    await acquireSlot("codex", 1);
+    vi.useFakeTimers();
+    try {
+      const pending = handleChat(request("gpt-5.4"));
+      await vi.waitFor(() => expect(getGateStats().codex?.queued).toBe(1));
+      await vi.advanceTimersByTimeAsync(120001);
+      const response = await pending;
+      expect(response.status).toBe(503);
+      expect(await response.text()).toContain("timed out");
+      expect(mocks.markAccountUnavailable).not.toHaveBeenCalled();
+      expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+      expect(mocks.handleChatCore).toHaveBeenCalledTimes(1);
+      expect(mocks.handleChatCore.mock.calls[0][0].connectionId).toBe(row.id);
+      expect(mocks.execute).not.toHaveBeenCalled();
+      expect(getGateStats().codex).toEqual({ current: 1, queued: 0 });
+      const selected = await getProviderCredentials("codex", null, "gpt-5.4", { connectionRecovery: true });
+      expect(selected.connectionId).toBe(row.id);
+    } finally { vi.useRealTimers(); releaseSlot("codex"); _resetGates(); resetPayloadAdmission(); }
   });
 
   it("returns real core queue timeout without provider cooldown writes", async () => {

@@ -1,6 +1,6 @@
 # Connection circuit discovery and regression draft for #1108
 
-Status: review findings addressed in source; runtime checks and final review pending.
+Status: recovery findings addressed; concurrency-timeout marker correction from PR #1665 pending integration. Runtime checks and final review pending.
 
 `src/lib/routing/connectionRecovery.js` observes persisted fallback deadlines in
 credential selection and claims an expired scope immediately before chat core
@@ -15,9 +15,12 @@ Recovery exclusions return HTTP 503 without invented quota/reset evidence, inclu
 pinned selection. Selection and dispatch consult pending in-memory scopes even if
 healthy sibling-model success lazily deletes the persisted expired lock. A missing
 lock is not an explicit reset; explicit `ConnectionCircuitManager.reset` separately
-invalidates its lease generation. Local queue rejection uses PR #1665's actual core
-marker and caller guard, integrated normally before this delivery. The handler test
-covers sibling cleanup with real selection and a real core concurrency timeout.
+invalidates its lease generation. PR #1665's payload-admission marker and caller
+guard are integrated, but its concurrency-timeout branch still requires the marker
+correction owned by that PR. Do not claim queue-timeout safety until that correction
+is integrated and the affected checks pass. Handler regressions cover sibling cleanup,
+pinned timeout, and healthy unpinned timeout with no account cooldown or sibling
+attempt. The unpinned regression is expected to expose the current missing marker.
 
 
 The supplied helper hash was verified. Its expired-deadline admission, late

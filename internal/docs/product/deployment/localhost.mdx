@@ -28,10 +28,10 @@ These are source and test entrypoints, not evidence that an external provider, p
 Baseline `0e7307831`, captured 2026-10-07. All original prose, examples, tables, and technical material are retained below, with relative links relocated. Historical deployment examples and fixed line numbers may be stale.
 
 
-Personal tools and desktop clients talk to a gateway on this machine. The published binary is `durindoor`. Node.js 26.13.0 and npm 11.20.0 are the engine versions.
+Personal tools and desktop clients talk to a gateway on this machine. The published binary is `durindoor`. Node.js `>=24.22.2 <25` is the engine range; source checkouts use pnpm 12.18.0.
 
 <Callout type="warn">
-The CLI default bind is `0.0.0.0`. Other hosts on the LAN can reach the port. Pass `--host 127.0.0.1` for loopback only. `npm run start` and `npm run dev` bind `127.0.0.1` unless `HOSTNAME` is set.
+The CLI default bind is `0.0.0.0`. Other hosts on the LAN can reach the port. Pass `--host 127.0.0.1` for loopback only. `pnpm run start` and `pnpm run dev` bind `127.0.0.1` unless `HOSTNAME` is set.
 </Callout>
 
 <Tabs items={['npx', 'global CLI', 'source']}>
@@ -59,20 +59,20 @@ Same binary. Flags from `durindoor --help` apply here and to `npx`.
 ```bash
 git clone https://github.com/bloodf/durindoor.git
 cd durindoor
-npm install --no-audit --no-fund
-npm run build
-npm run start
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run start
 ```
 
-`npm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that process binds `127.0.0.1`.
+`pnpm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that process binds `127.0.0.1`.
 
 Contributor loop:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
-Dev listens on port 20127. Production CLI and `npm run start` use 20128.
+Dev listens on port 20127. Production CLI and `pnpm run start` use 20128.
 
 </Tab>
 </Tabs>

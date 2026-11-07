@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { availableParallelism } from "node:os";
 import { createMDX } from "fumadocs-mdx/next";
 
 const siteRoot = dirname(fileURLToPath(import.meta.url));
@@ -16,7 +17,11 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // The demo re-uses the real dashboard UI from ../src. Everything resolves
   // from website/node_modules so there is exactly one React instance.
-  experimental: { externalDir: true },
+  experimental: {
+    // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
+    cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),
+    externalDir: true,
+  },
   outputFileTracingRoot: repoRoot,
   images: { unoptimized: true },
   webpack: (config, { isServer, webpack }) => {

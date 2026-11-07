@@ -1,9 +1,10 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI File detail — metadata + delete.
 import { getFile, deleteFile } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +21,7 @@ async function OPTIONSHandler() {
 
 async function HEADHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return new Response(null, { status: 401, headers: CORS });
+  if (!ownership.authorized) return annotateClientAdmissionFailure(new Response(null, { status: 401, headers: CORS }), ownership.denialReason);
   const { id } = await context.params;
   const meta = await getFile(id, ownership).catch(() => null);
   return new Response(null, { status: meta ? 200 : 404, headers: CORS });
@@ -29,7 +30,7 @@ async function HEADHandler(request, context) {
 /** GET /v1/files/<id> — metadata. */
 async function GETHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!ownership.authorized) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), ownership.denialReason);
   const { id } = await context.params;
   let meta;
   try {
@@ -44,7 +45,7 @@ async function GETHandler(request, context) {
 /** DELETE /v1/files/<id>. */
 async function DELETEHandler(request, context) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!ownership.authorized) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), ownership.denialReason);
   const { id } = await context.params;
   let result;
   try {
@@ -56,6 +57,6 @@ async function DELETEHandler(request, context) {
   return json(result);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
-export const GET = withRequestCorrelation(GETHandler);
-export const DELETE = withRequestCorrelation(DELETEHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
+export const DELETE = withHttpRequestCorrelation(DELETEHandler);

@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleRerank } from "@/sse/handlers/rerank.js";
 
 async function OPTIONSHandler() {
@@ -16,4 +16,4 @@ async function POSTHandler(request) {
   return await handleRerank(request);
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

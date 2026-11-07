@@ -16,7 +16,7 @@
  * The caller owns response completion; leases also release on abort.
  */
 
-import { isNumber } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
 /**
  * Rejection reason codes.
@@ -115,10 +115,10 @@ const admissionState = globalThis.__durindoorPayloadAdmission ??= {
  */
 export function estimatePayloadBytes(body) {
   if (body == null) return 0;
-  if (typeof body === "number" && Number.isFinite(body)) {
+  if (isNumber(body) && Number.isFinite(body)) {
     return Math.max(0, Math.floor(body));
   }
-  if (typeof body === "string") {
+  if (isString(body)) {
     return Buffer.byteLength(body, "utf8");
   }
   if (Buffer.isBuffer(body)) {

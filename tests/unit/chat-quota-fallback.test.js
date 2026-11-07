@@ -1177,7 +1177,8 @@ describe("chat quota fallback orchestration", () => {
   });
 
   it.each(["QUEUE_FULL", "TIMEOUT"])("returns local admission %s unchanged without account cooldown or rotation", async (reason) => {
-    mocks.getProviderCredentials.mockResolvedValue(selected("healthy-account"));
+    mocks.getProviderCredentials.mockImplementation(async (_provider, excluded) =>
+      excluded?.has("healthy-account") ? null : selected("healthy-account"));
     const original = new Response(JSON.stringify({ error: {
       message: "Local admission pressure", type: "admission_error", code: reason,
     } }), { status: 503, headers: { "content-type": "application/json" } });

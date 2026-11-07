@@ -1,3 +1,4 @@
+import { isString } from "../../shared/utils/typeChecks.js";
 import { connectionData, createProviderRequest, providerFailure } from "../../../open-sse/services/quota/providerHelpers.js";
 
 const SOURCE_ID = "xai:management-prepaid:v1";
@@ -8,7 +9,7 @@ const SOURCE_ID = "xai:management-prepaid:v1";
  */
 export function normalizeXaiPrepaidBalance(payload) {
   const value = payload?.total?.val;
-  if (typeof value !== "string" || !/^-?\d+$/.test(value)) return null;
+  if (!isString(value) || !/^-?\d+$/.test(value)) return null;
   const cents = Number(value);
   if (!Number.isSafeInteger(cents)) return null;
   return Math.max(0, -cents / 100);
@@ -19,8 +20,8 @@ export function normalizeXaiPrepaidBalance(payload) {
  */
 export async function fetchXaiQuota(context) {
   const data = connectionData(context.connection);
-  const key = typeof context.connection?.managementApiKey === "string" ? context.connection.managementApiKey.trim() : "";
-  const team = typeof data.teamId === "string" ? data.teamId.trim() : "";
+  const key = isString(context.connection?.managementApiKey) ? context.connection.managementApiKey.trim() : "";
+  const team = isString(data.teamId) ? data.teamId.trim() : "";
   const unknown = {
     outcome: "unknown", sourceId: SOURCE_ID, reasonCode: "missing", rows: [], quotas: {},
     message: "xAI account quota is unknown. A separate management key and team ID can read prepaid credit."

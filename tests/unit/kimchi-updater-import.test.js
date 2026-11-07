@@ -67,13 +67,16 @@ describe("Kimchi updater default transport import", () => {
   });
 
   it("uses refreshed headers in an executor constructed before the refresh", async () => {
+    const intervals = vi.spyOn(globalThis, "setInterval");
     const { PROVIDERS } = await import("../../open-sse/providers/index.js");
     const { DefaultExecutor } = await import("../../open-sse/executors/default.js");
     const executor = new DefaultExecutor("kimchi");
     expect(PROVIDERS.kimchi.headers["User-Agent"]).toBe("kimchi/0.1.01");
     expect(executor.buildHeaders()["User-Agent"]).toBe("kimchi/0.1.01");
     expect(transport.fetch).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
+    // Executor imports also own maintenance timers; Kimchi must remain inert.
+    expect(intervals.mock.calls.filter(([, delay]) => delay === 4 * 60 * 60 * 1000)).toHaveLength(0);
+    expect(globalThis[stateKey].intervalStarted).toBe(false);
 
     const { updateKimchiUserAgent } = await import("../../open-sse/utils/kimchiUserAgent.js");
     await updateKimchiUserAgent();

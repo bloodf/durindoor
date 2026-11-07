@@ -4,7 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   createLimiter,
-  findModelPricing,
+  readCompareSelections,
+  writeCompareSelections,
   MAX_COMPARE_COLUMNS,
   MAX_PARALLEL_COMPARE_RUNS,
   MIN_COMPARE_COLUMNS,
@@ -140,12 +141,27 @@ describe("helpers", () => {
     expect(readAssistantText(null)).toBe("");
   });
 
-  it("finds per-model pricing by provider and model id", () => {
-    const pricing = { codex: { "gpt-5.2": { input: 1, output: 2 } } };
-    expect(findModelPricing(pricing, "codex", "codex/gpt-5.2")).toEqual({ input: 1, output: 2 });
-    expect(findModelPricing(pricing, "codex", "gpt-5.2")).toEqual({ input: 1, output: 2 });
-    expect(findModelPricing(pricing, "claude", "claude/x")).toBeNull();
-    expect(findModelPricing(null, "codex", "codex/gpt-5.2")).toBeNull();
+  it("persists only selectors and restores no prompt, response or running state", () => {
+    let stored;
+    const storage = { setItem: (_key, value) => { stored = value; }, getItem: () => stored };
+    writeCompareSelections([
+      { modelId: "codex/a", connectionId: "c1", text: "private response", status: "running" },
+      { modelId: "claude/b", connectionId: "auto", content: "private prompt" },
+    ], storage);
+    expect(JSON.parse(stored)).toEqual([
+      { modelId: "codex/a", connectionId: "c1" },
+      { modelId: "claude/b", connectionId: "auto" },
+    ]);
+    expect(readCompareSelections(storage)).toEqual(JSON.parse(stored));
+  });
+
+  it("rejects malformed and out-of-bounds saved columns and tolerates denied storage", () => {
+    for (const saved of ["{", "null", "[]", '[{"modelId":"x","connectionId":"auto"}]', JSON.stringify(Array(5).fill({ modelId: "x", connectionId: "auto" })), '[{},{}]']) {
+      expect(readCompareSelections({ getItem: () => saved })).toBeNull();
+    }
+    const denied = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } };
+    expect(readCompareSelections(denied)).toBeNull();
+    expect(() => writeCompareSelections([], denied)).not.toThrow();
   });
 });
 
@@ -162,6 +178,9 @@ describe("PlaygroundCompare render", () => {
     expect(html).toContain('aria-label="Response from Alpha"');
     expect(html).toContain('aria-label="Response from Bravo"');
     expect(html).toContain("Run all");
+    expect(html.match(/Authoritative cost/g)).toHaveLength(2);
+    expect(html.match(/Unknown/g)).toHaveLength(2);
+    expect(html).not.toContain("Est. cost");
     expect(fetchImpl).not.toHaveBeenCalled(); // effects do not run during SSR; nothing auto-dispatches
   });
 

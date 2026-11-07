@@ -1074,6 +1074,7 @@ function ProviderTestResultsView({ results }) {
               {summary.failed} failed
             </span>
         }
+          {summary.unavailable > 0 && <span className="px-2 py-0.5 rounded bg-dd-surface-2 text-dd-muted font-medium">{summary.unavailable} unavailable</span>}
           {summary.skipped > 0 &&
         <span className="px-2 py-0.5 rounded bg-dd-surface-2 text-dd-muted font-medium">
               {summary.skipped} skipped
@@ -1090,9 +1091,9 @@ function ProviderTestResultsView({ results }) {
         className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-dd-text/[0.03] px-3 py-2 text-xs dark:bg-dd-surface/[0.03] sm:flex-nowrap">
         
           <span
-          className={`material-symbols-outlined text-[16px] ${r.skipped ? "text-dd-muted" : r.valid ? "text-dd-accent" : "text-dd-danger"}`}>
+          className={`material-symbols-outlined text-[16px] ${r.unavailable || r.skipped ? "text-dd-muted" : r.valid ? "text-dd-accent" : "text-dd-danger"}`}>
           
-            {r.skipped ? "info" : r.valid ? "check_circle" : "error"}
+            {r.unavailable || r.skipped ? "info" : r.valid ? "check_circle" : "error"}
           </span>
           <div className="min-w-0 flex-[1_1_160px]">
             <span className="block truncate font-medium sm:inline">
@@ -1109,14 +1110,14 @@ function ProviderTestResultsView({ results }) {
         }
           <span
           className={`shrink-0 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
-          r.skipped ?
+          r.unavailable || r.skipped ?
           "bg-dd-surface-2 text-dd-muted" :
           r.valid ?
           "bg-dd-accent-soft text-dd-accent" :
           "bg-dd-danger/10 text-dd-danger"}`
           }>
           
-            {r.skipped ? "SKIPPED" : r.valid ? "OK" : r.diagnosis?.type || "ERROR"}
+            {r.unavailable ? "UNAVAILABLE" : r.skipped ? "SKIPPED" : r.valid ? "OK" : r.diagnosis?.type || "ERROR"}
           </span>
         </div>
       )}
@@ -1137,6 +1138,7 @@ ProviderTestResultsView.propTypes = {
       total: PropTypes.number,
       passed: PropTypes.number,
       failed: PropTypes.number,
+      unavailable: PropTypes.number,
       skipped: PropTypes.number
     }),
     error: PropTypes.string

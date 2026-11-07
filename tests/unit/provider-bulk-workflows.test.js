@@ -4,6 +4,13 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.hoisted(() => { vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("Network blocked")))); });
+const saved = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn() }));
+vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: saved.get, updateProviderConnection: saved.update }));
+vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false })) }));
+import { POST as testConnection } from "../../src/app/api/providers/[id]/test/route.js";
+import { __setProviderTestFetchForTesting } from "../../src/app/api/providers/[id]/test/testUtils.js";
+
 const route = vi.hoisted(() => ({ id: "openrouter" }));
 vi.mock("next/navigation", () => ({ useParams: () => route, useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
 import ProviderDetailPage from "../../src/app/(dashboard)/dashboard/providers/[id]/page.js";
@@ -14,6 +21,8 @@ const click = async (element) => { expect(element).toBeTruthy(); await act(async
 const button = (text) => [...host.querySelectorAll("button")].find((node) => node.textContent.includes(text));
 
 beforeEach(async () => {
+  saved.get.mockReset();
+  saved.update.mockReset();
   route.id = "openrouter";
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal("alert", vi.fn());
@@ -178,6 +187,8 @@ it("cancels a selected test on provider switch and ignores a late result after s
   route.id = "siliconflow";
   await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
   expect(firstSignal.aborted).toBe(true);
+  saved.get.mockReset();
+  saved.update.mockReset();
   route.id = "openrouter";
   await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
   vi.useFakeTimers();
@@ -291,11 +302,25 @@ it("counts hidden selected-test results and lets the operator reveal them", asyn
 
 it("reports unavailable separately from invalid credentials, including hidden results", async () => {
   const previous = fetch.getMockImplementation();
+  saved.get.mockImplementation(async (id) => ({ id, provider: "gitlawb-gmi", authType: "apikey", apiKey: id === "a" ? "temporary-test-secret" : "invalid-test-secret", testStatus: "active", providerSpecificData: {} }));
+  // Only the outbound transport is replaced. Probe, adapter, persistence decision,
+  // route serialization and the detail consumer all run their real implementation.
+  const transport = vi.fn(async (_url, options) => new Response("", { status: options.headers.Authorization.includes("temporary-test-secret") ? 503 : 401 }));
+  const restore = __setProviderTestFetchForTesting(transport);
   fetch.mockImplementation((url, options) => {
-    if (url === "/api/providers/a/test") return Promise.resolve(ok({ valid: false, skipped: false, unavailable: true, error: "Provider unavailable - try again later", refreshed: false }));
-    if (url === "/api/providers/b/test") return Promise.resolve(ok({ valid: false, skipped: false, error: "Invalid API key", refreshed: false }));
+    if (url === "/api/providers") return Promise.resolve(ok({ connections: [
+      { id: "a", provider: "gitlawb-gmi", name: "Alpha", authType: "apikey", isActive: true },
+      { id: "b", provider: "gitlawb-gmi", name: "Beta", authType: "apikey", isActive: true },
+    ] }));
+    if (/^\/api\/providers\/[ab]\/test$/.test(String(url))) {
+      const id = String(url).split("/")[3];
+      return testConnection(new Request(`http://localhost${url}`, { method: "POST" }), { params: Promise.resolve({ id }) });
+    }
     return previous(url, options);
   });
+  try {
+  route.id = "gitlawb-gmi";
+  await act(async () => { root.render(React.createElement(ProviderDetailPage)); await new Promise((resolve) => setTimeout(resolve, 50)); });
   await click(host.querySelector('[aria-label="Select Alpha"]'));
   await click(host.querySelector('[aria-label="Select Beta"]'));
   const filter = host.querySelector('[aria-label="Filter connections"]');
@@ -316,4 +341,10 @@ it("reports unavailable separately from invalid credentials, including hidden re
   expect(host.textContent).toContain("failed: Invalid API key");
   expect(host.textContent).toContain("Operational: unknown");
   expect(fetch.mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(0);
+  expect(transport).toHaveBeenCalled();
+  expect(saved.update).toHaveBeenCalledTimes(1);
+  expect(saved.update).toHaveBeenCalledWith("b", expect.objectContaining({ testStatus: "error", lastError: "Invalid API key" }));
+  expect(host.textContent).not.toContain("test-secret");
+  expect(JSON.stringify(saved.update.mock.calls)).not.toContain("test-secret");
+  } finally { restore(); }
 });

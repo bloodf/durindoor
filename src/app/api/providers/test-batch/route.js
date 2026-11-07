@@ -77,7 +77,7 @@ export async function POST(request) {
         mode,
         providerId: providerId || null,
         results: [],
-        summary: { total: 0, passed: 0, failed: 0, skipped: 0 },
+        summary: { total: 0, passed: 0, failed: 0, skipped: 0, unavailable: 0 },
         testedAt: new Date().toISOString()
       });
     }
@@ -93,6 +93,7 @@ export async function POST(request) {
           authType: conn.authType || getAuthGroup(conn.provider, conn),
           valid: data.valid,
           skipped: data.skipped === true,
+          unavailable: data.unavailable === true,
           latencyMs: data.latencyMs || 0,
           error: data.error || null,
           diagnosis: data.diagnosis || null,
@@ -124,7 +125,8 @@ export async function POST(request) {
         total: results.length,
         passed: results.filter((r) => r.valid).length,
         skipped: results.filter((r) => r.skipped).length,
-        failed: results.filter((r) => !r.valid && !r.skipped).length
+        unavailable: results.filter((r) => r.unavailable).length,
+        failed: results.filter((r) => !r.valid && !r.skipped && !r.unavailable).length
       }
     });
   } catch (error) {

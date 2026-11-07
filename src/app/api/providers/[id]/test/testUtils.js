@@ -1106,6 +1106,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           if (result) {
             return {
               valid: result.valid,
+              ...(result.unavailable ? { unavailable: true } : {}),
               error: result.valid ? null : result.error || "Invalid API key"
             };
           }
@@ -1160,6 +1161,9 @@ export async function testSingleConnection(id) {
   const resultError = result.valid ?
   null :
   sanitizeErrorMessage(result.error || "Connection validation failed");
+
+  // A failed probe cannot change the saved credential state.
+  if (result.unavailable) return { valid: false, unavailable: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
 
   const updateData = {
     testStatus: result.skipped ? "unknown" : result.valid ? "active" : "error",

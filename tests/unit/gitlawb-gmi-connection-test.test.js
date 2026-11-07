@@ -100,7 +100,7 @@ describe("baseUrl-only API-key provider connection test", () => {
       "glb-test-key",
       async () => new Response("", { status }),
     );
-    expect(result).toEqual({ valid, status, ...(error ? { error } : {}) });
+    expect(result).toEqual({ valid, status, ...(status >= 500 ? { unavailable: true } : {}), ...(error ? { error } : {}) });
     expect(JSON.stringify(result)).not.toContain("glb-test-key");
   });
 
@@ -119,6 +119,7 @@ describe("baseUrl-only API-key provider connection test", () => {
     expect(result).toEqual({
       valid: false,
       status: null,
+      unavailable: true,
       error: "Provider unavailable - network request failed",
     });
     expect(JSON.stringify(result)).not.toContain("glb-test-key");
@@ -138,10 +139,15 @@ describe("baseUrl-only API-key provider connection test", () => {
 
     const connectionResult = await testSingleConnection("conn-glb");
     expect(connectionResult).toMatchObject({ valid: false, error });
-    expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
-      "conn-glb",
-      expect.objectContaining({ testStatus: "error", lastError: error }),
-    );
+    if (status >= 500) {
+      expect(connectionResult.unavailable).toBe(true);
+      expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
+    } else {
+      expect(mocks.updateProviderConnection).toHaveBeenCalledWith(
+        "conn-glb",
+        expect.objectContaining({ testStatus: "error", lastError: error }),
+      );
+    }
 
     const response = await POST(new Request("http://localhost/api/providers/validate", {
       method: "POST",

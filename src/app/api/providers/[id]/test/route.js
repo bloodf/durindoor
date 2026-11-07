@@ -14,6 +14,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({
       valid: result.valid,
       skipped: result.skipped === true,
+      unavailable: result.unavailable === true,
       error: result.error,
       refreshed: result.refreshed || false,
     });

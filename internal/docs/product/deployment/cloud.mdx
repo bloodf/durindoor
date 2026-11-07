@@ -48,14 +48,14 @@ Full lists: [Environment variables](../../../../docs/reference/environment.mdx),
 
 <Steps>
 <Step>
-Install Node.js 26.13.0 and npm 11.20.0. Clone the repo, then:
+Install Node.js 24.22.2 and pnpm 12.18.0. Clone the repo, then:
 
 ```bash
-npm install --no-audit --no-fund
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 ```
 
-`npm run start` is `node .next/standalone/custom-server.js`. Port default is 20128.
+`pnpm run start` is `node .next/standalone/custom-server.js`. Port default is 20128.
 
 </Step>
 <Step>
@@ -109,7 +109,7 @@ Expect `{"ok":true}`. Logs: `journalctl -u durindoor -f`.
 
 </Step>
 <Step>
-Put nginx or Caddy on 443, proxy to `http://127.0.0.1:20128`. Overwrite `X-Forwarded-For` with the client address; do not append. Snippets: [Reverse proxy and static assets](reverse-proxy-and-static-assets.mdx). After `npm run build`, `npm run verify:static` checks that `/dashboard` hashed assets return 200.
+Put nginx or Caddy on 443, proxy to `http://127.0.0.1:20128`. Overwrite `X-Forwarded-For` with the client address; do not append. Snippets: [Reverse proxy and static assets](reverse-proxy-and-static-assets.mdx). After `pnpm run build`, `pnpm run verify:static` checks that `/dashboard` hashed assets return 200.
 
 </Step>
 </Steps>
@@ -118,8 +118,8 @@ Put nginx or Caddy on 443, proxy to `http://127.0.0.1:20128`. Overwrite `X-Forwa
 
 | How you start | Default bind |
 | --- | --- |
-| `npm run start` / systemd `custom-server.js` | `127.0.0.1` if `HOSTNAME` is unset |
-| `npm run dev` | `127.0.0.1` if `HOSTNAME` is unset |
+| `pnpm run start` / systemd `custom-server.js` | `127.0.0.1` if `HOSTNAME` is unset |
+| `pnpm run dev` | `127.0.0.1` if `HOSTNAME` is unset |
 | CLI `durindoor` | `0.0.0.0` (`--host` overrides) |
 | Docker image / Compose | `0.0.0.0` |
 
@@ -134,4 +134,4 @@ sudo systemctl restart durindoor
 
 Restart after changing `PORT`, `HOSTNAME`, `DATA_DIR`, `JWT_SECRET`, `API_KEY_SECRET`, proxy env, or OAuth URL overrides. Dashboard settings stored in SQLite do not need a process restart.
 
-Upgrade: back up `DATA_DIR`, `git pull`, `npm install --no-audit --no-fund`, `npm run build`, restart the unit. [Upgrading](../operations/upgrading.mdx). Docker tag moves: [Docker](docker.mdx).
+Upgrade: back up `DATA_DIR`, `git pull`, `pnpm install --frozen-lockfile`, `pnpm run build`, restart the unit. [Upgrading](../operations/upgrading.mdx). Docker tag moves: [Docker](docker.mdx).

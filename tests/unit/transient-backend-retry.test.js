@@ -20,6 +20,21 @@ describe("transientBackendRetry", () => {
     expect(TRANSIENT_BACKEND_STATUS_CODES.has(429)).toBe(false);
   });
 
+  it("returns a locally terminal 503 unchanged while retaining ordinary upstream retries", async () => {
+    const local = Object.assign(new Response("Local queue timeout", { status: 503 }), { localAdmissionRejected: true });
+    let calls = 0;
+    let sleeps = 0;
+    const result = await runWithTransientBackendRetry(async () => {
+      calls++;
+      return calls === 1 ? new Response("Upstream unavailable", { status: 503 }) : local;
+    }, { sleep: async () => { sleeps++; } });
+    expect(result).toBe(local);
+    expect(result.status).toBe(503);
+    expect(await result.text()).toBe("Local queue timeout");
+    expect(calls).toBe(2);
+    expect(sleeps).toBe(1);
+  });
+
   it("returns the first success without retrying", async () => {
     let calls = 0;
     const result = await runWithTransientBackendRetry(async () => {

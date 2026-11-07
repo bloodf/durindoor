@@ -10,6 +10,8 @@ import { BedrockExecutor, statusFromError as bedrockErrorStatus } from "open-sse
 import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
 
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
+const temporaryFailure = (status = null) => ({ valid: false, unavailable: true, status, error: status === null ? "Provider unavailable - network request failed" : "Provider unavailable - try again later" });
+
 const CHAT_PROBE_ACCEPT_STATUSES = new Set([400, 422, 429]);
 
 // Chat formats whose registry `validateUrl` does not actually reject a bad
@@ -366,7 +368,10 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   const specialty = SPECIALTY_VALIDATORS[provider];
   // A specialty validator returning null hands the connection back to the generic probe.
   const specialtyResult = specialty ? await specialty({ apiKey, fetcher, providerSpecificData, sessionToken }) : null;
-  if (specialtyResult) return specialtyResult;
+  if (specialtyResult) {
+    if (!specialtyResult.blocked && (specialtyResult.status >= 500 || specialtyResult.unavailable === true)) return temporaryFailure(specialtyResult.status);
+    return specialtyResult;
+  }
   const probe = buildRegistryProviderProbe(provider, apiKey, providerSpecificData);
   if (!probe) return null;
   if (probe.accepts === "always") return { valid: true, status: 200 };
@@ -410,27 +415,33 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
         error: "Provider unavailable - network request failed",
       };
     }
-    if (!probe.fallback) throw err;
+    if (!probe.fallback) return temporaryFailure();
   }
   if (probe.accepts === "non-auth-failure") {
-    if (res.status >= 500) return { valid: false, status: res.status, error: getChatProbeError(res.status) };
-    return { valid: !AUTH_FAILURE_STATUSES.has(res.status), status: res.status };
+    if (res.status >= 500) return temporaryFailure(res.status);
+    if (res.ok) return { valid: true, status: res.status };
+    return { valid: false, status: res.status, error: getChatProbeError(res.status) };
   }
   if (probe.accepts === "chat-auth") {
+    if (res.status >= 500) return temporaryFailure(res.status);
     const valid = Boolean(res?.ok || CHAT_PROBE_ACCEPT_STATUSES.has(res?.status));
     if (valid) return { valid: true, status: res?.status };
     return { valid: false, status: res?.status, error: getChatProbeError(res?.status) };
   }
   if (res && (res.ok || !probe.fallback || AUTH_FAILURE_STATUSES.has(res.status))) {
-    return { valid: res.ok, status: res.status };
+    if (res.status >= 500) return temporaryFailure(res.status);
+    const result = { valid: res.ok, status: res.status };
+    if (!res.ok) result.error = getChatProbeError(res.status);
+    return result;
   }
 
   try {
     const fallbackRes = await guardedProbeFetch(probe.fallback.url, probe.fallback.options, guard, fetcher);
-    if (fallbackRes.status >= 500) return { valid: false, status: fallbackRes.status, error: getChatProbeError(fallbackRes.status) };
-    return { valid: !AUTH_FAILURE_STATUSES.has(fallbackRes.status), status: fallbackRes.status };
+    if (fallbackRes.status >= 500) return temporaryFailure(fallbackRes.status);
+    if (fallbackRes.ok) return { valid: true, status: fallbackRes.status };
+    return { valid: false, status: fallbackRes.status, error: getChatProbeError(fallbackRes.status) };
   } catch (err) {
     if (err instanceof OutboundUrlGuardError) return blockedResult(err);
-    throw err;
+    return temporaryFailure();
   }
 }

@@ -1460,7 +1460,12 @@ export default function ProviderLimits() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy={connectionsLoading || undefined}>
         {connectionsLoading && !connections.length ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? providerGroups.map((group) => {
           const isGrouped = group.connections.length > 1;
-          const isMerged = isGrouped && mergedProviders[group.provider] === true;
+          // Connections can share a team's prepaid balance. Keep credit rows
+          // per account, including zero balances and saved merged preferences.
+          const canMerge = isGrouped && !group.connections.some((conn) =>
+            (quotaData[conn.id]?.quotas || []).some((quota) => quota.isCreditBalance === true)
+          );
+          const isMerged = canMerge && mergedProviders[group.provider] === true;
           const isCodexGroup = group.provider === "codex";
 
           const renderAccountSection = (conn, sectionIndex) => {
@@ -1524,7 +1529,7 @@ export default function ProviderLimits() {
             <CardHeader
               title={<span className="inline-flex min-w-0 items-center gap-2"><ProviderLogo provider={group.provider} size={32} /><span className="truncate capitalize">{group.provider}</span></span>}
               subtitle={isGrouped ? `${group.connections.length} accounts` : null}
-              actions={isGrouped ? <Tooltip content="Merge identical quotas across accounts"><span className="flex items-center gap-1.5 text-xs text-dd-muted">Merged<Toggle size="sm" checked={isMerged} aria-label={`Merge ${group.provider} quotas across accounts`} onChange={(nextMerged) => toggleMergedView(group.provider, nextMerged)} /></span></Tooltip> : null}
+              actions={canMerge ? <Tooltip content="Merge identical quotas across accounts"><span className="flex items-center gap-1.5 text-xs text-dd-muted">Merged<Toggle size="sm" checked={isMerged} aria-label={`Merge ${group.provider} quotas across accounts`} onChange={(nextMerged) => toggleMergedView(group.provider, nextMerged)} /></span></Tooltip> : null}
             />
             <div className="flex flex-col">
               {isMerged ? <div className="flex flex-col gap-3 p-3">

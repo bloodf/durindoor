@@ -26,3 +26,8 @@ mock responses. These dashboard adapters do not alter admission snapshot policy.
 Both providers are included in the API-key usage inventory through registry
 usage flags. Successful prepaid credit renders alongside its disclaimer,
 including zero credit, without a fabricated percentage window.
+
+Provider groups containing prepaid credit rows always render per account, even
+when a merged-view preference was saved. Their merge toggle is unavailable.
+Connections can share a team balance, so credit amounts must not be summed or
+converted to a percentage window. Zero credit follows the same rule.

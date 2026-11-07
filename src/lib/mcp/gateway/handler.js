@@ -111,7 +111,7 @@ export async function handleJsonRpc(request, body, opts = {}) {
           return respond(jsonRpcErr(obj.id, -32602, `unknown tool: ${toolName}`));
         }
         // A tool call has no provider price, so it is not an unknown-cost LLM request.
-        // A failed call keeps its row for error rates but uses none of the key's limits.
+        // Failed calls retain the key for observability; the ledger excludes them from key limits.
         const saveToolUsage = (failed) => saveRequestUsage({
           billingEpoch,
           provider: "mcp-gateway",

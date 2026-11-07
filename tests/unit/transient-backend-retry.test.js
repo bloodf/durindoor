@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  markResponseNonRetryable,
   isResponseStatusRetryable,
   runWithTransientBackendRetry,
   TRANSIENT_BACKEND_STATUS_CODES
@@ -22,7 +21,7 @@ describe("transientBackendRetry", () => {
   });
 
   it("returns a locally terminal 503 unchanged while retaining ordinary upstream retries", async () => {
-    const local = markResponseNonRetryable(new Response("Local queue timeout", { status: 503 }));
+    const local = Object.assign(new Response("Local queue timeout", { status: 503 }), { localAdmissionRejected: true });
     let calls = 0;
     let sleeps = 0;
     const result = await runWithTransientBackendRetry(async () => {
@@ -56,6 +55,20 @@ describe("transientBackendRetry", () => {
     expect(calls).toBe(3);
     expect(result.ok).toBe(true);
     expect(result.status).toBe(200);
+  });
+
+  it("returns explicitly local admission responses unchanged without retry or sleep", async () => {
+    let calls = 0;
+    let sleeps = 0;
+    const response = Object.assign(new Response("local pressure", { status: 503 }), { localAdmissionRejected: true });
+    const result = await runWithTransientBackendRetry(async () => {
+      calls++;
+      return response;
+    }, { sleep: async () => { sleeps++; } });
+    expect(result).toBe(response);
+    expect(await result.text()).toBe("local pressure");
+    expect(calls).toBe(1);
+    expect(sleeps).toBe(0);
   });
 
   it("returns the last error response when the budget is exhausted", async () => {

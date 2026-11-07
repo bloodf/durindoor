@@ -17,12 +17,13 @@ healthy sibling-model success lazily deletes the persisted expired lock. A missi
 lock is not an explicit reset; explicit `ConnectionCircuitManager.reset` separately
 invalidates its lease generation. PR #1665's payload-admission marker and caller
 guard and concurrency-timeout correction are integrated by normal peer merge of
-`818858caf4fe3afca580f3685588dccece41911c`. Handler regressions cover sibling cleanup,
+`b747341b2f35f712dafa0b6289a6124cb9cec0b9`, including its core marker and outer retry
+correction. Handler regressions cover sibling cleanup,
 pinned timeout, and healthy unpinned timeout with no account cooldown or sibling
 attempt. Runtime safety remains unverified here until affected checks pass on the
 integrated inputs. PR #1665 must merge before this dependent PR.
-Local admission and recovery-busy responses also retain an internal non-retryable
-identity through the outer single-model transient-backend retry loop. This leaves
+Local admission responses retain the explicit internal `localAdmissionRejected`
+marker through the outer single-model transient-backend retry loop. This leaves
 HTTP bodies/headers/status unchanged and preserves ordinary upstream 503 retries.
 The real handler timeout regression must assert one logical attempt, not just zero
 cooldown writes inside an individual attempt.

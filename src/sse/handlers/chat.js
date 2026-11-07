@@ -37,7 +37,7 @@ import { getRequestId, validateProviderRequestId, withRequestCorrelation } from 
 import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "open-sse/utils/streamLifecycle.js";
 import { peekStreamForContent } from "open-sse/utils/streamContentPeek.js";
 import { isRoutableProvider } from "../../shared/constants/providers.js";
-import { runWithTransientBackendRetry, markResponseNonRetryable } from "open-sse/services/transientBackendRetry.js";
+import { runWithTransientBackendRetry } from "open-sse/services/transientBackendRetry.js";
 import {
   getComboModelQuotaHealth,
   handleComboChat,
@@ -1121,7 +1121,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
       // All accounts unavailable or provider disabled
       if (credentials?.connectionRecoveryBusy) {
-        return markResponseNonRetryable(errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress"));
+        return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Connection recovery in progress");
       }
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
         if (earlyEofOriginal) return earlyEofOriginal;
@@ -1403,7 +1403,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }, activeConnection, model, resolveFallbackModelScope(provider, model), requestSignal);
 
       if (result.connectionRecoveryBusy) {
-        if (preferredConnectionId) return markResponseNonRetryable(result.response);
+        if (preferredConnectionId) return result.response;
         excludeConnectionIds.add(credentials.connectionId);
         continue;
       }
@@ -1419,7 +1419,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
       // Process-local admission pressure is terminal for this request. Retrying a
       // sibling would hit the same queue and must not cool a healthy account.
-      if (result.localAdmissionRejected === true) return markResponseNonRetryable(result.response);
+      if (result.localAdmissionRejected === true) {
+        // Keep explicit locality on the Response across the outer transient retry.
+        result.response.localAdmissionRejected = true;
+        return result.response;
+      }
       // A client-side abort (named AbortError, or a bare request_signal_aborted /
       // "Client disconnected" / "operation was aborted" that defaulted to 502) is a
       // local stream lifecycle event, NOT a provider failure. Return without cooling

@@ -17,16 +17,6 @@
 import { isNumber } from "../../src/shared/utils/typeChecks.js";
 
 
-// Internal response identity survives the caller's result-to-Response projection.
-// No header/body inspection: an upstream 503 cannot opt out by supplying text.
-const nonRetryableResponses = new WeakSet();
-
-/** Preserve a local terminal decision without changing the HTTP response. */
-export function markResponseNonRetryable(response) {
-  nonRetryableResponses.add(response);
-  return response;
-}
-
 export const TRANSIENT_BACKEND_STATUS_CODES = new Set([502, 503, 504]);
 
 export function isResponseStatusRetryable(status) {
@@ -62,7 +52,7 @@ const DEFAULT_SLEEP = (ms, signal) =>
  * a non-ok status means the action produced an error response, not bytes
  * already handed off, so re-running it cannot double-send content.
  *
- * @param {() => Promise<{ok: boolean, status: number}>} action
+ * @param {() => Promise<{ok: boolean, status: number, localAdmissionRejected?: boolean}>} action
  * @param {{maxAttempts?: number, baseMs?: number, capMs?: number, source?: string,
  *   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>, signal?: AbortSignal,
  *   onRetry?: (info: object) => void}} [options]
@@ -96,7 +86,9 @@ export async function runWithTransientBackendRetry(action, options = {}) {
     try {
       const result = await action();
       lastResult = result;
-      if (result.ok || nonRetryableResponses.has(result)) return result;
+      // Internal gateway metadata, never inferred from upstream status or text.
+      if (result.localAdmissionRejected === true) return result;
+      if (result.ok) return result;
       if (!isResponseStatusRetryable(result.status)) return result;
       // Exhausted: return the last result rather than throwing
       if (attempt >= maxAttempts) return result;

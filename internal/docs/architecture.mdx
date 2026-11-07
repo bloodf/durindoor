@@ -17,7 +17,7 @@ Next rewrites `/v1/:path*` to `/api/v1/:path*` and `/v1beta` to `/api/v1beta`. `
 | Routing layer | `src/sse` | Auth, model resolution, account selection, combo dispatch. |
 | Core engine | `open-sse` | Translation, executors, streaming, fallback, token refresh, usage. |
 | Persistence | `src/lib/db` | SQLite driver, migrations, repositories, backups, optional Postgres. |
-| CLI | `cli` | Starts the app. Bundled runtime is Node `26.13.0` / npm `11.20.0`. |
+| CLI | `cli` | Starts the app. Bundled runtime is Node `24.22.2` (engines `>=24.22.2 <25`) / pnpm `12.18.0`. |
 
 Provider files live under `open-sse/providers/registry`. Translators live under `open-sse/translator`. See [Provider registry](./provider-registry.mdx) and [Translators](./translators.mdx).
 
@@ -114,7 +114,7 @@ Dashboard cookies, DurinDoor API keys, upstream tokens, optional request-body lo
 
 | Extension | Where |
 | --- | --- |
-| Provider registry entry | `open-sse/providers/registry/{id}.js` plus `npm run gen:registry-index` |
+| Provider registry entry | `open-sse/providers/registry/{id}.js` plus `pnpm run gen:registry-index` |
 | Models and capabilities | Same registry file |
 | Executor | `open-sse/executors` when the default OpenAI-compatible executor is not enough |
 | Translator | `open-sse/translator/request` and `response`, imported from `open-sse/translator/index.js` |

@@ -12,32 +12,34 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
       - uses: actions/setup-node@v5
         with:
-          node-version: 26.13.0
-          cache: npm
+          node-version: 24.22.2
+          cache: pnpm
 
-      - name: Pin npm
-        run: |
-          npm install --global npm@11.20.0
-          test "$(npm --version)" = "11.20.0"
+      - name: Verify pnpm
+        run: test "$(pnpm --version)" = "12.18.0"
 
       - name: Install dependencies
         run: |
-          npm ci --no-audit --no-fund
-          npm --prefix cli install --include=dev --no-audit --no-fund
+          pnpm install --frozen-lockfile
+          pnpm -C cli install --frozen-lockfile
 
       - name: Build standalone
-        run: npm run build
+        run: pnpm run build
 
       - name: Smoke standalone artifact
-        run: npm run verify:installed -- "$PWD/.next/standalone/custom-server.js"
+        run: pnpm run verify:installed "$PWD/.next/standalone/custom-server.js"
 
       - name: Build and pack CLI
         run: |
-          npm --prefix cli run build
+          pnpm -C cli run build
           mkdir -p "$RUNNER_TEMP/pack"
           npm pack ./cli --pack-destination "$RUNNER_TEMP/pack"
 
       - name: Smoke packed npm artifact
-        run: npm run verify:packed -- "$RUNNER_TEMP"/pack/durindoor-*.tgz
+        run: pnpm run verify:packed "$RUNNER_TEMP"/pack/durindoor-*.tgz

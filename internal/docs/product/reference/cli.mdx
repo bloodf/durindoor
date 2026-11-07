@@ -18,7 +18,7 @@ Verification targets: `cli-fast-path.test.js`, `cli-wait-server-ready.test.js`, 
 
 The published `durindoor` package is the npm launcher. Its binary is `durindoor` and it starts the standalone `custom-server.js` that ships inside the package. There are no subcommands. Flags change listen address, logs, tray, and whether the npm registry is queried.
 
-The CLI package requires Node.js >=26.13.0. The repo pins Node.js 26.13.0 and npm 11.20.0.
+The CLI package requires Node.js >=24.22.2 <25. The repo pins Node.js 24.22.2 (`.nvmrc`) and pnpm 12.18.0.
 
 <Tabs items={['npm', 'npx']}>
 <Tab value="npm">

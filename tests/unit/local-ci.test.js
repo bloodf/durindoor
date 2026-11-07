@@ -39,7 +39,7 @@ describe("local CI frozen policy", () => {
   it("keeps unknown, security, dependency, and gate paths on the full checkpoint floor", () => {
     for (const changed of [[], ["new/unknown.js"], ["src/lib/crypto/columnCrypto.js"],
       ["src/app/api/v1/chat/route.js"], ["tests/vitest.config.js"], ["scripts/local-ci.mjs"],
-      ["package-lock.json"], ["internal/docs/testing.mdx"], ["internal/docs/agent-workflow.md"],
+      ["package-lock.json"], ["pnpm-lock.yaml"], ["pnpm-workspace.yaml"], ["internal/docs/testing.mdx"], ["internal/docs/agent-workflow.md"],
       ["tests/translator/registerAll.js"], ["open-sse/translator/index.js"], ["docs/a.mdx", "src/lib/db/index.js"]]) {
       expect(selectRiskFloor(changed, inventory).mode).toBe("full");
     }

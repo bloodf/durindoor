@@ -211,12 +211,28 @@ describe("orcarouter capability filtering", () => {
     ]);
   });
 
-  it("keeps the verified GPT-5.5 reasoning ladder intact", () => {
+  it("keeps the verified GPT-5.5 reasoning ladder and seed context windows intact", () => {
     const gpt = ORCAROUTER_SEED_MODELS.find((m) => m.id === "openai/gpt-5.5");
     expect(gpt.reasoning).toBe(true);
     expect(gpt.reasoningEfforts).toEqual(["low", "medium", "high", "xhigh"]);
     expect(gpt.contextLength).toBe(400000);
     expect(gpt.inputModalities).toContain("image");
+
+    const deepseek = ORCAROUTER_SEED_MODELS.find((m) => m.id === "deepseek/deepseek-v4-pro");
+    expect(deepseek.contextLength).toBe(1000000);
+  });
+
+  it("documents the OrcaRouter origin override variables in docs/reference/environment.mdx", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const url = await import("node:url");
+    const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
+    const envDocs = fs.readFileSync(path.join(repoRoot, "docs/reference/environment.mdx"), "utf8");
+    expect(envDocs).toContain("`ORCA_AUTH_BASE_URL`");
+    expect(envDocs).toContain("`ORCA_API_BASE_URL`");
+    expect(envDocs).toContain("`ORCA_BASE_URL`");
+    expect(envDocs).toContain(ORCAROUTER_AUTH_BASE_DEFAULT);
+    expect(envDocs).toContain(ORCAROUTER_API_BASE_DEFAULT);
   });
 
   it("selects only text chat models for the chat entry point", () => {

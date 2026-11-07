@@ -2,7 +2,7 @@
 
 The `durindoor` package installs and runs the self-hosted DurinDoor AI gateway.
 
-Use Node.js `26.13.0` and npm `11.20.0`. Start a local instance with an explicit loopback address:
+Requires Node.js `>=24.22.2 <25`; the package installs with npm. Start a local instance with an explicit loopback address:
 
 ```bash
 export JWT_SECRET="$(openssl rand -hex 32)"

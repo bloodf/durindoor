@@ -7,3 +7,7 @@ overrides:
 strictPeerDependencies: false
 # allowBuilds: filled only from real `pnpm ignored-builds` output, per package,
 # with justification in the PR body. Never bulk-approve.
+
+# Observed esbuild 0.28.2 postinstall selects the MDX/toolchain native bundler.
+allowBuilds:
+  esbuild: true

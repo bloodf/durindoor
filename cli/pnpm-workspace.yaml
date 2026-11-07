@@ -2,3 +2,7 @@
 # published to and consumed from npm; pnpm is only the repo dev installer here.
 # allowBuilds: filled only from real `pnpm ignored-builds` output, per package,
 # with justification in the PR body. Never bulk-approve.
+
+# esbuild 0.25.12 postinstall selects the native CLI bundler executable.
+allowBuilds:
+  esbuild: true

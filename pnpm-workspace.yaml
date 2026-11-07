@@ -12,9 +12,10 @@ overrides:
   brace-expansion@>=4.0.0 <5.0.12: 5.0.12
   postcss: ^8.5.28
   undici: ^7.30.1
-# Dependency build-script approvals (allowBuilds) are deliberately absent here.
-# pnpm 12 strictDepBuilds makes the first install exit with ERR_PNPM_IGNORED_BUILDS
-# and writes candidates into this file. Approve ONLY packages listed by
-# `pnpm ignored-builds` after that install, one by one with a written
-# justification in the PR body. Never use dangerouslyAllowAllBuilds or
-# `pnpm approve-builds --all`.
+# Reviewed from pnpm ignored-builds on macOS arm64 with Node 24.22.2.
+allowBuilds:
+  better-sqlite3: true # Native SQLite binding used by the preferred database driver.
+  esbuild: true # Platform bundler binary required by app and CLI builds.
+  koffi: true # Native FFI backend required by tls-client-node.
+  tls-client-node: true # Production TLS transport native library provisioning.
+  unrs-resolver: true # Native import resolver used by the lint toolchain.

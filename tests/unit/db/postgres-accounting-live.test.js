@@ -325,6 +325,46 @@ describe.skipIf(!adminUrl)('PostgreSQL multi-process accounting', () => {
     expect((await sql.query('SELECT key FROM "apiKeys" WHERE id = $1', [keyId])).rows).toEqual([{ key: apiKey }]);
     await closeWorker(a);
   });
+  it.each(['COMMIT', 'ROLLBACK'])('serializes failed MCP, paid and replayed receipts across processes after %s', async release => {
+    const [a, b] = await pair();
+    for (let round = 0; round < 2; round++) {
+      const failed = event(`mcp-shared-${round}`, null, {
+        provider: 'mcp-gateway', status: 'error', tokens: { input_tokens: 99, output_tokens: 7 },
+        modality: undefined, nativeUnits: undefined
+      });
+      const paid = event(`paid-shared-${round}`, 0.25);
+      const batch = name => [failed, paid, event(`mcp-${name}-${round}`, 0.5, {
+        provider: 'mcp-gateway', status: 'error', tokens: { input_tokens: 11 },
+        modality: undefined, nativeUnits: undefined
+      })];
+      await holder.query('BEGIN');
+      await holder.query("SELECT value FROM _meta WHERE key='schemaVersion' FOR UPDATE");
+      const writes = [a.call('save', batch('a')), b.call('save', batch('b'))];
+      await lockedWriters();
+      await holder.query(release);
+      for (const result of await Promise.all(writes)) expect(result).toMatchObject({ ok: true, value: [true, true, true] });
+      const n = round + 1;
+      const summary = await a.call('summary', { keyId, apiKey, dayStart: '2026-10-19T00:00:00Z', monthStart: '2026-10-01T00:00:00Z' });
+      expect(summary).toMatchObject({ ok: true, value: {
+        totals: { totalRequests: n, totalTokens: 5 * n, totalCost: 0.25 * n, unknownCostRequests: 0 },
+        window: { month: { requests: n, inputTokens: 2 * n, outputTokens: 3 * n, cost: 0.25 * n, unknownCostRequests: 0 } }
+      } });
+      const state = await snapshot();
+      expect(state.usageHistory).toHaveLength(4 * n);
+      expect(state.receipts).toHaveLength(4 * n);
+      expect(state.lifetime).toEqual([{ value: String(4 * n) }]);
+      const day = JSON.parse(state.usageDaily[0].data);
+      expect(day).toMatchObject({ requests: 4 * n, cost: 1.25 * n, unknownCostRequests: n });
+      expect((await sql.query('SELECT key FROM "apiKeys" WHERE id = $1', [keyId])).rows).toEqual([{ key: apiKey }]);
+    }
+    const committed = await snapshot();
+    await closeWorker(a);
+    await closeWorker(b);
+    const reopened = await worker('mcp-reopened');
+    expect(await reopened.call('save', [event('paid-shared-0', 0.25)])).toMatchObject({ ok: true, value: [true] });
+    expect(await snapshot()).toEqual(committed);
+    await closeWorker(reopened);
+  }, 30_000);
   it.each(['COMMIT', 'ROLLBACK'])('serializes absent and existing counters behind a third connection %s', async release => {
     const [a, b] = await pair();
     for (let round = 0; round < 2; round++) {

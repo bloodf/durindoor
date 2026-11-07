@@ -352,3 +352,18 @@ it.each(["mcp-gateway", "openai"])("deduplicates failed %s events while retainin
   expect(window.day).toEqual({ requests: 1 + countedFailure, inputTokens: 3 + countedFailure, outputTokens: 2, cost: 0.25, unknownCostRequests: 0 });
   expect(window.month).toEqual(window.day);
 });
+
+
+it("rejects accepted MCP writes without claiming a receipt or changing accounting", async () => {
+  const entry = { apiKey: KEY, provider: "mcp-gateway", model: "tools__echo",
+    usageEventId: "unsupported-mcp-accepted", status: "accepted", tokens: {}, cost: null, strict: true };
+  const receipts = adapter.all("SELECT * FROM kv WHERE scope = 'usageEventReceipts'");
+  await expect(database.saveRequestUsage(entry)).rejects.toThrow("MCP usage must be terminal");
+  expect(rows()).toEqual([]);
+  expect(adapter.all("SELECT * FROM kv WHERE scope = 'usageEventReceipts'")).toEqual(receipts);
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0 });
+  // A rejected provisional event must not consume the later terminal identity.
+  await database.saveRequestUsage({ ...entry, status: "error", cost: 0 });
+  expect(rows()).toHaveLength(1);
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0 });
+});

@@ -1,5 +1,6 @@
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { errorResponse, readBoundedResponseText, sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { copyClientAdmissionFailure, inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 
 const PROVIDER_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const requestIds = new WeakMap();
@@ -32,6 +33,7 @@ export function getRequestId(request, trustedRequestId = null) {
   if (!requestId) {
     requestId = trustedRequestId || createRequestId();
     requestIds.set(request, requestId);
+    if (trustedRequestId) inheritHttpObservation(request);
   }
   return requestId;
 }
@@ -90,11 +92,12 @@ export async function correlateResponse(response, requestId = createRequestId())
   if (response.status >= 400) {
   headers.delete("x-upstream-request-id");
     const correlatedError = await correlateJsonError(response, requestId, headers);
-    if (correlatedError) return correlatedError;
+    if (correlatedError) return copyClientAdmissionFailure(response, correlatedError);
   }
-  return new Response(response.body, responseInit(response, headers));
+  return copyClientAdmissionFailure(response, new Response(response.body, responseInit(response, headers)));
 }
 
+/** Correlate shared handlers without treating internal calls as HTTP requests. */
 export function withRequestCorrelation(handler) {
   return async function correlatedRequestHandler(...args) {
     const requestId = getRequestId(args[0]);
@@ -103,5 +106,13 @@ export function withRequestCorrelation(handler) {
       console.error(`[RequestCorrelation] ${requestId}: ${sanitizeErrorMessage(error?.stack || error?.message || error)}`);
       return correlateResponse(errorResponse(500, "Request failed"), requestId);
     }
+  };
+}
+
+/** Observe only public HTTP exports; shared handlers keep correlation alone. */
+export function withHttpRequestCorrelation(handler) {
+  const correlated = withRequestCorrelation(handler);
+  return function observedHttpRequestHandler(...args) {
+    return observeHttpRequest(args[0], () => correlated(...args));
   };
 }

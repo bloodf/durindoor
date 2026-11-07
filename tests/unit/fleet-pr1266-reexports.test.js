@@ -1,3 +1,4 @@
+import { installExecutorContract } from "../fixtures/omniroute-executor-audit/install.js";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -15,6 +16,7 @@ function withRegistryFixture(localFiles, check, source = 'export const upstream 
   try {
     mkdirSync(localRegistry, { recursive: true });
     mkdirSync(sourceRegistry, { recursive: true });
+    installExecutorContract(omniRoot);
     for (const [path, source] of Object.entries(localFiles)) {
       const target = join(localRegistry, path);
       mkdirSync(dirname(target), { recursive: true });

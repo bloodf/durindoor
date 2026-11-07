@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
   startHeadroomProxy: vi.fn(),
   getManagedPid: vi.fn(),
   isLoopbackHeadroomUrl: vi.fn(),
+  startOperationalMetricsRuntime: vi.fn(),
+}));
+
+vi.mock("../../open-sse/services/operationalMetrics.js", () => ({
+  startOperationalMetricsRuntime: mocks.startOperationalMetricsRuntime,
 }));
 
 // register(nodejs) also starts the real Kimchi updater. Isolate its release
@@ -111,6 +116,7 @@ describe("headroom proxy autostart at gateway boot", () => {
       expect(() => register()).not.toThrow();
       // The node boot module loads through a dynamic import; wait for it.
       await vi.waitFor(() => expect(process.title).toBe("9router (v16)"));
+      await vi.waitFor(() => expect(mocks.startOperationalMetricsRuntime).toHaveBeenCalledTimes(1));
       // register() must not await the 8s startup probe; the rejection is
       // swallowed asynchronously without surfacing an unhandled rejection.
       await new Promise((resolve) => setImmediate(resolve));
@@ -140,6 +146,7 @@ describe("edge-runtime safety of the instrumentation hook", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(mocks.getSettings).not.toHaveBeenCalled();
       expect(mocks.startHeadroomProxy).not.toHaveBeenCalled();
+      expect(mocks.startOperationalMetricsRuntime).not.toHaveBeenCalled();
       expect(process.title).toBe("next-server (v16)");
     } finally {
       process.title = original;

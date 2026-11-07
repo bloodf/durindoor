@@ -1,10 +1,11 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // Anthropic Message Batches collection — create + list.
 import { createAnthropicBatch, listBatches } from "open-sse/services/localFilesBatches.js";
 import { makeDefaultExecutor } from "open-sse/handlers/localBatchExecutor.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
+import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -26,7 +27,7 @@ async function HEADHandler() {
 /** GET /v1/messages/batches — list Anthropic batches. */
 async function GETHandler(request) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!ownership.authorized) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), ownership.denialReason);
   return json(await listBatches({ surface: "anthropic", ...ownership }));
 }
 
@@ -36,7 +37,7 @@ async function GETHandler(request) {
  */
 async function POSTHandler(request) {
   const ownership = await resolveResourceOwner(request);
-  if (!ownership.authorized) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  if (!ownership.authorized) return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), ownership.denialReason);
   const ct = (request.headers.get("content-type") || "").toLowerCase();
   if (!ct.includes("application/json")) {
     return errorResponse(415, "Content-Type must be application/json");
@@ -59,6 +60,6 @@ async function POSTHandler(request) {
   }
 }
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const HEAD = withRequestCorrelation(HEADHandler);
-export const GET = withRequestCorrelation(GETHandler);
-export const POST = withRequestCorrelation(POSTHandler);
+export const HEAD = withHttpRequestCorrelation(HEADHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
+export const POST = withHttpRequestCorrelation(POSTHandler);

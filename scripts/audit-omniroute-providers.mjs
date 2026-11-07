@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import babel from "@babel/parser";
+import { createHash } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
@@ -49,7 +50,7 @@ export function readOmniRouteProviders(sourceRoot) {
  * Reproduce issue #1087 with diegosouzapw/OmniRoute at
  * `61e07fb7e0d4e1e76111495d3718c9e4d06d2a62`: fetch that commit with depth 1
  * and blob filtering into a separate Git repository, then sparse-checkout
- * `/open-sse/config/` and `/public/providers/` (non-cone mode). Keep generated
+ * `/open-sse/config/`, `/open-sse/executors/` and `/public/providers/` (non-cone mode). Keep generated
  * JSON/Markdown outside that source checkout so the CLI's clean-tree check holds.
  * Run this CLI with `--source <checkout> --commit <sha> --format json` and again
  * with `--format markdown`. Review unresolved imports before accepting counts;
@@ -252,7 +253,9 @@ export function classifyProvider(provider) {
   if (executor && executor !== "default") {
     return "specialized-executor";
   }
+  if (provider.dedicatedExecutor === true) return "specialized-executor";
   if (executor === "default" || provider.usesHelper) {
+    if (provider.dedicatedExecutor === null) return "unknown";
     return "simple-default";
   }
   return "unknown";
@@ -375,6 +378,7 @@ function loadModule(file, ctx) {
   }
   const text = readFileSync(realFile, "utf8");
   mod.clean = text;
+  mod.sourceHash = createHash("sha256").update(text).digest("hex");
   let ast;
   try {
     ast = babel.parse(text, { sourceType: "module", plugins: ["typescript"] });
@@ -383,6 +387,8 @@ function loadModule(file, ctx) {
     note(ctx, mod, `parse error: ${error.message}`);
     return mod;
   }
+
+  mod.ast = ast;
 
   // Blank comments (keep offsets) so keyword heuristics ignore them.
   let clean = "";
@@ -792,10 +798,54 @@ function scanDurinDoor(root) {
   return scanProviders(files, "any-id", root);
 }
 
+// shortcut: only these fully inspected source contracts prove absence of a dedicated
+// executor. Review new index/registry/fallback versions before extending this list.
+const EXECUTOR_CONTRACTS = [
+  {
+    "index.ts": "a8ae10c7f0313eee43e0fa94ec0d3220ad81293383518d5572a1b1ad5de5af7a",
+    "registry.ts": "a64666b91ed8e4be49b21cdb0f3e8905bb9f0030cc043d6088d407a724dad6e7",
+    "defaultResolver.ts": "8da4a792d80d07f41af00ed8cb19b77b1faf2cd8204b4068f7b0ce381c0dc3f1"
+  },
+  {
+    "index.ts": "515a98b02b7aa7c85d31354f6a07b9977232d6ef8e99db3022bd57a6be32e873",
+    "registry.ts": "a64666b91ed8e4be49b21cdb0f3e8905bb9f0030cc043d6088d407a724dad6e7",
+    "defaultResolver.ts": "0f598f050ed3aa787d6c23204dc87cfbcf10755e6f4f8f0b2540e34b1f4ec6ee"
+  }
+];
+
+function readDedicatedExecutors(root, unresolved) {
+  const ctx = { cache: new Map(), unresolved: new Map(), root, realRoot: realpathSync(root) };
+  const modules = Object.fromEntries(["index.ts", "registry.ts", "defaultResolver.ts"].map((name) =>
+    [name, loadModule(join(root, "open-sse/executors", name), ctx)]));
+  const index = modules["index.ts"];
+  const known = EXECUTOR_CONTRACTS.find((contract) => Object.entries(contract).every(([name, hash]) =>
+    !modules[name].blocked && modules[name].sourceHash === hash));
+  if (!known) {
+    note(ctx, index, "executor resolution contract unrecognized; default classification unknown");
+    unresolved.push(...ctx.unresolved.values());
+    return null;
+  }
+  const table = index.ast.program.body.flatMap((node) => node.type === "VariableDeclaration" ? node.declarations : [])
+    .find((node) => node.id.name === "lazyExecutors");
+  const props = table && readProps(table.init, index);
+  if (!props || props.spreadUnresolved || [...props.map.values()].some((ref) => ref.node?.type !== "ArrowFunctionExpression")) {
+    note(ctx, index, "executor registration table unresolved; default classification unknown");
+    unresolved.push(...ctx.unresolved.values());
+    return null;
+  }
+  const dedicated = new Set(props.map.keys());
+  // The newer fallback constructs MuseCodeExecutor even without a registered alias.
+  if (known === EXECUTOR_CONTRACTS[1]) dedicated.add("muse-code");
+  return dedicated;
+}
+
 function scanOmniRoute(sourceRoot) {
   const registryDir = join(sourceRoot, "open-sse", "config", "providers", "registry");
   const unresolved = [];
-  return scanProviders(findRegistryEntryFiles(registryDir, sourceRoot, unresolved), "registry", sourceRoot, unresolved);
+  const dedicated = readDedicatedExecutors(sourceRoot, unresolved);
+  const result = scanProviders(findRegistryEntryFiles(registryDir, sourceRoot, unresolved), "registry", sourceRoot, unresolved);
+  for (const provider of result.providers) provider.dedicatedExecutor = dedicated?.has(provider.id) ?? null;
+  return result;
 }
 
 function findRegistryEntryFiles(registryDir, root, unresolved) {

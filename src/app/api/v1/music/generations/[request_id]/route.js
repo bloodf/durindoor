@@ -1,4 +1,4 @@
-import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
+import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { handleMusicGet } from "@/sse/handlers/music.js";
 
 /** Poll with the submission's request_id, original API key and
@@ -19,5 +19,5 @@ async function OPTIONSHandler() {
   });
 }
 
-export const GET = withRequestCorrelation(GETHandler);
+export const GET = withHttpRequestCorrelation(GETHandler);
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);

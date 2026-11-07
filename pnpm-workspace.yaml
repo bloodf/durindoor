@@ -3,6 +3,10 @@
 # bind during resolution. They must be in place BEFORE `pnpm import` or any
 # resolution run, or floors silently lapse.
 overrides:
+  # GHSA-3g3m-2fjr-6pw4 and GHSA-g3hv-75wg-m249: scoped major exceptions.
+  # glob 13 consumes RegExp internals; minimatch 11 requires glob 14's Matcher support.
+  '@joshwooding/vite-plugin-react-docgen-typescript@0.7.0>glob': 14.0.2
+  '@typescript-eslint/typescript-estree@8.72.1>minimatch': 11.0.1
   dompurify: 3.4.17
   sharp: ^0.35.5
   nanoid@<3.3.18: 3.3.18

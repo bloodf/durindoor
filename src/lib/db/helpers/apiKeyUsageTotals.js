@@ -15,14 +15,16 @@ export function ensureApiKeyUsageTotalsTable(db) {
 /**
  * Rebuild durable per-key totals from retained request history. This is safe to
  * call after legacy JSON import or an older backup import and never mutates the
- * API-key secret used for attribution.
+ * API-key secret used for attribution. Failed MCP calls remain in history for
+ * attribution but do not consume key policy totals, including after rebuilds.
  */
 export function backfillApiKeyUsageTotals(db, { overwrite = false } = {}) {
   ensureApiKeyUsageTotalsTable(db);
   const keys = db.all(`SELECT id, key FROM apiKeys`);
   for (const key of keys) {
     const history = db.all(
-      `SELECT timestamp, promptTokens, completionTokens, tokens, cost FROM usageHistory WHERE apiKey = ?`,
+      `SELECT timestamp, promptTokens, completionTokens, tokens, cost FROM usageHistory WHERE apiKey = ?
+         AND NOT (COALESCE(provider, '') = 'mcp-gateway' AND COALESCE(status, '') = 'error')`,
       [key.key],
     );
     const totals = history.reduce((sum, row) => {

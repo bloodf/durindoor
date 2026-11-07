@@ -225,6 +225,16 @@ describe("native observer logical event identity", () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
+  it("does not charge truncated JSON even when its prefix contains usage", async () => {
+    const onComplete = vi.fn();
+    const body = '{"usage":{"input_tokens":3,"output_tokens":5},"status":"completed"';
+    await expect(observeNativeResponse(new Response(body, { headers: { "content-type": "application/json" } }), {
+      ...details, usageEventId: "truncated-json", onComplete,
+    }).text()).rejects.toThrow();
+    expect(recordApiKeyUsage).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
   it.each([{ error: { message: "failed" } }, { base_resp: { status_code: 1001 } }, { status: "failed" }])(
     "does not treat HTTP 200 error envelopes as success: %j", async (body) => {
       const onComplete = vi.fn();

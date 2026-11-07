@@ -83,6 +83,8 @@ incoherent-response contract.
 
 A model whose provider has no chat transport and no `llm` service kind (TTS, STT, search, image-only, or System One providers such as Laya) gets HTTP 400 `Model 'provider/model' is not a chat model and cannot be used on the chat endpoints.` from every chat endpoint above. The `/api/translator/send` and `/api/translator/translate` debug routes run the same check and refuse with `Provider {provider} does not serve chat requests` instead.
 
+On mixed providers, chat requests also reject catalog models declared only for another kind. Explicit custom and enabled synced model kinds participate in this check; unknown and untyped IDs remain dispatchable. If a known mismatch cannot be checked against available catalog overrides, the gateway returns HTTP 503 for the local metadata failure before selecting an account.
+
 <Callout type="warn">
 Combos only help when every member can run the client workflow (tools, images, JSON). Mix kinds and the fallback chain fails on the first incompatible hop.
 </Callout>
@@ -129,6 +131,8 @@ Together uses this same async job surface with its native `/v2/videos` upstream.
 | POST, OPTIONS | `/v1/audio/music` | same (re-export) | no | same as music generations |
 | POST, OPTIONS | `/v1/video/generations` | JSON `model`, `prompt` | no | video-kind models |
 | POST, GET, OPTIONS | `/v1/videos/{action}` | POST `generations`, `edits`, or `extensions`; GET `{request_id}` | no | async video job providers (xAI Grok Imagine, MiniMax, MiniMax CN, Together, OrcaRouter) |
+
+Models known from the registry, custom rows, or enabled synced catalogs are rejected on speech, transcription, embeddings, video, music, and rerank endpoints when none of their declared kinds matches. The check runs before credential selection. Unknown or untyped IDs remain dispatchable.
 
 Image generation and edit requests reject registry models known to be non-image with HTTP 400 before selecting an account. Unknown IDs and custom image models remain eligible for dispatch; synced rows are honored when their normalized kind is image. Sync normalization retains an explicit registry kind when a provider reports another kind for the same ID. If metadata needed to check for an image override is unavailable, the request returns HTTP 503 without selecting an account.
 

@@ -1,3 +1,4 @@
+import { modelKindError } from "./modelKind.js";
 import { randomUUID } from "node:crypto";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
 import { getAdapter } from "@/lib/db/driver.js";
@@ -101,6 +102,8 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
   if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
   const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model, apiKey);
   if (policyError) return policyError;
+  const kindError = await modelKindError(modelInfo.provider, modelInfo.model, await getSettings(), "video");
+  if (kindError) return kindError;
   const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId });
   if (credentials?.providerDisabled) {
     log.warn("VIDEO", `[${modelInfo.provider}/${modelInfo.model}] free no-auth provider disabled by settings`);
@@ -270,6 +273,8 @@ async function handleVideoCreateHandler(request, action) {
 
   const policyError = await enforceVideoPolicy(request, provider, model, apiKey);
   if (policyError) return policyError;
+  const kindError = await modelKindError(provider, model, settings, "video");
+  if (kindError) return kindError;
 
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
   // otherwise forward the original bytes untouched.

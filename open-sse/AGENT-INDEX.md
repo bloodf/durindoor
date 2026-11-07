@@ -357,6 +357,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `siliconflow` |  | apikey | `https://api.siliconflow.com/v1/chat/completions` |
 | `snowflake` |  | apikey | `https://{accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions` |
 | `sparkdesk` |  | freeTier | `https://spark-api.xf-yun.com/v3.1/chat/completions` |
+| `speka` |  | apikey | `https://speka.me/v1/chat/completions` |
 | `stability-ai` |  | apikey | `` |
 | `stepfun` |  | freeTier | `https://api.stepfun.com/v1/chat/completions` |
 | `sumopod` |  | apikey | `https://ai.sumopod.com/v1/chat/completions` |

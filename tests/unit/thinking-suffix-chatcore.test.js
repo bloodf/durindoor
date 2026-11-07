@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 import { acquireSlot, getGateStats, releaseSlot, _resetGates } from "../../open-sse/services/concurrencyGate.js";
+import { getPayloadAdmissionStats, resetPayloadAdmission } from "../../open-sse/services/payloadAdmission.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 
 const mocks = vi.hoisted(() => ({
@@ -103,6 +104,7 @@ const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 describe("thinking suffix at the chatCore provider boundary", () => {
   beforeEach(() => {
     _resetGates();
+    resetPayloadAdmission();
     vi.clearAllMocks();
     mocks.execute.mockReset();
     mocks.execute.mockRejectedValue(new Error("stop after boundary capture"));
@@ -152,6 +154,18 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     }));
     expect(getGateStats().kiro).toEqual({ current: 1, queued: 0 });
     releaseSlot("kiro");
+  });
+
+  it("enforces payload admission with concurrency limits disabled before dispatch", async () => {
+    const result = await handleChatCore({
+      body: { model: "gpt-4o", messages: [{ role: "user", content: "x".repeat(17 * 1024 * 1024) }] },
+      modelInfo: { provider: "openai", model: "gpt-4o" },
+      credentials: { apiKey: "test-key", providerSpecificData: {} },
+      log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+    expect(result).toMatchObject({ success: false, status: 413 });
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(getPayloadAdmissionStats()).toEqual({ activeBytes: 0, activeStreams: 0, activeRequests: 0, queuedRequests: 0 });
   });
 
   it("dispatches a native Kiro envelope with clean routing and accounting IDs", async () => {
@@ -565,6 +579,7 @@ describe("thinking suffix at the chatCore provider boundary", () => {
     });
     await vi.waitFor(() => expect(mocks.execute).toHaveBeenCalledOnce());
     expect(getGateStats().codex?.current).toBe(1);
+    expect(getPayloadAdmissionStats().activeRequests).toBe(1);
 
     bodyController.enqueue(new TextEncoder().encode(JSON.stringify({
       error: { message: "rate limited", retry_after: 1 },
@@ -574,5 +589,6 @@ describe("thinking suffix at the chatCore provider boundary", () => {
 
     expect(result).toMatchObject({ success: false, status: 429 });
     expect(getGateStats().codex).toBeUndefined();
+    expect(getPayloadAdmissionStats().activeRequests).toBe(0);
   });
 });

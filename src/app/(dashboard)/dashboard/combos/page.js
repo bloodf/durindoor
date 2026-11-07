@@ -10,6 +10,7 @@ import Button from "@/shared/ui/components/Button.jsx";
 import { Card } from "@/shared/ui/components/Card.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
+import Field from "@/shared/ui/components/Field.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
@@ -812,17 +813,19 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
       )}
 
       <div className="w-16 shrink-0">
-        <Input
-          aria-label="Weight"
-          size="sm"
-          type="number"
-          min="0.01"
-          step="0.01"
-          value={weight}
-          onChange={(event) => onWeightChange(event.target.value)}
-          className="px-1.5 text-center dd-tnum"
-          title="Positive finite selection weight for Weighted strategy"
-        />
+        <Field error={!Number.isFinite(Number(weight)) || Number(weight) <= 0 ? "Use a positive weight" : undefined}>
+          <Input
+            aria-label="Weight"
+            size="sm"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={weight}
+            onChange={(event) => onWeightChange(event.target.value)}
+            className="px-1.5 text-center dd-tnum"
+            title="Positive finite selection weight for Weighted strategy"
+          />
+        </Field>
       </div>
 
       {/* Priority arrows */}
@@ -996,6 +999,9 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   };
 
   const isEdit = !!combo;
+  // Keep invalid weight drafts editable, explain the blocked save, and retain
+  // the same input node/focus as feedback appears (matching the V5 review form).
+  const invalidWeights = models.some((id) => !Number.isFinite(Number(weights[id] ?? 1)) || Number(weights[id] ?? 1) <= 0);
 
   // Layout contract (mirrors KeysPageClient and shared/components/ComboFormModal):
   // Cancel/Save live in the Modal `footer` slot so the primitive owns padding,
@@ -1019,7 +1025,7 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
               variant="primary"
               onClick={handleSave}
               loading={saving}
-              disabled={!name.trim() || !!nameError}
+              disabled={!name.trim() || !!nameError || invalidWeights}
             >
               {isEdit ? "Save" : "Create"}
             </Button>

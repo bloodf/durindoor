@@ -38,6 +38,8 @@ const KIND_TO_SLUG = {
   image: "image",
   tts: "tts",
   stt: "stt",
+  video: "video",
+  music: "music",
   embedding: "embedding",
   imageToText: "image-to-text",
   webSearch: "web",
@@ -283,8 +285,8 @@ export default function ModelSelectModal({
 
     // Kinds where the provider IS the model (no per-model selection needed)
     const PROVIDER_AS_MODEL_KINDS = new Set(["webSearch", "webFetch"]);
-    // Kinds that map directly to model.type field
-    const TYPED_KINDS = new Set(["image", "tts", "stt", "embedding", "imageToText"]);
+    // Media pickers must use their own model kind, including passthrough catalogs.
+    const TYPED_KINDS = new Set(["image", "tts", "stt", "embedding", "imageToText", "video", "music"]);
     // For these kinds, providers without hardcoded models can still be picked (provider-as-model fallback)
     const ALLOW_PROVIDER_FALLBACK_KINDS = new Set(["tts", "image", "webFetch"]);
 

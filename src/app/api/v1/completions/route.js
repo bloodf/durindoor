@@ -1,3 +1,4 @@
+import { copyClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
 import { getRequestId, withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { randomUUID } from "node:crypto";
 import { handleChat } from "@/sse/handlers/chat.js";
@@ -222,11 +223,11 @@ export async function mapCompletionResponse(response) {
 
   if (contentType.includes("text/event-stream") && response.body) {
     const stream = response.body.pipeThrough(createCompletionStreamTransform());
-    return new Response(stream, {
+    return copyClientAdmissionFailure(response, new Response(stream, {
       status: response.status,
       statusText: response.statusText,
       headers
-    });
+    }));
   }
 
   let body;
@@ -236,11 +237,11 @@ export async function mapCompletionResponse(response) {
     return response;
   }
   const mapped = toTextCompletion(body);
-  return new Response(JSON.stringify(mapped), {
+  return copyClientAdmissionFailure(response, new Response(JSON.stringify(mapped), {
     status: response.status,
     statusText: response.statusText,
     headers
-  });
+  }));
 }
 
 /**

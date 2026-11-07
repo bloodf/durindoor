@@ -401,6 +401,25 @@ describe("selected client-admission failures", () => {
     expect(provider.execute).not.toHaveBeenCalled();
   });
 
+  it.each(["cancel", "EOF"])("retains a delayed legacy keepalive denial through %s", async (terminal) => {
+    const { mapCompletionResponse } = await import("../../src/app/api/v1/completions/route.js");
+    const selection = metrics.createClientAdmissionSelection();
+    const source = selection.bind(new Response('data: {"error":{"message":"denied"}}\n\ndata: [DONE]\n\n',
+      { headers: { "content-type": "text/event-stream" } }));
+    const response = await metrics.observeHttpRequest(request({}), () => mapCompletionResponse(source));
+    // Select after conversion, as the keepalive producer does after committing 200.
+    selection.select(metrics.annotateClientAdmissionFailure(new Response(null, { status: 403 }), "policy"));
+    expect(response.status).toBe(200);
+    expectDelta({ starts: 1, active: 1 });
+    if (terminal === "cancel") {
+      await response.body.cancel();
+      expectDelta({ starts: 1 });
+    } else {
+      expect(await response.text()).toContain("denied");
+      expectDelta({ starts: 1, policy: 1 });
+    }
+  });
+
   it("retains actual legacy derived Request identity through selected denial", async () => {
     const outer = request({ model, prompt: "fixture" }, {}, "/v1/completions");
     const response = await legacy.POST(outer);

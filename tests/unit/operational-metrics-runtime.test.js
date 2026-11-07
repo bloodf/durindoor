@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const probe = vi.hoisted(() => vi.fn());
@@ -474,5 +475,30 @@ describe("explicit runtime recorder", () => {
     expect(metrics.operationalMetricsText()).toContain("durindoor_event_loop_stalls_total 0\n");
     expect(metrics.operationalMetricsText()).toContain("durindoor_runtime_sampler_reading_available 1\n");
     expect(metrics.getOperationalDiagnostics()).toEqual([]);
+  });
+});
+
+// A separate native Node process bypasses Vitest's perf_hooks mock and fake timers.
+// The child must exit naturally while the real recorder and histogram stay enabled.
+describe("native recorder process lifetime", () => {
+  it("starts once without keeping Node alive", () => {
+    const moduleUrl = new URL("../../open-sse/services/operationalMetrics.js", import.meta.url).href;
+    const child = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+      import { startOperationalMetricsRuntime, operationalMetricsText } from ${JSON.stringify(moduleUrl)};
+      startOperationalMetricsRuntime();
+      const first = globalThis.__durindoorOperationalMetrics.runtime;
+      startOperationalMetricsRuntime();
+      if (first !== globalThis.__durindoorOperationalMetrics.runtime) throw new Error("duplicate recorder");
+      if (first.timer.hasRef()) throw new Error("recorder keeps process alive");
+      if (!operationalMetricsText().includes("durindoor_runtime_recorder_started 1\\n")) throw new Error("not started");
+      console.log("native recorder started");
+    `], {
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR },
+      encoding: "utf8", timeout: 5000,
+    });
+    expect(child.error).toBeUndefined();
+    expect(child.signal).toBeNull();
+    expect(child.status).toBe(0);
+    expect(child.stdout).toBe("native recorder started\n");
   });
 });

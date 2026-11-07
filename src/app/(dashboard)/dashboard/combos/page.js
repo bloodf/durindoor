@@ -245,25 +245,30 @@ export default function CombosPage() {
   };
 
   const handleDelete = async (id) => {
+    let pending = false;
     const combo = combos.find((c) => c.id === id);
     setConfirmState({
       title: "Delete Combo",
       message: combo ? `Delete combo "${combo.name}"?` : "Delete this combo?",
       onConfirm: async () => {
-        setConfirmState((prev) => prev ? { ...prev, pending: true } : null);
+        if (pending) return;
+        pending = true;
+        setConfirmState((prev) => prev ? { ...prev, pending: true, error: "" } : null);
         try {
           const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
-          if (res.ok) {
-            if (combo?.name) {
-              await persistComboStrategies(pruneStrategiesForNames([combo.name]));
-            }
-            setCombos((prev) => prev.filter((c) => c.id !== id));
-            setSelectedIds((prev) => prev.filter((x) => x !== id));
+          if (!res.ok) throw new Error("Failed to delete combo");
+          if (combo?.name) {
+            await persistComboStrategies(pruneStrategiesForNames([combo.name]));
           }
+          setCombos((prev) => prev.filter((c) => c.id !== id));
+          setSelectedIds((prev) => prev.filter((x) => x !== id));
           setConfirmState(null);
         } catch (error) {
           console.log("Error deleting combo:", error);
-          setConfirmState((prev) => prev ? { ...prev, pending: false } : null);
+          // Keep the failed combo and confirmation available for retry.
+          setConfirmState((prev) => prev ? { ...prev, pending: false, error: "Failed to delete combo. Please try again." } : null);
+        } finally {
+          pending = false;
         }
       }
     });
@@ -554,7 +559,12 @@ export default function CombosPage() {
       <ConfirmDialog
         open={!!confirmState}
         title={confirmState?.title || "Confirm"}
-        message={confirmState?.message}
+        message={confirmState?.error ? (
+          <>
+            {confirmState.message}
+            <p role="alert" className="mt-2 text-dd-danger">{confirmState.error}</p>
+          </>
+        ) : confirmState?.message}
         confirmLabel={confirmState?.confirmLabel || "Confirm"}
         tone={confirmState?.tone || "danger"}
         pending={!!confirmState?.pending}

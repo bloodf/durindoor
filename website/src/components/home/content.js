@@ -83,7 +83,7 @@ export const DEPLOYMENTS = [
   {
     id: "npm",
     label: "npm",
-    note: "Requires Node.js 26.13.0 and npm 11.20.0. Serves on port 20128.",
+    note: "Requires Node.js 24.22.2 or later. Serves on port 20128.",
     command: `npm install -g durindoor
 ${NATIVE_SETUP}
 durindoor --host 127.0.0.1`,
@@ -111,11 +111,11 @@ docker run -d --name durindoor \\
   {
     id: "source",
     label: "Source",
-    note: "For contributors. `npm run dev` uses port 20127 instead.",
+    note: "For contributors. `pnpm run dev` uses port 20127 instead.",
     command: `git clone https://github.com/bloodf/durindoor.git
 cd durindoor
-npm install --no-audit --no-fund
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 ${NATIVE_SETUP}
 npm start`,
   },

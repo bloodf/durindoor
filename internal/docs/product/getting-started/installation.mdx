@@ -6,7 +6,7 @@ description: Install DurinDoor with npm, from source, or Docker, and set DATA_DI
 > Pre-rewrite snapshot, baseline `0e7307831`, 2026-10-07. Historical claims below may be inaccurate. Use the [current public guide](../../../../docs/getting-started/installation.mdx) and the verified corrections at the end of this page for current behavior.
 
 
-npm, source, and Docker all start the same gateway and dashboard. The host needs Node.js 26.13.0 and npm 11.20.0. The Docker image already has that Node. You also need a browser (dashboard and OAuth), disk for the database, and network access to remote providers.
+npm, source, and Docker all start the same gateway and dashboard. The host needs Node.js 24.22.2 (engines `>=24.22.2 <25`). The Docker image already has that Node. You also need a browser (dashboard and OAuth), disk for the database, and network access to remote providers.
 
 <Tabs items={['npm', 'npx', 'source', 'Docker']}>
 <Tab value="npm">
@@ -33,17 +33,17 @@ Use this for a one-off run. For daily use, install globally or run from source.
 ```bash
 git clone https://github.com/bloodf/durindoor.git
 cd durindoor
-npm install --no-audit --no-fund
-npm run build
-npm run start
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run start
 ```
 
-`npm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that server binds `127.0.0.1`, not all interfaces.
+`pnpm run start` runs `.next/standalone/custom-server.js`. If `HOSTNAME` is unset, that server binds `127.0.0.1`, not all interfaces.
 
 Development:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Dev listens on port 20127. Production uses 20128.
@@ -144,4 +144,4 @@ These references describe repository behavior. They do not establish that a vend
 
 ### Current behavior and implementation boundaries
 
-`package.json` pins Node 26.13.0/npm 11.20.0, development port 20127, standalone production start. `cli/cli.js` supports --host, --port and --no-browser and initializes DATA_DIR. Docker INITIAL_PASSWORD is now a reader-known placeholder instead of an unreported generated password.
+`package.json` pins Node `>=24.22.2 <25`/pnpm 12.18.0, development port 20127, standalone production start. `cli/cli.js` supports --host, --port and --no-browser and initializes DATA_DIR. Docker INITIAL_PASSWORD is now a reader-known placeholder instead of an unreported generated password.

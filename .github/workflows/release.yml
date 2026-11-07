@@ -16,35 +16,37 @@ jobs:
           # subjects (`port(upstream): #N`) across the whole repo history.
           fetch-depth: 0
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 26.13.0
-          cache: npm
+          node-version: 24.22.2
+          cache: pnpm
           cache-dependency-path: |
-            package-lock.json
-            tests/package-lock.json
+            pnpm-lock.yaml
+            tests/pnpm-lock.yaml
           registry-url: https://registry.npmjs.org
 
-      - name: Pin npm
-        run: |
-          npm install --global npm@11.20.0
-          test "$(npm --version)" = "11.20.0"
+      - name: Verify pnpm
+        run: test "$(pnpm --version)" = "12.18.0"
 
       - name: Install app dependencies
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Install test dependencies
         working-directory: tests
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Agent index drift gate
-        run: npm run check:agent-index
+        run: pnpm run check:agent-index
 
       - name: Build with isolated application state
-        run: npm run build
+        run: pnpm run build
 
       - name: Run blocking Vitest gate
         working-directory: tests
@@ -52,7 +54,7 @@ jobs:
           BASELINE_BASE_REF: HEAD^
           HOME: ${{ runner.temp }}/durindoor-home
           DATA_DIR: ${{ runner.temp }}/durindoor-data
-        run: mkdir -p "$HOME" "$DATA_DIR" && npm run test:ci
+        run: mkdir -p "$HOME" "$DATA_DIR" && pnpm run test:ci
 
       - name: Verify test reports
         if: always()
@@ -72,17 +74,17 @@ jobs:
           if-no-files-found: error
 
       - name: Install CLI dependencies
-        run: npm --prefix cli install --include=dev --no-audit --no-fund
+        run: pnpm -C cli install --frozen-lockfile
 
       - name: Smoke standalone artifact
-        run: npm run verify:installed -- "$PWD/.next/standalone/custom-server.js"
+        run: pnpm run verify:installed "$PWD/.next/standalone/custom-server.js"
 
       - name: Build, pack and smoke npm tarball
         run: |
-          npm --prefix cli run build
+          pnpm -C cli run build
           mkdir -p "$RUNNER_TEMP/pack"
           npm pack ./cli --pack-destination "$RUNNER_TEMP/pack"
-          npm run verify:packed -- "$RUNNER_TEMP"/pack/durindoor-*.tgz
+          pnpm run verify:packed "$RUNNER_TEMP"/pack/durindoor-*.tgz
 
       - name: Publish CLI
         # Publish the exact tarball the smoke installed; tarball publishes run no prepublishOnly rebuild.

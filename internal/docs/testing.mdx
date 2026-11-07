@@ -7,12 +7,12 @@ The suite lives in `tests/`, its own npm package (`9router-tests`). Root `packag
 
 ## Setup
 
-Node at the repo root is `26.13.0`. The tests package accepts `^20.19.0 || >=22.12.0` and npm `11.20.0`.
+Node at the repo root is `24.22.2` (`.nvmrc`; engines `>=24.22.2 <25`) and pnpm `12.18.0`.
 
 ```bash
-npm ci --no-audit --no-fund
+pnpm install --frozen-lockfile
 cd tests
-npm ci --no-audit --no-fund
+pnpm install --frozen-lockfile
 ```
 
 Set disposable `HOME` and `DATA_DIR` for commands that can touch runtime storage. CI does the same (`HOME` and `DATA_DIR` under the runner temp directory).
@@ -37,11 +37,11 @@ The authoritative contract is `AGENTS.md`. `scripts/local-ci.mjs --base <full-sh
 
 For `--mode scoped`, supply `--selection <reviewed-json> --policy-sha <sha256> --runner-sha <sha256>`. Selection JSON contains `base`, `head`, `policySha256`, `runnerSha256`, `reviewer`, and `tests` (literal paths relative to `tests/`). Obtain hashes and selection from an independent trusted reviewer, not the candidate author. Policy SHA256 binds the ordered base-commit contents of `AGENTS.md`, this testing guide and `agent-workflow.md`; runner SHA256 binds the executed script. Freeze its imported baseline helpers too. External review provenance is mandatory; a reviewer string alone cannot establish approval.
 
-Docs-only Markdown paths use lint/docs/baseline checks without pretending tests ran, except the three gate-policy documents and the local CI procedure, which always require full mode. Translator request/response implementations and translator test files require all base-inventory offline translator tests and mapped media/native/tool-result/streaming callers, plus reviewer additions. Missing mandatory callers, any deletion, registration/schema/shared-helper changes require full mode. Unknown/mixed paths, gate/policy/test-selector, registry, auth/crypto/money/admission, DB, dependencies/toolchain/build and website changes require full mode. Direct scoped Vitest invocation forwards explicit files and caps workers at two; `npm --prefix tests run test:ci` does not forward selectors.
+Docs-only Markdown paths use lint/docs/baseline checks without pretending tests ran, except the three gate-policy documents and the local CI procedure, which always require full mode. Translator request/response implementations and translator test files require all base-inventory offline translator tests and mapped media/native/tool-result/streaming callers, plus reviewer additions. Missing mandatory callers, any deletion, registration/schema/shared-helper changes require full mode. Unknown/mixed paths, gate/policy/test-selector, registry, auth/crypto/money/admission, DB, dependencies/toolchain/build and website changes require full mode. Direct scoped Vitest invocation forwards explicit files and caps workers at two; `pnpm -C tests run test:ci` does not forward selectors.
 
 Evidence binds exact base/head, head tree, changed paths, policy, runner, selection, lockfiles, Node/npm/ABI/platform, command exit codes, log hashes and fresh report hashes. `evidence.sha256` hashes the final receipt. Independently validate receipt age (default one hour), required commands and on-disk hashes against the frozen review and live base/head before publication. Never self-approve a candidate gate. The trusted integration process alone publishes `V5 Local CI`; tests never receive GitHub or provider credentials. Full checkpoint failure blocks merges.
 
-Each command has a five-minute ceiling and emits progress. No output for three minutes fails the command. Snapshots, reports, npm/Vite caches, HOME and DATA_DIR stay private. Shared Node 26.13.0 dependencies require matching lockfiles, ABI and platform; never install or rebuild through their symlinks. Run ownership-map/toolchain/isolation checks in the same approved unprivileged invocation as bootstrap. If real root-owned shells appear as UID 65534, report the environmental blocker; do not change production trusted-shell checks, skip tests, use root/sudo or escape session permissions.
+Each command has a five-minute ceiling and emits progress. No output for three minutes fails the command. Snapshots, reports, npm/Vite caches, HOME and DATA_DIR stay private. Shared Node 24.22.2 dependencies require matching lockfiles, ABI and platform; never install or rebuild through their symlinks. Run ownership-map/toolchain/isolation checks in the same approved unprivileged invocation as bootstrap. If real root-owned shells appear as UID 65534, report the environmental blocker; do not change production trusted-shell checks, skip tests, use root/sudo or escape session permissions.
 
 Full mode executes the complete configured Vitest inventory in four sequential batches. Each batch is a separately supervised command with the same five-minute ceiling, at most four fork workers, and per-file isolation enabled. Discovery must include every eligible tracked head suite; batch reports must contain exactly their assigned files, without omissions or duplicates. All batches must pass before JSON/JUnit aggregation and receipt acceptance. This changes command boundaries, not test coverage or failure policy. The independently reviewed runner and its imported batch helper must be frozen together; candidate code cannot approve this amendment.
 
@@ -56,7 +56,7 @@ npm test
 That is `vitest run --reporter=verbose`. The CI and baseline gate is:
 
 ```bash
-cd tests && npm run test:ci
+cd tests && pnpm run test:ci
 ```
 
 `test:ci` runs `tests/__baseline__/run-ci.mjs`. That script:

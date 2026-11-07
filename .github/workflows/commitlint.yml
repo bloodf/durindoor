@@ -20,14 +20,20 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 26.13.0
-      - name: Pin npm and install commitlint
+          node-version: 24.22.2
+      - name: Install commitlint
         run: |
-          npm install --global npm@11.20.0
-          test "$(npm --version)" = "11.20.0"
-          npm install --no-save --package-lock=false @commitlint/cli@18.6.1 @commitlint/config-conventional@18.6.3
+          test "$(pnpm --version)" = "12.18.0"
+          mkdir -p "$RUNNER_TEMP/commitlint"
+          cd "$RUNNER_TEMP/commitlint"
+          pnpm init
+          pnpm add @commitlint/cli@18.6.1 @commitlint/config-conventional@18.6.3
+          cp "$GITHUB_WORKSPACE/.commitlintrc.cjs" "$RUNNER_TEMP/commitlint/.commitlintrc.cjs"
       - name: Validate range and squash title
         env:
           BASE_SHA: ${{ inputs.base }}
@@ -35,5 +41,5 @@ jobs:
         run: |
           [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse --verify "$BASE_SHA^{commit}")" = "$BASE_SHA"
-          node node_modules/@commitlint/cli/cli.js --from "$BASE_SHA" --to HEAD --verbose
-          printf '%s\n' "$PR_TITLE" | node node_modules/@commitlint/cli/cli.js --verbose
+          node "$RUNNER_TEMP/commitlint/node_modules/@commitlint/cli/cli.js" --config "$RUNNER_TEMP/commitlint/.commitlintrc.cjs" --cwd "$GITHUB_WORKSPACE" --from "$BASE_SHA" --to HEAD --verbose
+          printf '%s\n' "$PR_TITLE" | node "$RUNNER_TEMP/commitlint/node_modules/@commitlint/cli/cli.js" --config "$RUNNER_TEMP/commitlint/.commitlintrc.cjs" --cwd "$GITHUB_WORKSPACE" --verbose

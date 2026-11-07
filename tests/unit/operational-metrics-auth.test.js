@@ -1,4 +1,5 @@
 import { SignJWT } from "jose";
+import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
@@ -9,13 +10,15 @@ const db = vi.hoisted(() => ({
 vi.mock("@/lib/localDb", () => ({ ...db, getSettingsSync: () => ({ passwordSessionEpoch: 1 }), validateGatewayKey: vi.fn() }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: async () => "valid-cli-token" }));
 vi.mock("@/lib/db/index.js", () => ({ getActiveRequests: async () => ({ activeRequests: [] }) }));
+vi.mock("open-sse/providers/registry/index.js", () => ({ default: [] }));
 
 const secret = "test-secret-for-metrics-session-verification";
-let oldSecret, GET;
+let oldSecret, GET, proxy;
 beforeAll(async () => {
   oldSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = secret;
   GET = (await import("../../src/app/api/monitoring/metrics/route.js")).GET;
+  proxy = (await import("../../src/proxy.js")).default;
 });
 afterAll(() => {
   if (oldSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = oldSecret;
@@ -31,6 +34,18 @@ async function token(expiration, signingKey = secret) {
 }
 
 describe("metrics credential verification", () => {
+  it("enforces credentials through middleware and the metrics handler", async () => {
+    async function dispatch(headers) {
+      const req = new NextRequest("http://localhost/api/monitoring/metrics", { headers });
+      const result = await proxy(req);
+      return result.headers.get("x-middleware-next") === "1" ? GET(req) : result;
+    }
+    expect((await dispatch({ host: "localhost" })).status).toBe(401);
+    expect((await dispatch({ host: "localhost", authorization: "Bearer user-key" })).status).toBe(401);
+    expect((await dispatch({ host: "localhost", authorization: "Bearer admin-key" })).status).toBe(200);
+    expect((await dispatch({ host: "localhost", "x-9r-cli-token": "valid-cli-token" })).status).toBe(200);
+    expect((await dispatch({ host: "localhost", cookie: `auth_token=${await token("1h")}` })).status).toBe(200);
+  });
   it("requires verified credentials even with open dashboard or spoofed forwarding", async () => {
     for (const headers of [{}, { host: "localhost", "x-forwarded-for": "127.0.0.1", "x-9r-real-ip": "127.0.0.1" }, { authorization: "Bearer user-key" }, { "x-9r-cli-token": "invalid" }]) {
       expect((await GET(request(headers))).status).toBe(401);

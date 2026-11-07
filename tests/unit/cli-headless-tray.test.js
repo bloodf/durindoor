@@ -25,8 +25,8 @@ function startup(args, isTTY = false, env = {}) {
     },
   };
   try {
-    const mode = vm.runInNewContext(source.slice(0, source.indexOf("// Always use Node.js runtime")) +
-      ";({ headless, trayMode, noBrowser, skipUpdate })", context);
+    const prefix = source.slice(0, source.indexOf("// Always use Node.js runtime")).replace(/^#![^\n]*\n/, "");
+    const mode = vm.runInNewContext(`(function () { ${prefix}; return { headless, trayMode, noBrowser, skipUpdate }; })()`, context);
     expect(tray).not.toHaveBeenCalled();
     // Execute the actual tray initializer with its real lazy hook invocation.
     const initializer = source.slice(source.indexOf("  const initTrayIcon = () =>"), source.indexOf("  // Headless keeps"));
@@ -119,7 +119,9 @@ function startHeadlessWorker({ staleOwnership = false, cleanupOk = true } = {}) 
     return child;
   });
   const stopMitm = vi.fn(() => cleanupOk);
-  const identity = vi.fn(() => Promise.resolve());
+  let resolveIdentity;
+  const identityResult = new Promise((resolve) => { resolveIdentity = resolve; });
+  const identity = vi.fn(() => identityResult);
   const ui = vi.fn(() => { throw new Error("Headless must not initialize UI"); });
   const log = { log: vi.fn(), error: vi.fn() };
   vm.runInNewContext(source.slice(source.indexOf("const MAX_RESTARTS =")) + ";startServer(null)", {
@@ -141,7 +143,7 @@ function startHeadlessWorker({ staleOwnership = false, cleanupOk = true } = {}) 
       return ui(name);
     },
   });
-  return { children, timers, process, spawn, stopMitm, identity, ui, log };
+  return { children, timers, process, spawn, stopMitm, identity, resolveIdentity, ui, log };
 }
 
 describe("complete headless worker lifecycle", () => {
@@ -199,7 +201,9 @@ describe("complete headless worker lifecycle", () => {
       expect.objectContaining({ env: { PORT: "20128", HOSTNAME: "127.0.0.1", DURINDOOR_WORKER_NONCE: nonce } }));
     expect(run.identity).toHaveBeenCalledWith(recovery, nonce);
     expect(run.stopMitm).not.toHaveBeenCalled();
-    await run.identity.mock.results[0].value;
+    run.resolveIdentity();
+    // Drain the VM realm continuation after explicitly releasing the identity barrier.
+    await new Promise(setImmediate);
     expect(run.stopMitm).toHaveBeenCalledWith(20128, { preserveDesiredState: false });
     expect(recovery.listenerCount("error")).toBe(1);
     expect(recovery.listenerCount("close")).toBe(1);

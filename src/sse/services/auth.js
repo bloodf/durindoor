@@ -512,6 +512,8 @@ async function buildPublicNoAuthCredential(providerId) {
  *   restricts selection to that single account for account-bound resources
  *   (e.g. polling a video job, which only exists on its creating account):
  *   no substitute is chosen when it is missing, inactive, or cooling down.
+ *   `options.reportScopeDenied` opts into a `{scopeDenied:true}` result when
+ *   key/combo account policy removes the provider pool, before availability checks.
  */
 export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
   const signal = options?.signal || null;
@@ -602,13 +604,19 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // account is missing, deactivated or cooling down. Substituting another
     // account there cannot succeed upstream and bills the wrong account.
     const strictConnectionId = options?.strictConnectionId || null;
-    const connections = scopedHasOverlap ?
-    (await getProviderConnections({ provider: providerId, isActive: true })).filter(
-      (connection) => (!scopeRestricted || scopedConnectionIds.has(connection.id)) &&
-      (!strictConnectionId || connection.id === strictConnectionId)
-    ) :
-    [];
+    const providerConnections = scopedHasOverlap ?
+    await getProviderConnections({ provider: providerId, isActive: true }) : [];
+    const scopedConnections = providerConnections.filter(
+      (connection) => !scopeRestricted || scopedConnectionIds.has(connection.id)
+    );
+    const connections = scopedConnections.filter(
+      (connection) => !strictConnectionId || connection.id === strictConnectionId
+    );
     throwIfAborted(signal);
+    // Chat combos distinguish local scope denial from missing credentials without
+    // exposing account/model identities or changing legacy credential callers.
+    if (options?.reportScopeDenied && scopeRestricted &&
+    (!scopedHasOverlap || providerConnections.length > 0 && scopedConnections.length === 0)) return { scopeDenied: true };
     if (preferredConnectionId && scopeRestricted && !scopedConnectionIds.has(preferredConnectionId)) {
       log.warn("AUTH", `${provider} | preferred connection ${preferredConnectionId.slice(0, 8)} rejected by scoped allow-list`);
       return null;

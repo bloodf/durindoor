@@ -3,16 +3,55 @@
 # been ported into this fork, with no truncation.
 #
 #   upstream-scan-report.sh <upstream-prs.json> <ported.json> <outdir>
+#   upstream-scan-report.sh --intake <candidates.json> <outdir> [ported.json] [page-bytes]
 #
+# Classic mode:
 # <upstream-prs.json>  `gh pr list` output (number,title,additions,deletions)
 # <ported.json>        JSON array of upstream PR numbers already ported here
 # <outdir>             receives body.md plus comment-NNN.md continuation pages
+#
+# Intake mode (Issue #1148):
+# Extends intake design across both decolua/9router and diegosouzapw/OmniRoute,
+# storing source SHA, state, final diff, local equivalent, test, disposition,
+# and owner issue records, with multi-page pagination under GitHub body limits.
 #
 # GitHub caps an issue body (and each comment) at 65536 bytes, so the candidate
 # list is paginated instead of cut off: body.md holds the summary and the first
 # page, each remaining page becomes a comment. The union of body.md and every
 # comment-NNN.md contains the complete unported set.
 set -euo pipefail
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage:
+  upstream-scan-report.sh <upstream-prs.json> <ported.json> <outdir>
+  upstream-scan-report.sh --intake <candidates.json> <outdir> [ported.json] [page-bytes]
+
+Modes:
+  Classic mode:
+    Scans open upstream PRs from decolua/9router, subtracting ported IDs.
+  Intake mode (Issue #1148):
+    Tracks candidates across decolua/9router and diegosouzapw/OmniRoute with
+    complete reviewed records (source, SHA, state, finalDiff, localEquivalent,
+    test, disposition, ownerIssue) and pagination under GitHub's 65,536-byte limit.
+EOF
+  exit 0
+fi
+
+if [ "${1:-}" = "--intake" ]; then
+  shift
+  CANDIDATES_JSON=${1:?usage: upstream-scan-report.sh --intake <candidates.json> <outdir> [ported.json] [page-bytes]}
+  OUTDIR=${2:?missing outdir}
+  PORTED_JSON=${3:-}
+  PAGE_BYTES=${4:-${PAGE_BYTES:-60000}}
+
+  HELPER="$(dirname "$0")/upstream-intake-ledger.mjs"
+  CMD=(node "$HELPER" build-report --candidates "$CANDIDATES_JSON" --outdir "$OUTDIR" --page-bytes "$PAGE_BYTES")
+  if [ -n "$PORTED_JSON" ]; then
+    CMD+=(--ported "$PORTED_JSON")
+  fi
+  exec "${CMD[@]}"
+fi
 
 PRS_JSON=${1:?usage: upstream-scan-report.sh <upstream-prs.json> <ported.json> <outdir>}
 PORTED_JSON=${2:?missing ported.json}

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fetchGeminiApiKeyQuota } from "../../src/lib/usage/geminiApiKeyQuotaAdapter.js";
 import { fetchXaiQuota, normalizeXaiPrepaidBalance } from "../../src/lib/usage/xaiQuotaAdapter.js";
 
-const connection = { provider: "xai", apiKey: "inference-only", providerSpecificData: { teamId: "team/42", managementApiKey: "management-only" } };
+const connection = { provider: "xai", apiKey: "inference-only", managementApiKey: "management-only", providerSpecificData: { teamId: "team/42" } };
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
 
 describe("documented quota snapshots", () => {
@@ -13,7 +13,18 @@ describe("documented quota snapshots", () => {
   });
   it.each([{}, { teamId: "team" }, { managementApiKey: "management" }, { ...connection.providerSpecificData, quotaEndpoint: "https://127.0.0.1" }])("does not send an inference key or use custom URLs: %j", async (providerSpecificData) => {
     const fetchImpl = vi.fn();
-    expect(await fetchXaiQuota({ connection: { ...connection, providerSpecificData }, fetchImpl })).toMatchObject({ outcome: "unknown", quotas: {} });
+    expect(await fetchXaiQuota({ connection: { ...connection, managementApiKey: undefined, providerSpecificData }, fetchImpl })).toMatchObject({ outcome: "unknown", quotas: {} });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("rejects custom URLs even with valid separate management credentials", async () => {
+    const fetchImpl = vi.fn();
+    const result = await fetchXaiQuota({ connection: { ...connection, providerSpecificData: { ...connection.providerSpecificData, quotaEndpoint: "https://127.0.0.1" } }, fetchImpl });
+    expect(result.outcome).toBe("unknown");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("rejects a nested management key rather than using plaintext metadata", async () => {
+    const fetchImpl = vi.fn();
+    expect(await fetchXaiQuota({ connection: { apiKey: "inference", providerSpecificData: { teamId: "t", managementApiKey: "nested-secret" } }, fetchImpl })).toMatchObject({ outcome: "unknown" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
   it.each([["-8550", 85.5], ["0", 0], ["100", 0]])("reads signed cents %s", (val, expected) => {

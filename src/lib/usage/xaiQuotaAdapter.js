@@ -1,4 +1,4 @@
-import { connectionCredential, connectionData, createProviderRequest, providerFailure } from "../../../open-sse/services/quota/providerHelpers.js";
+import { connectionData, createProviderRequest, providerFailure } from "../../../open-sse/services/quota/providerHelpers.js";
 
 const SOURCE_ID = "xai:management-prepaid:v1";
 
@@ -19,7 +19,7 @@ export function normalizeXaiPrepaidBalance(payload) {
  */
 export async function fetchXaiQuota(context) {
   const data = connectionData(context.connection);
-  const key = connectionCredential(context.connection, "managementApiKey");
+  const key = typeof context.connection?.managementApiKey === "string" ? context.connection.managementApiKey.trim() : "";
   const team = typeof data.teamId === "string" ? data.teamId.trim() : "";
   const unknown = {
     outcome: "unknown", sourceId: SOURCE_ID, reasonCode: "missing", rows: [], quotas: {},
@@ -35,11 +35,11 @@ export async function fetchXaiQuota(context) {
   if (balance === null) return { ...unknown, outcome: "malformed" };
   return {
     outcome: "success", sourceId: SOURCE_ID,
-    message: "Prepaid credit only. Postpaid allowance and inference readiness remain unknown.",
+    notice: "Prepaid credit only. Postpaid allowance and inference readiness remain unknown.",
     quotas: {
       "Prepaid credit (USD)": {
         used: 0, total: balance, isCreditBalance: true, currency: "USD",
-        remainingPercentage: balance > 0 ? 100 : 0, resetAt: null, unlimited: false
+        resetAt: null, unlimited: false
       }
     }
   };

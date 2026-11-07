@@ -863,6 +863,7 @@ export default function ProviderLimits() {
       const quotaEntry = {
         quotas,
         plan: data.plan || null,
+        notice: data.notice || null,
         message: staleReason ? null : data.message || null,
         staleReason: staleReason || data.staleReason || null,
         raw: data
@@ -1504,6 +1505,7 @@ export default function ProviderLimits() {
                 {/* Stale rows still beat no rows, but the reason must be visible
                     so nobody mistakes cached numbers for live ones. */}
                 {quota?.staleReason ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">{quota.staleReason}</div> : null}
+                {quota?.notice ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.notice}</div> : null}
                 <QuotaTable quotas={visibleQuotas} compact sortMode={isCodex ? quotaSortMode : "default"} showSortLabel={isCodex && quotaSortMode !== "default"} onHideQuota={(quotaRow) => handleHideQuota(conn.id, conn.provider, quotaRow)} />
               </>}
               {hiddenQuotaRows.length > 0 ? <div className="flex flex-wrap items-center gap-1 border-t border-dd-border-subtle pt-2 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">visibility_off</span><span>Hidden:</span>{hiddenQuotaRows.map((quotaRow) => <Button key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)} variant="secondary" size="sm" onClick={() => handleShowQuota(conn.id, conn.provider, quotaRow)} title="Show this quota row">{quotaRow.name}</Button>)}</div> : null}
@@ -1528,7 +1530,7 @@ export default function ProviderLimits() {
               {isMerged ? <div className="flex flex-col gap-3 p-3">
                 {group.connections.map((conn) => {
                   const error = errors[conn.id];
-                  const message = quotaData[conn.id]?.message;
+                  const message = quotaData[conn.id]?.message || quotaData[conn.id]?.notice;
                   const accountLabel = getConnectionLabel(conn);
                   const { hiddenQuotaRows } = connectionQuotaRows[conn.id] || { hiddenQuotaRows: [] };
                   return <div key={conn.id} className="flex flex-col gap-2">

@@ -21,7 +21,7 @@ vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: mocks.getProviderCo
 vi.mock("@/lib/db/repos/usageRepo.js", () => ({ getUsageHistory: mocks.getUsageHistory }));
 vi.mock("open-sse/services/usage.js", () => ({ getUsageForProvider: mocks.getUsageForProvider }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig }));
-vi.mock("@/shared/constants/providers", () => ({ USAGE_APIKEY_PROVIDERS: ["glm"] }));
+vi.mock("@/shared/constants/providers", () => ({ USAGE_APIKEY_PROVIDERS: ["glm", "gemini", "xai"] }));
 vi.mock("@/lib/oauth/services/cursorLocalStore.js", () => ({
   backfillCursorConnectionIdentity: mocks.backfillCursorConnectionIdentity,
 }));
@@ -139,7 +139,7 @@ describe("provider usage route credential service integration", () => {
     expect(mocks.refreshAndUpdateCredentials).not.toHaveBeenCalled();
   });
   it("adds xAI management prepaid credit through the real route", async () => {
-    const connection = { id: "x", provider: "xai", authType: "apikey", apiKey: "inference", providerSpecificData: { managementApiKey: "management", teamId: "t" } };
+    const connection = { id: "x", provider: "xai", authType: "apikey", apiKey: "inference", managementApiKey: "management", providerSpecificData: { teamId: "t" } };
     mocks.getProviderConnectionById.mockResolvedValue(connection);
     mocks.getConnectionUsageSummary.mockResolvedValue({ requests: 0 });
     mocks.fetchXaiQuota.mockResolvedValue({ outcome: "success", quotas: { "Prepaid credit (USD)": { total: 10, isCreditBalance: true } } });

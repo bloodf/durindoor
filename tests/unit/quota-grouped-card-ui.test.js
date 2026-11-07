@@ -90,6 +90,21 @@ describe("ProviderLimits provider grouping and merged view", () => {
 
   const quotaTables = () => Array.from(container.querySelectorAll('[data-testid="quota-table"]'));
 
+  it.each([0, 85.5])("keeps xAI prepaid credit %s visible with the disclaimer", async (balance) => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((url, options) => {
+      if (String(url).startsWith("/api/providers/client")) return Promise.resolve(response({ connections: [{ id: "xai-fixture", provider: "xai", authType: "apikey", name: "xAI fixture" }], providerOptions: ["xai"], pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 }, totals: { eligibleConnections: 1, providerFilteredConnections: 1 } }));
+      if (String(url).startsWith("/api/usage/xai-fixture")) return Promise.resolve(response({ notice: "Prepaid credit only. Inference readiness remains unknown.", quotas: { "Prepaid credit (USD)": { total: balance, used: 0, isCreditBalance: true, currency: "USD" } } }));
+      return originalFetch(url, options);
+    });
+    await renderAndSettle();
+    expect(container.textContent).toContain("Prepaid credit only. Inference readiness remains unknown.");
+    expect(quotaTables()).toHaveLength(1);
+    const rows = JSON.parse(quotaTables()[0].textContent);
+    expect(rows[0]).toMatchObject({ total: balance, isCreditBalance: true, currency: "USD" });
+    expect(rows[0].remainingPercentage).toBeUndefined();
+  });
+
   it("renders one grouped provider card with one section per account", async () => {
     await renderAndSettle();
 

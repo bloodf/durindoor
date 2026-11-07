@@ -6,3 +6,8 @@
 # esbuild 0.25.12 postinstall selects the native CLI bundler executable.
 allowBuilds:
   esbuild: true
+
+# GHSA-g3hv-75wg-m249: nodemon uses the retained named minimatch function.
+# Keep this compatibility exception scoped to the reviewed parent, never global.
+overrides:
+  'nodemon@3.1.14>minimatch': 11.0.1

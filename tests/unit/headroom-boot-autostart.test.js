@@ -17,6 +17,15 @@ const mocks = vi.hoisted(() => ({
   isLoopbackHeadroomUrl: vi.fn(),
 }));
 
+// register(nodejs) also starts the real Kimchi updater. Isolate its release
+// transport here; dedicated Kimchi bootstrap tests assert its lifecycle.
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: vi.fn(async () => ({
+    ok: true, status: 200, statusText: "OK",
+    json: async () => ({ tag_name: "v0.1.01" }),
+  })),
+}));
+
 vi.mock("@/lib/db/repos/settingsRepo.js", () => ({ getSettings: mocks.getSettings }));
 vi.mock("@/lib/headroom/process.js", () => ({
   startHeadroomProxy: mocks.startHeadroomProxy,

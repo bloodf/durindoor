@@ -8,7 +8,8 @@ vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: 
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: routedFetch }));
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
 
-describe("Speka registry consumers", () => {
+// Mocked responses prove local wiring only, not live discovery or API-key validation.
+describe("Speka registry consumers (mocked, not live proof)", () => {
   afterEach(() => vi.clearAllMocks());
 
   it("routes namespaced model IDs without dropping their publisher", () => {

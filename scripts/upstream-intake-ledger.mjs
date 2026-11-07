@@ -46,9 +46,6 @@ export const ALLOWED_STATES = Object.freeze([
  * collide with OmniRoute #42.
  */
 export function canonicalId(record) {
-  if (!record || typeof record !== "object") {
-    throw new TypeError("Candidate record must be an object");
-  }
   const source = record.source === undefined ? "decolua/9router" : record.source;
   if (record.number !== undefined && record.number !== null && record.number !== "") {
     return `${source}#PR${record.number}`;
@@ -67,7 +64,7 @@ export function canonicalId(record) {
  * Note: Never infers disposition from titles!
  */
 export function normalizeRecord(raw) {
-  if (!raw || typeof raw !== "object") {
+  if (!raw || Array.isArray(raw) || Object(raw) !== raw) {
     throw new TypeError("Candidate record must be an object");
   }
 
@@ -104,7 +101,7 @@ export function normalizeRecord(raw) {
   const deletions = Number.isFinite(Number(raw.deletions)) ? Number(raw.deletions) : 0;
   const why = raw.why ? String(raw.why).trim() : "";
   const author = raw.author
-    ? (typeof raw.author === "object" ? raw.author.login || "" : String(raw.author))
+    ? String(raw.author.login ?? raw.author)
     : "";
 
   return {
@@ -129,11 +126,8 @@ export function normalizeRecord(raw) {
  * Validates that a normalized candidate adheres to the intake contract.
  */
 export function validateRecord(record) {
-  if (!record || typeof record !== "object") {
-    return { valid: false, errors: ["Record must be an object"] };
-  }
   const errors = [];
-  if (!record.source || typeof record.source !== "string") {
+  if (!record.source) {
     errors.push("Missing source repository");
   } else if (!ALLOWED_SOURCES.includes(record.source)) {
     errors.push(`Invalid source format: ${record.source}`);
@@ -147,9 +141,9 @@ export function validateRecord(record) {
   if (record.sha !== null && !/^[a-f0-9]{7,40}$/.test(record.sha)) errors.push("Invalid commit SHA");
   if (!ALLOWED_STATES.includes(record.state)) errors.push("Invalid upstream state");
   for (const field of ["finalDiff", "localEquivalent", "test"]) {
-    if (typeof record[field] !== "string" || !record[field]) errors.push(`Missing ${field}`);
+    if (!record[field]) errors.push(`Missing ${field}`);
   }
-  if (!record.title || typeof record.title !== "string") {
+  if (!record.title) {
     errors.push("Missing title");
   }
 
@@ -198,10 +192,10 @@ export function deduplicateCandidates(candidates, existingPorted = []) {
   if (!Array.isArray(existingPorted)) existingPorted = existingPorted?.ported;
   if (!Array.isArray(existingPorted)) throw new TypeError("Ported ledger must be an array or contain ported[]");
   for (const item of existingPorted) {
-    if (typeof item === "number") {
+    if (Number.isSafeInteger(item) && item > 0) {
       // Legacy unadorned number defaults to decolua/9router
       portedSet.add(`decolua/9router#PR${item}`);
-    } else if (item && typeof item === "object") {
+    } else if (item && !Array.isArray(item) && Object(item) === item) {
       const src = item.source === undefined ? "decolua/9router" : item.source;
       if (!ALLOWED_SOURCES.includes(src)) continue;
       if (item.pr !== undefined && item.pr !== null) {

@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QUOTA_IDENTITY_DEFAULTS } from "../../src/shared/constants/quota.js";
 
 // #1115: real auth, ownership, model/combo resolution, policy, account selection
 // and handler routing. HTTP rewriting is covered by the separate HTTP runner.
-const fixture = vi.hoisted(() => ({ keys: new Map(), scopes: new Map(), owners: new Map(), connections: [], settings: {}, combo: null, fetch: vi.fn(), core: vi.fn(), writes: [], trustedPeer: false }));
+const fixture = vi.hoisted(() => ({ keys: new Map(), scopes: new Map(), owners: new Map(), connections: [], settings: {}, combo: null, fetch: vi.fn(), core: vi.fn(), writes: [], trustedPeer: false, quotaSnapshots: [], customModels: [] }));
+vi.hoisted(() => {
+  globalThis.fetch = () => { throw new Error("Unexpected network access in authorization matrix imports"); };
+});
 vi.mock("@/lib/db/driver.js", () => ({
   getAdapter: () => { throw new Error("Unexpected database access in authorization matrix"); },
   getAdapterSync: () => { throw new Error("Unexpected database access in authorization matrix"); },
@@ -42,7 +46,7 @@ vi.mock("@/lib/localDb", () => ({
   getComboForModel: async (name) => fixture.combo?.name.toLowerCase() === name.toLowerCase() ? fixture.combo : null,
   getComboByName: async (name) => fixture.combo?.name === name ? fixture.combo : null,
   getModelAliases: async () => ({ friendly: "openai/gpt-4o" }),
-  getProviderNodes: async () => [], getCustomModels: async () => [],
+  getProviderNodes: async () => [], getCustomModels: async () => fixture.customModels,
   getSyncedModelCatalog: async () => null, getSyncedModelCatalogs: async () => [],
   // Management mutations record the write instead of touching storage.
   createApiKey: async (name) => { fixture.writes.push("createApiKey"); return { id: "new", key: "sk-new", name, policy: null }; },
@@ -60,7 +64,7 @@ vi.mock("@/lib/localDb", () => ({
 vi.mock("@/sse/services/auth.js", async (original) => {
   const auth = await original();
   return { ...auth, getProviderCredentialsWithQuotaPreflight: (provider, excluded, model, options) =>
-    auth.getProviderCredentials(provider, excluded, model, { ...options, quotaSnapshotsLoader: async () => [], quotaFetchStateLoader: async () => [] }) };
+    auth.getProviderCredentials(provider, excluded, model, { ...options, quotaSnapshotsLoader: async () => fixture.quotaSnapshots, quotaFetchStateLoader: async () => [] }) };
 });
 vi.mock("@/sse/services/nativeResourceOwners.js", () => ({
   readNativeResourceOwner: async (provider, account, id) => fixture.owners.get(`${provider}:${account}:${id}`) ?? null,
@@ -126,6 +130,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected network access in authorization matrix"); }));
   resetComboRotation(); resetComboScoring();
   fixture.keys.clear(); fixture.scopes.clear(); fixture.owners.clear(); fixture.combo = null; fixture.writes = []; fixture.trustedPeer = false;
+  fixture.quotaSnapshots = []; fixture.customModels = [];
   fixture.settings = { requireApiKey: true, requireLogin: true, comboStrategy: "fallback", visionBridgeEnabled: false };
   for (const principal of ["owner", "foreign", "inactive", "expired"]) fixture.keys.set(`matrix-${principal}`, {
     id: principal, key: `matrix-${principal}`, name: principal, isActive: principal !== "inactive",
@@ -209,6 +214,111 @@ it.each(["model-denied", "account-disjoint"])("intersects combo member %s with k
   else fixture.keys.get("matrix-owner").policy = { allowedModels: ["minimax/MiniMax-M2.1"] };
   const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", chatBody("combo")));
   expect(response.status).toBeGreaterThanOrEqual(400); expect(fixture.core).not.toHaveBeenCalled();
+});
+
+describe("#1090 fusion tool media authorization", () => {
+  const mediaBody = () => ({ model: "matrix-combo", messages: [
+    { role: "user", content: "take a screenshot" },
+    { role: "assistant", content: null, tool_calls: [{ id: "shot", type: "function", function: { name: "shot", arguments: "{}" } }] },
+    { role: "tool", tool_call_id: "shot", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+  ] });
+  const admittedMessages = () => [
+    ...mediaBody().messages.slice(0, 2),
+    { role: "tool", tool_call_id: "shot", content: [{ type: "text", text: "[tool returned an image; see attached]" }] },
+    { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } }] },
+  ];
+  beforeEach(() => {
+    combo();
+    fixture.combo.models = ["minimax/MiniMax-M2.1", "openai/gpt-4o", "openai/gpt-4.1"];
+    fixture.combo.members = fixture.combo.models.map((id) => ({ id, weight: 1 }));
+    fixture.connections = fixture.connections.filter((connection) => connection.provider !== "openai");
+    fixture.connections.push({ id: "openai-account", provider: "openai", authType: "apikey", apiKey: "fixture", isActive: true, priority: 1, providerSpecificData: {} });
+    fixture.settings.comboStrategy = "fusion";
+    fixture.keys.get("matrix-owner").allowedCombos = ["matrix-combo"];
+    fixture.keys.get("matrix-owner").policy = { allowedModels: ["openai/gpt-4o", "openai/gpt-4.1"] };
+    fixture.scopes.set("owner", ["openai-account"]);
+  });
+
+  it("intersects key model, key account and combo account ACLs without dropping media", async () => {
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(200);
+    expect(fixture.core).toHaveBeenCalledTimes(3);
+    for (const [call] of fixture.core.mock.calls) {
+      expect(call.modelInfo.provider).toBe("openai");
+      expect(call.credentials.connectionId).toBe("openai-account");
+      expect(call.body.messages.slice(0, 4)).toEqual(admittedMessages());
+    }
+  });
+
+  it.each(["model", "account", "combo-account"])("returns generic 403 for all-capable %s rejection", async (boundary) => {
+    if (boundary === "model") fixture.keys.get("matrix-owner").policy = { allowedModels: ["minimax/MiniMax-M2.1"] };
+    if (boundary === "account") fixture.scopes.set("owner", ["minimax-account"]);
+    if (boundary === "combo-account") fixture.combo.allowedConnectionIds = ["minimax-account"];
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toMatch(/gpt-4|MiniMax|openai|account/);
+    expect(fixture.core).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch a forbidden explicit judge", async () => {
+    fixture.settings.comboStrategies = { "matrix-combo": { judgeModel: "openai/gpt-4.1" } };
+    fixture.keys.get("matrix-owner").policy = { allowedModels: ["openai/gpt-4o"] };
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toContain("gpt-4.1");
+    expect(fixture.core.mock.calls.every(([call]) => call.modelInfo.model === "gpt-4o")).toBe(true);
+  });
+
+  it("resolves custom capabilities for an explicit judge outside the panel", async () => {
+    fixture.combo.models = ["openai/gpt-4o"];
+    fixture.settings.comboStrategies = { "matrix-combo": { judgeModel: "openai/custom-judge" } };
+    fixture.customModels = [{ id: "custom-judge", providerAlias: "openai", capabilities: { vision: true } }];
+    fixture.keys.get("matrix-owner").policy.allowedModels.push("openai/custom-judge");
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(200);
+    expect(fixture.core.mock.calls.map(([call]) => call.modelInfo.model)).toEqual(["gpt-4o", "custom-judge"]);
+    expect(fixture.core.mock.calls.at(-1)[0].body.messages.slice(0, 4)).toEqual(admittedMessages());
+  });
+
+  it("rejects a custom text-only judge before panel dispatch", async () => {
+    fixture.settings.comboStrategies = { "matrix-combo": { judgeModel: "openai/gpt-4.1" } };
+    fixture.customModels = [{ id: "gpt-4.1", providerAlias: "openai", capabilities: { vision: false } }];
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe("capability_unavailable");
+    expect(fixture.core).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("does not report missing accounts as ACL denial (single member=%s)", async (single) => {
+    fixture.connections = fixture.connections.filter((connection) => connection.provider !== "openai");
+    if (single) fixture.combo.models = ["openai/gpt-4o"];
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(single ? 404 : 503);
+    expect(fixture.core).not.toHaveBeenCalled();
+  });
+
+  it.each([429, 403])("does not report an account cooldown with status %s as ACL denial", async (status) => {
+    const account = fixture.connections.find((connection) => connection.id === "openai-account");
+    for (const model of ["gpt-4o", "gpt-4.1"]) account[`modelLock_${model}`] = new Date(Date.now() + 60_000).toISOString();
+    account.errorCode = status;
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(503);
+    expect(fixture.core).not.toHaveBeenCalled();
+  });
+
+  it("does not report exhausted quota as ACL denial", async () => {
+    const now = Date.now();
+    fixture.quotaSnapshots = [{
+      identity: { connectionId: "openai-account", provider: "openai", ...QUOTA_IDENTITY_DEFAULTS, dimensionKey: "requests:runtime" },
+      state: "exhausted",
+      amounts: { limitKind: "unknown", limit: null, used: null, remaining: null, remainingRatio: null, unit: null },
+      timing: { observedAt: new Date(now - 1000).toISOString(), staleAt: new Date(now + 60_000).toISOString(), resetAt: null, cooldownUntil: null },
+      provenance: { sourceType: "response_headers", sourceId: "openai:fixture:v1", reasonCode: "rate_limited", metadata: {} },
+    }];
+    const response = await handleChat(request("/api/v1/chat/completions", "owner", "POST", mediaBody()));
+    expect(response.status).toBe(503);
+    expect(fixture.core).not.toHaveBeenCalled();
+  });
 });
 
 it.each([false, true])("preserves local anonymous ownership (requireApiKey=%s)", async (required) => {

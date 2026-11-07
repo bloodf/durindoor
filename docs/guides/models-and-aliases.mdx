@@ -22,6 +22,8 @@ The provider validation API returns `valid: false` and `unavailable: true` for s
 
 Testing a saved registry connection returns the unavailable marker for server errors and network failures explicitly marked unavailable by the probe, and leaves its stored status unchanged. HTTP 401 and 403 still persist a credential failure. A null status alone does not indicate an outage. Malformed session cookies and blocked outbound URLs remain validation errors. Batch tests count unavailable connections separately from invalid credentials. Retry when the provider is available.
 
+Saved OAuth tests using the generic endpoint probe, including GitHub, also preserve credential-check metadata on HTTP 429, server errors, timeouts and cancellation. These results are unavailable, not successful authentication. Real HTTP 401/403 rejections still persist failure. This guarantee concerns saved test metadata, not dispatch eligibility, quota policy or provider-specific refresh and probe flows.
+
 | Model string | Routes to |
 | --- | --- |
 | `openai/gpt-4.1` | An OpenAI connection with upstream model `gpt-4.1` |

@@ -308,7 +308,14 @@ export default function CombosPage() {
           setCombos((prev) => prev.filter((combo) => !ids.includes(combo.id)));
           setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
           if (ids.length > 0 || remaining.length === 0) {
-            await persistComboStrategies(strategies);
+            // Keep cleanup retryable until the settings boundary accepts it.
+            const response = await fetch("/api/settings", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ comboStrategies: strategies }),
+            });
+            if (!response.ok) throw new Error("Failed to update combo strategies");
+            setComboStrategies(strategies);
           }
           if (remaining.length > 0) {
             const failed = remaining.length;

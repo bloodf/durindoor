@@ -39,6 +39,41 @@ describe("production single combo delete feedback", () => {
     vi.restoreAllMocks();
   });
 
+
+  it.each([500, 401])("retries cleanup after PATCH HTTP %s without repeating DELETE", async (status) => {
+    let patches = 0;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async (url, options) => {
+      if (options?.method === "DELETE") return json({ success: true });
+      if (options?.method === "PATCH") return ++patches === 1 ? { ok: false, status } : json({});
+      if (url === "/api/combos") return json({ combos: [{ id: "A", name: "combo-a", models: [] }, { id: "B", name: "combo-b", models: [] }] });
+      if (url === "/api/settings") return json({ comboStrategies: { "combo-a": { fallbackStrategy: "random" }, "combo-b": { fallbackStrategy: "random" }, unrelated: { fallbackStrategy: "random" } } });
+      if (String(url).startsWith("/api/providers")) return json({ connections: [] });
+      if (String(url).startsWith("/api/connection-groups")) return json({ groups: [] });
+      if (String(url).startsWith("/api/models/alias")) return json({ aliases: {} });
+      return json({});
+    }));
+    await act(async () => { root.render(React.createElement(ProductionCombosPage)); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await click(within(container).getByRole("checkbox", { name: "Select combo-a" }));
+    await click(within(container).getByRole("checkbox", { name: "Select combo-b" }));
+    await click(button(container, "Delete (2)"));
+    const dialog = document.body.querySelector("dialog");
+    await click(button(dialog, "Delete"));
+    expect(dialog.open).toBe(true);
+    expect(within(dialog).getByRole("alert").textContent).toBe("Failed to update combo strategies. Please try again.");
+    expect(within(container).queryByText("combo-a")).toBeNull();
+    expect(within(container).queryByText("combo-b")).toBeNull();
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(2);
+    await click(button(dialog, "Delete"));
+    expect(document.body.querySelector("dialog")).toBeNull();
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(2);
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === "PATCH").map(([, options]) => JSON.parse(options.body))).toEqual([
+      { comboStrategies: { unrelated: { fallbackStrategy: "random" } } },
+      { comboStrategies: { unrelated: { fallbackStrategy: "random" } } },
+    ]);
+  });
+
   it.each(["HTTP 500", "network rejection"])("retains the row after %s and completes a successful retry", async (failure) => {
     let resolveDelete;
     let rejectDelete;

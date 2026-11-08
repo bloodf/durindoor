@@ -3,6 +3,15 @@ import { CapacityBadges } from "@/shared/components";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import InferenceStatus from "./InferenceStatus.jsx";
 
+// Merged caps include defaults/patterns. Only declaration snapshots and saved
+// overrides describe metadata support; neither proves runtime acceptance.
+export function getDeclaredModelCapabilities(model, override) {
+  return {
+    ...(model.discoveredCapabilities ?? (model.metadataSources ? {} : model.capabilities)),
+    ...override?.capabilities,
+  };
+}
+
 const STATUS_TOKENS = {
   ok: { border: "border-dd-success/40", icon: "check_circle", iconClass: "text-dd-success" },
   error: { border: "border-dd-danger/40", icon: "cancel", iconClass: "text-dd-danger" },
@@ -31,6 +40,7 @@ export default function ModelRow({
   onDisable,
   onEdit,
   caps,
+  declaredCaps,
   thinkingSuffix,
 }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
@@ -55,6 +65,14 @@ export default function ModelRow({
             {displayModel}
           </code>
           <InferenceStatus status={testStatus} testing={isTesting} />
+          <span className="flex flex-wrap gap-x-2 text-xs text-dd-subtle">
+            {[ ["vision", "Vision"], ["tools", "Tools"] ].map(([key, label]) => (
+              <span key={key}>
+                {label} metadata: {declaredCaps?.[key] === false ? "declared unsupported" :
+                  declaredCaps?.[key] === true ? "declared supported" : "UNKNOWN"}
+              </span>
+            ))}
+          </span>
           <span className="flex min-w-0 items-center gap-1 pl-1 text-xs">
             {model.name ? (
               <span className="truncate text-xs italic text-dd-subtle">{model.name}</span>
@@ -146,5 +164,6 @@ ModelRow.propTypes = {
   onDisable: PropTypes.func,
   onEdit: PropTypes.func,
   caps: PropTypes.object,
+  declaredCaps: PropTypes['shape']({ vision: PropTypes.bool, tools: PropTypes.bool }),
   thinkingSuffix: PropTypes.string,
 };

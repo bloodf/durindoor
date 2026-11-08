@@ -19,7 +19,7 @@ import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels"
 import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
-import ModelRow from "./ModelRow";
+import ModelRow, { getDeclaredModelCapabilities } from "./ModelRow";
 import NativeProviderReadiness from "./NativeProviderReadiness.jsx";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -1655,6 +1655,7 @@ export default function ProviderDetailPage() {
           isTesting={testingModelIds.has(model.id)}
           isCustom
           isFree={false}
+          declaredCaps={getDeclaredModelCapabilities(model)}
           caps={getCustomModelCapabilities({ providerId, modelId: model.id, capabilities: model.capabilities })}
           thinkingSuffix={resolveThinkingSuffix(model.id, model.capabilities)}
           onEdit={model.source === "custom" ? () => setEditingCustomModel(model) : undefined} />
@@ -1690,6 +1691,7 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
+              declaredCaps={getDeclaredModelCapabilities(model, customOverride)}
               caps={customOverride ? { ...baseCaps, ...customOverride.capabilities } : baseCaps}
               thinkingSuffix={resolveThinkingSuffix(model.id, { ...baseCaps, ...customOverride?.capabilities })}
               onEdit={() => setEditingCustomModel({ id: model.id, name: model.name, capabilities: customOverride?.capabilities || {} })} />);

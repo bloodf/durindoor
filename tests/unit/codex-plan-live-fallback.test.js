@@ -107,42 +107,8 @@ describe("provider page wiring", () => {
     expect(page).toContain("/api/usage/");
   });
 
-  // A provider switch must not leave the previous provider's rows on screen
-  // while the new fetch is in flight — a stale response is discarded by the
-  // generation guard, so nothing else would clear them.
-  it("clears connections and plans when the provider changes", () => {
-    const page = readFileSync(
-      new URL("../../src/app/(dashboard)/dashboard/providers/[id]/page.js", import.meta.url),
-      "utf8",
-    );
-
-    const effect = page.slice(page.indexOf("currentProviderIdRef.current = providerId;"));
-    const body = effect.slice(0, effect.indexOf("}, [providerId]);"));
-    expect(body).toContain("setConnections([])");
-    expect(body).toContain("setCodexPlans({})");
-    expect(body).toContain("setProviderApiKeyConnectionNames([])");
-    expect(body).toContain("setLoading(true)");
-  });
-
-  // The visible-models modal and its banner count belong to one provider; a
-  // switch must close the modal and ignore a late allowlist response.
-  it("resets the visible-models state when the provider changes", () => {
-    const page = readFileSync(
-      new URL("../../src/app/(dashboard)/dashboard/providers/[id]/page.js", import.meta.url),
-      "utf8",
-    );
-
-    const effect = page.slice(page.indexOf("currentProviderIdRef.current = providerId;"));
-    const body = effect.slice(0, effect.indexOf("}, [providerId]);"));
-    expect(body).toContain("setShowVisibleModels(false)");
-    expect(body).toContain("setEnabledModelIds([])");
-
-    const fetcher = page.slice(page.indexOf("const fetchEnabledModels = useCallback"));
-    const fetchBody = fetcher.slice(0, fetcher.indexOf("}, [providerId, providerStorageAlias]);"));
-    expect(fetchBody).toContain("currentProviderIdRef.current !== requestProviderId");
-    expect(page).toMatch(/<VisibleModelsModal\s+key=\{providerStorageAlias\}/);
-  });
-
+  // Provider identity resets (rows, live plans, modal and allowlist) are
+  // exercised through the mounted page in provider-readiness-switch.test.js.
   it("gives ConnectionRow a plan prop that prefers live over stored", () => {
     const row = readFileSync(
       new URL("../../src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js", import.meta.url),

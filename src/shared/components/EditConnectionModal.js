@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import PropTypes from "prop-types";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
@@ -51,9 +51,13 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
   const [aiCreditLimit, setAiCreditLimit] = useState("");
 
-  useEffect(() => {
+  const [loadedConnection, setLoadedConnection] = useState(null);
+  /** Reset a replaced connection before committing fields from the previous account. */
+  if (connection !== loadedConnection) {
+    setLoadedConnection(connection);
     if (connection) {
       setFormData({
         name: connection.name || "",
@@ -105,11 +109,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         accessKeyId: connection.providerSpecificData?.accessKeyId || "",
         sessionToken: ""
       });
+      setSaveError(null);
       setTestResult(null);
       setTestError(null);
       setValidationResult(null);
     }
-  }, [connection]);
+  }
 
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
@@ -238,10 +243,11 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   };
 
   const handleSubmit = async () => {
-    if (!connection || invalidCreditLimit) return;
+    if (saving || !connection || invalidCreditLimit) return;
     if (!hasRequiredGooglePseCx) return;
     if (requiresAccountId && !cloudflareData.accountId.trim()) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const providerSpecificData = buildProviderSpecificData();
       const updates = {
@@ -304,6 +310,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       }
 
       await onSave(updates);
+    } catch {
+      // Callers reject failed saves; retain the draft and never render raw provider errors.
+      setSaveError("Could not save connection. Your changes are still here. Try again.");
     } finally {
       setSaving(false);
     }
@@ -312,8 +321,9 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   if (!connection) return null;
 
   return (
-    <Modal open={isOpen} title="Edit Connection" subtitle="Update connection settings and validate new credentials before saving." onClose={onClose} size="md" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={handleSubmit} loading={saving} disabled={invalidCreditLimit || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>Save</Button></>}>
+    <Modal open={isOpen} title="Edit Connection" subtitle="Update connection settings and validate new credentials before saving." onClose={onClose} pending={saving} size="md" footer={<><Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button><Button variant="primary" onClick={handleSubmit} loading={saving} disabled={invalidCreditLimit || !hasRequiredGooglePseCx || requiresAccountId && !cloudflareData.accountId.trim()}>Save</Button></>}>
       <div className="flex flex-col gap-5">
+        {saveError ? <p role="alert" className="text-sm text-dd-danger">{saveError}</p> : null}
         <Input label="Name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder={isOAuth ? "Account name" : "Production Key"} />
         {isOAuth && connection.email ? <section aria-label="Connected account" className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><p className="text-xs text-dd-muted">Email</p><p className="mt-1 text-[13px] font-medium text-dd-text">{connection.email}</p></section> : null}
         <Input label="Priority" type="number" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: Number.parseInt(e.target.value, 10) || 1 })} />

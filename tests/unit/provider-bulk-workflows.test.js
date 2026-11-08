@@ -348,3 +348,14 @@ it("reports unavailable separately from invalid credentials, including hidden re
   expect(JSON.stringify(saved.update.mock.calls)).not.toContain("test-secret");
   } finally { restore(); }
 });
+
+it("removes a selected account from selection when its individual deletion completes", async () => {
+  await click(host.querySelector('[aria-label="Select Alpha"]'));
+  await click(host.querySelector('[aria-label="Select Beta"]'));
+  await click([...host.querySelectorAll("span")].find((node) => node.textContent === "Delete")?.closest("button"));
+  await click([...document.querySelectorAll("button")].find((node) => node.textContent.trim() === "Confirm"));
+  expect(host.querySelector('[aria-label="Select Alpha"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Select Beta"]').checked).toBe(true);
+  expect(host.textContent).toContain("1 selected");
+  expect(host.textContent).not.toContain("2 selected");
+});

@@ -29,7 +29,10 @@ function providerStatus(providerId, entry, settings, sharedMetadata) {
     removedModelIds: entry?.removedModelIds || [],
     // The effective list replaces the registry defaults while auto-sync is on
     // and a sync has succeeded; null means "use the registry".
-    models: effective ? effective.map(({ id, name, kind, capabilities }) => ({ id, name, kind, capabilities })) : null
+    // Keep declaration snapshots and provenance so enriched defaults stay UNKNOWN in the UI.
+    models: effective ? effective.map(({ id, name, kind, capabilities, discoveredCapabilities, metadataSources }) => ({
+      id, name, kind, capabilities, discoveredCapabilities, metadataSources
+    })) : null
   };
 }
 

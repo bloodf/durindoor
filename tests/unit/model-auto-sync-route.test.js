@@ -13,6 +13,12 @@ vi.mock("@/lib/modelAutoSync/runner.js", async (importOriginal) => ({
   getPrunedModelReferences: vi.fn(async () => ({ combos: { daily: ["openai/gpt-5"] }, aliases: {} }))
 }));
 
+vi.mock("@/lib/modelAutoSync/sharedMetadata.js", () => ({
+  getSharedModelMetadata: vi.fn(async () => null)
+}));
+
+import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
+import { getDeclaredModelCapabilities } from "../../src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js";
 import * as localDb from "@/lib/localDb";
 import { GET, POST } from "../../src/app/api/models/auto-sync/route.js";
 
@@ -43,6 +49,48 @@ describe("/api/models/auto-sync", () => {
       models: [{ id: "gpt-9", name: "GPT 9", kind: "llm" }]
     });
     expect(data.prunedReferences.combos).toEqual({ daily: ["openai/gpt-5"] });
+  });
+
+  it.each([
+    ["explicit false", { vision: false }],
+    ["explicit true", { vision: true }],
+    ["empty snapshot", {}],
+    ["missing snapshot with provenance", undefined],
+  ])("GET preserves declaration provenance for %s", async (_label, snapshot) => {
+    const source = "https://models.dev/api.json";
+    const fetchedAt = Date.parse(catalog.syncedAt);
+    localDb.getSettings.mockResolvedValue({});
+    getSharedModelMetadata.mockResolvedValue({
+      source, fetchedAt,
+      providers: { openai: { "future-model": { vision: true, tools: true } } },
+    });
+    localDb.getSyncedModelCatalogs.mockResolvedValue({ openai: {
+      ...catalog,
+      models: [{
+        id: "future-model", name: "Future model", kind: "llm",
+        capabilities: { vision: true, tools: true },
+        ...(snapshot === undefined ? {} : { discoveredCapabilities: snapshot }),
+        metadataSources: { catalog: "default", provider: false, shared: true },
+      }],
+    } });
+
+    const res = await GET(new Request("http://localhost/api/models/auto-sync?provider=openai"));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const [row] = data.providers.openai.models;
+    const declarations = snapshot ?? {};
+    const hasDeclaration = Object.keys(declarations).length > 0;
+    expect(row.discoveredCapabilities).toEqual(declarations);
+    expect(row.capabilities).toMatchObject({ vision: true, tools: true, ...declarations });
+    expect(row.metadataSources).toEqual({
+      catalog: "default", catalogSource: null,
+      provider: hasDeclaration, shared: true,
+      sharedEntries: [{ modelId: "future-model", source, fetchedAt }],
+      sharedSource: source, sharedFetchedAt: fetchedAt,
+      ...(hasDeclaration ? { providerFetchedAt: catalog.syncedAt } : {}),
+    });
+    expect(getDeclaredModelCapabilities(row)).toEqual(declarations);
+    expect(getDeclaredModelCapabilities(row)).not.toHaveProperty("tools");
   });
 
   it("GET returns no effective list while auto-update is off", async () => {

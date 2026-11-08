@@ -31,6 +31,7 @@ function formatMinutes(total) {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
+/** Keep dismissal blocked during save so a failed request retains the edited schedule. */
 export default function AutoPingScheduleModal({ isOpen, connection = null, schedule = null, onSave, onClose }) {
   // Mounted only while a connection is selected, so initial state is fresh.
   const [form, setForm] = useState(() => toFormState(schedule));
@@ -77,6 +78,7 @@ export default function AutoPingScheduleModal({ isOpen, connection = null, sched
       title="Auto-ping schedule"
       subtitle={`Ping at fixed local times${connection?.name ? ` for ${connection.name}` : ""}. Each ping consumes a small amount of quota.`}
       onClose={onClose}
+      pending={saving}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>

@@ -79,7 +79,7 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
     check();
     const t = modelLockUntil ? setInterval(check, 1000) : null;
     return () => {if (t) clearInterval(t);};
-  }, [modelLockUntil]);
+  }, [connection, modelLockUntil]);
 
   useEffect(() => {
     if (!showProxyDropdown) return;
@@ -333,26 +333,32 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const [providerStickyLimit, setProviderStickyLimit] = useState("1");
   const [confirmState, setConfirmState] = useState(null);
 
-  const fetch_ = useCallback(async () => {
-    try {
-      const [connRes, proxyRes, settingsRes] = await Promise.all([
-      fetch("/api/providers", { cache: "no-store" }),
-      fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }),
-      fetch("/api/settings", { cache: "no-store" })]
-      );
-      const connData = await connRes.json();
-      const proxyData = await proxyRes.json();
-      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
-      if (connRes.ok) setConnections((connData.connections || []).filter((c) => c.provider === providerId));
-      if (proxyRes.ok) setProxyPools(proxyData.proxyPools || []);
-      const override = (settingsData.providerStrategies || {})[providerId] || {};
-      setProviderStrategy(override.fallbackStrategy || null);
-      setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
-    } catch (e) {console.log("ConnectionsCard fetch error:", e);} finally
-    {setLoading(false);}
-  }, [providerId]);
+  /** Apply responses only while the initial provider read still belongs to this card. */
+  const fetch_ = useCallback(({ signal } = {}) => Promise.all([
+    fetch("/api/providers", { cache: "no-store", signal }),
+    fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal }),
+    fetch("/api/settings", { cache: "no-store", signal })
+  ]).then(async ([connRes, proxyRes, settingsRes]) => {
+    const connData = await connRes.json();
+    const proxyData = await proxyRes.json();
+    const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+    if (signal?.aborted) return;
+    if (connRes.ok) setConnections((connData.connections || []).filter((c) => c.provider === providerId));
+    if (proxyRes.ok) setProxyPools(proxyData.proxyPools || []);
+    const override = (settingsData.providerStrategies || {})[providerId] || {};
+    setProviderStrategy(override.fallbackStrategy || null);
+    setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
+  }).catch((error) => {
+    if (!signal?.aborted) console.log("ConnectionsCard fetch error:", error);
+  }).finally(() => {
+    if (!signal?.aborted) setLoading(false);
+  }), [providerId]);
 
-  useEffect(() => {fetch_();}, [fetch_]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch_({ signal: controller.signal });
+    return () => controller.abort();
+  }, [fetch_]);
 
   const saveStrategy = async (strategy, stickyLimit) => {
     try {
@@ -439,8 +445,10 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const handleUpdateConnection = async (formData) => {
     try {
       const res = await fetch(`/api/providers/${selectedConnection.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) });
+      // Reject failures so the edit modal can preserve the draft and offer retry.
+      if (!res.ok) throw new Error("Failed to save connection");
       if (res.ok) {await fetch_();setShowEditModal(false);}
-    } catch (e) {console.log("update connection error:", e);}
+    } catch (e) {throw e;}
   };
 
   if (loading) return <Card><div className="h-20 animate-pulse bg-dd-text/5 rounded-lg" /></Card>;

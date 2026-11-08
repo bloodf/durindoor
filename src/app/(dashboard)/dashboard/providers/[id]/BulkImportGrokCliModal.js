@@ -27,7 +27,10 @@ function normalizeAccounts(parsed) {
   return null;
 }
 
-/** Dashboard importer for one or many existing Grok CLI device-code credential objects. */
+/**
+ * Dashboard importer for existing Grok CLI device-code credential objects.
+ * Keep retry input and feedback until a response replaces it or the user closes.
+ */
 export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
   const [jsonText, setJsonText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -43,9 +46,6 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
   };
 
   const handleSubmit = async () => {
-    setError("");
-    setResult(null);
-
     let accounts;
     try {
       accounts = normalizeAccounts(JSON.parse(jsonText.trim()));
@@ -70,6 +70,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
         setError(data?.error || `Request failed: ${response.status}`);
         return;
       }
+      setError("");
       setResult(data);
       if (data.success > 0 && isFunction(onSuccess)) onSuccess();
     } catch (requestError) {
@@ -98,7 +99,7 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
         {error ? <p className="text-xs text-dd-danger break-words" role="alert">{error}</p> : null}
         {result ? (
           <div className="flex flex-col gap-2">
-            <p className={`text-sm font-medium ${result.failed ? "text-dd-warning" : "text-dd-success"}`}>
+            <p role={result.failed ? "alert" : undefined} className={`text-sm font-medium ${result.failed ? "text-dd-warning" : "text-dd-success"}`}>
               {result.success} {translate("added")}{result.failed ? `, ${result.failed} ${translate("failed")}` : ""}
             </p>
             {failedItems.length > 0 ? (

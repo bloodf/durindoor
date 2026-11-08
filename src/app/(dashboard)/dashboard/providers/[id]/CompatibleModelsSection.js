@@ -263,6 +263,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         model: `${providerStorageAlias}/${m.id}`,
         kind: "llm",
       }));
+      const requestedModelIds = new Map(models.map((model, index) => [model.model, currentSelected[index].id]));
       const res = await fetch("/api/models/test/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -283,7 +284,9 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
       await readSSEStream(res, (result) => {
         if (result.model) {
-          const modelId = result.model.substring(result.model.lastIndexOf("/") + 1);
+          /** Attribute evidence only to exact outbound IDs in this batch, preserving namespaces. */
+          const modelId = requestedModelIds.get(result.model);
+          if (modelId === undefined) return;
           const status = probeOutcome(result);
           setModelTestResults(prev => ({ ...prev, [modelId]: status }));
         } else if (result.error) {

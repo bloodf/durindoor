@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useEffectEvent, useRef } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -53,15 +53,7 @@ export default function CombosPage() {
   const { getCaps } = useModelCaps();
   const { copied, copy } = useCopyToClipboard();
 
-  useEffect(() => {
-    fetchData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Drop stale selection when the combo list changes (delete / refresh).
-  useEffect(() => {
-    const alive = new Set(combos.map((c) => c.id));
-    setSelectedIds((prev) => prev.filter((id) => alive.has(id)));
-  }, [combos]);
+  const loadRequest = useRef(0);
 
   const selectedCombos = combos.filter((c) => selectedIds.includes(c.id));
   const allSelected = combos.length > 0 && selectedIds.length === combos.length;
@@ -143,18 +135,19 @@ export default function CombosPage() {
 
   // Combo members whose model a provider's auto-synced list no longer has.
   // Optional metadata: a failure just leaves the badges off.
-  const fetchPrunedCombos = async () => {
+  const fetchPrunedCombos = async (isCurrent) => {
     try {
       const res = await fetch("/api/models/auto-sync", { cache: "no-store" });
       const data = res?.ok ? await res.json() : null;
-      setPrunedCombos(data?.prunedReferences?.combos || {});
+      if (isCurrent()) setPrunedCombos(data?.prunedReferences?.combos || {});
     } catch {
-      setPrunedCombos({});
+      if (isCurrent()) setPrunedCombos({});
     }
   };
 
   const fetchData = async () => {
-    setLoadError("");
+    const request = ++loadRequest.current;
+    const isCurrent = () => loadRequest.current === request;
     try {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
         fetch("/api/combos"),
@@ -167,10 +160,15 @@ export default function CombosPage() {
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const groupsData = groupsRes.ok ? await groupsRes.json() : {};
 
+      if (!isCurrent()) return;
       if (!combosRes.ok) throw new Error(combosData?.error || "Failed to load combos");
       // Show every non-media combo here (llm, embedding, tts, ...); media/web
       // combos belong to media-providers/web (#2686).
-      setCombos((combosData.combos || []).filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind)));
+      const visibleCombos = (combosData.combos || []).filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind));
+      setLoadError("");
+      setCombos(visibleCombos);
+      const alive = new Set(visibleCombos.map((combo) => combo.id));
+      setSelectedIds((prev) => prev.filter((id) => alive.has(id)));
       if (providersRes.ok) {
         const connections = providersData.connections || [];
         setProviderConnections(connections);
@@ -178,14 +176,20 @@ export default function CombosPage() {
       }
       if (groupsRes.ok) setGroups(groupsData.groups || []);
       setComboStrategies(settingsData.comboStrategies || {});
-      await fetchPrunedCombos();
+      await fetchPrunedCombos(isCurrent);
     } catch (error) {
       console.log("Error fetching data:", error);
-      setLoadError(error.message || "Failed to load combos");
+      if (isCurrent()) setLoadError(error.message || "Failed to load combos");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
+
+  const loadInitialData = useEffectEvent(() => { fetchData(); });
+  useEffect(() => {
+    loadInitialData();
+    return () => { loadRequest.current += 1; };
+  }, []);
 
   const handleCreate = async (data) => {
     try {
@@ -277,31 +281,59 @@ export default function CombosPage() {
   const handleBulkDelete = () => {
     if (selectedCombos.length === 0) return;
     const count = selectedCombos.length;
+    let remaining = selectedCombos;
+    let strategies = comboStrategies;
+    let pending = false;
     setConfirmState({
       title: "Delete Selected Combos",
       message: `Delete ${count} selected combo${count === 1 ? "" : "s"}? This cannot be undone.`,
       confirmLabel: "Delete",
       tone: "danger",
       onConfirm: async () => {
-        setConfirmState((prev) => prev ? { ...prev, pending: true } : null);
+        if (pending) return;
+        pending = true;
+        setConfirmState((prev) => prev ? { ...prev, pending: true, error: "" } : null);
         setBulkBusy(true);
         try {
-          const ids = selectedCombos.map((c) => c.id);
-          const names = selectedCombos.map((c) => c.name);
-          const results = await Promise.all(
-            ids.map((id) => fetch(`/api/combos/${id}`, { method: "DELETE" }))
+          // Settle every ID; retain only failed/uncertain targets in this retry closure.
+          const results = await Promise.allSettled(
+            remaining.map((combo) => fetch(`/api/combos/${combo.id}`, { method: "DELETE" }))
           );
-          const failed = results.filter((r) => !r.ok).length;
-          await persistComboStrategies(pruneStrategiesForNames(names));
-          setCombos((prev) => prev.filter((c) => !ids.includes(c.id)));
-          clearSelection();
-          setConfirmState(null);
-          if (failed > 0) alert(`Deleted with ${failed} failure${failed === 1 ? "" : "s"}.`);
+          const succeeded = remaining.filter((_, index) => (
+            results[index].status === "fulfilled" && results[index].value.ok
+          ));
+          const ids = succeeded.map((combo) => combo.id);
+          remaining = remaining.filter((combo) => !ids.includes(combo.id));
+          strategies = pruneStrategiesForNames(succeeded.map((combo) => combo.name), strategies);
+          setCombos((prev) => prev.filter((combo) => !ids.includes(combo.id)));
+          setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
+          if (ids.length > 0 || remaining.length === 0) {
+            // Keep cleanup retryable until the settings boundary accepts it.
+            const response = await fetch("/api/settings", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ comboStrategies: strategies }),
+            });
+            if (!response.ok) throw new Error("Failed to update combo strategies");
+            setComboStrategies(strategies);
+          }
+          if (remaining.length > 0) {
+            const failed = remaining.length;
+            setConfirmState((prev) => prev ? {
+              ...prev,
+              pending: false,
+              error: `${failed} combo${failed === 1 ? "" : "s"} could not be deleted. Please try again.`,
+            } : null);
+          } else {
+            setConfirmState(null);
+          }
         } catch (error) {
           console.log("Error bulk deleting combos:", error);
-          alert("Failed to delete selected combos");
-          setConfirmState((prev) => prev ? { ...prev, pending: false } : null);
+          setConfirmState((prev) => prev ? {
+            ...prev, pending: false, error: "Failed to update combo strategies. Please try again.",
+          } : null);
         } finally {
+          pending = false;
           setBulkBusy(false);
         }
       },
@@ -539,23 +571,23 @@ export default function CombosPage() {
       </section>
 
       {/* Create Modal - Use key to force remount and reset state */}
-      <ComboFormModal
+      {showCreateModal && <ComboFormModal
         key="create"
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSave={handleCreate}
         activeProviders={activeProviders}
-      />
+      />}
 
       {/* Edit Modal - Use key to force remount and reset state */}
-      <ComboFormModal
-        key={editingCombo?.id || "new"}
+      {editingCombo && <ComboFormModal
+        key={editingCombo.id}
         isOpen={!!editingCombo}
         combo={editingCombo}
         onClose={() => setEditingCombo(null)}
         onSave={(data) => handleUpdate(editingCombo.id, data)}
         activeProviders={activeProviders}
-      />
+      />}
       <ConfirmDialog
         open={!!confirmState}
         title={confirmState?.title || "Confirm"}
@@ -761,9 +793,10 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
   };
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(model);
-  useEffect(() => {
-    if (!editing) setDraft(model);
-  }, [model, editing]);
+  const startEditing = () => {
+    setDraft(model);
+    setEditing(true);
+  };
   const commit = () => {
     const trimmed = draft.trim();
     if (trimmed && trimmed !== model) onEdit(trimmed);
@@ -814,8 +847,8 @@ function ModelItem({ id, index, model, weight = 1, isFirst, isLast, onEdit, onWe
           role="button"
           tabIndex={0}
           className="flex min-h-11 min-w-0 flex-1 cursor-text items-center truncate rounded-dd px-1.5 py-0.5 font-mono text-xs text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
-          onClick={() => setEditing(true)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditing(true); } }}
+          onClick={startEditing}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); startEditing(); } }}
           title="Click to edit"
         >
           {model}
@@ -908,26 +941,22 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
     }
   };
 
-  const fetchModalData = async () => {
-    try {
-      const aliasesRes = await fetch("/api/models/alias");
-      if (!aliasesRes.ok) return;
-      const aliasesData = await aliasesRes.json();
-      setModelAliases(aliasesData.aliases || {});
-    } catch (error) {
-      console.error("Error fetching modal data:", error);
-    }
-  };
+  // Each mounted form is one open session; late metadata cannot update another session.
   useEffect(() => {
-    if (!isOpen) return;
-    setName(combo?.name || "");
-    setModels(combo?.models || []);
-    setCapabilities(combo?.capabilities || {});
-    setSortMethod("manual");
-    setNameError("");
-    setSaveError("");
+    let active = true;
+    const fetchModalData = async () => {
+      try {
+        const aliasesRes = await fetch("/api/models/alias");
+        if (!aliasesRes.ok) return;
+        const aliasesData = await aliasesRes.json();
+        if (active) setModelAliases(aliasesData.aliases || {});
+      } catch (error) {
+        console.error("Error fetching modal data:", error);
+      }
+    };
     fetchModalData();
-  }, [isOpen, combo]);
+    return () => { active = false; };
+  }, []);
 
   const validateName = (value) => {
     if (!value.trim()) {

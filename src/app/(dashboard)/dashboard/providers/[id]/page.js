@@ -19,7 +19,7 @@ import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels"
 import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
-import ModelRow from "./ModelRow";
+import ModelRow, { getDeclaredModelCapabilities } from "./ModelRow";
 import NativeProviderReadiness from "./NativeProviderReadiness.jsx";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -82,11 +82,16 @@ function sleep(ms) {
 }
 
 export default function ProviderDetailPage() {
-  const params = useParams();
+  const { id } = useParams();
+  // Provider-local state resets before commit, rather than flashing old rows
+  // and evidence until a passive effect clears them.
+  return <ProviderDetail key={id} providerId={id} />;
+}
+
+function ProviderDetail({ providerId }) {
   const router = useRouter();
   const notify = useNotificationStore();
-  const providerId = params.id;
-  const currentProviderIdRef = useRef(null);
+  const currentProviderIdRef = useRef(providerId);
   const providerGenerationRef = useRef(0);
   const fetchConnectionsGenerationRef = useRef(0);
   const { getCaps } = useModelCaps();
@@ -194,31 +199,10 @@ export default function ProviderDetailPage() {
   useEffect(() => {
     currentProviderIdRef.current = providerId;
     providerGenerationRef.current += 1;
-    // Clear the previous provider's rows immediately on switch. Without this the
-    // old connections and plan badges stay rendered under the new provider's
-    // header until its fetch resolves — and a stale in-flight response is
-    // discarded rather than clearing them, so they can persist indefinitely.
-    setConnections([]);
-    setSelectedConnectionIds([]);
-    setConnectionFilter("");
-    setBulkFailures([]);
-    setBulkStatusAction(null);
-    setBulkUpdatingProxy(false);
-    setShowBulkProxyModal(false);
-    setOneByOneRunning(false);
-    setOneByOneStopping(false);
-    setOneByOneCurrentConnectionId(null);
-    setOneByOneResults({});
-    setOneByOneSummary(null);
-    stopOneByOneRef.current = false;
-    setCodexPlans({});
-    setProviderApiKeyConnectionNames([]);
-    // The visible-models modal saves under the provider it was opened for;
-    // close it and drop the old allowlist count so neither carries over.
-    setShowVisibleModels(false);
-    setEnabledModelIds([]);
-    setLoading(true);
     return () => {
+      currentProviderIdRef.current = null;
+      providerGenerationRef.current += 1;
+      fetchConnectionsGenerationRef.current += 1;
       oneByOneRunRef.current?.abort();
       oneByOneRunRef.current = null;
     };
@@ -343,29 +327,27 @@ export default function ProviderDetailPage() {
   providerNode?.prefix || providerId :
   providerAlias;
 
-  const fetchDisabledModels = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" });
+  const fetchDisabledModels = useCallback(() => {
+    return fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }).then(async (res) => {
       const data = await res.json();
       if (res.ok) setDisabledModelIds(data.ids || []);
-    } catch (error) {
+    }).catch((error) => {
       console.log("Error fetching disabled models:", error);
-    }
+    });
   }, [providerStorageAlias]);
 
   // Visible-model allowlist for this provider (empty = no restriction).
-  const fetchEnabledModels = useCallback(async () => {
+  const fetchEnabledModels = useCallback(() => {
     const requestProviderId = providerId;
-    try {
-      const res = await fetch(`/api/models/enabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" });
+    return fetch(`/api/models/enabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }).then(async (res) => {
       const data = await res.json();
       // A response for a provider the page has since switched away from must
       // not overwrite the current provider's banner.
       if (currentProviderIdRef.current !== requestProviderId) return;
       if (res.ok) setEnabledModelIds(data.ids || []);
-    } catch (error) {
+    }).catch((error) => {
       console.log("Error fetching enabled models:", error);
-    }
+    });
   }, [providerId, providerStorageAlias]);
 
   const handleDisableModel = async (modelId) => {
@@ -421,28 +403,26 @@ export default function ProviderDetailPage() {
   };
 
   // Define callbacks BEFORE the useEffect that uses them
-  const fetchAliases = useCallback(async () => {
-    try {
-      const res = await fetch("/api/models/alias");
+  const fetchAliases = useCallback(() => {
+    return fetch("/api/models/alias").then(async (res) => {
       const data = await res.json();
       if (res.ok) {
         setModelAliases(data.aliases || {});
       }
-    } catch (error) {
+    }).catch((error) => {
       console.log("Error fetching aliases:", error);
-    }
+    });
   }, []);
 
-  const fetchCustomModels = useCallback(async () => {
-    try {
-      const res = await fetch("/api/models/custom", { cache: "no-store" });
+  const fetchCustomModels = useCallback(() => {
+    return fetch("/api/models/custom", { cache: "no-store" }).then(async (res) => {
       const data = await res.json();
       if (res.ok) {
         setCustomModels(data.models || []);
       }
-    } catch (error) {
+    }).catch((error) => {
       console.log("Error fetching custom models:", error);
-    }
+    });
   }, []);
 
   // Fetch free models from Kilo API for kilocode provider
@@ -454,19 +434,18 @@ export default function ProviderDetailPage() {
     catch(() => {});
   }, [providerId]);
 
-  const fetchConnections = useCallback(async () => {
+  const fetchConnections = useCallback(() => {
     const requestProviderId = providerId;
     const requestGeneration = ++fetchConnectionsGenerationRef.current;
     const isCurrentRequest = () =>
     fetchConnectionsGenerationRef.current === requestGeneration &&
     currentProviderIdRef.current === requestProviderId;
-    try {
-      const [connectionsRes, nodesRes, proxyPoolsRes, settingsRes] = await Promise.all([
+    return Promise.all([
       fetch("/api/providers", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
       fetch("/api/provider-nodes", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
       fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
       fetch("/api/settings", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) })]
-      );
+      ).then(async ([connectionsRes, nodesRes, proxyPoolsRes, settingsRes]) => {
       const connectionsData = await connectionsRes.json();
       const nodesData = await nodesRes.json();
       const proxyPoolsData = await proxyPoolsRes.json();
@@ -506,6 +485,8 @@ export default function ProviderDetailPage() {
 
         if (!isCurrentRequest()) return;
         setConnections(filtered);
+        // Prune selection with the authoritative response, in the same batch.
+        setSelectedConnectionIds((prev) => prev.filter((id) => filtered.some((conn) => conn.id === id)));
         setCodexPlans(plans);
         // #6499 — the name-based collision scope in createProviderConnection is
         // (provider, authType=apikey, name): provider-local. Derive default-name
@@ -562,16 +543,16 @@ export default function ProviderDetailPage() {
 
         if (isCurrentRequest()) setProviderNode(node);
       }
-    } catch (error) {
+    }).catch((error) => {
       if (isCurrentRequest()) console.log("Error fetching connections:", error);
-    } finally {
+    }).finally(() => {
       // OAuth defaults to an explicit direct route, but must not start before
       // the selectable strict pools have either loaded or definitively failed.
       if (isCurrentRequest()) {
         setProxyPoolsReadyForProvider(requestProviderId);
         setLoading(false);
       }
-    }
+    });
   }, [providerId, isCompatible, autoPingQueue]);
 
   const handleUpdateNode = async (formData) => {
@@ -798,17 +779,6 @@ export default function ProviderDetailPage() {
     fetchDisabledModels();
     fetchEnabledModels();
   }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels, fetchEnabledModels]);
-
-  useEffect(() => {
-    setSuggestedModels([]);
-    setCatalogEvidence(null);
-    setModelTestResults({});
-    setTestingModelIds(new Set());
-    setModelsTestError("");
-    setSyncingModels(false);
-    setModelsFetchedAt(null);
-    setSyncedModels(null);
-  }, [providerId]);
 
   const handleSyncModels = async () => {
     const requestGeneration = providerGenerationRef.current;
@@ -1092,8 +1062,10 @@ export default function ProviderDetailPage() {
       onConfirm: async () => {
         setConfirmState(null);
         const result = await deleteConnection(id);
-        if (result.ok) setConnections((prev) => prev.filter((c) => c.id !== id));
-        else notify.error(result.error, "Connection not deleted");
+        if (result.ok) {
+          setConnections((prev) => prev.filter((c) => c.id !== id));
+          setSelectedConnectionIds((prev) => prev.filter((selectedId) => selectedId !== id));
+        } else notify.error(result.error, "Connection not deleted");
       }
     });
   };
@@ -1357,10 +1329,6 @@ export default function ProviderDetailPage() {
     setSelectedConnectionIds([]);
     setBulkProxyPoolId("__none__");
   };
-
-  useEffect(() => {
-    setSelectedConnectionIds((prev) => prev.filter((id) => connections.some((conn) => conn.id === id)));
-  }, [connections]);
 
   const selectedProxySummary = (() => {
     if (selectedConnections.length === 0) return "";
@@ -1655,6 +1623,7 @@ export default function ProviderDetailPage() {
           isTesting={testingModelIds.has(model.id)}
           isCustom
           isFree={false}
+          declaredCaps={getDeclaredModelCapabilities(model)}
           caps={getCustomModelCapabilities({ providerId, modelId: model.id, capabilities: model.capabilities })}
           thinkingSuffix={resolveThinkingSuffix(model.id, model.capabilities)}
           onEdit={model.source === "custom" ? () => setEditingCustomModel(model) : undefined} />
@@ -1690,6 +1659,7 @@ export default function ProviderDetailPage() {
               isTesting={testingModelIds.has(model.id)}
               isFree={model.isFree}
               onDisable={() => handleDisableModel(model.id)}
+              declaredCaps={getDeclaredModelCapabilities(model, customOverride)}
               caps={customOverride ? { ...baseCaps, ...customOverride.capabilities } : baseCaps}
               thinkingSuffix={resolveThinkingSuffix(model.id, { ...baseCaps, ...customOverride?.capabilities })}
               onEdit={() => setEditingCustomModel({ id: model.id, name: model.name, capabilities: customOverride?.capabilities || {} })} />);

@@ -20,11 +20,18 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
-let host, root, pending;
+let host, root, pending, commits;
 const flush = async () => { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); }); };
 const render = async (id) => {
   route.id = id;
-  await act(async () => { root.render(React.createElement(ProviderDetailPage)); });
+  await act(async () => { root.render(React.createElement(React.Profiler, {
+    id: "provider", onRender: () => commits.push({
+      text: host.textContent,
+      proPlans: [...host.querySelectorAll("span")].filter((node) => node.textContent === "Pro").length,
+      filter: host.querySelector('[aria-label="Filter connections"]')?.value,
+      rows: [...host.querySelectorAll('[aria-label^="Select "]')].map((node) => node.getAttribute("aria-label")),
+    }),
+  }, React.createElement(ProviderDetailPage))); });
   await flush();
 };
 const click = async (button) => {
@@ -38,6 +45,7 @@ beforeEach(() => {
   document.body.appendChild(host);
   root = createRoot(host);
   pending = deferred();
+  commits = [];
   vi.stubGlobal("fetch", vi.fn((url, options) => {
     const path = String(url);
     if (path.includes("/models?refresh=1") || (path === "/api/models/test" && options?.method === "POST")) return pending.promise;
@@ -151,4 +159,180 @@ describe("provider switch while evidence is pending", () => {
     expect(host.textContent).not.toContain("Inference passed in this session");
     expect(host.textContent).toContain("Inference not tested");
   });
+});
+
+
+describe("provider identity at commit", () => {
+  it("drops old rows, selection and filter before the first switched commit", async () => {
+    await render("openrouter");
+    await click(host.querySelector('[aria-label="Select openrouter"]'));
+    const filter = host.querySelector('[aria-label="Filter connections"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(filter, "openrouter");
+      filter.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(host.textContent).toContain("1 selected");
+    commits.length = 0;
+    await render("siliconflow");
+    expect(commits[0].rows).not.toContain("Select openrouter");
+    expect(commits[0].filter || "").toBe("");
+    expect(commits[0].text).not.toContain("1 selected");
+    expect(host.querySelector('[aria-label="Select siliconflow"]')).toBeTruthy();
+  });
+
+  it("drops completed catalog and inference evidence before the first switched commit", async () => {
+    await render("openrouter");
+    await click([...host.querySelectorAll("button")].find((button) => button.textContent.includes("Sync models")));
+    await act(async () => { pending.resolve(response({ models: [], source: "old-catalog" })); await pending.promise; });
+    pending = deferred();
+    await click(host.querySelector('button[aria-label="Test model"]'));
+    await act(async () => { pending.resolve(response({ ok: true })); await pending.promise; });
+    expect(host.textContent).toContain("old-catalog");
+    expect(host.textContent).toContain("Inference passed in this session");
+    commits.length = 0;
+    await render("siliconflow");
+    expect(commits[0].text).not.toContain("old-catalog");
+    expect(commits[0].text).not.toContain("Inference passed in this session");
+    expect(host.textContent).toContain("Inference not tested");
+  });
+});
+
+it("ignores a pending initial connection response after switching providers", async () => {
+  const old = deferred();
+  const previous = fetch.getMockImplementation();
+  let first = true;
+  fetch.mockImplementation((url, options) => {
+    if (url === "/api/providers" && first) { first = false; return old.promise; }
+    return previous(url, options);
+  });
+  await render("openrouter");
+  await render("siliconflow");
+  await act(async () => {
+    old.resolve(response({ connections: [{ id: "old-account", provider: "openrouter", name: "Old account" }] }));
+    await old.promise;
+  });
+  expect(host.querySelector('[aria-label="Select siliconflow"]')).toBeTruthy();
+  expect(host.textContent).not.toContain("Old account");
+});
+
+it("finishes initial loading when the connection read fails", async () => {
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => url === "/api/providers"
+    ? Promise.reject(new Error("offline connection read")) : previous(url, options));
+  await render("openrouter");
+  expect(host.querySelector('a[href="/dashboard/providers"]')).toBeTruthy();
+  expect(host.querySelector('[aria-label="Select openrouter"]')).toBeNull();
+});
+
+
+it("drops Codex rows and live plan badges before committing a different provider", async () => {
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => {
+    if (url === "/api/providers") return Promise.resolve(response({ connections: [
+      { id: "codex-account", provider: "codex", name: "Codex account", authType: "oauth", isActive: true },
+      { id: "siliconflow", provider: "siliconflow", name: "siliconflow", authType: "apikey", isActive: true },
+    ] }));
+    if (url === "/api/usage/codex-account") return Promise.resolve(response({ plan: "Pro" }));
+    return previous(url, options);
+  });
+  await render("codex");
+  expect(host.querySelector('[aria-label="Select Codex account"]')).toBeTruthy();
+  expect(commits.at(-1).proPlans).toBeGreaterThan(0);
+  commits.length = 0;
+  await render("siliconflow");
+  expect(commits[0].rows).not.toContain("Select Codex account");
+  expect(commits[0].proPlans).toBe(0);
+});
+
+it("closes the visible-models modal and drops the old allowlist on provider switch", async () => {
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => {
+    if (String(url).startsWith("/api/models/enabled?providerAlias=openrouter")) return Promise.resolve(response({ ids: ["shared-model"] }));
+    return previous(url, options);
+  });
+  await render("openrouter");
+  expect(host.textContent).toContain("Only these 1 models");
+  await click([...host.querySelectorAll("button")].find((node) => node.textContent.includes("Visible models")));
+  expect(document.querySelector('[aria-label="Search visible models"]')).toBeTruthy();
+  await render("siliconflow");
+  expect(document.querySelector('[aria-label="Search visible models"]')).toBeNull();
+  expect(host.textContent).not.toContain("Only these 1 models");
+});
+
+it("composes eligible catalog freshness with provider identity and timer cleanup", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  const now = Date.parse("2026-11-08T00:00:00Z");
+  vi.setSystemTime(now);
+  const statuses = {
+    openrouter: { syncedAt: "2026-11-07T23:00:00Z", name: "Openrouter catalog" },
+    siliconflow: { syncedAt: "2026-11-08T01:00:00Z", name: "Siliconflow catalog" },
+  };
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => {
+    if (String(url).startsWith("/api/models/auto-sync?provider=")) {
+      const id = new URL(String(url), "http://localhost").searchParams.get("provider");
+      const entry = statuses[id];
+      return Promise.resolve(response({ intervalHours: 2, providers: { [id]: {
+        eligible: true, enabled: true, syncedAt: entry.syncedAt,
+        models: [{ id: "shared-model", name: entry.name }], newModelIds: [], removedModelIds: [],
+      } } }));
+    }
+    return previous(url, options);
+  });
+  const mount = async (id) => {
+    route.id = id;
+    await act(async () => { root.render(React.createElement(ProviderDetailPage)); });
+    // Settle the real page's initial tooltip hide callback before counting
+    // the longer-lived freshness timer. No component is mocked.
+    await act(async () => { await vi.advanceTimersToNextTimerAsync(); });
+  };
+  const freshness = () => {
+    const provenance = host.querySelector('dl[aria-label="Model list provenance"]');
+    expect(provenance).toBeTruthy();
+    return [...provenance.querySelectorAll("dt")].find((node) => node.textContent === "Discovery freshness: ").nextElementSibling.textContent;
+  };
+  const fresh = "Within the configured sync interval. Availability is not verified.";
+  const stale = "STALE. The stored snapshot is older than the configured sync interval.";
+  try {
+    await mount("openrouter");
+    expect(host.textContent).toContain("Openrouter catalog");
+    expect(freshness()).toBe(fresh);
+    expect(vi.getTimerCount()).toBe(1);
+    const callsBeforeBoundary = fetch.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(now + 3600000 - Date.now()); });
+    expect(freshness()).toBe(stale);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(callsBeforeBoundary);
+
+    await mount("siliconflow");
+    expect(host.textContent).toContain("Siliconflow catalog");
+    expect(host.textContent).not.toContain("Openrouter catalog");
+    expect(freshness()).toBe(fresh);
+    expect(vi.getTimerCount()).toBe(1);
+    statuses.openrouter.syncedAt = null;
+    await mount("openrouter");
+    expect(freshness()).toBe("UNKNOWN");
+    expect(vi.getTimerCount()).toBe(0);
+    const callsAfterSwitch = fetch.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(7200000); });
+    expect(freshness()).toBe("UNKNOWN");
+    expect(host.textContent).not.toContain("Siliconflow catalog");
+    expect(host.textContent).toContain("Inference not tested");
+    expect(fetch).toHaveBeenCalledTimes(callsAfterSwitch);
+    expect(fetch.mock.calls.some(([, options]) => options?.method && options.method !== "GET")).toBe(false);
+
+    statuses.siliconflow.syncedAt = new Date(Date.now()).toISOString();
+    await mount("siliconflow");
+    expect(freshness()).toBe(fresh);
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { root.unmount(); });
+    root = createRoot(host);
+    expect(vi.getTimerCount()).toBe(0);
+    const callsAtUnmount = fetch.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(7200000); });
+    expect(fetch).toHaveBeenCalledTimes(callsAtUnmount);
+    expect(host.textContent).toBe("");
+  } finally {
+    vi.useRealTimers();
+  }
 });

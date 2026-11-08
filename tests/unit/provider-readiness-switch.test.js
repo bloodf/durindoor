@@ -258,3 +258,81 @@ it("closes the visible-models modal and drops the old allowlist on provider swit
   expect(document.querySelector('[aria-label="Search visible models"]')).toBeNull();
   expect(host.textContent).not.toContain("Only these 1 models");
 });
+
+it("composes eligible catalog freshness with provider identity and timer cleanup", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  const now = Date.parse("2026-11-08T00:00:00Z");
+  vi.setSystemTime(now);
+  const statuses = {
+    openrouter: { syncedAt: "2026-11-07T23:00:00Z", name: "Openrouter catalog" },
+    siliconflow: { syncedAt: "2026-11-08T01:00:00Z", name: "Siliconflow catalog" },
+  };
+  const previous = fetch.getMockImplementation();
+  fetch.mockImplementation((url, options) => {
+    if (String(url).startsWith("/api/models/auto-sync?provider=")) {
+      const id = new URL(String(url), "http://localhost").searchParams.get("provider");
+      const entry = statuses[id];
+      return Promise.resolve(response({ intervalHours: 2, providers: { [id]: {
+        eligible: true, enabled: true, syncedAt: entry.syncedAt,
+        models: [{ id: "shared-model", name: entry.name }], newModelIds: [], removedModelIds: [],
+      } } }));
+    }
+    return previous(url, options);
+  });
+  const mount = async (id) => {
+    route.id = id;
+    await act(async () => { root.render(React.createElement(ProviderDetailPage)); });
+    // Settle the real page's initial tooltip hide callback before counting
+    // the longer-lived freshness timer. No component is mocked.
+    await act(async () => { await vi.advanceTimersToNextTimerAsync(); });
+  };
+  const freshness = () => {
+    const provenance = host.querySelector('dl[aria-label="Model list provenance"]');
+    expect(provenance).toBeTruthy();
+    return [...provenance.querySelectorAll("dt")].find((node) => node.textContent === "Discovery freshness: ").nextElementSibling.textContent;
+  };
+  const fresh = "Within the configured sync interval. Availability is not verified.";
+  const stale = "STALE. The stored snapshot is older than the configured sync interval.";
+  try {
+    await mount("openrouter");
+    expect(host.textContent).toContain("Openrouter catalog");
+    expect(freshness()).toBe(fresh);
+    expect(vi.getTimerCount()).toBe(1);
+    const callsBeforeBoundary = fetch.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(now + 3600000 - Date.now()); });
+    expect(freshness()).toBe(stale);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(callsBeforeBoundary);
+
+    await mount("siliconflow");
+    expect(host.textContent).toContain("Siliconflow catalog");
+    expect(host.textContent).not.toContain("Openrouter catalog");
+    expect(freshness()).toBe(fresh);
+    expect(vi.getTimerCount()).toBe(1);
+    statuses.openrouter.syncedAt = null;
+    await mount("openrouter");
+    expect(freshness()).toBe("UNKNOWN");
+    expect(vi.getTimerCount()).toBe(0);
+    const callsAfterSwitch = fetch.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(7200000); });
+    expect(freshness()).toBe("UNKNOWN");
+    expect(host.textContent).not.toContain("Siliconflow catalog");
+    expect(host.textContent).toContain("Inference not tested");
+    expect(fetch).toHaveBeenCalledTimes(callsAfterSwitch);
+    expect(fetch.mock.calls.some(([, options]) => options?.method && options.method !== "GET")).toBe(false);
+
+    statuses.siliconflow.syncedAt = new Date(Date.now()).toISOString();
+    await mount("siliconflow");
+    expect(freshness()).toBe(fresh);
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { root.unmount(); });
+    root = createRoot(host);
+    expect(vi.getTimerCount()).toBe(0);
+    const callsAtUnmount = fetch.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(7200000); });
+    expect(fetch).toHaveBeenCalledTimes(callsAtUnmount);
+    expect(host.textContent).toBe("");
+  } finally {
+    vi.useRealTimers();
+  }
+});

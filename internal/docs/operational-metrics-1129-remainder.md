@@ -519,7 +519,7 @@ void import("../open-sse/services/operationalMetrics.js")
   .catch(() => { console.warn("[metrics] Runtime recorder not started"); });
 ```
 
-This is a proposed later integration, not installed code. Keep the existing
+This integration now starts from the Node bootstrap. Keep the existing
 Edge-safe compile-time guard in `src/instrumentation.js`. Start no drift timer
 at top level, on scrape, or in a getter; add no signal handlers. Initiating the
 import early does not guarantee resolution before other asynchronous startup
@@ -531,9 +531,8 @@ publication, allowing retry after enable failure. The route still initializes
 that histogram when evaluated, as it did before this draft; not every import is
 inert and no build-time histogram absence is claimed.
 
-After #1652 merges, reconcile the current base normally and obtain an explicit
-one-writer handoff for the additive bootstrap block and dedicated integration
-fixture. Required later proof includes real Node register-to-start, Edge/module
+The bootstrap integration and its proposed test require independent review and
+execution on the updated head. Required proof includes real Node register-to-start, Edge/module
 evaluation without drift timer, real unref/process exit, no reset on reads,
 failure/retry, route-first/start-first/HMR reuse, existing Kimchi/Headroom
 lifecycle checks and independent updated-head app/website/CLI/standalone/packed

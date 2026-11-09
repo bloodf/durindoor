@@ -434,16 +434,16 @@ function comboMatchesKinds(combo, kindFilter) {
 }
 
 /**
- * Project a combo into the public OpenAI model shape. Web kind stays explicit
- * because search and fetch clients share the models endpoint.
+ * Project a combo into the public OpenAI model shape, preserving the resolved
+ * service kind for ordinary discovery projection.
  */
 function comboToEntry(combo) {
   const entry = {
     id: combo.name,
     object: "model",
-    owned_by: "combo"
+    owned_by: "combo",
+    kind: combo.kind ?? LLM_KIND,
   };
-  if (combo.kind === "webSearch" || combo.kind === "webFetch") entry.kind = combo.kind;
   return entry;
 }
 
@@ -505,7 +505,7 @@ async function buildComboOnlyModels(kindFilter, hidePaidModels) {
     const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
     if (hidePaidModels && visibleMembers.length === 0) continue;
     const entry = comboToEntry(combo);
-    if (!entry.kind) {
+    if (entry.kind !== "webSearch" && entry.kind !== "webFetch") {
       const derived = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
       const effective = overlayComboCapabilities(derived, isObject(combo.capabilities) ? combo.capabilities : null);
       if (effective) {
@@ -525,7 +525,9 @@ async function buildComboOnlyModels(kindFilter, hidePaidModels) {
 /**
  * Build OpenAI-format models filtered by service kind. Built-in catalogs are a
  * fallback only when the DB is unavailable; a healthy DB exposes configured
- * connections, persisted custom rows, aliases, and combos. Custom-compatible
+ * connections, persisted custom rows, aliases, and combos. Entries preserve the
+ * resolved kind used for admission so HTTP projection retains media identity.
+ * Custom-compatible
  * connections are allowlist-only here: dashboard import discovery remains in
  * `/api/providers/[id]/models` and does not contribute to public catalogs.
  */
@@ -752,6 +754,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         id: `${alias}/${model.id}`,
         object: "model",
         owned_by: alias,
+        kind: modelKind(model),
         capabilities: caps,
         ...projectModelPresentation({ model, modelId: model.id, providerId, outputAlias: alias }),
       };
@@ -812,6 +815,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           id: `${alias}/${modelId}`,
           object: "model",
           owned_by: alias,
+          kind,
           capabilities: caps,
           ...projectModelPresentation({ model: liveModel, modelId, providerId, outputAlias: alias }),
         });
@@ -851,7 +855,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     const visibleMembers = visibleComboMembers(combo, comboByName, hidePaidModels);
     if (hidePaidModels && visibleMembers.length === 0) continue;
     const entry = comboToEntry(combo);
-    if (!entry.kind) {
+    if (entry.kind !== "webSearch" && entry.kind !== "webFetch") {
       const comboCaps = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
       if (comboCaps) {
         const explicitCap = isObject(combo.capabilities) ? combo.capabilities : null;
@@ -1229,6 +1233,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             id: `${outputAlias}/${modelId}`,
             object: "model",
             owned_by: outputAlias,
+            kind,
             capabilities: caps,
             ...presentation,
           };

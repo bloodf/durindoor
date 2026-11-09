@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
@@ -40,14 +40,23 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
   const [assigningGroupId, setAssigningGroupId] = useState("");
   const [error, setError] = useState("");
 
+  const errorVersion = useRef(0);
+  const reportError = (message) => {
+    errorVersion.current += 1;
+    setError(message);
+  };
+
   const loadGroups = async () => {
+    const startedErrorVersion = errorVersion.current;
     try {
       const data = await requestJson("/api/connection-groups");
       const nextGroups = data.groups || [];
+      /** A refresh must not clear a mutation failure reported after it started. */
+      if (errorVersion.current === startedErrorVersion) setError("");
       setGroups(nextGroups);
       onGroupsChange?.(nextGroups);
     } catch (err) {
-      setError(err.message);
+      reportError(err.message);
     } finally {
       setLoading(false);
     }
@@ -72,7 +81,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
       });
       await loadGroups();
     } catch (err) {
-      setError(err.message);
+      reportError(err.message);
     }
   };
 
@@ -86,7 +95,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
       setCreatePromptOpen(false);
       await loadGroups();
     } catch (err) {
-      setError(err.message);
+      reportError(err.message);
     }
   };
 
@@ -96,7 +105,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
       setGroupPendingDelete(null);
       await loadGroups();
     } catch (err) {
-      setError(err.message);
+      reportError(err.message);
     }
   };
 

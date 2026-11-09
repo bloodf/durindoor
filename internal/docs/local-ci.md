@@ -45,7 +45,7 @@ Audited all ten workflows at main `05614249fae91cbb8c4022e91607857e3f942e25`.
 
 | Workflow and jobs | Local coverage | Hosted control retained |
 | --- | --- | --- |
-| `ci.yml`: lint-and-build, website-changes, website-build | Root lint, agent index, Postgres migration registry, app build; website build with exact base/head input selection; docs/catalog plus registry-index checks | Manual dispatch, website always built |
+| `ci.yml`: lint-and-build, website-build | Root lint, agent index, Postgres migration registry, app build; website build with exact base/head input selection; docs/catalog plus registry-index checks | Manual dispatch, website always built |
 | `test.yml`: vitest | Complete configured/tracked inventory, four supervised batches, empty baseline, fresh JSON/JUnit and hashes | Manual dispatch with explicit base SHA; uploaded reports |
 | `commitlint.yml`: commitlint | Exact base..head and supplied squash title, pinned commitlint | Manual dispatch with base SHA and title |
 | `artifact-smoke.yml`: smoke | Full mode builds standalone and CLI, packs, installs the exact tarball into an isolated prefix and smokes both artifacts; hashes the tarball | Existing manual smoke fallback |
@@ -154,6 +154,12 @@ run's exact head. Manual dispatch is an owner action; this change does not launc
 runs or cancel existing ones. Artifact Smoke remains independently dispatchable.
 A failing local gate blocks merges even when a hosted fallback passes until the
 owner explains and resolves the discrepancy.
+
+GitHub documents that `workflow_dispatch` job checks do not satisfy PR required
+status checks. Treat manual runs as evidence for the trusted owner publication
+procedure above, not as a replacement for required checks. The
+[deployment gate audit](./deploy-gates.md) records Vercel containment and the
+remaining live-setting checks before publication.
 
 Rollback through a reviewed PR restoring the previous CI/test/commitlint event
 triggers. Do not edit repository settings or disable release workflows. Read-only

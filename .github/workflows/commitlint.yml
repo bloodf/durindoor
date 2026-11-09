@@ -12,9 +12,13 @@ on:
         type: string
 permissions:
   contents: read
+concurrency:
+  group: commitlint-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   commitlint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:

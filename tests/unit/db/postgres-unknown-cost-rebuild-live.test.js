@@ -261,6 +261,20 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
     }
   });
 
+  it('keeps explicit null metadata in the worker fixture', async () => {
+    await reset();
+    const state = await worker('null-meta');
+    try {
+      await state.call('seedHistory', [{ timestamp, provider: 'openai', apiKey, cost: 0, status: 'ok', meta: null }]);
+      const result = await sql.query('SELECT meta FROM "usageHistory" WHERE "apiKey" = $1', [apiKey]);
+      expect(result.rows).toEqual([{ meta: null }]);
+      await state.call('repair');
+      expect(await totals(keyId)).toBeNull();
+    } finally {
+      await closeWorker(state);
+    }
+  });
+
   it('reconstructs the unknown-cost count when the durable totals row is missing', async () => {
     await reset();
     const state = await worker('reconstruct');

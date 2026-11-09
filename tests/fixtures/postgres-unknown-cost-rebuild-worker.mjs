@@ -54,7 +54,7 @@ process.on('message', async ({ id, action, args }) => {
             row.cost ?? null,
             row.status ?? null,
             row.tokens ?? '{}',
-            row.meta ?? '{}',
+            row.meta === undefined ? '{}' : row.meta,
           ],
         );
       }

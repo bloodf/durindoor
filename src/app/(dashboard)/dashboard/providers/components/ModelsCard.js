@@ -143,6 +143,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [connections, setConnections] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [deleteStatus, setDeleteStatus] = useState({});
   const abortControllerRef = useRef(null);
   const confirmFiredRef = useRef(false);
@@ -258,36 +259,53 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     myCustomModels.map(m => ({ ...m, _key: `${m.providerAlias}:${m.id}:${m.type}` })),
     [myCustomModels]
   );
-  const { selectedIds, selectedItems, allSelected, toggleItem, toggleAll, clearSelection } = useMultiSelect(keyedCustomModels, "_key");
+  const { selectedIds, selectedItems, allSelected, toggleItem, toggleAll, clearSelection, setSelectedIds } = useMultiSelect(keyedCustomModels, "_key");
 
   const selectedItemsRef = useRef(selectedItems);
   useEffect(() => { selectedItemsRef.current = selectedItems; }, [selectedItems]);
 
+  /** Keep failed custom-model deletions visible in the confirmation for retry. */
   const handleBulkDelete = () => {
     if (bulkDeleting || selectedItems.length === 0) return;
     if (testingBulk) return;
+    setDeleteError("");
     setConfirmState({
       title: "Delete Custom Models",
       message: `Delete ${selectedItems.length} custom model(s)?`,
       onConfirm: async () => {
         if (confirmFiredRef.current) return; confirmFiredRef.current = true;
-        setConfirmState(null);
+        setDeleteError("");
         setBulkDeleting(true);
         const currentSelected = selectedItemsRef.current;
         setDeleteStatus(Object.fromEntries(currentSelected.map(m => [m.id, "deleting"])));
         try {
           let ok = 0; let failed = 0;
+          const deletedKeys = new Set();
           for (const model of currentSelected) {
             try {
               const params = new URLSearchParams({ providerAlias: model.providerAlias, id: model.id, type: model.type });
               const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
-              if (res.ok) ok++; else failed++;
+              if (res.ok) {
+                ok++;
+                deletedKeys.add(model._key);
+              } else failed++;
             } catch (err) { console.error("Delete failed:", model.id, err); failed++; }
           }
-          if (ok > 0) window.dispatchEvent(new CustomEvent("customModelChanged"));
+          // Acknowledged deletions stay removed even when the following refresh fails.
+          if (ok > 0) {
+            selectedItemsRef.current = currentSelected.filter((model) => !deletedKeys.has(model._key));
+            setSelectedIds((previous) => previous.filter((id) => !deletedKeys.has(id)));
+            setCustomModels((previous) => previous.filter((model) => !deletedKeys.has(`${model.providerAlias}:${model.id}:${model.type}`)));
+            window.dispatchEvent(new CustomEvent("customModelChanged"));
+          }
           await fetchData();
+          if (failed > 0) {
+            setDeleteError("Could not delete custom models. Try again.");
+          } else {
+            clearSelection();
+            setConfirmState(null);
+          }
         } finally {
-          clearSelection();
           setDeleteStatus({});
           setBulkDeleting(false);
           confirmFiredRef.current = false;
@@ -533,10 +551,11 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
 
       <ConfirmModal
         isOpen={!!confirmState}
-        onClose={() => setConfirmState(null)}
+        onClose={() => { if (!bulkDeleting) setConfirmState(null); }}
         onConfirm={confirmState?.onConfirm}
         title={confirmState?.title || "Confirm"}
-        message={confirmState?.message}
+        message={<>{confirmState?.message}{deleteError && <span role="alert" className="block text-dd-danger mt-2">{deleteError}</span>}</>}
+        loading={bulkDeleting}
         variant="danger"
       />
     </>

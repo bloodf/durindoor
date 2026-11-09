@@ -34,6 +34,22 @@ describe("actual OmniRoute executor precedence", () => {
     });
   });
 
+  it.each(["61e07fb7", "191dce8d"])("rejects byte drift in every contract file at %s", (revision) => {
+    for (const file of ["index.ts", "registry.ts", "defaultResolver.ts"]) {
+      fixture(revision, (audit, root) => {
+        const path = join(root, "open-sse/executors", file);
+        writeFileSync(path, `${readFileSync(path, "utf8")}\n// contract drift\n`);
+        const result = audit();
+        expect(result.rows.map((row) => [row.id, row.class])).toEqual([
+          ["agentrouter", "unknown"], ["nlpcloud", "unknown"], ["oneminai", "unknown"],
+        ]);
+        expect(result.evidence.unresolved).toContainEqual(expect.objectContaining({
+          side: "omniroute", reason: expect.stringContaining("executor resolution contract unrecognized"),
+        }));
+      });
+    }
+  });
+
   it.each(["missing", "syntax", "registration", "fallback"])("fails closed for unknown %s contract", (kind) => {
     fixture("191dce8d", (audit, root) => {
       const path = join(root, "open-sse/executors", kind === "fallback" ? "defaultResolver.ts" : "index.ts");

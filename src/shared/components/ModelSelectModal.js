@@ -50,6 +50,7 @@ const KIND_TO_SLUG = {
 // `<alias>/search` and `<alias>/fetch`; map the UI kind to its catalog suffix.
 const WEB_KIND_SUFFIX = { webSearch: "search", webFetch: "fetch" };
 
+/** Announces an empty search in a persistent polite status without moving keyboard focus. */
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -105,6 +106,7 @@ export default function ModelSelectModal({
   // server returns the full catalog and the intersection is a no-op for known
   // models while still keeping custom/unknown entries visible.
   const [visibleModelIds, setVisibleModelIds] = useState(null);
+  const [visibleCatalogReady, setVisibleCatalogReady] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -113,6 +115,7 @@ export default function ModelSelectModal({
     // flight; an ignore flag drops a slow prior response from overwriting a
     // newer one.
     let ignore = false;
+    setVisibleCatalogReady(false);
     setVisibleModelIds(null);
     const controller = new AbortController();
     (async () => {
@@ -120,7 +123,11 @@ export default function ModelSelectModal({
         const settingsRes = await fetch("/api/settings", { signal: controller.signal });
         if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
         const settingsData = await settingsRes.json();
-        if (settingsData?.hidePaidModels !== true || ignore) return;
+        if (ignore) return;
+        if (settingsData?.hidePaidModels !== true) {
+          setVisibleCatalogReady(true);
+          return;
+        }
         // Fail-closed: from this point the toggle is confirmed ON. Hide
         // everything until a VALID catalog response replaces this set — non-OK
         // status, thrown fetch, or a malformed `data` payload must NOT fall
@@ -136,6 +143,7 @@ export default function ModelSelectModal({
         map((m) => m.id).
         filter((id) => isString(id));
         setVisibleModelIds(new Set(ids));
+        setVisibleCatalogReady(true);
       } catch (error) {
         if (error?.name === "AbortError") return;
         console.error("Error fetching visible model ids:", error);
@@ -721,7 +729,9 @@ export default function ModelSelectModal({
             const caps = { ...getCaps(model.value), ...liveCaps, ...customOverride?.capabilities };
             return <Chip key={model.value} size="sm" icon={isAdded && !isPlaceholder ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect(model)} title={isPlaceholder ? "Select to pre-fill, then edit model ID in the input" : undefined} label={isPlaceholder ? <span className="inline-flex items-center gap-1 italic text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[12px]">edit</span>{model.name}</span> : <span className="inline-flex items-center gap-1">{model.name}{model.isCustom ? <span className="text-xs font-normal text-dd-muted">custom</span> : null}{model.isFetched ? <span className="text-xs font-normal text-dd-muted">auto</span> : null}<CapacityBadges caps={caps} colorOverride="text-dd-muted" size={12} /></span>} />;
           })}</div></section>)}
-          {Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
+          <div role="status" aria-atomic="true">
+            {visibleCatalogReady && Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
+          </div>
         </div>
       </div>
     </Modal>);

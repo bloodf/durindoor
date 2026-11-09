@@ -1,0 +1,74 @@
+{
+  "schema": "durindoor-nix-package-contract/v1",
+  "issue": 1147,
+  "title": "reproducible Nix packaging evaluation",
+  "package": {
+    "name": "durindoor",
+    "version": "4.11.0",
+    "node": "26.13.0",
+    "npm": "11.20.0",
+    "enginesSource": ["package.json", ".nvmrc", "Dockerfile"]
+  },
+  "source": {
+    "owner": "bloodf",
+    "repo": "durindoor",
+    "rev": "044632eb8bc4cd51a65340fb6c87100879969e70",
+    "sha256": "UNRESOLVED",
+    "sha256Note": "compute with nix-prefetch-url --unpack after rev approval"
+  },
+  "build": {
+    "derivation": "pkgs.stdenv.mkDerivation",
+    "doCheck": false,
+    "doCheckNote": "planning ticket, no runtime test asserted",
+    "installScriptSkipped": "cli/hooks/postinstall.js (sqlite/tray into ~/.durindoor/runtime; non-fatal; --ignore-scripts)",
+    "npmArgs": ["ci", "--ignore-scripts"],
+    "buildArgs": ["run", "build"],
+    "buildTool": "scripts/build-app.mjs",
+    "nativeBuildInputs": ["nodejs 26.x", "python3", "make", "gcc", "linux-headers", "cmake"],
+    "nodePinNote": "pkgs.nodejs_26 tracks nixpkgs 26.x; exact 26.13.0 pin UNRESOLVED. Node 24 not used (migration #1663 pending).",
+    "networkSandbox": "UNRESOLVED: npm ci network source or npmDepsHash-vendored nodeModules",
+    "npmDepsHash": "UNRESOLVED"
+  },
+  "outputs": {
+    "bin": ["bin/durindoor"],
+    "lib": ["lib/durindoor/server", "lib/durindoor/cli"]
+  },
+  "runtimeFiles": {
+    "server": [
+      "package.json",
+      "custom-server.js",
+      "head-response-guard.cjs",
+      "web-login-host-boundary.cjs",
+      "public",
+      ".next/static",
+      ".next/standalone",
+      "src/shared/utils/normalizeEnv.js",
+      "src/shared/utils/typeChecks.js",
+      "src/shared/utils/typeChecks.cjs",
+      "src/shared/utils/wsHandshake.js",
+      "src/shared/utils/realtimeConfig.js",
+      "src/shared/constants/processExitCodes.js",
+      "open-sse",
+      "src/mitm",
+      "node_modules/node-forge",
+      "node_modules/next",
+      "node_modules/sql.js",
+      "node_modules/sql.js/dist/sql-wasm.js",
+      "node_modules/sql.js/dist/sql-wasm.wasm",
+      "node_modules/playwright",
+      "node_modules/playwright-core",
+      "node_modules/tls-client-node",
+      "node_modules/wreq-js",
+      "node_modules/@wreq-js"
+    ],
+    "cli": ["cli.js", "src", "hooks", "app"],
+    "wrapper": "bin/durindoor -> ../lib/durindoor/cli/cli.js"
+  },
+  "validation": [
+    "nix-instantiate --parse nix/package.nix",
+    "nix eval -f nix/package.nix package --json"
+  ],
+  "validationNote": "state-only commands; Nix not installed in this environment — syntax/AST check only",
+  "notTouched": ["package-lock.json", "root package.json scripts", "tests/fixtures/* (pre-existing)"],
+  "evidence": "/Users/heitor/.config/ai-tooling/evidence/durindoor-Nix1147-free-source-20261107/"
+}

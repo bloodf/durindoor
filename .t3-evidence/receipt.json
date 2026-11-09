@@ -1,0 +1,40 @@
+{
+  "status": "terminal: independent source review complete; runtime unverified",
+  "verdict": "APPROVE_SOURCE_EXACT_HEAD",
+  "head": "0af88151bc16ae71b2df868db07064c9e555cc5b",
+  "base": "4db8e536dd67d9d58683a2d973294d8d7d007b6b",
+  "tree": "06588cb5dc9e91de0d130fdd849764187fe77fe0",
+  "lease": "2f245bbc-d681-41fb-a02f-d517c4dc49e2",
+  "thread_link": "<t3-thread://v2/8d75066b-9e79-4593-baff-2e2fdce77ca8/mcp:launch:6a160761bc63c92d8cd64baea38fad82c8a4ddcb0cbf8564de277e3e447a5242>",
+  "run": "run:thread:mcp%3Alaunch%3A6a160761bc63c92d8cd64baea38fad82c8a4ddcb0cbf8564de277e3e447a5242:ordinal:1",
+  "patch_sha256": "4ed9ffd4e89ac711ecd0ae44afe26f6bf17bae91d2db936c70f8b069ecf2c648",
+  "files": {
+    "REPORT.md": {
+      "path": "/Users/heitor/.t3/worktrees/durindoor/t3-6122dfa1/.t3-evidence/REPORT.md",
+      "sha256": "d9bd8977e5801c4be25517564350f8fab00192e06e8dc573fff4c739024240eb"
+    },
+    "manifest.json": {
+      "path": "/Users/heitor/.t3/worktrees/durindoor/t3-6122dfa1/.t3-evidence/manifest.json",
+      "sha256": "cc4ce974e305365c47bdc9690333bb56b3bbfd93f2c592b8040c052a75e0cba0"
+    }
+  },
+  "checks": {
+    "node_check": "passed",
+    "diff_check": "passed",
+    "exact_bytes_verified": "passed",
+    "caller_integration": "verified",
+    "tests_run": "not run: heavy slots full, mac not admitted"
+  },
+  "blockers": [
+    "runtime verification requires heavy slot",
+    "full gate and owner admission pending"
+  ],
+  "github_state": {
+    "pr": "https://github.com/bloodf/durindoor/pull/1646",
+    "title": "fix(routing): apply fusion media admission to panels and judges",
+    "state": "OPEN",
+    "base": "main (044632eb8bc4cd51a65340fb6c87100879969e70)",
+    "head": "0a6df7899d9fe337ec06eb37a4c1c82d13aab1e4",
+    "reviewed_commit": "0af88151bc16ae71b2df868db07064c9e555cc5b"
+  }
+}

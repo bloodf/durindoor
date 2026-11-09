@@ -1,0 +1,29 @@
+{
+  "verdict": "APPROVE_SOURCE_EXACT_HEAD",
+  "base": "4db8e536dd67d9d58683a2d973294d8d7d007b6b",
+  "head": "0af88151bc16ae71b2df868db07064c9e555cc5b",
+  "tree": "06588cb5dc9e91de0d130fdd849764187fe77fe0",
+  "patch_sha256": "4ed9ffd4e89ac711ecd0ae44afe26f6bf17bae91d2db936c70f8b069ecf2c648",
+  "files": {
+    "tests/unit/combo-fusion-media-boundary.test.js": {
+      "git_blob": "39fa998a056800cbf78a079faedd641b4d60495a",
+      "sha256": "0e24faf543fa62dd4906c8aa4d541200371e79c090abec50d79ec0af695ec127",
+      "status": "added",
+      "mode": "100644"
+    }
+  },
+  "evidence_package": {
+    "path": "/Users/heitor/.config/ai-tooling/evidence/durindoor-approved-patch-transfer-20261107/1646",
+    "receipt_sha256": "6829331ef395c1171c5d60beed365c6d8bdb62401b333229b1e3989c1689c12e",
+    "independent_receipt_sha256": "81cbe08b210c6afd30706a967f4bae4564ead828136b8e584e60602041b2bbb3",
+    "publication_receipt_sha256": "973cf51f33c2df723058aa8d22f2af2b34d147686aa404e109d099b729f4d129",
+    "changes_patch_sha256": "4ed9ffd4e89ac711ecd0ae44afe26f6bf17bae91d2db936c70f8b069ecf2c648",
+    "report_md_sha256": "1d0ba37118a09fdf04d7d0c716e56c50181fd5de0d2e318738ccb1ae2a73cfdd"
+  },
+  "remote_state": {
+    "pr": "https://github.com/bloodf/durindoor/pull/1646",
+    "pr_number": 1646,
+    "current_pr_head": "0a6df7899d9fe337ec06eb37a4c1c82d13aab1e4",
+    "reviewed_commit_position": "0af88151bc16ae71b2df868db07064c9e555cc5b (parent 1 of 0a6df7899)"
+  }
+}

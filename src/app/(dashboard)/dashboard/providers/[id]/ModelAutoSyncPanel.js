@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import ModelCatalogProvenance from "./ModelCatalogProvenance";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
@@ -12,50 +12,70 @@ import Toggle from "@/shared/ui/components/Toggle.jsx";
  * Reports the provider's effective synced model list through
  * `onModelsChange` (null = use the registry defaults) so the page lists the
  * same models /v1/models does. Renders nothing for providers without a
- * list-models API.
+ * list-models API. Failed manual refreshes retain the displayed catalog and
+ * release the pending controls so discovery can be retried; they do not test inference.
  */
 export default function ModelAutoSyncPanel({ providerId, hasConnection, onModelsChange }) {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  const load = useCallback(async () => {
+  const operation = useRef(0);
+
+  const load = useCallback(async (generation = operation.current) => {
     try {
       const res = await fetch(`/api/models/auto-sync?provider=${encodeURIComponent(providerId)}`, { cache: "no-store" });
-      const data = res.ok ? await res.json() : null;
+      if (!res.ok) throw new Error("Catalog refresh failed");
+      const data = await res.json();
+      if (generation !== operation.current) return;
       const next = data?.providers?.[providerId] || null;
       setStatus(next ? { ...next, intervalHours: data.intervalHours } : null);
       onModelsChange(next?.eligible && Array.isArray(next.models) ? next.models : null);
     } catch {
-      setStatus(null);
-      onModelsChange(null);
+      if (generation !== operation.current) return;
+      setMessage("Could not refresh the model list. The displayed list is unchanged. Try Sync now again.");
     }
   }, [providerId, onModelsChange]);
 
   useEffect(() => {
-    load();
+    const generation = ++operation.current;
+    load(generation);
+    return () => { operation.current += 1; };
   }, [load]);
 
   if (!status?.eligible) return null;
 
   const setEnabled = async (value) => {
+    const generation = operation.current;
     setBusy(true);
     setMessage("");
     try {
-      const current = await fetch("/api/settings", { cache: "no-store" }).then((r) => r.ok ? r.json() : {});
+      const settingsResponse = await fetch("/api/settings", { cache: "no-store" });
+      if (!settingsResponse.ok) throw new Error("Could not read auto-update settings");
+      const current = await settingsResponse.json();
+      if (generation !== operation.current) return;
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelAutoSyncProviders: { ...(current.modelAutoSyncProviders || {}), [providerId]: value === true } })
       });
-      if (!res.ok) setMessage("Could not save the auto-update setting.");
-      await load();
+      if (generation !== operation.current) return;
+      if (!res.ok) {
+        setMessage("Could not save the auto-update setting.");
+        return;
+      }
+      // The accepted setting is authoritative even if refreshing its catalog fails.
+      setStatus((previous) => previous ? { ...previous, enabled: value === true } : previous);
+      await load(generation);
+    } catch {
+      if (generation === operation.current) setMessage("Could not save the auto-update setting.");
     } finally {
-      setBusy(false);
+      if (generation === operation.current) setBusy(false);
     }
   };
 
   const syncNow = async () => {
+    const generation = operation.current;
     setBusy(true);
     setMessage("Syncing models…");
     try {
@@ -65,13 +85,16 @@ export default function ModelAutoSyncPanel({ providerId, hasConnection, onModels
         body: JSON.stringify({ provider: providerId })
       });
       const data = await res.json().catch(() => null);
+      if (generation !== operation.current) return;
       const result = data?.results?.[0];
       if (!res.ok) setMessage(data?.error || "Sync failed.");
       else if (result?.status === "synced") setMessage(`Synced ${result.modelCount} models.`);
       else setMessage(result?.error ? `Sync failed: ${result.error}. The previous model list is kept.` : "Nothing to sync.");
-      await load();
+      await load(generation);
+    } catch {
+      if (generation === operation.current) setMessage("Could not sync models. The displayed list is unchanged. Try Sync now again.");
     } finally {
-      setBusy(false);
+      if (generation === operation.current) setBusy(false);
     }
   };
 

@@ -1,11 +1,8 @@
 name: Nightly
 
-# The schedule is disabled in repository settings during dev recovery. When it
-# is re-enabled after the zero-test stage, every gate below is blocking and the
-# release step cannot run after a failed install, lint, build, or test.
+# Manual only: Heitor requires explicit cloud spend. Existing validation and
+# release failure handling remain unchanged.
 on:
-  schedule:
-    - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:

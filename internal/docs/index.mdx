@@ -117,13 +117,13 @@ cd tests && pnpm run test:ci
 
 `test:ci` must not add lines to `tests/__baseline__/known-fails.txt`. That file is empty in this tree, so every failing assertion is a regression.
 
-CI on pull requests to `main` runs `.github/workflows/ci.yml` (lint and build), `.github/workflows/test.yml` (Vitest plus the baseline gate), and `.github/workflows/commitlint.yml`.
+PR validation uses the independently reviewed local gates in [Local CI](./local-ci.md). `.github/workflows/ci.yml`, `.github/workflows/test.yml`, and `.github/workflows/commitlint.yml` remain explicit manual fallbacks.
 
 The PR body lists scope, tests, docs, and baseline impact. Reviewers check correctness, migration and credential safety, provider compatibility, tests, documentation, baseline impact, and unresolved review threads. Bot review comments are advisory; verify each concern before changing code.
 
 ## Documentation
 
-Public user and operator docs are MDX under `docs/`. Repository-only implementation and AI references live under `internal/docs/`. The public build in `website/` reads only `docs/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `pnpm run check:docs`. Vercel builds a pull request preview only when the change touches `docs/` or `website/` (`website/scripts/vercel-ignore-build.sh`); `main` always deploys. The `Website build` CI job follows the same rule on pull requests and always runs on `main`.
+Public user and operator docs are MDX under `docs/`. Repository-only implementation and AI references live under `internal/docs/`. The public build in `website/` reads only `docs/`. Link to one canonical page instead of copying procedures. Use repository-relative links in Markdown files and `YOUR_DURINDOOR_API_KEY` / `CHANGE_ME` placeholders, never real credentials. Run `pnpm run check:docs`. Vercel Git deployments allow only `main`; the dependency-free gate skips unchanged site inputs and all previews. Missing deployment history conservatively builds production main. See [deployment gates](./deploy-gates.md). The manual `Website build` CI job always validates the website.
 
 Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX.md`. Run `pnpm run gen:registry-index` and `pnpm run gen:agent-index`. Those flows are on [Provider registry](./provider-registry.mdx). Translator work is on [Translators](./translators.mdx). The Vitest layout is on [Testing](./testing.mdx).
 

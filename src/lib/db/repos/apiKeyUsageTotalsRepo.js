@@ -1,5 +1,17 @@
 import { getAdapter } from "../driver.js";
 import { isNumber } from "../../../shared/utils/typeChecks.js";
+import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "./quotaSql.js";
+import { tableColumnNames } from "../helpers/apiKeyUsageTotals.js";
+
+function acquireTotalsWriteLockSync(db) {
+  if (tableColumnNames(db, "_meta").size > 0) {
+    if (db.capabilities?.isPostgres) {
+      db.get(QUOTA_WRITE_LOCK_SQL_PG);
+    } else {
+      db.run(QUOTA_WRITE_LOCK_SQL);
+    }
+  }
+}
 
 /** True when the error is a "table does not exist yet" error for apiKeyUsageTotals. */
 function isMissingApiKeyUsageTotalsTable(err) {
@@ -76,6 +88,7 @@ export function incrementApiKeyUsageSync(db, apiKeyId, { tokens, cost }) {
   if (cost !== null && (!isNumber(cost) || !Number.isFinite(cost) || cost < 0)) {
     throw new TypeError("Usage cost must be null or a finite nonnegative number");
   }
+  acquireTotalsWriteLockSync(db);
   const normalizedTokens = Math.ceil(tokens);
   const normalizedCost = cost ?? 0;
   db.run(
@@ -102,6 +115,7 @@ export function adjustApiKeyUsageSync(db, apiKeyId, { tokens = 0, cost = 0, requ
     if (!isNumber(value) || !Number.isFinite(value)) throw new TypeError("Usage adjustment must be finite numbers");
   }
   if (requests > 0) throw new TypeError("Usage adjustment cannot add requests");
+  acquireTotalsWriteLockSync(db);
   db.run(
     `UPDATE apiKeyUsageTotals SET totalTokens = totalTokens + ?, totalCost = totalCost + ?, totalRequests = totalRequests + ?,
        unknownCostRequests = unknownCostRequests + ?, updatedAt = ? WHERE apiKeyId = ?`,

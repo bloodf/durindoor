@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { createBetterSqliteAdapter } from "../../src/lib/db/adapters/betterSqliteAdapter.js";
 import { TABLES, buildCreateTableSql } from "../../src/lib/db/schema.js";
@@ -5,6 +9,7 @@ import { rewriteSqliteDml } from "../../src/lib/db/dialects/postgres/dmlRewrite.
 import { backfillApiKeyUsageTotals } from "../../src/lib/db/helpers/apiKeyUsageTotals.js";
 import { ensureAndBackfillApiKeyUsageTotals } from "../../src/lib/db/migrations/apiKeyUsageTotalsBackfill.js";
 import migration028 from "../../src/lib/db/migrations/028-usage-unknown-cost-repair.js";
+import { incrementApiKeyUsageSync } from "../../src/lib/db/repos/apiKeyUsageTotalsRepo.js";
 
 // Regression contract for issue #1655: rebuilding per-key lifetime totals from
 // retained usage history must preserve the durable unknown-cost count.
@@ -562,6 +567,74 @@ describe("API-key usage rebuild: unknown-cost count preservation", () => {
       migration028.up(db);
 
       expect(unknownCount(db, "key-1")).toBe(4);
+    });
+
+    it("serializes migration 028 with concurrent writer across two connections to prevent lost increments", () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "migration-028-race-"));
+      const dbPath = path.join(tempDir, "race.db");
+      try {
+        const conn1 = new Database(dbPath);
+        conn1.pragma("journal_mode = WAL");
+        conn1.pragma("busy_timeout = 5000");
+        conn1.exec(buildCreateTableSql("_meta", TABLES._meta));
+        conn1.exec(buildCreateTableSql("apiKeys", TABLES.apiKeys));
+        conn1.exec(buildCreateTableSql("usageHistory", TABLES.usageHistory));
+        conn1.exec(buildCreateTableSql("apiKeyUsageTotals", TABLES.apiKeyUsageTotals));
+        conn1.prepare("INSERT INTO _meta(key, value) VALUES('schemaVersion', '28')").run();
+
+        // 10 historical unpriced requests for key-1
+        conn1.prepare(
+          `INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt)
+           VALUES('key-1', '${SECRET}', 'Key', 1, '[]', '2026-01-01T00:00:00.000Z')`
+        ).run();
+        const insertHist = conn1.prepare(
+          `INSERT INTO usageHistory(timestamp, provider, status, apiKey, promptTokens, completionTokens, cost, tokens, meta)
+           VALUES('2026-01-02T00:00:00.000Z', 'openai', 'ok', '${SECRET}', 0, 0, NULL, '{}', '{}')`
+        );
+        for (let i = 0; i < 10; i++) insertHist.run();
+
+        // Initial durable count is 0
+        conn1.prepare("INSERT INTO apiKeyUsageTotals(apiKeyId, totalTokens, totalCost, totalRequests, unknownCostRequests) VALUES('key-1', 0, 0, 10, 0)").run();
+
+        const conn2 = new Database(dbPath);
+        conn2.pragma("journal_mode = WAL");
+        conn2.pragma("busy_timeout = 0");
+
+        const adapter1 = createBetterSqliteAdapter(dbPath);
+        const adapter2 = createBetterSqliteAdapter(dbPath);
+
+        // Verification: while migration 028 holds writer lock in its transaction,
+        // a concurrent writer on connection 2 cannot race or interleave writes.
+        let writerBlockedDuringMigration = false;
+        adapter1.transaction(() => {
+          migration028.up(adapter1);
+          try {
+            conn2.prepare("UPDATE _meta SET value = value WHERE key = 'schemaVersion'").run();
+          } catch (err) {
+            if (/busy|locked/i.test(err.message)) {
+              writerBlockedDuringMigration = true;
+            }
+          }
+        });
+        expect(writerBlockedDuringMigration).toBe(true);
+
+        // Migration 028 repaired the 10 historical unpriced requests
+        expect(unknownCount(adapter1, "key-1")).toBe(10);
+
+        // Connection 2 writer now records a concurrent unpriced request (+1)
+        incrementApiKeyUsageSync(adapter2, "key-1", { tokens: 10, cost: null });
+
+        // Both connections observe the exact preserved sum: 10 + 1 = 11
+        expect(unknownCount(adapter1, "key-1")).toBe(11);
+        expect(unknownCount(adapter2, "key-1")).toBe(11);
+
+        adapter1.close();
+        adapter2.close();
+        conn1.close();
+        conn2.close();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

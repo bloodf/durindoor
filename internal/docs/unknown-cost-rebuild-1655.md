@@ -313,3 +313,10 @@ Case 7, the legacy numeric-unknown row.
 - History for one key: one row with `cost` 0 and `meta.costStatus` unknown, plus one row with `cost` NULL and the same metadata.
 - U1 rule 3 branch 1 counts the first row, branch 2 counts the second row, and the branches are disjoint, so the reconstruction is 2.
 - A second rebuild recomputes 2 and applies `MAX(2, 2)` = 2. The count does not double.
+
+Case 8, writer serialization during migration 028 repair (P1 race condition).
+
+- History for one key has 10 unpriced rows; durable `unknownCostRequests` is 0.
+- Without shared serialization, a deferred transaction read of history (10) followed by a concurrent writer adding 1 request (durable becomes 1) causes migration 028 to evaluate `MAX(1, 10)` = 10, overwriting the concurrent writer's increment and dropping it.
+- With shared serialization (`QUOTA_WRITE_LOCK_SQL` / `QUOTA_WRITE_LOCK_SQL_PG`), migration 028 acquires the writer lock before reading history and executes within a transaction. Concurrent writers are locked out until migration 028 commits, or if a writer committed first, migration 028 reads 11 rows.
+- The resulting total is deterministically 11 across all interleavings; no increment is lost.

@@ -1,5 +1,16 @@
 import { parseJson } from "../helpers/jsonCol.js";
 import { hasUnknownCostColumn, tableColumnNames, unknownCostEligibilitySql } from "../helpers/apiKeyUsageTotals.js";
+import { QUOTA_WRITE_LOCK_SQL, QUOTA_WRITE_LOCK_SQL_PG } from "../repos/quotaSql.js";
+
+function acquireWriterLock(db) {
+  if (tableColumnNames(db, "_meta").size > 0) {
+    if (db.capabilities?.isPostgres) {
+      db.get(QUOTA_WRITE_LOCK_SQL_PG);
+    } else {
+      db.run(QUOTA_WRITE_LOCK_SQL);
+    }
+  }
+}
 
 /**
  * Repair the durable unknown-cost count for keys whose count a historical
@@ -40,43 +51,56 @@ const migration = {
     // SQLite recreate the table. Reflection and SQL errors still propagate.
     if (!historyColumns.size || !tableColumnNames(db, "apiKeys").size) return;
 
-    const eligibility = unknownCostEligibilitySql(db, "h");
-    const counts = new Map();
+    const repair = () => {
+      // Shared writer lock serialization: acquire the common writer lock
+      // before reading historical aggregates so a concurrent increment cannot
+      // race between the read and the monotonic totals update.
+      acquireWriterLock(db);
 
-    // Branch one: a null cost.
-    for (const row of db.all(`
-      SELECT k.id AS "apiKeyId", COUNT(h.id) AS "unknownCostRequests"
-      FROM "apiKeys" k
-      JOIN "usageHistory" h ON h."apiKey" = k.key
-      WHERE h.cost IS NULL ${eligibility}
-      GROUP BY k.id
-    `)) {
-      counts.set(row.apiKeyId, Number(row.unknownCostRequests) || 0);
-    }
+      const eligibility = unknownCostEligibilitySql(db, "h");
+      const counts = new Map();
 
-    // Branch two: a numeric legacy cost whose metadata marks it unknown. The
-    // current writer cannot produce that shape, so it only covers imported and
-    // legacy rows. Malformed metadata is tolerated and counts as priced.
-    if (historyColumns.has("meta")) {
+      // Branch one: a null cost.
       for (const row of db.all(`
-        SELECT k.id AS "apiKeyId", h.meta
+        SELECT k.id AS "apiKeyId", COUNT(h.id) AS "unknownCostRequests"
         FROM "apiKeys" k
         JOIN "usageHistory" h ON h."apiKey" = k.key
-        WHERE h.cost IS NOT NULL AND h.meta IS NOT NULL ${eligibility}
+        WHERE h.cost IS NULL ${eligibility}
+        GROUP BY k.id
       `)) {
-        if (parseJson(row.meta)?.costStatus === "unknown") {
-          counts.set(row.apiKeyId, (counts.get(row.apiKeyId) || 0) + 1);
+        counts.set(row.apiKeyId, Number(row.unknownCostRequests) || 0);
+      }
+
+      // Branch two: a numeric legacy cost whose metadata marks it unknown. The
+      // current writer cannot produce that shape, so it only covers imported and
+      // legacy rows. Malformed metadata is tolerated and counts as priced.
+      if (historyColumns.has("meta")) {
+        for (const row of db.all(`
+          SELECT k.id AS "apiKeyId", h.meta
+          FROM "apiKeys" k
+          JOIN "usageHistory" h ON h."apiKey" = k.key
+          WHERE h.cost IS NOT NULL AND h.meta IS NOT NULL ${eligibility}
+        `)) {
+          if (parseJson(row.meta)?.costStatus === "unknown") {
+            counts.set(row.apiKeyId, (counts.get(row.apiKeyId) || 0) + 1);
+          }
         }
       }
-    }
 
-    for (const [apiKeyId, unknownCostRequests] of counts) {
-      db.run(`
-        INSERT INTO "apiKeyUsageTotals" ("apiKeyId", "unknownCostRequests") VALUES (?, ?)
-        ON CONFLICT ("apiKeyId") DO UPDATE SET "unknownCostRequests" =
-          CASE WHEN "apiKeyUsageTotals"."unknownCostRequests" < excluded."unknownCostRequests"
-          THEN excluded."unknownCostRequests" ELSE "apiKeyUsageTotals"."unknownCostRequests" END
-      `, [apiKeyId, unknownCostRequests]);
+      for (const [apiKeyId, unknownCostRequests] of counts) {
+        db.run(`
+          INSERT INTO "apiKeyUsageTotals" ("apiKeyId", "unknownCostRequests") VALUES (?, ?)
+          ON CONFLICT ("apiKeyId") DO UPDATE SET "unknownCostRequests" =
+            CASE WHEN "apiKeyUsageTotals"."unknownCostRequests" < excluded."unknownCostRequests"
+            THEN excluded."unknownCostRequests" ELSE "apiKeyUsageTotals"."unknownCostRequests" END
+        `, [apiKeyId, unknownCostRequests]);
+      }
+    };
+
+    if (typeof db.transaction === "function") {
+      db.transaction(repair);
+    } else {
+      repair();
     }
   },
 };

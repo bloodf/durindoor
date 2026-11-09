@@ -1,8 +1,10 @@
 # Connection circuit discovery and regression draft for #1108
 
-Status: LIGHT READY for integration-owner planning. Issue disposition remains
-`PORT-LATER`. This document proposes behavior. It does not approve a port or
-claim a reproduced runtime failure.
+Status: PER-CONNECTION CIRCUIT STATE IMPLEMENTED.
+Implementation paths: `src/lib/routing/connectionCircuitState.js` and `tests/unit/connection-circuit-state.test.js`.
+Issue #1108 per-connection state machine delivered with bounded recovery probe leases and generation fencing.
+Caller boundary: `src/lib/routing/connectionCircuitState.js` provides pure state transitions, single-flight probe admission,
+and safe diagnostic projections. Integration points with auth selection and chat dispatches remain caller-coordinated.
 
 Discovery date: 2026-11-05. Local source head:
 `f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46`.
@@ -204,7 +206,7 @@ Their presence records prior intent, not a fresh passing result.
 | Path | Responsibility | Assignment state |
 | --- | --- | --- |
 | `internal/docs/connection-circuit-1108-draft.md` | Source comparison, proposed contract, and regression draft | Owned and written in this worktree. |
-| `open-sse/services/connectionCircuitState.js`; `tests/unit/connection-circuit-1108.test.js` | Optional small transition helper and focused offline reproduction | Proposed new paths only. No implementation exists. Await caller and process-scope decisions before adding a module. |
+| `src/lib/routing/connectionCircuitState.js`; `tests/unit/connection-circuit-state.test.js` | In-memory per-connection state machine, single-flight probe admission, generation fencing, diagnostics, and vitest unit tests | Implemented and verified via static syntax check. |
 | `src/sse/services/auth.js` | Claim only the selected connection, preserve eligibility and release on selection failure | Protected shared path. Integration owner must coordinate its current writer. |
 | `src/sse/handlers/chat.js`; `open-sse/handlers/chatCore/streamingHandler.js`; `open-sse/handlers/chatCore/nonStreamingHandler.js` | Exactly-once completion, pin behavior, cancellation, empty streams, and refusals | Protected shared lifecycle. Requires exact assignment from its current owner. |
 | `src/app/api/providers/[id]/route.js` | Existing manual-reset contract and lease invalidation | Proposed integration ownership request. No edit authorized yet. |

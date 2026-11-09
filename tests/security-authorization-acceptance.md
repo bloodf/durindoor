@@ -71,7 +71,27 @@ The final verifier checked its 13-source and 12-harness freeze before and after 
 
 ## Key and provider-node management principals
 
-`unit/security-authorization-matrix.test.js` "management mutations as %s" runs the real middleware gate and route handler for `POST /api/keys`, `PUT`/`DELETE /api/keys/:id`, `POST /api/provider-nodes`, and `PUT`/`DELETE /api/provider-nodes/:id` across the seven principals plus a scoped, capped key. Dashboard session and CLI token reach the write (2xx). Owner, foreign and scoped application keys pass the gate and get 403 from the handler with no write. Inactive, expired and anonymous callers get 401 at the gate. Loopback open-dashboard operator access is covered by `unit/dashboard-guard.test.js` `isOperatorRequest`.
+`unit/security-authorization-matrix.test.js` "management mutations as %s" runs the real middleware gate and route handler for `POST /api/keys`, `PUT`/`DELETE /api/keys/:id`, `POST /api/provider-nodes`, and `PUT`/`DELETE /api/provider-nodes/:id` across the seven principals plus a scoped, capped key. Dashboard session, CLI token and an admin-scoped key (`isAdmin: true`) reach the write (2xx). Owner, foreign and scoped application keys without the admin scope get 403 from the management gate with no write. Inactive, expired and anonymous callers get 401 at the gate. Loopback open-dashboard operator access is covered by `unit/dashboard-guard.test.js` `isOperatorRequest`.
+
+## Route matrix
+
+`unit/security-authorization-routes.test.js` sends each request through the real guard, encoded dispatch, Next route matching and handler. Storage is real and disposable: local file/batch store, media job repository and native owner records. Only the key and connection catalog and provider transport are fixtures. Run it with the command under "Independent execution".
+
+| Acceptance item | Coverage in this file |
+| --- | --- |
+| Paths | `/api/v1`, `/v1`, `/v1/v1` and fully encoded spellings on every row below; encoded IDs resolve to the same owned resource; encoded separators and unsafe IDs do not resolve |
+| Identities | Dashboard, CLI, owner, foreign, inactive, expired, anonymous; stale plus valid credential; two valid credentials; loopback caller without a key |
+| Files and batches | `/v1/files`, `/v1/batches`, `/v1/messages/batches`: list, read, content, results, delete, cancel and create, including batch input and output file ownership |
+| Media | `/v1/videos/{id}` and `/v1/music/generations/{id}` polling by owner, account pin, scope and model policy; `/v1/images/generations`, `/v1/audio/speech`, `/v1/video/generations`, `/v1/videos/generations` and `/v1/music/generations` model policy and account scope |
+| Native resources | Every tracked operation for every provider, across spellings and identities; unknown owner fails closed; one identifier per request; creation responses never move an existing owner and record only the top-level ID |
+| Rerouted requests | Batch rows keep the creating key's model policy and account scope, recheck a vision bridge target and stop once the key is deactivated; default media routes apply model policy and account scope to the routed model |
+| Voices | Cloning records the cloning key as owner and never moves an owned voice; a voice with no recorded owner fails closed; the native account voice list needs an account pin within key scope |
+
+Existing passing coverage is kept as an exclusion instead of being repeated: combo and direct chat dispatch and native list filtering in `unit/security-authorization-matrix.test.js`, candidate scope filtering in `unit/media-routes.test.js`, and concurrent owner creation in `unit/native-resource-owners-atomic.test.js`.
+
+Reproduced failure turned into a fix: 12 rows in "native resource identifiers" failed on the unmodified handler and pass with the identifier check in `src/sse/handlers/nativeProvider.js`. Every other row passed before the fix, so no other source change was made.
+
+This in-process harness does not start a server. `security-authorization-http.mjs` remains the HTTP-level runner, and its receipts above apply to the head they name.
 
 ## Closure gate
 

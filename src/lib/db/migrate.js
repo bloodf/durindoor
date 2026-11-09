@@ -3,7 +3,7 @@ import path from "node:path";
 import { currentDataFile, currentDbDir, currentLegacyFiles } from "./paths.js";
 import { TABLES, buildCreateTableSql } from "./schema.js";
 import { MIGRATIONS, latestVersion } from "./migrations/index.js";
-import { PG_MIGRATIONS, pgLatestVersion, bootstrapPgMetaTable } from "./migrations/postgres/index.js";
+import { PG_MIGRATIONS, bootstrapPgMetaTable } from "./migrations/postgres/index.js";
 import { getMetaSync, setMetaSync } from "./helpers/metaStore.js";
 import { makeBackupDir, backupFile, backupDbLite, pruneOldBackups } from "./backup.js";
 import { getAppVersion } from "./version.js";
@@ -78,44 +78,74 @@ function runVersionedMigrations(adapter) {
 function runSqliteVersionedMigrations(adapter) {
   // Bootstrap _meta first so we can read schemaVersion
   adapter.exec(buildCreateTableSql("_meta", TABLES._meta));
-
-  const current = parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
-  const target = latestVersion();
-  if (current >= target) return { applied: 0, from: current, to: current };
-
-  const pending = MIGRATIONS.filter((m) => m.version > current);
-  let lastApplied = current;
-  for (const m of pending) {
-    adapter.transaction(() => {
-      m.up(adapter);
-      setMetaSync(adapter, "schemaVersion", m.version);
-    });
-    lastApplied = m.version;
-    console.log(`[DB][migrate] applied #${m.version} ${m.name}`);
-  }
-  return { applied: pending.length, from: current, to: lastApplied };
+  return applyVersionedMigrations(adapter, MIGRATIONS, "");
 }
 
 function runPgVersionedMigrations(adapter) {
   // The PG migration set has its own _meta bootstrap; create it directly
   // with PG DDL because `buildCreateTableSql` emits SQLite-specific syntax.
   bootstrapPgMetaTable(adapter);
+  return applyVersionedMigrations(adapter, PG_MIGRATIONS, "(pg) ");
+}
 
+const APPLIED_MIGRATIONS_KEY = "appliedMigrations";
+
+// Versions already applied. `schemaVersion` stays the max applied version for
+// older binaries; `appliedMigrations` records the exact set so a lower version
+// merged after a higher one still runs. Without a recorded set (databases from
+// before this key existed) every registered version <= schemaVersion counts as
+// applied. Versions above the recorded set's max but <= schemaVersion were
+// applied by an older max-only runner after a downgrade; recorded versions above
+// schemaVersion are dropped so a rewound schemaVersion re-runs them.
+function readAppliedVersions(adapter, migrations) {
   const current = parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
-  const target = pgLatestVersion();
-  if (current >= target) return { applied: 0, from: current, to: current };
+  const raw = getMetaSync(adapter, APPLIED_MIGRATIONS_KEY, null);
+  let recorded = null;
+  if (raw != null) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.every(Number.isInteger)) recorded = parsed;
+    } catch { /* handled below */ }
+    if (!recorded) console.warn(`[DB][migrate] ignoring malformed ${APPLIED_MIGRATIONS_KEY}; falling back to schemaVersion ${current}`);
+  }
+  // A schemaVersion below recorded entries was rewound by hand; honor it.
+  const kept = (recorded || []).filter((version) => version <= current);
+  const floor = Math.max(0, ...kept);
+  const applied = new Set(kept);
+  for (const m of migrations) {
+    if (m.version > floor && m.version <= current) applied.add(m.version);
+  }
+  // Persist when the stored set is missing or behind what was inferred.
+  return { current, applied, stale: !recorded || applied.size !== recorded.length };
+}
 
-  const pending = PG_MIGRATIONS.filter((m) => m.version > current);
-  let lastApplied = current;
+export function hasPendingMigrations(adapter, migrations = MIGRATIONS) {
+  const { applied } = readAppliedVersions(adapter, migrations);
+  return migrations.some((m) => !applied.has(m.version));
+}
+
+// Applies every registered migration that is not recorded as applied, in
+// version order, regardless of the stored max. Each step is atomic.
+export function applyVersionedMigrations(adapter, migrations, logTag = "") {
+  const { current, applied, stale } = readAppliedVersions(adapter, migrations);
+  const serialize = () => JSON.stringify([...applied].sort((a, b) => a - b));
+  const pending = migrations.filter((m) => !applied.has(m.version));
+  if (!pending.length) {
+    if (stale) setMetaSync(adapter, APPLIED_MIGRATIONS_KEY, serialize());
+    return { applied: 0, from: current, to: current };
+  }
+  let schemaVersion = current;
   for (const m of pending) {
     adapter.transaction(() => {
       m.up(adapter);
-      setMetaSync(adapter, "schemaVersion", m.version);
+      applied.add(m.version);
+      schemaVersion = Math.max(schemaVersion, m.version);
+      setMetaSync(adapter, APPLIED_MIGRATIONS_KEY, serialize());
+      setMetaSync(adapter, "schemaVersion", schemaVersion);
     });
-    lastApplied = m.version;
-    console.log(`[DB][migrate] (pg) applied #${m.version} ${m.name}`);
+    console.log(`[DB][migrate] ${logTag}applied #${m.version} ${m.name}`);
   }
-  return { applied: pending.length, from: current, to: lastApplied };
+  return { applied: pending.length, from: current, to: schemaVersion };
 }
 
 // ─── Auto-sync (additive only): add missing tables/columns/indexes ───────
@@ -264,6 +294,7 @@ function importLegacyDetails(adapter, data) {
 // ─── Main entry ──────────────────────────────────────────────────────────
 export async function runMigrationOnce(adapter) {
   if (_migratedAdapters.has(adapter)) return;
+  const created = adapter.takeFreshDatabase?.() === true;
   if (isPostgres(adapter)) {
     // PG has no sqlite_master / PRAGMA. The parallel migration set is the
     // schema source of truth; additive SQLite sync and the SQLite integrity
@@ -308,7 +339,7 @@ export async function runMigrationOnce(adapter) {
   const oldSchemaVersion = fresh ? 0 : parseInt(getMetaSync(adapter, "schemaVersion", "0"), 10) || 0;
   const oldAppVersion = fresh ? null : getMetaSync(adapter, "appVersion", null);
   const newAppVersion = getAppVersion();
-  const needsSchemaUpgrade = !fresh && oldSchemaVersion < latestVersion();
+  const needsSchemaUpgrade = !fresh && hasPendingMigrations(adapter);
   const needsAppBackup = !fresh && oldAppVersion && oldAppVersion !== newAppVersion;
   // Earlier PR145 heads could stamp v6 while the policy migration silently
   // skipped a missing totals table. Repair that exact structural state once;
@@ -362,12 +393,22 @@ export async function runMigrationOnce(adapter) {
     }
   }
 
-  // 1. Always run versioned migrations chain (skip-version safe)
-  const migInfo = runVersionedMigrations(adapter);
-
-  // 2. Additive sync (auto add missing columns/indexes declared in TABLES)
-  syncSchemaFromTables(adapter);
-  verifyPublishedSchemaLayouts(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
+  // A creation claim is consumed once, before returning an adapter to writers.
+  // Serialize schema creation and the completeness stamp. If another opener
+  // already initialized this file, even an empty ledger is not fresh evidence.
+  // Existing legacy files (including unreadable JSON) disqualify completeness.
+  const initializeSchema = () => {
+    const pristine = created && !Object.values(legacyFiles).some((file) => fs.existsSync(file)) &&
+      !adapter.get("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1");
+    const result = runVersionedMigrations(adapter);
+    syncSchemaFromTables(adapter);
+    verifyPublishedSchemaLayouts(adapter, { requireQuotaComplete: true, useLatestQuotaSchema: true });
+    if (pristine) {
+      adapter.run("INSERT INTO kv(scope, key, value) VALUES('billing', 'receiptsVersion', '1') ON CONFLICT(scope, key) DO NOTHING");
+    }
+    return result;
+  };
+  const migInfo = created ? adapter.transaction(initializeSchema) : initializeSchema();
   if (needsTotalsRepair) backfillApiKeyUsageTotals(adapter);
 
   // 3. One-time legacy JSON import (only if DB was fresh on entry)

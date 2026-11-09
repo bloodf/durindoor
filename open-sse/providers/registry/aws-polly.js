@@ -1,3 +1,6 @@
+// No SigV4 synthesis handler exists yet, so these rows stay out of every picker.
+const POLLY_UNAVAILABLE = "AWS Polly synthesis is not implemented";
+
 export default {
   id: "aws-polly",
   alias: "polly",
@@ -25,18 +28,22 @@ export default {
     models: [
       {
         id: "standard",
+        routingUnavailableReason: POLLY_UNAVAILABLE,
         name: "Standard"
       },
       {
         id: "neural",
+        routingUnavailableReason: POLLY_UNAVAILABLE,
         name: "Neural"
       },
       {
         id: "long-form",
+        routingUnavailableReason: POLLY_UNAVAILABLE,
         name: "Long-form"
       },
       {
         id: "generative",
+        routingUnavailableReason: POLLY_UNAVAILABLE,
         name: "Generative"
       }
     ]

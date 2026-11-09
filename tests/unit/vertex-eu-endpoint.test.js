@@ -32,6 +32,15 @@ describe("Vertex request endpoint", () => {
     );
   });
 
+  it("sends project-scoped US Gemini request to representative host with US location", async () => {
+    expect(await requestUrl("vertex", {
+      accessToken: "test-token",
+      providerSpecificData: { projectId: project, location: "us" },
+    })).toBe(
+      `https://aiplatform.us.rep.googleapis.com/v1/projects/${project}/locations/us/publishers/google/models/${gemini}:generateContent`
+    );
+  });
+
   it("keeps global and other regional project-scoped Gemini requests on global host", async () => {
     for (const location of ["global", "europe-west4"]) {
       expect(await requestUrl("vertex", {

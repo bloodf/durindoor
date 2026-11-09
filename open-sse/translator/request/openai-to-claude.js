@@ -220,7 +220,7 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
       result.tools.push({
         name: toolName,
         description: toolData.description || "",
-        input_schema: toClaudeInputSchema(toolData.parameters, toolData.input_schema),
+        input_schema: toClaudeInputSchema(toolData.parameters, toolData.input_schema, originalName),
         ...(toolData.strict !== undefined && { strict: toolData.strict })
       });
     }

@@ -100,7 +100,7 @@ async function inworld({ baseUrl, apiKey, text, modelId, voiceId }) {
 }
 
 // Cartesia: X-API-Key header
-async function cartesia({ baseUrl, apiKey, text, modelId, voiceId }) {
+async function cartesia({ baseUrl, apiKey, text, modelId, voiceId, voice }) {
   const res = await fetch(baseUrl, {
     method: "POST",
     headers: {
@@ -111,7 +111,7 @@ async function cartesia({ baseUrl, apiKey, text, modelId, voiceId }) {
     body: JSON.stringify({
       model_id: modelId || "sonic-2",
       transcript: text,
-      ...(voiceId ? { voice: { mode: "id", id: voiceId } } : null),
+      ...((voice || voiceId) ? { voice: { mode: "id", id: voice || voiceId } } : null),
       output_format: { container: "mp3", bit_rate: 128000, sample_rate: 44100 }
     })
   });

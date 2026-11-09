@@ -17,6 +17,7 @@ import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
 import { KimiWebExecutor } from "./kimi-web.js";
 import { CodexExecutor } from "./codex.js";
+import { CodexAppServerExecutor } from "./codex-app-server.js";
 import { CursorExecutor } from "./cursor.js";
 import { VertexExecutor } from "./vertex.js";
 import { QwenExecutor } from "./qwen.js";
@@ -37,6 +38,7 @@ import { MimoFreeExecutor } from "./mimo-free.js";
 import { MimocodeExecutor } from "./mimocode.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
 import { XaiExecutor } from "./xai.js";
+import { OneMinAiExecutor } from "./oneminai.js";
 import { GrokCliExecutor } from "./grok-cli.js";
 import { GitlabExecutor } from "./gitlab.js";
 import { TraeExecutor } from "./trae.js";
@@ -61,6 +63,8 @@ const executors = {
   antigravity: new AntigravityExecutor(),
   agy: new AntigravityExecutor("agy"),
   auggie: new AuggieExecutor(),
+  "codex-app-server": new CodexAppServerExecutor(),
+  cxa: new CodexAppServerExecutor(), // Alias for codex-app-server
   aug: new AuggieExecutor(), // Alias for auggie
   azure: new AzureExecutor(),
   "azure-openai": new AzureOpenAIExecutor(),
@@ -110,6 +114,7 @@ const executors = {
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
   xai: new XaiExecutor(),
+  oneminai: new OneMinAiExecutor(),
   "grok-cli": new GrokCliExecutor(),
   "gitlab-duo": new GitlabExecutor("gitlab-duo"),
   trae: new TraeExecutor(),
@@ -216,6 +221,7 @@ export { MimoFreeExecutor } from "./mimo-free.js";
 export { MimocodeExecutor } from "./mimocode.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
 export { XaiExecutor } from "./xai.js";
+export { OneMinAiExecutor } from "./oneminai.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { GitlabExecutor } from "./gitlab.js";
 export { TraeExecutor } from "./trae.js";

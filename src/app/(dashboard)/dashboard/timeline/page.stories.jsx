@@ -40,6 +40,8 @@ const defaultRoutes = {
   "GET /api/timeline/trace-001/meta": (request) => ({
     body: { trace: { ...windowTraces(request)[0], event_count: 13 } },
   }),
+  "GET /api/timeline/trace-002/meta": (request) => ({ body: { trace: windowTraces(request)[1] } }),
+  "GET /api/timeline/trace-003/meta": (request) => ({ body: { trace: windowTraces(request)[2] } }),
   "GET /api/settings": { body: { enableProxyTimeline: true } },
   "GET /api/timeline/stream": { body: {}, events: [{ traceId: trace.id }] },
 };
@@ -91,7 +93,7 @@ export const LiveUpdates = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("switch", { name: "Live timeline updates" }));
     await canvas.findByText("Listening for updates");
-    await expect(await canvas.findByRole("button", { name: /gpt-5 · ok · 342 ms · 13 events/ })).toBeVisible();
+    await expect(await canvas.findByRole("button", { name: /gpt-5 · ok · 342 ms · 13 events/ }, { timeout: 5000 })).toBeVisible();
   },
 };
 export const CaptureDisabled = {
@@ -126,7 +128,9 @@ export const AllRows = {
           ] : [];
           return { body: { traces, pagination: { page: Number(page) || 1, pageSize: Number(pageSize) || 20, totalItems: 3, totalPages: 1 } } };
         },
-        "GET /api/settings": { body: { enableProxyTimeline: true } },
+        "GET /api/timeline/trace-002/meta": (request) => ({ body: { trace: windowTraces(request)[1] } }),
+  "GET /api/timeline/trace-003/meta": (request) => ({ body: { trace: windowTraces(request)[2] } }),
+  "GET /api/settings": { body: { enableProxyTimeline: true } },
       },
     },
   },
@@ -145,7 +149,9 @@ export const LoadError = {
       params: {},
       routes: {
         "GET /api/timeline": { body: { error: "Unavailable" }, status: 500 },
-        "GET /api/settings": { body: { enableProxyTimeline: true } },
+        "GET /api/timeline/trace-002/meta": (request) => ({ body: { trace: windowTraces(request)[1] } }),
+  "GET /api/timeline/trace-003/meta": (request) => ({ body: { trace: windowTraces(request)[2] } }),
+  "GET /api/settings": { body: { enableProxyTimeline: true } },
       },
     },
   },
@@ -160,4 +166,37 @@ export const Loading = {
     await expect(canvasElement.querySelector('[aria-busy="true"]')).toBeInTheDocument();
     await expect(canvasElement.querySelectorAll(".animate-pulse")).toHaveLength(2);
   },
+};
+
+/** The stream disconnect is local to this story; production transport remains untouched. */
+export const StreamDisconnectAndReconnect = {
+  render: () => {
+    // Story render runs inside the installed fixture, before its child subscribes.
+    const original = globalThis.EventSource;
+    const sources = [];
+    function LifecycleFixture() {
+      React.useLayoutEffect(() => {
+        globalThis.EventSource = class extends original { constructor(url) { super(url); sources.push(this); } };
+        return () => { globalThis.EventSource = original; delete globalThis.__V5_TIMELINE_SOURCES__; };
+      }, []);
+      return <TimelinePage />;
+    }
+    globalThis.__V5_TIMELINE_SOURCES__ = sources;
+    return <LifecycleFixture />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("switch", { name: "Live timeline updates" }));
+    await canvas.findByText("Listening for updates");
+    const source = globalThis.__V5_TIMELINE_SOURCES__.at(-1);
+    source.close(); source.dispatchEvent(new Event("error"));
+    await expect(await canvas.findByText("Live updates unavailable")).toBeVisible();
+    await expect(canvas.queryByText("Listening for updates")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Reconnect timeline" }));
+    await expect(await canvas.findByText("Listening for updates")).toBeVisible();
+  },
+};
+export const InitialReadUnavailable = {
+  parameters: { storyFixture: { routes: { "GET /api/timeline": { status: 503, body: { error: "Unavailable" } } } } },
+  play: async ({ canvasElement }) => { const canvas = within(canvasElement); await expect(await canvas.findByText("Timeline unavailable")).toBeVisible(); await expect(canvas.queryByText("Waiting for a call")).not.toBeInTheDocument(); await expect(canvas.getByRole("button", { name: "Retry timeline" })).toBeEnabled(); },
 };

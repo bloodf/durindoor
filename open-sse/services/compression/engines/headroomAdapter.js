@@ -52,6 +52,14 @@ export const headroomEngine = {
     supportsPreview: false,
     stable: true
   },
+  /** True only when apply() would call the proxy (enabled + URL). */
+  isConfigured(options) {
+    const cfg = options?.config ?? {};
+    const step = options?.stepConfig ?? {};
+    const enabled = step.enabled ?? cfg.enabled ?? cfg.headroom?.enabled ?? false;
+    const url = step.url ?? cfg.url ?? cfg.headroom?.url ?? null;
+    return !!enabled && !!url;
+  },
   async apply(body, options) {
     const cfg = options?.config ?? {};
     const step = options?.stepConfig ?? {};

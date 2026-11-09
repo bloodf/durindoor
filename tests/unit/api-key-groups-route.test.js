@@ -58,7 +58,7 @@ const params = Promise.resolve({ id: "k1" });
 beforeEach(() => {
   state.db = new Database(":memory:");
   state.db.exec("PRAGMA foreign_keys = ON");
-  state.db.exec(`CREATE TABLE apiKeys (id TEXT PRIMARY KEY, key TEXT UNIQUE NOT NULL, name TEXT, machineId TEXT, isActive INTEGER DEFAULT 1, allowedCombos TEXT, dailyLimitTokens INTEGER, policy TEXT, expiresAt TEXT, createdAt TEXT NOT NULL)`);
+  state.db.exec(`CREATE TABLE apiKeys (id TEXT PRIMARY KEY, key TEXT UNIQUE NOT NULL, name TEXT, machineId TEXT, isActive INTEGER DEFAULT 1, allowedCombos TEXT, dailyLimitTokens INTEGER, policy TEXT, expiresAt TEXT, isAdmin INTEGER NOT NULL DEFAULT 0, createdAt TEXT NOT NULL)`);
   state.db.exec(`CREATE TABLE apiKeyGroups (id TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)`);
   state.db.exec(`CREATE TABLE apiKeyGroupMembers (groupId TEXT NOT NULL REFERENCES apiKeyGroups(id) ON DELETE CASCADE, apiKeyId TEXT NOT NULL REFERENCES apiKeys(id) ON DELETE CASCADE, createdAt TEXT NOT NULL, PRIMARY KEY (groupId, apiKeyId))`);
   state.db.prepare(`INSERT INTO apiKeys (id, key, name, isActive, allowedCombos, createdAt) VALUES ('k1','sk-1','ci-deploy',1,'[]','now')`).run();

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderConnections } from "@/lib/localDb";
+import { readableProviderConnections } from "@/lib/mediaProviderConnections.js";
 import { isString } from "../../../../../../shared/utils/typeChecks.js";
 
 const MINIMAX_VOICE_ENDPOINTS = {
@@ -70,7 +70,7 @@ export async function GET(request) {
     const voiceType = searchParams.get("voice_type") || "all";
     const langFilter = searchParams.get("lang");
 
-    const connections = await getProviderConnections({ provider, isActive: true });
+    const connections = await readableProviderConnections(request, provider);
     const apiKey = connections[0]?.apiKey;
     if (!apiKey) {
       return NextResponse.json({ error: `No ${provider} connection found` }, { status: 400 });

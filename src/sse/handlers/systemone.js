@@ -15,7 +15,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
-import { nativeUsageAdmission, recordNativeUsage } from "../services/nativeUsage.js";
+import { nativeUsageAdmission, observeNativeResponse } from "../services/nativeUsage.js";
 import { isObject } from "../../shared/utils/typeChecks.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredentialManager.js";
@@ -32,15 +32,18 @@ function proxyOptionsFromCredentials(credentials) {
   return resolveCredentialProxyOptions(credentials);
 }
 
-async function recordSystemoneUsage({ apiKey, provider, model, credentials, usage }) {
-  return recordNativeUsage({
+function recordSystemoneUsage({ apiKey, billingEpoch, provider, model, credentials, response, usageEventId }) {
+  // Read the original envelope: core summary omits cache and reasoning components.
+  return observeNativeResponse(response, {
     apiKey,
+    billingEpoch,
     provider,
     model,
     connectionId: credentials?.connectionId || null,
     endpoint: "/v1/systemone",
-    value: { usage },
-    usageEventId: randomUUID(),
+    usageEventId,
+    modality: "systemone", tokens: {}, nativeUnits: {},
+    cost: null, costStatus: "unknown", costSource: "provider-cost-unavailable",
   });
 }
 
@@ -80,6 +83,8 @@ async function handleSystemoneHandler(request) {
     log.warn("AUTH", "Invalid API key");
     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
   }
+  // Retain the admission generation through retries and deferred response usage.
+  const billingEpoch = apiKeyAuth.billingEpoch;
 
   if (!modelStr) {
     log.warn("SYSTEMONE", "Missing model");
@@ -112,6 +117,7 @@ async function handleSystemoneHandler(request) {
   }
 
   const pin = request.headers.get("x-connection-id") || null;
+  const usageEventId = randomUUID();
   const pinOptions = pin ? { preferredConnectionId: pin, strictConnectionId: pin } : {};
   const noAuth = isNoAuthSystemoneProvider(provider);
   if (noAuth) {
@@ -137,8 +143,7 @@ async function handleSystemoneHandler(request) {
       "System One request failed",
     );
     if (result.success) {
-      await recordSystemoneUsage({ apiKey, provider, model, credentials, usage: result.usage });
-      return result.response;
+      return recordSystemoneUsage({ apiKey, billingEpoch, provider, model, credentials, response: result.response, usageEventId });
     }
     if (result.status === 499) return result.response;
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "System One request failed");
@@ -191,8 +196,7 @@ async function handleSystemoneHandler(request) {
     );
 
     if (result.success) {
-      await recordSystemoneUsage({ apiKey, provider, model, credentials, usage: result.usage });
-      return result.response;
+      return recordSystemoneUsage({ apiKey, billingEpoch, provider, model, credentials, response: result.response, usageEventId });
     }
 
     if (result.status === 499) return result.response;

@@ -46,11 +46,11 @@ describe("OpenAI Chat Completions token-limit compatibility", () => {
     expect(out.max_completion_tokens).toBe(321);
   });
 
-  it("keeps max_tokens for legacy OpenAI models", () => {
+  it("uses the provider-wide modern cap for legacy OpenAI models too (#1366)", () => {
     const out = new DefaultExecutor("openai").transformRequest("gpt-4o", request());
 
-    expect(out.max_tokens).toBe(321);
-    expect(out.max_completion_tokens).toBeUndefined();
+    expect(out.max_tokens).toBeUndefined();
+    expect(out.max_completion_tokens).toBe(321);
   });
 
 });

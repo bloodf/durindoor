@@ -71,15 +71,24 @@ export const CLAUDE_FIRST_PARTY_ANTHROPIC_BETA =
   "claude-code-20250219,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,thinking-token-count-2026-05-13,advanced-tool-use-2025-11-20,effort-2025-11-24,thinking-binding-controls-2026-08-01,cache-diagnosis-2026-04-07";
 
 /**
- * Third-party / custom-base-URL Anthropic-Beta: the pre-PR string from
- * origin/main, byte-for-byte. Used by agentrouter and by selectAnthropicBeta
- * for anthropic-compatible-* nodes. First-party-gated flags
- * (`thinking-binding-controls-2026-08-01`, `cache-diagnosis-2026-04-07`) stay
- * off this set. `prompt-caching-scope-2026-01-05` was already on main, so
- * third-party paths are unchanged versus main for that flag.
+ * Beta flags Claude Code 2.1.312 sends only behind its first-party host check.
+ * The custom-base-URL capture in #1372 omits all three, so third-party
+ * gateways never receive them (#1382).
+ */
+export const CLAUDE_FIRST_PARTY_ONLY_BETAS = Object.freeze([
+  "prompt-caching-scope-2026-01-05",
+  "thinking-binding-controls-2026-08-01",
+  "cache-diagnosis-2026-04-07"
+]);
+
+/**
+ * Third-party / custom-base-URL Anthropic-Beta: main's pre-#1372 string minus
+ * the first-party-gated `prompt-caching-scope-2026-01-05` (#1382). Used by
+ * agentrouter and by selectAnthropicBeta for third-party anthropic-compatible-*
+ * nodes.
  */
 export const CLAUDE_THIRD_PARTY_ANTHROPIC_BETA =
-  "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01";
+  "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,mid-conversation-system-2026-04-07,effort-2025-11-24,fallback-credit-2026-06-01";
 
 // Full Claude CLI fingerprint for the first-party `claude` OAuth provider.
 // UA / Stainless / x-app come from the 2.1.312 capture; Anthropic-Beta is the
@@ -116,8 +125,8 @@ export const CLAUDE_COMPAT_SPOOF_HEADERS = {
 };
 
 // Anthropic beta flags for anthropic-compatible-* nodes fronting Anthropic
-// (port of decolua/9router#3797). Kept on the pre-PR third-party set so custom
-// gateways do not receive first-party-gated flags. effort-2025-11-24 is a
+// (port of decolua/9router#3797). First-party-gated flags are kept only when
+// the node targets api.anthropic.com (#1382). effort-2025-11-24 is a
 // heavy-agent flag and is only sent for opus/sonnet model ids.
 const ANTHROPIC_BETA_BASE = [
   "claude-code-20250219",
@@ -132,20 +141,23 @@ const ANTHROPIC_BETA_HEAVY_AGENT = ["effort-2025-11-24"];
 
 /**
  * Select the Anthropic-Beta header value for a model id on anthropic-compatible-*
- * nodes. Uses the third-party (pre-PR) flag set; heavy-agent betas are gated to
- * opus/sonnet.
+ * nodes. First-party-gated flags are dropped unless `firstParty` (the node's
+ * base URL is api.anthropic.com); heavy-agent betas are gated to opus/sonnet.
+ * @param {string} [model]
+ * @param {{ firstParty?: boolean }} [options]
  */
-export function selectAnthropicBeta(model = "") {
-  const flags = [...ANTHROPIC_BETA_BASE];
+export function selectAnthropicBeta(model = "", { firstParty = false } = {}) {
+  const flags = ANTHROPIC_BETA_BASE.filter((flag) => firstParty || !CLAUDE_FIRST_PARTY_ONLY_BETAS.includes(flag));
   if (/^claude-(opus|sonnet)/.test(model)) flags.push(...ANTHROPIC_BETA_HEAVY_AGENT);
   return flags.join(",");
 }
 
 /**
- * OAuth-mode Anthropic-Beta for Claude usage/reset helpers.
- * Starts from the first-party pin, inserts `extended-cache-ttl-2025-04-11`
- * before `cache-diagnosis-2026-04-07` (OAuth wire order from the 2.1.312
- * first-party OAuth capture), then appends `oauth-2025-04-20`.
+ * OAuth-mode Anthropic-Beta for Claude Messages, usage/reset helpers, and the
+ * quota auto-ping. Starts from the first-party pin, inserts
+ * `extended-cache-ttl-2025-04-11` before `cache-diagnosis-2026-04-07` and
+ * `oauth-2025-04-20` right after `claude-code-20250219` (index 1), matching the
+ * 2.1.312 first-party OAuth capture wire order (#1383).
  * @param {string} [baseBeta]
  * @returns {string}
  */
@@ -156,7 +168,7 @@ export function buildClaudeOAuthAnthropicBeta(baseBeta = CLAUDE_FIRST_PARTY_ANTH
     if (i >= 0) flags.splice(i, 0, "extended-cache-ttl-2025-04-11");
     else flags.push("extended-cache-ttl-2025-04-11");
   }
-  if (!flags.includes("oauth-2025-04-20")) flags.push("oauth-2025-04-20");
+  if (!flags.includes("oauth-2025-04-20")) flags.splice(flags.indexOf("claude-code-20250219") + 1, 0, "oauth-2025-04-20");
   return flags.join(",");
 }
 
@@ -181,14 +193,17 @@ export const FORWARDABLE_CLIENT_BETAS = new Set([
 
 /**
  * Add the allowlisted betas the calling client sent to the outbound Anthropic-Beta header.
- * Other client betas are ignored. Mutates and returns `headers`.
+ * Other client betas are ignored, and first-party-only betas are dropped unless
+ * `firstParty` (the upstream is api.anthropic.com, #1382). Mutates and returns `headers`.
  * @param {Record<string, string>} headers outbound headers
  * @param {Record<string, string>|null|undefined} clientHeaders inbound request headers
+ * @param {{ firstParty?: boolean }} [options]
  */
-export function mergeForwardableClientBetas(headers, clientHeaders) {
+export function mergeForwardableClientBetas(headers, clientHeaders, { firstParty = true } = {}) {
   const raw = clientHeaders?.["anthropic-beta"] ?? clientHeaders?.["Anthropic-Beta"];
   if (!isString(raw)) return headers;
-  const wanted = raw.split(",").map((f) => f.trim()).filter((f) => FORWARDABLE_CLIENT_BETAS.has(f));
+  const wanted = raw.split(",").map((f) => f.trim()).
+  filter((f) => FORWARDABLE_CLIENT_BETAS.has(f) && (firstParty || !CLAUDE_FIRST_PARTY_ONLY_BETAS.includes(f)));
   if (wanted.length === 0) return headers;
   const key = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
   const flags = new Set((headers[key] || "").split(",").map((f) => f.trim()).filter(Boolean));
@@ -200,6 +215,9 @@ export function mergeForwardableClientBetas(headers, clientHeaders) {
 // Kimi Code single-source endpoints and documented membership display names.
 export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
 export const KIMI_CODING_OPENAI_URL = "https://api.kimi.com/coding/v1/chat/completions";
+// Kimi Code natively serves the OpenAI Responses API (Codex `wire_api = "responses"`):
+// https://www.kimi.com/code/docs/en/third-party-tools/codex.html (upstream 9router 3125ac2).
+export const KIMI_CODING_RESPONSES_URL = "https://api.kimi.com/coding/v1/responses";
 export const KIMI_CODING_USAGE_URL = "https://api.kimi.com/coding/v1/usages";
 export const KIMI_CODING_MODELS_URL = "https://api.kimi.com/coding/v1/models";
 export const KIMI_PLATFORM_CHAT_URL = "https://api.moonshot.ai/v1/chat/completions";
@@ -227,13 +245,17 @@ export function isOpenCodeZenBaseUrl(baseUrl) {
   baseUrl.trim().replace(/\/+$/, "") === OPENCODE_ZEN_BASE_URL;
 }
 
-// Official Antigravity IDE Desktop 2.11.0 fingerprint captured from macOS arm64.
-// Keep this static even when DurinDoor runs on Linux: the provider profile is
-// intentionally matching the IDE client, not the server host.
-// DurinDoor keeps the PROD cloudcode-pa host (upstream uses the daily host).
-export const ANTIGRAVITY_IDE_VERSION = "2.11.0";
-export const ANTIGRAVITY_IDE_BASE_URL = "https://cloudcode-pa.googleapis.com";
-export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/ide/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
+// Official Antigravity Hub Desktop 2.24.0 fingerprint captured from macOS arm64
+// (upstream 9router f172c3c4). Keep this static even when DurinDoor runs on
+// Linux: the provider profile is intentionally matching the Hub client, not the
+// server host.
+// Generation (streamGenerateContent/generateContent) uses the daily Cloud Code
+// host like the Antigravity client and upstream 9router 783e271c. Discovery
+// (loadCodeAssist, onboardUser, fetchAvailableModels, quota summary, the
+// connection probe) stays on PROD cloudcode-pa via its own constants.
+export const ANTIGRAVITY_IDE_VERSION = "2.24.0";
+export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
+export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 
 // Antigravity OAuth client credentials (public CLI client — duplicated in usage.js + src/lib/oauth)
 // Set via env vars — see SECRETS_AND_CONFIG.md

@@ -31,5 +31,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Public website (Vercel), not part of the image
-website
+# Public website is excluded except the shared Storybook login mark.
+website/*
+!website/src/
+website/src/*
+!website/src/components/
+website/src/components/*
+!website/src/components/brand/
+website/src/components/brand/*
+!website/src/components/brand/BrandMark.jsx

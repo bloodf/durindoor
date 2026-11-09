@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const NOW = Date.parse("2026-07-10T12:00:00.000Z");
 const SOURCE_ID = "codex:wham-usage:v1";
 let tempDir;
@@ -20,7 +21,8 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await disposeLoadedRequestDetailsRepo();
   try { global._dbAdapter?.instance?.close?.(); } catch {}
   delete global._dbAdapter;
   if (previousHome === undefined) delete process.env.HOME;

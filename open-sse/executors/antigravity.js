@@ -7,7 +7,7 @@ import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
+import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
@@ -446,11 +446,15 @@ export class AntigravityExecutor extends BaseExecutor {
     if (generationConfig.maxOutputTokens > MAX_ANTIGRAVITY_OUTPUT_TOKENS) {
       generationConfig.maxOutputTokens = MAX_ANTIGRAVITY_OUTPUT_TOKENS;
     }
+    // Gemini 4 request rules apply at the provider boundary so every source
+    // format (OpenAI, Claude, native Gemini) is covered (upstream eb373017).
+    const { generationConfig: finalGenerationConfig, contents: finalContents } =
+    applyGemini4RequestRules({ generationConfig, contents }, model);
 
     const transformedRequest = {
       ...requestWithoutTools,
-      generationConfig,
-      ...(contents.length > 0 && { contents }),
+      generationConfig: finalGenerationConfig,
+      ...(finalContents.length > 0 && { contents: finalContents }),
       ...(tools && { tools }),
       sessionId,
       safetySettings: undefined,

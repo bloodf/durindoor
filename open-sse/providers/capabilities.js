@@ -163,30 +163,30 @@ export const MODEL_CAPABILITIES = {
   // https://platform.kimi.ai/docs/models.md — vision (image/video), thinking and non-thinking, 262144 context.
   "kimi-k2.6": { vision: true, videoInput: true, reasoning: true, promptCaching: true, thinkingFormat: "kimi", thinkingCanDisable: true, contextWindow: 262144, maxOutput: null },
   // Claude 4.6/4.7/4.8 and Kiro Sonnet 5 have 1M context + adaptive thinking (override generic claude pattern)
-  "claude-opus-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.7": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-8-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.6": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   // Explicit thinking variants keep the generation's 1M window rather than
   // falling through to the legacy budget-thinking family.
-  "claude-opus-4.6-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-6-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-7-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.6-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-6-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   // Kiro's agentic variants retain the verified generation's 1M window.
-  "claude-opus-4.7-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-7-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.7-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-7-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-8-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4.8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-opus-4-8-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-thinking-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.7-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-7-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4.8-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-opus-4-8-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-4.6": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-5-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-5-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  "claude-sonnet-5-thinking-agentic": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
 
   /** Z.ai documents GLM-4.6V's 128K-token context and 32,768-token output limit. */
   "glm-4.6v": { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
@@ -204,6 +204,14 @@ export const MODEL_CAPABILITIES = {
    */
   "glm-5.3": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // Upstream c61ee37d: z.ai docs say GLM-5.3-FLASH cannot disable thinking and carries the 1M window.
+  "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // OpenCode serves the same weights under this free id from its own inference
+  // service, which rejects the zai `thinking` object (400 unknown field
+  // "thinking") and accepts reasoning_effort (upstream 32c5f30a, probed on both
+  // /inference/v1 and /zen/v1). The opencode lane already emits reasoning_effort
+  // through its registry thinkingFormat; this row fixes opencode-zen.
+  "glm-5.3-flash-free": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   "glm-5.1": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
   "glm-5-turbo": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
@@ -214,6 +222,23 @@ export const MODEL_CAPABILITIES = {
   "glm-4.5": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072, maxOutput: undefined },
   "glm-4.5-air": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072, maxOutput: undefined },
   "glm-4-32b-0414-128k": { reasoning: true, thinkingFormat: "zai", contextWindow: 131072 },
+
+  // OpenCode Free ids that models.dev reports as reasoning-capable but no table
+  // covered (upstream 4c58e7f3, #2690): without a row they fall through to
+  // DEFAULT_CAPABILITIES (reasoning: false) and applyThinking() strips the
+  // client's reasoning_effort. Modalities and limits are verbatim from
+  // models.dev. The opencode lane keeps its registry "opencode" effort enum
+  // (resolveFormat prefers it); the format here applies to other lanes such as
+  // opencode-zen. big-pickle and x-preview-f-free already have provider rows.
+  "space-bunny-free": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
+  "space-bunny": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
+  "exo-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "fledge-alpha-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "longcat-2.0": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "longcat-2.0-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "longcat-2.5-preview-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "north-mini-code-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
+  "ring-2.6-1t-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 66000 },
 
   // Qwen plain coder/text (no vision) — registry "vision-model" / "coder-model" aliases
   "vision-model": { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 },
@@ -242,6 +267,19 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
     vision: true, reasoning: true, search: true, thinkingCanDisable: false,
     thinkingFormat: "kiro", contextWindow: m.contextLength, maxOutput: 32000
   }])
+);
+
+// Copilot (github, GHE), NanoGPT and Kiro serve Claude 5.5 under dotted ids. Same models as the dashed
+// rows (Opus 5.5 / Sonnet 5.5 reject thinking.type "disabled"; Sonnet takes "between_tools"),
+// scoped per provider so other gateways (e.g. OpenRouter) keep their own handling.
+const CLAUDE_5_5_DOTTED_BASE = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 };
+const CLAUDE_5_5_DOTTED_CAPS = {
+  "claude-opus-5.5": CLAUDE_5_5_DOTTED_BASE,
+  "claude-sonnet-5.5": { ...CLAUDE_5_5_DOTTED_BASE, thinkingModes: ["adaptive", "between_tools"] },
+};
+const KIRO_CLAUDE_5_5_CAPS = Object.fromEntries(
+  Object.entries(CLAUDE_5_5_DOTTED_CAPS).flatMap(([id, caps]) =>
+    ["", "-thinking", "-agentic", "-thinking-agentic"].map((suffix) => [id + suffix, caps]))
 );
 
 const ANTHROPIC_API_CAPABILITIES = AUDITED_PROVIDER_CAPABILITIES.anthropic;
@@ -340,7 +378,13 @@ const OX_ALPHA_CAPABILITIES = {
   maxOutput: 131072
 };
 
+// Antigravity 3.6-3.8 Flash tiers: no "minimal" level, so none/minimal floor to low (same
+// mechanism as Gemini 4). Scoped to Antigravity; other providers keep their own metadata.
+// Unverified: the 400 "Thinking level MINIMAL is not supported" (upstream decolua/9router#5355) was not reproduced live.
+const ANTIGRAVITY_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], thinkingFloorHidesThoughts: true, contextWindow: 1048576, maxOutput: 65536 };
+
 export const PROVIDER_CAPABILITIES = {
+  antigravity: Object.fromEntries(["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.7", "gemini-3.6"].map((id) => [id, ANTIGRAVITY_FLASH_TIER_CAPABILITIES])),
   // Native API metadata is separate from OAuth and reseller contracts.
   openai: AUDITED_PROVIDER_CAPABILITIES.openai,
   codex: { ...CODEX_ONLY_CAPABILITIES, ...AUDITED_PROVIDER_CAPABILITIES.codex },
@@ -429,8 +473,13 @@ export const PROVIDER_CAPABILITIES = {
   // so the 12 keys can never drift from the catalog in providerModels.js.
   // Exposed under both the provider id ("kiro") and its short alias ("kr") —
   // callers pass either.
-  kiro: KIRO_GPT_5_6_PROVIDER_CAPS,
-  kr: KIRO_GPT_5_6_PROVIDER_CAPS,
+  kiro: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  kr: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  github: CLAUDE_5_5_DOTTED_CAPS,
+  "ghe-copilot": CLAUDE_5_5_DOTTED_CAPS,
+  ghe: CLAUDE_5_5_DOTTED_CAPS,
+  // NanoGPT lists the vendor-prefixed id and capability lookup keys on the full registry id.
+  nanogpt: { "anthropic/claude-sonnet-5.5": CLAUDE_5_5_DOTTED_CAPS["claude-sonnet-5.5"] },
   "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,
   aq: KIRO_GPT_5_6_PROVIDER_CAPS,
   // Devin cloud-agent (OmniRoute #6894): single placeholder model, not chat-capable.
@@ -558,16 +607,11 @@ export const PROVIDER_CAPABILITIES = {
   // reasoning.canDisableThinking flag — see the note in the codebuddy-cn block
   // below; it is NOT the inverse of onlyReasoning.
   "codebuddy-cn": {
-    "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 48000 },
+    "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 131072 },
     "glm-5.1":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 48000 },
     "glm-5.0":            { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 48000 },
-    // maxOutput 64000 per both the plugin-baked fallback and the live server
-    // table (the old 38000 had no source and truncated output).
-    "glm-5v-turbo":       { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 64000 },
     "glm-4.7":            { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 48000 },
-    "minimax-m3":         { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 128000 },
-    "kimi-k2.7":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 256000, maxOutput: 32000 },
-    "kimi-k2.6":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 256000, maxOutput: 32000 },
+    "minimax-m3":         { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 524288 },
     // Per-model values mirror the server's product-config payload (the plugin
     // fetches it from copilot.tencent.com; the `models[]` entries carry
     // maxInputTokens/maxOutputTokens/supportsImages). contextWindow =
@@ -581,11 +625,17 @@ export const PROVIDER_CAPABILITIES = {
     // hy3: 256K official; 192000 is a deliberate conservative gateway value (fork note, upstream e014cb537).
     "hy3":                { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 192000, maxOutput: 64000 },
     "hy4-preview":        { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 64000 },
-    "glm-5.3":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 48000 },
-    "glm-5.3-flash":      { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 32000 },
-    "kimi-k3-1":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 32000 },
-    "deepseek-v4-pro":    { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 50000 },
-    "deepseek-v4-flash":  { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 50000 },
+    "glm-5.3":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 131072 },
+    "glm-5.3-flash":      { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 131072 },
+    "kimi-k3-1":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 1048576 },
+    // contextWindow is the server's contextWindow.defaultLength (300000), NOT
+    // maxInputTokens: k2.8 publishes supportedLengths [300000, 1000000] and the
+    // gateway only gives 1M when the request opts in (this executor never does).
+    "kimi-k2.8-preview":  { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 300000, maxOutput: 131072 },
+    "deepseek-v4-pro":    { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 393216 },
+    // deepseek-v4.1-flash replaced v4-flash on the server list; the 2026-09-30
+    // snapshot gives it maxOutput 393216 and low/high/max efforts.
+    "deepseek-v4.1-flash": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 393216 },
   },
 
   // OpenCode free/stealth ids use the gateway reasoning_effort enum except Ox
@@ -602,16 +652,20 @@ export const PROVIDER_CAPABILITIES = {
     "mimo-v2.6-flash-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "opencode", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 131072 },
     // Union Alpha routes through the Claude Messages wire (see executors/opencode.js
     // MESSAGES_MODELS), not the opencode reasoning_effort enum.
-    "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 }
+    "union-alpha": { vision: true, contextWindow: 262144, maxOutput: 131072 },
+    // The free backend rejects prompts above ~330k tokens (upstream 1da5b0d7,
+    // issue #5097). Publishing 1M made clients skip compaction and hard-fail
+    // mid-session with a 400.
+    "deepseek-v4.1-flash-free": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 330000, maxOutput: 128000 }
   },
 
   oc: { "x-preview-f-free": OX_ALPHA_CAPABILITIES },
   "opencode-go": {
     "ox-alpha-free": OX_ALPHA_CAPABILITIES,
-    // glm-5.3-flash has no exact global entry (only the base "glm-5.3" id
-    // does, with the z.ai-native "zai" thinkingFormat), so without a
-    // provider override it fell through to DEFAULT_CAPABILITIES with no
-    // reasoning at all. OpenCode Go's backend also rejects the z.ai
+    // Upstream c8644368: 1M window and 128k output for claude-haiku-5-5 on OpenCode Go (adaptive thinking already comes from the haiku rule).
+    "claude-haiku-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+    // The global glm-5.3-flash entry uses the z.ai-native "zai" thinkingFormat,
+    // so without this provider override it would be sent z.ai-shaped fields. OpenCode Go's backend also rejects the z.ai
     // `thinking` object (400: unknown field "thinking") and wants
     // reasoning_effort, so the format here must be "openai", not "zai". #4226
     "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 }
@@ -748,25 +802,33 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*embed*", caps: { tools: false, contextWindow: null, maxOutput: null } },
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
-{ pattern: "*claude*opus-5-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*opus-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*sonnet-5*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-5-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*sonnet-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 /** Claude 4.6+ variants share the generation's 1M context and 128K output limits. */
-{ pattern: "*claude*opus-4.6*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*opus-4.7*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*opus-4.8*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*sonnet-4.6*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*sonnet-4.7*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4.6*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4.7*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4.8*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*sonnet-4.6*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*sonnet-4.7*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+// PDF input is supported by current Claude families; legacy/generic fallbacks stay conservative.
+// https://platform.claude.com/docs/en/build-with-claude/pdf-support
+{ pattern: "*claude*haiku-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
+{ pattern: "*claude*haiku-4*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
+{ pattern: "*claude*opus-4*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
+{ pattern: "*claude*sonnet-4*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*haiku*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*opus*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*sonnet*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
-{ pattern: "*claude*fable*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*mythos*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*fable*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*mythos*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude-3*", caps: { vision: true } },
 { pattern: "*claude*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 
 // ── Gemini (all 2.0+ multimodal + google_search grounding, 1M ctx) ─
 { pattern: "*gemini*image*", caps: { vision: true, imageOutput: true, contextWindow: 1048576 } },
+// Gemini 4 (Argon): no "minimal" tier and cannot disable thinking (upstream 9router 29fc880e).
+{ pattern: "*gemini-4*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxOutput: 65536 } },
 { pattern: "*gemini-3.8*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65536 } },
 { pattern: "*gemini-3*pro*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65535 } },
 { pattern: "*gemini-3*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65536 } },
@@ -780,6 +842,9 @@ export const PATTERN_CAPABILITIES = [
 
 // Verified GPT-6 families also cover compatible routes and discovered snapshots.
 // Exact provider rows above retain their separate OAuth/reseller contracts.
+// Image variants ("-image" suffix) generate images; first match wins, so they
+// must precede the chat family rows (upstream decolua/9router@fbac1220).
+{ pattern: "*gpt-6*image*", caps: { imageOutput: true } },
 { pattern: "*gpt-6.1-terra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-terra"] },
 { pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
 { pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },
@@ -877,6 +942,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*kimi*", caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
 
 // ── GLM / Z.ai (thinking.enabled; disable via enable_thinking:false) ─
+// Upstream c61ee37d: the whole 5.3 line cannot disable thinking (prefixed ids such as z-ai/glm-5.3-flash).
+{ pattern: "*glm-5.3*", caps: { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*glm-5*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
 { pattern: "*glm-4.7*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
 { pattern: "*glm-4*", caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000 } },
@@ -1182,6 +1249,24 @@ export function enforceCursorCapabilities(provider, capabilities) {
   return capabilities;
 }
 
+// 9router 0ad0a722 (#1367): Haiku 3/4 take budget thinking; Haiku 5+ accepts only
+// adaptive thinking + output_config.effort. The version may follow "haiku"
+// (haiku-4-5, haiku-5.5) or precede it (claude-3-5-haiku). Unversioned Haiku keeps
+// the conservative budget shape; dated ids (haiku-20260101) count as unversioned.
+// Single source for getCapabilitiesForModel (translated path) and the native
+// passthrough (normalizeClaudePassthrough).
+export function isLegacyHaikuModel(model = "") {
+  if (!/haiku/i.test(model)) return false;
+  const match = String(model).match(/haiku[-._]?(\d{1,2})(?!\d)|(?<![\d.])(\d{1,2})(?:[-._]\d{1,2})?[-._]?haiku/i);
+  return match ? Number(match[1] || match[2]) < 5 : true;
+}
+
+/**
+ * Haiku 5+ family caps; overrides the budget-shaped `*claude*haiku*` pattern.
+ * Limits are left to defaults/catalog overlays: the global family has no cited source.
+ */
+const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" };
+
 /**
  * Resolve capabilities for a model using the 4-step fallback chain,
  * merged over DEFAULT_CAPABILITIES so the result is always complete.
@@ -1259,6 +1344,10 @@ export function getCapabilitiesForModel(provider, model) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
     if (hasUnpublishedOutput(provider, exactId)) merged.maxOutput = undefined;
     return finalize(merged);
+  }
+
+  if (/claude/i.test(normalizedModel) && /haiku/i.test(normalizedModel) && !isLegacyHaikuModel(normalizedModel)) {
+    return finalize({ ...DEFAULT_CAPABILITIES, ...ADAPTIVE_HAIKU_CAPABILITIES });
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
@@ -1387,4 +1476,12 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     known: false,
     source: "default"
   });
+}
+
+/**
+ * Gemini 4 (Argon) rejects sampling params and merged user turns whose last
+ * part is not a functionResponse (upstream 9router eb373017 / #4802).
+ */
+export function isGemini4Model(model) {
+  return /(?:^|\/)gemini-4(?:$|[-.])/i.test(String(model || ""));
 }

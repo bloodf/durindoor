@@ -80,7 +80,7 @@ export const WithDotAndIcon = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("check_circle")).toBeInTheDocument();
+    await expect(canvasElement.querySelector('[data-icon-name="check_circle"]') || canvas.getByText("check_circle")).toBeInTheDocument();
     await expect(canvas.getByText("Healthy")).toBeInTheDocument();
   },
 };

@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OpenCodeExecutor, OPENCODE_SESSION_RE, OPENCODE_UA } from "../../open-sse/executors/opencode.js";
 
+// These tests stub globalThis.fetch; keep the executor on it instead of the
+// optional wreq-js TLS transport (covered in opencode-tls-client.test.js).
+vi.mock("../../open-sse/services/opencodeTlsClient.js", () => ({ getOpencodeTlsFetch: async () => null }));
+
 afterEach(() => {
   delete process.env.OPENCODE_DISABLE_FREE_TIER_HEADERS;
   vi.unstubAllGlobals();

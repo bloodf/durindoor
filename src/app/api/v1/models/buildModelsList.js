@@ -20,6 +20,7 @@ import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js"
 import { discoverOllamaCatalog, isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveClineModels } from "open-sse/services/clineModels.js";
@@ -192,6 +193,14 @@ const LIVE_MODEL_RESOLVERS = {
       return model;
     });
     return models.length ? { models } : null;
+  },
+  cursor: async (conn) => {
+    const result = await resolveCursorModels({
+      accessToken: isString(conn.accessToken) ? conn.accessToken : undefined,
+      providerSpecificData: isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {}
+    }, { ...(await liveResolverOptions(conn)) });
+    if (!result?.models?.length) return null;
+    return { models: result.models.map((m) => ({ id: m.id, name: m.name })) };
   },
   qoder: (conn) => resolveQoderLiveModels(conn, "qoder"),
   "qoder-cn": (conn) => resolveQoderLiveModels(conn, "qoder-cn"),
@@ -1125,6 +1134,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
         const modelIds = rawModelIds.
         map((modelId) => {
+          // Some vendor ids start with the provider's own alias (fal-ai/flux/dev,
+          // nvidia/parakeet-...). Stripping them would publish an id that routes
+          // to a model the upstream does not have.
+          if (staticModelById.has(modelId) || liveModelIds.has(modelId)) return modelId;
           if (modelId.startsWith(`${outputAlias}/`)) return modelId.slice(outputAlias.length + 1);
           if (modelId.startsWith(`${staticAlias}/`)) return modelId.slice(staticAlias.length + 1);
           if (modelId.startsWith(`${providerId}/`)) return modelId.slice(providerId.length + 1);

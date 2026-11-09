@@ -34,9 +34,12 @@ import { rankQuotaConnections, pickQuotaWeightedConnection } from "@/shared/serv
 import { quotaDecisionDiagnostic } from "open-sse/services/quota/scoring.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { isOverLimit, recordRequest, retryAfterMs } from "./rpmLimiter.js";
+import { notifyWebhookEvent } from "@/lib/webhooks/index.js";
 import { isOverLimit as isRpdOverLimit, recordRequest as recordRpdRequest, retryAfterMs as rpdRetryAfterMs } from "./rpdLimiter.js";
 import { evaluatePeakHourProtection } from "@/lib/providers/peakHourProtection";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
+import { getBillingEpoch } from "@/lib/db/repos/usageRepo.js";
+import { captureRequestBillingEpoch } from "../utils/requestCorrelation.js";
 
 const CLI_AUTH_SALT = "9r-cli-auth";
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
@@ -1224,6 +1227,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       map((field) => [field, null])
     );
     log.warn("AUTH", `${connectionId.slice(0, 8)} hit permanent Codex OAuth invalidation; quarantining for reauth [${status}]`);
+    notifyWebhookEvent("account.reauth_required", { provider, connection: connectionId.slice(0, 8), status: Number(status) || null }, { throttleKey: connectionId });
     await updateProviderConnection(connectionId, {
       ...clearLocks,
       testStatus: "reauth_required",
@@ -1267,6 +1271,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
           backoffLevel: 0
         }, { expectedUpdatedAt: conn.updatedAt || null });
         log.warn("AUTH", `${connectionId.slice(0, 8)} durable credential rejected with ${status}; quarantining for reauth`);
+        notifyWebhookEvent("account.reauth_required", { provider, connection: connectionId.slice(0, 8), status: Number(status) || null }, { throttleKey: connectionId });
       } catch (error) {
         if (error?.code !== "PROVIDER_CONNECTION_REVISION_CONFLICT") throw error;
         log.warn("AUTH", `${connectionId.slice(0, 8)} changed before the reauth write; leaving the newer credential alone`);
@@ -1293,6 +1298,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       backoffLevel: 0
     });
     log.warn("AUTH", `${connectionId.slice(0, 8)} disabled: Qoder quota exhausted [403/code 112]`);
+    notifyWebhookEvent("quota.exhausted", { provider, connection: connectionId.slice(0, 8), model, resetAt: null }, { throttleKey: connectionId });
     return { shouldFallback: true, cooldownMs: 0 };
   }
 
@@ -1495,6 +1501,17 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   log.warn("AUTH", `${connectionId.slice(0, 8)} locked requested scope for ${Math.round(cooldownMs / 1000)}s [${status}]`);
 
   const retryAtKnown = !(Number(status) === 429 && evidenceState === "exhausted" && normalizedReset === null);
+  // Operator webhooks (#1118): one event per locked scope, throttled per scope.
+  const quotaExhausted = Number(status) === 429 && evidenceState === "exhausted";
+  notifyWebhookEvent(quotaExhausted ? "quota.exhausted" : "account.cooldown", {
+    provider,
+    connection: connectionId.slice(0, 8),
+    model: fallbackModel || null,
+    status: Number(status) || null,
+    reason: reasonCode,
+    cooldownMs,
+    resetAt: retryAtKnown ? new Date(deadline).toISOString() : null
+  }, { throttleKey: `${connectionId}:${fallbackModel || "*"}` });
   return {
     shouldFallback: true,
     cooldownMs,
@@ -1621,22 +1638,26 @@ export function extractApiKeyCandidates(request) {
  * Resolve all credentials presented by one request and return the credential
  * that authenticated. Unknown placeholder keys remain allowed only in local
  * mode, after every candidate has been checked for a valid stored identity.
+ * auth.billingEpoch is captured before credential reads and remains bound to
+ * this Request across retries. Pass it unchanged into every usage event and
+ * durable job; completion must never look up the current billing generation.
  *
  * @param {Request} request
  * @param {{ required?: boolean, now?: number }} options
- * @returns {Promise<{apiKey: string | null, auth: { apiKeyId?: string, ok: boolean }}>}
+ * @returns {Promise<{apiKey: string | null, auth: { apiKeyId?: string, ok: boolean, billingEpoch: string | null }}>}
  */
 export async function resolveClientApiKey(request, { required = false, now = Date.now() } = {}) {
+  const billingEpoch = await captureRequestBillingEpoch(request);
   const candidates = extractApiKeyCandidates(request);
   if (await hasValidCliToken(request)) {
-    return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true } };
+    return { apiKey: candidates[0] || null, auth: { ok: true, reason: null, stored: false, operator: true, billingEpoch } };
   }
   for (const apiKey of candidates) {
     const auth = await evaluateApiKeyCredential(apiKey, { required: true, now });
-    if (auth.ok) return { apiKey, auth };
+    if (auth.ok) return { apiKey, auth: { ...auth, billingEpoch } };
   }
   const apiKey = candidates[0] || null;
-  return { apiKey, auth: await evaluateApiKeyCredential(apiKey, { required, now }) };
+  return { apiKey, auth: { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch } };
 }
 
 /**
@@ -1670,5 +1691,7 @@ async function evaluateApiKeyCredential(apiKey, { required, now }) {
 
 export async function evaluateApiKeyAuth(apiKey, { required = false, now = Date.now(), request = null } = {}) {
   if (request) return (await resolveClientApiKey(request, { required, now })).auth;
-  return evaluateApiKeyCredential(apiKey, { required, now });
+  // Without a Request, this call is admission; callers must retain its result.
+  const billingEpoch = await getBillingEpoch();
+  return { ...await evaluateApiKeyCredential(apiKey, { required, now }), billingEpoch };
 }

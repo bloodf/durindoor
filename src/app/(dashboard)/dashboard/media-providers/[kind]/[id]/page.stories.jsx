@@ -69,8 +69,8 @@ export const CustomEmbeddingDetail = {
     await expect(await canvas.findByText("Voyage Internal")).toBeVisible();
     await expect(canvas.getByText("Custom · voyage")).toBeVisible();
     await userEvent.click(canvas.getByRole("button", { name: "Delete" }));
-    const dialog = within(document.body);
-    await userEvent.click(await dialog.findByRole("button", { name: /^Delete$/ }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await userEvent.click(dialog.getByRole("button", { name: "Delete", exact: true }));
     await expect(await canvas.findByRole("alert")).toHaveTextContent("Node is in use");
   },
 };

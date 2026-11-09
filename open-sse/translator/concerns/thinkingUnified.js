@@ -134,6 +134,10 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   // Model-scoped Ox Alpha metadata is narrower than OpenCode's gateway-wide
   // default and must retain its low/high/max enum.
   if (resolvedCaps.thinkingFormat === "openai-low-high-max") return resolvedCaps.thinkingFormat;
+  // A transports[] entry may declare the thinking shape its endpoint accepts; it wins over
+  // the model's thinkingFormat, which describes the Chat wire (upstream 9router d07e5bc3).
+  const transportFmt = provider ? PROVIDERS[provider]?.transports?.find((t) => t.format === targetFormat)?.thinkingFormat : null;
+  if (transportFmt) return transportFmt;
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
   if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;
@@ -356,6 +360,19 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         if (caps.thinkingType === "adaptive") body.thinking = { type: "adaptive" };
         break;
       }
+    case "openai-responses": {
+        // Responses API nests effort as reasoning:{effort,summary}; strict upstreams reject
+        // top-level reasoning_effort / thinking:{type}. "none" is expressed by omitting reasoning.
+        if (none && canDisable) {delete body.reasoning;break;}
+        const level = toLevel(eff);
+        if (level) {
+          const current = isObject(body.reasoning) ? body.reasoning : {};
+          body.reasoning = { ...current, effort: resolveOpenAiEffort(level, provider, model, caps) };
+          if (!body.reasoning.summary) body.reasoning.summary = "auto";
+        }
+        delete body.reasoning_effort;
+        break;
+      }
     case "openai-low-high-max": {
         const level = toLowHighMaxLevel(eff);
         if (level) body.reasoning_effort = level;
@@ -416,12 +433,14 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
       }
     case "gemini-level":{
         let level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        // Antigravity tiers: none/minimal asked for no visible thoughts even though the level is floored to low.
+        const hideThoughts = caps.thinkingFloorHidesThoughts === true && level === "minimal";
         const allowed = caps.thinkingEfforts;
         if (Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {
           level = ["none", "minimal"].includes(level) && allowed.includes("low") ?
             "low" : allowed.includes("high") ? "high" : allowed[0];
         }
-        setGeminiThinking(body, { thinkingLevel: level, includeThoughts: level !== "minimal" });
+        setGeminiThinking(body, { thinkingLevel: level, includeThoughts: !hideThoughts && level !== "minimal" });
         ensureGeminiOutputFloor(body, geminiLevelOutputFloor(level), caps);
         break;
       }

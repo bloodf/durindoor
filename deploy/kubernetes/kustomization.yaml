@@ -1,0 +1,16 @@
+# DurinDoor single-instance Kubernetes example (#1146).
+# Review every file before applying. See docs/deployment/kubernetes.mdx.
+#   kubectl apply -k deploy/kubernetes
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: durindoor
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+# The Secret is NOT listed: create it from your own values (see secret.example.yaml).
+images:
+  - name: ghcr.io/bloodf/durindoor
+    # Pin a verified numbered tag (X.Y.Z, no "v") or a digest for production.
+    newTag: latest

@@ -56,6 +56,9 @@ function ButtonIcon({ name, spin = false, size = "md" }) {
   );
 }
 
+// Storybook action inference relies on this stable name after production minification.
+ButtonIcon.displayName = "ButtonIcon";
+
 /**
  * @param {object} props
  * @param {"primary"|"secondary"|"outline"|"ghost"|"danger"|"success"} [props.variant]

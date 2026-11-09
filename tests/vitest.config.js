@@ -1,8 +1,9 @@
 import { defineConfig } from "vitest/config";
 import { transformWithOxc } from "vite";
-import { resolve } from "path";
+import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
+import { createRequire } from "module";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -10,6 +11,11 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 // which is not part of this repo checkout. Skip its test when absent so the
 // suite doesn't fail at collection with ERR_MODULE_NOT_FOUND.
 const hasCloud = existsSync(resolve(__dirname, "../cloud"));
+
+// tests/ and the repo root both install playwright (storybook e2e vs browserPool).
+// Pin every "playwright" import to the root copy that production code resolves, so
+// vi.mock("playwright") in a test hits the module open-sse actually imports.
+const playwrightDir = dirname(createRequire(resolve(__dirname, "../package.json")).resolve("playwright/package.json"));
 
 export default defineConfig({
   oxc: {
@@ -80,6 +86,7 @@ export default defineConfig({
     alias: [
       { find: /^open-sse\//, replacement: resolve(__dirname, "../open-sse") + "/" },
       { find: "open-sse", replacement: resolve(__dirname, "../open-sse") },
+      { find: /^playwright$/, replacement: resolve(playwrightDir, "index.mjs") },
       { find: "jsonc-parser", replacement: resolve(__dirname, "node_modules/jsonc-parser/lib/umd/main.js") },
       // Mirrors website/next.config.mjs, so website components under test
       // resolve their own sources the same way the app builds them.

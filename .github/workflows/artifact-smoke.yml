@@ -1,0 +1,43 @@
+name: Artifact Smoke
+# Manual only: builds standalone and the npm tarball, installs them in isolation
+# and runs the installed-artifact smoke. Publishes nothing.
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26.13.0
+          cache: npm
+
+      - name: Pin npm
+        run: |
+          npm install --global npm@11.20.0
+          test "$(npm --version)" = "11.20.0"
+
+      - name: Install dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          npm --prefix cli install --include=dev --no-audit --no-fund
+
+      - name: Build standalone
+        run: npm run build
+
+      - name: Smoke standalone artifact
+        run: npm run verify:installed -- "$PWD/.next/standalone/custom-server.js"
+
+      - name: Build and pack CLI
+        run: |
+          npm --prefix cli run build
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack ./cli --pack-destination "$RUNNER_TEMP/pack"
+
+      - name: Smoke packed npm artifact
+        run: npm run verify:packed -- "$RUNNER_TEMP"/pack/durindoor-*.tgz

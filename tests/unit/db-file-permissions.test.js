@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const describePosix = process.platform === "win32" ? describe.skip : describe;
 const originalDataDir = process.env.DATA_DIR;
 let tempRoot;
@@ -38,6 +39,7 @@ afterEach(async () => {
   vi.doUnmock("@/lib/db/migrate.js");
   try { await global._dbAdapter?.instance?.close?.(); } catch {}
   resetAdapterState();
+  await disposeLoadedRequestDetailsRepo();
   fs.rmSync(tempRoot, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;

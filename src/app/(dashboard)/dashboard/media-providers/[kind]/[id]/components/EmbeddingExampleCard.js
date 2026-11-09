@@ -27,7 +27,12 @@ export function EmbeddingExampleCard({ providerId, customAlias }) {
   const providerAlias = isCustom ? (customAlias || providerId) : getProviderAlias(providerId);
   const embeddingModels = isCustom ? [] : getModelsByProviderId(providerId).filter((m) => getModelKind(m) === "embedding");
 
-  const [selectedModel, setSelectedModel] = useState(embeddingModels[0]?.id ?? "");
+  const [selection, setSelection] = useState(null);
+  /** Provider navigation must not reuse a model outside the current embedding catalog. */
+  const selectedModel = selection?.providerId === providerId
+    && (isCustom || embeddingModels.some((model) => model.id === selection.id))
+    ? selection.id : (embeddingModels[0]?.id ?? "");
+  const setSelectedModel = (id) => setSelection({ providerId, id });
   const [input, setInput] = useState("The quick brown fox jumps over the lazy dog");
   const [dimensions, setDimensions] = useState("");
   const [apiKey, setApiKey] = useState("");

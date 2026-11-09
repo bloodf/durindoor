@@ -103,7 +103,7 @@ describe("baseUrl-only API-key provider connection test", () => {
       "glb-test-key",
       async () => new Response("", { status }),
     );
-    expect(result).toEqual({ valid, status, ...(error ? { error } : {}) });
+    expect(result).toEqual({ valid, status, ...(status >= 500 ? { unavailable: true } : {}), ...(error ? { error } : {}) });
     expect(JSON.stringify(result)).not.toContain("glb-test-key");
   });
 
@@ -122,6 +122,7 @@ describe("baseUrl-only API-key provider connection test", () => {
     expect(result).toEqual({
       valid: false,
       status: null,
+      unavailable: true,
       error: "Provider unavailable - network request failed",
     });
     expect(JSON.stringify(result)).not.toContain("glb-test-key");

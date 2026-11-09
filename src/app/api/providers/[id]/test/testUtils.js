@@ -1109,6 +1109,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             }
             return {
               valid: result.valid,
+              ...(result.unavailable ? { unavailable: true } : {}),
               error: result.valid ? null : result.error || "Invalid API key"
             };
           }

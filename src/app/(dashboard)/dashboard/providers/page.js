@@ -1143,6 +1143,7 @@ ProviderTestResultsView.propTypes = {
       total: PropTypes.number,
       passed: PropTypes.number,
       failed: PropTypes.number,
+      unavailable: PropTypes.number,
       skipped: PropTypes.number
     }),
     error: PropTypes.string

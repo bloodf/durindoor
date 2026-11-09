@@ -27,6 +27,14 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
     )
   `);
   const updatedAt = new Date().toISOString();
+  // Legacy shapes may lack attribution columns. Without both, no row proves
+  // an MCP failure; preserve those historical counts rather than dropping them.
+  const columns = new Set(db.all(db.driver === "pg"
+    ? `SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'usageHistory'`
+    : `PRAGMA table_info(usageHistory)`).map((column) => column.name));
+  const eligibility = columns.has("provider") && columns.has("status")
+    ? `AND NOT (COALESCE(usageHistory.provider, '') = 'mcp-gateway' AND COALESCE(usageHistory.status, '') = 'error')`
+    : "";
   const rows = db.all(`
     SELECT
       apiKeys.id AS apiKeyId,
@@ -34,7 +42,7 @@ export function ensureAndBackfillApiKeyUsageTotals(db) {
       COALESCE(SUM(usageHistory.cost), 0) AS totalCost,
       COUNT(usageHistory.id) AS totalRequests
     FROM apiKeys
-    LEFT JOIN usageHistory ON usageHistory.apiKey = apiKeys.key
+    LEFT JOIN usageHistory ON usageHistory.apiKey = apiKeys.key ${eligibility}
     GROUP BY apiKeys.id
   `);
 

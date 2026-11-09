@@ -147,7 +147,8 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
   if (!kindConfig || !exConfig) return null;
 
   const endpoint = useTunnel ? tunnelEndpoint : localEndpoint;
-  const apiPath = providerId === "xai" && kind === "video" ?
+  /** Together uses the local async job contract, preserving vendor model IDs with slashes. */
+  const apiPath = (providerId === "xai" || providerId === "together") && kind === "video" ?
   "/v1/videos/generations" :
   kindConfig.endpoint.path;
   // webSearch/webFetch: use safeProviderAlias only. Other kinds: append model when present.

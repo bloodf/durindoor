@@ -1038,6 +1038,8 @@ export default function ProviderLimits() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(formData)
         });
+        // Reject failures so the edit modal can preserve the draft and offer retry.
+        if (!res.ok) throw new Error("Failed to save connection");
         if (res.ok) {
           await fetchConnections();
           setShowEditModal(false);
@@ -1047,7 +1049,7 @@ export default function ProviderLimits() {
           }
         }
       } catch (error) {
-        console.error("Error saving connection:", error);
+        throw error;
       }
     },
     [selectedConnection, fetchConnections, fetchQuota]

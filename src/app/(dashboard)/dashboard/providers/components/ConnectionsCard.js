@@ -439,8 +439,10 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
   const handleUpdateConnection = async (formData) => {
     try {
       const res = await fetch(`/api/providers/${selectedConnection.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) });
+      // Reject failures so the edit modal can preserve the draft and offer retry.
+      if (!res.ok) throw new Error("Failed to save connection");
       if (res.ok) {await fetch_();setShowEditModal(false);}
-    } catch (e) {console.log("update connection error:", e);}
+    } catch (e) {throw e;}
   };
 
   if (loading) return <Card><div className="h-20 animate-pulse bg-dd-text/5 rounded-lg" /></Card>;

@@ -69,6 +69,53 @@ describe("Kimchi refresh at the real Node bootstrap boundary", () => {
     expect(errors).not.toHaveBeenCalled();
   });
 
+  it("stops refreshing when its timer is cancelled and starts again in a fresh lifecycle", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    const services = [
+      ["../../src/lib/startup/nonLoopbackApiKeyGuard.js", "warnIfInferenceServerExposed"],
+      ["../../src/lib/dataRetention/scheduler.js", "startDataRetentionScheduler"],
+      ["../../src/lib/modelAutoSync/scheduler.js", "startModelAutoSyncScheduler"],
+    ];
+    const isolateServices = async () => {
+      for (const [path, name] of services) {
+        const service = await vi.importActual(path);
+        vi.spyOn(service, name).mockImplementation(() => {});
+      }
+    };
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    const boot = async () => {
+      await isolateServices();
+      const { register } = await import("../../src/instrumentation.js");
+      register();
+      await vi.dynamicImportSettled();
+      await globalThis[stateKey].activePromise;
+    };
+
+    await boot();
+    expect(transport.fetch).toHaveBeenCalledTimes(1);
+    const firstTimer = intervals.mock.results[intervals.mock.calls.findIndex(
+      (args) => args[1] === 4 * 60 * 60 * 1000,
+    )].value;
+    clearInterval(firstTimer);
+    await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000);
+    expect(transport.fetch).toHaveBeenCalledTimes(1);
+
+    // A process restart discards both the old timer and process-global state.
+    delete globalThis[stateKey];
+    vi.resetModules();
+    await boot();
+    expect(transport.fetch).toHaveBeenCalledTimes(2);
+    transport.fetch.mockResolvedValue({
+      ok: true, status: 200, statusText: "OK", json: async () => ({ tag_name: "v2.3.5" }),
+    });
+    await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000);
+    await globalThis[stateKey].activePromise;
+    expect(transport.fetch).toHaveBeenCalledTimes(3);
+    expect(globalThis[stateKey].currentAgent).toBe("kimchi/2.3.5");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it("does not start during module evaluation or edge registration", async () => {
     vi.stubEnv("NEXT_RUNTIME", "edge");
     await import("../../src/instrumentation.node.js");

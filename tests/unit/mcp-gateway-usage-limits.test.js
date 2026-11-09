@@ -234,6 +234,25 @@ it.each([
   }
 });
 
+it("keeps concurrent failed MCP usage out of a colliding key's token rate limit after gateway deletion", async () => {
+  const gateway = await database.createGatewayKey("Concurrent gateway", "mcp-fixture-machine");
+  adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, 'Concurrent API', 1, '[]', ?)", [gateway.id, gateway.key, new Date().toISOString()]);
+  const record = { key: gateway.key, policy: { tpmLimit: 2 } };
+  await Promise.all(Array.from({ length: 3 }, () => database.saveRequestUsage({
+    provider: "mcp-gateway", status: "error", apiKey: gateway.key, model: "tools__echo",
+    tokens: { prompt_tokens: 5 }, cost: 0, strict: true,
+  })));
+  await database.deleteGatewayKey(gateway.id);
+  expect(await checkApiKeyLimits(record)).toBeNull();
+  expect(await database.getApiKeyUsageTotals(gateway.id)).toMatchObject({ totalRequests: 0, totalTokens: 0 });
+  const [history] = Object.values((await database.getUsageStats("today")).byApiKey);
+  expect(history).toMatchObject({ keyName: "Deleted API key 1", requests: 3 });
+  expect(history.apiKeyKey).toMatch(/^api-key:hmac-sha256:[a-f0-9]{64}$/);
+  await database.saveRequestUsage({ provider: "fixture", status: "error", apiKey: gateway.key, model: "ordinary", tokens: { prompt_tokens: 2 }, cost: 0, strict: true });
+  expect((await checkApiKeyLimits(record)).message).toMatch(/2\/2 tokens\/minute/);
+  expect(await database.getApiKeyUsageTotals(gateway.id)).toMatchObject({ totalRequests: 1, totalTokens: 2 });
+});
+
 it.each([[{}, 0], [{ prompt_tokens: 5 }, null]])("excludes failed MCP ledger usage %j/%s from lifetime and windows", async (tokens, cost) => {
   await database.saveRequestUsage({ provider: "mcp-gateway", status: "error", apiKey: KEY, model: "tools__echo", tokens, cost, strict: true });
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 0, totalTokens: 0, totalCost: 0, unknownCostRequests: 0 });

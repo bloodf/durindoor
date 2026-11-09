@@ -939,7 +939,8 @@ export async function saveRequestUsage(entry) {
       // Atomic counter increment in same transaction
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', '1')
         ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(_meta.value AS BIGINT) + 1 AS TEXT)`);
-      // Failed MCP calls remain observable, but consume no per-key allowance.
+      // Failed MCP calls remain attributed in history/daily stats, but do not
+      // consume key policy totals. Other providers' errors still count.
       if (apiKeyId && !(entry.provider === "mcp-gateway" && entry.status === "error")) {
         incrementApiKeyUsageSync(db, apiKeyId, {
           tokens: tokens.total_tokens,
@@ -1013,6 +1014,7 @@ export async function retractAcceptedUsage({ usageEventId, billingEpoch }) {
 
 // Usage totals for one API key: today and this month (used by per-key limits).
 // Today always falls inside this month, so one scan from monthStart covers both.
+// COALESCE preserves historical NULL provider/status rows; only explicit MCP errors are exempt.
 export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStartIso) {
   const empty = () => ({ inputTokens: 0, outputTokens: 0, requests: 0, cost: 0, unknownCostRequests: 0 });
   if (!apiKey) return { day: empty(), month: empty() };
@@ -1030,8 +1032,8 @@ export async function getApiKeyWindowUsageTotals(apiKey, dayStartIso, monthStart
        COALESCE(SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END), 0) AS monthUnknown,
        COALESCE(SUM(cost), 0) AS monthCost
      FROM usageHistory WHERE apiKey = ? AND timestamp >= ?
-       AND (provider IS NULL OR provider <> ? OR status IS NULL OR status <> ?)`,
-    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso, "mcp-gateway", "error"]
+       AND NOT (COALESCE(provider, '') = 'mcp-gateway' AND COALESCE(status, '') = 'error')`,
+    [dayStartIso, dayStartIso, dayStartIso, dayStartIso, dayStartIso, apiKey, monthStartIso]
   );
   const n = (v) => Number(v) || 0;
   return {
@@ -1170,10 +1172,11 @@ export async function getUsageStats(period = "all", opts = {}) {
   const identitySalt = getOrCreateUsageIdentitySalt(db);
   const now = new Date();
 
-  const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }] = await Promise.all([
+  const [{ getProviderConnections }, { getApiKeys }, { getProviderNodes }, { getGatewayKeys }] = await Promise.all([
   import("./connectionsRepo.js"),
   import("./apiKeysRepo.js"),
-  import("./nodesRepo.js")]
+  import("./nodesRepo.js"),
+  import("./mcpGatewayRepo.js")]
   );
 
   let allConnections = [];
@@ -1191,15 +1194,32 @@ export async function getUsageStats(period = "all", opts = {}) {
   try {allApiKeys = await getApiKeys();} catch {}
   const apiKeyMap = Object.create(null);
   for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
+  let gatewayKeys = [];
+  try {gatewayKeys = await getGatewayKeys();} catch {}
+  const gatewayKeyMap = Object.create(null);
+  for (const k of gatewayKeys) gatewayKeyMap[k.key] = { name: k.name, id: k.id };
 
   // API responses use database IDs for registered keys and salted HMACs for
   // deleted/unknown keys. Neither identity contains raw key material.
   const unknownApiKeyIds = new Map();
-  function getPublicApiKeyIdentity(apiKey, internalIdentity = apiKey) {
+  function getPublicApiKeyIdentity(apiKey, internalIdentity = apiKey, provider = null) {
     if (!apiKey && (!internalIdentity || String(internalIdentity).startsWith("local-no-key"))) {
       return { id: "local-no-key", keyName: "Local (No API Key)", apiKeyMasked: null };
     }
-    const keyInfo = apiKey ? apiKeyMap[apiKey] : null;
+    // Gateway and API keys live in separate tables. Resolve MCP rows first
+    // against gateway keys, with a separate ID namespace for cross-table collisions.
+    const gatewayKey = provider === "mcp-gateway" && apiKey ? gatewayKeyMap[apiKey] : null;
+    if (gatewayKey?.id) {
+      return {
+        id: `mcp-gateway-key:${gatewayKey.id}`,
+        keyName: gatewayKey.name || "MCP Gateway Key",
+        apiKeyMasked: maskApiKey(apiKey)
+      };
+    }
+    // A shared secret cannot prove that old MCP history used an ordinary key.
+    // Keep unmatched MCP rows opaque, including after gateway deletion, rather
+    // than assigning a surviving/imported ordinary key's identity to them.
+    const keyInfo = provider !== "mcp-gateway" && apiKey ? apiKeyMap[apiKey] : null;
     if (keyInfo?.id) {
       return {
         id: `api-key:${keyInfo.id}`,
@@ -1402,7 +1422,7 @@ export async function getUsageStats(period = "all", opts = {}) {
         const provider = ak.provider || akKey.split("|")[2] || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const apiKeyVal = ak.apiKey;
-        const identity = getPublicApiKeyIdentity(apiKeyVal, akKey);
+        const identity = getPublicApiKeyIdentity(apiKeyVal, akKey, provider);
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
         const statsKey = `${identity.id}|${rawModel}|${provider || "unknown"}`;
@@ -1474,7 +1494,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       if (stats.byAccount[accountKey] && new Date(e.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = e.timestamp;
     }
     for (const e of views[2].values()) {
-      const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider, identitySalt));
+      const identity = getPublicApiKeyIdentity(e.apiKey, getApiKeyStatsKey(e.apiKey, e.model, e.provider, identitySalt), e.provider);
       const apiKeyKey = `${identity.id}|${e.model}|${e.provider || "unknown"}`;
       if (stats.byApiKey[apiKeyKey] && new Date(e.timestamp) > new Date(stats.byApiKey[apiKeyKey].lastUsed)) stats.byApiKey[apiKeyKey].lastUsed = e.timestamp;
     }
@@ -1565,7 +1585,7 @@ export async function getUsageStats(period = "all", opts = {}) {
       }
 
       if (r.apiKey && isString(r.apiKey)) {
-        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey, identitySalt));
+        const identity = getPublicApiKeyIdentity(r.apiKey, fingerprintApiKey(r.apiKey, identitySalt), r.provider);
         const { keyName, apiKeyMasked } = identity;
         const apiKeyKey = identity.id;
         const akKey = `${identity.id}|${r.model}|${r.provider || "unknown"}`;

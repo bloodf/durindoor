@@ -99,6 +99,14 @@ Token endpoints and refresh redirects go through the outbound URL guard. Cross-o
 
 Every `tools/call`, ok or error, writes a usage row with `provider: "mcp-gateway"` and `model` set to the namespaced tool name. Watch it on **Dashboard → Usage**.
 
+Failed calls stay attributed to the key that made them in the by-key view, but do not count toward that key's request limits or lifetime usage totals. Successful calls count toward request limits. Both are zero-cost tool usage, not unknown-cost LLM requests. Global and per-connection usage still include failures.
+
+The by-key view uses the configured gateway key name for MCP usage. Gateway key identities remain separate from ordinary API key identities, even if imported records share a key string or row ID. Deleted keys retain a masked historical identity.
+
+If an MCP history row retains a key but has no matching current gateway key, the view uses the existing masked, salted-HMAC identity. It never borrows an ordinary API key's name, including after gateway deletion or a later API-key import with the same secret. This deliberately replaces the old ordinary-key fallback for MCP history. Historical rows do not record the credential type or deleted gateway ID, so a matching secret cannot prove their original credential source. The generic historical label does not establish that source. Ordinary non-MCP identities keep their existing behavior.
+
+The historical unknown-cost exemption applies when migration 026 runs. Databases that already recorded migration 026 as applied do not rerun it after this update. The migration preserves larger stored counts, so it cannot reduce a previous overcount even if run again. This change provides no automatic repair of existing overcounts. Historical rows saved without an API key also cannot recover their originating key. Review any needed repair separately with a current backup; this update does not perform that remediation.
+
 ## Connect a client
 
 Point any streamable-HTTP MCP client at the gateway. Replace the host with your DurinDoor base URL and the key with a gateway key from **MCP Gateway → Keys**.

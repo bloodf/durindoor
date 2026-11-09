@@ -7,6 +7,7 @@ import { createLatestRequestGuard, mergeUsageResponse } from "@/shared/utils/req
 import { allocateUsageCost } from "@/shared/utils/usageCostAllocation";
 import { buildUsageProviders } from "@/shared/utils/usageProviders";
 
+import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
@@ -116,6 +117,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
+  const [requestError, setRequestError] = useState("");
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [snapshot, setSnapshot] = useState(null);
   const [tableView, setTableView] = useState("model");
   const [viewMode, setViewMode] = useState("costs");
   const [providers, setProviders] = useState([]);
@@ -126,6 +130,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const statsFetchAbortRef = useRef(null);
   const period = periodProp ?? periodLocal;
   const setPeriod = setPeriodProp ?? setPeriodLocal;
+
+  // Preset SSE snapshots are period-keyed; only custom selections have date identity.
+  const snapshotKey = JSON.stringify([period, isCustomRange ? customRange?.startDate || "" : "", isCustomRange ? customRange?.endDate || "" : ""]);
+  const periodLabel = isCustomRange && customRange?.startDate && customRange?.endDate
+    ? `${customRange.startDate} to ${customRange.endDate}`
+    : PERIODS.find((option) => option.value === period)?.label || period;
 
   // Fetch connected providers once, deduplicate by provider type
   // Always include noAuth free providers (e.g. opencode) regardless of connections
@@ -148,11 +158,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     return () => controller.abort();
   }, []);
 
-  // Fetch filtered stats via REST when period changes
+  /** Keep failed filtered reads distinct from successful empty snapshots; retry the current filter. */
   useEffect(() => {
     const controller = new AbortController();
     statsFetchAbortRef.current = controller;
     const requestToken = statsRequestGuard.begin();
+    setRequestError("");
     // First load: show full spinner; subsequent: show subtle fetching indicator
     if (isInitialLoad.current) {
       isInitialLoad.current = false;
@@ -165,18 +176,23 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     `&startDate=${encodeURIComponent(customRange.startDate)}&endDate=${encodeURIComponent(customRange.endDate)}` :
     "";
     fetch(`/api/usage/stats?period=${encodeURIComponent(period)}${rangeParams}`, { signal: controller.signal }).
-    then((r) => r.ok ? r.json() : null).
+    then((r) => { if (!r.ok) throw new Error("Usage statistics could not be refreshed."); return r.json(); }).
     then((data) => {
+      if (!data) throw new Error("Usage statistics could not be refreshed.");
       if (data && !controller.signal.aborted && requestToken.isCurrent()) {
         setStats((prev) => mergeUsageResponse(prev, data, liveOverlayRef.current));
+        setSnapshot({ key: snapshotKey, label: periodLabel });
       }
     }).
     catch((error) => {
+      if (error?.name !== "AbortError" && !controller.signal.aborted && requestToken.isCurrent()) {
+        setRequestError("Usage statistics could not be refreshed.");
+      }
       if (error?.name !== "AbortError") console.error("Failed to fetch usage stats:", error);
     }).
     finally(() => {
       if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && requestToken.isCurrent()) {
         setLoading(false);
         setFetching(false);
       }
@@ -186,16 +202,18 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       if (statsFetchAbortRef.current === controller) statsFetchAbortRef.current = null;
       requestToken.cancel();
     };
-  }, [period, customRange?.startDate, customRange?.endDate, statsRequestGuard, resetNonce]);
+  }, [period, customRange?.startDate, customRange?.endDate, statsRequestGuard, resetNonce, retryNonce, snapshotKey, periodLabel]);
 
   /**
    * Upstream #3388: period-keyed SSE owns preset snapshots, while custom-range
    * REST totals stay authoritative because the stream cannot express dates.
    */
   useEffect(() => {
+    let closed = false;
     const es = new EventSource(`/api/usage/stream?period=${encodeURIComponent(period)}`);
 
     es.onmessage = (e) => {
+      if (closed) return;
       try {
         const data = JSON.parse(e.data);
         liveOverlayRef.current = {
@@ -214,6 +232,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         mergeUsageResponse(prev, prev, liveOverlayRef.current) :
         data);
         if (!isCustomRange) {
+          setSnapshot({ key: JSON.stringify([period, "", ""]), label: PERIODS.find((option) => option.value === period)?.label || period });
+          setRequestError("");
           setLoading(false);
           setFetching(false);
         }
@@ -222,9 +242,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       }
     };
 
-    es.onerror = () => setLoading(false);
+    es.onerror = () => { if (!closed) setLoading(false); };
 
-    return () => es.close();
+    return () => { closed = true; es.close(); };
   }, [period, isCustomRange]);
 
   const toggleSort = useCallback((tableType, field) => {
@@ -372,7 +392,11 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     }
   }, [stats, tableView, sortBy, sortOrder]);
 
-  if (!stats && !loading) return <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 p-4 text-[13px] text-dd-danger" role="alert">Failed to load usage statistics.</div>;
+  const readFailure = <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 p-4 text-[13px] text-dd-danger" role="alert">
+    <p>{stats ? requestError : "Failed to load usage statistics."}{stats ? " Last received usage remains visible." : ""}</p>
+    <Button variant="secondary" size="sm" disabled={fetching} onClick={() => setRetryNonce((value) => value + 1)}>Retry usage</Button>
+  </div>;
+  if (!stats && !loading) return <div>{fetching ? <p role="status">Loading usage statistics</p> : readFailure}</div>;
 
   const spinner =
   <div className="flex items-center justify-center gap-2 py-12 text-dd-muted" role="status">
@@ -390,6 +414,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           {fetching && <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-dd-muted animate-spin">progress_activity</span>}
         </div>
       }
+
+      {snapshot && snapshot.key !== snapshotKey ? <p role="status">Showing previous {snapshot.label} usage. {fetching ? "Updating selected period…" : "Waiting for the selected period."}</p> : fetching && stats ? <p role="status">Updating usage…</p> : null}
+      {stats && requestError ? readFailure : null}
 
       {/* Overview cards */}
       {loading ? spinner : <OverviewCards stats={stats} />}

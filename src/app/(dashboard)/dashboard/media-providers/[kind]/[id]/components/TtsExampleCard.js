@@ -25,7 +25,12 @@ const DEFAULT_TTS_RESPONSE_EXAMPLE = `// Audio will appear here after running.
 
 export function TtsExampleCard({ providerId }) {
   const providerAlias = getProviderAlias(providerId);
-  const config = TTS_PROVIDER_CONFIG[providerId] || TTS_PROVIDER_CONFIG["edge-tts"];
+  /** Fish Audio uses catalog model IDs and optional reference IDs, not Edge voices. */
+  const config = TTS_PROVIDER_CONFIG[providerId] || (providerId === "fish-audio" ? {
+    hasModelSelector: true,
+    hasVoiceIdInput: true,
+    voiceSource: "config",
+  } : TTS_PROVIDER_CONFIG["edge-tts"]);
 
   // Voice state
   const [selectedVoice, setSelectedVoice]     = useState(config.defaultVoiceId || "");

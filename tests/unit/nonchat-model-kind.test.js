@@ -188,5 +188,30 @@ describe("non-chat model kinds", () => {
     expect(await modelKindError("openai", "gpt-4o", {}, "tts")).toBeNull();
     expect(await modelKindError("openai", "unknown", {}, "tts")).toBeNull();
   });
+  it.each(["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"])("allows explicitly configured Gemini transcription model %s through to credential selection", async (model) => {
+    const form = new FormData();
+    form.set("model", `gemini/${model}`);
+    form.set("file", new Blob(["audio"]), "audio.wav");
+    const response = await handleStt(new Request("http://localhost/v1/audio/transcriptions", { method: "POST", body: form }));
+    expect(response.status).not.toBe(400);
+    expect(state.credentials).toHaveBeenCalled();
+  });
+  it("keeps unconfigured Gemini models rejected for stt before credentials", async () => {
+    const form = new FormData();
+    form.set("model", "gemini/gemini-4-argon");
+    form.set("file", new Blob(["audio"]), "audio.wav");
+    const response = await handleStt(new Request("http://localhost/v1/audio/transcriptions", { method: "POST", body: form }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.message).toContain("cannot be used for stt");
+    expect(state.credentials).not.toHaveBeenCalled();
+  });
+  it.each(["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"])("preserves endpoint-configured transcription model %s for stt but rejects for other endpoints", async (model) => {
+    const { modelKindError } = await import("@/sse/handlers/modelKind.js");
+    expect(await modelKindError("gemini", model, {}, "stt")).toBeNull();
+    for (const target of ["tts", "embedding", "video", "music", "rerank"]) {
+      const response = await modelKindError("gemini", model, {}, target);
+      expect(response?.status, `${model} on ${target}`).toBe(400);
+    }
+  });
 
 });

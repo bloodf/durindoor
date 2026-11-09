@@ -4,7 +4,7 @@ The table records tests, not a claim that every upstream accepts every model.
 A cell marked helper has a cross-kind test of the common validator; the named
 endpoint tests exercise a known chat model through the handler. Unknown IDs
 remain dispatchable. Explicit custom or enabled synced kinds participate in
-the check, including IDs absent from the registry (`tests/unit/nonchat-model-kind.test.js:75`). Provider-only search and fetch use provider identities rather
+the check, including IDs absent from the registry (`tests/unit/nonchat-model-kind.test.js:75`). Endpoint-specific model declarations (such as `sttConfig.models`) also participate in endpoint kind checks so explicitly configured routes remain usable. Provider-only search and fetch use provider identities rather
 than arbitrary model IDs.
 
 | Endpoint or picker | Chat model | Image, speech, transcription, embedding or video model of a different kind | Evidence and remaining gap |

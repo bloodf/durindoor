@@ -115,3 +115,21 @@ it.each([
   expect(await database.getUsageStats("all")).toMatchObject({ totalRequests: 1, unknownCostRequests: 0 });
   expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ unknownCostRequests: 0 });
 });
+
+it("deduplicates replayed ledger events while exempting failed MCP calls", async () => {
+  const start = "2000-01-01T00:00:00.000Z";
+  const failed = { usageEventId: "mcp-failed-replay", provider: "mcp-gateway", status: "error", apiKey: KEY, tokens: { prompt_tokens: 5 }, cost: null, strict: true };
+  const paid = { usageEventId: "chat-paid-replay", provider: "openai", status: "error", apiKey: KEY, tokens: { prompt_tokens: 3 }, cost: 1, strict: true };
+  for (const entry of [failed, failed, paid, paid]) await database.saveRequestUsage({ ...entry });
+
+  expect(rows().map(({ status }) => status)).toEqual(["error", "error"]);
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1, totalTokens: 3, totalCost: 1, unknownCostRequests: 0 });
+  const window = await database.getApiKeyWindowUsageTotals(KEY, start, start);
+  expect(window.day).toEqual({ inputTokens: 3, outputTokens: 0, requests: 1, cost: 1, unknownCostRequests: 0 });
+  expect(window.month).toEqual(window.day);
+  expect(await database.getUsageStats("all")).toMatchObject({ totalRequests: 2, unknownCostRequests: 1 });
+
+  const { backfillApiKeyUsageTotals } = await import("@/lib/db/helpers/apiKeyUsageTotals.js");
+  backfillApiKeyUsageTotals(adapter, { overwrite: true });
+  expect(await database.getApiKeyUsageTotals("mcp-key")).toMatchObject({ totalRequests: 1, totalTokens: 3, totalCost: 1, unknownCostRequests: 0 });
+});

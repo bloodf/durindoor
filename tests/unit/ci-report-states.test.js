@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { validateVitestExecution } from "../__baseline__/run-ci.mjs";
+import { readFreshReport, validateVitestExecution } from "../__baseline__/run-ci.mjs";
 import { mergeBatchReports } from "../__baseline__/full-batches.mjs";
 import { writeJunitReport } from "../__baseline__/junit.mjs";
 import { validateTestReport } from "../../scripts/local-ci.mjs";
@@ -37,6 +37,18 @@ describe("completed Vitest report states", () => {
       expect(() => validateVitestExecution({ success: true, testResults: [suite("a.test.js"), bad] }, 0)).toThrow(/state|status/);
     },
   );
+
+  it("rejects a truncated fresh JSON report before accepting a replacement fixture", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "report-parser-"));
+    try {
+      const file = path.join(dir, "report.json");
+      const startedAt = Date.now();
+      writeFileSync(file, '{"success":true,"testResults":[');
+      expect(() => readFreshReport(file, startedAt)).toThrow(/not parseable/);
+      writeFileSync(file, JSON.stringify({ success: true, testResults: [suite("a.test.js")] }));
+      expect(() => validateVitestExecution(readFreshReport(file, startedAt), 0)).not.toThrow();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 
   it("rejects malformed suite and assertion collections", () => {
     for (const bad of [null, {}, { status: "passed" }, { status: "passed", assertionResults: {} },

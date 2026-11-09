@@ -51,6 +51,7 @@ function RouteRow({ uid, index, model, name, unavailable, onRemove }) {
   );
 }
 
+/** Endpoint compatibility comes from the server snapshot, not the unsaved draft or a live provider check. */
 function RouteCard({ route, onSaved }) {
   const [draft, setDraft] = useState(route.saved);
   const [adding, setAdding] = useState("");
@@ -164,17 +165,23 @@ function RouteCard({ route, onSaved }) {
 
         {ROUTE_NOTES[route.id] ? <p className="text-[12px] text-dd-muted">{translate(ROUTE_NOTES[route.id])}</p> : null}
         {route.endpoints?.length ? (
-          <ul className="flex flex-col gap-1 text-[12px]">
-            {route.endpoints.map((e) => (
-              <li key={e.path} className="flex min-w-0 flex-wrap gap-1">
-                <code className="text-dd-text">{e.path}</code>
-                <span className="text-dd-muted">→</span>
-                {e.effective.length
-                  ? <code className="truncate text-dd-muted">{e.effective.slice(0, 3).join(", ")}{e.effective.length > 3 ? ` +${e.effective.length - 3}` : ""}</code>
-                  : <span className="text-dd-danger">{translate("no model in this route can run here")}</span>}
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="text-[12px] text-dd-muted">
+              {translate("Endpoint compatibility reflects the last loaded or saved route.")}
+              {dirty ? ` ${translate("Save changes to update endpoint compatibility.")}` : ""}
+            </p>
+            <ul className="flex flex-col gap-1 text-[12px]">
+              {route.endpoints.map((e) => (
+                <li key={e.path} className="flex min-w-0 flex-wrap gap-1">
+                  <code className="text-dd-text">{e.path}</code>
+                  <span className="text-dd-muted">→</span>
+                  {e.effective.length
+                    ? <code className="truncate text-dd-muted">{e.effective.slice(0, 3).join(", ")}{e.effective.length > 3 ? ` +${e.effective.length - 3}` : ""}</code>
+                    : <span className="text-dd-danger">{translate("no model in this route can run here")}</span>}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
         {error ? <p role="alert" className="text-[13px] text-dd-danger">{error}</p> : null}
 
@@ -215,6 +222,7 @@ export default function MediaRoutesPage() {
         title={translate("Media Routes")}
         subtitle={translate("Pick the default model and fallbacks each media endpoint uses when a request has no model.")}
       />
+      <p className="text-[13px] text-dd-muted">{translate("Catalog entries and local transport support do not verify live provider availability.")}</p>
       {error ? <p role="alert" className="text-[13px] text-dd-danger">{error}</p> : null}
       {!routes && !error ? <CardSkeleton /> : null}
       {routes ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import PromptDialog from "@/shared/ui/components/PromptDialog.jsx";
@@ -40,22 +40,34 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
   const [assigningGroupId, setAssigningGroupId] = useState("");
   const [error, setError] = useState("");
 
-  const loadGroups = async () => {
-    try {
-      const data = await requestJson("/api/connection-groups");
+  const errorVersion = useRef(0);
+  const reportError = useCallback((message) => {
+    errorVersion.current += 1;
+    setError(message);
+  }, []);
+
+  /** Initial read completion must not update the panel after its subscription ends. */
+  const loadGroups = useCallback((signal) => {
+    const startedErrorVersion = errorVersion.current;
+    return requestJson("/api/connection-groups", { signal }).then((data) => {
+      if (signal?.aborted) return;
       const nextGroups = data.groups || [];
+      /** A refresh must not clear a mutation failure reported after it started. */
+      if (errorVersion.current === startedErrorVersion) setError("");
       setGroups(nextGroups);
       onGroupsChange?.(nextGroups);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    }).catch((err) => {
+      if (!signal?.aborted) reportError(err.message);
+    }).finally(() => {
+      if (!signal?.aborted) setLoading(false);
+    });
+  }, [onGroupsChange, reportError]);
 
   useEffect(() => {
-    loadGroups();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const controller = new AbortController();
+    loadGroups(controller.signal);
+    return () => controller.abort();
+  }, [loadGroups]);
 
   const connectionOptions = useMemo(
     () => connections.map((c) => ({ value: c.id, label: connectionLabel(c) })),
@@ -72,7 +84,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
       });
       await loadGroups();
     } catch (err) {
-      setError(err.message);
+      reportError(err.message);
     }
   };
 
@@ -86,7 +98,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
       setCreatePromptOpen(false);
       await loadGroups();
     } catch (err) {
-      setError(err.message);
+      reportError(err.message);
     }
   };
 
@@ -96,7 +108,7 @@ export default function ConnectionGroupsPanel({ connections = [], onGroupsChange
       setGroupPendingDelete(null);
       await loadGroups();
     } catch (err) {
-      setError(err.message);
+      reportError(err.message);
     }
   };
 

@@ -32,7 +32,7 @@ Google redirects to `http://localhost:<dashboard port>/callback`. If you opened 
 </Step>
 </Steps>
 
-The connection can be saved before Google project onboarding finishes. If the project is missing, DurinDoor retries onboarding in the background and looks it up again before routing. Wait for onboarding and verify a request before treating the connection as ready.
+DurinDoor loads the account's Cloud Code project before saving the connection. If Google has not assigned one, it waits for onboarding and saves the returned project. If onboarding fails or returns no project, the connection is not saved; retry after resolving the account's project setup.
 
 ## The agy id
 

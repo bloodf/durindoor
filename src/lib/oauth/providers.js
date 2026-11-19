@@ -662,51 +662,47 @@ const PROVIDERS = {
       // Load Code Assist to get project ID and tier
       let projectId = "";
       let tierId = "legacy-tier";
-      try {
-        const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
-          method: "POST",
-          headers: loadHeaders,
-          body: JSON.stringify({ metadata }),
-          proxyOptions
-        });
-        if (loadRes.ok) {
-          const data = await loadRes.json();
-          projectId = data.cloudaicompanionProject?.id || data.cloudaicompanionProject || "";
-          if (Array.isArray(data.allowedTiers)) {
-            for (const tier of data.allowedTiers) {
-              if (tier.isDefault && tier.id) {
-                tierId = tier.id.trim();
-                break;
-              }
-            }
+      const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
+        method: "POST",
+        headers: loadHeaders,
+        body: JSON.stringify({ metadata }),
+        proxyOptions
+      });
+      if (!loadRes.ok) throw new Error(`Antigravity project lookup failed: ${loadRes.status}`);
+      const data = await loadRes.json();
+      const project = data.cloudaicompanionProject;
+      projectId = isString(project) ? project.trim() :
+      isString(project?.id) ? project.id.trim() : "";
+      if (Array.isArray(data.allowedTiers)) {
+        for (const tier of data.allowedTiers) {
+          if (tier.isDefault && tier.id) {
+            tierId = tier.id.trim();
+            break;
           }
         }
-      } catch (e) {
-        console.log("Failed to load code assist:", e);
       }
 
-      // Fire-and-forget onboarding — does not block DB save
-      if (projectId) {
-        const doOnboard = async () => {
-          for (let i = 0; i < 10; i++) {
-            try {
-              const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
-                method: "POST",
-                headers: loadHeaders,
-                body: JSON.stringify({ tierId, metadata }),
-                proxyOptions
-              });
-              if (onboardRes.ok) {
-                const result = await onboardRes.json();
-                if (result.done === true) break;
-              }
-            } catch (e) {
-              break;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 5000));
+      // A new account can have no project until onboarding completes. Persist
+      // only the project associated with this token, never a placeholder.
+      if (!projectId) {
+        for (let i = 0; i < 10; i++) {
+          const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
+            method: "POST",
+            headers: loadHeaders,
+            body: JSON.stringify({ tierId, metadata }),
+            proxyOptions
+          });
+          if (!onboardRes.ok) throw new Error(`Antigravity onboarding failed: ${onboardRes.status}`);
+          const result = await onboardRes.json();
+          if (result.done === true) {
+            const project = result.response?.cloudaicompanionProject;
+            projectId = isString(project) ? project.trim() :
+            isString(project?.id) ? project.id.trim() : "";
+            break;
           }
-        };
-        doOnboard().catch(() => {});
+          if (i < 9) await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+        if (!projectId) throw new Error("Antigravity onboarding did not return a project ID");
       }
 
       return { userInfo, projectId };

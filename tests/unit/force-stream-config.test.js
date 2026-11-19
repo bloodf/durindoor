@@ -500,7 +500,9 @@ describe("forceStream provider config", () => {
     ["minimax-cn", "empty", ""],
   ])("defaults a %s gateway's %s Claude tool type to custom", async (provider, _label, type) => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
-    const options = makeNativeClaudeOptions(provider, "MiniMax-M2.5");
+    // MiniMax-M2.5/M2.7 shut down on 2026-11-18 (40e24488). M2.1 stays on the
+    // Claude transport, so the tool-type quirk is still what this dispatches.
+    const options = makeNativeClaudeOptions(provider, "MiniMax-M2.1");
     const tool = { name: "lookup", input_schema: { type: "object" } };
     if (type !== undefined) tool.type = type;
     options.body.tools = [tool];
@@ -535,7 +537,7 @@ describe("forceStream provider config", () => {
   });
 
   it.each([
-    ["minimax", "MiniMax-M2.5"],
+    ["minimax", "MiniMax-M2.1"],
     ["deepseek", "deepseek-chat"],
   ])("preserves explicit Claude tool types for %s", async (provider, model) => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");

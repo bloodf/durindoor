@@ -5,14 +5,19 @@ import { PROVIDERS } from "../../config/providers.js";
 import { CODEX_CLI_VERSION, CODEX_CLI_USER_AGENT } from "../../config/appConstants.js";
 import { resolveCodexAccountId } from "../../shared/codexAccountId.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
-import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
+import { readBoundedResponseText, sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 
-const CODEX_RESPONSES_URL = PROVIDERS["codex"].baseUrl;
+const CODEX_RESPONSES_URL = PROVIDERS.codex.baseUrl;
+const CODEX_NATIVE_IMAGES_URL = new URL("./images/", CODEX_RESPONSES_URL).href;
 const CODEX_USER_AGENT = CODEX_CLI_USER_AGENT;
 const CODEX_VERSION = CODEX_CLI_VERSION;
 const CODEX_ORIGINATOR = "codex_cli_rs";
 const CODEX_MODEL_SUFFIX = "-image";
 const CODEX_REF_DETAIL = "high";
+const HOSTED_IMAGE_MODELS = new Set([
+  "gpt-image-2.5", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst",
+  "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"
+]);
 
 function stripImageSuffix(model) {
   return model.endsWith(CODEX_MODEL_SUFFIX) ? model.slice(0, -CODEX_MODEL_SUFFIX.length) : model;
@@ -22,6 +27,23 @@ function toDataUrl(input) {
   if (!input || !isString(input)) return null;
   if (/^data:image\//i.test(input) || /^https?:\/\//i.test(input)) return input;
   return `data:image/png;base64,${input}`;
+}
+
+function collectImageRefs(body) {
+  const refs = Array.isArray(body.images) ? body.images.map(toDataUrl).filter(Boolean) : [];
+  const single = toDataUrl(body.image);
+  if (single) refs.push(single);
+  return refs;
+}
+
+function nativeImageEndpoint(model, body, streamToClient) {
+  if (!body || streamToClient || !HOSTED_IMAGE_MODELS.has(model)) return null;
+  if ((body.n != null && body.n !== 1) || (body.size && body.size !== "auto") ||
+    (body.output_format && String(body.output_format).toLowerCase() !== "png") ||
+    (body.background && !["auto", "opaque"].includes(body.background)) ||
+    (body.quality && !["auto", "low", "medium", "high"].includes(body.quality)) ||
+    body.output_compression != null) return null;
+  return collectImageRefs(body).length ? "edits" : "generations";
 }
 
 function buildContent(prompt, refs, detail = CODEX_REF_DETAIL) {
@@ -41,6 +63,8 @@ async function* parseStream(reader, log, onReceipt) {
   const decoder = new TextDecoder();
   let buffer = "";
   let imageB64 = null;
+  let imageError;
+  let hasText = false;
   let bytesReceived = 0;
   let lastProgressLogMs = 0;
   let eof = false;
@@ -75,15 +99,26 @@ async function* parseStream(reader, log, onReceipt) {
     if (eventName === "error" || eventName === "response.failed" || eventName === "response.incomplete") {
       throw new Error(data.response?.error?.message || data.error?.message || data.message || `Codex ${eventName}`);
     }
-    if (eventName === "response.output_item.done" && data.item?.type === "image_generation_call" && data.item.result) {
-      imageB64 = data.item.result;
+    if (eventName === "response.output_text.delta" && data.delta?.trim?.()) hasText = true;
+    if (eventName === "response.output_item.done" && data.item?.type === "image_generation_call") {
+      if (data.item.result) imageB64 = data.item.result;
+      else imageError ||= data.item.error?.message;
     }
+    if (eventName === "response.output_item.done" && data.item?.content?.some?.((part) => part.type === "output_text" && part.text?.trim?.())) hasText = true;
     if (eventName === "response.completed") {
       if (data.response?.status && data.response.status !== "completed") throw new Error(`Codex response ${data.response.status}`);
       for (const item of data.response?.output || []) {
-        if (item.type === "image_generation_call" && item.result) imageB64 = item.result;
+        if (item.type === "image_generation_call") {
+          if (item.result) imageB64 = item.result;
+          else imageError ||= item.error?.message;
+        }
+        if (item.content?.some?.((part) => part.type === "output_text" && part.text?.trim?.())) hasText = true;
       }
-      if (!imageB64) throw new Error("Codex did not return an image. Account may not be entitled (Plus/Pro required).");
+      if (!imageB64) {
+        throw new Error(imageError || (hasText
+          ? "Codex returned text instead of an image."
+          : "Codex did not return an image. Account may not be entitled (Plus/Pro required)."));
+      }
       return { created: nowSec(), data: [{ b64_json: imageB64 }] };
     }
     const now = Date.now();
@@ -190,12 +225,15 @@ function assertNotFreePlan(providerSpecificData) {
 
 export default {
   stream: true,
-  buildUrl: () => CODEX_RESPONSES_URL,
-  buildHeaders: (creds) => {
+  buildUrl: (model, _creds, body, { streamToClient } = {}) => {
+    const endpoint = nativeImageEndpoint(model, body, streamToClient);
+    return endpoint ? new URL(endpoint, CODEX_NATIVE_IMAGES_URL).href : CODEX_RESPONSES_URL;
+  },
+  buildHeaders: (creds, requestBody) => {
     assertNotFreePlan(creds?.providerSpecificData);
     const accountId = resolveCodexAccountId(creds?.providerSpecificData, creds?.idToken);
     const headers = {
-      "accept": "text/event-stream, application/json",
+      "accept": requestBody?.input ? "text/event-stream, application/json" : "application/json",
       "authorization": `Bearer ${creds?.accessToken || ""}`,
       "content-type": "application/json",
       "originator": CODEX_ORIGINATOR,
@@ -207,22 +245,38 @@ export default {
     if (accountId) headers["chatgpt-account-id"] = accountId;
     return headers;
   },
-  buildBody: (model, body) => {
-    const refs = [];
-    if (Array.isArray(body.images)) body.images.forEach((i) => {const u = toDataUrl(i);if (u) refs.push(u);});
-    const single = toDataUrl(body.image);
-    if (single) refs.push(single);
+  buildBody: (model, body, { streamToClient } = {}) => {
+    const refs = collectImageRefs(body);
+    const endpoint = nativeImageEndpoint(model, body, streamToClient);
+    if (endpoint) {
+      const native = {
+        model,
+        prompt: body.prompt,
+        n: 1,
+        size: "auto",
+        quality: body.quality || "auto",
+        background: body.background || "auto"
+      };
+      if (endpoint === "edits") native.images = refs.map((image_url) => ({ image_url }));
+      else native.output_format = "png";
+      return native;
+    }
     const detail = body.image_detail || CODEX_REF_DETAIL;
     const imgTool = { type: "image_generation", output_format: (body.output_format || "png").toLowerCase() };
+    const hostedImageModel = HOSTED_IMAGE_MODELS.has(model);
+    if (hostedImageModel) {
+      imgTool.model = model;
+      imgTool.action = refs.length ? "edit" : "generate";
+    }
     if (body.size && body.size !== "") imgTool.size = body.size;
     if (body.quality && body.quality !== "") imgTool.quality = body.quality;
     if (body.background && body.background !== "") imgTool.background = body.background;
     return {
-      model: stripImageSuffix(model),
+      model: hostedImageModel ? "gpt-6-sol" : stripImageSuffix(model),
       instructions: "",
       input: [{ type: "message", role: "user", content: buildContent(body.prompt, refs, detail) }],
       tools: [imgTool],
-      tool_choice: "auto",
+      tool_choice: hostedImageModel ? { type: "image_generation" } : "auto",
       parallel_tool_calls: false,
       prompt_cache_key: randomUUID(),
       stream: true,
@@ -230,8 +284,26 @@ export default {
       reasoning: null
     };
   },
-  // Custom: codex parses SSE → either pipe to client or collect b64
-  async parseResponse(response, { log, streamToClient, onStreamComplete, onReceipt, credentials }) {
+  buildFallbackBody(requestBody, status, message) {
+    if (status !== 400 || requestBody?.model !== "gpt-6-sol" ||
+      !HOSTED_IMAGE_MODELS.has(requestBody.tools?.[0]?.model) ||
+      !/model is not supported when using Codex/i.test(message)) return null;
+    return { ...requestBody, model: "gpt-5.6-terra" };
+  },
+  // Reuse the core's buffered settlement for native JSON, and its streaming
+  // settlement for Responses SSE.
+  async parseResponse(response, { log, signal, streamToClient, onStreamComplete, onReceipt, credentials, requestBody }) {
+    if (requestBody && !requestBody.input) {
+      const raw = await readBoundedResponseText(response, {
+        signal, maxBytes: 32 * 1024 * 1024, timeoutMs: 30000, throwOnTimeout: true
+      });
+      const result = JSON.parse(raw);
+      onReceipt?.(result, "");
+      if (!Array.isArray(result.data) || !result.data.some((image) => image?.b64_json || image?.url)) {
+        throw new Error(result.error?.message || "Codex Images API returned no image.");
+      }
+      return { created: result.created || nowSec(), data: result.data };
+    }
     if (streamToClient) return buildSseResponse(response, log, onStreamComplete, onReceipt, credentials);
     const reader = response.body.getReader();
     try {

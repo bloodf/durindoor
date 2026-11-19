@@ -85,7 +85,16 @@ function buildAgentrouterRules() {
 }
 
 export const providerRuleRegistry = new Map([
-["agentrouter", buildAgentrouterRules()]]
+["agentrouter", buildAgentrouterRules()],
+["nvidia", [{
+  id: "nvidia-degraded-model",
+  match: ({ status, body }) => {
+    if (status !== 400) return null;
+    const { message } = inspectProviderErrorEnvelope(body);
+    if (!/^DEGRADED function cannot be invoked\b/i.test(message.trim())) return null;
+    return { scope: "model", cooldownMs: 15 * 60 * 1000 };
+  }
+}]]]
 );
 
 /**

@@ -15,7 +15,7 @@ import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { toCodexPlanEntry, buildCodexPlanMap } from "@/shared/utils/codexPlanLabel";
 import { translate } from "@/i18n/runtime";
-import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { applyQoderModelNames, getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { shouldShowProviderConnections } from "@/shared/utils/providerAuthMode";
 import { buildImportTokenPayload, isImportTokenOAuthProvider } from "@/shared/utils/importTokenProviders";
 import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
@@ -910,30 +910,25 @@ function ProviderDetail({ providerId }) {
         return;
       }
 
-      let importedCount = 0;
       for (const model of models) {
-        const modelId = model.id || model.name;
-        if (!modelId) continue;
-
-        // Qoder model ID format may be "qoder/auto", "qoder-cn/auto" or "auto",
-        // need to remove the provider prefix before storing.
-        const cleanModelId = modelId.replace(/^(qoder-cn|qoder)\//, "");
-        const alreadyExists = customModels.some(
-          (entry) => entry.providerAlias === providerStorageAlias && entry.id === cleanModelId && (entry.kind || entry.type || "llm") === "llm"
-        ) || Object.values(modelAliases).includes(`${providerStorageAlias}/${cleanModelId}`);
-        if (alreadyExists) {
-          continue;
+        if (!model.id) continue;
+        const id = model.id.replace(/^(qoder-cn|qoder)\//, "");
+        const name = model.name || id;
+        const payload = { providerAlias: providerStorageAlias, id, type: "llm", name };
+        const headers = { "Content-Type": "application/json" };
+        const body = JSON.stringify(payload);
+        let saved = await fetch("/api/models/custom", { method: "POST", headers, body });
+        if (saved.status === 409) {
+          saved = await fetch("/api/models/custom", { method: "PATCH", headers, body });
         }
-
-        await handleAddCustomModel(cleanModelId, "llm", providerStorageAlias);
-        importedCount += 1;
+        if (!saved.ok) {
+          const error = await saved.json().catch(() => ({}));
+          throw new Error(error.error || translate("Failed to save model"));
+        }
       }
-
-      if (importedCount === 0) {
-        alert(translate("All models already exist, no new models added"));
-      } else {
-        alert(translate("Successfully added") + ` ${importedCount} ` + translate("models"));
-      }
+      await fetchCustomModels();
+      window.dispatchEvent(new CustomEvent("customModelChanged"));
+      alert(translate("Successfully updated") + ` ${models.length} ` + translate("models"));
     } catch (error) {
       console.log("Error importing Qoder models:", error);
       alert(translate("Error fetching models") + ": " + error.message);
@@ -1583,10 +1578,10 @@ function ProviderDetail({ providerId }) {
     }
     // Combine hardcoded models with Kilo free models (deduplicated)
     // Exclude non-llm models (embedding, tts, etc.) — they have dedicated pages under media-providers
-    const allModels = [
+    const allModels = applyQoderModelNames([
     ...models,
     ...kiloFreeModels.filter((fm) => !models.some((m) => m.id === fm.id))].
-    filter((m) => {const k = getModelKind(m);return !k || k === "llm";});
+    filter((m) => {const k = getModelKind(m);return !k || k === "llm";}), customModels, providerStorageAlias);
     const disabledSet = new Set(disabledModelIds);
     const displayModels = allModels.filter((m) => !disabledSet.has(m.id));
     const disabledDisplayModels = allModels.filter((m) => disabledSet.has(m.id));
@@ -2542,7 +2537,7 @@ function ProviderDetail({ providerId }) {
           if (hasExistingRow) {
             await handleUpdateCustomModel(payload);
           } else {
-            await handleAddCustomModel(payload, "llm", providerStorageAlias);
+            await handleAddCustomModel(payload, payload.type || "llm", providerStorageAlias);
           }
           setShowAddCustomModel(false);
           setEditingCustomModel(null);

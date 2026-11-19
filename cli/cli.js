@@ -10,6 +10,7 @@ const os = require("os");
 const { stopMitmViaManagerSync } = require("./src/cli/mitmManagerStop");
 const { getAppDataDir, getGlobalMitmStateDir } = require("./src/cli/appDataDir");
 const { waitServerReady } = require("./src/cli/waitServerReady");
+const { canBindLauncherPort } = require("./src/cli/utils/launcherProcess");
 const { collectAppPids, killAppPids, readCommand, portOccupantToKill } = require("./src/lib/processScan");
 
 // Resolve once before any worker changes cwd. Every CLI helper and the Next
@@ -224,7 +225,7 @@ function killCloudflaredByAppPort(appPort) {
 }
 
 // Kill all 9router processes
-function killAllAppProcesses(appPort) {
+function killAllAppProcesses(appPort, scanProcesses = true) {
   return new Promise((resolve, reject) => {
     try {
       const mitmPidFile = path.join(getAppDataDir(), "mitm", ".mitm.pid");
@@ -238,6 +239,11 @@ function killAllAppProcesses(appPort) {
       killByPidFile(path.join(getAppDataDir(), "headroom", "proxy.pid"));
       // Kill cloudflared/tailscale by PID file (precise, only this app's tunnel)
       killTunnelByPidFile();
+
+      if (!scanProcesses) {
+        resolve();
+        return;
+      }
 
       // Catch stale PID files: kill cloudflared bound to this app's port
       try { killAppPids(killCloudflaredByAppPort(appPort)); } catch {}
@@ -521,8 +527,9 @@ if (!fs.existsSync(serverPath)) {
 const updatePromise = checkForUpdate();
 (async () => {
   await recoverStaleMitmOwnershipBeforeStartup();
-  await killAllAppProcesses(port);
-  await killProcessOnPort(port);
+  const portWasAvailable = await canBindLauncherPort(port, host);
+  await killAllAppProcesses(port, !portWasAvailable);
+  if (!portWasAvailable) await killProcessOnPort(port);
   startServer(updatePromise);
 })().catch((error) => {
   console.error(`Startup cleanup failed: ${error.message}`);
@@ -703,7 +710,7 @@ function startServer(updatePromise) {
   });
 
   // Initialize tray icon (runs alongside TUI)
-  const initTrayIcon = () => {
+  const initTrayIcon = (callbacks = {}) => {
     if (headless) return;
     try {
       const { ensureTrayRuntime } = require("./hooks/trayRuntime");
@@ -716,10 +723,11 @@ function startServer(updatePromise) {
           console.log("\n👋 Shutting down from tray...");
           exitAfterCleanup(0);
         },
-        onOpenDashboard: () => openBrowser(url)
+        onOpenDashboard: () => openBrowser(url),
+        ...callbacks
       });
     } catch (err) {
-      // Tray not available - continue without it
+      callbacks.onError?.(err);
     }
   };
 
@@ -740,13 +748,11 @@ function startServer(updatePromise) {
     console.log(`Server: http://${displayHost}:${port}`);
 
     waitServerReady(port).then((ready) => {
-      initTrayIcon();
-      if (ready) {
-        console.log("\n💡 Router is now running in system tray. Close this terminal if you want.");
-      } else {
-        console.log("\n⚠ Server process started; readiness unconfirmed. Tray attached anyway.");
-      }
-      console.log("   Right-click tray icon to open dashboard or quit.\n");
+      if (!ready) console.log("Server readiness could not be confirmed.");
+      initTrayIcon({
+        onReady: () => console.log("DurinDoor tray is available. Right-click the icon to open the dashboard or quit."),
+        onError: (error) => console.error(`DurinDoor tray unavailable: ${error.message}`)
+      });
     });
 
     return;
@@ -761,7 +767,7 @@ function startServer(updatePromise) {
       // not enter the interactive web/TUI loop; server event handlers manage
       // restart/exit.
       console.error("\n✖ Server did not become ready in time; not showing interface menu.");
-      console.error("  Check the logs above; the tray icon remains available.");
+      console.error("  Check the server logs above.");
       initTrayIcon();
       return;
     }
@@ -815,10 +821,10 @@ function startServer(updatePromise) {
             process.removeAllListeners("SIGHUP");
             process.on("SIGHUP", () => {});
 
-            console.log(`\n⏳ Switching to tray mode... (icon already visible in menu bar)`);
-            console.log(`🔔 ${DISPLAY_NAME} is running in tray (PID: ${process.pid})`);
+            console.log(`\n⏳ Switching to tray mode... `);
+            console.log(`🔔 ${DISPLAY_NAME} is running (PID: ${process.pid})`);
             console.log(`   Server: http://${displayHost}:${port}`);
-            console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
+            console.log(`\n💡 You can close this terminal.\n`);
 
             // Tray already init'd at startup — just keep event loop alive.
             return;
@@ -833,7 +839,7 @@ function startServer(updatePromise) {
           }
 
           // Windows/Linux: spawn detached bgProcess (systray works fine in child)
-          console.log(`\n⏳ Starting background process... (tray icon will appear in ~3s)`);
+          console.log(`\n⏳ Starting background process...`);
 
           /** Keep the detached tray CLI on IPv4-first DNS ordering (upstream #2699). */
           const bgProcess = spawn(process.execPath, ["--dns-result-order=ipv4first", __filename, "--tray", "--skip-update", "-p", port.toString()], {
@@ -846,7 +852,7 @@ function startServer(updatePromise) {
 
           console.log(`🔔 ${DISPLAY_NAME} is now running in background (PID: ${bgProcess.pid})`);
           console.log(`   Server: http://${displayHost}:${port}`);
-          console.log(`\n💡 You can close this terminal. Right-click tray icon to quit.\n`);
+          console.log(`\n💡 You can close this terminal.\n`);
 
           process.exit(0);
         } else if (choice === "exit") {

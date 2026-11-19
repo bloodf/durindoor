@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Toggle from "@/shared/ui/components/Toggle.jsx";
+import { filterProxyPools, getVisibleProxyPoolSelection, updateProxyPoolSelection } from "@/shared/utils/proxyPoolSelection.js";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
 import { requestCollection } from "../providers/workflowRequests.js";
@@ -58,7 +59,11 @@ export default function ProxyPoolsPage() {
   const [importing, setImporting] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [testingId, setTestingId] = useState(null);
-  const [selectedIds, setSelectedIds] = useState([]);
+  const [poolSelection, setSelectedIds] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const selectionAnchor = useRef(null);
+  const visiblePools = useMemo(() => filterProxyPools(proxyPools, statusFilter), [proxyPools, statusFilter]);
+  const selectedIds = getVisibleProxyPoolSelection(visiblePools, poolSelection);
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0 });
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -221,13 +226,27 @@ export default function ProxyPoolsPage() {
     }
   };
 
-  const allSelected = proxyPools.length > 0 && selectedIds.length === proxyPools.length;
-  const toggleSelect = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const toggleSelectAll = () => setSelectedIds(allSelected ? [] : proxyPools.map((p) => p.id));
-  const clearSelection = () => setSelectedIds([]);
+  const allSelected = visiblePools.length > 0 && selectedIds.length === visiblePools.length;
+
+  const clearSelection = () => {
+    selectionAnchor.current = null;
+    setSelectedIds([]);
+  };
+
+  const toggleSelect = (id, checked, event) => {
+    const anchorId = selectionAnchor.current;
+    const shiftKey = event.nativeEvent.shiftKey === true;
+    setSelectedIds((previous) => updateProxyPoolSelection(visiblePools, previous, { id, checked, shiftKey, anchorId }));
+    selectionAnchor.current = id;
+  };
+
+  const toggleSelectAll = () => {
+    selectionAnchor.current = null;
+    setSelectedIds(allSelected ? [] : visiblePools.map((pool) => pool.id));
+  };
 
   const bulkSetActive = async (isActive) => {
-    const targets = selectedIds.length > 0 ? selectedIds : proxyPools.map((p) => p.id);
+    const targets = selectedIds.length > 0 ? selectedIds : visiblePools.map((p) => p.id);
     if (targets.length === 0) return;
     setBulkBusy(true);
     try {
@@ -279,8 +298,8 @@ export default function ProxyPoolsPage() {
 
   const handleHealthCheck = async () => {
     const targets = selectedIds.length > 0
-      ? proxyPools.filter((p) => selectedIds.includes(p.id))
-      : proxyPools;
+      ? visiblePools.filter((p) => selectedIds.includes(p.id))
+      : visiblePools;
     if (targets.length === 0) return;
     setHealthChecking(true);
     setHealthProgress({ current: 0, total: targets.length });
@@ -554,8 +573,8 @@ export default function ProxyPoolsPage() {
   );
 
   const deadProxiesList = useMemo(
-    () => proxyPools.filter((pool) => pool.testStatus === "error"),
-    [proxyPools]
+    () => visiblePools.filter((pool) => pool.testStatus === "error"),
+    [visiblePools]
   );
 
   if (loadError && !hasLoaded) return <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger"><p>Proxy pools could not be loaded. {loadError}</p><Button icon="refresh" onClick={fetchProxyPools}>Retry</Button></div>;
@@ -567,9 +586,9 @@ export default function ProxyPoolsPage() {
     <PageHeader icon="dns" title="Proxy Pools" subtitle="Manage outbound proxy routes and relay deployments" actions={<><Button variant="secondary" icon="upload" onClick={openBatchImportModal}>Batch import</Button><Button variant="primary" icon="add" onClick={openCreateModal}>Add proxy pool</Button></>} />
     <Card padding={false}><CardHeader icon="route" title="Configured pools" subtitle={`${proxyPools.length} total · ${activeCount} active`} actions={<div className="relative" ref={relayMenuRef}><Button variant="secondary" icon="rocket_launch" iconTrailing="expand_more" aria-expanded={showRelayMenu} onClick={() => setShowRelayMenu((open) => !open)}>Deploy relay</Button>{showRelayMenu ? <div className="absolute end-0 z-50 mt-1 w-52 rounded-dd border border-dd-border bg-dd-surface p-1 shadow-dd-elevated"><Button variant="ghost" className="w-full justify-start" icon="cloud" onClick={() => { openCloudflareModal(); setShowRelayMenu(false); }}>Cloudflare relay</Button><Button variant="ghost" className="w-full justify-start" icon="cloud_upload" onClick={() => { openVercelModal(); setShowRelayMenu(false); }}>Vercel relay</Button></div> : null}</div>} />
       <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2"><Checkbox label={allSelected ? "Unselect all" : "Select all"} checked={allSelected} onChange={toggleSelectAll} /><Badge tone="neutral">Total {proxyPools.length}</Badge><Badge tone="success">Active {activeCount}</Badge><Button variant="secondary" icon="health_and_safety" loading={healthChecking} onClick={handleHealthCheck} disabled={healthChecking || bulkBusy || !proxyPools.length}>{healthChecking ? `Checking ${healthProgress.current}/${healthProgress.total}` : "Health check"}</Button>{deadProxiesList.length ? <Button variant="danger" icon="delete" onClick={() => { setPendingDeleteIds(new Set(deadProxiesList.map((pool) => pool.id))); setShowDeleteDeadModal(true); }} disabled={bulkBusy || healthChecking}>Delete dead ({deadProxiesList.length})</Button> : null}</div>
+        <div className="flex flex-wrap items-center gap-2"><label className="flex items-center gap-2 text-sm">Status <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); clearSelection(); }} className="rounded-dd border border-dd-border bg-dd-surface p-2"><option value="all">All</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></label><Checkbox disabled={!visiblePools.length} label={allSelected ? "Unselect all" : "Select all"} checked={allSelected} onChange={toggleSelectAll} /><Badge tone="neutral">Total {proxyPools.length}</Badge><Badge tone="success">Active {activeCount}</Badge><Button variant="secondary" icon="health_and_safety" loading={healthChecking} onClick={handleHealthCheck} disabled={healthChecking || bulkBusy || !visiblePools.length}>{healthChecking ? `Checking ${healthProgress.current}/${healthProgress.total}` : "Health check"}</Button>{deadProxiesList.length ? <Button variant="danger" icon="delete" onClick={() => { setPendingDeleteIds(new Set(deadProxiesList.map((pool) => pool.id))); setShowDeleteDeadModal(true); }} disabled={bulkBusy || healthChecking}>Delete dead ({deadProxiesList.length})</Button> : null}</div>
         {selectedIds.length ? <div className="flex flex-wrap items-center gap-2 rounded-dd border border-dd-accent bg-dd-accent-soft p-3"><span className="material-symbols-outlined text-dd-accent" aria-hidden="true">checklist</span><span className="text-[13px] font-medium text-dd-accent">{`${selectedIds.length} selected`}</span><div className="ms-auto flex flex-wrap gap-2"><Button variant="secondary" icon="toggle_on" onClick={() => bulkSetActive(true)} disabled={bulkBusy || healthChecking}>Activate</Button><Button variant="secondary" icon="toggle_off" onClick={() => bulkSetActive(false)} disabled={bulkBusy || healthChecking}>Deactivate</Button><Button variant="danger" icon="delete" onClick={bulkDelete} disabled={bulkBusy || healthChecking}>Delete</Button><Button variant="ghost" onClick={clearSelection}>Clear</Button></div></div> : null}
-        {!proxyPools.length ? <EmptyState icon="dns" title="No proxy pool entries yet" message="Create a proxy pool entry, then assign it to connections." action={{ label: "Add proxy pool", icon: "add", onClick: openCreateModal }} /> : <div className="divide-y divide-dd-border-subtle rounded-dd-lg border border-dd-border">{proxyPools.map((pool) => <article key={pool.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><Checkbox label={`Select ${pool.name}`} checked={selectedIds.includes(pool.id)} onChange={() => toggleSelect(pool.id)} className="shrink-0" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-[13px] font-semibold text-dd-text">{pool.name}</h2><Badge tone={getStatusTone(pool.testStatus)}>{pool.testStatus || "unknown"}</Badge><Badge tone={pool.isActive ? "success" : "neutral"}>{pool.isActive ? "active" : "inactive"}</Badge>{pool.type ? <Badge tone="neutral">{pool.type} relay</Badge> : null}<Badge tone="neutral">{pool.boundConnectionCount || 0} bound</Badge></div><p className="mt-1 truncate font-mono text-xs text-dd-muted">{pool.proxyUrl}</p>{pool.noProxy ? <p className="truncate text-xs text-dd-subtle">No proxy: {pool.noProxy}</p> : null}<p className="mt-1 text-xs text-dd-subtle">Last tested: {formatDateTime(pool.lastTestedAt)}{pool.lastError ? ` · ${pool.lastError}` : ""}</p></div><div className="flex items-center gap-1"><Toggle size="sm" checked={pool.isActive === true} onChange={() => handleToggleActive(pool)} aria-label={pool.isActive ? `Disable ${pool.name}` : `Enable ${pool.name}`} /><IconButton icon={testingId === pool.id ? "progress_activity" : "science"} label={`Test ${pool.name}`} disabled={testingId === pool.id} onClick={() => handleTest(pool.id)} /><IconButton icon="edit" label={`Edit ${pool.name}`} onClick={() => openEditModal(pool)} /><IconButton icon="delete" label={`Delete ${pool.name}`} onClick={() => handleDelete(pool)} /></div></article>)}</div>}
+        {!proxyPools.length ? <EmptyState icon="dns" title="No proxy pool entries yet" message="Create a proxy pool entry, then assign it to connections." action={{ label: "Add proxy pool", icon: "add", onClick: openCreateModal }} /> : !visiblePools.length ? <EmptyState icon="filter_list" title="No proxy pools match this status" /> : <div className="divide-y divide-dd-border-subtle rounded-dd-lg border border-dd-border">{visiblePools.map((pool) => <article key={pool.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><Checkbox label={`Select ${pool.name}`} checked={selectedIds.includes(pool.id)} onChange={(checked, event) => toggleSelect(pool.id, checked, event)} className="shrink-0" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-[13px] font-semibold text-dd-text">{pool.name}</h2><Badge tone={getStatusTone(pool.testStatus)}>{pool.testStatus || "unknown"}</Badge><Badge tone={pool.isActive ? "success" : "neutral"}>{pool.isActive ? "active" : "inactive"}</Badge>{pool.type ? <Badge tone="neutral">{pool.type} relay</Badge> : null}<Badge tone="neutral">{pool.boundConnectionCount || 0} bound</Badge></div><p className="mt-1 truncate font-mono text-xs text-dd-muted">{pool.proxyUrl}</p>{pool.noProxy ? <p className="truncate text-xs text-dd-subtle">No proxy: {pool.noProxy}</p> : null}<p className="mt-1 text-xs text-dd-subtle">Last tested: {formatDateTime(pool.lastTestedAt)}{pool.lastError ? ` · ${pool.lastError}` : ""}</p></div><div className="flex items-center gap-1"><Toggle size="sm" checked={pool.isActive === true} onChange={() => handleToggleActive(pool)} aria-label={pool.isActive ? `Disable ${pool.name}` : `Enable ${pool.name}`} /><IconButton icon={testingId === pool.id ? "progress_activity" : "science"} label={`Test ${pool.name}`} disabled={testingId === pool.id} onClick={() => handleTest(pool.id)} /><IconButton icon="edit" label={`Edit ${pool.name}`} onClick={() => openEditModal(pool)} /><IconButton icon="delete" label={`Delete ${pool.name}`} onClick={() => handleDelete(pool)} /></div></article>)}</div>}
       </CardContent>
     </Card>
     <Modal open={showBatchImportModal} onClose={closeBatchImportModal} pending={importing} title="Batch import proxies" footer={modalFooter(closeBatchImportModal, handleBatchImport, "Import", !batchImportText.trim() || importing, importing)}><Textarea label="Paste proxy list, one per line" value={batchImportText} onChange={(event) => setBatchImportText(event.target.value)} placeholder={"http://user:pass@127.0.0.1:7897\n127.0.0.1:7897:user:pass\n127.0.0.1:7897"} hint="Supported: protocol://user:pass@host:port, host:port:user:pass, host:port." /></Modal>

@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { CLAUDE_TOOL_SUFFIX, CC_DEFAULT_TOOLS } from "../config/appConstants.js";
+import { CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { CLAUDE_CLI_VERSION } from "../providers/shared.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -67,9 +68,20 @@ export function cloakClaudeTools(body) {
   // reserved literal name (e.g. web_search, bash).
   const renamedMessages = body.messages?.map((msg) => {
     if (!Array.isArray(msg.content)) return msg;
-    const renamedContent = msg.content.map((block) =>
-    block.type === "tool_use" && clientToolNames.has(block.name) ? { ...block, name: suffix(block.name) } : block
-    );
+    const renamedContent = msg.content.map((block) => {
+      if (block?.type === CLAUDE_BLOCK.TOOL_USE && clientToolNames.has(block.name)) {
+        return { ...block, name: suffix(block.name) };
+      }
+      if (block?.type === CLAUDE_BLOCK.TOOL_RESULT && Array.isArray(block.content)) {
+        const content = block.content.map((part) =>
+          part?.type === CLAUDE_BLOCK.TOOL_REFERENCE && clientToolNames.has(part.tool_name)
+            ? { ...part, tool_name: suffix(part.tool_name) }
+            : part
+        );
+        return { ...block, content };
+      }
+      return block;
+    });
     return { ...msg, content: renamedContent };
   });
 

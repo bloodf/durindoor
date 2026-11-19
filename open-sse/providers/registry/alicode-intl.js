@@ -16,7 +16,8 @@ export default {
   transport: {
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
     headers: {},
-    quirks: { preserveCacheControl: true },
+    quirks: {
+      preserveCacheControl: true, preserveCacheControl: true },
   },
   models: [
     { id: "qwen3.5-plus", name: "Qwen3.5 Plus" },

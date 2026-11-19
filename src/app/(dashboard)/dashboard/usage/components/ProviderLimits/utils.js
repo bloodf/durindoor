@@ -702,7 +702,13 @@ export function parseQuotaData(provider, data) {
       case "antigravity":
         if (data.quotas) {
           const entries = Object.entries(data.quotas);
-          const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image"));
+          const hasArgonPool = Boolean(data.quotas.gemini_argon_session || data.quotas.gemini_argon_weekly);
+          const geminiModels = entries.filter(([k]) =>
+            k.startsWith("gemini-") && !k.includes("image") && (!hasArgonPool || !k.includes("argon"))
+          );
+          const argonModels = hasArgonPool && !data.quotas.gemini_argon_session
+            ? entries.filter(([k]) => k.startsWith("gemini-") && k.includes("argon") && !k.includes("image"))
+            : [];
           // Image models are excluded from the Claude family for the same
           // reason as Gemini above: an image row belongs to its own row, and
           // folding it into the family would also duplicate it (the image
@@ -730,6 +736,20 @@ export function parseQuotaData(provider, data) {
               total: rep.total || 0,
               resetAt: rep.resetAt || null,
               remainingPercentage: rep.remainingPercentage,
+            });
+          }
+
+          if (argonModels.length > 0) {
+            const [, quota] = argonModels.reduce((minimum, current) =>
+              (current[1].remainingPercentage ?? 100) < (minimum[1].remainingPercentage ?? 100) ? current : minimum
+            );
+            normalizedQuotas.push({
+              name: "Gemini 4 Argon",
+              modelKey: "gemini_argon",
+              used: quota.used || 0,
+              total: quota.total || 0,
+              resetAt: quota.resetAt || null,
+              remainingPercentage: quota.remainingPercentage,
             });
           }
 

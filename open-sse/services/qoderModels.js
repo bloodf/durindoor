@@ -121,10 +121,8 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null, re
     const key = entry.key;
     if (!key) continue;
 
-    // Always cache the config — chat needs model_config even for UI-hidden
-    // models (enable:false). Upstream still accepts chat for these keys.
+    // Qoder still serves these models when the catalog marks them disabled.
     rawConfigs.set(key, entry);
-    if (entry.enable === false) continue;
 
     const display = entry.display_name || key;
     const ctx = Number(entry.max_input_tokens) || 131_072;

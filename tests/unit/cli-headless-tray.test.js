@@ -29,7 +29,7 @@ function startup(args, isTTY = false, env = {}) {
     const mode = vm.runInNewContext(`(function () { ${prefix}; return { headless, trayMode, noBrowser, skipUpdate }; })()`, context);
     expect(tray).not.toHaveBeenCalled();
     // Execute the actual tray initializer with its real lazy hook invocation.
-    const initializer = source.slice(source.indexOf("  const initTrayIcon = () =>"), source.indexOf("  // Headless keeps"));
+    const initializer = source.slice(source.indexOf("  const initTrayIcon = "), source.indexOf("  // Headless keeps"));
     const initTray = vi.fn();
     vm.runInNewContext(initializer + ";initTrayIcon()", {
       headless: mode.headless, port: 20128,

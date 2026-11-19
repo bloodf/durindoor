@@ -18,6 +18,8 @@
 
 # Unreleased
 
+- sync(upstream): Integrate the upstream v0.5.119 provider, catalog, and protocol updates recorded in the upstream sync ledger (#1072).
+
 ## Breaking
 
 - chore(runtime): The runtime is now Node.js 26.13.0 LTS / npm 11.20.0 (was Node.js 20.20.2 / npm 10.8.2). The published CLI requires Node.js >=26.13.0, the Docker image uses `node:26.13.0-alpine`, and better-sqlite3 installs from prebuilt binaries instead of compiling from source.

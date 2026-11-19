@@ -227,6 +227,14 @@ export function openaiToCommandCodeRequest(model, body, stream /* , credentials 
   // The CLI forwards temperature only when the caller set it; top_p has no wire field.
   if (body.temperature != null) params.temperature = body.temperature;
 
+  // Reasoning effort if specified by client (Claude effort or OpenAI reasoning_effort)
+  const effort = body.reasoning_effort ??
+    body.output_config?.effort ??
+    body.reasoning?.effort ?? (body.thinking?.type === "adaptive" ? "high" : undefined);
+  if (isString(effort) && effort) {
+    params.reasoning_effort = effort;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
 
   return {
@@ -238,7 +246,7 @@ export function openaiToCommandCodeRequest(model, body, stream /* , credentials 
     config: {
       workingDir: "/",
       date: today,
-      environment: `${process.platform}-${process.arch}, 9router proxy`,
+      environment: `${process.platform}-${process.arch}, DurinDoor proxy`,
       structure: [],
       isGitRepo: false,
       currentBranch: "",

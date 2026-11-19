@@ -131,6 +131,9 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   if (isString(provider) && provider.startsWith("openai-compatible-")) {
     return "openai";
   }
+  // DeepSeek on the OpenCode Go Messages lane speaks Claude adaptive thinking.
+  if (provider === "opencode-go" && targetFormat === FORMATS.CLAUDE &&
+    /^deepseek-/i.test(model.split("/").at(-1))) return "claude-adaptive";
   // Model-scoped Ox Alpha metadata is narrower than OpenCode's gateway-wide
   // default and must retain its low/high/max enum.
   if (resolvedCaps.thinkingFormat === "openai-low-high-max") return resolvedCaps.thinkingFormat;
@@ -396,7 +399,7 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "commandcode":{
-        const level = toLevel(eff);
+        const level = eff.mode === "auto" ? "high" : toLevel(eff);
         const levels = getThinkingLevels(provider, model);
         if (level && levels?.includes(level)) {
           const params = body.params && isObject(body.params) ? body.params : body;
@@ -611,6 +614,12 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   const requestedThinkingType = body.thinking?.type || cfg.thinkingType;
   stripAll(body, targetFormat === FORMATS.CLAUDE, targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE);
   applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType);
+  // A compatible DeepSeek gateway can validate the explicit source budget.
+  if (targetFormat === FORMATS.OPENAI && provider?.startsWith("openai-compatible-") &&
+    caps.thinkingFormat === "deepseek" && ["openai", "deepseek"].includes(fmt) &&
+    cfg.mode === "budget" && Number.isFinite(cfg.budget) && cfg.budget > 0) {
+    body.thinking = { type: "enabled", budget_tokens: cfg.budget };
+  }
   if (provider === "kimi" && targetFormat === FORMATS.CLAUDE) {
     // Moonshot Messages exposes effort through output_config, not OpenAI reasoning_effort.
     if (body.reasoning_effort) body.output_config = { ...body.output_config, effort: body.reasoning_effort };

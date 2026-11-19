@@ -7,6 +7,8 @@ import {
   getQuotaReservationPressure, getApiKeyProviderConnectionIds } from
 "@/lib/localDb";
 import { MEMORY_CONFIG } from "open-sse/config/runtimeConfig.js";
+import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
+import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isAntigravityCapacityError, isRecoverableCloudCodeProject403, buildModelLockUpdate, getActiveModelLockUntil, isModelLockActive, isPassthroughConnectionWideError, isDurableCredentialProvider, durableCredentialReauthFields } from "open-sse/services/accountFallback.js";
@@ -200,6 +202,147 @@ const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode"]);
 // With an active row, the handler no-auth path takes normal connection
 // selection, the same as a scoped key, so the row's credentials are sent.
 const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper", "firecrawl_custom"]);
+
+// ─── ollama-local node routing (#2024) ───────────────────────────────────────
+// Several Ollama nodes can run side by side, each stored as its own connection
+// with its own models and its own health. A request for one model must only
+// reach the nodes whose discovered catalog lists it, and a node that fails must
+// not take the healthy ones down with it.
+const OLLAMA_LOCAL_PROVIDER_ID = "ollama-local";
+const OLLAMA_CATALOG_PROBE_TIMEOUT_MS = 5_000;
+// Reading one node's catalog costs an /api/tags request (plus one /api/show per
+// model on daemons that omit capabilities), so the routing verdict is memoized
+// briefly instead of being re-read on every request.
+const OLLAMA_CATALOG_ROUTE_TTL_MS = 60_000;
+const MAX_OLLAMA_CATALOG_ROUTE_ENTRIES = 512;
+const ollamaCatalogRouteCache = new Map();
+
+/**
+ * Normalize an Ollama model tag for comparison: lowercased, namespace-stripped
+ * and without the implicit `:latest` tag, so `llama3.2`, `llama3.2:latest` and
+ * `Library/Llama3.2` all compare equal.
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function normalizeOllamaModelId(value) {
+  const text = isString(value) ? value.trim().toLowerCase() : "";
+  if (!text) return "";
+  const withoutNamespace = text.includes("/") ? text.slice(text.lastIndexOf("/") + 1) : text;
+  return withoutNamespace.endsWith(":latest") ? withoutNamespace.slice(0, -":latest".length) : withoutNamespace;
+}
+
+/**
+ * Whether a discovered Ollama catalog lists `model`.
+ * @param {Array<object>|null} models catalog entries
+ * @param {string} model requested model
+ * @returns {boolean}
+ */
+export function ollamaCatalogServesModel(models, model) {
+  const target = normalizeOllamaModelId(model);
+  if (!target || !Array.isArray(models)) return false;
+  return models.some((entry) =>
+    normalizeOllamaModelId(entry?.id) === target ||
+    normalizeOllamaModelId(entry?.name) === target);
+}
+
+/**
+ * Fetch one catalog path from a node. The host is the node's own configured
+ * address, so it is fetched directly (the same trust level as the executor
+ * that later talks to it) with a bounded timeout.
+ */
+function ollamaCatalogFetchFactory(host, { signal } = {}) {
+  return async (path, init = {}) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), OLLAMA_CATALOG_PROBE_TIMEOUT_MS);
+    const abort = () => controller.abort();
+    if (signal?.aborted) controller.abort();
+    else signal?.addEventListener?.("abort", abort, { once: true });
+    try {
+      return await fetch(`${host}${path}`, { ...init, cache: "no-store", signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener?.("abort", abort);
+    }
+  };
+}
+
+/**
+ * Read one connection's discovered catalog and classify the requested model.
+ *
+ * `known: false` means the node's model list could not be read (node down,
+ * probe blocked) — that is different from "the node does not serve this model".
+ * A cached (last known good) catalog counts as known.
+ *
+ * @param {object} connection
+ * @param {string} model
+ * @param {{signal?: AbortSignal|null, ttlMs?: number, loader?: Function|null}} [options]
+ * @returns {Promise<{known: boolean, serves: boolean}>}
+ */
+async function loadOllamaCatalogState(connection, model, options = {}) {
+  const host = resolveOllamaLocalHost(connection);
+  const accountId = connection?.id || "";
+  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : OLLAMA_CATALOG_ROUTE_TTL_MS;
+  const cacheKey = `${accountId}\0${host}\0${normalizeOllamaModelId(model)}`;
+  if (ttlMs > 0) {
+    const cached = ollamaCatalogRouteCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+  }
+  let value = { known: false, serves: false };
+  try {
+    const catalog = await discoverOllamaCatalog({
+      host,
+      accountId,
+      fetchImpl: options.fetchImpl || ollamaCatalogFetchFactory(host, { signal: options.signal }),
+    });
+    const models = Array.isArray(catalog?.models) ? catalog.models : [];
+    // "unavailable" means discovery failed: the node's list is unknown, not
+    // empty. "cache" is the last known good catalog and counts as known.
+    const known = catalog?.source !== "unavailable";
+    value = { known, serves: known && ollamaCatalogServesModel(models, model) };
+  } catch {
+    value = { known: false, serves: false };
+  }
+  if (ttlMs > 0) {
+    if (ollamaCatalogRouteCache.size >= MAX_OLLAMA_CATALOG_ROUTE_ENTRIES) {
+      ollamaCatalogRouteCache.delete(ollamaCatalogRouteCache.keys().next().value);
+    }
+    ollamaCatalogRouteCache.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
+  }
+  return value;
+}
+
+/**
+ * Order ollama-local connections by what their discovered catalog says about the
+ * requested model (#2024).
+ *
+ * - confirmed: the catalog lists the model → eligible, selected first.
+ * - unknown: the catalog could not be read → still eligible, after the
+ *   confirmed ones.
+ * - absent: the catalog is known and does not list the model → not eligible.
+ *
+ * When no connection confirms the model the incoming order is returned
+ * unchanged: routing keeps today's behaviour instead of refusing every node.
+ *
+ * @param {Array<object>} connections candidate connections
+ * @param {string} model requested model
+ * @param {{signal?: AbortSignal|null, ttlMs?: number, loader?: Function|null}} [options]
+ * @returns {Promise<Array<object>>} eligible connections in selection order
+ */
+export async function rankOllamaConnectionsByCatalog(connections, model, options = {}) {
+  const list = (Array.isArray(connections) ? connections : []).filter(Boolean);
+  if (list.length < 2 || !model) return list;
+  const loader = options.loader || loadOllamaCatalogState;
+  const states = await Promise.all(list.map((connection) => loader(connection, model, options)));
+  if (!states.some((state) => state?.serves)) return list;
+  const confirmed = [];
+  const unknown = [];
+  list.forEach((connection, index) => {
+    const state = states[index] || { known: false, serves: false };
+    if (state.serves) confirmed.push(connection);
+    else if (!state.known) unknown.push(connection);
+  });
+  return [...confirmed, ...unknown];
+}
 
 // Canonical roster of providers eligible for the public no-auth fallback when
 // no saved connection row exists. Mimocode stays in the roster so zero-row
@@ -864,6 +1007,19 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         ...availableConnections.filter((c) => avoidNow.has(c.id))];
 
       }
+    }
+
+    // #2024: with several Ollama nodes configured, a request for one model may
+    // only reach the nodes whose discovered catalog lists it. A node whose
+    // catalog is unknown stays eligible, behind the confirmed ones. When no
+    // node confirms the model, the selection order is left untouched so
+    // routing keeps today's behaviour.
+    if (providerId === OLLAMA_LOCAL_PROVIDER_ID && model) {
+      availableConnections = await rankOllamaConnectionsByCatalog(availableConnections, model, {
+        signal,
+        ttlMs: options?.ollamaCatalogTtlMs,
+        loader: options?.ollamaCatalogLoader || null,
+      });
     }
 
     let connection;

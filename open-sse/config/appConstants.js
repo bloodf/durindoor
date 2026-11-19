@@ -187,7 +187,7 @@ export const ANTIGRAVITY_HERMES_IDENTITY_REWRITE = {
 };
 export const ANTIGRAVITY_PROMPT_REWRITES = [
   // Run only over systemInstruction text. Boundary checks preserve paths, packages, URLs, and code identifiers.
-  { from: /(?<![\/\\w.~@:-])opencode(?![\/:\-@\\w]|(?:\.[a-zA-Z0-9_\-]))/gi, to: (m) => (m === "OpenCode" ? "Antigravity" : m === "OPENCODE" ? "ANTIGRAVITY" : "antigravity") },
+  { from: /(?<![\w./~@:-])(?<![\\])opencode(?![\w/:-@]|(?:\.[a-zA-Z0-9_-]))/gi, to: (m) => (m === "OpenCode" ? "Antigravity" : m === "OPENCODE" ? "ANTIGRAVITY" : "antigravity") },
   // Normalize OMP harness tags and identity while preserving the instruction bodies.
   { from: /<(\/?)system[-_]conventions>/gi, to: "<$1conventions>" },
   { from: /<(\/?)system[-_]directive>/gi, to: "<$1instructions>" },

@@ -69,9 +69,8 @@ export function canDiscoverModels(connection) {
   const provider = connection.provider;
 
   if (isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider)) {
-    // route.js:28-36 — needs a configured base URL and a token, else 400/401.
-    if (!connection.providerSpecificData?.baseUrl) return false;
-    return Boolean(connection.accessToken || connection.apiKey);
+    // Compatible servers may expose their catalog without credentials.
+    return Boolean(connection.providerSpecificData?.baseUrl);
   }
 
   const config = PROVIDER_MODELS_CONFIG[provider];
@@ -243,7 +242,7 @@ export async function createProvider(request, { shouldCommit } = {}) {
     const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
     const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
-    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !hasApiKeySubstitute) {
+    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !hasApiKeySubstitute) {
       return NextResponse.json({ error: `${isWebCookieProvider ? "Cookie value" : "API Key"} is required` }, { status: 400 });
     }
     const rawConnectionName = name || displayName || AI_PROVIDERS[provider]?.name;

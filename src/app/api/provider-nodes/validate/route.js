@@ -16,6 +16,18 @@ const guardedFetch = (url, options = {}, timeout = 10000) => {
   return guardedProbeFetch(url, { ...options, signal });
 };
 
+/**
+ * Auth headers for a node probe. LAN nodes may run without a key, so an empty
+ * key yields no Authorization or x-api-key header at all.
+ */
+function nodeAuthHeaders(apiKey, { xApiKey = false } = {}) {
+  const headers = {};
+  if (!apiKey) return headers;
+  headers.Authorization = `Bearer ${apiKey}`;
+  if (xApiKey) headers["x-api-key"] = apiKey;
+  return headers;
+}
+
 const MAX_DISCOVERY_BYTES = 1024 * 1024;
 const MAX_DISCOVERED_MODELS = 1000;
 
@@ -95,9 +107,6 @@ export async function POST(request) {
     if (!baseUrl) {
       return NextResponse.json({ error: "Base URL required" }, { status: 400 });
     }
-    if (type !== "systemone-compatible" && !apiKey) {
-      return NextResponse.json({ error: "Base URL and API key required" }, { status: 400 });
-    }
 
     // Validate URL format (http(s) only)
     if (!isValidUrl(baseUrl)) {
@@ -170,7 +179,7 @@ export async function POST(request) {
         embedRes = await guardedFetch(`${normalizedBase}/embeddings`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${apiKey}`,
+            ...nodeAuthHeaders(apiKey),
             "Content-Type": "application/json"
           },
           body: JSON.stringify({ model: modelId.trim(), input: "ping" })
@@ -211,9 +220,8 @@ export async function POST(request) {
         res = await guardedFetch(modelsUrl, {
           method: "GET",
           headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "Authorization": `Bearer ${apiKey}`
+            ...nodeAuthHeaders(apiKey, { xApiKey: true }),
+            "anthropic-version": "2023-06-01"
           }
         });
       } catch (err) {
@@ -235,9 +243,8 @@ export async function POST(request) {
           chatRes = await guardedFetch(`${normalizedBase}/chat/completions`, {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${apiKey}`,
+              ...nodeAuthHeaders(apiKey, { xApiKey: true }),
               "Content-Type": "application/json",
-              "x-api-key": apiKey,
               "anthropic-version": "2023-06-01"
             },
             body: JSON.stringify({
@@ -269,7 +276,7 @@ export async function POST(request) {
     let res;
     try {
       res = await guardedFetch(modelsUrl, {
-        headers: { "Authorization": `Bearer ${apiKey}` },
+        headers: nodeAuthHeaders(apiKey),
       });
     } catch (err) {
       if (err instanceof OutboundUrlGuardError) return blockedResponse(err);
@@ -290,7 +297,7 @@ export async function POST(request) {
         chatRes = await guardedFetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${apiKey}`,
+            ...nodeAuthHeaders(apiKey),
             "Content-Type": "application/json"
           },
           body: JSON.stringify({

@@ -15,8 +15,6 @@ async function fetchCompatibleModels(connection, headersFor, proxyOptions) {
   const baseUrl = connection.providerSpecificData?.baseUrl;
   if (!baseUrl) return { error: "Missing custom base URL", status: 400 };
   const token = connection.accessToken || connection.apiKey;
-  if (!token) return { error: "No valid token found", status: 401 };
-
   // Stored URLs are API bases (including any /v1), just like native chat URLs.
   const res = await proxyAwareFetch(`${baseUrl.replace(/\/$/, "")}/models`, {
     method: "GET",
@@ -74,18 +72,19 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
   const proxyOptions = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 
   if (isOpenAICompatibleProvider(connection.provider)) {
-    return fetchCompatibleModels(connection, (token) => ({
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    }), proxyOptions);
+    return fetchCompatibleModels(connection, (token) => {
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      return headers;
+    }, proxyOptions);
   }
 
   if (isAnthropicCompatibleProvider(connection.provider)) {
-    return fetchCompatibleModels(connection, (token) => ({
-      "x-api-key": token,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json"
-    }), proxyOptions);
+    return fetchCompatibleModels(connection, (token) => {
+      const headers = { "anthropic-version": "2023-06-01", "Content-Type": "application/json" };
+      if (token) headers["x-api-key"] = token;
+      return headers;
+    }, proxyOptions);
   }
 
   const config = PROVIDER_MODELS_CONFIG[connection.provider];

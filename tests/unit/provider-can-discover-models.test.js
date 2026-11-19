@@ -22,11 +22,11 @@ describe("canDiscoverModels", () => {
     })).toBe(false);
   });
 
-  it("returns false for an openai-compatible connection with baseUrl but no token", () => {
+  it("returns true for an openai-compatible connection with baseUrl but no token", () => {
     expect(canDiscoverModels({
       provider: "openai-compatible-node-1",
       providerSpecificData: { baseUrl: "https://example.com/v1" },
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it("returns true for an openai-compatible connection with baseUrl and apiKey", () => {

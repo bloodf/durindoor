@@ -75,11 +75,21 @@ describe.each(families)("compatible discovery API base: $provider", (family) => 
     }, proxy);
   });
 
-  it("keeps missing-key rejection at 401 without transport", async () => {
+  // #2023: keyless LAN nodes discover models; the request carries no auth header.
+  it("discovers a keyless node without sending any auth header", async () => {
+    mocks.fetch.mockResolvedValue(response(models));
     const result = await discover(connection(family, `${origin}/v1`, { apiKey: "" }));
-    expect(result.status).toBe(401);
-    expect(await result.json()).toEqual({ error: "No valid token found" });
-    expect(mocks.fetch).not.toHaveBeenCalled();
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ models });
+    expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(`${origin}/v1/models`, {
+      method: "GET", headers: family.provider.startsWith("anthropic-") ?
+        { "anthropic-version": "2023-06-01", "Content-Type": "application/json" } :
+        { "Content-Type": "application/json" },
+      cache: "no-store",
+    }, proxy);
+    const sent = mocks.fetch.mock.calls[0][1].headers;
+    expect(sent).not.toHaveProperty("Authorization");
+    expect(sent).not.toHaveProperty("x-api-key");
   });
 
   it("keeps missing-base rejection at 400 without transport", async () => {

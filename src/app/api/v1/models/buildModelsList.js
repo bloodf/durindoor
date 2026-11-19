@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { KIMI_CODING_MODELS_URL } from "../../../../../open-sse/providers/shared.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
 import {
@@ -108,7 +109,47 @@ async function resolveQoderLiveModels(conn, providerId) {
   };
 }
 
+/** Keyless LAN nodes get no Authorization or x-api-key header at all. */
+function compatibleCatalogHeaders(provider, token) {
+  const headers = {};
+  if (isAnthropicCompatibleProvider(provider)) {
+    headers["anthropic-version"] = "2023-06-01";
+    if (token) headers["x-api-key"] = token;
+  } else if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+// Cache per connection, endpoint and credential so private catalogs never cross accounts.
+// Entries live 5 minutes; a failed refresh serves the last-known-good catalog.
+const compatibleCatalogCache = new Map();
+export async function resolveCompatibleCatalog(conn, guard) {
+  const base = conn.providerSpecificData?.baseUrl?.replace(/\/$/, "");
+  if (!base) return null;
+  const token = conn.apiKey || conn.accessToken || "";
+  const key = createHash("sha256").update(JSON.stringify([conn.id, conn.provider, base, token, conn.providerSpecificData, guard])).digest("hex");
+  const cached = compatibleCatalogCache.get(key);
+  if (cached && Date.now() - cached.time < 300000) return cached.value;
+  try {
+    const headers = compatibleCatalogHeaders(conn.provider, token);
+    const proxy = await resolveConnectionProxyConfig(conn.providerSpecificData || {});
+    const response = await guardedProbeFetch(`${base}/models`, { headers, cache: "no-store", signal: AbortSignal.timeout(5000) }, guard, (url, options) => proxyAwareFetch(url, options, proxy || null));
+    if (!response.ok) return cached?.value || null;
+    const data = await response.json();
+    const rows = Array.isArray(data) ? data : data?.data;
+    if (!Array.isArray(rows)) return cached?.value || null;
+    const models = rows.map((row) => isString(row) ? { id: row } : row).filter((row) => isString(row?.id) && row.id.trim());
+    const value = { models };
+    compatibleCatalogCache.set(key, { time: Date.now(), value });
+    return value;
+  } catch {
+    return cached?.value || null;
+  }
+}
+
 const LIVE_MODEL_RESOLVERS = {
+  compatible: resolveCompatibleCatalog,
   anthropic: async (conn, guard) => resolveLiveAnthropicModels(conn, {
     ...(await liveResolverOptions(conn)),
     guard
@@ -526,7 +567,7 @@ async function buildComboOnlyModels(kindFilter, hidePaidModels) {
  * Build OpenAI-format models filtered by service kind. Built-in catalogs are a
  * fallback only when the DB is unavailable; a healthy DB exposes configured
  * connections, persisted custom rows, aliases, and combos. Custom-compatible
- * connections are allowlist-only here: dashboard import discovery remains in
+ * connections merge saved models with live discovery; dashboard import remains in
  * `/api/providers/[id]/models` and does not contribute to public catalogs.
  */
 async function buildModelsListImpl(kindFilter, guard, options = {}) {
@@ -1033,9 +1074,8 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         }
 
         // Live metadata precedence is user override > live upstream > static
-        // catalog > default. Custom-compatible public catalogs are persisted
-        // allowlists, so only registry-backed/Kimi OpenAI-style discovery runs here.
-        const providerLiveResolver = isCompatibleProvider ? null : LIVE_MODEL_RESOLVERS[providerId];
+        // catalog > default. Compatible catalogs merge live and saved IDs.
+        const providerLiveResolver = isCompatibleProvider ? LIVE_MODEL_RESOLVERS.compatible : LIVE_MODEL_RESOLVERS[providerId];
         const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
         const genericFetcher = registryFetcher && OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type) ?
         registryFetcher :
@@ -1067,9 +1107,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
                * expose different private or preview model IDs.
                */
               const unionRegistryLiveModels = Boolean(genericFetcher) && !hasExplicitEnabledModels;
-              const enrichExistingOnly = hasExplicitEnabledModels || (!unionRegistryLiveModels && !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
+              const enrichExistingOnly = !isCompatibleProvider && (hasExplicitEnabledModels || (!unionRegistryLiveModels && !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
               Boolean(openAIStyleLiveResolver) || providerId === "cloudflare-ai") &&
-              rawModelIds.length > 0);
+              rawModelIds.length > 0));
               const servedIds = new Set(rawModelIds);
               const liveModels = enrichExistingOnly ?
               live.models.filter((m) => servedIds.has(m.id)) :
@@ -1080,7 +1120,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
               // allowlist keep the user's selection authoritative: never add live
               // sibling IDs. Existing provider-specific enrichment still runs to
               // backfill caps (e.g. contextWindow) for the selected models.
-              if (!hasExplicitEnabledModels) {
+              if (isCompatibleProvider) {
+                rawModelIds = Array.from(new Set([...rawModelIds, ...liveModels.map((m) => m.id)]));
+              } else if (!hasExplicitEnabledModels) {
                 if (unionRegistryLiveModels || LIVE_MODEL_UNION_PROVIDERS.has(providerId)) {
                   rawModelIds = Array.from(new Set([...rawModelIds, ...liveModels.map((m) => m.id)]));
                 } else if (!enrichExistingOnly) {
@@ -1169,7 +1211,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         }) :
         null;
         const mergedModelIds = Array.from(new Set(compatiblePublicIds ?
-        [...compatiblePublicIds.ids, ...compatiblePublicIds.aliasIds] :
+        [...modelIds, ...compatiblePublicIds.ids, ...compatiblePublicIds.aliasIds] :
         [...modelIds, ...customModelIds, ...aliasModelIds]));
         const perProviderModels = [];
 

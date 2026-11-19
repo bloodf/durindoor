@@ -500,7 +500,7 @@ describe("forceStream provider config", () => {
     ["minimax-cn", "empty", ""],
   ])("defaults a %s gateway's %s Claude tool type to custom", async (provider, _label, type) => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
-    const options = makeNativeClaudeOptions(provider, "MiniMax-M2.5");
+    const options = makeNativeClaudeOptions(provider, "MiniMax-M3");
     const tool = { name: "lookup", input_schema: { type: "object" } };
     if (type !== undefined) tool.type = type;
     options.body.tools = [tool];
@@ -535,7 +535,7 @@ describe("forceStream provider config", () => {
   });
 
   it.each([
-    ["minimax", "MiniMax-M2.5"],
+    ["minimax", "MiniMax-M3"],
     ["deepseek", "deepseek-chat"],
   ])("preserves explicit Claude tool types for %s", async (provider, model) => {
     const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");

@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { availableParallelism } from "node:os";
 import { resolveTracingRoot } from "./tracing-root.mjs";
+import { getNextBuildCpus } from "./next-build-cpus.mjs";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 // CLI bundling needs workspace root so tracing includes hoisted node_modules (slim ~50MB).
@@ -31,7 +32,7 @@ const nextConfig = {
   env: {},
   experimental: {
     // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
-    cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),
+    cpus: getNextBuildCpus(availableParallelism()),
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
     // Cache fetch responses across HMR refreshes for faster dev reloads.

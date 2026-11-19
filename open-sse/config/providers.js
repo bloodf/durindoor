@@ -44,7 +44,7 @@ export function resolveOllamaLocalHost(credentials) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("Ollama base URL must use http or https");
   }
-  url.pathname = url.pathname.replace(/\/(?:v1|api)\/?$/i, "").replace(/\/$/, "") || "/";
+  url.pathname = url.pathname.replace(/\/api\/chat\/?$/i, "").replace(/\/(?:v1|api)\/?$/i, "").replace(/\/$/, "") || "/";
   url.search = "";
   url.hash = "";
   return url.toString().replace(/\/$/, "");

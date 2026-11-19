@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse, readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, AG_DEFAULT_TOOLS, AG_TOOL_SUFFIX, ANTIGRAVITY_HERMES_IDENTITY_REWRITE, ANTIGRAVITY_BILLING_HEADER_RE, ANTIGRAVITY_PROMPT_REWRITES, ANTIGRAVITY_TELEMETRY_KEYS } from "../config/appConstants.js";
 import { dbg } from "../utils/debugLog.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId, toNumericSessionId } from "../utils/sessionManager.js";
@@ -22,11 +22,19 @@ import { getGeminiThoughtSignatureSync } from "../services/thoughtSignatureStore
  */
 function rewriteOpenCodeBranding(text) {
   if (!isString(text)) return text;
-  return text.replace(/opencode/gi, (match) => {
-    if (match === "OpenCode") return "Antigravity";
-    if (match === "OPENCODE") return "ANTIGRAVITY";
-    return "antigravity";
-  });
+  return text.replace(ANTIGRAVITY_PROMPT_REWRITES[0].from, ANTIGRAVITY_PROMPT_REWRITES[0].to);
+}
+
+function stripHarnessTelemetry(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const cleaned = { ...value };
+  for (const key of ANTIGRAVITY_TELEMETRY_KEYS) delete cleaned[key];
+  if (cleaned.labels && typeof cleaned.labels === "object" && !Array.isArray(cleaned.labels)) {
+    const labels = { ...cleaned.labels };
+    for (const key of ANTIGRAVITY_TELEMETRY_KEYS) delete labels[key];
+    cleaned.labels = labels;
+  }
+  return cleaned;
 }
 
 const SYSTEM_INSTRUCTION_CHAR_LIMIT = 4000;
@@ -236,6 +244,16 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
+    body = { ...(body || {}) };
+    if (body.request) {
+      body.request = { ...body.request };
+      if (body.request.systemInstruction?.parts) {
+        body.request.systemInstruction = {
+          ...body.request.systemInstruction,
+          parts: body.request.systemInstruction.parts.map((part) => part && typeof part === "object" ? { ...part } : part)
+        };
+      }
+    }
     const projectId = credentials?.projectId || this.generateProjectId();
 
     // OpenAI clients may include stream_options even for non-streaming calls.
@@ -440,6 +458,9 @@ export class AntigravityExecutor extends BaseExecutor {
         if (part.text.includes(competitiveMarker)) {
           part.text = part.text.split(competitiveMarker).join("");
         }
+        for (const { from, to } of ANTIGRAVITY_PROMPT_REWRITES.slice(1)) {
+          part.text = part.text.replace(from, to);
+        }
       }
     }
     const generationConfig = { ...(requestWithoutTools.generationConfig || {}) };
@@ -499,14 +520,15 @@ export class AntigravityExecutor extends BaseExecutor {
     // `search` buckets are unaffected and keep their own requestType.
     delete body.requestType;
 
-    const transformedBody = {
+    const cleanedRequest = stripHarnessTelemetry(transformedRequest);
+    const transformedBody = stripHarnessTelemetry({
       ...body,
       project: projectId,
       model: model,
       userAgent: "antigravity",
       requestId: buildIdeRequestId({ body, request: transformedRequest, credentials, model, requestType: "agent" }),
-      request: transformedRequest
-    };
+      request: cleanedRequest
+    });
     if (toolNameMap.size) {
       const existing = body._toolNameMap instanceof Map ? body._toolNameMap : new Map();
       const composed = new Map(existing);

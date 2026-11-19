@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Badge, Button } from "@/shared/components";
+import { isObject, isString } from "@/shared/utils/typeChecks";
 import { deleteConnection } from "./connectionDelete.js";
 
 const HEALTH_VARIANT = { healthy: "success", unreachable: "error", error: "error", unknown: "default" };
@@ -20,12 +21,22 @@ export function toNodeHealth(state) {
   return "unknown";
 }
 
-/** Model ids from either an array of strings or OpenAI/Ollama-shaped objects. */
+/**
+ * Model id of one entry of a models payload: a bare id string, or an
+ * OpenAI/Ollama model object carrying the id under `id`, `name` or `model`.
+ * Parsed at the fetch boundary so the rest of the component only sees ids.
+ */
+export function modelIdOf(entry) {
+  if (isString(entry)) return entry;
+  if (entry === null || entry === undefined || !isObject(entry)) return "";
+  const id = entry.id || entry.name || entry.model;
+  return isString(id) ? id : "";
+}
+
+/** Model ids from either an array of strings or OpenAI/Ollama model objects. */
 export function normalizeModelNames(models) {
   if (!Array.isArray(models)) return [];
-  const names = models
-    .map((model) => (typeof model === "string" ? model : model?.id || model?.name || model?.model || ""))
-    .filter((name) => typeof name === "string" && name.trim());
+  const names = models.map(modelIdOf).filter((name) => name.trim());
   return [...new Set(names)];
 }
 
@@ -205,10 +216,29 @@ export default function NetworkNodeStatus({ connection, onRemoved = null }) {
   );
 }
 
+/**
+ * Prop contract for the connection this panel owns: a network node needs a
+ * stable id, and may carry a display name. Named for the domain role it
+ * guards rather than for the structure it happens to have.
+ */
+function networkNodeConnection(props, propName, componentName) {
+  const value = props[propName];
+  if (value === null || value === undefined) {
+    return new Error(`The prop \`${propName}\` is marked as required in \`${componentName}\`, but its value is \`${value}\`.`);
+  }
+  if (!isObject(value) || Array.isArray(value)) {
+    return new Error(`Invalid prop \`${propName}\` supplied to \`${componentName}\`: expected a connection object.`);
+  }
+  if (!isString(value.id) || !value.id.trim()) {
+    return new Error(`Invalid prop \`${propName}\` supplied to \`${componentName}\`: expected a connection with a non-empty id.`);
+  }
+  if (value.name !== undefined && !isString(value.name)) {
+    return new Error(`Invalid prop \`${propName}\` supplied to \`${componentName}\`: expected a string connection name.`);
+  }
+  return null;
+}
+
 NetworkNodeStatus.propTypes = {
-  connection: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    name: PropTypes.string,
-  }).isRequired,
+  connection: networkNodeConnection,
   onRemoved: PropTypes.func,
 };

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import NetworkNodeStatus, { toNodeHealth, normalizeModelNames } from "@/app/(dashboard)/dashboard/providers/[id]/NetworkNodeStatus.js";
+import NetworkNodeStatus, { toNodeHealth, modelIdOf, normalizeModelNames } from "@/app/(dashboard)/dashboard/providers/[id]/NetworkNodeStatus.js";
 
 let root;
 let host;
@@ -59,6 +59,16 @@ describe("network node health mapping", () => {
   it("normalizes string and object model lists without duplicates", () => {
     expect(normalizeModelNames(["a", { id: "b" }, { name: "c" }, "a", "", null])).toEqual(["a", "b", "c"]);
     expect(normalizeModelNames(undefined)).toEqual([]);
+  });
+
+  it("parses one model entry into its id at the payload boundary", () => {
+    expect(modelIdOf("llama3")).toBe("llama3");
+    expect(modelIdOf({ id: "a" })).toBe("a");
+    expect(modelIdOf({ name: "b" })).toBe("b");
+    expect(modelIdOf({ model: "c" })).toBe("c");
+    expect(modelIdOf(null)).toBe("");
+    expect(modelIdOf(undefined)).toBe("");
+    expect(modelIdOf({ id: 7 })).toBe("");
   });
 });
 

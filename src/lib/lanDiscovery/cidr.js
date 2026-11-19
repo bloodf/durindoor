@@ -2,6 +2,8 @@
  * IPv4 CIDR expansion and host/port normalization for LAN discovery (#2025).
  */
 
+import { isString } from "@/shared/utils/typeChecks.js";
+
 export const MAX_ADDRESSES = 256;
 export const MAX_PORTS = 8;
 export const DEFAULT_PORTS = Object.freeze([11434, 8000, 8080, 1234, 20128]);
@@ -35,7 +37,7 @@ export function formatIpv4(value) {
  * @returns {{ ok: true, hosts: string[] } | { ok: false, error: string }}
  */
 export function expandCidr(cidr) {
-  if (typeof cidr !== "string" || !cidr.trim()) {
+  if (!isString(cidr) || !cidr.trim()) {
     return { ok: false, error: "cidr must be a non-empty IPv4 CIDR string" };
   }
   const trimmed = cidr.trim();
@@ -82,7 +84,7 @@ export function normalizeHosts(hosts) {
   }
   const normalized = [];
   for (const entry of hosts) {
-    if (typeof entry !== "string" || !entry.trim()) {
+    if (!isString(entry) || !entry.trim()) {
       return { ok: false, error: "hosts must be an array of hostnames or IPv4 addresses" };
     }
     const host = entry.trim().toLowerCase();

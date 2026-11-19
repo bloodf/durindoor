@@ -3,6 +3,7 @@
  */
 
 import { guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export const PROBE_TIMEOUT_MS = 1500;
 
@@ -47,9 +48,9 @@ export function extractOllamaModels(json) {
   const list = json && Array.isArray(json.models) ? json.models : [];
   return list.
   map((entry) => {
-    if (typeof entry === "string") return entry;
-    if (entry && typeof entry.name === "string") return entry.name;
-    if (entry && typeof entry.model === "string") return entry.model;
+    if (isString(entry)) return entry;
+    if (entry && isString(entry.name)) return entry.name;
+    if (entry && isString(entry.model)) return entry.model;
     return null;
   }).
   filter(Boolean);
@@ -63,8 +64,8 @@ export function extractOpenAIModels(json) {
   const list = json && Array.isArray(json.data) ? json.data : [];
   return list.
   map((entry) => {
-    if (typeof entry === "string") return entry;
-    if (entry && typeof entry.id === "string") return entry.id;
+    if (isString(entry)) return entry;
+    if (entry && isString(entry.id)) return entry.id;
     return null;
   }).
   filter(Boolean);

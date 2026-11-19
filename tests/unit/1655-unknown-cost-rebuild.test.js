@@ -34,13 +34,16 @@ function count(db) {
 }
 
 describe("#1655 historical unknown-cost rebuilds", () => {
-  it("rebuilds an absent totals row from NULL-cost and legacy metadata history once", () => {
+  it.each([
+    ["current helper", (db) => backfillApiKeyUsageTotals(db)],
+    ["legacy helper", ensureAndBackfillApiKeyUsageTotals],
+  ])("%s rebuilds an absent totals row from NULL-cost and legacy metadata history once", (_label, rebuild) => {
     const db = fixture();
     addHistory(db, { cost: null, meta: '{"costStatus":"unknown"}' });
     addHistory(db, { cost: 0, meta: '{"costStatus":"unknown"}' });
     addHistory(db, { cost: 1, meta: "{}" });
 
-    backfillApiKeyUsageTotals(db);
+    rebuild(db);
 
     expect(count(db)).toBe(2);
     expect(Number(db.get("SELECT totalRequests FROM apiKeyUsageTotals WHERE apiKeyId = 'key-id'").totalRequests)).toBe(3);

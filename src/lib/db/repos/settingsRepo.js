@@ -155,6 +155,9 @@ const DEFAULT_SETTINGS = {
   // #10372: opt-in only — fresh installs (or rows missing the persisted
   // key) must not run in debug mode; a persisted `true` is preserved.
   debugMode: false,
+  // #2025: opt-in LAN discovery of Ollama / OpenAI-compatible endpoints.
+  // Off by default; POST /api/providers/lan-discovery returns 403 until enabled.
+  lanDiscoveryEnabled: false,
   // ─── Opt-in PostgreSQL engine (issue: feat/postgres-engine) ──────────
   // The runtime is SQLite by default. PG is opt-in; when the operator
   // supplies a connection URL and runs a successful cutover, this flips

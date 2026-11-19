@@ -1,8 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { createMDX } from "fumadocs-mdx/next";
 import { availableParallelism } from "node:os";
-import { getNextBuildCpus } from "../next-build-cpus.mjs";
+import { createMDX } from "fumadocs-mdx/next";
 
 const siteRoot = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(siteRoot, "..");
@@ -20,7 +19,7 @@ const nextConfig = {
   // from website/node_modules so there is exactly one React instance.
   experimental: {
     // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
-    cpus: getNextBuildCpus(availableParallelism()),
+    cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),
     externalDir: true,
   },
   outputFileTracingRoot: repoRoot,

@@ -41,6 +41,7 @@ const THINKING_FORMATS = [
 export default function AddCustomModelModal({ isOpen, providerAlias, providerDisplayAlias, initialModel, onSave, onClose, connections = [] }) {
   const isEdit = Boolean(initialModel);
   const [modelId, setModelId] = useState("");
+  const [modelType, setModelType] = useState("llm");
   const [caps, setCaps] = useState({ tools: true });
   // Track which boolean caps the user (or the stored record) actually set —
   // untouched checkboxes must not override static/provider defaults (e.g. a
@@ -63,6 +64,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   const reset = (model = null) => {
     setModelId(model ? model.id : "");
+    setModelType(model?.kind || model?.type || "llm");
     const existing = model && model.capabilities ? model.capabilities : {};
     setCaps({ tools: true });
     const touched = new Set();
@@ -105,7 +107,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   const handleTest = async () => {
     const cleanId = stripAlias(modelId.trim());
-    if (!cleanId) return;
+    if (!cleanId || saving || testStatus === "testing") return;
     setTestStatus("testing");
     setTestError("");
     try {
@@ -113,7 +115,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${cleanId}`, connectionId }),
+        body: JSON.stringify({ model: `${providerAlias}/${cleanId}`, connectionId, kind: modelType }),
       });
       const data = await res.json();
       setTestStatus(probeOutcome(data));
@@ -128,13 +130,14 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   const handleSave = async () => {
     const cleanId = stripAlias(modelId.trim());
-    if (!cleanId || saving) return;
+    if (!cleanId || saving || testStatus === "testing") return;
     setSaving(true);
     setSaveError("");
     try {
       await onSave({
         id: cleanId,
-        capabilities: buildCustomCapabilities({
+        type: modelType,
+        capabilities: modelType === "llm" ? buildCustomCapabilities({
           booleanCaps: Object.fromEntries(Object.entries(caps).filter(([k]) => capsTouched.has(k))),
           contextWindow,
           maxOutput,
@@ -142,7 +145,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           thinkingCanDisable: thinkingCanDisableTouched ? thinkingCanDisable : undefined,
           thinkingRangeMin,
           thinkingRangeMax,
-        }),
+        }) : undefined,
       });
     } catch (err) {
       // Keep the modal open with the user's inputs; the parent only closes on
@@ -161,6 +164,26 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   return (
     <Modal open={isOpen} onClose={onClose} title={isEdit ? "Edit Custom Model" : "Add Custom Model"}>
       <div className="flex flex-col gap-4">
+        {!isEdit ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-dd-muted">Model type</span>
+            <Select
+              aria-label="Model type"
+              value={modelType}
+              options={[
+                { value: "llm", label: "Chat / LLM" },
+                { value: "stt", label: "Speech to text" }
+              ]}
+              disabled={saving || testStatus === "testing"}
+              onChange={(value) => {
+                const id = modelId;
+                reset();
+                setModelId(id);
+                setModelType(value);
+              }}
+            />
+          </div>
+        ) : null}
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-dd-muted" htmlFor="custom-model-id">Model ID</label>
           <div className="flex gap-2">
@@ -173,10 +196,10 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
               placeholder="e.g. claude-opus-4-5"
               className="h-11 min-w-0 flex-1 rounded-dd border border-dd-border bg-dd-surface px-3 text-[13px] text-dd-text outline-none transition-colors placeholder:text-dd-subtle hover:border-dd-border-subtle focus:border-dd-accent focus-visible:shadow-dd-focus disabled:cursor-not-allowed disabled:opacity-60"
               autoFocus
-              disabled={isEdit}
+              disabled={isEdit || saving || testStatus === "testing"}
             />
             {!isEdit ? (
-              <Button variant="secondary" icon="science" loading={testStatus === "testing"} onClick={handleTest} disabled={!modelId.trim() || testStatus === "testing"}>
+              <Button variant="secondary" icon="science" loading={testStatus === "testing"} onClick={handleTest} disabled={!modelId.trim() || saving || testStatus === "testing"}>
                 {testStatus === "testing" ? "Testing..." : "Test"}
               </Button>
             ) : null}
@@ -184,6 +207,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           <p className="text-xs text-dd-muted">Sent to provider as: <code className="rounded-dd bg-dd-surface-2 px-1 font-mono text-dd-text">{stripAlias(modelId.trim()) || "model-id"}</code></p>
         </div>
 
+        {modelType === "llm" ? <>
         <div>
           <p className="mb-1.5 text-xs font-medium text-dd-muted">Capabilities</p>
           <div className="flex flex-wrap gap-2">
@@ -227,6 +251,8 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
           </div>
         ) : null}
 
+        </> : null}
+
         {testStatus === "ok" ? <div className="flex items-center gap-2 text-sm text-dd-success"><span aria-hidden="true" className="material-symbols-outlined text-base">check_circle</span>Model is reachable</div> : null}
         {testStatus === "skipped" ? <div className="flex items-start gap-2 text-sm text-dd-muted" role="status"><span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">info</span><span>{testError}</span></div> : null}
         {testStatus === "error" ? <div className="flex items-start gap-2 text-sm text-dd-danger" role="alert"><span aria-hidden="true" className="material-symbols-outlined text-base shrink-0">cancel</span><span>{testError || "Model not reachable"}</span></div> : null}
@@ -234,7 +260,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
         <div className="flex gap-2 pt-1">
           <Button onClick={onClose} variant="ghost" className="w-full">Cancel</Button>
-          <Button variant="primary" onClick={handleSave} className="w-full" loading={saving} disabled={!modelId.trim() || saving}>{saving ? (isEdit ? "Saving..." : "Adding...") : (isEdit ? "Save" : "Add Model")}</Button>
+          <Button variant="primary" onClick={handleSave} className="w-full" loading={saving} disabled={!modelId.trim() || saving || testStatus === "testing"}>{saving ? (isEdit ? "Saving..." : "Adding...") : (isEdit ? "Save" : "Add Model")}</Button>
         </div>
       </div>
     </Modal>
@@ -245,7 +271,7 @@ AddCustomModelModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   providerAlias: PropTypes.string.isRequired,
   providerDisplayAlias: PropTypes.string.isRequired,
-  initialModel: PropTypes['shape']({ id: PropTypes.string, capabilities: PropTypes.object }),
+  initialModel: PropTypes['shape']({ id: PropTypes.string, kind: PropTypes.string, type: PropTypes.string, capabilities: PropTypes.object }),
   onSave: PropTypes.func.isRequired,
   connections: PropTypes.arrayOf(PropTypes['shape']({ id: PropTypes.string, isActive: PropTypes.bool })),
   onClose: PropTypes.func.isRequired,

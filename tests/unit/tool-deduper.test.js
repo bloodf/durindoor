@@ -69,3 +69,22 @@ describe.each(MCP_CASES)("dedupeTools $label MCP rules", ({ tools: configuredToo
     expect(stripped).toEqual([]);
   });
 });
+
+it("replaces references to stripped Claude tools and preserves surviving references", () => {
+  const removed = { type: "tool_reference", tool_name: "WebSearch" };
+  const surviving = { type: "tool_reference", tool_name: "mcp__exa__web_search_exa" };
+  const messages = [{
+    role: "user",
+    content: [
+      { type: "tool_result", tool_use_id: "toolu_1", content: [removed, surviving] },
+      { type: "tool_result", tool_use_id: "toolu_2", content: [removed] },
+    ],
+  }];
+  const result = dedupeTools([tool("WebSearch"), tool("mcp__exa__web_search_exa")], {
+    clientTool: "claude",
+    messages,
+  });
+  expect(result.stripped).toEqual(["WebSearch"]);
+  expect(messages[0].content[0].content).toEqual([surviving]);
+  expect(messages[0].content[1].content).toEqual([{ type: "text", text: "[Tool WebSearch is unavailable]" }]);
+});

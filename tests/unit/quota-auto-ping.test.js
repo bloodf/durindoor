@@ -663,6 +663,31 @@ describe("quota auto-ping", () => {
     }));
   });
 
+  it("retries a missed Claude reset after the quota endpoint advances its window", async () => {
+    const missedReset = "2026-01-01T11:59:00.000Z";
+    const nextReset = "2026-01-01T16:59:00.000Z";
+    state.resetCache["claude:claude-1"] = missedReset;
+    deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": true } } });
+    deps.getProviderConnections.mockResolvedValue([
+      { id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token" },
+    ]);
+    getClaudeUsage.mockResolvedValue({
+      quotas: { "session (5h)": { used: 1, total: 100, remaining: 99, resetAt: nextReset } },
+    });
+    deps.proxyAwareFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+    await runQuotaAutoPingTick(deps, state);
+    expect(deps.proxyAwareFetch).toHaveBeenCalledOnce();
+    expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date(state.pingFailureUntil["claude:claude-1"] + 1000));
+    await runQuotaAutoPingTick(deps, state);
+    expect(deps.proxyAwareFetch).toHaveBeenCalledTimes(2);
+    expect(deps.updateProviderConnection).toHaveBeenCalledWith("claude-1", expect.objectContaining({
+      lastPingedResetAt: missedReset,
+      lastPingedResetKey: missedReset,
+    }));
+  });
+
   it("drains a successful Claude response body before marking the ping", async () => {
     const reader = {
       read: vi.fn()

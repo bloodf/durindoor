@@ -634,6 +634,7 @@ describe("forceStream provider config", () => {
     expect(dedupeToolsMock).toHaveBeenCalledWith(expect.any(Array), {
       clientTool: "claude",
       model: "gpt-4.1",
+      messages: expect.any(Array),
     });
   });
 

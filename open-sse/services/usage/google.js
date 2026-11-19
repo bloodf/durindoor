@@ -222,6 +222,8 @@ const WEEKLY_DISPLAY_LABELS = {
   gemini_weekly: "Gemini Weekly",
   claude_gpt_weekly: "Claude & GPT Weekly",
   gemini_session: "Gemini 5h",
+  gemini_argon_weekly: "Gemini 4 Argon Weekly",
+  gemini_argon_session: "Gemini 4 Argon 5h",
   claude_gpt_session: "Claude & GPT 5h"
 };
 
@@ -250,7 +252,8 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
   for (const groupValue of rawGroups) {
     const group = _toWeeklyRecord(groupValue);
     const buckets = Array.isArray(group.buckets) ? group.buckets : [];
-    const baseKey = slugifyGroupKey(String(group.displayName || ""));
+    const groupName = String(group.displayName || "");
+    const baseKey = /\bgemini\b.*\bargon\b/i.test(groupName) ? "gemini_argon" : slugifyGroupKey(groupName);
     if (!baseKey) continue;
 
     for (const bucketValue of buckets) {
@@ -479,35 +482,22 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
       // the weekly one — the weekly cap is a separate, longer window and must
       // not be clobbered by a short-window exhaustion signal.
       const entries = Object.entries(quotas);
-      const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image"));
-      const claudeModels = entries.filter(([k]) => k.startsWith("claude-"));
-
-      if (weeklyQuotas.gemini_session && geminiModels.length > 0) {
-        const allGeminiExhausted = geminiModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);
-        if (allGeminiExhausted && weeklyQuotas.gemini_session.remainingPercentage > 0) {
-          const maxResetAt = geminiModels.reduce((max, [, q]) =>
-            !max || (q.resetAt && new Date(q.resetAt) > new Date(max)) ? q.resetAt : max, null
-          );
-          weeklyQuotas.gemini_session.used = weeklyQuotas.gemini_session.total;
-          weeklyQuotas.gemini_session.remainingPercentage = 0;
-          if (maxResetAt) {
-            weeklyQuotas.gemini_session.resetAt = maxResetAt;
-          }
-        }
-      }
-
-      if (weeklyQuotas.claude_gpt_session && claudeModels.length > 0) {
-        const allClaudeExhausted = claudeModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);
-        if (allClaudeExhausted && weeklyQuotas.claude_gpt_session.remainingPercentage > 0) {
-          const maxResetAt = claudeModels.reduce((max, [, q]) =>
-            !max || (q.resetAt && new Date(q.resetAt) > new Date(max)) ? q.resetAt : max, null
-          );
-          weeklyQuotas.claude_gpt_session.used = weeklyQuotas.claude_gpt_session.total;
-          weeklyQuotas.claude_gpt_session.remainingPercentage = 0;
-          if (maxResetAt) {
-            weeklyQuotas.claude_gpt_session.resetAt = maxResetAt;
-          }
-        }
+      const gemini = entries.filter(([id]) => id.startsWith("gemini-") && !id.includes("image"));
+      const argon = gemini.filter(([id]) => id.includes("argon"));
+      const hasArgonPool = Boolean(weeklyQuotas.gemini_argon_session || weeklyQuotas.gemini_argon_weekly);
+      const families = [
+        [weeklyQuotas.gemini_session, hasArgonPool ? gemini.filter(([id]) => !id.includes("argon")) : gemini],
+        [weeklyQuotas.gemini_argon_session, argon],
+        [weeklyQuotas.claude_gpt_session, entries.filter(([id]) => id.startsWith("claude-"))]
+      ];
+      for (const [session, models] of families) {
+        if (!session || !models.length || !(session.remainingPercentage > 0)) continue;
+        if (!models.every(([, quota]) => (quota.remainingPercentage ?? 0) === 0)) continue;
+        const reset = models.reduce((latest, [, quota]) =>
+          !latest || (quota.resetAt && Date.parse(quota.resetAt) > Date.parse(latest)) ? quota.resetAt : latest, null);
+        session.used = session.total;
+        session.remainingPercentage = 0;
+        if (reset) session.resetAt = reset;
       }
 
       Object.assign(quotas, weeklyQuotas);

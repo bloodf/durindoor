@@ -23,7 +23,7 @@ function sendCommand(cmd) {
  * @returns {Object|null} controller with sendAction/kill
  */
 function initWinTray(options) {
-  const { iconPath, tooltip, items, onClick } = options;
+  const { iconPath, tooltip, items, onClick, onReady, onError } = options;
   clickHandler = onClick;
 
   const scriptPath = path.join(__dirname, "tray.ps1");
@@ -51,13 +51,15 @@ function initWinTray(options) {
   rl.on("line", (line) => {
     try {
       const evt = JSON.parse(line);
+      if (evt.type === "ready") onReady?.();
       if (evt.type === "click" && clickHandler) {
         clickHandler(evt.index);
       }
     } catch (e) {}
   });
 
-  psProcess.on("error", () => {});
+  psProcess.once("error", (error) => onError?.(error));
+  psProcess.once("exit", () => onError?.(new Error("Windows tray process exited")));
   psProcess.stderr.on("data", () => {});
 
   // Send initial menu items

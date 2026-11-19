@@ -168,4 +168,38 @@ describe("Claude Code CLI context → OpenAI", () => {
       })
     ).toThrow("Unsupported Claude content block type for OpenAI: container_upload");
   });
+
+  it("forwards Claude output_config.effort to CommandCode params.reasoning_effort", () => {
+    for (const eff of ["low", "medium", "high", "max"]) {
+      const out = translateRequest(
+        FORMATS.CLAUDE,
+        FORMATS.COMMANDCODE,
+        "deepseek/deepseek-v4.1-flash",
+        {
+          output_config: { effort: eff },
+          messages: [{ role: "user", content: "hi" }],
+        },
+        true,
+        null,
+        "commandcode"
+      );
+      expect(out.params.reasoning_effort).toBe(eff);
+    }
+  });
+
+  it("handles Claude adaptive thinking mapping to high effort", () => {
+    const out = translateRequest(
+      FORMATS.CLAUDE,
+      FORMATS.COMMANDCODE,
+      "deepseek/deepseek-v4.1-flash",
+      {
+        thinking: { type: "adaptive" },
+        messages: [{ role: "user", content: "hi" }],
+      },
+      true,
+      null,
+      "commandcode"
+    );
+    expect(out.params.reasoning_effort).toBe("high");
+  });
 });

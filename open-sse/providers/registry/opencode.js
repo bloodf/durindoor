@@ -39,6 +39,7 @@ export default {
   // Gateway-wide effort enum; model-scoped capability metadata may narrow it.
   thinkingFormat: "opencode",
   transport: {
+    retry: { 429: { attempts: 7, delayMs: 800 } },
     baseUrl: "https://opencode.ai",
     headers: {
       "x-opencode-client": "desktop",

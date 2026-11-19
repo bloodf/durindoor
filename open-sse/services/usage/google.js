@@ -302,6 +302,7 @@ export function parseAntigravityWeeklyQuotas(summaryData) {
 }
 
 export const ANTIGRAVITY_QUOTA_MODELS = [
+'gemini-4-hydrogen-xhigh',
 'gemini-4-hydrogen-high',
 'gemini-4-hydrogen-medium',
 'gemini-4-hydrogen-low',

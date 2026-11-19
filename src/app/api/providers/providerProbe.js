@@ -419,8 +419,10 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   }
   if (probe.accepts === "non-auth-failure") {
     if (res.status >= 500) return temporaryFailure(res.status);
-    if (res.ok) return { valid: true, status: res.status };
-    return { valid: false, status: res.status, error: getChatProbeError(res.status) };
+    // A minimal validation request can be rejected for its payload while still
+    // proving the credential reached the provider; only auth failures disprove it.
+    if (res.ok || CHAT_PROBE_ACCEPT_STATUSES.has(res.status)) return { valid: true, status: res.status };
+    return { valid: false, status: res.status };
   }
   if (probe.accepts === "chat-auth") {
     if (res.status >= 500) return temporaryFailure(res.status);
@@ -438,10 +440,15 @@ export async function probeRegistryProvider(provider, apiKey, fetcher = fetch, p
   try {
     const fallbackRes = await guardedProbeFetch(probe.fallback.url, probe.fallback.options, guard, fetcher);
     if (fallbackRes.status >= 500) return temporaryFailure(fallbackRes.status);
-    if (fallbackRes.ok) return { valid: true, status: fallbackRes.status };
+    // HTTP 400/422/429 from a minimal chat probe confirms provider reachability.
+    if (fallbackRes.ok || CHAT_PROBE_ACCEPT_STATUSES.has(fallbackRes.status)) return { valid: true, status: fallbackRes.status };
     return { valid: false, status: fallbackRes.status, error: getChatProbeError(fallbackRes.status) };
   } catch (err) {
     if (err instanceof OutboundUrlGuardError) return blockedResult(err);
+    // Preserve TimeoutError/AbortError messages for connection-test callers.
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      return { valid: false, error: err.message };
+    }
     return temporaryFailure();
   }
 }

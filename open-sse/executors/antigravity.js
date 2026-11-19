@@ -498,6 +498,8 @@ export class AntigravityExecutor extends BaseExecutor {
     // with quota available (oh-my-pi #11689 / PR #11742). `image_gen` and
     // `search` buckets are unaffected and keep their own requestType.
     delete body.requestType;
+    // `stream` is transport metadata and is not part of Google's Cloud Code envelope.
+    delete body.stream;
 
     const transformedBody = {
       ...body,

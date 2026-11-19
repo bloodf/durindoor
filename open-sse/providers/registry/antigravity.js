@@ -53,6 +53,10 @@ export default {
     clientSecret: ANTIGRAVITY_OAUTH_CLIENT.clientSecret, // Set via env var — see SECRETS_AND_CONFIG.md
   },
   models: [
+    { id: "gemini-4-hydrogen-high", name: "Gemini 4 Hydrogen (High)", upstreamModelId: "gemini-4-hydrogen-high(high)" },
+    { id: "gemini-4-hydrogen-medium", name: "Gemini 4 Hydrogen (Medium)", upstreamModelId: "gemini-4-hydrogen-medium(medium)" },
+    { id: "gemini-4-hydrogen-low", name: "Gemini 4 Hydrogen (Low)", upstreamModelId: "gemini-4-hydrogen-low(low)" },
+    { id: "gemini-4-hydrogen", name: "Gemini 4 Hydrogen", upstreamModelId: "gemini-4-hydrogen-medium(medium)" },
     { id: "gemini-4-carbon-high", name: "Gemini 4 Carbon (High)", upstreamModelId: "gemini-4-carbon-high(high)" },
     { id: "gemini-4-carbon-medium", name: "Gemini 4 Carbon (Medium)", upstreamModelId: "gemini-4-carbon-medium(medium)" },
     { id: "gemini-4-carbon-low", name: "Gemini 4 Carbon (Low)", upstreamModelId: "gemini-4-carbon-low(low)" },

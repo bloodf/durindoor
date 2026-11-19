@@ -22,7 +22,7 @@
  * `valid` but the caller classifies them as `degraded` (reachable, bad creds)
  * rather than `down`.
  */
-import { PROVIDERS } from "open-sse/config/providers.js";
+import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveApiBase as resolveOrcaRouterApiBase, isAllowedOrcaOrigin } from "open-sse/providers/orcarouterCatalog.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import {
@@ -101,18 +101,19 @@ async function probeAnthropicCompatible(connection, effectiveProxy, fetcher) {
   if (baseUrl.endsWith("/v1")) baseUrl = baseUrl.slice(0, -3);
   const url = `${baseUrl}/v1/messages`;
   const model = connection.defaultModel || "claude-3-haiku-20240307";
+  // Keyless LAN nodes get no x-api-key or Authorization header at all.
+  const headers = { "anthropic-version": "2023-06-01", "content-type": "application/json" };
+  if (connection.apiKey) {
+    headers["x-api-key"] = connection.apiKey;
+    headers.Authorization = `Bearer ${connection.apiKey}`;
+  }
   try {
     assertOutboundUrlAllowed(url);
     const res = await proxyAware(
       url,
       withTimeout({
         method: "POST",
-        headers: {
-          "x-api-key": connection.apiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-          Authorization: `Bearer ${connection.apiKey}`,
-        },
+        headers,
         body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
       }),
       effectiveProxy,
@@ -142,9 +143,14 @@ const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
 async function probeLocalOpenAI(connection, effectiveProxy, fetcher) {
   const cfg = PROVIDERS[connection.provider];
   const raw = connection.providerSpecificData?.baseUrl || connection.baseUrl || cfg?.baseUrl;
-  if (!raw) return null; // fall through to registry probe
-  const base = String(raw).replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
-  const url = `${base}/models`;
+  if (!raw && connection.provider !== "ollama-local") return null; // fall through to registry probe
+  let url;
+  try {
+    const base = connection.provider === "ollama-local" ? resolveOllamaLocalHost({ ...connection, providerSpecificData: { ...connection.providerSpecificData, baseUrl: raw } }) : String(raw).replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
+    url = `${base}${connection.provider === "ollama-local" ? "/api/tags" : "/models"}`;
+  } catch (err) {
+    return { valid: false, status: null, error: err.message };
+  }
   try {
     assertOutboundUrlAllowed(url);
     const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};

@@ -355,10 +355,12 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         return;
       }
       let importedCount = 0;
+      const existingIds = new Set(allModels.map((model) => model.id));
       for (const model of models) {
         const modelId = model.id || model.name || model.model;
         if (!modelId) continue;
-        if (allModels.some((entry) => entry.id === modelId)) continue;
+        if (existingIds.has(modelId)) continue;
+        existingIds.add(modelId);
         await onAddCustomModel(modelId);
         importedCount += 1;
       }
@@ -397,7 +399,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
           {adding ? "Adding..." : "Add"}
         </Button>
         <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
-          {importing ? "Importing..." : "Import from /models"}
+          {importing ? "Importing..." : "Import discovered models"}
         </Button>
       </div>
 

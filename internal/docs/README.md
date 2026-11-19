@@ -19,6 +19,7 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [Brand image prompts](./brand-prompts.md) and [provider audit evidence](./provider-expansion-audit.json)
 - [V5 admin design audit](./audits/v5-design-2026-10-29/README.md), including Visant findings, screenshots, preservation checks and verification limits
 - [OmniRoute security-audit applicability (#1150)](./omniroute-security-audit-1150.md)
+- [OmniRoute open-PR working notes (#1073)](./omniroute-open-prs-1073.md)
 
 Keep implementation details, source ownership, compatibility constraints, porting decisions, evidence limits, and validation procedures here. Keep public pages concise, with complete setup steps, supported behavior, limits, and recovery instructions. When behavior changes, update both audiences where relevant.
 

@@ -22,7 +22,7 @@
  * `valid` but the caller classifies them as `degraded` (reachable, bad creds)
  * rather than `down`.
  */
-import { PROVIDERS } from "open-sse/config/providers.js";
+import { PROVIDERS, resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { resolveApiBase as resolveOrcaRouterApiBase, isAllowedOrcaOrigin } from "open-sse/providers/orcarouterCatalog.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import {
@@ -142,9 +142,14 @@ const LOCAL_OPENAI_COMPATIBLE_PROVIDERS = new Set([
 async function probeLocalOpenAI(connection, effectiveProxy, fetcher) {
   const cfg = PROVIDERS[connection.provider];
   const raw = connection.providerSpecificData?.baseUrl || connection.baseUrl || cfg?.baseUrl;
-  if (!raw) return null; // fall through to registry probe
-  const base = String(raw).replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
-  const url = `${base}/models`;
+  if (!raw && connection.provider !== "ollama-local") return null; // fall through to registry probe
+  let url;
+  try {
+    const base = connection.provider === "ollama-local" ? resolveOllamaLocalHost({ ...connection, providerSpecificData: { ...connection.providerSpecificData, baseUrl: raw } }) : String(raw).replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
+    url = `${base}${connection.provider === "ollama-local" ? "/api/tags" : "/models"}`;
+  } catch (err) {
+    return { valid: false, status: null, error: err.message };
+  }
   try {
     assertOutboundUrlAllowed(url);
     const headers = connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};

@@ -47,7 +47,8 @@ export function geminiToOpenAIRequest(model, body, stream) {
     for (const content of body.contents) {
       const converted = convertGeminiContent(content, ids);
       if (converted) {
-        result.messages.push(converted);
+        if (Array.isArray(converted)) result.messages.push(...converted);
+        else result.messages.push(converted);
       }
     }
   }
@@ -138,6 +139,7 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
 
   const parts = [];
   const toolCalls = [];
+  const toolResults = [];
   let reasoningContent = "";
 
   for (const part of content.parts) {
@@ -173,41 +175,28 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
     }
 
     if (part.functionResponse) {
-      return {
+      toolResults.push({
         role: ROLE.TOOL,
         tool_call_id: responseCallId(ids, part.functionResponse),
         content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
-      };
+      });
     }
   }
 
-  if (toolCalls.length > 0) {
-    const result = { role: ROLE.ASSISTANT };
-    if (parts.length > 0) {
-      result.content = collapseTextParts(parts);
-    }
-    if (reasoningContent) {
-      result.reasoning_content = reasoningContent;
-    }
-    if (reasoningContent) {
-      result.reasoning_content = reasoningContent;
-    }
-    result.tool_calls = toolCalls;
-    return result;
+  let message = null;
+  if (toolCalls.length || parts.length || reasoningContent) {
+    message = { role: toolCalls.length ? ROLE.ASSISTANT : role };
+    if (parts.length) message.content = toolResults.length && !toolCalls.length ? parts : collapseTextParts(parts);
+    if (reasoningContent) message.reasoning_content = reasoningContent;
+    if (toolCalls.length) message.tool_calls = toolCalls;
   }
 
-  if (parts.length > 0 || reasoningContent) {
-    const result = { role };
-    if (parts.length > 0) {
-      result.content = collapseTextParts(parts);
-    }
-    if (reasoningContent) {
-      result.reasoning_content = reasoningContent;
-    }
-    return result;
+  // Complete the parts scan before returning: parallel results must all precede
+  // any co-located follow-up text or calls in the OpenAI message sequence.
+  if (toolResults.length > 0) {
+    return message ? [...toolResults, message] : toolResults;
   }
-
-  return null;
+  return message;
 }
 
 // Extract text from Gemini content

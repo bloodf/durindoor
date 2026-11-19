@@ -10,9 +10,9 @@ import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const API_KEY = { apiKey: "test-key" };
-const OPENAI_URL = "https://opencode.ai/zen/go/v1/chat/completions";
-const CLAUDE_URL = "https://opencode.ai/zen/go/v1/messages";
-const RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
+const OPENAI_URL = "https://opencode.ai/inference/go/openai/v1/chat/completions";
+const CLAUDE_URL = "https://opencode.ai/inference/go/anthropic/v1/messages";
+const RESPONSES_URL = "https://opencode.ai/inference/go/openai/v1/responses";
 
 const CHAT_ONLY = ["glm-5.1", "kimi-k2.7-code", "kimi-k2.6", "mimo-v2.5", "mimo-v2.5-pro", "kimi-k3.1-pro"];
 // Served from /messages only (upstream c8644368).

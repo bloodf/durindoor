@@ -54,8 +54,8 @@ export const PROXY_FETCH_POOL_CONFIG = Object.freeze({
   proxyConnectionsPerOrigin: 64,
   directMaxCachedSessions: 16,
   proxyMaxCachedSessions: 32,
-  keepAliveTimeoutMs: 4_000,
-  keepAliveMaxTimeoutMs: 60_000,
+  keepAliveTimeoutMs: envMs("FETCH_KEEPALIVE_TIMEOUT_MS", 4_000),
+  keepAliveMaxTimeoutMs: envMs("FETCH_KEEPALIVE_TIMEOUT_MS", 4_000),
   pipelining: 1
 });
 

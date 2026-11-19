@@ -9,7 +9,7 @@ import { resolveRequestTransport } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 
 const MODEL = "claude-haiku-5-5";
-const MESSAGES = "https://opencode.ai/zen/go/v1/messages";
+const MESSAGES = "https://opencode.ai/inference/go/anthropic/v1/messages";
 
 describe("opencode-go claude-haiku-5-5", () => {
   it("is registered claude-only", () => {

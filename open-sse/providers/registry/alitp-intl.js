@@ -22,7 +22,8 @@ export default {
   transport: {
     baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
     headers: {},
-    quirks: { preserveCacheControl: true },
+    quirks: {
+      preserveCacheControl: true, preserveCacheControl: true },
   },
   models: [
     { id: "qwen3.8-max-preview", name: "Qwen3.8 Max Preview" },

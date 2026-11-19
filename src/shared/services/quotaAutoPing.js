@@ -292,6 +292,14 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   signal.throwIfAborted();
   const priorSession = sessionSnapshot(priorSnapshots, conn.id);
   const priorResetAt = priorSession?.timing?.resetAt || null;
+  const pendingResets = state.pendingClaudeResets ??= new Map();
+  const lastPingedResetKey = conn.lastPingedResetKey || normalizeResetKey(conn.lastPingedResetAt);
+  let pendingResetAt = pendingResets.get(key);
+  if (pendingResetAt && (normalizeResetKey(pendingResetAt) === lastPingedResetKey ||
+    Date.parse(pendingResetAt) < nowBeforeRefresh - 5 * 60 * 60 * 1000)) {
+    pendingResets.delete(key);
+    pendingResetAt = null;
+  }
   const preflight = await inspectProviderQuota([conn], {
     provider,
     // Codex's model is not known yet (live catalog, resolved after reload), so
@@ -315,6 +323,7 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   if (
   !slotPending &&
   !providerConfig.pingWhenResetAtSlides &&
+  !pendingResetAt &&
   priorResetAt &&
   nowBeforeRefresh < Date.parse(priorResetAt) - C.refreshAheadMs)
   return;
@@ -363,14 +372,22 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   )) return;
   if (!isFreshSnapshot(session, now) || session.state === "exhausted" || session.state === "cooldown") return;
 
-  const triggerResetAt = providerConfig.pingWhenResetAtSlides ?
-  resetAt :
-  priorResetAt || resetAt;
+  // Keep the observed Claude deadline until its ping succeeds. A refreshed
+  // quota snapshot may already describe the following five-hour window.
+  const priorDue = priorResetAt && normalizeResetKey(priorResetAt) !== lastPingedResetKey &&
+    shouldPingForReset(providerConfig, priorResetAt, priorResetAt, now);
+  const triggerResetAt = providerConfig.pingWhenResetAtSlides ? resetAt :
+    pendingResetAt || (priorDue ? priorResetAt : resetAt);
+  if (provider === "claude" && !slotPending && priorDue && priorResetAt !== resetAt) {
+    if (pendingResets.size >= 512 && !pendingResets.has(key)) {
+      pendingResets.delete(pendingResets.keys().next().value);
+    }
+    pendingResets.set(key, triggerResetAt);
+  }
   const resetKey = triggerResetAt ? normalizeResetKey(triggerResetAt) : null;
   if (wasPingedRecently(conn, providerConfig.minPingIntervalMs, now)) return;
   if (!slotPending) {
     if (!triggerResetAt) return;
-    const lastPingedResetKey = conn.lastPingedResetKey || normalizeResetKey(conn.lastPingedResetAt);
     // Claude waits for reset. Codex pings only when resetAt slides, which means the 5h window is inactive.
     if (!shouldPingForReset(providerConfig, priorResetAt, triggerResetAt, now)) return;
     if (lastPingedResetKey === resetKey) return;
@@ -505,9 +522,17 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   if (!await deps.claimConnectionPing(conn.id, claim.expected, claim.next)) return;
   signal.throwIfAborted();
 
-  const ok = provider === "codex" ?
-  await handler.sendPing(latestConnection, providerConfig, pingModel, proxyOptions, deps, signal) :
-  await handler.sendPing(latestConnection, providerConfig, proxyOptions, deps, signal);
+  let ok;
+  try {
+    ok = provider === "codex" ?
+      await handler.sendPing(latestConnection, providerConfig, pingModel, proxyOptions, deps, signal) :
+      await handler.sendPing(latestConnection, providerConfig, proxyOptions, deps, signal);
+  } catch (error) {
+    if (!signal.aborted && error?.name !== "AbortError") {
+      await deps.claimConnectionPing(conn.id, claim.next, claim.expected);
+    }
+    throw error;
+  }
   signal.throwIfAborted();
   if (!ok) {
     // Do not mark reset as pinged unless upstream accepted the tiny request.
@@ -518,6 +543,7 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   }
 
   delete state.pingFailureUntil[key];
+  if (!slotPending) pendingResets.delete(key);
   signal.throwIfAborted();
   const pingedAt = new Date().toISOString();
   await deps.updateProviderConnection(conn.id, {
@@ -688,7 +714,10 @@ export function notifyQuotaAutoPingSettingChanged(provider, connectionId, enable
     }
     if (Object.keys(state.optIns[provider]).length === 0) delete state.optIns[provider];
   }
-  if (enabled !== true) state.inflightControllers[key]?.abort(new DOMException("Auto-ping disabled", "AbortError"));
+  if (enabled !== true) {
+    state.inflightControllers[key]?.abort(new DOMException("Auto-ping disabled", "AbortError"));
+    state.pendingClaudeResets?.delete(key);
+  }
   delete state.pingFailureUntil[key];
   if (!hasTrackedQuotaAutoPingOptIns(state)) { stopQuotaAutoPing(state); return; }
   startQuotaAutoPing(undefined, state, state.deps);

@@ -25,10 +25,12 @@ describe("OmniRoute #6330 — SenseNova Token Plan support", () => {
     expect(typeof entry.transport.clampRequestBody).toBe("function");
   });
 
-  it("exposes only the three validated Token Plan chat models", () => {
+  it("exposes the Token Plan catalog including the upstream additions", () => {
     const entry = getEntry();
     const modelIds = entry.models.map((m) => m.id);
     expect(modelIds).toEqual([
+      "glm-5.3",
+      "sensenova-6.8-flash",
       "sensenova-6.7-flash-lite",
       "deepseek-v4-flash",
       "glm-5.2",

@@ -52,7 +52,11 @@ const STRIP_RULES = [
 { provider: "opencode-go", match: /^deepseek/i, drop: ["response_format"] },
 
 // 9router ced0cf6: NIM treats these as aliases and rejects duplicate fields.
-{ provider: "nvidia", renameMessageFields: { reasoning: "reasoning_content" } },
+{
+  provider: "nvidia",
+  drop: ["client_metadata", "prompt_cache_key", "service_tier", "anthropic_beta", "thinking_budget", "user_id", "custom_field"],
+  renameMessageFields: { reasoning: "reasoning_content" }
+},
 // Mistral's OpenAI-compatible API validates the body strictly and rejects the
 // Anthropic/Z.ai-native `thinking` object with 422 extra_forbidden. It only
 // accepts `reasoning_effort`, so drop any stray native thinking field that

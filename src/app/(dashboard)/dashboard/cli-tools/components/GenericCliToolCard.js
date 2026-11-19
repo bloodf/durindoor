@@ -10,7 +10,7 @@ import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
-import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
+import { loadActiveCliModels } from "./loadActiveCliModels.js";
 import { isString } from "@/shared/utils/typeChecks";
 import DocsLink from "@/shared/components/DocsLink";
 
@@ -59,6 +59,7 @@ export default function GenericCliToolCard({
   const [selectedApiKey, setSelectedApiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState(() => getConfiguredModel(initialStatus?.config));
   const [selectedModels, setSelectedModels] = useState(() => getConfiguredModels(initialStatus?.config));
+  const [loadingActiveModels, setLoadingActiveModels] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
@@ -166,12 +167,17 @@ export default function GenericCliToolCard({
     setModalOpen(false);
   };
 
-  const handleAddAllActiveModels = () => {
-    const all = activeProviders.flatMap((conn) => {
-      const alias = PROVIDER_ID_TO_ALIAS[conn.provider] || conn.provider;
-      return getModelsByProviderId(conn.provider).map((m) => `${alias}/${m.id}`);
-    });
-    if (all.length > 0) setSelectedModels((prev) => Array.from(new Set([...prev, ...all])));
+  const handleAddAllActiveModels = async () => {
+    setLoadingActiveModels(true);
+    setMessage(null);
+    try {
+      const models = await loadActiveCliModels();
+      setSelectedModels((previous) => [...new Set([...previous, ...models])]);
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setLoadingActiveModels(false);
+    }
   };
 
   const getManualConfigs = () => {
@@ -323,9 +329,7 @@ export default function GenericCliToolCard({
                         <Button variant="secondary" size="sm" onClick={() => setModalOpen(true)} disabled={!canSelectModel}>
                           <span aria-hidden="true" className="material-symbols-outlined text-[14px] mr-1">add</span>Add Model
                         </Button>
-                        {activeProviders.length > 0 &&
-                  <Button variant="ghost" size="sm" onClick={handleAddAllActiveModels}>Add All Active Models</Button>
-                  }
+                        <Button variant="ghost" size="sm" loading={loadingActiveModels} disabled={loadingActiveModels} onClick={handleAddAllActiveModels}>Add All Active Models</Button>
                         {selectedModels.length > 0 &&
                   <Button variant="ghost" size="sm" onClick={() => setSelectedModels([])} className="ml-auto text-dd-muted hover:text-dd-danger">Clear all</Button>
                   }

@@ -226,3 +226,20 @@ describe("proxyAwareFetch directFetch hook", () => {
     }
   });
 });
+
+it("keeps separate cookie-less transports for explicitly selected proxy routes", async () => {
+  vi.resetModules();
+  const { createTransport } = mockWreq();
+  const { getOpencodeTlsFetch } = await import("../../open-sse/services/opencodeTlsClient.js");
+  const send = await getOpencodeTlsFetch();
+  const url = "https://opencode.ai/inference/v1/chat/completions";
+  const dispatch = (request) => request();
+  for (const proxy of ["http://127.0.0.1:3128", "http://127.0.0.1:3129", "http://127.0.0.1:3128"]) {
+    const response = await send.withProxy(url, { redirect: "error" }, proxy, dispatch);
+    expect(response.status).toBe(200);
+    await response.text();
+  }
+  expect(createTransport.mock.calls.map(([config]) => config.proxy)).toEqual([
+    undefined, "http://127.0.0.1:3128", "http://127.0.0.1:3129"
+  ]);
+});

@@ -310,7 +310,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `openadapter` |  | apikey | `https://api.openadapter.in/v1/chat/completions` |
 | `openai` |  | apikey | `https://api.openai.com/v1/chat/completions` |
 | `opencode` |  | free | `https://opencode.ai` |
-| `opencode-go` |  | apikey | `https://opencode.ai/zen/go/v1/chat/completions` |
+| `opencode-go` |  | apikey | `https://opencode.ai/inference/go/openai/v1/chat/completions` |
 | `opencode-zen` | openai | apikey | `https://opencode.ai/zen/v1/chat/completions` |
 | `openference-api` |  | apikey | `https://api.openference.com/v1/chat/completions` |
 | `openrouter` |  | freeTier | `https://openrouter.ai/api/v1/chat/completions` |
@@ -353,6 +353,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `searchapi` |  | apikey | `` |
 | `searxng` |  | freeTier | `` |
 | `sensenova` |  | freeTier | `https://token.sensenova.cn/v1/chat/completions` |
+| `sensenova-intl` |  | apikey | `https://token.sensenova.ai/v1/chat/completions` |
 | `serper` |  | apikey | `` |
 | `siliconflow` |  | apikey | `https://api.siliconflow.com/v1/chat/completions` |
 | `snowflake` |  | apikey | `https://{accountId}.snowflakecomputing.com/api/v2/cortex/v1/chat/completions` |

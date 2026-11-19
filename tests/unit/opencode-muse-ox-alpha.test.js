@@ -132,7 +132,7 @@ describe("OpenCode Ox Alpha catalogs", () => {
       sourceFormat: FORMATS.CLAUDE,
       credentials: { apiKey: "test" },
     });
-    expect(selected.runtimeTransport?.baseUrl).toBe("https://opencode.ai/zen/go/v1/chat/completions");
+    expect(selected.runtimeTransport?.baseUrl).toBe("https://opencode.ai/inference/go/openai/v1/chat/completions");
     expect(selected.targetFormat).toBe(FORMATS.OPENAI);
   });
 });

@@ -47,6 +47,7 @@ export default {
     },
   },
   models: [
+    { id: "claude-fable-5-2", name: "Claude Fable 5.2" },
     { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
     { id: "claude-opus-5", name: "Claude Opus 5", lifecycle: "legacy" },
     { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },

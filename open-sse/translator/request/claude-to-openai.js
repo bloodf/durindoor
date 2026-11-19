@@ -31,7 +31,7 @@ function stripAnthropicBillingHeader(text) {
  * @returns {object} OpenAI-shaped request body.
  * @throws {Error} With statusCode 400 when history contains redacted thinking.
  */
-export function claudeToOpenAIRequest(model, body, stream) {
+export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = {}) {
   const result = {
     model: model,
     messages: [],
@@ -50,11 +50,22 @@ export function claudeToOpenAIRequest(model, body, stream) {
 
   // System message
   if (body.system) {
-    const systemContent = Array.isArray(body.system) ?
+    let systemContent = Array.isArray(body.system) ?
     body.system.map((s) => stripAnthropicBillingHeader(s.text || "")).filter(Boolean).join("\n") :
     stripAnthropicBillingHeader(body.system);
 
-    if (systemContent) {
+    if (opts?.preserveCacheControl && Array.isArray(body.system) && body.system.some((block) => block?.cache_control)) {
+      const parts = [];
+      for (const block of body.system) {
+        const text = stripAnthropicBillingHeader(block?.text || "");
+        if (text) parts.push({ type: OPENAI_BLOCK.TEXT, text });
+        const boundary = parts.at(-1);
+        if (boundary && block?.cache_control) boundary.cache_control = block.cache_control;
+      }
+      systemContent = collapseTextParts(parts, opts);
+    }
+
+    if (Array.isArray(systemContent) ? systemContent.length > 0 : systemContent) {
       result.messages.push({
         role: ROLE.SYSTEM,
         content: systemContent
@@ -66,7 +77,7 @@ export function claudeToOpenAIRequest(model, body, stream) {
   if (body.messages && Array.isArray(body.messages)) {
     for (let i = 0; i < body.messages.length; i++) {
       const msg = body.messages[i];
-      const converted = convertClaudeMessage(msg);
+      const converted = convertClaudeMessage(msg, opts);
       if (converted) {
         // Handle array of messages (multiple tool results)
         if (Array.isArray(converted)) {
@@ -221,7 +232,7 @@ function urlImagePart(block) {
 }
 
 // Convert single Claude message - returns single message or array of messages
-function convertClaudeMessage(msg) {
+function convertClaudeMessage(msg, opts) {
   // Tolerate clients that send one content block without the surrounding array.
   if (isObject(msg.content) && msg.content !== null && !Array.isArray(msg.content)) {
     msg.content = [msg.content];
@@ -258,9 +269,12 @@ function convertClaudeMessage(msg) {
 
     for (const block of msg.content) {
       switch (block.type) {
-        case CLAUDE_BLOCK.TEXT:
-          parts.push({ type: OPENAI_BLOCK.TEXT, text: block.text });
+        case CLAUDE_BLOCK.TEXT: {
+          const part = { type: OPENAI_BLOCK.TEXT, text: block.text };
+          if (opts?.preserveCacheControl && block.cache_control) part.cache_control = block.cache_control;
+          parts.push(part);
           break;
+        }
 
         case CLAUDE_BLOCK.THINKING:
           if (block.thinking) reasoningContent += block.thinking;
@@ -370,7 +384,7 @@ function convertClaudeMessage(msg) {
       if (nativeBlocks) attachNativeBlocks(toolResults[0], nativeBlocks);
       const followUp = [...toolResultImages, ...parts];
       if (followUp.length > 0) {
-        return [...toolResults, { role: ROLE.USER, content: collapseTextParts(followUp) }];
+        return [...toolResults, { role: ROLE.USER, content: collapseTextParts(followUp, opts) }];
       }
       return toolResults;
     }
@@ -379,7 +393,7 @@ function convertClaudeMessage(msg) {
     if (toolCalls.length > 0) {
       const result = { role: ROLE.ASSISTANT };
       if (parts.length > 0) {
-        result.content = collapseTextParts(parts);
+        result.content = collapseTextParts(parts, opts);
       }
       if (reasoningContent) {
         result.reasoning_content = reasoningContent;
@@ -397,7 +411,7 @@ function convertClaudeMessage(msg) {
     if (parts.length > 0 || reasoningContent) {
       const result2 = { role };
       if (parts.length > 0) {
-        result2.content = collapseTextParts(parts);
+        result2.content = collapseTextParts(parts, opts);
       }
       if (reasoningContent) {
         result2.reasoning_content = reasoningContent;

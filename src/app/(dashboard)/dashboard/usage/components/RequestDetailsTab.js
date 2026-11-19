@@ -1,5 +1,6 @@
 "use client";
 
+import { getOutputTokens } from "./tokenDisplay.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -130,7 +131,7 @@ function getCacheReadTokens(tokens) {
  * every request row — no schema change needed.
  */
 function getTokensPerSecond(row) {
-  const outputTokens = row.tokens?.completion_tokens || 0;
+  const outputTokens = getOutputTokens(row.tokens);
   const generationMs = (row.latency?.total || 0) - (row.latency?.ttft || 0);
   if (outputTokens <= 0 || generationMs <= 0) return null;
   return outputTokens / (generationMs / 1000);
@@ -334,7 +335,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       return pct > 0 ? `${pct}%` : "—";
     } },
     { key: "cacheCreation", label: "Cache creation", align: "right", mono: true, render: (row) => (getCacheCreationTokens(row.tokens) > 0 ? getCacheCreationTokens(row.tokens).toLocaleString() : "—") },
-    { key: "outputTokens", label: "Output", align: "right", mono: true, render: (row) => (row.tokens?.completion_tokens?.toLocaleString() || 0) },
+    { key: "outputTokens", label: "Output", align: "right", mono: true, render: (row) => (getOutputTokens(row.tokens).toLocaleString()) },
     { key: "latency", label: "Latency", render: (row) => {
       const tps = getTokensPerSecond(row);
       return (
@@ -456,7 +457,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-dd-muted">Output tokens</span>
-                  <span className="font-mono text-dd-text">{selectedDetail.tokens?.completion_tokens?.toLocaleString() || 0}</span>
+                  <span className="font-mono text-dd-text">{getOutputTokens(selectedDetail.tokens).toLocaleString()}</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-dd-muted">Cache creation</span>

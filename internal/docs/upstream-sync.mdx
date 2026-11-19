@@ -5,13 +5,13 @@ description: Watch list for unmerged 9router and OmniRoute work, plus the dispat
 
 Unmerged upstream 9router pull requests and deliberately deferred OmniRoute/9router commits live here. Historical per-PR port ledgers are not committed.
 
-Last reviewed sync window: 2026-10-06 through 2026-10-29 (9router snapshot head `1fe586bb`, v0.5.112).
+Last reviewed sync window: 2026-10-29 through 2026-11-19 (9router snapshot head `1855aa44`, v0.5.119).
 
 OmniRoute reviewed sync window: 2026-09-30 through 2026-10-06 (`release/v3.8.52`).
 
 | Source | Reviewed head |
 | --- | --- |
-| `decolua/9router` | `1fe586bb1cf35e1ed0cb2150a8ef7d1db040b21d` |
+| `decolua/9router` | `1855aa44473e88feac9d3f131b9c0c5fc9706b68` |
 | `diegosouzapw/OmniRoute` | `77bca6f878180006f3a679b53400d55a344fcd83` |
 
 Use those heads as the lower-bound anchors for the next sync review.
@@ -23,6 +23,25 @@ Ported work is recorded by `scripts/upstream-ported-ids.sh`:
 3. Direct-commit ports use `port(upstream): <sha7> - ...`; `scripts/upstream-ported-ids.sh --commits .` lists those SHA identifiers separately. Default output remains a numeric PR array for the open-PR scan.
 
 `CHANGELOG.md` is not parsed for membership.
+
+## 2026-11-19 merge
+
+The two-parent sync uses `1fe586bb` as the content base for v0.5.119. It adds Synthetic quota and key validation, ClinePass quota windows, SenseNova international routing, live CommandCode discovery, catalog and pricing updates, and Gemini, Claude, web-fetch, and speech fixes. It also ports native Codex image generation and edits, quota reset catch-up, launcher and tray reporting, explicit custom-model types, proxy pool filtering, thinking level metadata, and live bulk model selection.
+
+| Skipped commits or portions | Reason |
+| --- | --- |
+| `1855aa44`, `54a88d04`, `1339107e`, `eaeb54a6`, and release-only changes | Kept DurinDoor versions, branding, release notes, and CI. |
+| `9ae6e147`, `f8fd61aa`, `333d249d`, and the model-list portion of `43bc940e` | Existing DurinDoor implementations cover single SSE sentinels, input labels, Kiro region-aware routing, and OAuth model discovery. |
+| `12e7930e` and the Claude CLI version portions of `10b0afa4` and `43bc940e` | Kept existing Fable 5.1 routing and pricing for saved models, and retained the fork’s newer configurable Claude CLI identity. |
+| `0760c302`, `7372d38d`, `3ca04639`, `64a23dc2`, `f0938ea7` | Upstream Muse Web, Zed executor, CodeBuddy Intl, DeepSeek Web PoW, and lazy-runtime modules have no direct counterpart on this integration branch. |
+| `94f141dd` | The root already pins Undici 7.x and requires Node 24. |
+| `3a936d13` | The fork’s model picker already includes visible no-auth entries from both free categories, including SearXNG. |
+| `201e81fb` | This branch has no MiniMax desktop lease credential implementation for the two usage eligibility gates to admit. |
+| `95dafae3` and the session replacement portion of `989b1eec` | Retained tool declarations and session identity on quota or access rejections. Ported bounded retries for explicit capacity errors and proxy-specific, cookie-less OpenCode transports. |
+| `963787f7` and `9506a59c`, in part | Applied the idle pool timeout cap and the free-port startup fast path. Retained the fork’s replay/accounting boundaries and command-line process ownership checks. |
+| Routing portion of `8a833631` | Added Argon quota parsing, reconciliation, and dashboard rows. The upstream quota router module is absent here, and DurinDoor uses its own provider quota tracker. |
+| Browser key disclosure portion of `b114fa9f` | CLI import stores the key through normal connection creation after local, same-origin operator checks. The response contains connection metadata. |
+| `736be957` | Retained the fork’s Claude transport and egress rules. |
 
 ## 2026-10-06 direct-commit review
 

@@ -164,12 +164,12 @@ describe("CommandCode HTTP-200 error preflight", () => {
   });
 });
 
-describe("CommandCode CLI 1.88.0 identity headers (port of decolua/9router b1effa03)", () => {
+describe("CommandCode CLI 1.88.5 identity headers", () => {
   it("sends the official CLI identity header set", () => {
     const headers = new CommandCodeExecutor().buildHeaders({ apiKey: "user_test" });
     expect(headers).toMatchObject({
       Authorization: "Bearer user_test",
-      "x-command-code-version": "1.88.0",
+      "x-command-code-version": "1.88.5",
       "x-cli-environment": "production",
       "x-cli-surface": "cli",
       "x-taste-learning": "false",

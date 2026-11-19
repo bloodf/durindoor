@@ -38,6 +38,8 @@ const REQUEST_TIMEOUT_MS = 0;
 const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
 
 let transportPromise = null;
+const proxiedTransports = new Map();
+const MAX_PROXY_TRANSPORTS = 16;
 let proxyEnvWarned = false;
 
 // wreq's native client reads HTTP(S)_PROXY / ALL_PROXY when the transport is
@@ -54,7 +56,7 @@ function hasProxyEnv() {
 // each request runs with cookieMode "ephemeral".
 // A failed import is final for the process (resolves null, logged once); a
 // failed createTransport throws so the next request retries it.
-async function loadTransport() {
+async function loadTransport(proxyUrl = null) {
   let wreq;
   try {
     wreq = await import("wreq-js");
@@ -68,6 +70,7 @@ async function loadTransport() {
   }
   const transport = await wreq.createTransport({
     emulation: { tlsOptions: { cipherList: OPENCODE_CIPHER_LIST } },
+    ...(proxyUrl ? { proxy: proxyUrl } : null),
   });
   return { wreq, transport };
 }
@@ -96,7 +99,31 @@ export async function getOpencodeTlsFetch() {
     return null;
   }
   if (!loaded) return null;
-  return (url, options = {}) => opencodeTlsFetch(loaded, url, options);
+  const send = (url, options = {}) => opencodeTlsFetch(loaded, url, options);
+  // Called only after the gateway has resolved the egress route and applied
+  // relay, strict-proxy and guarded-dispatcher checks.
+  send.withProxy = async (url, options, proxyUrl, dispatch) => {
+    if (hasProxyEnv()) return null;
+    let pending = proxiedTransports.get(proxyUrl);
+    if (!pending) {
+      if (proxiedTransports.size >= MAX_PROXY_TRANSPORTS) {
+        // Use the existing proxy dispatcher when the adapter pool is full.
+        // Do not close a transport that may still be streaming a response.
+        return null;
+      }
+      pending = loadTransport(proxyUrl);
+      proxiedTransports.set(proxyUrl, pending);
+    }
+    let proxied;
+    try {
+      proxied = await pending;
+    } catch {
+      if (proxiedTransports.get(proxyUrl) === pending) proxiedTransports.delete(proxyUrl);
+      return null;
+    }
+    return proxied ? dispatch(() => opencodeTlsFetch(proxied, url, options)) : null;
+  };
+  return send;
 }
 
 /**
@@ -129,7 +156,11 @@ async function opencodeTlsFetch({ wreq, transport }, url, options) {
 export function resetOpencodeTlsTransport() {
   const pending = transportPromise;
   transportPromise = null;
-  pending?.then((loaded) => loaded?.transport?.close?.()).catch(() => {});
+  const transports = [pending, ...proxiedTransports.values()];
+  proxiedTransports.clear();
+  for (const transport of transports) {
+    transport?.then((loaded) => loaded?.transport?.close?.()).catch(() => {});
+  }
 }
 
 export const __test__ = { OPENCODE_CIPHER_LIST };

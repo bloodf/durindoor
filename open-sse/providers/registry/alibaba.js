@@ -11,6 +11,7 @@ export default {
   },
   category: "apikey",
   transport: {
+    quirks: { preserveCacheControl: true },
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
     modelsUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
   },

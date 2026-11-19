@@ -71,6 +71,7 @@ const ALWAYS_PROTECTED = [
   "/api/version/shutdown",
   "/api/version/update",
   "/api/oauth/cursor/auto-import",
+  "/api/oauth/commandcode/auto-import",
   "/api/oauth/kiro/auto-import",
   "/api/oauth/xiaomi-mimo/auto-import",
 ];
@@ -125,6 +126,7 @@ const LOCAL_ONLY_PATHS = [
   "/api/tunnel/enable",
   "/api/tunnel/disable",
   "/api/oauth/cursor/auto-import",
+  "/api/oauth/commandcode/auto-import",
   "/api/oauth/kiro/auto-import",
   "/api/oauth/xiaomi-mimo/auto-import",
   "/api/auth/reset-password",

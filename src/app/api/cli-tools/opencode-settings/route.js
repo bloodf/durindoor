@@ -1,6 +1,8 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { ALIAS_TO_ID } from "@/shared/constants/providers";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -125,10 +127,23 @@ export async function POST(request) {
     next = modifyOpenCodeConfig(next, ["provider", "9router", "options", "apiKey"], keyToUse);
     for (const m of modelsArray) {
       if (!m || !isString(m)) continue;
-      next = modifyOpenCodeConfig(next, ["provider", "9router", "models", m], {
-        name: m,
-        modalities: { input: ["text", "image"], output: ["text"] }
-      });
+      const saved = Object.hasOwn(existingProvider.models || {}, m) ? existingProvider.models[m] : null;
+      const modelPath = ["provider", "9router", "models", m];
+      if (!saved) {
+        next = modifyOpenCodeConfig(next, modelPath, {
+          name: m,
+          modalities: { input: ["text", "image"], output: ["text"] }
+        });
+      }
+      const separator = m.indexOf("/");
+      if (separator <= 0 || Object.hasOwn(saved || {}, "variants")) continue;
+      const alias = m.slice(0, separator);
+      const provider = Object.hasOwn(ALIAS_TO_ID, alias) ? ALIAS_TO_ID[alias] : alias;
+      const levels = getThinkingLevels(provider, m.slice(separator + 1));
+      if (levels?.length) {
+        const variants = Object.fromEntries(levels.map((level) => [level, { reasoningEffort: level }]));
+        next = modifyOpenCodeConfig(next, [...modelPath, "variants"], variants);
+      }
     }
     if (activeModel === "") {
       next = modifyOpenCodeConfig(next, ["model"], "");

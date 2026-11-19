@@ -8,6 +8,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 import { normalizeResponsesTools, sanitizeResponsesItems } from "./opencode-go.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
+import { readBoundedResponseText } from "../utils/error.js";
 import { getOpencodeTlsFetch } from "../services/opencodeTlsClient.js";
 
 /**
@@ -239,6 +240,16 @@ export class OpenCodeExecutor extends BaseExecutor {
     const directFetch = await getOpencodeTlsFetch();
     if (directFetch) request.directFetch = directFetch;
     return super.execute(request);
+  }
+
+  async computeRetryDelay(response, attempt, defaultDelay, options) {
+    if (response.status !== 429) return defaultDelay;
+    // Retry only the explicit transient capacity response. A quota or access
+    // rejection retains its original response and session.
+    const body = await readBoundedResponseText(response.clone(), options);
+    if (!/the inference service is overloaded/i.test(body) ||
+      /FreeUsageLimitError|quota exceeded/i.test(body)) return false;
+    return Math.min(800 * attempt, 4000);
   }
 
   transformRequest(model, body, stream, credentials, requestContext = null) {

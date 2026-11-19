@@ -780,7 +780,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
    * names for every DeepSeek-bound tool array, regardless of client format.
    */
   if (Array.isArray(translatedBody.tools)) {
-    const { tools: deduped, stripped } = dedupeTools(translatedBody.tools, { model: cleanModel, clientTool });
+    const { tools: deduped, stripped } = dedupeTools(translatedBody.tools, { model: cleanModel, clientTool, messages: translatedBody.messages });
     if (stripped.length > 0) {
       translatedBody.tools = deduped;
       log?.debug?.("TOOLDEDUP", `stripped ${stripped.length}: ${stripped.slice(0, 3).join(", ")}${stripped.length > 3 ? "..." : ""}`);

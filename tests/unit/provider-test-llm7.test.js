@@ -96,18 +96,22 @@ describe("LLM7 provider connection test", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("surfaces a timed-out fallback request as an error", async () => {
+  it("surfaces a timed-out fallback request as an unavailable error", async () => {
     const timeout = new DOMException("The operation was aborted", "TimeoutError");
     const { result, proxyAwareFetch: fetchSpy } = await runTest("llm7", async () => {
       throw timeout;
     });
 
+    // 4d84b4d5: the fallback is still attempted, but the raw timeout text
+    // stays off the result. Outage is unavailable, not a rejected key.
     expect(result.valid).toBe(false);
-    expect(result.error).toBe(timeout.message);
+    expect(result.unavailable).toBe(true);
+    expect(result.error).toBe("Provider unavailable - network request failed");
+    expect(result.error).not.toBe(timeout.message);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("treats a malformed non-auth fallback body as a reachable provider", async () => {
+  it("does not accept a malformed non-auth fallback body as a valid key", async () => {
     const { result, proxyAwareFetch: fetchSpy } = await runTest("llm7", async (url) => {
       if (String(url).endsWith("/models")) {
         return new Response("502 Bad Gateway", { status: 502 });
@@ -115,8 +119,11 @@ describe("LLM7 provider connection test", () => {
       return new Response("<html>oops</html>", { status: 400, headers: { "content-type": "text/html" } });
     });
 
-    expect(result.valid).toBe(true);
-    expect(result.error).toBeNull();
+    // 4d84b4d5: HTTP 400 on the chat fallback is not proof the key works,
+    // and it is not an outage. The models 502 still falls through.
+    expect(result.valid).toBe(false);
+    expect(result.unavailable).not.toBe(true);
+    expect(result.error).toBe("Provider validation failed (HTTP 400)");
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 

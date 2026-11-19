@@ -192,7 +192,13 @@ describe("OmniRoute simple/default providers batch E", () => {
       return calls.length === 1 ? { ok: false, status: 500 } : { ok: false, status: 400 };
     });
 
-    expect(result).toEqual({ valid: true, status: 400 });
+    // 4d84b4d5: a non-2xx chat fallback no longer proves the key. 500 still
+    // falls through, and 400 stays a failed probe rather than an outage.
+    expect(result).toEqual({
+      valid: false,
+      status: 400,
+      error: "Provider validation failed (HTTP 400)",
+    });
     expect(calls.map(([url]) => url)).toEqual([
       "https://api.qnaigc.com/v1/models",
       "https://api.qnaigc.com/v1/chat/completions",
@@ -213,12 +219,14 @@ describe("OmniRoute simple/default providers batch E", () => {
     expect(JSON.parse(zaiProbe.options.body)).toMatchObject({ model: "glm-5.2", max_tokens: 1 });
 
     expect(await probeRegistryProvider("zai", "zai-key", async () => ({ ok: false, status: 400 }))).toEqual({
-      valid: true,
+      valid: false,
       status: 400,
+      error: "Provider validation failed (HTTP 400)",
     });
     expect(await probeRegistryProvider("wafer", "wafer-key", async () => ({ ok: false, status: 401 }))).toEqual({
       valid: false,
       status: 401,
+      error: "Invalid API key",
     });
   });
 

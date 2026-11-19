@@ -53,6 +53,8 @@ export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
    * not be able to remotely widen what gets auto-approved.
    */
   "claudeClassifierCompat",
+  /** Opt-in LAN endpoint scanner (#2025); unproved callers must not enable it. */
+  "lanDiscoveryEnabled",
 ]);
 
 /**

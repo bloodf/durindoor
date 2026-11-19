@@ -34,7 +34,20 @@ export const OLLAMA_LOCAL_DEFAULT_HOST = "http://localhost:11434";
 
 export function resolveOllamaLocalHost(credentials) {
   const raw = credentials?.providerSpecificData?.baseUrl?.trim();
-  return (raw || OLLAMA_LOCAL_DEFAULT_HOST).replace(/\/api\/chat\/?$/, "").replace(/\/$/, "");
+  if (!raw) return OLLAMA_LOCAL_DEFAULT_HOST;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("Ollama base URL must be a valid http(s) URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Ollama base URL must use http or https");
+  }
+  url.pathname = url.pathname.replace(/\/api\/chat\/?$/i, "").replace(/\/(?:v1|api)\/?$/i, "").replace(/\/$/, "") || "/";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
 }
 
 export const LOCAL_WHISPER_DEFAULT_HOST = "http://127.0.0.1:11500";

@@ -195,6 +195,15 @@ async function resolveProbeSessionToken(request, provider, connectionId, session
 }
 
 // POST /api/providers/validate - Validate API key with provider
+/** Probe auth for compatible nodes: an empty key yields no auth header at all. */
+function compatibleNodeAuthHeaders(apiKey, { xApiKey = false } = {}) {
+  const headers = {};
+  if (!apiKey) return headers;
+  headers.Authorization = `Bearer ${apiKey}`;
+  if (xApiKey) headers["x-api-key"] = apiKey;
+  return headers;
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -219,7 +228,9 @@ export async function POST(request) {
     const apiKeySubstitute = providerInfo.apiKeyOptionalWith;
     const substituteValue = apiKeySubstitute ? providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
-    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !hasApiKeySubstitute) {
+    // LAN compatible nodes (#2023) may run without a key; their probes then send no auth header.
+    const isKeyOptionalNode = isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider) || isCustomEmbeddingProvider(provider);
+    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !isKeyOptionalNode && !hasApiKeySubstitute) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
     if (isNoAuth && !apiKey) {
@@ -287,7 +298,7 @@ export async function POST(request) {
         let res;
         try {
           res = await fetchValidationProbe(modelsUrl, {
-            headers: { "Authorization": `Bearer ${apiKey}` }
+            headers: compatibleNodeAuthHeaders(apiKey)
           }, guardedProbeFetch);
         } catch (err) {
           if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
@@ -322,7 +333,7 @@ export async function POST(request) {
         let modelsRes;
         try {
           modelsRes = await fetchValidationProbe(modelsUrl, {
-            headers: { "Authorization": `Bearer ${apiKey}` },
+            headers: compatibleNodeAuthHeaders(apiKey),
             redirect: "manual"
           }, guardedProbeFetch);
         } catch (err) {
@@ -341,7 +352,7 @@ export async function POST(request) {
         try {
           embedRes = await fetchValidationProbe(embedUrl, {
             method: "POST",
-            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            headers: { ...compatibleNodeAuthHeaders(apiKey), "Content-Type": "application/json" },
             body: JSON.stringify({ model: "test", input: "ping" }),
             redirect: "manual"
           }, guardedProbeFetch);
@@ -379,10 +390,9 @@ export async function POST(request) {
           res = await fetchValidationProbe(messagesUrl, {
             method: "POST",
             headers: {
-              "x-api-key": apiKey,
+              ...compatibleNodeAuthHeaders(apiKey, { xApiKey: true }),
               "anthropic-version": "2023-06-01",
-              "content-type": "application/json",
-              "Authorization": `Bearer ${apiKey}`
+              "content-type": "application/json"
             },
             body: JSON.stringify({
               model,

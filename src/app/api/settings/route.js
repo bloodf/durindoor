@@ -341,6 +341,10 @@ export async function PATCH(request) {
         && !isBoolean(body.dataRetentionEnabled)) {
       return NextResponse.json({ error: "Invalid dataRetentionEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
     }
+    if (Object.prototype.hasOwnProperty.call(body, "lanDiscoveryEnabled")
+        && !isBoolean(body.lanDiscoveryEnabled)) {
+      return NextResponse.json({ error: "Invalid lanDiscoveryEnabled" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
+    }
 
     // claudeClassifierCompat gates a default-allow short-circuit for Claude
     // Code's auto-permission classifier (open-sse/handlers/chatCore.js); an

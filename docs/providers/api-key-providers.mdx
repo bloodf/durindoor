@@ -18,6 +18,8 @@ Give the connection a name. The dialog fills the first unused name in the `main`
 Paste the key. Cloudflare Workers AI and Snowflake Cortex also require an account id (`name|apiKey|accountId` on bulk lines). Azure wants endpoint, API version, deployment, and optional organization. Google Programmable Search needs `cx`.
 
 For Azure OpenAI (`azure`), an explicit unsupported-token-parameter response triggers one retry with the alternate token-limit spelling. A successful retry is remembered per deployment URL for the life of the process; the output limit is retained, and unrelated errors follow normal account fallback.
+
+A deployment whose name identifies a GPT-5, GPT-6, or o-series model (`gpt-5`, `gpt-6`, `o3`, `o4`, and their versioned forms) is also normalized before the call: `max_tokens` becomes `max_completion_tokens`, a `temperature` other than `1` is dropped, and `reasoning_effort` is dropped when tools are sent. Tools and `tool_choice` are kept. Deployment names are yours to choose, so a name that does not identify one of those models (for example `prod-chat`) is sent unchanged, and the token-limit retry above still applies to it.
 </Step>
 <Step>
 Set priority if you already have another key for this provider. Lower numbers run first under fill-first selection. Optional: default model, proxy pool, per-connection proxy URL.

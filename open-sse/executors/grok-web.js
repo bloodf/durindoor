@@ -160,6 +160,7 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
         })));
 
         let fp = "";
+        let emittedContent = false;
         for await (const chunk of extractContent(eventStream, isThinkingModel, signal)) {
           if (chunk.fingerprint) fp = chunk.fingerprint;
 
@@ -178,10 +179,14 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
             continue;
           }
           if (chunk.done) break;
-          if (chunk.delta) {
+          // OmniRoute open-sse/executors/grok-web.ts: accept a final-only
+          // message, but do not repeat one already delivered as token chunks.
+          const content = chunk.delta || (!emittedContent && chunk.fullMessage);
+          if (content) {
+            emittedContent = true;
             controller.enqueue(encoder.encode(sseChunk({
               id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: fp || null,
-              choices: [{ index: 0, delta: { content: chunk.delta }, finish_reason: null, logprobs: null }]
+              choices: [{ index: 0, delta: { content }, finish_reason: null, logprobs: null }]
             })));
           }
         }

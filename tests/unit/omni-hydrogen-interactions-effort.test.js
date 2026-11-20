@@ -24,7 +24,11 @@ const mapped = (effort, selectedModel = model, selectedProvider = provider) => {
 describe("Hydrogen Interactions effort", () => {
   it("pins the route's levels without changing other capabilities or aliases", () => {
     expect(getThinkingLevels(provider, model)).toEqual(["low", "medium", "high", "xhigh"]);
-    expect(getThinkingLevels("antigravity", model)).toEqual(["low", "medium", "high"]);
+    // Antigravity advertises the documented Hydrogen levels (low|medium|high|xhigh)
+    // since the #5787 port made the xhigh tier reachable; Gemini Interactions and
+    // the other providers keep their own contract.
+    expect(getThinkingLevels("antigravity", model)).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(getThinkingLevels("antigravity", "gemini-4-hydrogen-xhigh")).toEqual(["low", "medium", "high", "xhigh"]);
     expect(getModelUpstreamId("ag", model)).toBe("gemini-4-hydrogen-medium");
     expect(getCapabilitiesForModel(provider, model).maxOutput).toBe(65536);
   });

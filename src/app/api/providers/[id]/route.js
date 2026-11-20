@@ -18,7 +18,7 @@ import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
-import { AI_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, WEB_COOKIE_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 import {
   compatibleNodeConflictMessage,
@@ -411,6 +411,21 @@ export async function PUT(request, { params }) {
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
+    // Reimporting a web session (the dashboard edit form sends the replacement as `apiKey`) swaps
+    // the stored credential and lifts the cooldown the rejected one earned, unless the caller set
+    // those fields itself. Only web-cookie providers: other cookie rows keep their own flows.
+    if (apiKey && existing.authType === "cookie" && WEB_COOKIE_PROVIDERS[existing.provider] && apiKey !== existing.apiKey) {
+      updateData.apiKey = apiKey;
+      if (testStatus === undefined) updateData.testStatus = "unknown";
+      if (lastError === undefined) updateData.lastError = null;
+      if (lastErrorAt === undefined) updateData.lastErrorAt = null;
+      updateData.rateLimitedUntil = null;
+      updateData.backoffLevel = 0;
+      updateData.errorCode = null;
+      for (const key of Object.keys(existing)) {
+        if (key.startsWith("modelLock_")) updateData[key] = null;
+      }
+    }
     // An empty string is meaningful here: it clears a token left over from temporary keys.
     if (usesAwsCredentials && isString(sessionToken)) updateData.sessionToken = sessionToken.trim();
     if (testStatus !== undefined) updateData.testStatus = testStatus;

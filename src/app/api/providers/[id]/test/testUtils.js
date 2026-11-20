@@ -13,6 +13,7 @@ import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/gro
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
+import { checkCopilotWebCredential } from "open-sse/executors/copilot-web.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
 import {
@@ -1162,6 +1163,10 @@ export async function testSingleConnection(id) {
   if (isConversationProbeProvider(connection.provider)) {
     if (connection.provider === "yuanbao-web" && !buildYuanbaoCookie(connection.apiKey).hasToken) {
       return { valid: false, error: "Paste a Yuanbao cookie containing hy_user and hy_token", latencyMs: 0, testedAt: new Date().toISOString() };
+    }
+    if (connection.provider === "copilot-web") {
+      const check = checkCopilotWebCredential(connection.apiKey || connection.providerSpecificData?.cookie);
+      if (check.expired) return { valid: false, error: check.error, latencyMs: 0, testedAt: new Date().toISOString() };
     }
     if (connection.provider === "zenmux-free" && !extractZenmuxCtoken(connection.apiKey)) {
       return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken", latencyMs: 0, testedAt: new Date().toISOString() };

@@ -17,7 +17,7 @@ import { getOpencodeTlsFetch } from "../services/opencodeTlsClient.js";
  * 6091ff59 + 0c6ab4f9 + 2b65c49, PR #4155, then the OpenCode v2 move in
  * 5bdcd5e7 + ef4679df + 483c10f5).
  *
- * Since 2026-10-14 the free tier lives on /inference/v1; /zen/v1 answers every
+ * Since 2026-10-14 the free tier lives under /inference; /zen/v1 answers every
  * free request with 403 FreeTierError. The v2 gate requires:
  *
  * 1. `x-opencode-session` (mirrored as `x-opencode-session-id`,
@@ -52,13 +52,13 @@ import { getOpencodeTlsFetch } from "../services/opencodeTlsClient.js";
  * sessions; this is a mitigation, not a full fix.
  *
  * Union Alpha (upstream 2b65c49) is a routing concern: `MESSAGES_MODELS` pins
- * it to /inference/v1/messages (Claude wire format) in `buildUrl`, and
+ * it to /inference/anthropic/v1/messages (Claude wire format) in `buildUrl`, and
  * `buildHeaders` only adds `anthropic-version` on that route.
  */
 // OpenCode v2 UA shape (upstream 5bdcd5e7): opencode/<channel>/<version>/<client>.
 // Upstream rejects the v1 "opencode/1.18.x" form with 403 FreeTierError since
 // 2026-10-14.
-export const OPENCODE_UA = "opencode/latest/2.0.26/cli";
+export const OPENCODE_UA = "opencode/latest/2.3.2/cli";
 const OPENCODE_CLIENT = "cli";
 // Models served by /inference/v1/messages (Claude wire format); every other model
 // stays on /chat/completions (or /responses, gated separately by /muse/).
@@ -337,15 +337,15 @@ export class OpenCodeExecutor extends BaseExecutor {
 
   /**
    * OpenCode Muse rejects Chat Completions and is served only by Responses.
-   * The free tier moved from /zen/v1 to /inference/v1 (OpenCode v2, upstream
+   * The free tier moved from /zen/v1 to /inference (OpenCode v2, upstream
    * 5bdcd5e7); /zen/v1 now answers every free request with 403 FreeTierError.
    */
   buildUrl(model) {
     const base = this.config.baseUrl;
-    if (/muse/i.test(model)) return `${base}/inference/v1/responses`;
+    if (/muse/i.test(model)) return `${base}/inference/openai/v1/responses`;
     return MESSAGES_MODELS.has(model) ?
-    `${base}/inference/v1/messages` :
-    `${base}/inference/v1/chat/completions`;
+    `${base}/inference/anthropic/v1/messages` :
+    `${base}/inference/openai/v1/chat/completions`;
   }
 
   buildHeaders(credentials, stream = true, requestContext = null, model = null) {

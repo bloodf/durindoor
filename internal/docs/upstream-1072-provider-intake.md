@@ -4,7 +4,7 @@ Reviewed against upstream PR state and diffs on 2026-11-20, at DurinDoor base `1
 
 | PR | Finding |
 | --- | --- |
-| [#5742](https://github.com/decolua/9router/pull/5742) | Open; per-connection Ultrafast depends on upstream Fast mode and model support, neither established here. Implementation pending. |
+| [#5742](https://github.com/decolua/9router/pull/5742) | Ported the per-connection Ultrafast toggle for GPT 6.2 Sol. It uses six times included usage and respects an explicit client tier. |
 | [#5751](https://github.com/decolua/9router/pull/5751) | Ported Codex GPT 6.2 model metadata and removal of unsupported `uniqueItems` tool-schema constraints. |
 | [#5770](https://github.com/decolua/9router/pull/5770) | Closed unmerged; not eligible. No open successor found by title search. |
 | [#2314](https://github.com/decolua/9router/pull/2314) | Closed unmerged; not eligible. No open successor found by title search. |

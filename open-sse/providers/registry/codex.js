@@ -61,7 +61,7 @@ export default {
     },
   },
   models: [
-    { id: "gpt-6.2-sol", name: "GPT 6.2 Sol", responsesLite: true },
+    { id: "gpt-6.2-sol", name: "GPT 6.2 Sol", responsesLite: true, ultrafast: true },
     { id: "gpt-6.2-astra", name: "GPT 6.2 Astra", responsesLite: true },
     { id: "gpt-6-astra", name: "GPT 6 Astra" },
     { id: "gpt-6.1-sol", name: "GPT 6.1 Sol" },

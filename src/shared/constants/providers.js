@@ -250,3 +250,8 @@ map((r) => r.id);
 export const USAGE_APIKEY_PROVIDERS = REGISTRY.
 filter((r) => r.features?.usageApikey).
 map((r) => r.id);
+// Providers whose per-account live catalog is served by
+// /api/providers/[id]/models and that the model picker offers. Single source of
+// truth: a provider listed here must be reachable from the picker, and a
+// provider whose live catalog the route serves must be listed here.
+export const LIVE_CATALOG_PROVIDERS = ["claude", "commandcode"];

@@ -116,7 +116,7 @@ function coerceRootObjectType(schema) {
 /**
  * Kimi/Moonshot OpenAI-compatible endpoints reject a root tool-schema
  * `anyOf` (diegosouzapw/OmniRoute 99d19f8f3, #10079) even though nested
- * combinators are fine. Strip only the tool's OWN root `anyOf` — never
+ * combinators are fine. Merge compatible object branches of the tool's OWN root `anyOf` — never
  * nested `properties.*.anyOf`/`oneOf`/`allOf` roots — and only for the
  * exact source-verified Kimi-family provider ids on the OpenAI wire
  * transport. Mutates schema in place.
@@ -125,8 +125,28 @@ const KIMI_ANYOF_PROVIDERS = new Set(["kimi", "kimi-coding"]);
 
 function stripRootAnyOf(schema) {
   if (!schema || !isObject(schema) || Array.isArray(schema)) return;
-  if (!Object.prototype.hasOwnProperty.call(schema, "anyOf")) return;
+  const branches = schema.anyOf;
+  const plain = (value) => value && isObject(value) && !Array.isArray(value);
+  if (!Array.isArray(branches) || !branches.length || !branches.every((branch) =>
+    plain(branch) && !Object.prototype.hasOwnProperty.call(branch, "$ref") &&
+    (branch.type === undefined || branch.type === "object" || (Array.isArray(branch.type) && branch.type.includes("object"))))) return;
+  const properties = plain(schema.properties) ? { ...schema.properties } : {};
+  let common;
+  for (const branch of branches) {
+    if (plain(branch.properties)) for (const [key, value] of Object.entries(branch.properties)) {
+      if (!Object.hasOwn(properties, key)) {
+        Object.defineProperty(properties, key, { value, enumerable: true, writable: true, configurable: true });
+      }
+    }
+    if (schema.additionalProperties === undefined && branch.additionalProperties !== undefined) schema.additionalProperties = branch.additionalProperties;
+    const required = Array.isArray(branch.required) ? branch.required.filter(isString) : [];
+    common = common === undefined ? [...new Set(required)] : common.filter((key) => required.includes(key));
+  }
+  schema.properties = properties;
+  const required = [...new Set([...(Array.isArray(schema.required) ? schema.required : []), ...common])].filter((key) => Object.prototype.hasOwnProperty.call(properties, key));
+  if (required.length) schema.required = required; else delete schema.required;
   delete schema.anyOf;
+  if (schema.type === undefined) schema.type = "object";
 }
 
 /**

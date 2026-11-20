@@ -159,7 +159,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     }
   }
 
-  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel, provider);
   return { ...generic, scope: null };
 }
 
@@ -172,8 +172,9 @@ function extractErrorMessage(structuredError, errorText) {
   return isString(message) ? message : "";
 }
 
-function checkFallbackErrorByRules(status, lowerError, backoffLevel) {
+function checkFallbackErrorByRules(status, lowerError, backoffLevel, provider = null) {
   for (const rule of ERROR_RULES) {
+    if (rule.provider && !rule.provider.includes(provider)) continue;
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
       if (rule.fallback === false) return { shouldFallback: false, cooldownMs: 0 };

@@ -18,6 +18,7 @@
 
 # Unreleased
 
+- **Upstream ports**: normalize Antigravity ProtoJSON integer constraints, use official Qwen 3.8 reasoning effort and capability limits, resolve Bedrock Claude adaptive thinking ids, and discard empty streamed tool-call placeholders (#1072).
 - sync(upstream): Integrate the upstream v0.5.119 provider, catalog, and protocol updates recorded in the upstream sync ledger (#1072).
 
 ## Breaking

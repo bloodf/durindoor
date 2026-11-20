@@ -66,6 +66,12 @@ describe("ensureStreamToolCallIds", () => {
     expect(ensureStreamToolCallIds({ choices: [{ delta: { content: "hi" } }] }, new Set())).toBe(false);
     expect(ensureStreamToolCallIds({ type: "message_start" }, new Set())).toBe(false);
   });
+
+  it("drops empty placeholders before minting an id", () => {
+    const c = chunk([{ index: 0, id: null, function: { name: null, arguments: null } }]);
+    expect(ensureStreamToolCallIds(c, new Set())).toBe(true);
+    expect(c.choices[0].delta).not.toHaveProperty("tool_calls");
+  });
 });
 
 function isNonEmptyString(value) {

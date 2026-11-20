@@ -87,42 +87,29 @@ export function antigravityToOpenAIRequest(model, body, stream) {
 
 /**
  * Recursively normalize an Antigravity/Gemini tool-parameter schema for the
- * OpenAI-shaped tool surface: lowercase `type` keywords (OBJECT -> object), strip
- * unsupported fields (e.g. `enumDescriptions`), recurse into `properties`,
- * `items`, and `additionalProperties`, and add a placeholder `properties` map to
- * bare `type: "object"` nodes (Gemini rejects object schemas with no properties).
+ * OpenAI-shaped tool surface: lowercase `type` keywords (OBJECT -> object), convert
+ * safe ProtoJSON int64 schema constraints to numbers, strip unsupported fields
+ * (e.g. `enumDescriptions`), recurse through nested values, and add a placeholder
+ * `properties` map to bare object nodes (Gemini rejects those without properties).
  *
  * @param {object} schema - Antigravity tool parameter schema.
  * @returns {object} Normalized schema (a shallow-cloned tree).
  */
+const PROTOJSON_INT64_SCHEMA_KEYS = new Set(["minLength", "maxLength", "minItems", "maxItems", "minProperties", "maxProperties"]);
+
 function normalizeSchemaTypes(schema) {
+  if (Array.isArray(schema)) return schema.map(normalizeSchemaTypes);
   if (!schema || !isObject(schema)) return schema;
-
-  const result = Array.isArray(schema) ? [...schema] : { ...schema };
-
-
-  if (isString(result.type)) {
-    result.type = result.type.toLowerCase();
-  }
-
-  // Strip enumDescriptions — not supported by upstream APIs
-  delete result.enumDescriptions;
-
-
-  if (result.properties) {
-    const normalized = {};
-    for (const [key, val] of Object.entries(result.properties)) {
-      normalized[key] = normalizeSchemaTypes(val);
+  const result = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "enumDescriptions") continue;
+    if (key === "type" && isString(value)) { result[key] = value.toLowerCase(); continue; }
+    if (PROTOJSON_INT64_SCHEMA_KEYS.has(key) && isString(value) && /^\d+$/.test(value.trim())) {
+      const parsed = Number(value);
+      result[key] = Number.isSafeInteger(parsed) ? parsed : value;
+      continue;
     }
-    result.properties = normalized;
-  }
-
-  if (result.items) {
-    result.items = normalizeSchemaTypes(result.items);
-  }
-
-  if (result.additionalProperties && isObject(result.additionalProperties)) {
-    result.additionalProperties = normalizeSchemaTypes(result.additionalProperties);
+    result[key] = normalizeSchemaTypes(value);
   }
 
   // Gemini rejects type:object without properties — add placeholder to satisfy API

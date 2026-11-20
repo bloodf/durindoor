@@ -185,6 +185,22 @@ export const ANTIGRAVITY_HERMES_IDENTITY_REWRITE = {
   from: /You are Hermes(?: Agent)?(?:,\s*(?:an intelligent AI assistant|an AI assistant|an AI agent))?(?:,?\s*(?:built|created)\s+by\s+Nous Research)?\./gi,
   to: "You are an AI assistant."
 };
+export const ANTIGRAVITY_PROMPT_REWRITES = [
+  // Run only over systemInstruction text. Boundary checks preserve paths, packages, URLs, and code identifiers.
+  { from: /(?<![\w./~@:-])(?<![\\])opencode(?![\w/:-@]|(?:\.[a-zA-Z0-9_-]))/gi, to: (m) => (m === "OpenCode" ? "Antigravity" : m === "OPENCODE" ? "ANTIGRAVITY" : "antigravity") },
+  // Normalize OMP harness tags and identity while preserving the instruction bodies.
+  { from: /<(\/?)system[-_]conventions>/gi, to: "<$1conventions>" },
+  { from: /<(\/?)system[-_]directive>/gi, to: "<$1instructions>" },
+  { from: /<(\/?)critical>/gi, to: "<$1important>" },
+  { from: /Oh My Pi coding harness/gi, to: "AI coding assistant" },
+  { from: /Oh My Pi/gi, to: "coding assistant" },
+  { from: /omp Live/gi, to: "coding assistant live" },
+  // Exact system identity / coding-task phrases reported to trigger false RESOURCE_EXHAUSTED responses.
+  { from: /You are a personal assistant running inside OpenClaw\./gi, to: "You are a personal assistant." },
+  { from: /solve coding tasks\.\s*Be concise, practical, and tool-aware\./gi, to: "work on their coding tasks. Keep responses concise and practical, and use the available tools when they help." }
+];
+// Remove these harness telemetry fields from request envelopes and labels only.
+export const ANTIGRAVITY_TELEMETRY_KEYS = ["used_claude", "used_claude_conservative"];
 // Claude Code prepends this line to its system prompt. The Claude-format translator strips it,
 // but OpenAI-format clients (e.g. proxies that convert Claude Code to /v1/chat/completions)
 // pass it through, and any system text containing it gets the same fake 429.

@@ -18,6 +18,7 @@ import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import { META_MODEL_API_MODELS_URL } from "open-sse/config/museCode.js";
 import {
   ANTIGRAVITY_CATALOG_URL,
   buildAntigravityCatalogBody,
@@ -452,6 +453,10 @@ export const PROVIDER_MODELS_CONFIG = {
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },
+  // Meta Model API: `GET /v1/models` lists the models the account's own key
+  // can use, so discovery is account-scoped. The request is a documented
+  // Model API call and carries no Muse Code client fingerprint.
+  "muse-code": createOpenAIModelsConfig(META_MODEL_API_MODELS_URL),
   // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
   "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
   "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),

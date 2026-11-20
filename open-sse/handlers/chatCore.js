@@ -1558,8 +1558,19 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     }
   }
 
-  // Handle 401/403 - try token refresh (skip for noAuth providers)
-  if (!executor.noAuth && (parsedError?.statusCode === HTTP_STATUS.UNAUTHORIZED || parsedError?.statusCode === HTTP_STATUS.FORBIDDEN)) {
+  // Handle 401/403 - try token refresh (skip for noAuth providers).
+  // A provider may decline the refresh when the upstream refusal cannot be
+  // answered by a fresh credential: a key minted from the same account carries
+  // the same scope, so refreshing would only repeat the refusal with a
+  // substituted credential. The refusal then surfaces as it arrived, with no
+  // second attempt.
+  const authFailure = parsedError?.statusCode === HTTP_STATUS.UNAUTHORIZED ||
+  parsedError?.statusCode === HTTP_STATUS.FORBIDDEN;
+  const refreshAfterAuthFailure = authFailure && !executor.noAuth &&
+  (isFunction(executor.shouldRefreshAfterAuthFailure)
+    ? executor.shouldRefreshAfterAuthFailure(parsedError, providerResponse) !== false
+    : true);
+  if (refreshAfterAuthFailure) {
     try {
       await settleProviderAttemptDispatch(providerResponse, { success: false, reason: "fallback" });
       // Some custom executors wrap the mapped transport response. Release any

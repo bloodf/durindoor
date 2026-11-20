@@ -7,10 +7,58 @@ import { matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfi
 const TOKEN_LIMIT_PREFERENCE = Symbol("azureTokenLimitPreference");
 const CACHE_LIMIT = 256;
 
+// Azure GPT-5/GPT-6 and o-series deployments reject `max_tokens`, a custom
+// `temperature`, and `reasoning_effort` next to tools on /chat/completions.
+// Upstream provenance: decolua/9router#2809.
+//
+// The family is read from the deployment identifier this executor actually
+// calls. Azure deployment names are operator-chosen and opaque, so an
+// unrecognized name is left untouched instead of guessed: a deployment that
+// serves another family keeps the fork's existing parameter contract, and the
+// model-driven token-cap rename plus the negotiated one-shot retry below keep
+// covering the token-cap spelling for opaque deployments.
+const GPT5_FAMILY_DEPLOYMENT = /(?:^|[/_-])(?:gpt-(?:5|6)|o(?:1|3|4))(?:[._-]|$)/i;
+
+/**
+ * Normalize the request fields an Azure GPT-5-family deployment rejects.
+ * Mutates and returns the same body.
+ * - `max_tokens` → `max_completion_tokens` (an explicit modern limit wins).
+ * - `temperature` is dropped unless it is the accepted default (1).
+ * - `reasoning_effort` is dropped when tools are present; tools and
+ *   `tool_choice` themselves are preserved.
+ */
+function normalizeGpt5FamilyRequest(body) {
+  if (body.max_completion_tokens === undefined && body.max_tokens !== undefined) {
+    body.max_completion_tokens = body.max_tokens;
+  }
+  delete body.max_tokens;
+  if (body.temperature !== undefined && body.temperature !== 1) {
+    delete body.temperature;
+  }
+  if (Array.isArray(body.tools) && body.tools.length > 0) {
+    delete body.reasoning_effort;
+  }
+  return body;
+}
+
 export class AzureExecutor extends DefaultExecutor {
   constructor() {
     super("azure");
     this.tokenLimitPreferences = new Map();
+  }
+
+  /**
+   * The deployment this request is addressed to. The connection's explicit
+   * deployment wins; the requested model id is only the fallback (Azure
+   * exposes deployments as models). Upstream resolves the model first, which
+   * would ignore the operator's configured deployment and break the
+   * per-deployment token-limit cache below.
+   */
+  resolveDeployment(model, credentials = null) {
+    return credentials?.providerSpecificData?.deployment
+      || model
+      || process.env.AZURE_DEPLOYMENT
+      || "gpt-4";
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
@@ -22,10 +70,7 @@ export class AzureExecutor extends DefaultExecutor {
       || process.env.AZURE_API_VERSION
       || "2024-10-01-preview";
 
-    const deployment = credentials?.providerSpecificData?.deployment
-      || model
-      || process.env.AZURE_DEPLOYMENT
-      || "gpt-4";
+    const deployment = this.resolveDeployment(model, credentials);
 
     const endpoint = azureEndpoint.replace(/\/$/, "");
     return `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
@@ -63,7 +108,15 @@ export class AzureExecutor extends DefaultExecutor {
     // Azure bypasses DefaultExecutor.transformRequest; invoke the shared helper
     // directly. Clone before mutating to avoid caller side effects. (#6912/#6964)
     const transformed = { ...(body || {}) };
-    applyParamRenames("azure", model, transformed);
+    // GPT-5-family deployments reject `max_tokens`, a custom `temperature`, and
+    // `reasoning_effort` next to tools (#2809). Applied only when the
+    // deployment is known to serve that family; an opaque deployment name
+    // leaves the request untouched and keeps the fork's model-driven rename.
+    if (GPT5_FAMILY_DEPLOYMENT.test(String(this.resolveDeployment(model, credentials)))) {
+      normalizeGpt5FamilyRequest(transformed);
+    } else {
+      applyParamRenames("azure", model, transformed);
+    }
     const preference = requestContext?.[TOKEN_LIMIT_PREFERENCE];
     if (preference) {
       const alternate = preference === "max_tokens" ? "max_completion_tokens" : "max_tokens";

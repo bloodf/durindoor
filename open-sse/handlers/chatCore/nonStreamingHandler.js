@@ -1,3 +1,5 @@
+import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
+import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
@@ -347,7 +349,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
   // including a usage object (some clients validate `usage.input_tokens`).
   if (targetFormat === FORMATS.OPENAI_RESPONSES) {
     if (sourceFormat === FORMATS.CLAUDE) {
-      const claudeMsg = openAIResponsesBodyToClaude(responseBody);
+      let claudeMsg = openAIResponsesBodyToClaude(responseBody);
+      if (options.provider === "codex" && hasClaudeSearch(options.requestBody)) claudeMsg = responsesSearchToClaudeMessage(responseBody, claudeMsg, true);
       return options.claudeCompat ? stripClaudeThinking(claudeMsg) : claudeMsg;
     }
     if (sourceFormat === FORMATS.OPENAI) {
@@ -505,7 +508,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  * Preserve the admission billing epoch, including null, through delayed completion.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -650,7 +653,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const usage = extractUsageFromResponse(responseBody);
     appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
 
     // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
     // its only content is an optional, possibly null/blank explanation string.

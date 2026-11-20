@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { isApiKeyExpired, normalizeApiKeyExpiresAt } from "@/shared/utils/apiKeyExpiry";
 import { mergeApiKeyPolicy, normalizeApiKeyPolicy } from "../helpers/apiKeyPolicy.js";
+import { apiKeyUsageScope } from "../helpers/apiKeyAttribution.js";
 import { getCommittedTokenCount } from "../helpers/committedTokens.js";
 
 /**
@@ -197,17 +198,27 @@ export async function validateApiKey(key, now = Date.now()) {
   return !isApiKeyExpired(row.expiresAt, now);
 }
 
-export async function getApiKeyUsageLimitStatus(key, now = new Date()) {
-  if (!key) return { enforced: false, exceeded: false };
+export async function getApiKeyUsageLimitStatus(key, now = new Date(), apiKeyId = null) {
+  if (!key && !apiKeyId) return { enforced: false, exceeded: false };
   const db = await getAdapter();
-  const row = db.get(`SELECT isActive, dailyLimitTokens, expiresAt FROM apiKeys WHERE key = ?`, [key]);
+  // The admitted id resolves the key even when the secret it was admitted
+  // with has since changed; the secret is the fallback for callers that do
+  // not carry one.
+  const row = apiKeyId
+    ? db.get(`SELECT id, isActive, dailyLimitTokens, expiresAt FROM apiKeys WHERE id = ?`, [apiKeyId])
+    : db.get(`SELECT id, isActive, dailyLimitTokens, expiresAt FROM apiKeys WHERE key = ?`, [key]);
   if (!row || !(row.isActive === 1 || row.isActive === true) || isApiKeyExpired(row.expiresAt, now.getTime())) return { enforced: false, exceeded: false };
   const limit = normalizeDailyLimitTokens(row.dailyLimitTokens);
   if (limit === null || limit === undefined) return { enforced: false, exceeded: false };
   const start = getLocalDayStartIso(now);
+  // The daily allowance belongs to the key, not to the secret it stores: rows
+  // carrying the stable id count directly, legacy rows keep their existing
+  // scoped association through the secret. The branches are disjoint, so a row
+  // is never counted twice.
+  const scope = apiKeyUsageScope(db, { apiKeyId: row.id, apiKey: key });
   const usedTokens = db.all(
-    `SELECT promptTokens, completionTokens, tokens FROM usageHistory WHERE apiKey = ? AND timestamp >= ?`,
-    [key, start]
+    `SELECT promptTokens, completionTokens, tokens FROM usageHistory WHERE ${scope.clause} AND timestamp >= ?`,
+    [...scope.params, start]
   ).reduce((total, usage) => {
     let tokens = {};
     try {tokens = usage.tokens ? JSON.parse(usage.tokens) : {};} catch {tokens = {};}

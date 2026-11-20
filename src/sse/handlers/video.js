@@ -43,6 +43,8 @@ async function recordVideoJobUsage(job, apiKey) {
     usageEventId: job.usageEventId, provider: job.provider, model: job.model,
     connectionId: job.connectionId, endpoint: job.endpoint, modality: "video",
     timestamp, tokens, nativeUnits, cost, costStatus, costSource, meta,
+    // The media job carries the stable id of the key that created it.
+    apiKeyId: job.apiKeyId,
   });
 }
 
@@ -126,6 +128,8 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
     provider: modelInfo.provider, model: modelInfo.model,
     connectionId: credentials.connectionId ?? null,
     endpoint: "/v1/video/generations", comboId: null, comboName,
+    // The stable id of the admitted key travels with the usage.
+    apiKeyId,
   });
 }
 

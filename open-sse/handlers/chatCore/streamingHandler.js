@@ -1,4 +1,5 @@
 import { FORMATS } from "../../translator/formats.js";
+import { isDeepSeekFamilyModel } from "../../utils/dsmlToolCalls.js";
 import { needsTranslation } from "../../translator/index.js";
 import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
@@ -80,7 +81,7 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
     };
   }
 
-  if (needsTranslation(targetFormat, sourceFormat)) {
+  if (needsTranslation(targetFormat, sourceFormat) || targetFormat === FORMATS.OPENAI && isDeepSeekFamilyModel(providerBody?.model || model, provider)) {
     return {
       stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked),
       emittedFormat: sourceFormat

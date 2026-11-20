@@ -17,7 +17,7 @@ The provider page shows a risk notice: this is a subscription session that was n
 Open **Providers**, then **Claude Code**, then Connect.
 </Step>
 <Step>
-Sign in at claude.ai and approve access. DurinDoor asks for `org:create_api_key user:profile user:inference` with a PKCE challenge.
+Sign in at claude.ai and approve access. DurinDoor asks for `org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers` with a PKCE challenge. Anthropic asks you to authenticate again on every Connect, even when the browser still holds a claude.ai session, so that a second Claude account cannot invalidate the first account's saved session.
 </Step>
 <Step>
 Anthropic sends the authorization result to its code page (`https://platform.claude.com/oauth/code/callback`), not the dashboard. Copy the code shown there and paste it into the Claude Connect dialog, on local or hosted dashboards. DurinDoor binds pasted codes to the current login attempt; if you paste a full callback URL with a state, that state must match.
@@ -26,7 +26,7 @@ Anthropic sends the authorization result to its code page (`https://platform.cla
 
 After the exchange DurinDoor reads your profile for the email and plan. Importing `~/.claude/.credentials.json` is not supported; sign in through the dashboard.
 
-Access tokens refresh four hours before expiry, both on request and in the background refresh pass. A refresh that fails with `invalid_grant` needs a new login.
+Access tokens refresh four hours before expiry, both on request and in the background refresh pass. The refresh asks Anthropic for the same scope the login granted, so the Claude Code session and MCP grants survive the rotation. A refresh that fails with `invalid_grant` marks the connection as needing a new login.
 
 ## Claude Code CLI version
 

@@ -19,6 +19,7 @@ const DEVICE_CODE_PROVIDERS = new Set([
 "qwen",
 "kiro",
 "kimi-coding",
+"kimi-ai",
 "kilocode",
 "codebuddy-cn",
 "qoder",
@@ -73,6 +74,10 @@ export default function OAuthModal({
   const [polling, setPolling] = useState(false);
   const [selectedProxyPoolId, setSelectedProxyPoolId] = useState("");
   const [codexFingerprintMode, setCodexFingerprintMode] = useState("session");
+  // Codex signs in two ways: browser PKCE on the fixed callback port, or the
+  // headless device flow. The device flow needs no reachable callback port, so
+  // it is the option for a remote dashboard.
+  const [codexSignInMethod, setCodexSignInMethod] = useState("browser");
   const { copied, copy } = useCopyToClipboard();
 
   const lifecycleRef = useRef(null);
@@ -92,9 +97,10 @@ export default function OAuthModal({
       provider,
       proxyPoolsReady,
       connectionId,
-      codexFingerprintMode
+      codexFingerprintMode,
+      codexSignInMethod
     };
-  }, [codexFingerprintMode, idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady, connectionId]);
+  }, [codexFingerprintMode, codexSignInMethod, idcConfig, isOpen, oauthMeta, onClose, onSuccess, provider, proxyPoolsReady, connectionId]);
 
   const resetView = useCallback(() => {
     setAuthData(null);
@@ -259,7 +265,9 @@ export default function OAuthModal({
     const options = latestRef.current;
     const selection = oauthProxySelection(flow.proxyPoolId);
     try {
-      if (DEVICE_CODE_PROVIDERS.has(flow.provider)) {
+      if (DEVICE_CODE_PROVIDERS.has(flow.provider) ||
+        (flow.provider === "codex" && options.codexSignInMethod === "device"))
+      {
         setIsDeviceCode(true);
         const request = {
           ...selection,
@@ -271,7 +279,9 @@ export default function OAuthModal({
             authMethod: "idc"
           } : null),
           ...(flow.provider === "ghe-copilot" && options.oauthMeta?.gheUrl ?
-          { gheUrl: options.oauthMeta.gheUrl } : null)
+          { gheUrl: options.oauthMeta.gheUrl } : null),
+          ...(flow.provider === "codex" ?
+          { codexFingerprintMode: options.codexFingerprintMode } : null)
         };
         const response = await fetch(`/api/oauth/${flow.provider}/device-code`, {
           method: "POST",
@@ -486,6 +496,12 @@ export default function OAuthModal({
     void restartFlow(selectedProxyPoolIdRef.current);
   };
 
+  const handleCodexSignInMethodChange = (method) => {
+    setCodexSignInMethod(method);
+    if (latestRef.current) latestRef.current.codexSignInMethod = method;
+    void restartFlow(selectedProxyPoolIdRef.current);
+  };
+
   const handleManualSubmit = async () => {
     const lifecycle = lifecycleRef.current;
     const flow = lifecycle.current();
@@ -601,19 +617,33 @@ export default function OAuthModal({
         )}
 
         {provider === "codex" && proxyPoolsReady && (step === "waiting" || step === "input") && (
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-dd-muted">OAuth fingerprint mode</span>
-            <Select
-              value={codexFingerprintMode}
-              onChange={handleCodexFingerprintModeChange}
-              aria-label="OAuth fingerprint mode"
-              options={[
-                { value: "off", label: "Off — preserve client identity" },
-                { value: "device", label: "Device — stable installation" },
-                { value: "session", label: "Session — stable account session (recommended)" },
-                { value: "full", label: "Full — stable account thread" }
-              ]}
-            />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-dd-muted">Sign-in method</span>
+              <Select
+                value={codexSignInMethod}
+                onChange={handleCodexSignInMethodChange}
+                aria-label="Sign-in method"
+                options={[
+                  { value: "browser", label: "Browser — sign in at auth.openai.com" },
+                  { value: "device", label: "Device code — no callback port needed" }
+                ]}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-dd-muted">OAuth fingerprint mode</span>
+              <Select
+                value={codexFingerprintMode}
+                onChange={handleCodexFingerprintModeChange}
+                aria-label="OAuth fingerprint mode"
+                options={[
+                  { value: "off", label: "Off — preserve client identity" },
+                  { value: "device", label: "Device — stable installation" },
+                  { value: "session", label: "Session — stable account session (recommended)" },
+                  { value: "full", label: "Full — stable account thread" }
+                ]}
+              />
+            </div>
           </div>
         )}
 

@@ -137,3 +137,7 @@ Pioneer is now Fastino: `api.pioneer.ai` is retired and the API lives at `https:
 
 - No live call was made. Whether `/v1/chat/completions` serves the listed decoder model IDs without a `schema`, and the contents of the authenticated `/v1/models`, are unconfirmed.
 - Model IDs and context windows come from `docs.fastino.ai` only.
+
+### DeepSeek DSML tool calls
+
+For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts complete visible DSML invoke frames into structured tool calls, including when a combo selects the model. Streaming frames can span chunks; malformed, incomplete, or oversized frames remain text. Existing structured calls are preserved. The gateway only translates response data and does not execute the calls.

@@ -14,6 +14,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
+import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
@@ -166,6 +167,9 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
   const excludeConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  // Bounded retry hints from attempted accounts, keyed by connection, so the
+  // final reconstruction can keep them once failover has nothing left to try.
+  const attemptedRateLimits = new Map();
 
   while (true) {
     const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, {
@@ -188,6 +192,10 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       }
       if (excludeConnectionIds.size === 0) {
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
+      }
+      const attempted = aggregateRateLimitHint(attemptedRateLimits, lastStatus);
+      if (attempted?.retryAt) {
+        return unavailableResponse(429, lastError || "All accounts unavailable", attempted.retryAt, formatRetryAfter(attempted.retryAt));
       }
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
     }
@@ -233,8 +241,13 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       // provider can mark exactly the generation that was rejected.
       usedCredential: credentials.accessToken || credentials.apiKey || null
     };
-    if (result.rateLimitEvidence) accountFailureContext.rateLimitEvidence = result.rateLimitEvidence;
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.rateLimitEvidence?.resetAtMs ?? null, accountFailureContext);
+    if (result.rateLimitEvidence) {
+      accountFailureContext.rateLimitEvidence = result.rateLimitEvidence;
+      // Image capacity is its own quota: exhaustion stays on the failed model
+      // instead of widening to the whole account that chat paths still use.
+      accountFailureContext.exhaustionScope = "model";
+    }
+    const { shouldFallback, retryAt, retryAtKnown } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.rateLimitEvidence?.resetAtMs ?? null, accountFailureContext);
 
     // The provider may still run and bill the accepted job, so another account would
     // be a second billable job. The account health update above still applies.
@@ -247,12 +260,36 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;
+      attemptedRateLimits.set(credentials.connectionId, {
+        status: result.status,
+        retryAt: retryAt || null,
+        // Only a proven, bounded exhaustion hint is carried; an ordinary 429
+        // keeps its existing final response.
+        retryAtKnown: Boolean(result.rateLimitEvidence) && retryAtKnown !== false && Boolean(retryAt)
+      });
       continue;
     }
 
     return result.response;
   }
 }
+
+/**
+ * A 429 hint for the final response, only when every attempted account ended in
+ * a 429 with a known bounded deadline; the earliest one is the honest retry time.
+ * Otherwise the ordinary final response is kept and no delay is invented.
+ */
+function aggregateRateLimitHint(attempted, lastStatus) {
+  const entries = [...attempted.values()];
+  if (Number(lastStatus) !== 429) return null;
+  if (entries.length === 0 || entries.some((entry) => Number(entry.status) !== 429)) return null;
+  const complete = entries.every((entry) => entry.retryAtKnown);
+  const retryAt = complete
+    ? entries.map((entry) => entry.retryAt).sort((left, right) => Date.parse(left) - Date.parse(right))[0]
+    : null;
+  return { retryAt };
+}
+
 async function recordImageUsage(apiKey, result, request, provider, model, connectionId, billingEpoch, apiKeyId = null) {
   // Streaming commits belong exclusively to the awaited parser callback.
   if (result.completion || result.accounting?.state !== "complete") return result.response;

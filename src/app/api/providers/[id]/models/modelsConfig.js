@@ -278,6 +278,9 @@ export function buildClaudeModelsHeaders(token) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  "devin-cli-agentic": {
+    customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
+  },
   // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
   "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
   "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),

@@ -541,6 +541,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     };
     const contentType = providerResponse.headers.get("content-type") || "";
     let responseBody;
+    let responseFormat = targetFormat;
 
     let responseText;
     try {
@@ -585,6 +586,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         return sseError;
       }
       responseBody = parsed;
+      // The SSE accumulator produces OpenAI completions even when the provider
+      // transport and client use the same native format (#5380).
+      responseFormat = FORMATS.OPENAI;
     } else {
       try {
         responseBody = JSON.parse(responseText);
@@ -623,7 +627,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Upstream provider error: ${maskedGatewayError}`);
     }
-    if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
+    if (!isCoherentNonStreamingResponse(responseBody, responseFormat)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
     }
@@ -641,14 +645,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // MiniMax's OpenAI transport may inline M3 reasoning as complete <think>
     // segments. Normalize the raw provider completion once, before a client
     // projection can collapse its per-choice OpenAI shape.
-    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat });
+    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat: responseFormat });
     responseBody = inlineThinking.responseBody;
 
 
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
     let translatedResponse = translateNonStreamingResponse(
       responseBody,
-      targetFormat,
+      responseFormat,
       sourceFormat,
       { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
     );

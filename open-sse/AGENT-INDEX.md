@@ -188,6 +188,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
 | `deepinfra` |  | apikey | `https://api.deepinfra.com/v1/openai/chat/completions` |
 | `deepseek` |  | apikey | `https://api.deepseek.com/chat/completions` |
+| `demonroute` | openai | apikey | `https://api.demonroute.com/v1/chat/completions` |
 | `devin` |  | apikey | `` |
 | `devin-cli` | openai | oauth | `devin://acp/stdio` |
 | `devin-cli-agentic` | claude | free | `devin://acp/stdio` |

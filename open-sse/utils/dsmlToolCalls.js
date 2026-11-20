@@ -1,3 +1,5 @@
+import { isString } from "../../src/shared/utils/typeChecks.js";
+
 // DSML is response data; this module never executes a tool.
 export const MAX_DSML_FRAME = 65536;
 const delim = String.raw`[|｜]{1,2}\s*DSML\s*[|｜]{1,2}`;
@@ -7,7 +9,7 @@ const wrapper = new RegExp(String.raw`^<\s*${delim}\s*calls\s*>`);
 const endWrapper = new RegExp(String.raw`<\s*/?\s*${delim}\s*calls\s*>`);
 const parameter = new RegExp(String.raw`^\s*<\s*${delim}\s*parameter\s+name=["']([^"']+)["'](?:\s+string=["'](true|false)["'])?\s*>([\s\S]*?)<\s*/?\s*${delim}\s*parameter\s*>`, "i");
 export function isDeepSeekFamilyModel(model, provider) {
-  return provider === "deepseek" || provider === "ds" || typeof model === "string" && /deepseek|(?:^|\/)d[f]?model$/i.test(model);
+  return provider === "deepseek" || provider === "ds" || isString(model) && /deepseek|(?:^|\/)d[f]?model$/i.test(model);
 }
 function parseInvoke(frame) {
   const start = invoke.exec(frame);
@@ -89,7 +91,7 @@ export function createDsmlStreamState() {
   }, flush() { return drain(true); } };
 }
 export function parseDsmlToolCalls(text) {
-  if (typeof text !== "string") return { content: text, toolCalls: [] };
+  if (!isString(text)) return { content: text, toolCalls: [] };
   const stream = createDsmlStreamState(), first = stream.push(text), last = stream.flush();
   return { content: first.text + last.text, toolCalls: [...first.toolCalls, ...last.toolCalls] };
 }

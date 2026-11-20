@@ -1,3 +1,4 @@
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { createDsmlStreamState, isDeepSeekFamilyModel, parseDsmlToolCalls } from "../../utils/dsmlToolCalls.js";
 import { fallbackToolCallId } from "./toolCall.js";
 import { OPENAI_FINISH } from "../schema/finishReasons.js";
@@ -15,7 +16,12 @@ export function normalizeDsmlChunks(chunks, state) {
       for (const [index, entry] of state.dsmlChoices) {
         const tail = entry.parser.flush();
         entry.calls.push(...tail.toolCalls);
-        if (tail.text || entry.calls.length) output.push({ ...entry.template, choices: [{ index, delta: { ...(tail.text ? { content: tail.text } : {}), ...(entry.calls.length ? { tool_calls: entry.calls.map((call) => wireCall(call, ++entry.maxIndex)) } : {}) }, finish_reason: null }] });
+        if (tail.text || entry.calls.length) {
+          const delta = {};
+          if (tail.text) delta.content = tail.text;
+          if (entry.calls.length) delta.tool_calls = entry.calls.map((call) => wireCall(call, ++entry.maxIndex));
+          output.push({ ...entry.template, choices: [{ index, delta, finish_reason: null }] });
+        }
         entry.calls = [];
       }
       output.push(chunk);
@@ -29,7 +35,7 @@ export function normalizeDsmlChunks(chunks, state) {
       entry.template = chunk;
       const delta = { ...choice.delta };
       for (const call of delta.tool_calls || []) if (Number.isInteger(call.index)) entry.maxIndex = Math.max(entry.maxIndex, call.index);
-      if (typeof delta.content === "string") {
+      if (isString(delta.content)) {
         const result = entry.parser.push(delta.content);
         entry.calls.push(...result.toolCalls);
         if (result.text) delta.content = result.text; else delete delta.content;
@@ -54,7 +60,7 @@ export function normalizeDsmlCompletion(response, model, provider) {
   if (!isDeepSeekFamilyModel(model, provider)) return response;
   for (const choice of response?.choices || []) {
     const message = choice?.message;
-    if (typeof message?.content !== "string") continue;
+    if (!isString(message?.content)) continue;
     const parsed = parseDsmlToolCalls(message.content);
     if (!parsed.toolCalls.length) continue;
     const existing = message.tool_calls || [];

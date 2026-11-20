@@ -22,7 +22,12 @@ import { collapseTextParts } from "../concerns/message.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+
+function withBooleanStrict(fn, source) {
+  if (isBoolean(source.strict)) fn.strict = source.strict;
+  return fn;
+}
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
 
@@ -636,12 +641,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         filter((subtool) => isString(subtool?.name) && subtool.name.trim() !== "").
         map((subtool) => ({
           type: OPENAI_BLOCK.FUNCTION,
-          function: {
+          function: withBooleanStrict({
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name)),
-            strict: subtool.strict
-          }
+            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
+          }, subtool)
         }));
       }
       // Responses API custom (freeform) tool: { type: "custom", name, description }.
@@ -651,7 +655,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
         return {
           type: OPENAI_BLOCK.FUNCTION,
-          function: {
+          function: withBooleanStrict({
             name: tool.name,
             description: String(tool.description || ""),
             parameters: {
@@ -659,9 +663,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
               properties: { input: { type: "string" } },
               required: ["input"],
               additionalProperties: false
-            },
-            strict: tool.strict
-          }
+            }
+          }, tool)
         };
       }
       // Responses API function tool: { type: "function", name, description, parameters }
@@ -671,12 +674,11 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       if (!name || !isString(name) || name.trim() === "") return null;
       return {
         type: OPENAI_BLOCK.FUNCTION,
-        function: {
+        function: withBooleanStrict({
           name,
           description: String(tool.description || ""),
-          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name)),
-          strict: tool.strict
-        }
+          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name))
+        }, tool)
       };
     }).
     filter(Boolean);
@@ -964,7 +966,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
           parameters: normalizeToolParameters(normalizeToolSchema(tool.function.parameters, name)),
           // The Responses API requires `strict` on every function tool; default to
           // false (non-strict) instead of forwarding an undefined field.
-          strict: tool.function.strict ?? false
+          strict: isBoolean(tool.function.strict) ? tool.function.strict : false
         };
       }
       // Chat nests custom tools under `custom`; Responses declares them flat (#1344).

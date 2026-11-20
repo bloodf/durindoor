@@ -49,7 +49,7 @@ describe("OpenCodeExecutor transport selection", () => {
       });
       expect(nativeFetch).not.toHaveBeenCalled();
       expect(tlsFetch).toHaveBeenCalledOnce();
-      expect(tlsFetch.mock.calls[0][0]).toBe("https://opencode.ai/inference/v1/chat/completions");
+      expect(tlsFetch.mock.calls[0][0]).toBe("https://opencode.ai/inference/openai/v1/chat/completions");
       expect(tlsFetch.mock.calls[0][1].method).toBe("POST");
     } finally {
       globalThis.fetch = savedFetch;

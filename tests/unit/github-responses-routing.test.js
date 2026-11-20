@@ -38,7 +38,9 @@ describe("GithubExecutor.execute cached-route guard (#1062)", () => {
   it("does NOT use /responses for a Gemini model even if it was wrongly cached as codex", async () => {
     const exec = new GithubExecutor();
     // Simulate a prior misclassification that cached the Gemini model.
-    exec.knownCodexModels.add("gemini-3.1-pro-preview");
+    const connectionId = "fixture-account";
+    const cacheKey = JSON.stringify([connectionId, exec.endpointUrl("baseUrl")]);
+    exec.knownCodexModels.set(cacheKey, new Set(["gemini-3.1-pro-preview"]));
 
     const respSpy = vi
       .spyOn(exec, "executeWithResponsesEndpoint")
@@ -48,7 +50,7 @@ describe("GithubExecutor.execute cached-route guard (#1062)", () => {
       .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(exec)), "execute")
       .mockResolvedValue({ response: { status: 200 }, via: "chat" });
 
-    const result = await exec.execute({ model: "gemini-3.1-pro-preview", body: { messages: [] }, log: null });
+    const result = await exec.execute({ model: "gemini-3.1-pro-preview", body: { messages: [] }, connectionId, log: null });
 
     expect(respSpy).not.toHaveBeenCalled();
     expect(baseSpy).toHaveBeenCalled();

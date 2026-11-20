@@ -1373,6 +1373,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
         body: translatedBody,
         stream,
         credentials,
+        connectionId,
         providerSessionId: sessionSeed,
         clientTool,
         signal: providerSignal,

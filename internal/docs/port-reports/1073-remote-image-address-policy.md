@@ -1,0 +1,5 @@
+# 1073: Remote-image address policy
+
+The Cloudflare JSON image and mask inputs and HuggingFace image-to-image inputs use the existing bounded image fetcher. Its connection remains pinned to a validated DNS result and redirects remain refused. The fetcher now uses the shared public-address predicate for both the URL host and every resolved address, aligning it with the existing policy. Image generation passes the caller's abort signal to adapter fetches; data URLs continue through their existing inline paths. The existing chat, Codex and Cloudflare multipart paths retain the same fetcher. Credential-bearing ChatGPT asset transports are unchanged.
+
+`tests/unit/omni-remote-image-address-policy.test.js` exercises mocked public image and mask URLs through Cloudflare and both HuggingFace input forms, verifies the guarded fetch options, and checks inline data URLs without a fetch. Existing image-fetch and Cloudflare multipart tests cover the shared defensive helper and multipart behavior. All fixtures are local mocks; no network requests or credentials are used.

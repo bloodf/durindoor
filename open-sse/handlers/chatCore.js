@@ -1395,15 +1395,17 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
     finishActiveDashboardSession("error");
     const terminalReason = classifyQuotaTerminalReason(error, { providerSignal, fallback: "transport_error" });
     const wasClientAbort = terminalReason === "abort";
+    const antigravityPreResponseTimeout = provider === "antigravity" && error?.antigravityPreResponseTimeout === true;
+    const failureStatus = antigravityPreResponseTimeout ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
     await settleQuota(false, terminalReason);
-    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : HTTP_STATUS.BAD_GATEWAY}` }).catch(() => {});
+    appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${wasClientAbort ? 499 : failureStatus}` }).catch(() => {});
     saveRequestDetail(buildRequestDetail({
       provider, model: cleanModel, connectionId,
       latency: { ttft: 0, total: Date.now() - requestStartTime },
       tokens: { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: translatedBody || null,
-      response: { error: sanitizeErrorMessage(error.message || String(error)), status: wasClientAbort ? 499 : 502, thinking: null },
+      response: { error: sanitizeErrorMessage(error.message || String(error)), status: wasClientAbort ? 499 : failureStatus, thinking: null },
       pxpipe: pxpipeSummary,
       status: "error"
     }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => { });
@@ -1412,7 +1414,7 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       streamController.handleError(error);
       return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
     }
-    const errMsg = formatProviderError(error, provider, requestedModel, HTTP_STATUS.BAD_GATEWAY);
+    const errMsg = formatProviderError(error, provider, requestedModel, failureStatus);
     if (shouldDefaultAllowClassifier(sourceFormat, body, claudeClassifierCompat)) {
       log?.warn?.("CHAT", `classifier upstream unavailable, default-allowing: ${errMsg}`);
       streamController.handleComplete();
@@ -1420,10 +1422,10 @@ export async function handleChatCore({ body, modelInfo, credentials: rawCredenti
       return buildDefaultAllowClaudeMessage(detectClassifierFormat(body));
     }
     if (log?.errorLine) {
-      log.errorLine(reqTag, "✗", `ERROR 502 · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
+      log.errorLine(reqTag, "✗", `ERROR ${failureStatus} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
     finishTimeline("error", "error", errMsg);
-    return { ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg), attemptStartedAt: latestProviderAttemptStartedAt };
+    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   const parseAndRestateError = async (response) => {

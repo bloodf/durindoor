@@ -1064,6 +1064,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const refreshedQuotaConnectionIds = new Set();
   let lastError = null;
   let lastStatus = null;
+  let antigravityTimeoutResponse = null;
   let antigravityCapacitySweeps = 0;
   let totalAttempts = 0;
   let requestReplayConnectionId = null;
@@ -1129,6 +1130,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return response;
       }
       if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+        if (antigravityTimeoutResponse && !credentials?.providerDisabled) return antigravityTimeoutResponse;
         if (earlyEofOriginal) return earlyEofOriginal;
         if (credentials?.providerDisabled) {
           log.warn("CHAT", `[${provider}/${model}] free no-auth provider disabled by settings`);
@@ -1194,6 +1196,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (priorAttempts >= allowedAttempts || totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
         excludeConnectionIds.add(credentials.connectionId);
         if (totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) {
+          if (antigravityTimeoutResponse) return antigravityTimeoutResponse;
           if (earlyEofOriginal) return earlyEofOriginal;
           log.warn("FALLBACK", "Provider fallback attempt bound reached");
           const attemptedRateLimit = aggregateRateLimitBlockers(attemptedBlockers);
@@ -1426,6 +1429,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         excludeConnectionIds.add(credentials.connectionId);
         continue;
       }
+      if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       // Process-local admission pressure is terminal for this request. Retrying a
       // sibling would hit the same queue and must not cool a healthy account.
       if (result.localAdmissionRejected === true) {
@@ -1438,6 +1442,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // local stream lifecycle event, NOT a provider failure. Return without cooling
       // down the account or accruing fallback state (OmniRoute #7907/#7908).
       if (requestAborted(request, requestSignal) || result.status === 499 || isLocalStreamLifecycleError(result.error)) return result.response;
+      if (result.antigravityPreResponseTimeout === true ||
+          (provider === "antigravity" && result.status === HTTP_STATUS.GATEWAY_TIMEOUT)) {
+        // Internal metadata stays on the Response, never in the client payload.
+        result.response.skipAntigravityTimeoutReplay = true;
+        if (preferredConnectionId) return result.response;
+        antigravityTimeoutResponse ??= result.response;
+        requestReplayConnectionId = null;
+        excludeConnectionIds.add(credentials.connectionId);
+        lastError = result.error;
+        lastStatus = result.status;
+        continue;
+      }
       if (!requestReplayAttempted && isRequestReplayBufferError(result.status, result.error)) {
         requestReplayAttempted = true;
         requestReplayConnectionId = credentials.connectionId;
@@ -1476,6 +1492,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           statusText: result.response.statusText,
           headers: responseHeaders,
         });
+        if (antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
       }
       const antigravityProvider = provider === "antigravity" || provider === "agy";
       const authoritativeResetAt = Number(result.rateLimitEvidence?.resetAtMs);

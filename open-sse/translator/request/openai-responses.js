@@ -17,7 +17,7 @@ import {
   resolveDeclaredCustom,
   responsesImageUrl,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { fixMissingToolResponses } from "../concerns/toolCall.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
@@ -25,6 +25,34 @@ import { normalizeToolSchema } from "../concerns/toolSchema.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
+
+/** Repair truncated array keywords in Responses tool schemas before Chat forwarding.
+ * Traverse schema positions only, so literal enum/default values are preserved.
+ */
+function sanitizeChatSchema(schema) {
+  if (!schema || !isObject(schema) || Array.isArray(schema)) return schema;
+  const result = { ...schema };
+  for (const key of ["enum", "required", "anyOf", "oneOf", "allOf", "prefixItems"]) {
+    if (!(key in result)) continue;
+    let value = result[key];
+    if (!Array.isArray(value) && value && isObject(value)) {
+      const keys = Object.keys(value);
+      if (keys.length && keys.every((entry, index) => entry === String(index))) value = keys.map((entry) => value[entry]);
+    }
+    if (!Array.isArray(value)) { delete result[key]; continue; }
+    result[key] = ["anyOf", "oneOf", "allOf", "prefixItems"].includes(key) ? value.map(sanitizeChatSchema) : value;
+  }
+  for (const key of ["items", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "unevaluatedProperties", "additionalItems", "contentSchema", "unevaluatedItems"]) {
+    if (result[key] && isObject(result[key])) result[key] = Array.isArray(result[key]) ? result[key].map(sanitizeChatSchema) : sanitizeChatSchema(result[key]);
+    else if (isString(result[key]) && /^\[(?:MaxDepth|Truncated|Circular|Object|Array)\]$/.test(result[key].trim())) result[key] = {};
+  }
+  for (const key of ["properties", "$defs", "definitions", "patternProperties", "dependentSchemas"]) {
+    if (result[key] && isObject(result[key]) && !Array.isArray(result[key])) {
+      result[key] = Object.fromEntries(Object.entries(result[key]).map(([name, value]) => [name, sanitizeChatSchema(value)]));
+    }
+  }
+  return result;
+}
 
 /**
  * Scan a Responses API `input[]` and collect every `call_id` declared by a
@@ -309,7 +337,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // raw body apart from an ordinary function's malformed JSON, and never
   // freeform-wrap a name like "apply_patch" that this request declares as an
   // ordinary function (upstream #4208 review, round 2).
-  const declaredToolTypes = buildDeclaredToolTypes(body.tools);
+  // Responses Lite can declare tools in input additional_tools envelopes (#5378).
+  const responseTools = [
+    ...(Array.isArray(body.tools) ? body.tools : []),
+    ...(Array.isArray(body.input) ? body.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []) : [])
+  ];
+  const declaredToolTypes = buildDeclaredToolTypes(responseTools);
 
   // Extract reasoning text from summary[].text or encrypted_content fallback
   const extractReasoningText = (item) => {
@@ -521,8 +554,8 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
    * response routes can restore Responses semantics (upstream PR #3373).
    * (declaredToolTypes collected earlier, above the item loop.)
    */
-  if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.
+  if (responseTools.length) {
+    result.tools = responseTools.
     flatMap((tool) => {
       // Already in Chat Completions format: { type: "function", function: { name, ... } }.
       // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.
@@ -584,6 +617,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       };
     }).
     filter(Boolean);
+    result.tools = result.tools.map((tool) => tool.function?.parameters === undefined ? tool : ({
+      ...tool, function: { ...tool.function, parameters: sanitizeChatSchema(tool.function.parameters) }
+    }));
   }
   const customToolNames = [...declaredToolTypes].filter(([, type]) => type === "custom").map(([name]) => name);
   if (customToolNames.length > 0) result._customToolNames = customToolNames;
@@ -879,6 +915,9 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }).filter(Boolean);
   }
 
+  // Only the Claude native-search pivot may force a hosted search choice.
+  const claudeSearch = body[CLAUDE_NATIVE_TOOLS]?.some(tool => tool.type === "web_search_20250305") && result.tools?.some(tool => tool.type === OPENAI_BLOCK.WEB_SEARCH);
+  if (claudeSearch) result.include = ["web_search_call.action.sources"];
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;
@@ -887,7 +926,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // Allowlist converter drops invalid shapes; also omit when no declarations
   // survived filtering (OpenAI rejects a forced choice with no tools).
   if (Array.isArray(result.tools) && result.tools.length > 0) {
-    const converted = convertChatToolChoiceToResponses(body.tool_choice);
+    const converted = claudeSearch && body.tool_choice?.type === OPENAI_BLOCK.WEB_SEARCH ?
+      { type: OPENAI_BLOCK.WEB_SEARCH } : convertChatToolChoiceToResponses(body.tool_choice);
     if (converted !== undefined) result.tool_choice = converted;
   }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;

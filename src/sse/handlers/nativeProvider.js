@@ -137,7 +137,7 @@ export async function handleNativeProvider(request, provider, path) {
     return annotateClientAdmissionFailure(fail(HTTP_STATUS.FORBIDDEN, "Usage-capped API keys cannot delegate native background or batch inference"), "policy");
   }
   if (dispatchInference) {
-    const dailyError = await nativeUsageAdmission(apiKey);
+    const dailyError = await nativeUsageAdmission(apiKey, auth.apiKeyId);
     if (dailyError) return dailyError;
     const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
     if (policyError) return policyError;
@@ -317,7 +317,11 @@ export async function handleNativeProvider(request, provider, path) {
   response = new Response(response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders });
   if (dispatchInference || observeCompletion || operation.createsResource) {
     response = observeNativeResponse(response, {
-      apiKey: resourceOwner ? creator?.key : apiKey, provider, model: resourceOwner?.model || model, connectionId: credentials.connectionId, endpoint: path,
+      apiKey: resourceOwner ? creator?.key : apiKey,
+      // The stable id of the key the usage belongs to: the resource creator
+      // for a completion poll, otherwise the key admitted for this request.
+      apiKeyId: resourceOwner ? (keyedCreator ? creator?.id ?? null : null) : (auth.apiKeyId ?? null),
+      provider, model: resourceOwner?.model || model, connectionId: credentials.connectionId, endpoint: path,
       // Creation and completion polls share one operation ID, never a reusable resource ID.
       terminalOnly: observeCompletion || asynchronousCreation,
       usageEventId: observeCompletion ? resourceOwner?.usageEventId : nativeUsageEventId,

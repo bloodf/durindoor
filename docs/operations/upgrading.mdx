@@ -5,6 +5,8 @@ description: Back up the active database, install a chosen release, verify infer
 
 Upgrade after reading the [release notes](../../CHANGELOG.md) for compatibility and migration changes. Record the current package version or image digest and choose the version you intend to install.
 
+Dashboard **Settings → General → Show update notifications** controls automatic version checks and sidebar update prompts. It is enabled by default, including for existing settings. Turning it off stops those dashboard checks; it does not prevent explicit updates or change the CLI update options.
+
 ## Save a recovery copy
 
 Stop DurinDoor and any watchdog that restarts it. Make a full [data backup](./data-management.mdx), including encryption keys, machine ID, and protected environment secrets. For PostgreSQL, also take and verify a database dump.

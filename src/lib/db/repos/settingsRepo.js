@@ -56,6 +56,9 @@ const DEFAULT_SETTINGS = {
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   comboStrategies: {},
+  comboPrompts: {},
+  // Dashboard update checks and prompts are enabled for new and legacy settings.
+  showUpdateNotifications: true,
   requireLogin: true,
   tunnelDashboardAccess: true,
   authMode: "password",

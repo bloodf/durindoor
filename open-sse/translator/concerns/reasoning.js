@@ -1,4 +1,5 @@
 import { ROLE } from "../schema/index.js";
+import { extractTextContent } from "./textContent.js";
 
 // Build OpenAI delta carrying reasoning_content (optional leading assistant role)
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -23,6 +24,8 @@ export function extractReasoningText(delta) {
   if (Array.isArray(details)) {
     return details.map((d) => isString(d) ? d : d?.text || d?.content || "").join("");
   }
+  // Mistral sends thinking parts separately from visible text.
+  if (Array.isArray(delta.content)) return delta.content.filter(part => part?.type === "thinking").map(part => extractTextContent(part.thinking)).join("");
   return "";
 }
 

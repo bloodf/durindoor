@@ -39,6 +39,25 @@ afterEach(() => {
 });
 
 describe("pipeWithDisconnect first-chunk timeout", () => {
+  it.each([false, true])("classifies the shorter stall deadline before bytes (empty chunk: %s)", async (emptyChunk) => {
+    vi.useFakeTimers();
+    const streamController = createController();
+    let sent = false;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (emptyChunk && !sent) { sent = true; controller.enqueue(new Uint8Array(0)); }
+        return new Promise(() => {});
+      },
+    });
+    const reader = pipeWithDisconnect(new Response(body), new TransformStream(), streamController,
+      null, 10, null, null, null, null, null, 0, 100).getReader();
+    if (emptyChunk) await reader.read();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(streamController.handleError).toHaveBeenCalledWith(new Error("stream ttft timeout"));
+    expect(streamController.abort).toHaveBeenCalledTimes(1);
+    await reader.cancel();
+  });
+
   it("aborts when upstream yields no bytes before the TTFT deadline", async () => {
     vi.useFakeTimers();
     const streamController = createController();

@@ -178,6 +178,16 @@ describe("quota-aware provider selection", () => {
     expect(result).toMatchObject({ allRateLimited: true, lastErrorCode: 429, lastError: "Rate limited", retryAfter });
   });
 
+  it("uses the earliest effective reset across eligible accounts for the requested model", async () => {
+    const reset = (seconds) => new Date(NOW + seconds * 1000).toISOString();
+    mocks.getProviderConnections.mockResolvedValue([
+      { ...connection("first", 1), errorCode: 429, "modelLock_gpt-5.4": reset(30), modelLock___all: reset(90) },
+      { ...connection("second", 2), errorCode: 429, "modelLock_gpt-5.4": reset(60), "modelLock_other": reset(5) },
+    ]);
+    const result = await getProviderCredentials("codex", null, "gpt-5.4", { now: NOW });
+    expect(result).toMatchObject({ allRateLimited: true, lastErrorCode: 429, retryAfter: reset(60) });
+  });
+
   it("does not expose a local legacy deadline for no-reset plan exhaustion", async () => {
     const localBreaker = new Date(NOW + 30_000).toISOString();
     mocks.getProviderConnections.mockResolvedValue([{

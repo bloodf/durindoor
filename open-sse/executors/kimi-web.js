@@ -102,13 +102,14 @@ export function resolveReasoningEffort(config, requested) {
  * the stored paste is the one it was rotated from, so re-pasting fresh tokens
  * always wins over an older rotation.
  * @param {string} refreshToken
+ * @param {string} [origin] - deployment that issued the pasted session
  * @returns {string}
  */
-export function sessionSource(refreshToken) {
-  return createHash("sha256").update(refreshToken).digest("hex").slice(0, 16);
+export function sessionSource(refreshToken, origin = BASE_URL) {
+  return createHash("sha256").update(`${origin}\0${refreshToken}`).digest("hex").slice(0, 16);
 }
 
-// Rotated pairs by session source. The same pair is persisted to the
+// Rotated pairs by session source and origin. The same pair is persisted to the
 // connection's encrypted accessToken/refreshToken columns (see
 // refreshCredentials); this map serves the retry in the same request and
 // saves a DB round trip.
@@ -124,7 +125,7 @@ export function resolveKimiTokens(credentials) {
   const pasted = extractKimiTokens(String(credentials?.apiKey || ""));
   const origin = pasted.origin || BASE_URL;
   if (!pasted.refreshToken) return { ...pasted, origin, source: "" };
-  const source = sessionSource(pasted.refreshToken);
+  const source = sessionSource(pasted.refreshToken, origin);
   const persisted = credentials?.providerSpecificData?.kimiWebSessionSource === source && credentials?.accessToken ?
   { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken } :
   null;
@@ -430,7 +431,8 @@ export class KimiWebExecutor extends BaseExecutor {
     // Strip the repo-wide thinking suffix (e.g. `k2d6-thinking(high)`) that
     // getModelUpstreamId preserves, so resolveModelConfig resolves the correct
     // tier. applyThinking has already set reasoning_effort from the suffix.
-    const modelId = stripThinkingSuffix(bodyObj.model || "k2d6");
+    // Kimi accepts no service tier, so a tier-shaped suffix stays opaque.
+    const modelId = stripThinkingSuffix(bodyObj.model || "k2d6", "kimi-web");
     const modelConfig = resolveModelConfig(modelId);
     const reasoningEffort = resolveReasoningEffort(modelConfig, bodyObj.reasoning_effort);
 
@@ -536,7 +538,8 @@ export class KimiWebExecutor extends BaseExecutor {
                       emittedRole = true;
                       emitChunk(controller, { role: "assistant", content: "" });
                     }
-                    emitChunk(controller, { content: `\n[kimi-web upstream error: ${connectErr}]` }, "stop");
+                    const scrubbed = jwt ? connectErr.split(jwt).join("[redacted]") : connectErr;
+                    emitChunk(controller, { content: `\n[kimi-web upstream error: ${sanitizeErrorMessage(scrubbed)}]` }, "stop");
                     controller.enqueue(encoder.encode("data: [DONE]\n\n"));
                     controller.close();
                     return;

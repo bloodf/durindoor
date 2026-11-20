@@ -108,3 +108,18 @@ export const RevocationPending = {
     await expect(canvas.getByText("Production key", { selector: "p" })).toBeVisible();
   },
 };
+
+export const Rotation = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/keys", routes: { ...routes,
+    "POST /api/keys/key-production/rotate": { body: { key: "sk-fixturemachine-rotated-1a2b3c4d", id: key.id, name: key.name, expiresAt: null } },
+  } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Rotate API key Production key" }));
+    const body = within(canvasElement.ownerDocument.body);
+    const confirm = within(await body.findByRole("dialog", { name: "Rotate API Key" }));
+    await userEvent.click(confirm.getByRole("button", { name: "Confirm" }));
+    const rotated = within(await body.findByRole("dialog", { name: "API Key Rotated" }));
+    await expect(rotated.getByLabelText("Newly issued API key")).toHaveValue("sk-fixturemachine-rotated-1a2b3c4d");
+  },
+};

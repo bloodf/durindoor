@@ -12,6 +12,7 @@ export {
   fetchEdgeTtsVoices,
   fetchLocalDeviceVoices,
   fetchElevenLabsVoices,
+  fetchElevenLabsModels,
 } from "./ttsProviders/index.js";
 
 // ── Response Formatter (DRY) ───────────────────────────────────
@@ -112,7 +113,7 @@ export async function handleTtsCore({ provider, model, input, credentials, respo
   } catch (err) {
     const secrets = [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken];
     return createErrorResult(
-      HTTP_STATUS.BAD_GATEWAY,
+      (Number.isInteger(err?.status) && err.status >= 400 && err.status < 500) ? err.status : HTTP_STATUS.BAD_GATEWAY,
       sanitizeErrorMessageWithSecrets(err?.message || "TTS synthesis failed", secrets),
     );
   }

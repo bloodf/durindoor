@@ -49,6 +49,12 @@ export function frameCarriesContent(line) {
 
   if (isString(parsed.type) && parsed.type.endsWith(".delta") && nonEmptyString(parsed.delta)) return true;
 
+  // Responses reasoning may arrive only in a completed summary or item.
+  if (parsed.type === "response.reasoning_summary_text.done" && nonEmptyString(parsed.text)) return true;
+  if ((parsed.type === "response.output_item.added" || parsed.type === "response.output_item.done") &&
+      parsed.item?.type === "reasoning" && Array.isArray(parsed.item.summary) &&
+      parsed.item.summary.some((part) => nonEmptyString(part?.text))) return true;
+
   /** Antigravity wraps native Gemini stream members in a response envelope. */
   const geminiResponse = parsed.response || parsed;
   const parts = geminiResponse.candidates?.[0]?.content?.parts;

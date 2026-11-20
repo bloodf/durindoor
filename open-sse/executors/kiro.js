@@ -1,4 +1,5 @@
 import { BaseExecutor } from "./base.js";
+import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   KIRO_MAX_TOOL_CALL_WRAPPER_BYTES,
@@ -404,6 +405,7 @@ export class KiroExecutor extends BaseExecutor {
   buildHeaders(credentials, stream = true) {
     const headers = {
       ...this.config.headers,
+      ...buildKiroIdentityHeaders(credentials, { inference: true }),
       "Amz-Sdk-Request": "attempt=1; max=3",
       "Amz-Sdk-Invocation-Id": uuidv4()
     };
@@ -545,13 +547,13 @@ export class KiroExecutor extends BaseExecutor {
     let currentResult = await super.execute({ ...args, attemptStartedAt: null });
     if (!currentResult?.response?.ok) return currentResult;
     if (args.stream === false) {
-      currentResult.response = this.transformEventStreamToSSE(currentResult.response, args.model);
+      currentResult.response = this.transformEventStreamToSSE(currentResult.response, args.model, args.body);
       currentResult.terminalProvenance = "validated";
       return currentResult;
     }
 
     for (let repairAttempts = 0;; repairAttempts++) {
-      const gate = await this.openToolCallRepairGate(currentResult.response, args.model);
+      const gate = await this.openToolCallRepairGate(currentResult.response, args.model, args.body);
       if (gate.kind !== "invalid" || repairAttempts >= KIRO_MAX_TOOL_CALL_REPAIR_ATTEMPTS) {
         const originalResponse = currentResult.response;
         currentResult.response = this.responseFromToolCallRepairGate(originalResponse, gate);
@@ -577,8 +579,8 @@ export class KiroExecutor extends BaseExecutor {
    * after client-visible bytes would duplicate the turn. MAX_PROVIDER_BODY_BYTES
    * bounds keepalive buffering and fails open to the base validator at the limit.
    */
-  async openToolCallRepairGate(rawResponse, model) {
-    const transformed = this.transformEventStreamToSSE(rawResponse, model);
+  async openToolCallRepairGate(rawResponse, model, body) {
+    const transformed = this.transformEventStreamToSSE(rawResponse, model, body);
     const reader = transformed.body.getReader();
     const chunks = [];
     let totalBytes = 0;
@@ -669,7 +671,11 @@ export class KiroExecutor extends BaseExecutor {
    * Transform AWS EventStream binary response to SSE text stream
    * Using TransformStream instead of ReadableStream.pull() to avoid Workers timeout
    */
-  transformEventStreamToSSE(response, model) {
+  transformEventStreamToSSE(response, model, body) {
+    // Only client-declared tools occur on the translated current message.
+    const clientToolCall = body?.conversationState?.currentMessage?.userInputMessage?.userInputMessageContext?.tools?.some(
+      (tool) => tool?.toolSpecification?.name?.trim() === KIRO_TOOL_CALL_WRAPPER
+    ) === true;
     let buffer = new Uint8Array(0);
     let chunkIndex = 0;
     const responseId = `chatcmpl-${Date.now()}`;
@@ -687,6 +693,7 @@ export class KiroExecutor extends BaseExecutor {
       reasoningChunkCount: 0,
       toolCallIndex: 0,
       seenToolIds: new Map(),
+      toolArgsEmitted: new Map(),
       pendingWrapperToolCalls: new Map(),
       inThinking: false,
       stopReason: null
@@ -751,6 +758,18 @@ export class KiroExecutor extends BaseExecutor {
       controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(startChunk)}\n\n`));
       controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(argsChunk)}\n\n`));
       state.seenToolIds.set(toolCallId, toolIndex);
+      state.toolArgsEmitted.set(toolCallId, argumentsStr);
+    };
+    // Fill argument-less calls only at the terminal boundary, after all fragments arrive.
+    const flushEmptyToolArgs = (controller) => {
+      for (const [id, index] of state.seenToolIds) {
+        if ((state.toolArgsEmitted.get(id) || "").trim()) continue;
+        const chunk = { id: responseId, object: "chat.completion.chunk", created, model,
+          choices: [{ index: 0, delta: { tool_calls: [{ index, function: { arguments: "{}" } }] }, finish_reason: null }] };
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        state.toolArgsEmitted.set(id, "{}");
+        chunkIndex++;
+      }
     };
     const flushPendingWrappers = (controller) => {
       for (const [toolCallId, pending] of state.pendingWrapperToolCalls) {
@@ -948,7 +967,7 @@ export class KiroExecutor extends BaseExecutor {
               const toolInput = singleToolUse.input;
               let argumentsStr;
 
-              if (toolName === KIRO_TOOL_CALL_WRAPPER) {
+              if (toolName === KIRO_TOOL_CALL_WRAPPER && !clientToolCall) {
                 let pendingWrapper = state.pendingWrapperToolCalls.get(toolCallId);
                 if (!pendingWrapper) {
                   if (state.seenToolIds.has(toolCallId)) {
@@ -1054,6 +1073,7 @@ export class KiroExecutor extends BaseExecutor {
                 };
                 chunkIndex++;
                 state.totalContentLength += argumentsStr.length;
+                state.toolArgsEmitted.set(toolCallId, (state.toolArgsEmitted.get(toolCallId) || "") + argumentsStr);
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(argsChunk)}\n\n`));
               }
             }
@@ -1121,6 +1141,7 @@ export class KiroExecutor extends BaseExecutor {
 
           // Emit final chunk only after receiving BOTH meteringEvent AND contextUsageEvent
           if (state.rawTerminalSeen && state.hasMeteringEvent && state.hasContextUsage && !state.finishEmitted) {
+            flushEmptyToolArgs(controller);
             state.finishEmitted = true;
 
             // Estimate tokens if not available from events. Credit-only
@@ -1196,6 +1217,7 @@ export class KiroExecutor extends BaseExecutor {
 
         // Emit finish only for a raw application terminal, never arbitrary EOF.
         if (state.rawTerminalSeen && !state.failureSeen && !state.finishEmitted) {
+          flushEmptyToolArgs(controller);
           state.finishEmitted = true;
           const hasTokenUsage = Number.isFinite(Number(state.usage?.prompt_tokens)) ||
           Number.isFinite(Number(state.usage?.completion_tokens));

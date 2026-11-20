@@ -1,0 +1,82 @@
+# #800 upstream scan reconciliation
+
+Reviewed 2026-11-20. This reconciles the historical open-PR scan in [#800](https://github.com/bloodf/durindoor/issues/800) with the later 9router intake recorded in [#1072](https://github.com/bloodf/durindoor/issues/1072) and the closed intake-design delivery [#1148](https://github.com/bloodf/durindoor/issues/1148). The 21-day review window is **2026-10-29 through 2026-11-19**, pinned by the owner to upstream `decolua/9router` head [`1855aa44473e88feac9d3f131b9c0c5fc9706b68`](https://github.com/decolua/9router/commit/1855aa44473e88feac9d3f131b9c0c5fc9706b68), v0.5.119. The foundation/content base is [`1fe586bb1cf35e1ed0cb2150a8ef7d1db040b21d`](https://github.com/decolua/9router/commit/1fe586bb1cf35e1ed0cb2150a8ef7d1db040b21d), v0.5.112 (2026-10-28). This report preserves the original findings as dated evidence; GitHub state can change after the pinned intake.
+
+## Historical #800 scan
+
+Issue #800 was created 2026-09-05. Its body reports a scan of 883 open upstream PRs: 166 matched the then-current local port set and 717 were listed as unported across the body and continuation comment. The snapshot includes PRs down to #1. It is an open-PR snapshot, not an inventory of merged upstream changes, issues, final diffs, or subsequent fork ports. Its candidates remain useful historical leads; “unported” means only “not detected by that scan at that time,” not a current port recommendation.
+
+The scan's source is `scripts/upstream-scan-report.sh` in classic mode: it subtracts IDs from supplied upstream PR JSON and supplied ported-ID JSON, then renders all remaining PRs newest first. Its companion `scripts/upstream-ported-ids.sh` collects `port(upstream): #N` and grouped `#A+#B` commit subjects, plus eligible entries in `.github/upstream-ported.json`. The ledger is source-qualified; legacy entries with no source count as 9router, while explicit other sources do not. The scripts do not decide technical applicability, inspect diffs, detect independently implemented behavior absent a ledger entry, or keep the September body current. The report's two-page commented list is a point-in-time source artifact, not a live canonical ledger.
+
+Later existing detection is broader than that historic snapshot but still bounded: the commit subject and ledger mechanisms above can detect landed ports; the `#1072` intake adds state, source, diff, local-equivalent, test, disposition, and owner-issue evidence. `#1148` delivered the local multi-upstream report builder and documented those provenance fields; it did not replace classic scan semantics, create a duplicate inventory, or authorize scheduled runs. The current upstream-sync procedure describes the manual workflow and keeps the dispatch-only workflow as fallback.
+
+## 21-day intake and later coverage
+
+The owner's three #1072 triage comments cover 118, 117, and 119 updated PR records respectively (overlapping boundary records are possible), anchored to the pinned head and the `1fe586bb..1855aa44` upstream range. Page 1 records 25 already-in, 81 port-candidate, and 11 not-applicable dispositions. The later comment pages record changed paths and candidate state, but explicitly treat title/commit matches as triage signals rather than proof that behavior is equivalent. The issue's subsequent delivery comments link landed DurinDoor PRs and identify source PRs, giving later coverage unavailable to #800:
+
+- [DurinDoor #2045](https://github.com/bloodf/durindoor/pull/2045) ports source PRs #4612, #4706, #4774, #4791, #5308, #5311, #5330, #5349, #4518, #5323, #5350, #5372, #3987, #5529, #5660, #5679, #5688, and #5697 (among others in the linked intake disposition).
+- [DurinDoor #2046](https://github.com/bloodf/durindoor/pull/2046) ports #5634, #5637, #5640, #5671, and #5678.
+- [DurinDoor #2055](https://github.com/bloodf/durindoor/pull/2055) ports #4752, #5054, #5131, #5313, #5373, #5415, #5492, #5518, #5587, #5589, #5603, #5609, #5615, #5622, and additional listed sources through #5768.
+- [DurinDoor #2056](https://github.com/bloodf/durindoor/pull/2056) ports #5638 and #5767; it also ports the shared browser-pool portion of #5658, while the Muse-specific portion is inapplicable.
+
+These deliveries supersede those candidates' earlier unported/candidate labels for the covered behavior. Check the linked PRs for the exact scope; a source PR can contain excluded or fork-specific portions.
+
+## Refreshed follow-up dispositions (2026-11-20)
+
+The historical scan inventory and pinned source above are unchanged. The rows below refresh only the short follow-up queue against the current #1072 comments, the local work orders, local docs/tests, and the current integration history. “Ported” requires a merged DurinDoor PR; an integration-only commit is marked queued. The remaining candidate rows stay open until the listed minimum acceptance check is satisfied; size by itself is not a disposition.
+
+The intake's **81 port-candidate** rows are review candidates, not 81 confirmed omissions. The following remain explicit follow-up leads in the issue record because no later delivery listed here resolves their behavior; retain the source-state shown in the pinned triage and recheck current upstream before acting:
+
+| Source PR | State at pinned intake | Follow-up / alternate source |
+| --- | --- | --- |
+| [#5580](https://github.com/decolua/9router/pull/5580) | closed | Still unqualified. Its work order identifies `opencode-settings` and `/v1/models` changes; minimum check: compare both final-diff behaviors against those local routes and their existing tests, then document the exact covered or missing variant. |
+| [#5575](https://github.com/decolua/9router/pull/5575) | open | Still open. Minimum check: split the final diff into independently applicable combo UI, usage aggregation, and non-streaming behavior; qualify each against the matching local route/test before deciding what to port. |
+| [#5574](https://github.com/decolua/9router/pull/5574) | open | Still open successor to #5570; under focused review per #2059. Minimum check: show the residual RTK/combo behavior with one focused regression case against local `chatCore`/RTK. |
+| [#5571](https://github.com/decolua/9router/pull/5571) | open | **Queued for integration, not shipped.** Commit `9df3177e0` adds UberLLM on the integration branch but is not an ancestor of current `main`. Confirm the integration merge reaches `main` before calling it ported; the provider registry/catalog generated checks remain required by the local contract. |
+| [#5566](https://github.com/decolua/9router/pull/5566) | open | Still unqualified. Minimum check: compare the Ollama Cloud alias and stale-catalog refresh with `src/lib/modelCatalog/sync.js`, the Ollama registry entry, and `tests/unit/model-catalog-scope.test.js`; record whether each behavior is already covered. |
+| [#5563](https://github.com/decolua/9router/pull/5563) | open | Still open; DSML parsing is absent and translator flow differs. Minimum acceptance: bounded parser behavior through stream and non-stream responses, including combo aliases, split/malformed tags, mixed content, and existing structured tools (see `port9r-deepseek-dsml-tool-calls.md`). |
+| [#5562](https://github.com/decolua/9router/pull/5562) | open | Still unqualified. Minimum check: map each final-diff stream watchdog/runtime change to its local Antigravity and combo call sites, then add a deterministic offline timeout/phase regression case for any uncovered behavior. |
+| [#5560](https://github.com/decolua/9router/pull/5560) | open | Still unqualified. Minimum check: compare GPT-6.1 1m model exposure and extended-context request routing with the current Codex model catalog and executor tests. |
+| [#5548](https://github.com/decolua/9router/pull/5548) | open | Still unqualified. Minimum check: establish the supported image-edit request/response contract and identify the precise missing route behavior; then test multipart forwarding with native FormData. |
+| [#5547](https://github.com/decolua/9router/pull/5547) | open | Still unqualified. Minimum check: trace media connection selection from dashboard save to dispatch and verify whether media can be separated per connection without changing existing LLM routing. |
+| [#5545](https://github.com/decolua/9router/pull/5545) | open | Still open; security and DB acceptance remains. Minimum: prove authenticated atomic rotation preserves key identity, scopes, expiration, quota, reservations, and history, with race/transaction tests on both DB engines; never inspect or rewrite stored secrets (see `port9r-api-key-settings.md`). |
+| [#5528](https://github.com/decolua/9router/pull/5528) | **already in** | `open-sse/utils/proxyFetch.js` retains native fetch, which accepts native FormData; the #1072 disposition records the upstream multipart regression passing against this path. No duplicate port is needed. |
+| [#5511](https://github.com/decolua/9router/pull/5511) | open | Codex catalog behavior; compare with the fork's live catalog routes. |
+| [#5510](https://github.com/decolua/9router/pull/5510) | open | Non-streaming executor behavior; inspect all changed paths and tests. |
+| [#5502](https://github.com/decolua/9router/pull/5502) | open | Grok video reference validation; compare provider support and validation path. |
+| [#5499](https://github.com/decolua/9router/pull/5499) | open | Antigravity response translation registration; inspect final diff and tests. |
+| [#5496](https://github.com/decolua/9router/pull/5496) | open | Large Codex/Claude core change; decompose and review before any port decision. |
+| [#5491](https://github.com/decolua/9router/pull/5491) | open | Still open; focused work order exists. Minimum acceptance: multiple-account model lock selection, validated status propagation, Retry-After parsing, and combo fallback timing, including malformed headers. |
+| [#5488](https://github.com/decolua/9router/pull/5488) | open | **Ported** in merged [DurinDoor #2059](https://github.com/bloodf/durindoor/pull/2059); assistant reasoning survives auxiliary string-alias collisions. |
+| [#5487](https://github.com/decolua/9router/pull/5487) | open | Azure token-limit behavior; compare the current executor and tests. |
+| [#5467](https://github.com/decolua/9router/pull/5467) | open | Broad combo/model cleanup UI; assess scope and local model-management behavior. |
+| [#5465](https://github.com/decolua/9router/pull/5465) | open | Model capability probing; compare current probe filters and test coverage. |
+| [#5464](https://github.com/decolua/9router/pull/5464) | open | Provider model listing; compare current fetch/listing route. |
+| [#5458](https://github.com/decolua/9router/pull/5458) | open | LLMTR provider plus parameter support; verify registry, schema and generated-index implications. |
+| [#5447](https://github.com/decolua/9router/pull/5447) | open | Still open; focused work order exists. Minimum acceptance: deterministic smooth-weight cycles, persistence/backward compatibility, zero-weight fallback, stickiness, and one non-chat caller; weighted-random behavior is not equivalent. |
+| [#5444](https://github.com/decolua/9router/pull/5444) | open | Combo max-output capability; compare current capability catalog. |
+| [#5441](https://github.com/decolua/9router/pull/5441) | open | SSE keepalive behavior; compare stream framing and callers. |
+| [#5437](https://github.com/decolua/9router/pull/5437) | open | Kiro executor behavior; compare current request shape. |
+| [#5436](https://github.com/decolua/9router/pull/5436) | open | **Inapplicable** per the #1072 app-5 review: tracked fork lockfiles do not contain `deepmerge`; no override to apply. |
+| [#5433](https://github.com/decolua/9router/pull/5433) | open | Combo/database changes; assess migration and data-safety requirements. |
+| [#5432](https://github.com/decolua/9router/pull/5432) | open | Anthropic live model listing; compare current `/v1/models` behavior. |
+| [#5431](https://github.com/decolua/9router/pull/5431) | open | **Ported** in merged [DurinDoor #2057](https://github.com/bloodf/durindoor/pull/2057); Claude Code identity is removed from API-key requests. |
+| [#5425](https://github.com/decolua/9router/pull/5425) | open | Large chat-core change; inspect final diff and impacted callers. |
+| [#5424](https://github.com/decolua/9router/pull/5424) | open | Request-detail rendering; compare local UI and tests. |
+| [#5423](https://github.com/decolua/9router/pull/5423) | open | Still unqualified against the fork-specific Headroom process contract. Minimum check: use offline fixtures/mock processes to prove symlinked venv selection, owned-port reuse, and dashboard proxy routing without terminating unrelated listeners (see `port9r-headroom-process-compat.md`). |
+| [#5420](https://github.com/decolua/9router/pull/5420) | open | CLI foreground behavior; compare launcher/process ownership behavior. |
+| [#5393](https://github.com/decolua/9router/pull/5393) | open | Large broad change; split and assess changed paths before any disposition. |
+| [#5386](https://github.com/decolua/9router/pull/5386) | open | Gemini/Antigravity translation and API route; compare the current translator and beta endpoint. |
+| [#5384](https://github.com/decolua/9router/pull/5384) | open | Non-streaming response behavior; inspect final diff and relevant regression tests. |
+| [#5380](https://github.com/decolua/9router/pull/5380) | open | SSE error conversion in non-streaming responses; compare local response shape. |
+| [#5378](https://github.com/decolua/9router/pull/5378) | open | Gemini/non-streaming behavior; compare local translation and response handling. |
+| [#5374](https://github.com/decolua/9router/pull/5374) | open | Stream disconnect abort handling; compare existing cancellation paths. |
+| [#5361](https://github.com/decolua/9router/pull/5361) | open | Provider shared helper change; inspect exact diff and call sites. |
+| [#5356](https://github.com/decolua/9router/pull/5356) | open | Model modifier/chat-core behavior; compare with the fork's current model modifiers. |
+| [#5336](https://github.com/decolua/9router/pull/5336) | open | Still unqualified; local quarantine is provider-specific. Minimum check: compare invalidated-credential state transitions with #3194 OAuth quarantine and prove whether API-key/provider quarantine has a distinct uncovered path. |
+| [#5298](https://github.com/decolua/9router/pull/5298) | open | Unqualified pending product-scope decision. Smallest next check: identify the requested MCP bridge user flow and record an in-scope/out-of-scope disposition before technical port review. |
+| [#5316](https://github.com/decolua/9router/pull/5316) | open | Still unqualified. Minimum check: compare the final diff with local combo fallback/session state and competing #4704/#4975 contracts; demonstrate one repeated request that distinguishes the intended affinity behavior. |
+
+This is a follow-up queue, not an implementation authorization. Rows not enumerated above remain available in the complete dated tables on #1072; use their recorded state and changed-file evidence rather than treating absence from this short queue as a disposition. The later #1072 notes explicitly identify additional live candidates, including #5711, #5336, and #5423; #5712 is already covered by the fork's `processScan.js` and unit test, #1680/#2845/#4175 were found closed-unmerged or superseded per the app-5 review, and #4291 was deferred for size. For superseded or closed sources, verify the linked alternate/local evidence before reopening work.
+
+No workflow was dispatched or changed for this reconciliation.

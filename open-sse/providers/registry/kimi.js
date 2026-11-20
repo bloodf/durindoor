@@ -1,4 +1,4 @@
-import { KIMI_PLATFORM_CHAT_URL } from "../shared.js";
+import { KIMI_PLATFORM_CHAT_URL, KIMI_PLATFORM_MODELS_URL } from "../shared.js";
 
 export default {
   id: "kimi",
@@ -22,6 +22,13 @@ export default {
     format: "claude",
     auth: { combined: true, header: "Authorization", scheme: "bearer" },
   },
+  // The platform key authenticates both documented APIs. Choose the native
+  // endpoint for Chat or Messages clients; other formats use Messages.
+  transports: [
+    { format: "openai", baseUrl: KIMI_PLATFORM_CHAT_URL, auth: { combined: true, header: "Authorization", scheme: "bearer" } },
+    { format: "claude", baseUrl: "https://api.moonshot.ai/anthropic/v1/messages", auth: { combined: true, header: "Authorization", scheme: "bearer" } },
+  ],
+  modelsFetcher: { url: KIMI_PLATFORM_MODELS_URL, type: "openai" },
   // IDs and limits from https://platform.kimi.ai/docs/models.md and
   // https://platform.kimi.ai/docs/pricing/chat.md. Per-token prices are unverified.
   models: [

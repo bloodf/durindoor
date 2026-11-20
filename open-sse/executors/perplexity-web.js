@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
@@ -51,20 +52,14 @@ const SESSION_MAX_ENTRIES = 200;
 
 const sessionCache = new Map();
 
-// FNV-1a hash for session key lookup
+// Hash the complete structured history to avoid ambiguous or colliding cache keys.
 function sessionKey(history) {
-  const parts = history.map((h) => `${h.role}:${h.content}`).join("\n");
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < parts.length; i++) {
-    hash ^= parts.charCodeAt(i);
-    hash = hash * 0x01000193 >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
+  return createHash("sha256").update(JSON.stringify(history)).digest("hex");
 }
 
-function sessionLookup(history) {
-  if (history.length === 0) return null;
-  const key = sessionKey(history);
+function sessionLookup(history, credentialScope) {
+  if (!credentialScope || history.length === 0) return null;
+  const key = `${credentialScope}:${sessionKey(history)}`;
   const entry = sessionCache.get(key);
   if (!entry) return null;
   if (Date.now() - entry.ts > SESSION_MAX_AGE_MS) {
@@ -74,10 +69,10 @@ function sessionLookup(history) {
   return entry.backendUuid;
 }
 
-function sessionStore(history, currentMsg, responseText, backendUuid) {
-  if (!backendUuid) return;
+function sessionStore(history, currentMsg, responseText, backendUuid, credentialScope) {
+  if (!backendUuid || !credentialScope) return;
   const full = [...history, { role: "user", content: currentMsg }, { role: "assistant", content: responseText }];
-  const key = sessionKey(full);
+  const key = `${credentialScope}:${sessionKey(full)}`;
   sessionCache.set(key, { backendUuid, ts: Date.now() });
   if (sessionCache.size > SESSION_MAX_ENTRIES) {
     let oldestKey = null;
@@ -471,7 +466,7 @@ async function* extractContent(eventStream, signal) {
   yield { delta: "", answer: emitted, backendUuid: backendUuid ?? undefined, done: true };
 }
 
-function buildStreamingResponse(eventStream, model, cid, created, history, currentMsg, signal) {
+function buildStreamingResponse(eventStream, model, cid, created, history, currentMsg, signal, credentialScope) {
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
@@ -520,7 +515,7 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
         })));
         controller.enqueue(encoder.encode(SSE_DONE));
 
-        sessionStore(history, currentMsg, cleanResponse(fullAnswer), respBackendUuid);
+        sessionStore(history, currentMsg, cleanResponse(fullAnswer), respBackendUuid, credentialScope);
       } catch (err) {
         controller.enqueue(encoder.encode(sseChunk({
           id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
@@ -534,7 +529,7 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
   });
 }
 
-async function buildNonStreamingResponse(eventStream, model, cid, created, history, currentMsg, signal) {
+async function buildNonStreamingResponse(eventStream, model, cid, created, history, currentMsg, signal, credentialScope) {
   let fullAnswer = "";
   let respBackendUuid = null;
   const thinkingParts = [];
@@ -552,7 +547,7 @@ async function buildNonStreamingResponse(eventStream, model, cid, created, histo
   }
 
   fullAnswer = cleanResponse(fullAnswer);
-  sessionStore(history, currentMsg, fullAnswer, respBackendUuid);
+  sessionStore(history, currentMsg, fullAnswer, respBackendUuid, credentialScope);
 
   const reasoningContent = thinkingParts.length > 0 ? thinkingParts.join("\n") : undefined;
   const msg = { role: "assistant", content: fullAnswer };
@@ -598,8 +593,12 @@ export class PerplexityWebExecutor extends BaseExecutor {
       log?.info?.("PPLX-WEB", `Unmapped model ${model}, using as raw preference`);
     }
 
+    // Scope continuation IDs to the actual outbound credential without retaining the secret.
+    const auth = credentials?.accessToken ? `bearer:${credentials.accessToken}` :
+      credentials?.apiKey ? `cookie:${buildNextAuthSessionCookie(credentials.apiKey)}` : null;
+    const credentialScope = auth ? createHash("sha256").update(auth).digest("hex") : null;
     const parsed = parseOpenAIMessages(messages);
-    const followUpUuid = sessionLookup(parsed.history);
+    const followUpUuid = sessionLookup(parsed.history, credentialScope);
     if (followUpUuid) log?.info?.("PPLX-WEB", `Session continue: ${followUpUuid.slice(0, 12)}...`);
 
     const query = buildQuery(parsed, followUpUuid, body?.tools);
@@ -671,13 +670,13 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     let finalResponse;
     if (stream) {
-      const sseStream = buildStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);
+      const sseStream = buildStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal, credentialScope);
       finalResponse = new Response(sseStream, {
         status: 200,
         headers: { ...SSE_HEADERS_NO_BUFFER }
       });
     } else {
-      finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal);
+      finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal, credentialScope);
     }
     return { response: finalResponse, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody, terminalProvenance: "validated" };
   }

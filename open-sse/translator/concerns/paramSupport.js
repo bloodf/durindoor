@@ -7,7 +7,7 @@ import { ROLE } from "../schema/roles.js";
 
 // Each rule: optional provider string/regex, regex match on model, list of params to drop.
 // A param is removed only when it is present (!== undefined).
-import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const STRIP_RULES = [
 // 9router 7c42d8f: OpenAI accepts the modern completion cap. Keep explicit
@@ -123,7 +123,7 @@ export function stripUnsupportedChatExtensions(body, transport, defaultTransport
 export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES, credentials = null) {
   if (!model || !body || !isObject(body)) return body;
   // LLMTR rejects Responses-style reasoning objects on its Chat endpoint.
-  if (provider === "llmtr" && body.reasoning != null && typeof body.reasoning !== "boolean") {
+  if (provider === "llmtr" && body.reasoning != null && !isBoolean(body.reasoning)) {
     const value = body.reasoning;
     body.reasoning = !(value?.enabled === false || value?.effort === "none" || value?.effort === "off");
   }

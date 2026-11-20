@@ -279,7 +279,7 @@ export function buildClaudeModelsHeaders(token) {
 
 /** Retain upstream vendor-qualified IDs and exclude non-chat-only rows. */
 export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((model) =>
-  model && typeof model.id === "string" &&
+  model && isString(model.id) &&
   (!Array.isArray(model.supported_operations) || model.supported_operations.length === 0 || model.supported_operations.includes("CHAT_COMPLETIONS"))
 );
 

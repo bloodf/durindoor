@@ -92,7 +92,9 @@ vi.mock("@/lib/usageDb.js", () => ({
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 const { resolveProviderPrefix, isCustomProviderId } = await import("@/shared/utils/providerPrefix.js");
-const { normalizeLiveModel, normalizeStaticModel, groupModelsByProvider, buildModelIndex, resolveSavedModel } =
+const { normalizeLiveModel, normalizeStaticModel, groupModelsByProvider } =
+  await import("@/app/(dashboard)/dashboard/playground/playgroundHelpers.js");
+const { buildModelIndex, resolveSavedModel } =
   await import("@/app/(dashboard)/dashboard/playground/playgroundHelpers.js");
 const { buildDashboardCapsIndex } = await import("@/shared/hooks/useModelCaps.js");
 
@@ -217,7 +219,8 @@ describe("Playground model ids", () => {
     expect(b.requestModel).toBe(`${OTHER_NODE_ID}/${MODEL}`);
   });
 
-  it("keeps a live id that already carries a provider segment verbatim on a built-in provider", () => {
+  it("keeps a live id that already carries a provider segment verbatim", () => {
+    // Scoped to a built-in provider, where the id is already a gateway address.
     const builtIn = { id: "conn-gateway", provider: "openrouter", name: "Gateway", isActive: true, providerSpecificData: {} };
     const row = normalizeLiveModel({ id: "vendor/some-model" }, builtIn);
     expect(row.requestModel).toBe("vendor/some-model");

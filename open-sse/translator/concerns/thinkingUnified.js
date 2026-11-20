@@ -3,7 +3,7 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
-import { getThinkingLevels, getThinkingLevelsFromCapabilities, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
+import { getThinkingLevels, getThinkingLevelsFromCapabilities, getOpencodeGoEffortTiers, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
 import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
@@ -328,6 +328,51 @@ function isAstraMinimalFloorModel(provider, model) {
   return GPT_6_MINIMAL_FLOOR_PROVIDERS.has(provider) && GPT_6_MINIMAL_FLOOR_MODELS.has(model);
 }
 
+// Effort tier order used to fold an unsupported request onto the nearest
+// supported rung: the smallest supported tier at or above the request, else
+// the highest supported tier. Same rule the upstream registry-tier clamp uses.
+const EFFORT_TIER_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+
+/**
+ * Clamp one effort tier onto a model's declared tier set.
+ * @param {string} level
+ * @param {string[]} supported
+ * @returns {string} the requested tier when supported, else the nearest rung
+ */
+export function clampTierToSupported(level, supported) {
+  if (!Array.isArray(supported) || !supported.length) return level;
+  if (supported.includes(level)) return level;
+  const ranked = supported
+    .map((tier) => ({ tier, rank: EFFORT_TIER_ORDER.indexOf(tier) }))
+    .filter((entry) => entry.rank >= 0)
+    .sort((a, b) => a.rank - b.rank);
+  if (!ranked.length) return level;
+  const requestedRank = EFFORT_TIER_ORDER.indexOf(level);
+  const nearest = ranked.find((entry) => entry.rank >= requestedRank);
+  return nearest ? nearest.tier : ranked[ranked.length - 1].tier;
+}
+
+/**
+ * Fold a thinking intent onto a model's declared effort tiers.
+ *
+ * A disable request on a model whose declared tiers exclude "none" is floored
+ * onto the lowest declared tier instead of switching thinking off, and a tier
+ * the model does not declare is folded onto the nearest supported rung. The
+ * result is the same intent for every lane (chat, messages, responses).
+ */
+export function normalizeToDeclaredTiers(cfg, supported) {
+  if (!cfg || !Array.isArray(supported) || !supported.length) return cfg;
+  if (cfg.mode === "none") {
+    if (supported.includes("none")) return cfg;
+    return { ...cfg, mode: "level", level: supported[0] };
+  }
+  if (cfg.mode === "level") {
+    const level = clampTierToSupported(cfg.level, supported);
+    return level === cfg.level ? cfg : { ...cfg, mode: "level", level };
+  }
+  return cfg;
+}
+
 // Map requested OpenAI effort to a level the model accepts.
 // Preserve when listed in getThinkingLevels; else nearest high-end sibling.
 // Unknown/empty metadata keeps legacy safe max/ultra → xhigh clamp.
@@ -495,6 +540,18 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "deepseek":{
+        // OpenCode Go declares model-scoped DeepSeek effort tiers (the same rows
+        // the catalog advertises). The intent was already folded onto the
+        // declared set in applyThinking, so the tier is forwarded verbatim and
+        // a tier the model does not declare never reaches the wire.
+        const goTiers = getOpencodeGoEffortTiers(provider, model);
+        if (goTiers) {
+          const requested = eff.mode === "none" ? "none" : (toLevel(eff) || "high");
+          const tier = clampTierToSupported(requested === "auto" ? "high" : requested, goTiers);
+          body.reasoning_effort = tier;
+          body.thinking = { type: tier === "none" ? "disabled" : "enabled" };
+          break;
+        }
         if (none && canDisable) {body.thinking = { type: "disabled" };break;}
         body.thinking = { type: "enabled" };
         // Native DeepSeek V4 accepts reasoning_effort "max"; legacy V3.2 models
@@ -602,17 +659,24 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   const cfg = override || intent || extractThinking(body);
   const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
 
+  // OpenCode Go publishes model-scoped DeepSeek effort tiers (the same rows the
+  // catalog advertises). Fold the requested tier onto the declared set once,
+  // before any lane renders it, so the chat, messages and responses lanes all
+  // carry a rung the model accepts.
+  const goTiers = getOpencodeGoEffortTiers(provider, cleanModel);
+  const tieredCfg = goTiers ? normalizeToDeclaredTiers(cfg, goTiers) : cfg;
+
   // Model cannot reason → strip any stray thinking fields.
   if (!caps.reasoning) {
     stripAll(body, targetFormat === FORMATS.CLAUDE);
     return body;
   }
-  if (!cfg) return body;
+  if (!tieredCfg) return body;
   if ((provider === "minimax" || provider === "minimax-cn") && /^MiniMax-M[23]/.test(cleanModel)) {
     const reasoningDetails = body.reasoning && isObject(body.reasoning) ? { ...body.reasoning } : {};
     stripAll(body, targetFormat === FORMATS.CLAUDE);
-    const disabled = cfg.mode === "none" && caps.thinkingCanDisable !== false;
-    const level = cfg.mode === "none" && !disabled ? "low" : toLevel(cfg);
+    const disabled = tieredCfg.mode === "none" && caps.thinkingCanDisable !== false;
+    const level = tieredCfg.mode === "none" && !disabled ? "low" : toLevel(tieredCfg);
     if (targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE) {
       if (disabled || level && level !== "auto") {
         body.reasoning = { ...reasoningDetails, effort: disabled ? "none" : level };
@@ -632,14 +696,14 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   // comes back at all; capture what the client asked for before stripAll wipes
   // body.thinking, so an explicit client choice survives the reformat.
   const requestedDisplay = isString(body.thinking?.display) ? body.thinking.display : undefined;
-  const requestedThinkingType = body.thinking?.type || cfg.thinkingType;
+  const requestedThinkingType = body.thinking?.type || tieredCfg.thinkingType;
   stripAll(body, targetFormat === FORMATS.CLAUDE, targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE);
-  applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType, targetFormat);
+  applyFormat(fmt, body, tieredCfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType, targetFormat);
   // A compatible DeepSeek gateway can validate the explicit source budget.
   if (targetFormat === FORMATS.OPENAI && provider?.startsWith("openai-compatible-") &&
     caps.thinkingFormat === "deepseek" && ["openai", "deepseek"].includes(fmt) &&
-    cfg.mode === "budget" && Number.isFinite(cfg.budget) && cfg.budget > 0) {
-    body.thinking = { type: "enabled", budget_tokens: cfg.budget };
+    tieredCfg.mode === "budget" && Number.isFinite(tieredCfg.budget) && tieredCfg.budget > 0) {
+    body.thinking = { type: "enabled", budget_tokens: tieredCfg.budget };
   }
   if (provider === "kimi" && targetFormat === FORMATS.CLAUDE) {
     // Moonshot Messages exposes effort through output_config, not OpenAI reasoning_effort.

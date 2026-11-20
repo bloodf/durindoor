@@ -192,8 +192,17 @@ export function createEmptyRetryStream({
           }
           if (readResult.__stalled) {
             try {currentReader.cancel().catch(() => {});} catch {/* already closed */}
-            endReason = "stall";
-            break readAttempt;
+            if (held?.kind === "error_object") {
+              endReason = "stall";
+              break readAttempt;
+            }
+            // A stalled request says nothing about account health. Settle its
+            // reservation, but neither retry it nor trigger the empty-account
+            // cooldown reserved for completed empty responses.
+            try { await Promise.resolve(onAttemptDiscarded?.(currentBody, "stall", { final: true })); }
+            catch { return exhaust("local quota reservation settlement failed", { notifyProvider: false }); }
+            if (!downstreamGone) controller.error(new Error("stream stall timeout"));
+            return;
           }
 
           const { done, value } = readResult;

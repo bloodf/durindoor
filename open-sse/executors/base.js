@@ -53,6 +53,30 @@ function cancelDiscardedResponse(response) {
   } catch {/* body may already be locked or closed */}
 }
 
+/**
+ * Read an OPTIONAL cloned error body used to match a provider-side hint.
+ *
+ * The probe is advisory: a body that cannot be read (stream error, disturbed
+ * body, oversized payload) must never replace the upstream HTTP response with a
+ * transport error. A read failure is therefore a NON-MATCH (empty text) and the
+ * caller keeps the original response together with its status. A caller abort
+ * during the probe still propagates: the request is cancelled, never silently
+ * downgraded into a successful-looking response.
+ *
+ * The source is cloned before reading, so the original body stays intact for the
+ * caller and the translator.
+ */
+async function readOptionalProbeText(source, { signal = null, maxBytes = 64 * 1024, timeoutMs = 2_000 } = {}) {
+  if (!source || !isFunction(source.clone)) return "";
+  try {
+    return await readBoundedResponseText(source.clone(), { signal, maxBytes, timeoutMs });
+  } catch (probeError) {
+    if (probeError?.name === "AbortError" || signal?.aborted) throw probeError;
+    // Unreadable body → no match. The caller keeps the original HTTP response.
+    return "";
+  }
+}
+
 
 /** Abort-aware retry delay with deterministic listener/timer cleanup. */
 export function waitForRetryDelay(delayMs, signal = null) {
@@ -303,6 +327,28 @@ export class BaseExecutor {
     // Header/connect timeout: per-request policy override → provider config → global default.
     const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 
+    // Transport-attempt budget for ONE base URL. `maxTransportAttempts` counts
+    // the FIRST try, so a URL may carry at most (maxTransportAttempts - 1)
+    // additional dispatches. The generic status/network retry path spends that
+    // budget through `retryAttemptsByUrl`; a specialized recovery that
+    // re-dispatches on the SAME url (the Cohere 422 suggestion) is an extra
+    // transport attempt and must spend the SAME budget instead of dispatching
+    // past the ceiling. Without a policy (maxTransportAttempts == null) there is
+    // no ceiling and the implicit pre-port behavior is preserved.
+    const transportBudgetLeft = (urlIndex) => {
+      if (maxTransportAttempts == null) return true;
+      const cap = Math.max(0, maxTransportAttempts - 1);
+      return (retryAttemptsByUrl[urlIndex] ?? 0) < cap;
+    };
+
+    // Spend one slot of the per-URL transport budget. Only a CONFIGURED ceiling
+    // tracks the recovery: without a policy the implicit retry counters stay
+    // exactly as they were before the recovery existed.
+    const spendTransportBudget = (urlIndex) => {
+      if (maxTransportAttempts == null) return;
+      retryAttemptsByUrl[urlIndex] = (retryAttemptsByUrl[urlIndex] ?? 0) + 1;
+    };
+
     // Resolve how many in-place retries a failure gets, honoring skip-rules and the
     // transport-attempt ceiling (see the attempts table in runtimeConfig.js).
     const resolveAttempts = ({ statusKey, errorKind, text }) => {
@@ -437,9 +483,22 @@ export class BaseExecutor {
           proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
         // Cohere can explicitly suggest its supported tier on a 422. Retry only
         // that rejection, once, and only when a different effort was sent.
+        //
+        // COMPATIBILITY CONTRACT (see internal/docs/port-reports/1073-existing-provider-request-residuals.md):
+        //  - The recovery is an EXTRA transport dispatch on this base URL, so it
+        //    is gated by the SAME transport-attempt budget the generic retry path
+        //    spends (`requestPolicy.maxTransportAttempts`, which counts the
+        //    first try). With a one-attempt ceiling the 422 is returned unchanged
+        //    and no second request is dispatched.
+        //  - The error body read is OPTIONAL. A body that cannot be read is a
+        //    NON-MATCH: the original response and its status are preserved
+        //    instead of the read failure surfacing as a transport error.
+        //  - Without a requestPolicy (no ceiling) the implicit pre-port
+        //    behavior is unchanged: the recovery still runs exactly once.
         if (this.provider === "cohere" && response.status === 422 &&
-            isString(requestBody?.reasoning_effort) && requestBody.reasoning_effort !== "high") {
-          const errorText = await readBoundedResponseText(response.clone(), { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 });
+            isString(requestBody?.reasoning_effort) && requestBody.reasoning_effort !== "high" &&
+            transportBudgetLeft(urlIndex)) {
+          const errorText = await readOptionalProbeText(response, { signal });
           if (/reasoning_effort/i.test(errorText) && /\buse\s+['"`]high['"`]\s+instead\b/i.test(errorText)) {
             requestBody = { ...requestBody, reasoning_effort: "high" };
             bodyStr = JSON.stringify(requestBody);
@@ -449,6 +508,7 @@ export class BaseExecutor {
             connectCtrl = new AbortController();
             connectTimer = armConnectTimer();
             mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
+            spendTransportBudget(urlIndex);
             beginDispatch();
             response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
               ...fetchOptions, body: bodyStr, signal: mergedSignal
@@ -456,10 +516,9 @@ export class BaseExecutor {
           }
         }
         if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false) {
-          const clone = response.clone?.();
-          const errorText = clone ?
-          await readBoundedResponseText(clone, { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 }) :
-          "";
+          // OPTIONAL probe: an unreadable body is a non-match, never a transport
+          // error that would discard the upstream 400.
+          const errorText = await readOptionalProbeText(response, { signal });
           const field = findOffendingField(errorText);
           if (
           field &&
@@ -524,16 +583,12 @@ export class BaseExecutor {
         // (and the status is an error). Clone + bounded read so a provider-controlled
         // body cannot hang the request or grow memory; the original body stays intact
         // for the caller/translator. Unreadable/oversized → no contains match.
+        // readOptionalProbeText owns that contract: a failed read is a non-match
+        // (never a transport error that would discard the upstream response), while
+        // a caller abort during the probe still cancels the request.
         let errorText = null;
         if (hasContainsRule && response.status >= 400) {
-          try {
-            errorText = await readBoundedResponseText(response.clone(), { signal, maxBytes: 64 * 1024, timeoutMs: 2_000 });
-          } catch (probeError) {
-            // A caller abort during the probe must cancel the request, not be
-            // swallowed into a silent no-match that returns the upstream response.
-            if (probeError?.name === "AbortError" || signal?.aborted) throw probeError;
-            // unreadable/oversized body → skip contains matching
-          }
+          errorText = await readOptionalProbeText(response, { signal });
         }
 
         // Antigravity 504s move to the account layer without replaying this URL.

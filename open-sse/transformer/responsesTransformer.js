@@ -355,7 +355,8 @@ export function createResponsesApiTransformStream(logger = null) {
 
           if (state.inThinking && content) {
             emitReasoningDelta(controller, content);
-            continue;
+            // A reasoning chunk can also carry a tool call or finish reason.
+            content = "";
           }
 
           // Regular text content

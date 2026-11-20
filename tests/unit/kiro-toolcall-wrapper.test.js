@@ -151,3 +151,31 @@ describe("Kiro nested tool_call wrapper — upstream #2681", () => {
     expect(output.length).toBeLessThan(2048);
   });
 });
+
+describe("Kiro client tool calls", () => {
+  it("fills only empty arguments before the finish", async () => {
+    const output = await readAll(executorStream([
+      createMockFrame("toolUseEvent", { toolUseId: "empty", name: "status" }),
+      createMockFrame("toolUseEvent", { toolUseId: "full", name: "read", input: { path: "/a" } }),
+      createMockFrame("messageStopEvent", {}),
+    ]));
+    const events = output.split("\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)));
+    const args = new Map();
+    for (const event of events) for (const call of event.choices?.[0]?.delta?.tool_calls || []) {
+      args.set(call.index, (args.get(call.index) || "") + (call.function?.arguments || ""));
+    }
+    expect(args.get(0)).toBe("{}");
+    expect(JSON.parse(args.get(1))).toEqual({ path: "/a" });
+    expect(events.findIndex((event) => event.choices?.[0]?.finish_reason)).toBeGreaterThan(events.findLastIndex((event) => event.choices?.[0]?.delta?.tool_calls));
+  });
+  it("passes a client-declared tool_call through without wrapper validation", async () => {
+    const body = { conversationState: { currentMessage: { userInputMessage: { userInputMessageContext: { tools: [{ toolSpecification: { name: "tool_call" } }] } } } } };
+    const response = new KiroExecutor().transformEventStreamToSSE({ body: framesStream([
+      createMockFrame("toolUseEvent", { toolUseId: "client", name: "tool_call", input: { query: "x" } }),
+      createMockFrame("messageStopEvent", {}),
+    ]) }, "claude-test", body);
+    const output = await readAll(response.body);
+    expect(output).toContain('\\"query\\":\\"x\\"');
+    expect(output).not.toContain("invalid_kiro_tool_call");
+  });
+});

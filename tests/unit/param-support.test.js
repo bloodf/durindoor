@@ -421,6 +421,19 @@ describe("applyParamRenames", () => {
 // itself. A helper-only test cannot prove the rename fires on the executor's
 // dispatch path. Source: OmniRoute #6912/#6964.
 describe("executor max-token rename dispatch", () => {
+  it("preserves the explicit Anthropic cap for a model matching OpenAI naming rules", () => {
+    const executor = new DefaultExecutor("openrouter");
+    const credentials = { runtimeTransport: { format: FORMATS.CLAUDE } };
+    for (const [input, expected] of [
+      [{ max_tokens: 32 }, 32],
+      [{ max_completion_tokens: 64 }, 64],
+      [{ max_tokens: 32, max_completion_tokens: 64 }, 32],
+    ]) {
+      const out = executor.transformRequest("gpt-5.4", { ...input }, true, credentials);
+      expect(out.max_tokens).toBe(expected);
+      expect(out.max_completion_tokens).toBeUndefined();
+    }
+  });
   it("GithubExecutor.transformRequest forward-renames for a family model", () => {
     const out = new GithubExecutor().transformRequest("o3", { max_tokens: 321 }, true, {});
     expect(out.max_completion_tokens).toBe(321);

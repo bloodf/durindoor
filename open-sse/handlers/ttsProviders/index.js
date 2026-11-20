@@ -38,8 +38,9 @@ export async function synthesizeViaConfig(provider, text, model, credentials, pr
   const defaultModel = ttsModels[0]?.id || "";
   // The old NVIDIA catalog omitted the vendor prefix from this model ID.
   const resolvedModel = provider === "nvidia" && model === "magpie-tts-multilingual" ? `nvidia/${model}` : model;
-  const { modelId, voiceId } = parseModelVoice(resolvedModel, defaultModel, "", ttsModels);
-  return handler({ ...options, baseUrl: cfg.baseUrl, apiKey, text, modelId, voiceId, proxyOptions });
+  const { modelId, voiceId } = parseModelVoice(resolvedModel, defaultModel, cfg.defaultVoice || "", ttsModels);
+  const upstreamOptions = provider === "nan" && options.responseFormat && options.responseFormat !== "json" ? { response_format: options.responseFormat } : {};
+  return handler({ ...upstreamOptions, ...options, baseUrl: cfg.baseUrl, apiKey, text, modelId, voiceId, proxyOptions });
 }
 
 // Voice fetchers (used by /api/media-providers/tts/voices route)

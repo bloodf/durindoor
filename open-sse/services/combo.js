@@ -1,4 +1,4 @@
-import { hasResponsesContentItem, isResponsesReceipt } from "../utils/responsesContent.js";
+import { hasResponsesContentItem, isResponsesEnvelope, isResponsesReceipt } from "../utils/responsesContent.js";
 import { withRouteResponseHeaders } from "../utils/routeResponseHeaders.js";
 import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 /**
@@ -1331,6 +1331,12 @@ export async function detectUpstreamError(response) {
  * Whether a successful (2xx) NON-STREAMING response has a meaningful body.
  * Returns true when the body is empty or a known "empty output" shape despite
  * a 200. Streaming/opaque responses are trusted (caller must not read them).
+ *
+ * A native Responses envelope (`object: "response"` with native `output`
+ * items) is judged by those items and by its status. The envelope's own
+ * `text` field is the request's text CONFIGURATION — metadata, not assistant
+ * content — so it never makes a completed response with a valid native item
+ * look empty (#1072).
  * @param {Response} response
  * @returns {Promise<boolean>}
  */
@@ -1361,6 +1367,12 @@ async function isBodyEmpty(response) {
     block?.type === RESPONSES_ITEM.FUNCTION_CALL || block?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL ||
     Boolean(block?.image_url || block?.image || block?.source || block?.audio || block?.file || block?.refusal);
 
+  // Native Responses output items that carry client-usable content.
+  const hasNativeOutput = (output) => Array.isArray(output) && output.some((item) =>
+    hasResponsesContentItem(item) || hasBlock(item) ||
+    (Array.isArray(item?.content) && item.content.some(hasBlock)) ||
+    (Array.isArray(item?.summary) && item.summary.some(hasBlock)));
+
   if (Array.isArray(payload.choices)) {
     if (payload.choices.length === 0) return true;
     return payload.choices.every((choice) => {
@@ -1380,12 +1392,31 @@ async function isBodyEmpty(response) {
     !(Array.isArray(payload.content) && payload.content.some(hasBlock)) &&
     !(isObject(payload.content) && hasBlock(payload.content));
   }
+
+  // A queued/in_progress receipt acknowledges an accepted background job even
+  // when the envelope carries no output items. Checked before the generic
+  // `text` branch so a receipt that also echoes a text configuration stays a
+  // receipt instead of being read as an empty body.
+  if (isResponsesReceipt(payload)) return false;
+
+  // Native Responses envelope (#1072): the provider echoes the request's text
+  // CONFIGURATION (`text: {format: {type: "json_schema"}}`) next to its native
+  // output. That field is metadata, not assistant content — the generic `text`
+  // branch below reads any non-string `text` as an empty body, which discarded
+  // a completed response carrying a valid native item (an image_generation_call)
+  // and made combo spend two more attempts and replace the answer with a
+  // fallback. Judge the envelope by its native output items and status.
+  if (isResponsesEnvelope(payload)) {
+    if (hasNativeOutput(payload.output)) return false;
+    // No native output: a `text` STRING is still content, while a text
+    // configuration object is metadata and leaves the envelope empty.
+    return !hasText(payload.text);
+  }
+
   if (Object.prototype.hasOwnProperty.call(payload, "text")) return !hasText(payload.text);
   if (Array.isArray(payload.candidates)) return !payload.candidates.some((candidate) =>
     Array.isArray(candidate?.content?.parts) && candidate.content.parts.some((part) => hasText(part?.text) || part?.functionCall || part?.inlineData?.data || part?.inline_data?.data || part?.fileData || part?.file_data));
-  if (isResponsesReceipt(payload)) return false;
-  if (Array.isArray(payload.output)) return !payload.output.some((item) =>
-    hasResponsesContentItem(item) || hasBlock(item) || (Array.isArray(item?.content) && item.content.some(hasBlock)) || (Array.isArray(item?.summary) && item.summary.some(hasBlock)));
+  if (Array.isArray(payload.output)) return !hasNativeOutput(payload.output);
   return false;
 }
 

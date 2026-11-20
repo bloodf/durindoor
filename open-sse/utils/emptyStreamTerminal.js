@@ -12,6 +12,7 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
   let timer = null;
   let released = false;
   let sawError = false;
+  let sawOutput = false;
   const clear = () => { if (timer) clearTimeout(timer); timer = null; };
   const send = (controller, value) => { if (value) controller.enqueue(encoder.encode(value)); };
   const release = (controller) => {
@@ -24,7 +25,7 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
   };
   const hasOutput = () => {
     const snapshot = getSnapshot?.();
-    return snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
+    return sawOutput || snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
       Number(snapshot?.usage?.completion_tokens ?? snapshot?.usage?.output_tokens ?? snapshot?.usage?.candidatesTokenCount ?? 0) > 0;
   };
   const process = (controller, frame) => {
@@ -34,6 +35,14 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
     const event = frame.match(/^event:\s*(.*)$/m)?.[1] || payload?.type;
     const error = payload?.error || payload?.response?.error || event === "error" || event === "response.failed";
     if (error) { sawError = true; held = ""; clear(); send(controller, frame); return; }
+    // Native Claude and Responses passthrough content is not accumulated by
+    // the OpenAI-oriented accounting snapshot, so observe client output too.
+    if (event === "content_block_delta" && (payload?.delta?.text?.trim?.() || payload?.delta?.thinking?.trim?.()) ||
+        event === "content_block_start" && payload?.content_block?.type === "tool_use" ||
+        ["response.output_text.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta"].includes(event) && payload?.delta?.trim?.() ||
+        event === "response.output_item.added" && ["function_call", "custom_tool_call"].includes(payload?.item?.type)) {
+      sawOutput = true;
+    }
     const reason = payload?.choices?.find((choice) => choice.finish_reason)?.finish_reason;
     const terminal = data === "[DONE]" || (format === FORMATS.OPENAI && reason === "stop") ||
       (format === FORMATS.CLAUDE && event === "message_stop") ||

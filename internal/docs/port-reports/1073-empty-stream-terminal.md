@@ -5,3 +5,5 @@ Compared OmniRoute [#20610](https://github.com/cheaper-inference/OmniRoute/pull/
 OmniRoute [#20095](https://github.com/cheaper-inference/OmniRoute/pull/20095), head `db8e10356cd05cd247893ce5e898ff393054cef1`, arms its generic retry on post-tool continuations. No equivalent arming gap exists in the local Antigravity/AGY path: `chatCore.js` wraps every streamed request from those providers with `createEmptyRetryStream`, regardless of message history. Other providers have no equivalent retry path; this port does not add one.
 
 Focused offline coverage is in `tests/unit/empty-stream-terminal-1073.test.js`; the integration gate owns full-suite validation.
+
+Native Claude and Responses passthrough output is also observed at the client boundary because it is not always present in the accounting snapshot. The interruption snapshot retains its existing shape.

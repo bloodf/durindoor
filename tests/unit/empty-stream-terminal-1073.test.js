@@ -32,6 +32,12 @@ describe("empty terminal ordering", () => {
     expect(result).toContain(expected);
     expect(result).not.toContain(terminal);
   });
+  it.each([
+    [FORMATS.CLAUDE, 'event: content_block_start\ndata: {"type":"content_block_start","content_block":{"type":"tool_use","name":"lookup"}}\n\n', 'event: message_stop\ndata: {"type":"message_stop"}\n\n'],
+    [FORMATS.OPENAI_RESPONSES, 'event: response.output_item.added\ndata: {"type":"response.output_item.added","item":{"type":"function_call"}}\n\n', 'event: response.completed\ndata: {"type":"response.completed"}\n\n'],
+  ])("preserves native tool-only output for %s", async (format, output, terminal) => {
+    expect(await run([output, terminal], { format })).toBe(output + terminal);
+  });
   it("cancels promptly while a terminal is held", async () => {
     const cancel = vi.fn();
     const source = new ReadableStream({ start(controller) { controller.enqueue(encoder.encode(stop)); }, cancel });
@@ -56,7 +62,7 @@ it("uses actual transform completion and preserves trailing usage", async () => 
   }, null, FORMATS.OPENAI);
   const usage = 'data: {"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}\n\n';
   const source = new ReadableStream({ start(controller) { for (const frame of [stop, usage, done]) controller.enqueue(encoder.encode(frame)); controller.close(); } });
-  const result = await new Response(source.pipeThrough(transform).pipeThrough(createEmptyTerminalGuard(FORMATS.OPENAI, () => verdict, () => transform.getStreamSnapshot()))).text();
+  const result = await new Response(source.pipeThrough(transform).pipeThrough(createEmptyTerminalGuard(FORMATS.OPENAI, () => verdict, () => transform.getEmptyStreamSnapshot()))).text();
   expect(result).not.toContain('"error"');
   expect(result).toContain('"completion_tokens":3');
   expect(complete).toHaveBeenCalledOnce();
@@ -72,7 +78,7 @@ it("reports an empty actual transform once without forwarding success", async ()
     verdict = !content.content && !content.thinking && !content.hadToolCalls && !usage?.completion_tokens;
   }, null, FORMATS.OPENAI);
   const source = new ReadableStream({ start(controller) { for (const frame of [stop, done]) controller.enqueue(encoder.encode(frame)); controller.close(); } });
-  const result = await new Response(source.pipeThrough(transform).pipeThrough(createEmptyTerminalGuard(FORMATS.OPENAI, () => verdict, () => transform.getStreamSnapshot()))).text();
+  const result = await new Response(source.pipeThrough(transform).pipeThrough(createEmptyTerminalGuard(FORMATS.OPENAI, () => verdict, () => transform.getEmptyStreamSnapshot()))).text();
   expect(result).toContain('"error"');
   expect(result).not.toContain('"finish_reason":"stop"');
   expect(complete).toHaveBeenCalledOnce();

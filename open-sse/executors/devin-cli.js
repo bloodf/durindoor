@@ -64,6 +64,13 @@ function extractResultText(result = {}) {
   return "";
 }
 
+// OmniRoute open-sse/executors/devin-cli.ts: ACP text blocks may be nested.
+function extractChunkText(content) {
+  if (isString(content)) return content;
+  if (Array.isArray(content)) return content.map(extractChunkText).join("");
+  return isObject(content) && isString(content.text) ? content.text : "";
+}
+
 export class DevinCliExecutor extends BaseExecutor {
   constructor() {
     super("devin-cli", { id: "devin-cli", baseUrl: "devin://acp/stdio" });
@@ -192,7 +199,7 @@ export class DevinCliExecutor extends BaseExecutor {
             }
             if (!initDone && message.result !== undefined && !message.method) {
               initDone = true;
-              sendRpc("session/new", { cwd: process.cwd(), model: model || undefined });
+              sendRpc("session/new", { cwd: process.cwd(), mcpServers: [], model: model || undefined });
               continue;
             }
             if (initDone && !sessionCreated && message.result !== undefined && !message.method) {
@@ -203,14 +210,14 @@ export class DevinCliExecutor extends BaseExecutor {
               }
               sessionCreated = true;
               promptSent = true;
-              sendRpc("session/prompt", { sessionId, content: [{ type: "text", text: promptText }] });
+              sendRpc("session/prompt", { sessionId, prompt: [{ type: "text", text: promptText }] });
               continue;
             }
             if (message.method === "session/update" || message.method === "$/update") {
               const params = message.params || {};
-              const type = params.type;
-              if (type === "message_delta" || type === "text_delta" || type === "content_delta") {
-                const delta = params.content || params.delta || params.text || "";
+              const type = params.update?.sessionUpdate || params.type;
+              if (type === "agent_message_chunk" || type === "message_delta" || type === "text_delta" || type === "content_delta") {
+                const delta = extractChunkText(type === "agent_message_chunk" ? params.update?.content : params.content || params.delta || params.text);
                 if (delta) {
                   emitRoleIfNeeded();
                   totalText += delta;

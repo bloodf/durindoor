@@ -343,9 +343,11 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     stallTimer = setTimeout(() => {
       stallTimer = null;
       clearFirstChunk();
-      abortMessage = "stream stall timeout";
+      // The stall budget can be shorter than TTFT; classify by bytes, not
+      // callbacks, because empty chunks do not mean the response started.
+      abortMessage = totalBytes === 0 ? "stream ttft timeout" : "stream stall timeout";
       dbg(tag, `STALL TIMEOUT ${stallTimeoutMs}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`);
-      streamController.handleError?.(new Error("stream stall timeout"));
+      streamController.handleError?.(new Error(abortMessage));
       streamController.abort?.();
     }, stallTimeoutMs);
   };

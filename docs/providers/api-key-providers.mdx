@@ -16,6 +16,8 @@ Give the connection a name. The dialog fills the first unused name in the `main`
 </Step>
 <Step>
 Paste the key. Cloudflare Workers AI and Snowflake Cortex also require an account id (`name|apiKey|accountId` on bulk lines). Azure wants endpoint, API version, deployment, and optional organization. Google Programmable Search needs `cx`.
+
+For Azure OpenAI (`azure`), an explicit unsupported-token-parameter response triggers one retry with the alternate token-limit spelling. A successful retry is remembered per deployment URL for the life of the process; the output limit is retained, and unrelated errors follow normal account fallback.
 </Step>
 <Step>
 Set priority if you already have another key for this provider. Lower numbers run first under fill-first selection. Optional: default model, proxy pool, per-connection proxy URL.
@@ -91,6 +93,10 @@ In DurinDoor, fetch the connection's models and call `cpa/<alias>` through Chat 
 For hosted Devin, use the exact model ID discovered from CLIProxyAPI, including its `devin/` namespace when present, for example `cpa/devin/<model>`. DurinDoor's Gemini CLI, Devin cloud-agent and Devin CLI connections serve their own transports.
 
 Scope DurinDoor client keys to the intended saved connection. CLIProxyAPI client keys on one instance share its upstream pool. For an isolated upstream account or relay, use a dedicated CLIProxyAPI instance and an independently configured OpenAI-compatible connection with its own base URL and key. Keep the instance reachable only from the clients and app that you authorize.
+
+## DeepSeek DSML tool calls
+
+For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts complete visible DSML invoke frames into structured tool calls, including when a combo selects the model. Streaming frames can span chunks; malformed, incomplete, or oversized frames remain text. Existing structured calls are preserved. The gateway only translates response data and does not execute the calls.
 
 ## Env fallbacks
 

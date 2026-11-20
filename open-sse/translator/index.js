@@ -1,4 +1,5 @@
 import { FORMATS } from "./formats.js";
+import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
 import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest } from "./formats/claude.js";
@@ -362,7 +363,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   ensureInitialized();
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
-    return [chunk];
+    return targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk];
   }
 
   let results = [chunk];
@@ -373,7 +374,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   // request-side direct route (e.g. kiro:claude — KiroExecutor already emits
   // OpenAI-shaped chunks, so this converts them straight to Claude SSE).
   const directFn = responseRegistry.get(`${targetFormat}:${sourceFormat}`);
-  if (directFn) {
+  if (directFn && targetFormat !== FORMATS.OPENAI) {
     const converted = directFn(chunk, state);
     return converted ? Array.isArray(converted) ? converted : [converted] : [];
   }
@@ -397,6 +398,8 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   if (chunk === null && results.length === 0) {
     results = [null];
   }
+
+  results = normalizeDsmlChunks(results, state);
 
   if (sourceFormat !== FORMATS.OPENAI) {
     const fromOpenAI = responseRegistry.get(`${FORMATS.OPENAI}:${sourceFormat}`);

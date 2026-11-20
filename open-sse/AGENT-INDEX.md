@@ -228,6 +228,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `getgoapi` |  | apikey | `https://api.getgoapi.com/v1/chat/completions` |
 | `ghe-copilot` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `gigachat` |  | apikey | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` |
+| `gisoo` |  | apikey | `https://gisoo.pro/api/v1/chat/completions` |
 | `github` |  | oauth | `https://api.githubcopilot.com/chat/completions` |
 | `github-models` |  | apikey | `https://models.github.ai/inference/chat/completions` |
 | `gitlab` |  | oauth | `https://gitlab.com/api/v4/chat/completions` |

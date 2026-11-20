@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 348 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 350 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -144,6 +144,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | GoAPI | `getgoapi` | apikey | 0 | [site](https://api.getgoapi.com) |
 | GitHub Enterprise Copilot | `ghe-copilot` | oauth | 40 | [site](https://docs.github.com/en/enterprise-cloud@latest/copilot) |
 | GigaChat | `gigachat` | apikey | 3 | [site](https://developers.sber.ru/portal/products/gigachat-api) |
+| Gisoo | `gisoo` | apikey | 9 | [site](https://gisoo.pro) |
 | GitHub Copilot | `github` | oauth | 42 | [site](https://github.com/features/copilot) |
 | GitHub Models | `github-models` | apikey | 12 | [site](https://github.com/marketplace/models) |
 | GitLab Duo | `gitlab` | oauth | 0 | [site](https://gitlab.com) |
@@ -243,7 +244,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Novita AI | `novita` | apikey | 4 | [site](https://novita.ai) |
 | nScale | `nscale` | apikey | 6 | [site](https://nscale.com) |
 | Nube.sh | `nube` | apikey | 8 | [site](https://nube.sh) |
-| NVIDIA NIM | `nvidia` | freeTier | 60 | [site](https://developer.nvidia.com/nim) |
+| NVIDIA NIM | `nvidia` | freeTier | 65 | [site](https://developer.nvidia.com/nim) |
 | OCI Generative AI | `oci` | apikey | 0 | [site](https://www.oracle.com/artificial-intelligence/generative-ai) |
 | OfoxAI | `ofoxai` | apikey | 0 |  |
 | Ollama Cloud | `ollama` | apikey | 7 | [site](https://ollama.com) |
@@ -252,7 +253,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Onomeo | `onomeo` | apikey | 0 |  |
 | oobabooga | `oobabooga` | apikey | 0 | [site](https://github.com/oobabooga/text-generation-webui) |
 | OpenAdapter | `openadapter` | apikey | 1 | [site](https://docs.openadapter.dev) |
-| OpenAI | `openai` | apikey | 103 | [site](https://platform.openai.com) |
+| OpenAI | `openai` | apikey | 94 | [site](https://platform.openai.com) |
 | OpenCode Free | `opencode` | none | 3 |  |
 | OpenCode Go | `opencode-go` | apikey | 20 | [site](https://opencode.ai/auth) |
 | OpenCode Server | `opencode-server` | apikey | 0 | [site](https://opencode.ai/docs/api) |

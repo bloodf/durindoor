@@ -388,6 +388,8 @@ const ANTIGRAVITY_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, vi
 const SENSENOVA_INTL_CHAT = { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 };
 
 export const PROVIDER_CAPABILITIES = {
+  // Native Mistral Large 4 catalog limits; resellers retain their own limits.
+  mistral: Object.fromEntries(["mistral-large-latest", "mistral-large-4", "mistral-large-4-0"].map(id => [id, { vision: true, contextWindow: 1048576 }])),
   "sensenova-intl": {
     "sensenova-6.8-flash": SENSENOVA_INTL_CHAT,
     "sensenova-6.8-flash-lite": SENSENOVA_INTL_CHAT,

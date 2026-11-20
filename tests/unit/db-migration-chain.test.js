@@ -82,15 +82,15 @@ describe("Schema migrations", () => {
     const db = await reopen();
     expect(db.get(`SELECT COUNT(*) AS count FROM usageHistory`).count).toBe(0);
     expect(db.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(before);
-    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("28");
+    expect(db.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
     expect(JSON.parse(db.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28]);
+      .toEqual([...appliedBefore, 28, 30]);
 
     const again = await reopen();
     expect(again.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(before);
     expect(again.get(`SELECT COUNT(*) AS count FROM usageHistory`).count).toBe(0);
     expect(JSON.parse(again.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28]);
+      .toEqual([...appliedBefore, 28, 30]);
   });
 
   it("rolls back real 028 after its first repair write, then retries and reopens", async () => {
@@ -126,17 +126,17 @@ describe("Schema migrations", () => {
     const repaired = await reopen();
     const expected = before.map((row) => ({ ...row, unknownCostRequests: 1 }));
     expect(repaired.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(expected);
-    expect(repaired.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe("28");
+    expect(repaired.get(`SELECT value FROM _meta WHERE key='schemaVersion'`).value).toBe(String(SCHEMA_VERSION));
     const appliedBefore = JSON.parse(markersBefore.find((row) => row.key === "appliedMigrations").value);
     expect(JSON.parse(repaired.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28]);
+      .toEqual([...appliedBefore, 28, 30]);
     repaired.exec(`CREATE TRIGGER forbid_repair_repeat BEFORE UPDATE OF unknownCostRequests ON apiKeyUsageTotals
       BEGIN SELECT RAISE(ABORT, 'recorded 028 must not run again'); END`);
 
     const again = await reopen();
     expect(again.all(`SELECT * FROM apiKeyUsageTotals ORDER BY apiKeyId`)).toEqual(expected);
     expect(JSON.parse(again.get(`SELECT value FROM _meta WHERE key='appliedMigrations'`).value))
-      .toEqual([...appliedBefore, 28]);
+      .toEqual([...appliedBefore, 28, 30]);
   });
 
   it("fresh DB → applies migrations & stamps schemaVersion", async () => {
@@ -372,6 +372,8 @@ describe("Schema migrations", () => {
       totalCost: 0.5,
       totalRequests: 1,
     });
+
+    expect(db.get(`SELECT apiKey, apiKeyId FROM usageHistory`)).toEqual({ apiKey: "sk-deadbeef", apiKeyId: "k1" });
 
     const aliases = db.all(`SELECT * FROM kv WHERE scope='modelAliases'`);
     expect(aliases).toHaveLength(1);

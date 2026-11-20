@@ -191,6 +191,37 @@ function durationHeaderReset(value, now, maxDelayMs) {
   return consumed.toLowerCase() === compact.toLowerCase() ? now + duration : null;
 }
 
+// Google ErrorInfo reset hints use bounded Go-style durations, including fractional seconds.
+function googleQuotaDelayReset(value, now, maxDelayMs) {
+  if (!isString(value) || value.length > 64) return null;
+  const text = value.trim();
+  const match = /^(?:(\d{1,9})h)?(?:(\d{1,9})m)?(?:(\d{1,9}(?:\.\d{1,12})?)s)?$/i.exec(text);
+  let duration;
+  if (match && (match[1] || match[2] || match[3])) {
+    duration = Math.round(Number(match[1] || 0) * 3_600_000 + Number(match[2] || 0) * 60_000 + Number(match[3] || 0) * 1000);
+  } else if (/^\d{1,9}(?:\.\d{1,12})?[hm]$/i.test(text)) {
+    duration = Math.round(Number(text.slice(0, -1)) * (text.at(-1).toLowerCase() === "h" ? 3_600_000 : 60_000));
+  } else if (/^\d{1,9}(?:\.\d{1,12})?ms$/i.test(text)) {
+    duration = Math.round(Number(text.slice(0, -2)));
+  } else if (/^\d{1,9}(?:\.\d{1,12})?$/.test(text)) {
+    duration = Math.round(Number(text) * 1000);
+  } else return null;
+  return Number.isSafeInteger(duration) && duration > 0 && duration <= maxDelayMs ? now + duration : null;
+}
+
+function googleErrorInfoReset(root, now, maxDelayMs) {
+  const details = root?.error?.details ?? root?.details;
+  if (!Array.isArray(details)) return null;
+  for (const detail of details.slice(0, 50)) {
+    if (!isString(detail?.["@type"]) || !detail["@type"].includes("ErrorInfo")) continue;
+    const metadata = detail.metadata;
+    const reset = absoluteFromIso(metadata?.quotaResetTimeStamp, now, maxDelayMs) ||
+      googleQuotaDelayReset(metadata?.quotaResetDelay, now, maxDelayMs);
+    if (reset) return reset;
+  }
+  return null;
+}
+
 function findJsonReset(value, now, maxDelayMs) {
   let visited = 0;
   const visit = (node, depth) => {
@@ -337,7 +368,8 @@ export function parseRateLimitEvidence({
   }
   if (!resetAtMs && isString(bodyText) && bodyText.length <= 64 * 1024) {
     try {
-      resetAtMs = findJsonReset(JSON.parse(bodyText), safeNow, maxDelayMs);
+      const body = JSON.parse(bodyText);
+      resetAtMs = googleErrorInfoReset(body, safeNow, maxDelayMs) || findJsonReset(body, safeNow, maxDelayMs);
       if (resetAtMs) source = "structured_body";
     } catch {/* non-JSON provider body */}
   }

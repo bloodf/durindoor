@@ -49,7 +49,8 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     // max_completion_tokens would silently fall back to the model maximum.
     max_tokens: adjustMaxTokens(
       { ...body, max_tokens: body.max_tokens ?? body.max_completion_tokens },
-      modelCeiling
+      modelCeiling,
+      true
     ),
     stream: stream
   };

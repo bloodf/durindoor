@@ -771,9 +771,21 @@ export async function serializeBypassRequestBody(body) {
   return JSON.stringify(body);
 }
 
+/**
+ * A Blob (and its File subclass) holds immutable bytes. `stream()` only
+ * exposes a fresh reader over those bytes, so a standard Blob stays
+ * replayable and must keep the ordinary non-strict direct fallback.
+ */
+function isReplayableBlob(body) {
+  if (!isObject(body) && !isFunction(body)) return false;
+  if (!isUndefined(globalThis.Blob) && body instanceof globalThis.Blob) return true;
+  return !isUndefined(globalThis.File) && body instanceof globalThis.File;
+}
+
 // A failed proxy dispatch may already have consumed these bodies. Inspect only
 // their shape; never read, clone, or otherwise disturb the request body.
 function hasNonReplayableBody(input, body) {
+  if (isReplayableBlob(body)) return false;
   if (body != null && (isObject(body) || isFunction(body)) &&
     (isFunction(body.getReader) || isFunction(body.pipe) || isFunction(body.stream) ||
       isFunction(body[Symbol.asyncIterator]))) return true;

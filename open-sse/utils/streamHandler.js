@@ -262,7 +262,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // Responses passthrough uses its existing abort terminal; all other known
         // client formats synthesize their EOF recovery through terminalTracker.
         try {
-          if (!wasConnected || isNetworkClose || onAbortTerminal) {
+          if (!wasConnected || isNetworkClose || onAbortTerminal || (code === "invalid_sse_payload" && terminalTracker)) {
             if (terminalTracker) emitClientRecovery(controller);
             else emitTerminal(controller);
             abort();

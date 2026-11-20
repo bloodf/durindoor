@@ -82,3 +82,18 @@ reply in SSE for streaming clients after generation finishes. Tools, media,
 session continuation and conversation storage are unsupported. OmniRoute's
 OpenCode Server transport uses session turns and event subscriptions. DurinDoor
 sends one stateless generation request and uses the server's catalog for discovery.
+
+### Two MLX servers
+
+Create two MLX connections and set their Base URL independently. For the OmniRoute
+Gemma and Qwen examples, use `http://localhost:11435/v1` with
+`mlx-community/gemma-4-26B-A4B-it-qat-q4_0-mlx-aligned` and
+`http://localhost:11436/v1` with `maglun/Qwen3.8-27B-MLX-Mixed-3.80bpw`,
+respectively. Each connection discovers its own server's `/models`; the server
+must have the requested model available. Select the intended connection with
+`x-connection-id` on chat requests (or `connectionId` in the request body)
+and use the `mlx/` prefix with the full model ID. The connection ID pins the
+request, preventing a failed server from rotating to the other connection.
+Model capabilities, context limits, and tool support depend on the server and
+model; these example IDs do not add verified capability metadata. MLX streaming
+usage requires `stream_options: {"include_usage": true}` in the request.

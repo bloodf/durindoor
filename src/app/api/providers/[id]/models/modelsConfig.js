@@ -1,3 +1,4 @@
+import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
@@ -291,6 +292,7 @@ export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((m
 );
 
 export const PROVIDER_MODELS_CONFIG = {
+  "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
   replicate: {
     url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
     authHeader: "Authorization",

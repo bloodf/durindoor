@@ -1,4 +1,5 @@
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
+import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { NextResponse } from "next/server";
 import { isValidGitHubCreditLimit } from "open-sse/services/githubCreditLimit.js";
 import {
@@ -500,6 +501,25 @@ export async function PUT(request, { params }) {
       if (metadata.proxyPoolId || metadata.connectionProxyEnabled || metadata.vercelRelayUrl || metadata.oauthProxy?.mode === "strict-pool") {
         return NextResponse.json({ error: "Outbound proxies are not supported for guarded System One server URLs" }, { status: 400 });
       }
+    }
+
+    if (existing.provider === "opencode-server") {
+      const metadata = updateData.providerSpecificData || existing.providerSpecificData || {};
+      if (metadata.proxyPoolId || metadata.connectionProxyEnabled || metadata.vercelRelayUrl || metadata.oauthProxy?.mode === "strict-pool") {
+        return NextResponse.json({ error: "OpenCode Server requires a direct connection" }, { status: 400 });
+      }
+    }
+    if (existing.provider === "opencode-server" &&
+        (apiKey !== undefined || Object.hasOwn(providerSpecificData || {}, "baseUrl"))) {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "OpenCode Server connections require an operator" }, { status: 403 });
+      }
+      const endpoint = resolveOpenCodeServer({
+        apiKey: updateData.apiKey ?? existing.apiKey,
+        providerSpecificData: updateData.providerSpecificData || existing.providerSpecificData,
+      });
+      if (endpoint.error) return NextResponse.json({ error: endpoint.error }, { status: endpoint.status });
+      if (updateData.providerSpecificData) updateData.providerSpecificData.baseUrl = endpoint.baseUrl;
     }
 
     const updated = await updateProviderConnection(id, updateData);

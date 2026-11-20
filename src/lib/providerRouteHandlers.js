@@ -14,6 +14,7 @@ import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { isFunction, isString } from "@/shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
+import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
@@ -101,6 +102,8 @@ export function canDiscoverModels(connection) {
     // request so the client never spends an HTTP round-trip on a call
     // the resolver would refuse or refuse meaningfully.
     switch (provider) {
+      case "opencode-server":
+        return !resolveOpenCodeServer(connection).error;
       case "kimchi":
       case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
@@ -286,6 +289,14 @@ export async function createProvider(request, { shouldCommit } = {}) {
     }
 
     let providerSpecificData = normalizeProviderSpecificData(provider, body, body.providerSpecificData);
+    if (provider === "opencode-server") {
+      if (!(await isOperatorRequest(request))) {
+        return NextResponse.json({ error: "OpenCode Server connections require an operator" }, { status: 403 });
+      }
+      const endpoint = resolveOpenCodeServer({ providerSpecificData, apiKey });
+      if (endpoint.error) return NextResponse.json({ error: endpoint.error }, { status: endpoint.status });
+      providerSpecificData = { ...providerSpecificData, baseUrl: endpoint.baseUrl };
+    }
     if (requiresProviderAccountId(provider)) {
       try {
         providerSpecificData = {
@@ -359,6 +370,10 @@ export async function createProvider(request, { shouldCommit } = {}) {
 
     if (proxyPoolId !== null) {
       mergedProviderSpecificData.proxyPoolId = proxyPoolId;
+    }
+    if (provider === "opencode-server" &&
+      (proxyPoolId !== null || mergedProviderSpecificData.connectionProxyEnabled || mergedProviderSpecificData.vercelRelayUrl || mergedProviderSpecificData.oauthProxy?.mode === "strict-pool")) {
+      return NextResponse.json({ error: "OpenCode Server requires a direct connection" }, { status: 400 });
     }
     if ((provider === "laya" || isSystemoneCompatibleProvider(provider)) &&
       (proxyPoolId !== null || mergedProviderSpecificData.connectionProxyEnabled || mergedProviderSpecificData.vercelRelayUrl || mergedProviderSpecificData.oauthProxy?.mode === "strict-pool")) {

@@ -36,6 +36,7 @@ const model = "chatdolphin";
 const body = { messages: [{ role: "system", content: "Be brief" }, { role: "user", content: "First" }, { role: "assistant", content: "Answer" }, { role: "user", content: [{ type: "text", text: "Next" }] }] };
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const execute = (options = {}) => getExecutor("nlpc").execute({ model, body, stream: false, credentials: { apiKey: "fixture-account-a" }, ...options });
+const nativeStream = (body) => new Response(body, { headers: { "Content-Type": "text/event-stream" } });
 const bytes = (...parts) => new ReadableStream({ start(c) { for (const part of parts) c.enqueue(new TextEncoder().encode(part)); c.close(); } });
 // A quota reservation ticket stands in for the gateway's reservation ledger.
 const quotaTicket = (reservationId) => ({
@@ -45,14 +46,14 @@ const quotaTicket = (reservationId) => ({
   settle: vi.fn(async () => ({ changed: true })),
   release: vi.fn(async (reason) => ({ changed: true, reason })),
 });
-const chatOptions = (overrides = {}) => {
-  const requestBody = { model, stream: false, messages: [{ role: "user", content: "Question" }] };
+const chatOptions = (overrides = {}, stream = false) => {
+  const requestBody = { model, stream, messages: [{ role: "user", content: "Question" }] };
   return {
     body: requestBody,
     modelInfo: { provider: "nlpcloud", model },
     credentials: { apiKey: "fixture-account-b" },
     connectionId: "selected",
-    clientRawRequest: { endpoint: "/v1/chat/completions", body: requestBody, headers: { accept: "application/json" } },
+    clientRawRequest: { endpoint: "/v1/chat/completions", body: requestBody, headers: { accept: stream ? "text/event-stream" : "application/json" } },
     sourceFormatOverride: FORMATS.OPENAI,
     log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     ...overrides,
@@ -159,13 +160,75 @@ describe("NLP Cloud provider", () => {
     expect(frames.at(-1).choices[0].finish_reason).toBe("stop");
   });
   it("fails a truncated stream instead of reporting success", async () => {
-    transport.mockResolvedValueOnce(new Response(bytes("partial")));
+    transport.mockResolvedValueOnce(nativeStream(bytes("partial")));
     const { response } = await execute({ stream: true });
     await expect(response.text()).rejects.toThrow("ended before completion");
   });
 });
 
 describe("NLP Cloud quota dispatch", () => {
+  it.each([
+    ["JSON", false, () => json({ response: "Hello" }), true],
+    ["native SSE", true, () => nativeStream(bytes("Hello", "[DO", "NE]")), true],
+    ["HTTP error", false, () => json({ detail: "failed" }, 500), false],
+    ["malformed JSON shape", false, () => json({ response: " " }), false],
+    ["truncated SSE", true, () => nativeStream(bytes("Hello")), false],
+    ["embedded marker", true, () => nativeStream(bytes("Hello[DONE]", " more text")), false],
+    ["empty SSE", true, () => nativeStream(bytes(" [DONE]")), false],
+    ["unexpected stream type", true, () => new Response("Hello[DONE]"), false],
+    ["stream transport error", true, () => nativeStream(new ReadableStream({
+      pull(controller) { controller.error(new Error("fixture transport failure")); },
+    })), false],
+  ])("settles quota exactly once through chatCore for %s", async (_name, stream, upstream, success) => {
+    const ticket = quotaTicket("gateway-reservation");
+    const quotaReservation = { ...ticket, beginDispatch: vi.fn().mockResolvedValue(ticket) };
+    transport.mockResolvedValueOnce(upstream());
+
+    const result = await handleChatCore(chatOptions({ quotaReservation }, stream));
+    if (success) {
+      expect(result.success).toBe(true);
+      const wire = await result.response.text();
+      if (stream) {
+        const content = wire.split("\n").filter((line) => line.startsWith("data: {"))
+          .map((line) => JSON.parse(line.slice(6)).choices[0]?.delta.content ?? "").join("");
+        expect(content).toBe("Hello");
+      } else {
+        const completion = JSON.parse(wire);
+        expect(completion.choices[0].message.content).toBe("Hello");
+        expect(completion).not.toHaveProperty("usage");
+      }
+    } else if (result.success) {
+      await expect(result.response.text()).rejects.toThrow();
+    } else {
+      expect(result.response.status).toBeGreaterThanOrEqual(400);
+    }
+    expect(quotaReservation.beginDispatch).toHaveBeenCalledTimes(1);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success, reason: success ? "success" : expect.not.stringMatching(/^success$/) });
+  });
+
+  it("releases quota when the client cancels before the native terminal", async () => {
+    const ticket = quotaTicket("gateway-cancel");
+    const quotaReservation = { ...ticket, beginDispatch: vi.fn().mockResolvedValue(ticket) };
+    const cancel = vi.fn();
+    transport.mockResolvedValueOnce(nativeStream(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode("Incomplete answer[DONE]")); },
+      cancel,
+    })));
+
+    const result = await handleChatCore(chatOptions({ quotaReservation }, true));
+    expect(result.success).toBe(true);
+    const reader = result.response.body.getReader();
+    expect((await reader.read()).done).toBe(false);
+    await reader.cancel();
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(quotaReservation.beginDispatch).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledTimes(1);
+    expect(ticket.settle).toHaveBeenCalledWith({ success: false, reason: "stream_cancel" });
+  });
+
   it("denies a local quota request without sending anything upstream", async () => {
     const denial = new QuotaDispatchUnavailableError("capacity_exhausted");
     const beginQuotaDispatch = vi.fn(async () => { throw denial; });

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isString, isNumber } from "../../src/shared/utils/typeChecks.js";
+import { isString, isNumber, isRecord } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor, waitForRetryDelay } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { errorJson, jsonResponse } from "./websession-utils.js";
@@ -67,13 +67,15 @@ function streamCompletion(model, source, signal) {
       const send = (value) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(value)}\n\n`));
       const chunk = (delta, finish_reason = null) => send({ id, created, model, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason }] });
       try {
+        signal?.throwIfAborted();
         chunk({ role: "assistant" });
         await source((text) => chunk({ content: text }), aborter.signal);
+        aborter.signal.throwIfAborted();
         chunk({}, "stop");
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (error) {
-        if (aborter.signal.aborted) controller.error(error);
+        if (signal?.aborted || aborter.signal.aborted) controller.error(error);
         else { send({ error: { message: error.message, type: "upstream_error" } }); controller.enqueue(encoder.encode("data: [DONE]\n\n")); controller.close(); }
       } finally { signal?.removeEventListener("abort", onAbort); }
     },
@@ -85,14 +87,15 @@ function streamCompletion(model, source, signal) {
 async function readEvents(response, emit, signal) {
   if (!response.body) throw new Error("Replicate returned an empty stream");
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const onAbort = () => { void reader.cancel().catch(() => {}); };
   signal?.addEventListener("abort", onAbort, { once: true });
   let buffer = "";
-  let doneEvent = false;
+  let hasOutput = false;
   try {
     while (true) {
       const { value, done } = await reader.read();
+      signal?.throwIfAborted();
       buffer += decoder.decode(value, { stream: !done });
       // Normalize CRLF only after buffering, including pairs split across chunks.
       let match;
@@ -106,19 +109,24 @@ async function readEvents(response, emit, signal) {
           if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
         }
         const payload = data.join("\n");
-        if (event === "output") emit(payload);
+        if (event === "output" && data.length) {
+          hasOutput ||= Boolean(payload.trim());
+          emit(payload);
+        }
         if (event === "error") throw new Error("Replicate prediction failed");
         if (event === "done") {
           let details;
           try { details = JSON.parse(payload); } catch { throw new Error("Invalid Replicate done event"); }
-          if (details?.reason) throw new Error(`Replicate prediction ${details.reason}`);
-          doneEvent = true;
+          // Replicate documents {} for success and a reason for other outcomes.
+          if (!hasOutput || !isRecord(details) || Object.keys(details).length) {
+            throw new Error("Replicate stream did not complete successfully");
+          }
           return;
         }
       }
       if (done) break;
     }
-    if (!doneEvent) throw new Error("Replicate stream ended before completion");
+    throw new Error("Replicate stream ended before completion");
   } finally { signal?.removeEventListener("abort", onAbort); await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
@@ -133,7 +141,7 @@ export class ReplicateExecutor extends BaseExecutor {
     const input = promptInput(body);
     const transformedBody = { input };
     if (stream) transformedBody.stream = true;
-    const result = (response) => ({ response, url, headers, transformedBody });
+    const result = (response, terminalProvenance) => ({ response, url, headers, transformedBody, terminalProvenance });
     if (!validModel) return result(errorJson(400, "Replicate model must be an official owner/name", "invalid_request"));
     if (!input) return result(errorJson(400, "Replicate supports text messages without tools", "invalid_request"));
     const send = (target, options) => proxyAwareFetch(target, { ...options, redirect: "manual" }, proxyOptions);
@@ -159,12 +167,13 @@ export class ReplicateExecutor extends BaseExecutor {
     if (!created.ok) return result(carryTicket(errorJson(created.status >= 300 && created.status < 400 ? 502 : created.status, `Replicate request failed (HTTP ${created.status})`)));
     let prediction;
     try { prediction = await created.json(); } catch { return result(carryTicket(errorJson(502, "Invalid Replicate prediction"))); }
+    if (!isString(prediction?.status)) return result(carryTicket(errorJson(502, "Invalid Replicate prediction")));
     if (stream && !TERMINAL.has(prediction.status) && prediction.urls?.stream) {
       const streamUrl = STREAM_ORIGINS.map((origin) => trustedUrl(prediction.urls.stream, origin)).find(Boolean);
       if (!streamUrl) return result(carryTicket(errorJson(502, "Unexpected Replicate stream URL")));
       const response = await send(streamUrl, { headers: { Authorization: headers.Authorization, Accept: "text/event-stream" }, signal });
       if (!response.ok) return result(carryTicket(errorJson(response.status >= 300 && response.status < 400 ? 502 : response.status, "Replicate stream request failed")));
-      return result(carryTicket(streamCompletion(model, (emit, streamSignal) => readEvents(response, emit, streamSignal), signal)));
+      return result(carryTicket(streamCompletion(model, (emit, streamSignal) => readEvents(response, emit, streamSignal), signal)), "validated");
     }
     const deadline = Date.now() + 120000;
     while (!TERMINAL.has(prediction.status) && Date.now() < deadline) {
@@ -174,10 +183,12 @@ export class ReplicateExecutor extends BaseExecutor {
       const response = await send(pollUrl, { headers: { Authorization: headers.Authorization }, signal });
       if (!response.ok) return result(carryTicket(errorJson(response.status >= 300 && response.status < 400 ? 502 : response.status, "Replicate polling failed")));
       try { prediction = await response.json(); } catch { return result(carryTicket(errorJson(502, "Invalid Replicate prediction"))); }
+      if (!isString(prediction?.status)) return result(carryTicket(errorJson(502, "Invalid Replicate prediction")));
     }
     if (prediction.status !== "succeeded") return result(carryTicket(errorJson(TERMINAL.has(prediction.status) ? 502 : 504, `Replicate prediction ${prediction.status || "timed out"}`)));
     let content;
     try { content = textOutput(prediction.output); } catch (error) { return result(carryTicket(errorJson(502, error.message))); }
-    return result(carryTicket(stream ? streamCompletion(model, async (emit) => emit(content), signal) : jsonResponse(completion(model, content))));
+    if (!content.trim() || prediction.error != null) return result(carryTicket(errorJson(502, "Invalid Replicate prediction output")));
+    return result(carryTicket(stream ? streamCompletion(model, async (emit) => emit(content), signal) : jsonResponse(completion(model, content))), "validated");
   }
 }

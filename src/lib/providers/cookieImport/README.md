@@ -1,6 +1,6 @@
 # Provider cookie import
 
-Lets a browser extension hand a signed-in provider session to DurinDoor without the operator copying cookies by hand. It reuses the dashboard's operator authorization, the web-login cookie rules (`src/lib/webLoginSession.js`) and the connection create path (`createProvider` in `src/lib/providerRouteHandlers.js`), so credentials are stored in the same encrypted `providerConnections` row as any other cookie connection.
+Lets a browser extension hand a signed-in provider session to DurinDoor without the operator copying cookies by hand, and lets the dashboard import the same session from a pasted Cookie header, a pasted cURL command or a local HAR file. It reuses the dashboard's operator authorization, the web-login cookie rules (`src/lib/webLoginSession.js`) and the connection create path (`createProvider` in `src/lib/providerRouteHandlers.js`), so credentials are stored in the same encrypted `providerConnections` row as any other cookie connection.
 
 No code is ported from another project; the design extends DurinDoor's own web-login capture.
 
@@ -11,8 +11,32 @@ No code is ported from another project; the design extends DurinDoor's own web-l
 | `contract.js` | The shared provider metadata (`getCookieImportContract`) and cookie validation (`buildImportedCookieHeader`). |
 | `pairing.js` | One-use, short-lived pairing store. |
 | `handlers.js` | The two route handlers. |
+| `src/shared/utils/cookieImportContract.js` | The client-safe rules both sides read: which origin and cookie names a provider approves. |
+| `src/shared/utils/cookieImportParser.js` | The browser-side parsers for a Cookie header, a cURL command and a HAR file. |
+| `src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js` | The dashboard import dialog. |
 | `src/app/api/providers/cookie-import/pairing/route.js` | `POST` mint a pairing (operator). |
 | `src/app/api/providers/cookie-import/route.js` | `POST` import (pairing secret only). |
+
+## Dashboard import
+
+The provider page of an importable provider has an **Import cookies** button next to **Add Connection**. The manual paste in the add dialog is unchanged.
+
+The dialog reads its input as data in the browser and never acts on it:
+
+- A pasted `Cookie` header is split into name/value pairs. Values keep every `=` they carry, so a padded token is not truncated. Parts that are not `name=value` pairs are dropped and counted.
+- A pasted cURL command is tokenized and read: the URL and the `Cookie` header (or the `-b` value) are taken from the text. The command is never run and the URL it names is never requested.
+- A local HAR file is parsed from `request.url`, `request.headers` and `request.cookies`. The file stays in the browser and is never uploaded.
+
+The rules that decide what may be imported live in `src/shared/utils/cookieImportContract.js`, which the server contract also reads, so the client and the server cannot drift:
+
+- Only the provider origin is imported. A cURL command for another origin is refused; a HAR request for another origin is ignored.
+- Only the provider's approved cookie names are kept. The others are dropped and their names are listed for the operator.
+- A chunked session cookie keeps every chunk. The stale unchunked copy is dropped, and a gap in the chunk sequence is refused before the import.
+- At most 16 cookies and 8192 characters per value, the same caps the server enforces.
+
+When a HAR file holds several requests to the provider origin with different credentials, the operator has to pick one; requests that carry the same credentials are not ambiguous. The dialog shows cookie **names** only. A pasted text, the parsed cookies and the pairing secret are dropped from the page as soon as the operator submits or dismisses the dialog.
+
+The dialog imports through the same two routes as the extension: it mints a pairing with `POST /api/providers/cookie-import/pairing` and posts the parsed cookies to `POST /api/providers/cookie-import` with the pairing secret. The server therefore applies the origin, cookie-name, chunk and size rules again before it stores anything.
 
 ## Supported providers
 
@@ -77,4 +101,4 @@ Responses are `Cache-Control: no-store` and error strings are fixed text that ne
 | 429 | Too many pending pairings (pairing route). |
 | 500 | The connection could not be saved. |
 
-Tests: `tests/unit/api/provider-cookie-import.test.js`, and the gate cases in `tests/unit/dashboard-guard.test.js`.
+Tests: `tests/unit/api/provider-cookie-import.test.js`, `tests/unit/provider-cookie-import-dashboard.test.js`, and the gate cases in `tests/unit/dashboard-guard.test.js`.

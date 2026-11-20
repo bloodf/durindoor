@@ -7,16 +7,26 @@
  * the dashboard sign-in capture uses, so the two paths cannot drift. A provider
  * without an explicit cookie-name allowlist (`cookieNames: "*"`) or without an
  * HTTPS origin is not importable.
+ *
+ * The rules themselves live in @/shared/utils/cookieImportContract.js, which the
+ * dashboard import UI reads too, so the client and the server agree on which
+ * origins and cookie names a provider approves.
  */
 
 import { getWebLoginConfig, hasRequiredCookies, composeCookieHeader } from "@/lib/webLoginSession";
 import { isString, isNumber, isRecord } from "@/shared/utils/typeChecks";
+import {
+  MAX_IMPORT_COOKIES,
+  MAX_COOKIE_VALUE_LENGTH,
+  resolveCookieImportContract,
+  isApprovedCookieName,
+  isValidCookieName,
+  isValidCookieValue,
+  cookieDomainAllowed,
+} from "@/shared/utils/cookieImportContract";
 
-export const MAX_COOKIES = 16;
-export const MAX_COOKIE_VALUE_LENGTH = 8192;
-const TOKEN_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$/;
-// Control characters, `;` (cookie-pair separator) and edge whitespace could splice extra cookies into the stored Cookie header.
-const UNSAFE_VALUE_RE = /[\u0000-\u001f\u007f;]|^\s|\s$/;
+export const MAX_COOKIES = MAX_IMPORT_COOKIES;
+export { MAX_COOKIE_VALUE_LENGTH };
 
 /**
  * Importable contract for a provider id, or null when the provider does not
@@ -26,20 +36,14 @@ const UNSAFE_VALUE_RE = /[\u0000-\u001f\u007f;]|^\s|\s$/;
  */
 export function getCookieImportContract(providerId) {
   const config = getWebLoginConfig(providerId);
-  if (!config || !Array.isArray(config.cookieNames) || config.cookieNames.length === 0) return null;
-  let origin;
-  try {
-    origin = new URL(config.origin);
-  } catch {
-    return null;
-  }
-  if (origin.protocol !== "https:" || origin.origin !== config.origin.replace(/\/+$/, "")) return null;
+  const resolved = resolveCookieImportContract(config);
+  if (!resolved) return null;
   return Object.freeze({
     provider: String(providerId),
-    origin: origin.origin,
-    host: origin.hostname.toLowerCase(),
-    cookieNames: Object.freeze([...config.cookieNames]),
-    cookiePrefixes: Object.freeze(Array.isArray(config.cookiePrefixes) ? [...config.cookiePrefixes] : []),
+    origin: resolved.origin,
+    host: resolved.host,
+    cookieNames: resolved.cookieNames,
+    cookiePrefixes: resolved.cookiePrefixes,
     config,
   });
 }
@@ -47,18 +51,6 @@ export function getCookieImportContract(providerId) {
 /** What a client needs to know to collect cookies, with no internal config. */
 export function describeCookieImportContract(contract) {
   return { origin: contract.origin, cookieNames: [...contract.cookieNames], cookiePrefixes: [...contract.cookiePrefixes] };
-}
-
-function isApprovedName(contract, name) {
-  if (contract.cookieNames.includes(name)) return true;
-  return contract.cookiePrefixes.some((prefix) =>
-    name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)) &&
-    contract.cookieNames.some((base) => prefix.startsWith(base)));
-}
-
-function domainAllowed(host, domain) {
-  const d = domain.replace(/^\./, "").toLowerCase();
-  return d.includes(".") && (host === d || host.endsWith(`.${d}`));
 }
 
 /**
@@ -73,9 +65,9 @@ export function buildImportedCookieHeader(contract, cookies, now = Date.now()) {
   const jar = new Map();
   for (const cookie of cookies) {
     if (!isRecord(cookie) || !isString(cookie.name) || !isString(cookie.value)) return { ok: false, error: "Each cookie needs a name and value" };
-    if (!TOKEN_NAME_RE.test(cookie.name) || !isApprovedName(contract, cookie.name)) return { ok: false, error: "Cookie name is not approved for this provider" };
-    if (cookie.value.length === 0 || cookie.value.length > MAX_COOKIE_VALUE_LENGTH || UNSAFE_VALUE_RE.test(cookie.value)) return { ok: false, error: "Cookie value is not acceptable" };
-    if (cookie.domain !== undefined && (!isString(cookie.domain) || !domainAllowed(contract.host, cookie.domain))) return { ok: false, error: "Cookie domain does not match the provider origin" };
+    if (!isValidCookieName(cookie.name) || !isApprovedCookieName(contract, cookie.name)) return { ok: false, error: "Cookie name is not approved for this provider" };
+    if (!isValidCookieValue(cookie.value)) return { ok: false, error: "Cookie value is not acceptable" };
+    if (cookie.domain !== undefined && (!isString(cookie.domain) || !cookieDomainAllowed(contract.host, cookie.domain))) return { ok: false, error: "Cookie domain does not match the provider origin" };
     if (cookie.secure === false) return { ok: false, error: "Cookie must be a secure cookie" };
     if (cookie.expirationDate !== undefined && (!isNumber(cookie.expirationDate) || cookie.expirationDate * 1000 <= now)) return { ok: false, error: "Cookie is expired" };
     if (jar.has(cookie.name)) return { ok: false, error: "Duplicate cookie name" };

@@ -14,7 +14,7 @@ import { Window } from "happy-dom";
 
 import { PROVIDERS, PAIRING_HEADER, MAX_COOKIES } from "../../extensions/provider-cookie-capture/providers.js";
 import {
-  MESSAGES, parsePairing, prepareCapture, runCapture, describePlan, confirmationFor,
+  MESSAGES, parsePairing, prepareCapture, preflightPermissions, runCapture, describePlan, confirmationFor,
 } from "../../extensions/provider-cookie-capture/capture.js";
 import { mountPopup } from "../../extensions/provider-cookie-capture/popup.js";
 import { getCookieImportContract } from "../../src/lib/providers/cookieImport/contract.js";
@@ -98,6 +98,8 @@ async function capture({ p = pairing(), chromeOpts = {}, fetchImpl = makeFetch()
   const harness = makeChrome(chromeOpts);
   const plan = parsed(p);
   plan.tabId = 7;
+  await preflightPermissions(harness.chrome, plan);
+  harness.calls.length = 0;
   const result = await runCapture({ chrome: harness.chrome, fetch: fetchImpl, plan, confirmed: confirmed ?? confirmationFor(plan), signal, now });
   return { ...harness, plan, result, fetch: fetchImpl };
 }
@@ -328,6 +330,7 @@ describe("permissions", () => {
     const plan = parsed(pairing());
     plan.tabId = 7;
     const fetchImpl = makeFetch();
+    await preflightPermissions(harness.chrome, plan);
     const result = await runCapture({ chrome: harness.chrome, fetch: fetchImpl, plan, confirmed: confirmationFor(plan), now: () => NOW });
     expect(result.code).toBe("wrong_tab");
     expect(callNames(harness.calls)).toContain("permissions.remove");
@@ -433,6 +436,7 @@ describe("destination binding and request shape", () => {
     const plan = parsed(pairing());
     plan.tabId = 7;
     const fetchImpl = makeFetch();
+    await preflightPermissions(harness.chrome, plan);
     const args = { chrome: harness.chrome, fetch: fetchImpl, plan, confirmed: confirmationFor(plan), now: () => NOW };
     expect((await runCapture(args)).ok).toBe(true);
     const before = harness.calls.length;
@@ -511,6 +515,7 @@ describe("cancellation", () => {
     const plan = parsed(pairing());
     plan.tabId = 7;
     const fetchImpl = makeFetch();
+    await preflightPermissions(harness.chrome, plan);
     const run = runCapture({ chrome: harness.chrome, fetch: fetchImpl, plan, confirmed: confirmationFor(plan), signal: ctl.signal, now: () => NOW });
     await vi.waitFor(() => expect(release).toBeTypeOf("function"));
     ctl.abort();
@@ -537,6 +542,7 @@ describe("cancellation", () => {
     const harness = makeChrome({ cookies: { sso: cookie("sso", VALUE) } });
     const plan = parsed(pairing());
     plan.tabId = 7;
+    await preflightPermissions(harness.chrome, plan);
     const run = runCapture({ chrome: harness.chrome, fetch: fetchImpl, plan, confirmed: confirmationFor(plan), signal: ctl.signal, now: () => NOW });
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalled());
     ctl.abort();
@@ -576,7 +582,7 @@ describe("popup", () => {
     expect(ui.$("send").disabled).toBe(true);
     expect(ui.$("pairing").value).toBe("");
     expect(ui.win.document.body.textContent).not.toContain(TOKEN);
-    expect(callNames(ui.harness.calls)).toEqual(["tabs.query"]);
+    expect(callNames(ui.harness.calls)).toEqual(["tabs.query", "permissions.contains", "permissions.contains", "permissions.contains"]);
     ui.check(true);
     expect(ui.$("send").disabled).toBe(false);
     ui.check(false);
@@ -589,6 +595,22 @@ describe("popup", () => {
     expect(ui.$("status").textContent).toContain("https://grok.com");
     expect(ui.$("status").className).toBe("error");
     expect(ui.$("step-review").hidden).toBe(true);
+  });
+
+  it("requests permission during the confirmed click before its gesture expires", async () => {
+    let gesture = false;
+    const request = vi.fn(async () => gesture);
+    const ui = mount({ chromeOpts: { request } });
+    await review(ui);
+    expect(callNames(ui.harness.calls)).not.toContain("permissions.request");
+    expect(callNames(ui.harness.calls).some((name) => name.startsWith("cookies."))).toBe(false);
+    expect(ui.fetchImpl).not.toHaveBeenCalled();
+    ui.check(true);
+    gesture = true;
+    ui.$("send").click();
+    gesture = false;
+    expect(request).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(ui.$("status").textContent).toContain("Created connection"));
   });
 
   it("sends once after confirmation, reports success without values, and clears itself", async () => {
@@ -615,7 +637,7 @@ describe("popup", () => {
     ui.$("send").click();
     await Promise.resolve();
     expect(ui.fetchImpl).not.toHaveBeenCalled();
-    expect(callNames(ui.harness.calls)).toEqual(["tabs.query"]);
+    expect(callNames(ui.harness.calls)).toEqual(["tabs.query", "permissions.contains", "permissions.contains", "permissions.contains"]);
   });
 
   it("keeps the review open after a denied permission and does not retry on its own", async () => {

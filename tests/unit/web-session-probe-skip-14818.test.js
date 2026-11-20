@@ -35,7 +35,7 @@ describe("web-session probe skip (#14818)", () => {
     global.fetch = originalFetch;
   });
 
-  it.each(["grok-web", "copilot-web", "zenmux-free", "adapta-web"])("testSingleConnection skips %s: no request, no DB write", async (provider) => {
+  it.each(["grok-web", "copilot-web", "zenmux-free"])("testSingleConnection skips %s: no request, no DB write", async (provider) => {
     mocks.getProviderConnectionById.mockResolvedValue({ id: "c", provider, authType: "cookie", apiKey: "sso=abc; ctoken=t" });
     const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
     const result = await testSingleConnection("c");
@@ -45,7 +45,7 @@ describe("web-session probe skip (#14818)", () => {
     expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
-  it.each(["grok-web", "copilot-web", "zenmux-free", "adapta-web"])("validate route skips %s without any request", async (provider) => {
+  it.each(["grok-web", "copilot-web", "zenmux-free"])("validate route skips %s without any request", async (provider) => {
     const { POST } = await import("../../src/app/api/providers/validate/route.js");
     const res = await POST(new Request("http://x/api/providers/validate", {
       method: "POST",
@@ -53,6 +53,20 @@ describe("web-session probe skip (#14818)", () => {
     }));
     expect(await res.json()).toMatchObject({ valid: false, skipped: true });
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("skips Adapta connection and validation probes without dispatch or status writes", async () => {
+    mocks.getProviderConnectionById.mockResolvedValue({ id: "c", provider: "adapta-web", authType: "cookie", apiKey: "fake-cookie" });
+    const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/testUtils.js");
+    expect(await testSingleConnection("c")).toMatchObject({ valid: false, skipped: true });
+    const { POST } = await import("../../src/app/api/providers/validate/route.js");
+    const res = await POST(new Request("http://x/api/providers/validate", {
+      method: "POST", body: JSON.stringify({ provider: "adapta-web", apiKey: "fake-cookie" }),
+    }));
+    expect(await res.json()).toMatchObject({ valid: false, skipped: true });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(proxyAwareFetch).not.toHaveBeenCalled();
+    expect(mocks.updateProviderConnection).not.toHaveBeenCalled();
   });
 
   it("rejects a ZenMux cookie without ctoken locally, without a conversation request", async () => {

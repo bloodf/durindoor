@@ -108,6 +108,15 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     expect(body.error.sourceFiles).toEqual(expect.any(Array));
   });
 
+  it("routes Adapta through its executor and rejects missing credentials without exposing a pending error", async () => {
+    for (const provider of ["adapta-web", "adp-web"]) {
+      expect(hasSpecializedExecutor(provider)).toBe(true);
+      const { response } = await getExecutor(provider).execute({});
+      expect(response.status).toBe(401);
+      expect((await response.json()).error.type).not.toBe("provider_port_pending");
+    }
+  });
+
   it("does not trigger account fallback for provider_port_pending errors", () => {
     expect(checkFallbackError(501, '{"error":{"type":"provider_port_pending"}}')).toEqual({
       shouldFallback: false,

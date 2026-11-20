@@ -1,6 +1,7 @@
 // Adapted from OmniRoute open-sse/executors/adapta-web.ts at fbd3396 (PR #51).
 import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 
 const APP = "https://agent.adapta.one";
@@ -16,7 +17,7 @@ function cookieValue(raw) {
   return value;
 }
 function expiry(token) {
-  try { const exp = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).exp; return typeof exp === "number" && Number.isFinite(exp) ? exp * 1000 : 0; } catch { return 0; }
+  try { const exp = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).exp; return isNumber(exp) && Number.isFinite(exp) ? exp * 1000 : 0; } catch { return 0; }
 }
 async function session(cookie, signal) {
   const key = keyOf(cookie);
@@ -28,11 +29,11 @@ async function session(cookie, signal) {
   if (!client.ok) throw new Error("Unable to validate Adapta session");
   const data = await client.json();
   const id = data?.response?.sessions?.find((s) => s.status === "active")?.id;
-  if (typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("No active Adapta session");
+  if (!isString(id) || !/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("No active Adapta session");
   const response = await fetch(`${CLERK}/v1/client/sessions/${id}/tokens`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, signal });
   if (!response.ok) throw new Error("Unable to refresh Adapta session");
   const { jwt } = await response.json();
-  if (typeof jwt !== "string" || !jwt.startsWith("eyJ")) throw new Error("Invalid Adapta session token");
+  if (!isString(jwt) || !jwt.startsWith("eyJ")) throw new Error("Invalid Adapta session token");
   const exp = expiry(jwt);
   if (exp && exp <= Date.now()) throw new Error("Expired Adapta session token");
   // Unknown or expired expiries may be used for this request but are never cached.
@@ -45,7 +46,7 @@ async function session(cookie, signal) {
 function messagesFor(messages) {
   let system = "";
   const output = [];
-  const text = (c) => typeof c === "string" ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => String(p.text ?? "")).join("") : String(c ?? "");
+  const text = (c) => isString(c) ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => String(p.text ?? "")).join("") : String(c ?? "");
   for (const m of messages) {
     if (m.role === "system" || m.role === "developer") system += (system ? "\n" : "") + text(m.content);
   }
@@ -105,7 +106,7 @@ export class AdaptaWebExecutor extends BaseExecutor {
         const emit = (delta, finish_reason = null) => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason }] })}\n\n`));
         emit({ role: "assistant", content: "" });
         try { for await (const event of events(upstream.body)) {
-          if (event.type === "text-delta" && event.id !== "quick-response" && typeof event.delta === "string") emit({ content: event.delta });
+          if (event.type === "text-delta" && event.id !== "quick-response" && isString(event.delta)) emit({ content: event.delta });
           if (event.type === "error") { emit({ content: "\n\n[Erro: Adapta upstream error]" }); break; }
           if (event.type === "done" || event.type === "end") break;
         } } catch { emit({ content: "\n\n[Erro: Adapta upstream error]" }); }
@@ -116,7 +117,7 @@ export class AdaptaWebExecutor extends BaseExecutor {
     let content = "";
     try { for await (const event of events(upstream.body)) {
       if (event.type === "error") return result(error(502, "Adapta upstream error"), payload);
-      if (event.type === "text-delta" && event.id !== "quick-response" && typeof event.delta === "string") content += event.delta;
+      if (event.type === "text-delta" && event.id !== "quick-response" && isString(event.delta)) content += event.delta;
       if (event.type === "done" || event.type === "end") break;
     } } catch { return result(error(502, "Adapta upstream error"), payload); }
     const parsed = hasTools ? buildToolAwareResult(content, requestedTools, "adp") : { content, finishReason: "stop" };

@@ -763,6 +763,23 @@ export function backfillUsageEventReceiptsSync(db, cutoffIso = null) {
   }
 }
 
+// Only identified best-effort events on better-sqlite3 may be replayed. Its
+// transaction wrapper rolls back on failure; the durable receipt also protects
+// against duplicate accounting. Other adapters and strict callers retain their
+// existing failure behavior. Delays yield instead of blocking the event loop.
+async function commitUsageTransaction(db, entry, write) {
+  const delays = [25, 100, 250];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return db.transaction(write);
+    } catch (error) {
+      if (entry.strict || !entry.usageEventId || db.driver !== "better-sqlite3" ||
+          error?.code !== "SQLITE_BUSY" || attempt === delays.length) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+}
+
 /**
  * Commit one event to history, daily aggregates and key totals atomically.
  * Explicit cost is USD: known finite nonnegative values (including zero) are
@@ -891,7 +908,10 @@ export async function saveRequestUsage(entry) {
     // Scope storage identity, not the caller's request ID used by live sessions.
     const usageEventId = entry.usageEventId && entry.billingEpoch != null ?
       JSON.stringify(["billing", entry.billingEpoch, entry.usageEventId]) : entry.usageEventId;
-    db.transaction(() => {
+    await commitUsageTransaction(db, entry, () => {
+      inserted = false;
+      settled = false;
+      attributedApiKeyId = null;
       // Reuse the quota writer lock: the schema row exists even when this day
       // and lifetime counter do not. PostgreSQL holds it until commit/rollback.
       // ponytail: global writer lock; use per-day locks if throughput demands it.

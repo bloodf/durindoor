@@ -112,7 +112,8 @@ export function hasValuableContent(chunk, format) {
  * (choice, tool-call index) without one. Strict OpenAI-compatible clients
  * (@ai-sdk/openai-compatible) abort the turn on "Expected 'id' to be a string"
  * (upstream 9router 95c9d03e, #4992). Continuation fragments of an index
- * already seen are left as-is, per the OpenAI streaming contract.
+ * already seen are left as-is, per the OpenAI streaming contract. Known empty
+ * function placeholders are removed first so they cannot create phantom ids.
  * @param {object} chunk - parsed chat.completion.chunk, mutated in place
  * @param {Set<string>} seen - per-stream keys of indices already opened
  * @returns {boolean} true when an id was added
@@ -121,8 +122,20 @@ export function ensureStreamToolCallIds(chunk, seen) {
   if (!Array.isArray(chunk?.choices)) return false;
   let changed = false;
   for (const [choicePosition, choice] of chunk.choices.entries()) {
-    const calls = choice?.delta?.tool_calls;
+    let calls = choice?.delta?.tool_calls;
     if (!Array.isArray(calls)) continue;
+    const nonEmpty = calls.filter(call => {
+      if (!isObject(call) || call === null) return true;
+      if (call.type && call.type !== "function") return true;
+      if (Object.keys(call).some(key => !["index", "id", "type", "function"].includes(key))
+        || Object.keys(call.function || {}).some(key => !["name", "arguments"].includes(key))) return true;
+      return [call.id, call.function?.name, call.function?.arguments].some(value => value != null && value !== "");
+    });
+    if (nonEmpty.length !== calls.length) {
+      changed = true;
+      if (nonEmpty.length === 0) { delete choice.delta.tool_calls; continue; }
+      choice.delta.tool_calls = calls = nonEmpty;
+    }
     for (const [position, call] of calls.entries()) {
       if (!isObject(call) || call === null) continue;
       const choiceIndex = choice.index ?? choicePosition;

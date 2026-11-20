@@ -5,7 +5,7 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
-import { fetchImageAsBase64 } from "../translator/concerns/image.js";
+import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/image.js";
 import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
@@ -13,6 +13,30 @@ function serializeRequestBody(requestBody) {
   if (!isUndefined(FormData) && requestBody instanceof FormData) return requestBody;
   if (isString(requestBody)) return requestBody;
   return JSON.stringify(requestBody);
+}
+
+/**
+ * Raw image bytes response.
+ *
+ * The Content-Type comes from the bytes' own magic signature, not from the
+ * requested `output_format`: Cloudflare FLUX and Leonardo answer with JPEG
+ * even when the request asked for PNG, and labelling those bytes `image/png`
+ * made clients save a broken file. The requested format stays the fallback
+ * for bytes the sniffer does not recognize.
+ */
+function binaryImageResponse(base64, outputFormat) {
+  const buf = Buffer.from(base64, "base64");
+  const fmt = (outputFormat || "png").toLowerCase();
+  const mime = detectImageMime(buf) ||
+    (fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png");
+  const extension = mime === "image/jpeg" ? "jpg" : mime.split("/")[1];
+  return new Response(buf, {
+    headers: {
+      "Content-Type": mime,
+      "Content-Disposition": `inline; filename="image.${extension}"`,
+      "Access-Control-Allow-Origin": "*"
+    }
+  });
 }
 
 /**
@@ -100,15 +124,10 @@ export async function handleImageGenerationCore({
           b64 = image?.url?.split(",", 2)[1];
         }
         if (b64) {
-          const buf = Buffer.from(b64, "base64");
-          const fmt = (body.output_format || "png").toLowerCase();
-          const mime = fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png";
           return {
             success: true,
             accounting,
-            response: new Response(buf, {
-              headers: { "Content-Type": mime, "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`, "Access-Control-Allow-Origin": "*" }
-            })
+            response: binaryImageResponse(b64, body.output_format)
           };
         }
       }
@@ -323,19 +342,10 @@ export async function handleImageGenerationCore({
       b64 = image?.url?.split(",", 2)[1];
     }
     if (b64) {
-      const buf = Buffer.from(b64, "base64");
-      const fmt = (body.output_format || "png").toLowerCase();
-      const mime = fmt === "jpeg" || fmt === "jpg" ? "image/jpeg" : fmt === "webp" ? "image/webp" : "image/png";
       return {
         success: true,
         accounting,
-        response: new Response(buf, {
-          headers: {
-            "Content-Type": mime,
-            "Content-Disposition": `inline; filename="image.${fmt === "jpeg" ? "jpg" : fmt}"`,
-            "Access-Control-Allow-Origin": "*"
-          }
-        })
+        response: binaryImageResponse(b64, body.output_format)
       };
     }
   }

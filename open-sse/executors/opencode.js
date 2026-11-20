@@ -2,6 +2,7 @@ import crypto from "crypto";
 
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
+import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -34,15 +35,20 @@ import { getOpencodeTlsFetch } from "../services/opencodeTlsClient.js";
  *
  * Session identity is resolved once per request in `prepareRequestCredentials`
  * (called from `execute`) onto a request-local credentials copy: no session
- * state lives on this singleton executor. The session is a deterministic hash
- * of `[connectionId, requestContext.sessionId]` (`canonicalSessionId` /
- * `trustedSessionKey`), so one identity always derives the same session with
- * no cache (upstream 0c6ab4f9's guarantee without its Map).
+ * state lives on this singleton executor. The session source is
+ * `[connectionId, requestContext.sessionId]` (`canonicalSessionId` /
+ * `trustedSessionKey`); the canonical id is minted from the current time and
+ * memoized per source, so one conversation keeps one stable, valid session.
+ *
+ * The source is what separates callers, not the id itself: the id must decode
+ * to a recent inverted timestamp for Zen's free tier to accept it, so it
+ * cannot be a pure function of the source (upstream 0c6ab4f9's guarantee is
+ * kept by the memo instead of by a hash — upstream decolua/9router#4791).
  *
  * Anonymous (no-auth) callers all share the literal connectionId "noauth", so
  * the session source alone can be identical across unrelated callers on a
  * first turn — see `anonymousCallerIp`. The public peer IP, when available, is
- * folded into the hash input so different anonymous callers land on different
+ * folded into the source so different anonymous callers land on different
  * sessions; this is a mitigation, not a full fix.
  *
  * Union Alpha (upstream 2b65c49) is a routing concern: `MESSAGES_MODELS` pins
@@ -67,7 +73,6 @@ const SESSION_FIELD = "_opencodeSession";
 // CLI. Upstream decodes it and rejects a non-small counter with 403
 // FreeTierError (live probes upstream: counter 0-16 pass, >=100 fail).
 const SESSION_PREFIX_MASK = (1n << 48n) - 1n;
-const SESSION_TIME_MASK = (1n << 36n) - 1n;
 
 function descendingTimeHex(time, counter) {
   return (~(BigInt(time) * 0x1000n + BigInt(counter)) & SESSION_PREFIX_MASK).
@@ -105,18 +110,40 @@ function nativeSession(rawHeaders) {
 
 // Deterministic translation from an arbitrary source string into the
 // canonical `ses_<12 hex><14 base62>` shape OpenCode Zen's free tier
-// validates. Namespacing by clientTool isolates different downstream agents
-// that happen to reuse the same raw conversation id.
+// validates.
+//
+// The 12-hex prefix must decode to a RECENT inverted timestamp: Zen rejects a
+// session whose decoded time is in the future or older than the free-tier
+// window (upstream live probes: a current-time session passed 10/10, a
+// digest-derived one 1/10 — a digest is uniform over 2^36 ms). So the id is
+// minted from the current time, not from a hash, and memoized per downstream
+// session so one conversation keeps one stable, valid session.
+//
+// Namespacing by clientTool isolates different downstream agents that happen
+// to reuse the same raw conversation id.
+const MAX_TRANSLATED_SESSIONS = 1000;
+const translatedSessions = new Map();
+const translatedSessionCleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of translatedSessions) {
+    if (now - entry.lastUsed > MEMORY_CONFIG.sessionTtlMs) translatedSessions.delete(key);
+  }
+}, MEMORY_CONFIG.sessionCleanupIntervalMs);
+if (translatedSessionCleanup.unref) translatedSessionCleanup.unref();
+
 function canonicalSessionId(source, clientTool) {
-  const digest = crypto.createHash("sha256")
-    .update(`opencode\0${clientTool || "generic"}\0${source}`)
-    .digest();
-  // Deterministic time field from the digest, counter pinned to 1 (what the
-  // CLI sends on a session's first id).
-  const time = BigInt(`0x${digest.subarray(0, 5).toString("hex")}`) & SESSION_TIME_MASK;
-  let randomPart = "";
-  for (let i = 6; i < 20; i++) randomPart += BASE62_CHARS[digest[i] % 62];
-  return `ses_${descendingTimeHex(time, 1)}${randomPart}`;
+  const key = `${clientTool || "generic"}\0${source}`;
+  const existing = translatedSessions.get(key);
+  if (existing) {
+    existing.lastUsed = Date.now();
+    return existing.sessionId;
+  }
+  const sessionId = generateSessionId();
+  if (translatedSessions.size >= MAX_TRANSLATED_SESSIONS) {
+    translatedSessions.delete(translatedSessions.keys().next().value);
+  }
+  translatedSessions.set(key, { sessionId, lastUsed: Date.now() });
+  return sessionId;
 }
 
 // Fallback generator for contexts with no resolvable session seed at all
@@ -213,8 +240,8 @@ export class OpenCodeExecutor extends BaseExecutor {
    * (never mutates the shared `credentials` object or `this`). A valid native
    * `x-opencode-session` header wins as-is; otherwise the chatCore-forwarded
    * `providerSessionId`/connection identity is translated into the canonical
-   * shape deterministically (see class doc). Anonymous callers fold in their
-   * public peer IP (see `anonymousCallerIp`).
+   * shape and memoized per source (see class doc). Anonymous callers fold in
+   * their public peer IP (see `anonymousCallerIp`).
    */
   prepareRequestCredentials({ credentials, providerSessionId, clientTool, requestContext } = {}) {
     const sourceCredentials = credentials || {};
@@ -224,8 +251,8 @@ export class OpenCodeExecutor extends BaseExecutor {
     const identityIp = isAnonymous ? anonymousCallerIp(headerSource) : null;
     const source = normalizeSession(providerSessionId) ||
     trustedSessionKey(sourceCredentials, requestContext, this._privateSessionKey);
-    const hashInput = identityIp ? `${source}\0ip:${identityIp}` : source;
-    const session = native || canonicalSessionId(hashInput, clientTool);
+    const sessionSource = identityIp ? `${source}\0ip:${identityIp}` : source;
+    const session = native || canonicalSessionId(sessionSource, clientTool);
     return {
       ...sourceCredentials,
       [SESSION_FIELD]: session,

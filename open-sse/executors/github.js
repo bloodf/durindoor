@@ -655,6 +655,10 @@ export class GithubExecutor extends BaseExecutor {
     const headers = this.buildHeaders(credentials, responsesStream);
 
     const transformedBody = openaiToOpenAIResponsesRequest(model, body, responsesStream, credentials);
+    // This route bypasses transformRequest(), so the unsupported-parameter filter
+    // has to run here too — otherwise a request carrying `temperature` reaches
+    // Copilot's /responses endpoint and 400s for the models that reject it.
+    stripUnsupportedParams("github", model, transformedBody);
     // Custom-model maxOutput: the Responses converter emits max_output_tokens;
     // clamp AFTER conversion so escalation from /chat/completions keeps the cap.
     this.clampCustomMaxOutput(transformedBody, requestContext, ["max_output_tokens"]);

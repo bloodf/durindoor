@@ -818,6 +818,8 @@ export const PATTERN_CAPABILITIES = [
 
 // ── Claude (4.6+ = adaptive thinking; 5 = 1M context; older/haiku = budget) ──────
 { pattern: "*claude*opus-5-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*opus-4-7*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
+{ pattern: "*claude*opus-4-8*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive" } },
 { pattern: "*claude*opus-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude*sonnet-5*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
 /** Claude 4.6+ variants share the generation's 1M context and 128K output limits. */
@@ -835,8 +837,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*claude*haiku*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*opus*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 { pattern: "*claude*sonnet*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
-{ pattern: "*claude*fable*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
-{ pattern: "*claude*mythos*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*fable*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
+{ pattern: "*claude*mythos*", caps: { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 } },
 { pattern: "*claude-3*", caps: { vision: true } },
 { pattern: "*claude*", caps: { vision: true, reasoning: true, search: true, thinkingFormat: "claude-budget" } },
 
@@ -930,12 +932,14 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*@cf/qwen/qwen2.5-coder-32b-instruct", caps: { reasoning: false, thinkingFormat: null, contextWindow: 32768 } },
 
 // ── Qwen (3.5+ = native vision/video; coder = text-only; QwQ = thinking-only) ─
+/** Qwen 3.8 uses reasoning_effort; keep its rows above the legacy omni/Max patterns. */
+{ pattern: "*qwen3.8*omni*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 65536 } },
+{ pattern: "*qwen3.8*27b*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 262144 } },
+{ pattern: "*qwen3.8-2.4t*", caps: { reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144 } },
+{ pattern: "*qwen3.8*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 1000000, maxOutput: 131072 } },
 { pattern: "*qwen*vl*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 { pattern: "*qwen*omni*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144, maxOutput: 65536 } },
 { pattern: "*qwen*coder*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000 } },
-/** Qwen3.8 exceptions precede overlapping Max and family patterns; the 2.4T open model is text-only. */
-{ pattern: "*qwen3.8-2.4t*", caps: { reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
-{ pattern: "*qwen3.8*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen*max*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen3.5*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },
 { pattern: "*qwen3.6*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 65536 } },

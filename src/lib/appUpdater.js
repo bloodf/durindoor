@@ -27,7 +27,7 @@ export async function stopMitmForUpdate() {
 // verified candidates, and never our own process or an ancestor (see
 // cli/src/lib/processScan.js — the ancestor rule is what keeps a supervisor alive).
 function collectAppPids() {
-  return processScan.collectAppPids();
+  return processScan.collectAppPids({ appDir: process.cwd() });
 }
 
 // Copy updater.js into DATA_DIR so npm -g can overwrite node_modules safely

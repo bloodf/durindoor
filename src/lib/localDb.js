@@ -11,7 +11,7 @@ export {
   createProviderNode, updateProviderNode, deleteProviderNode,
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
-  getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyUsageLimitStatus,
+  getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeyUsageTotals, getAllApiKeyUsageTotals, incrementApiKeyUsageSync, createApiKey, updateApiKey, deleteApiKey, rotateApiKey, validateApiKey, getApiKeyUsageLimitStatus,
   getApiKeyProviderConnectionIds,
   // API-key groups: organizational labels, never consulted on the request path
   getApiKeyGroups, getApiKeyGroupById, createApiKeyGroup, updateApiKeyGroup, deleteApiKeyGroup,

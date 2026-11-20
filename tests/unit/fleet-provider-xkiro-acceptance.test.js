@@ -3,9 +3,8 @@
  *
  * OFFLINE ONLY. Fetch and the import-time Kimchi updater are explicitly mocked;
  * no credentials, network, or account are used. This file pins the installed
- * `kiro` API-key transport and catalog mapping, and proves that `xkiro` (an
- * OpenAI-compatible gateway at api.xkiro.com upstream) is not silently aliased
- * to it or accepted by the validator. Live account-backed verification is
+ * `kiro` API-key transport and catalog mapping, and verifies that the
+ * OpenAI-compatible xkiro gateway is registered separately. Live account-backed verification is
  * UNAVAILABLE; this is partial offline evidence, not proof of xkiro support.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,7 +24,6 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { normalizeProviderId } from "@/lib/providerNormalization";
-import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { KiroExecutor } from "open-sse/executors/kiro.js";
 import { clearKiroModelCache, resolveKiroModels } from "open-sse/services/kiroModels.js";
@@ -129,18 +127,10 @@ describe("fleet provider xkiro acceptance (offline)", () => {
     expect(onCredentialsRefreshed).not.toHaveBeenCalled();
   });
 
-  it("candidate xkiro: not a registered provider and not aliased to kiro", () => {
-    expect(AI_PROVIDERS.xkiro).toBeUndefined();
-    expect(PROVIDERS.xkiro).toBeUndefined();
+  it("xkiro is a separate API-key provider from native kiro", () => {
+    expect(AI_PROVIDERS.xkiro).toBeDefined();
+    expect(PROVIDERS.xkiro.baseUrl).toBe("https://api.xkiro.com/v1/chat/completions");
     expect(normalizeProviderId("xkiro")).toBe("xkiro");
     expect(AI_PROVIDERS.kiro).toBeDefined();
-  });
-
-  it("candidate xkiro: validator refuses it and sends no request", async () => {
-    const fetcher = vi.fn();
-    const result = await probeRegistryProvider("xkiro", "sk-test-not-real", fetcher, {});
-    expect(result).toBeNull(); // route maps null to 400 "Provider validation not supported"
-    expect(fetcher).not.toHaveBeenCalled();
-    expect(mocks.proxyAwareFetch).not.toHaveBeenCalled();
   });
 });

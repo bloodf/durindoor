@@ -46,6 +46,15 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe("shared model metadata cache", () => {
+  it("enriches hosted Ollama under its connection id without affecting local daemons", async () => {
+    await refreshSharedModelMetadata({ now: NOW, fetchCatalog: async () => reply({
+      "ollama-cloud": { models: { "cloud-model": { limit: { context: 1000000, output: 131072 }, modalities: { input: ["text", "image"] } } } },
+    }) });
+    const cached = await getSharedModelMetadata();
+    expect(cached.providers.ollama["cloud-model"]).toMatchObject({ contextWindow: 1000000, maxOutput: 131072, vision: true });
+    expect(cached.providers["ollama-local"]).toBeUndefined();
+    expect(effectiveSyncedModels({ syncedAt: new Date(NOW).toISOString(), models: [] }, [], "ollama", cached)).toBeNull();
+  });
   it("retains an explicit embedding kind through refresh, cache reads, and available-model materialization", async () => {
     await refreshSharedModelMetadata({ now: NOW, fetchCatalog: async () => reply({
       openai: { models: { "vector-v1": { kind: "embedding", limit: { context: 8192 }, tool_call: false } } },

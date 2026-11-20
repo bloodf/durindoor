@@ -19,6 +19,9 @@ const PROVIDER_SOURCES = {
   xai: "xai",
   gemini: "google",
   github: "github-copilot",
+  // Hosted Ollama uses a different models.dev id from its connection id.
+  // Local daemon catalogs remain independently scoped to their endpoint.
+  ollama: "ollama-cloud",
 };
 const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(value);
 const validTimestamp = (value) => Number.isSafeInteger(value) && value >= 0;

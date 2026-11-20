@@ -123,7 +123,9 @@ export function estimateTokens(body) {
  */
 export async function countInputTokens({ body, modelInfo, credentials = null, log = null, signal = null }) {
   const { provider, model } = modelInfo ?? {};
-  const url = deriveCountTokensUrl(PROVIDERS[provider]);
+  // The selected transport owns the wire format. A multi-endpoint provider's
+  // default Messages endpoint cannot count a Chat Completions request body.
+  const url = deriveCountTokensUrl(credentials?.runtimeTransport || PROVIDERS[provider]);
   if (!url) return { tokens: estimateTokens(body), approximate: true };
 
   try {

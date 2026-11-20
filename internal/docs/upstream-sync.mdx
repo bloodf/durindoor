@@ -43,6 +43,13 @@ The two-parent sync uses `1fe586bb` as the content base for v0.5.119. It adds Sy
 | Browser key disclosure portion of `b114fa9f` | CLI import stores the key through normal connection creation after local, same-origin operator checks. The response contains connection metadata. |
 | `736be957` | Retained the fork’s Claude transport and egress rules. |
 
+## Open provider PR review (#1072)
+
+| PR | Decision | Fork evidence |
+| --- | --- | --- |
+| [#5381](https://github.com/decolua/9router/pull/5381) | Not applicable to the fork's current transport and session policy. Its pooled session option shares a cookie jar, while its wire signature and session rewrite conflict with the later v2 session handling and the security decisions above. Fresh-per-request transport teardown is not implemented. | `open-sse/services/opencodeTlsClient.js` uses cookie-less transports and guarded proxy routing; `open-sse/executors/opencode.js` preserves canonical request-local sessions and the newer v2 wire signature. |
+| [#5490](https://github.com/decolua/9router/pull/5490) | Already covered by the fork's keyless compatible-node support, which also accepts omitted keys. | `src/lib/providerRouteHandlers.js`, `src/app/api/provider-nodes/validate/route.js`, and `tests/unit/lan-openai-compatible-connections.test.js`. |
+
 ## 2026-10-06 direct-commit review
 
 All six approved diffs were fetched individually; the release snapshot was not applied as a whole-tree replacement. No upstream version or branding changes were imported.
@@ -184,3 +191,37 @@ On dispatch it:
 4. Creates or updates a tracking issue labeled `upstream-scan`.
 
 The workflow needs `issues: write` and `contents: read`. It uses `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`.
+
+## 2026-11-20 deferred Docker validation
+
+Upstream [`87190db`](https://github.com/decolua/9router/commit/87190db) for [#5755](https://github.com/decolua/9router/pull/5755) is deferred pending validation in a Docker-capable environment. Validate runtime ownership and `sql.js`, `normalizeEnv.js`, and `typeChecks.js` packaging before reconsidering the Dockerfile ownership changes. This machine has no Docker; no Docker validation was run.
+
+### Intake #1072: remaining decisions
+
+- 9router #5709 is closed without merging and is not eligible for porting. No successor was identified in the open PR search for custom quota.
+- 9router #5727 adds WARP address rotation, proxy-pool controls and privileged host setup; adopting that network feature requires a product decision and is deferred.
+- 9router #5734: Antigravity discovery uses the Hub per-account catalog; the dashboard merges active account results and falls back to its existing catalog when no live models resolve.
+- 9router [#5667](https://github.com/decolua/9router/pull/5667) and [#5769](https://github.com/decolua/9router/pull/5769) closed without a GitHub merge and are not eligible for porting. Their closure comments report integration into upstream master; no successor PR was identified.
+- 9router [#5669](https://github.com/decolua/9router/pull/5669) is already covered by Responses wire normalization in `open-sse/executors/default.js` and `tests/unit/custom-responses-reasoning-port.test.js`.
+- 9router [#5728](https://github.com/decolua/9router/pull/5728) is deferred: the candidate changes cause `tests/unit/compression-chatcore-header.test.js` to return 502 instead of 200 for streaming and fail-open responses. The existing bypass and compression contracts remain unchanged.
+
+## 9router work order #1072 review
+
+Against the v0.5.119 integration, PRs [#5456](https://github.com/decolua/9router/pull/5456), [#5504](https://github.com/decolua/9router/pull/5504), [#5520](https://github.com/decolua/9router/pull/5520), and [#5549](https://github.com/decolua/9router/pull/5549) were closed without merge and are ineligible for porting; no successor was identified by PR reference search. The Node 20 compatibility work in #5549 also targets a runtime outside this fork's Node 24 requirement. Open PRs [#5465](https://github.com/decolua/9router/pull/5465) and [#5754](https://github.com/decolua/9router/pull/5754) are deferred because each exceeds 1,500 changed lines. PRs #5638, #5658, and #5767 are recorded by their port commit subjects; the #5658 Muse-specific change is inapplicable because that executor is absent.
+
+### 9router #1072 service intake
+
+- [#5574](https://github.com/decolua/9router/pull/5574): Deferred for an independent combo work order. DurinDoor uses Jev tier classification rather than upstream's per-member System One router. A compile-ready slice needs persisted combo instructions and member criteria wired through the Jev decision payload, plus nested combo prompt propagation and dashboard editing; verify defaults, nested prompt ordering, routing decisions and all supported request formats.
+- [#5632](https://github.com/decolua/9router/pull/5632): Not applicable: the referenced Smart Router Configure link and its missing `Link` import do not exist in the fork's combos page.
+- [#5639](https://github.com/decolua/9router/pull/5639): Already handled by `open-sse/executors/base.js`, which distinguishes the winning abort reason and propagates caller aborts without retry.
+- [#5642](https://github.com/decolua/9router/pull/5642): Superseded by the fork's API-key provider-connection scope in `src/lib/db/repos/apiKeyProviderConnectionsRepo.js` and admission policy. Its scope semantics differ from upstream's per-provider opt-in pins.
+- [#5646](https://github.com/decolua/9router/pull/5646): Deferred for an independent combo work order. The fork already retries empty known JSON bodies and fails over empty final responses, but upstream's format-specific finish reasons and Gemini/Responses detection need integration with the fork's stream probing, affinity and media exemptions. Verify each format, filtered responses, final-member errors and streaming cancellation.
+- [#5655](https://github.com/decolua/9router/pull/5655): Deferred for an independent security-reviewed work order. A minimal compile-ready slice comprises the opt-in BYOK policy, loopback-only forwarding and credential stripping, management response adaptation, and focused MITM routing, host, TLS and credential-boundary tests; Windows controls and translator changes should be reviewed separately. Desktop compatibility and live behavior remain unverified.
+- [#5686](https://github.com/decolua/9router/pull/5686): Closed unmerged; [#5528](https://github.com/decolua/9router/pull/5528) is an open related FormData transport fix.
+- [#5707](https://github.com/decolua/9router/pull/5707): Ported for the fork's `nous-research` provider ID; the existing endpoint and API-key guards remain in place.
+- [#5708](https://github.com/decolua/9router/pull/5708): Not applicable: the upstream test file with incorrectly scoped mocks is absent.
+
+### Provider intake #1072
+
+- [#5608](https://github.com/decolua/9router/pull/5608), [#5618](https://github.com/decolua/9router/pull/5618), and [#5654](https://github.com/decolua/9router/pull/5654) closed without merging and are ineligible for this intake. Related open Synthetic follow-up: [#5678](https://github.com/decolua/9router/pull/5678).
+- [#5731](https://github.com/decolua/9router/pull/5731) remains deferred to an independent security-reviewed work order. Its minimum compile-ready slice is node header validation and masked persistence, credential resolution, and application across chat, embeddings, discovery, validation and test paths, with logging redaction. Evidence must cover header precedence and denied names, secret masking and retention, template substitution, and cross-route isolation including built-in providers; review credential override and disclosure boundaries against the fork's policy above.

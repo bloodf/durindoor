@@ -171,6 +171,66 @@ describe("Kimi device sign-in and Anthropic compatibility", () => {
     expect(steps).toEqual([]);
   });
 
+  describe.each(regions)("$domain token responses", ({ provider, domain }) => {
+    async function startPoll(payload, status = 200) {
+      const auth = `https://auth.${domain}/api/oauth`;
+      steps.push({
+        url: `${auth}/device_authorization`,
+        respond: () => Response.json({
+          device_code: "private-code", user_code: "PIN", expires_in: 60,
+          verification_uri_complete: `https://www.${domain}/code/authorize_device?user_code=PIN`,
+        }),
+      }, {
+        url: `${auth}/token`,
+        respond: () => Response.json(payload, { status }),
+      });
+      const started = await post(provider, "device-code", { proxyMode: "direct" });
+      expect(started.status).toBe(200);
+      const { flowId } = await started.json();
+      const polled = await post(provider, "poll", { flowId });
+      expect(polled.status).toBe(200);
+      expect(steps).toEqual([]);
+      return polled.json();
+    }
+
+    it.each([
+      ["object access and array refresh", { access_token: {}, refresh_token: [] }],
+      ["missing access", { refresh_token: "fake-refresh" }],
+      ["empty access", { access_token: "" }],
+      ["blank access", { access_token: " " }],
+      ["array refresh", { access_token: "fake-access", refresh_token: [] }],
+      ["null refresh", { access_token: "fake-access", refresh_token: null }],
+      ["empty refresh", { access_token: "fake-access", refresh_token: "" }],
+      ["blank refresh", { access_token: "fake-access", refresh_token: " " }],
+    ])("rejects %s before saving credentials", async (_label, payload) => {
+      const result = await startPoll(payload);
+      expect(createProviderConnection).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: false, error: "invalid_response", errorDescription: "Invalid Kimi token response", pending: false,
+      });
+    });
+
+    it.each([
+      [200, { error: "authorization_pending", message: "Still waiting" }, "Still waiting", true],
+      [400, { error: "access_denied", error_description: "Authorization denied" }, "Authorization denied", false],
+    ])("preserves HTTP %i provider errors", async (status, payload, errorDescription, pending) => {
+      expect(await startPoll(payload, status)).toEqual({
+        success: false, error: payload.error, errorDescription, pending,
+      });
+      expect(createProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("saves a valid access token with an omitted refresh token", async () => {
+      expect(await startPoll({ access_token: "fake-access" })).toEqual({
+        success: true, connection: { id: `connection-${provider}`, provider },
+      });
+      expect(createProviderConnection).toHaveBeenCalledTimes(1);
+      const [[record]] = createProviderConnection.mock.calls;
+      expect(record.accessToken).toBe("fake-access");
+      expect(record.refreshToken).toBeUndefined();
+    });
+  });
+
   it("keeps platform keys and the existing Coding identity separate", () => {
     expect(resolveProviderAlias("kimi")).toBe("kimi");
     expect(resolveProviderAlias("kmc")).toBe("kimi-coding");

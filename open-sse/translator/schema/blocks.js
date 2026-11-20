@@ -9,6 +9,7 @@ export const OPENAI_BLOCK = {
   AUDIO_URL: "audio_url",
   FILE: "file",
   FUNCTION: "function",
+  WEB_SEARCH: "web_search",
   TOOL_CALL: "tool_call",
 };
 
@@ -29,6 +30,8 @@ export const CLAUDE_BLOCK = {
   TOOL_ADDITION: "tool_addition",
   SERVER_TOOL_USE: "server_tool_use",
   WEB_SEARCH_TOOL_RESULT: "web_search_tool_result",
+  WEB_SEARCH_RESULT: "web_search_result",
+  WEB_SEARCH_ERROR: "web_search_tool_result_error",
   THINKING: "thinking",
   REDACTED_THINKING: "redacted_thinking",
   SEARCH_RESULT: "search_result",
@@ -38,6 +41,7 @@ export const CLAUDE_BLOCK = {
 // OpenAI Responses API item types.
 export const RESPONSES_ITEM = {
   MESSAGE: "message",
+  WEB_SEARCH_CALL: "web_search_call",
   FUNCTION_CALL: "function_call",
   FUNCTION_CALL_OUTPUT: "function_call_output",
   CUSTOM_TOOL_CALL: "custom_tool_call",

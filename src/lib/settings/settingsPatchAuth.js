@@ -32,6 +32,8 @@ export const SECRET_SETTING_KEYS = Object.freeze([
  * Keys absent from durindoor settings are intentionally omitted.
  */
 export const AUTH_CRITICAL_SETTING_KEYS = Object.freeze([
+  /** Operator-authored instructions affect every request routed through a combo. */
+  "comboPrompts",
   "exposeComboOnly",
   "requireLogin",
   /** API-key enforcement cannot be disabled through an unproved settings PATCH. */

@@ -262,7 +262,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // Responses passthrough uses its existing abort terminal; all other known
         // client formats synthesize their EOF recovery through terminalTracker.
         try {
-          if (!wasConnected || isNetworkClose || onAbortTerminal) {
+          if (!wasConnected || isNetworkClose || onAbortTerminal || (code === "invalid_sse_payload" && terminalTracker)) {
             if (terminalTracker) emitClientRecovery(controller);
             else emitTerminal(controller);
             abort();
@@ -310,7 +310,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
  * @param {number} ttftTimeoutMs - Maximum wait for the first raw upstream byte
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, ttftTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, ttftTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, emptyTerminalGuard = null) {
   let stallTimer = null;
   let firstChunkTimer = null;
   let chunkCount = 0;
@@ -343,9 +343,11 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     stallTimer = setTimeout(() => {
       stallTimer = null;
       clearFirstChunk();
-      abortMessage = "stream stall timeout";
+      // The stall budget can be shorter than TTFT; classify by bytes, not
+      // callbacks, because empty chunks do not mean the response started.
+      abortMessage = totalBytes === 0 ? "stream ttft timeout" : "stream stall timeout";
       dbg(tag, `STALL TIMEOUT ${stallTimeoutMs}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`);
-      streamController.handleError?.(new Error("stream stall timeout"));
+      streamController.handleError?.(new Error(abortMessage));
       streamController.abort?.();
     }, stallTimeoutMs);
   };
@@ -388,9 +390,10 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     flush() {dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();}
   });
 
-  const transformedBody = providerResponse.body.
+  let transformedBody = providerResponse.body.
   pipeThrough(upstreamTap).
   pipeThrough(transformStream);
+  if (emptyTerminalGuard) transformedBody = transformedBody.pipeThrough(emptyTerminalGuard);
 
   return createDisconnectAwareStream(
     { readable: transformedBody },

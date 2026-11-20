@@ -4,6 +4,7 @@ import elevenlabs from "../../providers/registry/elevenlabs.js";
 
 const VOICES_TTL = 24 * 60 * 60 * 1000;
 const _voicesCache = new Map(); // by API key
+const _modelsCache = new Map(); // by API key
 
 export async function fetchElevenLabsVoices(apiKey) {
   if (!apiKey) throw new Error("ElevenLabs API key required");
@@ -20,6 +21,20 @@ export async function fetchElevenLabsVoices(apiKey) {
   const voices = (data.voices || []).map((v) => ({ ...v, lang: v.labels?.language || "en" }));
   _voicesCache.set(apiKey, { voices, time: now });
   return voices;
+}
+
+export async function fetchElevenLabsModels(apiKey) {
+  if (!apiKey) throw new Error("ElevenLabs API key required");
+  const now = Date.now();
+  const cached = _modelsCache.get(apiKey);
+  if (cached && now - cached.time < VOICES_TTL) return cached.models;
+  const res = await fetch("https://api.elevenlabs.io/v1/models", { headers: { "xi-api-key": apiKey } });
+  if (!res.ok) throw new Error(`ElevenLabs models fetch failed: ${res.status}`);
+  const data = await res.json();
+  const models = (Array.isArray(data) ? data : []).filter((m) => m.can_do_text_to_speech && !m.requires_alpha_access)
+    .map((m) => ({ id: m.model_id, name: m.name || m.model_id, type: "tts" }));
+  _modelsCache.set(apiKey, { models, time: now });
+  return models;
 }
 
 // Map supported OpenAI speech response formats to ElevenLabs output codecs.
@@ -60,7 +75,9 @@ export default {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err?.detail?.message || `ElevenLabs TTS failed: ${res.status}`);
+      const error = new Error(err?.detail?.message || `ElevenLabs TTS failed: ${res.status}`);
+      if (res.status >= 400 && res.status < 500) error.status = res.status;
+      throw error;
     }
     const buf = await res.arrayBuffer();
     if (buf.byteLength < 1024) throw new Error("ElevenLabs TTS returned empty audio");

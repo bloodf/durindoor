@@ -129,6 +129,8 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
       usageEventId: `${getRequestId(request)}:tts`, provider, model,
       connectionId: credentials.connectionId || null,
       endpoint: "/v1/audio/speech", modality: "tts",
+      // The stable id of the admitted key travels with the usage.
+      apiKeyId,
     });
     if (!result.accountingCompletion && (result.audioBuffered || !result.response.body)) return record(result.accounting);
 

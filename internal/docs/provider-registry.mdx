@@ -84,6 +84,35 @@ A static import list is required because Next/webpack cannot analyze a dynamic `
 - `modelsFetcher` discovery (`fetchRegistryFetcherModels`) builds its request headers with `buildProviderProbeHeaders`, the same helper the connection test uses, so `transport.auth` (for example `X-API-Key`) and pinned `transport.headers` (for example `User-Agent`) apply to model discovery as well.
 - Provider logos are a separate policy: [Provider brand assets](./provider-brand-assets.mdx).
 
+## Model listing
+
+A provider can list its models when it declares a catalogue explicitly. There are two
+declarations, and a provider needs only one of them:
+
+- a hand-written entry in `PROVIDER_MODELS_CONFIG`
+  (`src/app/api/providers/[id]/models/modelsConfig.js`), or
+- a `modelsFetcher` on its registry entry.
+
+DurinDoor never derives a `/models` URL from `transport.baseUrl`. A chat base URL does
+not imply a catalogue host: `https://host/v1/chat/completions` and
+`https://host/v1/audio/transcriptions` both appear in the registry, and the derived
+path would 404 or, worse, hit an unrelated endpoint. Adding a provider therefore means
+declaring where its catalogue lives, not assuming.
+
+Three consumers read that declaration and must agree:
+
+| Consumer | Entry point | Answers |
+| --- | --- | --- |
+| Provider route | `src/app/api/providers/[id]/models/route.js` | live models for one connection |
+| Playground probe | `canDiscoverModels` in `src/lib/providerRouteHandlers.js` | may the client fetch models for this connection |
+| Auto-sync service | `isModelAutoSyncEligible` in `src/lib/modelAutoSync/runner.js` | may the background job refresh this provider |
+
+The route and the auto-sync service share one fetcher
+(`src/app/api/providers/[id]/models/fetchConnectionModels.js`), so a provider's
+quirks are fixed in one path only. `tests/unit/provider-model-listing.test.js` pins the
+contract: a registry-only provider is listable everywhere, a provider with no declared
+catalogue is listable nowhere, and no consumer guesses a catalogue URL.
+
 ## Revision-bound OmniRoute identity audit
 
 [Recorded matrix](./omniroute-provider-matrix.json) compares the exported registry

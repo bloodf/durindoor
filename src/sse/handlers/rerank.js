@@ -82,7 +82,9 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
     provider,
     model,
     connectionId: credentials.connectionId || null,
-    modality: "rerank"
+    modality: "rerank",
+    // The stable id of the admitted key travels with the usage.
+    apiKeyId,
   });
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);

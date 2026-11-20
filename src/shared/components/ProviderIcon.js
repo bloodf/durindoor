@@ -96,19 +96,21 @@ const KNOWN_SVGS = new Set([
 "zenmux-free"]
 );
 
+// Compatible nodes can supply a generic image after their node-specific icon fails.
 export default function ProviderIcon({
   src,
   alt,
   size = 32,
   className = "",
   fallbackText = "?",
-  fallbackColor
+  fallbackColor,
+  fallbackSrc
 }) {
   const [stage, setStage] = useState(0);
 
   useEffect(() => {
     setStage(0);
-  }, [src]);
+  }, [src, fallbackSrc]);
 
   const candidates = [src];
   const pngMatch = isString(src) && src.match(/^\/providers\/([^/]+)\.png$/i);
@@ -116,7 +118,9 @@ export default function ProviderIcon({
     candidates.unshift(`/providers/${pngMatch[1]}.svg`);
   }
 
-  if (stage >= candidates.length || !src) {
+  if (fallbackSrc && fallbackSrc !== src) candidates.push(fallbackSrc);
+
+  if (stage >= candidates.length || !candidates[stage]) {
     return (
       <span
         role="img"
@@ -157,5 +161,6 @@ ProviderIcon.propTypes = {
   size: PropTypes.number,
   className: PropTypes.string,
   fallbackText: PropTypes.string,
-  fallbackColor: PropTypes.string
+  fallbackColor: PropTypes.string,
+  fallbackSrc: PropTypes.string
 };

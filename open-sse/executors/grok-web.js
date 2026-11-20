@@ -4,6 +4,7 @@ import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 
 const GROK_CHAT_API = PROVIDERS["grok-web"].baseUrl;
 const GROK_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
@@ -24,6 +25,24 @@ const MODEL_MAP = {
   "grok-4.20": { grokModel: "grok-420", modelMode: "MODEL_MODE_GROK_420", isThinking: false },
   "grok-4.20-beta": { grokModel: "grok-420", modelMode: "MODEL_MODE_GROK_420", isThinking: false }
 };
+
+/**
+ * Build the Cookie header for grok.com from whatever the operator pasted: the bare
+ * `sso` value, `sso=<value>`, or a full DevTools Cookie header (optionally with a
+ * `Cookie:` prefix). A full header is forwarded as pasted, in order, because other
+ * first-party cookies the browser sent with it stay the operator's own; it must
+ * contain an `sso` pair. Returns "" when no usable session is present.
+ */
+export function buildGrokCookieHeader(raw) {
+  const value = stripCookieInputPrefix(isString(raw) ? raw : "");
+  if (!value) return "";
+  // A pair is name=value with a non-empty, non-"=" first value character; a bare
+  // base64 token that merely ends in "=" padding is not one.
+  const pairPattern = /^[A-Za-z0-9_.-]+=[^=;\s]/;
+  const pairs = value.split(";").map((part) => part.trim()).filter(Boolean);
+  if (!pairs.some((part) => pairPattern.test(part))) return `sso=${value}`;
+  return pairs.some((part) => /^sso=[^;\s]+$/.test(part)) ? pairs.join("; ") : "";
+}
 
 function randomString(length, alphanumeric = false) {
   const chars = alphanumeric ? "abcdefghijklmnopqrstuvwxyz0123456789" : "abcdefghijklmnopqrstuvwxyz";
@@ -309,12 +328,15 @@ export class GrokWebExecutor extends BaseExecutor {
       traceparent: `00-${traceId}-${spanId}-00`
     };
 
-    // Strip "sso=" prefix if user pasted it
-    if (credentials.apiKey) {
-      let token = credentials.apiKey;
-      if (token.startsWith("sso=")) token = token.slice(4);
-      headers["Cookie"] = `sso=${token}`;
+    const cookie = buildGrokCookieHeader(credentials?.apiKey);
+    if (!cookie) {
+      // No usable sso session: fail locally, before any request reaches grok.com.
+      const errResp = new Response(JSON.stringify({
+        error: { message: "Grok auth failed — no sso cookie found. Paste the sso cookie value from grok.com, or a Cookie header that contains sso=.", type: "upstream_error", code: "HTTP_401" }
+      }), { status: 401, headers: { "Content-Type": "application/json" } });
+      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: grokPayload };
     }
+    headers["Cookie"] = cookie;
 
     log?.info?.("GROK-WEB", `Query to ${model} (grok=${grokModel}, mode=${modelMode}), len=${message.length}`);
 

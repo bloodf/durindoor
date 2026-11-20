@@ -58,6 +58,11 @@ const PUBLIC_API_EXACT_PATHS = [
   // route verifies itself. Exact path only, so /api/auth/mfa/{setup,enable,
   // disable} stay behind the normal session check below.
   "/api/auth/mfa/verify",
+  // Browser-extension cookie import. The caller holds no dashboard session or
+  // API key, only a one-use pairing secret the route itself consumes
+  // (src/lib/providers/cookieImport/README.md). Exact path only: the operator
+  // route that issues pairings (`/pairing`) stays behind the management gate.
+  "/api/providers/cookie-import",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).

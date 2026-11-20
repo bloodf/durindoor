@@ -1353,6 +1353,26 @@ describe("OIDC secret probe management boundary", () => {
   });
 });
 
+describe("provider cookie import gate (#2034)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.hasTrustedPeerHeaders.mockReturnValue(true);
+  });
+
+  it("admits the extension import leaf with a foreign Origin, but only on the exact path", async () => {
+    const headers = { host: "gateway.example", origin: "chrome-extension://synthetic-extension-id" };
+    expect(await proxy(request("/api/providers/cookie-import", headers, "POST"))).toBe(mocks.nextResponse);
+    // The operator route that mints pairings keeps the management gate and the cross-origin denial.
+    expect((await proxy(request("/api/providers/cookie-import/pairing", headers, "POST"))).status).toBe(403);
+    expect((await proxy(request("/api/providers/cookie-import/pairing", { host: "gateway.example" }, "POST"))).status).toBe(401);
+    expect((await proxy(request("/api/providers/cookie-import/extra", headers, "POST"))).status).toBe(403);
+  });
+});
+
 describe("orchestrator probe paths (#1146)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -29,8 +29,14 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 const CHATGPT_WEB_URL = "https://chatgpt.com";
 export const CHATGPT_WEB_TRANSPORTS = ["auto", "browser", "http"];
 
+// The page's own conversation request failed with an auth status. The HTTP transport
+// already reports these as 401/403, so an expired session reads the same on both.
+const UPSTREAM_AUTH_STATUS = /\bconversation failed with status (401|403)\b/i;
+
 function statusForAdapterError(message) {
   if (/storage state|credentials|connection ID|session cookie/i.test(message)) return 401;
+  const upstreamAuth = UPSTREAM_AUTH_STATUS.exec(message);
+  if (upstreamAuth) return Number(upstreamAuth[1]);
   // Preserve upstream quota semantics so the shared account-fallback loop can exclude a
   // depleted Free session and immediately try the next configured ChatGPT Web account.
   if (
@@ -83,9 +89,12 @@ export class ChatGptWebExecutor extends BaseExecutor {
         input.log?.warn?.("CGPT-WEB", `Browser transport unavailable, using HTTP: ${error.message}`);
         return this.httpExecutor.execute(input);
       }
-      const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+      let message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
       // Runtime prerequisites are unavailable even when their diagnostics mention a request.
       const status = error instanceof BrowserUnavailableError ? 503 : statusForAdapterError(message);
+      if (UPSTREAM_AUTH_STATUS.test(message)) {
+        message = `ChatGPT auth failed (HTTP ${status}) — the session may be expired. Re-paste your __Secure-next-auth.session-token cookie from chatgpt.com.`;
+      }
       return {
         response: errorResponse(status, message || "ChatGPT Web browser execution failed", {
           type: "upstream_error",

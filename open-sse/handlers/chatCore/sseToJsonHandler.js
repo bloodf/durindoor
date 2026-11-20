@@ -487,7 +487,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         });
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
         let finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
-        if (provider === "codex" && sourceFormat === FORMATS.CLAUDE && hasClaudeSearch(body)) {
+        // Compatibility projection must remain final for classifier-shaped responses.
+        if (!claudeCompat && provider === "codex" && sourceFormat === FORMATS.CLAUDE && hasClaudeSearch(body)) {
           finalResp = responsesSearchToClaudeMessage(jsonResponse, finalResp, true);
         }
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).

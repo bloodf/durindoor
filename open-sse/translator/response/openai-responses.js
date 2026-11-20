@@ -9,6 +9,7 @@
  */
 import { register, initState } from "../index.js";
 import { FORMATS } from "../formats.js";
+import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, recoverTextSnapshotsByOutputIndex, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
@@ -761,12 +762,18 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.created") {
     state.respCustomToolKinds?.clear();
     state.respCustomToolInput?.clear();
+    delete state.responsesTextSnapshots;
+  }
+
+  if (eventType === "response.output_item.added" && data.item?.type === RESPONSES_ITEM.MESSAGE) {
+    bindResponsesTextItem(state, data.item, data.output_index);
   }
 
   // Text content delta
   if (eventType === "response.output_text.delta") {
     const delta = data.delta || "";
-    if (!delta) return null;
+    if (!isString(delta) || !delta || state.finishReasonSent) return null;
+    recordResponsesTextDelta(state, data, delta);
 
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
@@ -774,9 +781,13 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     );
   }
 
-  // Text content done (ignore, we handle via delta)
+  // A snapshot may contain a suffix missing from the delta stream.
   if (eventType === "response.output_text.done") {
-    return null;
+    const suffix = reconcileResponsesTextDone(state, data, data.text);
+    return suffix ? buildChunk({ id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK }, { content: suffix }) : null;
+  }
+  if (eventType === "response.output_item.done" && data.item?.type === RESPONSES_ITEM.MESSAGE) {
+    return synthesizeTextItemSnapshot(state, data.item, data.output_index);
   }
 
   // Function call started (standard function_call or custom_tool_call).
@@ -902,6 +913,8 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
   // Response completed or coherently ended incomplete.
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
+    const textSnapshots = [...recoverTextSnapshotsByOutputIndex(state, data.response?.output).values()].flat();
+    closeResponsesTextSnapshots(state);
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
     if (responseUsage && isObject(responseUsage)) {
@@ -945,7 +958,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       }
 
       const pending = flushWrappedCustomToolInputs(state);
-      return pending.length ? [...pending, finalChunk] : finalChunk;
+      return textSnapshots.length || pending.length ? [...textSnapshots, ...pending, finalChunk] : finalChunk;
     }
     const pending = flushWrappedCustomToolInputs(state);
     return pending.length ? pending : null;

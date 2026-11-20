@@ -498,14 +498,12 @@ export class AntigravityExecutor extends BaseExecutor {
         const firstUserIndex = requestContents.findIndex((content) => content.role === "user");
         if (firstUserIndex >= 0) {
           const firstUser = requestContents[firstUserIndex];
-          const existingText = firstUser.parts?.filter((part) => part.text !== undefined).map((part) => part.text).join("") || "";
-          const otherParts = firstUser.parts?.filter((part) => part.text === undefined) || [];
           requestContents[firstUserIndex] = {
             ...firstUser,
-            parts: [{ text: `[System Instructions]\n${sysText}\n\n[User Message]\n${existingText}` }, ...otherParts]
+            parts: [{ text: "[System Instructions]\n" }, ...sysInstr.parts, { text: "\n\n[User Message]\n" }, ...(firstUser.parts || [])]
           };
         } else {
-          requestContents.unshift({ role: "user", parts: [{ text: sysText }] });
+          requestContents.unshift({ role: "user", parts: sysInstr.parts });
         }
         transformedRequest.contents = requestContents;
         delete transformedRequest.systemInstruction;

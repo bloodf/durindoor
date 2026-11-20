@@ -55,7 +55,7 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
   const content = [];
 
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
-  if (reasoning && !claudeCompat) content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoning });
+  if (reasoning && !claudeCompat) content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoning, signature: "" });
   if (isString(message.content) && message.content.length > 0) {
     content.push({ type: CLAUDE_BLOCK.TEXT, text: message.content });
   }

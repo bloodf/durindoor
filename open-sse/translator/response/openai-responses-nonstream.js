@@ -143,7 +143,7 @@ export function openAIResponsesBodyToClaude(responseBody) {
   const usage = usageFromResponses(response?.usage || responseBody?.usage).claude;
   const content = [];
 
-  if (reasoning) content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoning });
+  if (reasoning) content.push({ type: CLAUDE_BLOCK.THINKING, thinking: reasoning, signature: "" });
   if (text) content.push({ type: CLAUDE_BLOCK.TEXT, text });
   if (terminal) content.push({ type: CLAUDE_BLOCK.TEXT, text: `[Error] ${terminalMessage(terminal)}` });
   for (const call of toolCalls) {

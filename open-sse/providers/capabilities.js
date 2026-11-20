@@ -390,6 +390,13 @@ const OX_ALPHA_CAPABILITIES = {
 // Unverified: the 400 "Thinking level MINIMAL is not supported" (upstream decolua/9router#5355) was not reproduced live.
 const ANTIGRAVITY_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], thinkingFloorHidesThoughts: true, contextWindow: 1048576, maxOutput: 65536 };
 
+// Google AI Studio's tiered Gemini 3.6/3.7 Flash carries the same tier contract as the
+// documented 3.8 Flash row below (low|medium|high, no MINIMAL): the tiered family answers
+// 400 "Thinking level MINIMAL is not supported for this model" (upstream decolua/9router#5355).
+// Scoped to the direct gemini provider — Antigravity keeps its own tier row above and
+// resellers keep their own contracts. Not reproduced live in this port (no provider calls).
+const GEMINI_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxOutput: 65536 };
+
 const SENSENOVA_INTL_CHAT = { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 };
 
 export const PROVIDER_CAPABILITIES = {
@@ -427,7 +434,10 @@ export const PROVIDER_CAPABILITIES = {
   },
   // https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
   gemini: {
-    "gemini-3.8-flash": { vision: true, pdf: true, audioInput: true, videoInput: true, tools: true, reasoning: true, structuredOutput: true, promptCaching: true, search: true, imageOutput: false, audioOutput: false, videoOutput: false, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxInput: 1048576, maxOutput: 65536 }
+    "gemini-3.8-flash": { vision: true, pdf: true, audioInput: true, videoInput: true, tools: true, reasoning: true, structuredOutput: true, promptCaching: true, search: true, imageOutput: false, audioOutput: false, videoOutput: false, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxInput: 1048576, maxOutput: 65536 },
+    // Same tiered family, same low|medium|high contract as the 3.8 Flash row above.
+    "gemini-3.7-flash": GEMINI_FLASH_TIER_CAPABILITIES,
+    "gemini-3.6-flash": GEMINI_FLASH_TIER_CAPABILITIES
   },
   dify: {
     "configured-app": { vision: false, tools: false, reasoning: false, contextWindow: null, maxOutput: null }
@@ -955,6 +965,13 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*qwen3.8*omni*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 65536 } },
 { pattern: "*qwen3.8*27b*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 262144 } },
 { pattern: "*qwen3.8-2.4t*", caps: { reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144 } },
+// Qwen3.8 Flash-Next is the open-weight preview weight, not on the hosted API line's 1M
+// window: every models.dev lane (amd, requesty + @eu, tensorx, vultr) caps it at 262144
+// context, with 131072 output on the canonical listing (lanes diverge between 64000 and
+// 262144). Providers outside the static registry get no synced-catalog overlay, so the
+// pattern table decides alone — the generic row below published 1M for them.
+// Placed above *qwen3.8* (first-match wins) so the hosted API family keeps its window.
+{ pattern: "*qwen3.8*flash*next*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 262144, maxOutput: 131072 } },
 { pattern: "*qwen3.8*", caps: { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen-effort", contextWindow: 1000000, maxOutput: 131072 } },
 { pattern: "*qwen*vl*", caps: { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144 } },
 { pattern: "*qwen*omni*", caps: { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 262144, maxOutput: 65536 } },

@@ -47,7 +47,7 @@ export function openaiToAntigravityResponse(chunk, state) {
   //   1. An explicit `index` on a fragment owns that fragment outright.
   //   2. An explicit `id` that matches a call already open in this stream owns
   //      the fragment, wherever that call sits in the index space.
-  //   3. A fragment carrying a new `id` opens another call.
+  //   3. A new `id` binds a uniquely unbound call, or opens another call.
   //   4. A fragment with neither `index` nor `id` continues the call that owned
   //      the previous fragment (the most recently active call), not the call
   //      with the highest index. Providers interleave calls and then resume an
@@ -69,12 +69,17 @@ export function openaiToAntigravityResponse(chunk, state) {
       // Ownership rules, in order: explicit index, explicit id, a new id opens
       // a new call, then the most recently active call.
       let idx;
+      let bindUnbound = false;
       if (Number.isInteger(tc.index)) {
         idx = tc.index;
       } else if (known !== undefined) {
         idx = known;
-      } else if (tc.id && state._toolCallAccum[latest]?.id && tc.id !== state._toolCallAccum[latest].id) {
-        idx = latest + 1;
+      } else if (tc.id) {
+        const unbound = indexes.filter((i) => !state._toolCallAccum[i].id);
+        const compatible = unbound.length === 1 && (!tc.function?.name ||
+          !state._toolCallAccum[unbound[0]].name || state._toolCallAccum[unbound[0]].name === tc.function.name);
+        idx = compatible ? unbound[0] : (indexes.length ? latest + 1 : latest);
+        bindUnbound = compatible;
       } else if (active !== undefined) {
         idx = active;
       } else if (indexes.length <= 1) {
@@ -91,7 +96,7 @@ export function openaiToAntigravityResponse(chunk, state) {
       }
       const accum = state._toolCallAccum[idx];
       if (tc.id) accum.id = tc.id;
-      if (tc.function?.name) accum.name += tc.function.name;
+      if (tc.function?.name && !(bindUnbound && accum.name === tc.function.name)) accum.name += tc.function.name;
       if (tc.function?.arguments) accum.arguments += tc.function.arguments;
       state._activeToolIndex = idx;
     }

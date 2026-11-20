@@ -93,4 +93,95 @@ describe("openai-compatible quota endpoint adapter", () => {
     );
     await expect(adapter.fetchQuota(ctx)).resolves.toMatchObject({ outcome: "malformed" });
   });
+
+  it("reads a remaining-only credit balance without inventing a total", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ credits: 5099.44 }));
+    const { adapter, context: ctx } = context(
+      {
+        apiKey: "sk-test",
+        providerSpecificData: {
+          quotaEndpoint: {
+            url: "https://api.example.com/v1/credits",
+            quotas: { credits: { remaining: "$.credits" } }
+          }
+        }
+      },
+      fetchImpl
+    );
+    const result = await adapter.fetchQuota(ctx);
+    expect(result.outcome).toBe("success");
+    expect(result.rows).toHaveLength(1);
+    // A balance has no scale: no limit is invented and no ratio is claimed.
+    expect(result.rows[0].amounts).toMatchObject({
+      limitKind: "unknown",
+      limit: null,
+      used: null,
+      remaining: 5099.44,
+      remainingRatio: null
+    });
+    expect(result.rows[0].state).toBe("available");
+  });
+
+  it("reads a zero remaining balance as exhausted", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ credits: 0 }));
+    const { adapter, context: ctx } = context(
+      {
+        apiKey: "sk-test",
+        providerSpecificData: {
+          quotaEndpoint: {
+            url: "https://api.example.com/v1/credits",
+            quotas: { credits: { remaining: "$.credits" } }
+          }
+        }
+      },
+      fetchImpl
+    );
+    const result = await adapter.fetchQuota(ctx);
+    expect(result.outcome).toBe("success");
+    expect(result.rows[0].amounts.remaining).toBe(0);
+    expect(result.rows[0].state).toBe("exhausted");
+  });
+
+  it("keeps a mapped total authoritative when it does not resolve", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ credits: 10 }));
+    const { adapter, context: ctx } = context(
+      {
+        apiKey: "sk-test",
+        providerSpecificData: {
+          quotaEndpoint: {
+            url: "https://api.example.com/v1/credits",
+            quotas: { credits: { total: "$.data.missing_total", remaining: "$.credits" } }
+          }
+        }
+      },
+      fetchImpl
+    );
+    await expect(adapter.fetchQuota(ctx)).resolves.toMatchObject({ outcome: "malformed" });
+  });
+
+  it("prefers the mapped total over remaining when both are mapped", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ data: { limit_usd: 20, credits: 16 } })
+    );
+    const { adapter, context: ctx } = context(
+      {
+        apiKey: "sk-test",
+        providerSpecificData: {
+          quotaEndpoint: {
+            url: "https://api.example.com/v1/credits",
+            quotas: { credits: { total: "$.data.limit_usd", remaining: "$.data.credits" } }
+          }
+        }
+      },
+      fetchImpl
+    );
+    const result = await adapter.fetchQuota(ctx);
+    expect(result.outcome).toBe("success");
+    expect(result.rows[0].amounts).toMatchObject({
+      limitKind: "bounded",
+      limit: 20
+    });
+    // The bounded scale wins; the balance mapping is not consulted.
+    expect(result.rows[0].amounts.remaining).toBeNull();
+  });
 });

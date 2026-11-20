@@ -1,3 +1,4 @@
+import { appendComboPrompt } from "open-sse/rtk/comboPrompt.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
@@ -583,6 +584,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     const comboRouting = await getComboRoutingPolicy(comboName);
     const comboStrategies = settings.comboStrategies || {};
     const perCombo = comboStrategies[comboName] || {};
+    const comboPrompts = appendComboPrompt([], settings.comboPrompts, comboName);
     const comboSpecificStrategy = isAutoComboId(modelStr) ?
     perCombo.strategy ?? perCombo.fallbackStrategy :
     perCombo.fallbackStrategy;
@@ -611,7 +613,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
             apiKey,
             combineAbortSignals(request?.signal || null, panelSignal),
             null,
-            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, reportComboPolicyRejections: true }
+            { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts, reportComboPolicyRejections: true }
           );
         },
         log,
@@ -648,7 +650,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
           apiKey,
           combineAbortSignals(request?.signal || null, attemptSignal),
           tokenSaverCollector,
-          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting }
+          { settings, allowVisionBridge: false, apiKeyName: authenticatedKeyRecord?.name || (apiKey ? "Unknown API Key" : "Local (No API Key)"), apiKeyId: apiKeyAuth.apiKeyId, billingEpoch, comboRouting, comboPrompts }
         );
       },
       log,
@@ -778,7 +780,7 @@ async function buildSingleModelCapabilitiesMap(modelStr) {
  * fallback combos retain their existing model/account error responses.
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, attemptSignal = null, tokenSaverCollector = null, options = {}) {
-  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, reportComboPolicyRejections = false } = options;
+  const { settings = null, allowVisionBridge = false, preResolvedCapabilities = undefined, apiKeyName = apiKey ? "Unknown API Key" : "Local (No API Key)", apiKeyId = null, billingEpoch, comboRouting = null, comboPrompts = [], reportComboPolicyRejections = false } = options;
   const requestSignal = attemptSignal || request?.signal || null;
   if (requestAborted(request, requestSignal)) return errorResponse(499, "Request aborted");
   const modelInfo = await getModelInfo(modelStr);
@@ -804,6 +806,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // ids honor the F-2 `.strategy` shape; named combos keep `.fallbackStrategy`.
       const comboStrategies = chatSettings.comboStrategies || {};
       const perCombo = comboStrategies[comboName] || {};
+      const nestedPrompts = appendComboPrompt(comboPrompts, chatSettings.comboPrompts, comboName);
       const comboSpecificStrategy = isAutoComboId(modelStr) ?
       perCombo.strategy ?? perCombo.fallbackStrategy :
       perCombo.fallbackStrategy;
@@ -828,7 +831,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
               apiKey,
               combineAbortSignals(requestSignal, panelSignal),
               null,
-              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, reportComboPolicyRejections: true }
+              { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections: true }
             );
           },
           log,
@@ -864,7 +867,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             apiKey,
             combineAbortSignals(requestSignal, attemptSignal),
             nestedCollector,
-            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, reportComboPolicyRejections }
+            { settings: chatSettings, allowVisionBridge: false, apiKeyName, apiKeyId, billingEpoch, comboRouting: mergedRouting, comboPrompts: nestedPrompts, reportComboPolicyRejections }
           );
         },
         log,
@@ -1313,6 +1316,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         ponytailLevel: chatSettings.ponytailLevel || "full",
         customPromptEnabled: !!chatSettings.customPromptEnabled,
         customPrompt: chatSettings.customPrompt || "",
+        comboPrompts,
         pxpipeMinChars: chatSettings.pxpipeMinChars,
         pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
         pxpipeTransform,

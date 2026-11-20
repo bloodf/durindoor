@@ -28,7 +28,10 @@ function options(stream, provider = "openai") {
     body, modelInfo: { provider, model: "gpt-4o" },
     credentials: { apiKey: "test", providerSpecificData: {} },
     log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() }, connectionId: "test",
-    clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: { accept: "*/*" } },
+    // The gateway snapshots the raw client body before it starts working on
+    // it. The working body is mutated in place, so only that snapshot still
+    // carries the client's own `stream` value.
+    clientRawRequest: { endpoint: "/v1/chat/completions", body: { ...body }, headers: { accept: "*/*" } },
   };
 }
 
@@ -49,12 +52,33 @@ describe("omitted stream on compatible chat requests", () => {
     expect(executeMock.mock.calls[0][0].stream).toBe(provider === "openai");
   });
 
-  it.each([true, false])("preserves explicit stream=%s for a forced-stream provider", async (stream) => {
-    const result = await handleChatCore(options(stream));
+  it("preserves explicit stream=true for a forced-stream provider", async () => {
+    const result = await handleChatCore(options(true));
     expect(executeMock.mock.calls[0][0].stream).toBe(true);
     expect(result.response.status).toBe(200);
     expect(result.response.headers.get("content-type")).toContain("text/event-stream");
     expect(await result.response.text()).toContain("[DONE]");
+  });
+
+  it("returns JSON for an explicit stream=false on a forced-stream provider", async () => {
+    const result = await handleChatCore(options(false));
+    // The upstream transport still streams: the provider requires it.
+    expect(executeMock.mock.calls[0][0].stream).toBe(true);
+    expect(result.response.status).toBe(200);
+    expect(result.response.headers.get("content-type")).toContain("application/json");
+    expect((await result.response.json()).choices[0].message.content).toBe("hello");
+  });
+
+  it("accumulates mandatory upstream SSE for an explicit stream=false", async () => {
+    executeMock.mockResolvedValueOnce({
+      response: new Response('data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } }),
+      url: "https://example.test", headers: {}, transformedBody: null, terminalProvenance: "upstream",
+    });
+    const result = await handleChatCore(options(false));
+    expect(executeMock.mock.calls[0][0].stream).toBe(true);
+    expect(result.response.status).toBe(200);
+    expect(result.response.headers.get("content-type")).toContain("application/json");
+    expect((await result.response.json()).choices[0].message.content).toBe("hello");
   });
 
   it("accumulates mandatory upstream SSE for an omitted flag", async () => {

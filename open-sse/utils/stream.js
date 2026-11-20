@@ -17,6 +17,7 @@ import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
+import { advancePendingSseLineBytes } from "./pendingSseLine.js";
 import {
   createMinimaxThinkingStreamState,
   flushMinimaxThinkingStreamState,
@@ -173,6 +174,13 @@ export function createSSEStream(options = {}) {
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
   const errorSecrets = credentialErrorSecrets(credentials);
   let buffer = "";
+  let pendingLineBytes = 0;
+  // OpenAI SDK consumers can attempt to decode field-only SSE events as JSON.
+  // Hold their framing until a data line proves the event has a payload.
+  const filterEmptyOpenAIFrames = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI;
+  let pendingSSEFields = "";
+  let sseFrameHasData = false;
+  let sseFrameHasComment = false;
   // Passthrough tool-call (choice, index) keys already opened on the client wire.
   const openedToolCalls = new Set();
   let usage = null;
@@ -542,7 +550,7 @@ export function createSSEStream(options = {}) {
     if (targetFormat !== FORMATS.OPENAI || !Array.isArray(parsed?.choices)) {
       return { changed: false, keep: true };
     }
-    let changed = false;
+    let changed = normalizeArrayContentChunk(parsed);
     for (const choice of parsed.choices) {
       const delta = choice?.delta;
       if (isString(delta?.reasoning) && delta.reasoning.trim() && !delta.reasoning_content) {
@@ -752,12 +760,24 @@ export function createSSEStream(options = {}) {
   const transformStream = new TransformStream({
     transform(chunk, controller) {
       if (!ttftAt) ttftAt = Date.now();
+      const nextPendingLineBytes = advancePendingSseLineBytes(pendingLineBytes, chunk);
+      if (nextPendingLineBytes === null) {
+        buffer = "";
+        clearCompletionFlushTimer();
+        upstreamTerminal.fail();
+        const error = new Error("Upstream SSE line exceeded the size limit");
+        error.code = "invalid_sse_payload";
+        throw error;
+      }
+      pendingLineBytes = nextPendingLineBytes;
       const text = decoder.decode(chunk, { stream: true });
       buffer += text;
       reqLogger?.appendProviderChunk?.(text);
 
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      const lastNewline = text.lastIndexOf("\n");
+      const splitAt = lastNewline < 0 ? -1 : buffer.length - text.length + lastNewline;
+      const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
+      if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -788,6 +808,24 @@ export function createSSEStream(options = {}) {
 
           const isDoneLine = /^data:\s*\[DONE\]\s*$/.test(trimmed);
           const isDataLine = trimmed.startsWith("data:");
+          if (filterEmptyOpenAIFrames) {
+            if (!trimmed) {
+              pendingSSEFields = "";
+              const forwardTerminator = sseFrameHasData || sseFrameHasComment;
+              sseFrameHasData = false;
+              sseFrameHasComment = false;
+              currentUpstreamEvent = null;
+              if (!forwardTerminator) {
+                continue;
+              }
+            } else if (trimmed.startsWith(":")) {
+              sseFrameHasComment = true;
+            } else if (!isDataLine && /^(?:id|event|retry)(?::|$)/.test(trimmed)) {
+              // Bound buffering for a malformed stream that never terminates a frame.
+              if (pendingSSEFields.length + line.length < 65536) pendingSSEFields += line + "\n";
+              continue;
+            }
+          }
           const upstreamEventForLine = isDataLine ? currentUpstreamEvent : null;
           if (isDataLine) currentUpstreamEvent = null;
           if (isDoneLine) {
@@ -808,7 +846,6 @@ export function createSSEStream(options = {}) {
               // arrays (Mistral thinking chunks). Fold them into the string
               // `content` / `reasoning_content` the chat-chunk contract requires
               // before any client-visible path sees the chunk (OmniRoute #15757).
-              if (targetFormat === FORMATS.OPENAI) normalizeArrayContentChunk(parsed);
 
               if (Array.isArray(parsed?.choices)) {
                 inlineThinkingChunkMeta = {
@@ -1131,6 +1168,12 @@ export function createSSEStream(options = {}) {
 
           if (pendingInlineThinkingOutput) output = pendingInlineThinkingOutput + output;
 
+          if (filterEmptyOpenAIFrames && isDataLine) {
+            sseFrameHasData = true;
+            output = pendingSSEFields + output;
+            pendingSSEFields = "";
+          }
+
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           continue;
@@ -1440,7 +1483,7 @@ export function createSSEStream(options = {}) {
                 const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
                 output = `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
-            } else {
+            } else if (!(filterEmptyOpenAIFrames && /^(?:id|event|retry)(?::|$)/.test(trimmedBuffer))) {
               currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
               if (parsed) recordCompletionData(parsed, { content: true });
               output = buffer;
@@ -1448,6 +1491,10 @@ export function createSSEStream(options = {}) {
                 output = "data: " + buffer.slice(5);
               }
               if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
+            }
+            if (output && filterEmptyOpenAIFrames && trimmedBuffer.startsWith("data:")) {
+              output = pendingSSEFields + output;
+              pendingSSEFields = "";
             }
             if (output) {
               reqLogger?.appendConvertedChunk?.(output);

@@ -188,3 +188,9 @@ Groups never become dispatch units. Deleting a group does not disable its connec
 4. The next member should serve. Usage shows the combo name plus the member that answered.
 
 API-key `allowedCombos`, when non-empty, rejects any other combo with HTTP 403. Details: [API keys](../guides/api-keys.mdx).
+
+### Operator-configured combo prompts
+
+An operator can set `comboPrompts` through `PATCH /api/settings` using a proven dashboard session or CLI token. It maps canonical combo names to instruction strings; for example, `{"comboPrompts":{"review":"Answer concisely"}}`. Each string has the same 8,000-character limit as the custom system prompt. The map is replaced by the supplied map, so include entries to keep; set an entry to an empty string or remove it to disable that instruction. Unprivileged settings readers and MCP control clients cannot read or change this map.
+
+The default is empty. Chat requests routed through a configured combo receive its instruction after the client's and enabled global custom instruction. Nested combos inherit the outer instruction followed by the inner instruction. The instruction applies to each eligible model attempt, including fusion requests, and does not override model or combo access restrictions. Kiro carries instructions as a prefix to the current user message, consistent with its native format. Media routes, Jev classification and Network node configuration do not use this setting. Existing `comboStrategies` fields named `systemPrompt` have no effect.

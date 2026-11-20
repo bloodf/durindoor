@@ -63,6 +63,14 @@ export function normalizeArrayContentDelta(delta) {
   return true;
 }
 
+/** Normalize Mistral text/thinking arrays only when no other part would be lost. */
+export function normalizeMistralContent(message) {
+  if (Array.isArray(message?.content) && message.content.length &&
+      message.content.every((part) => part?.type === "text" || part?.type === "thinking")) {
+    normalizeArrayContentDelta(message);
+  }
+}
+
 /**
  * Normalize every `choices[].delta` of an OpenAI chat-completion chunk.
  * @param {unknown} chunk

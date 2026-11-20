@@ -1,4 +1,5 @@
 import { normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
+import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
@@ -24,6 +25,7 @@ import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
+import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
 import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
@@ -39,37 +41,25 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
-/**
- * Check the emitted response shape for client-usable text, reasoning, or tools.
- * Translation can emit a shape other than the client's source dialect, so the
- * body itself—not sourceFormat—selects the content fields inspected here.
- */
-function hasNonemptyResponseValue(value) {
-  return isString(value) ? value.trim().length > 0 :
-  value !== null && isObject(value) && !Array.isArray(value) && Object.keys(value).length > 0;
-}
-
-function hasResponsesContentItem(item) {
-  if (!item || !isObject(item)) return false;
-  if (item.type === "image_generation_call") return hasNonemptyResponseValue(item.result);
-  if (item.type === "mcp_approval_request") {
-    const id = item.id || item.approval_request_id;
-    return isString(id) && id.trim().length > 0 &&
-    hasNonemptyResponseValue(item.name || item.server_label || item.arguments);
+/** Recover a complete JSON object only when its sole trailing content is an SSE done marker (#5384). */
+export function parseJsonWithTrailingDone(text) {
+  const input = text.trimStart();
+  if (!input.startsWith("{")) return null;
+  let depth = 0, quoted = false, escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') quoted = false;
+    } else if (ch === '"') quoted = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}" && --depth === 0) {
+      if (!/^\s*data:\s*\[DONE\]\s*$/.test(input.slice(i + 1))) return null;
+      try { return JSON.parse(input.slice(0, i + 1)); } catch { return null; }
+    }
   }
-  if (["function_call", "custom_tool_call", "computer_call", "shell_call", "local_shell_call", "apply_patch_call"].includes(item.type)) {
-    const id = item.call_id || item.id;
-    return isString(id) && id.trim().length > 0 &&
-    hasNonemptyResponseValue(item.name || item.action || item.operation || item.command || item.arguments || item.input);
-  }
-  if (item.type === "reasoning") {
-    return isString(item.reasoning) && item.reasoning.trim() ||
-    Array.isArray(item.summary) && item.summary.some((part) => isString(part?.text) && part.text.trim());
-  }
-  if (item.type !== "message" || !Array.isArray(item.content)) return false;
-  return item.content.some((part) =>
-  isString(part?.text) && part.text.trim() ||
-  isString(part?.refusal) && part.refusal.trim());
+  return null;
 }
 
 /** Check the emitted response shape for client-usable text, reasoning, or tools. */
@@ -94,7 +84,7 @@ function hasUsefulContent(response) {
   }
 
   // Background Responses acknowledge acceptance with an empty output array.
-  if (response?.object === "response" && isString(response.id) && response.id.trim() && ["queued", "in_progress"].includes(response.status)) return true;
+  if (isResponsesReceipt(response)) return true;
   if (Array.isArray(response?.output)) return response.output.some(hasResponsesContentItem);
 
   const candidates = response?.candidates ?? response?.response?.candidates;
@@ -519,6 +509,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     };
     const contentType = providerResponse.headers.get("content-type") || "";
     let responseBody;
+    let responseFormat = targetFormat;
 
     let responseText;
     try {
@@ -550,7 +541,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       FORMATS.OPENAI;
       const parsed = parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
-        providerBody: finalBody || translatedBody
+        providerBody: finalBody || translatedBody,
+        provider
       });
       if (!parsed) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -562,13 +554,19 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         return sseError;
       }
       responseBody = parsed;
+      // The SSE accumulator produces OpenAI completions even when the provider
+      // transport and client use the same native format (#5380).
+      responseFormat = FORMATS.OPENAI;
     } else {
       try {
         responseBody = JSON.parse(responseText);
       } catch (err) {
-        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        responseBody = parseJsonWithTrailingDone(responseText);
+        if (!responseBody) {
+          appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+          console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        }
       }
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -590,12 +588,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
       responseBody = unwrapped;
     }
+    // Normalize Mistral typed content before coherence checks and projection.
+    if (provider === "mistral") for (const choice of responseBody?.choices || []) normalizeMistralContent(choice?.message);
     const maskedGatewayError = classifyMaskedGatewayError(responseBody);
     if (maskedGatewayError) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Upstream provider error: ${maskedGatewayError}`);
     }
-    if (!isCoherentNonStreamingResponse(responseBody, targetFormat)) {
+    if (!isCoherentNonStreamingResponse(responseBody, responseFormat)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE);
     }
@@ -613,14 +613,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // MiniMax's OpenAI transport may inline M3 reasoning as complete <think>
     // segments. Normalize the raw provider completion once, before a client
     // projection can collapse its per-choice OpenAI shape.
-    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat });
+    const inlineThinking = normalizeInlineThinkingResponse(responseBody, { provider, model, targetFormat: responseFormat });
     responseBody = inlineThinking.responseBody;
 
 
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
     let translatedResponse = translateNonStreamingResponse(
       responseBody,
-      targetFormat,
+      responseFormat,
       sourceFormat,
       { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
     );

@@ -1,0 +1,3 @@
+# X-Kiro provider source notes
+
+The registry adapts OmniRoute `open-sse/config/providers/registry/xkiro/index.ts` at `2c4aa9e9af21e2ad27440c4c478c10282154a596`. DurinDoor main `32927dc48c404e70874b1023b7df37947c69f41c` had no X-Kiro provider implementation. The first-party [API overview](https://docs.xkiro.com/api/overview/) documents OpenAI chat, public model discovery, and authenticated usage. The public models endpoint cannot validate a key, so the connection probe uses `/v1/usage`. Discovery is authoritative; no model capabilities or prices are pinned. The generic icon has no external asset requirement. Offline mocks do not establish account-backed support.

@@ -101,6 +101,11 @@ export async function fetchConnectionModels(connection, { requestUrl = null } = 
     }, proxyOptions);
   }
 
+  // NLP Cloud publishes its chatbot catalog in documentation, not a model-list API.
+  if (connection.provider === "nlpcloud") {
+    return { models: getProviderModels("nlpcloud"), source: "static" };
+  }
+
   const config = PROVIDER_MODELS_CONFIG[connection.provider];
   if (!config) {
     // Generic fallback for registry providers that declare a modelsFetcher

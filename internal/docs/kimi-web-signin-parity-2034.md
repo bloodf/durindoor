@@ -9,3 +9,18 @@ Source comparison at the pinned revisions below; no account or provider traffic 
 DurinDoor accepts an authorized pasted session, tracks no proactive web expiry, probes and discovers against the selected origin, and refreshes on 401. Existing focused tests cover request framing, refresh retry, discovery and proxy dispatch. The new offline regression reproduces cross-origin reuse of a cached rotation and access-token disclosure in streamed error trailers, then verifies isolation and redaction. The origin-bound marker intentionally does not trust older persisted rotation markers; re-pasting may be required. No stored secrets are rewritten by this change.
 
 Live service acceptance, changing upstream model metadata, account expiry, real proxy behavior and regional Coding OAuth interoperability were not validated. The local full gate and independent security review remain required before integration; this comparison does not establish complete parity.
+
+## Saved-session lifecycle (#2034)
+
+Offline lifecycle evidence is `tests/unit/provider-cookie-lifecycle-kimi-perplexity.test.js`. It uses the real database, provider routes (create, edit, validate, test, model discovery), `/v1/models`, `handleChat`, the Messages and Responses entry points, account fallback, the Kimi Web executor and the usage route; only credentials and outbound bytes are synthetic. Source pins are the ones above (CLIProxyAPI `6faa8d2`, EasyCLIProxyAPI `e4223d5`, OmniRoute `fbd3396`), reused from the 2026-11-20 snapshot and not re-fetched. No Kimi account, browser, provider request or Docker was used.
+
+Verified and covered: create with two deployments (`www.kimi.com`, `www.kimi.ai`), Validate and Test probing the model service on the origin each paste came from, discovery per connection, JSON and SSE dispatch, Messages and Responses clients, per-origin and per-connection token isolation, refresh on 401 with the rotation persisted to the originating connection only, no refresh on the next request, fallback to a sibling when refresh fails, re-paste recovery, and a re-pasted session ignoring the rotation saved for the one it replaced.
+
+Gaps found and fixed in DurinDoor (not ports; no upstream file was copied):
+
+- Non-streamed replies carried no `usage`, so they were never recorded and Usage stayed empty. They now carry the same four-characters-per-token estimate as the other web-session executors. `GET /api/usage/[connectionId]` returns local 30-day history for saved `kimi-web` sessions instead of "not available".
+- A 401 or 403 that refresh could not fix reached the client as `Kimi error: unauthenticated` with no recovery hint. It now says the session may be expired and to run the console snippet again and re-paste.
+
+Not changed: the shared `PUT /api/providers/[id]` swap (see the ChatGPT Web note) already replaces the paste and clears cooldown state. The database merge deliberately ignores `null` token writes, so a replaced session's rotated `accessToken` and `refreshToken` stay stored until the next rotation overwrites them. The executor never uses them for a different paste, because the saved marker binds a rotation to the refresh token and origin it came from.
+
+Known limits, unchanged: no remote quota or plan API, no proactive expiry tracking, K3 Swarm and agent modes not routed, tools unsupported, and a refresh-token rotation made by Kimi outside DurinDoor invalidates the saved pair. No attestation is emulated and no access control is bypassed.

@@ -1,3 +1,4 @@
+import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -969,6 +970,13 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             return { valid: true, error: null, refreshed: false, newTokens: null };
           }
           return { valid: false, error: params.error, refreshed: false, newTokens: null };
+        }
+
+      case "t3-web":{
+          if (effectiveProxy?.vercelRelayUrl) {
+            return { valid: false, error: "T3 Chat sessions require a route without an HTTP relay." };
+          }
+          return validateT3Session(connection, (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy));
         }
 
       case "perplexity-web":{

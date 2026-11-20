@@ -61,6 +61,8 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `qoder` | QoderExecutor | `./qoder.js` |
 | `qoder-cn` | QoderExecutor | `./qoder.js` |
 | `qwen` | QwenExecutor | `./qwen.js` |
+| `t3-web` | T3ChatWebExecutor | `./t3-chat-web.js` |
+| `t3chat` | T3ChatWebExecutor | `./t3-chat-web.js` |
 | `theoldllm` | TheOldLlmExecutor | `./theoldllm.js` |
 | `trae` | TraeExecutor | `./trae.js` |
 | `veo-free` | VeoAIFreeWebExecutor | `./veoaifree-web.js` |

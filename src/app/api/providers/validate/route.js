@@ -1,3 +1,4 @@
+import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { getProviderConnectionById, getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -235,6 +236,10 @@ export async function POST(request) {
     }
     if (isNoAuth && !apiKey) {
       return NextResponse.json({ valid: true, error: null });
+    }
+
+    if (provider === "t3-web") {
+      return NextResponse.json(await validateT3Session({ apiKey }));
     }
 
     // Skipping chat must not accept a cookie that could never authenticate.

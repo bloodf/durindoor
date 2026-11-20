@@ -45,6 +45,7 @@ import { TraeExecutor } from "./trae.js";
 import { DevinCliExecutor } from "./devin-cli.js";
 import { WindsurfExecutor } from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
+import { T3ChatWebExecutor } from "./t3-chat-web.js";
 import { CopilotWebExecutor } from "./copilot-web.js";
 import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
@@ -120,6 +121,8 @@ const executors = {
   trae: new TraeExecutor(),
   "devin-cli": new DevinCliExecutor(),
   windsurf: new WindsurfExecutor(),
+  "t3-web": new T3ChatWebExecutor(),
+  t3chat: new T3ChatWebExecutor(),
   "copilot-web": new CopilotWebExecutor(),
   copilot: new CopilotWebExecutor(),
   "copilot-m365-web": new CopilotM365WebExecutor(),

@@ -16,6 +16,12 @@ export const LEVEL_TO_BUDGET = {
   max: 128000,
 };
 
+// Providers whose Claude-format transport is Z.ai's Anthropic endpoint
+// (api.z.ai/api/anthropic). It enforces Anthropic's thinking contract: an
+// enabled block needs budget_tokens, at least the lowest level budget, and
+// max_tokens must stay above it.
+export const GLM_ANTHROPIC_PROVIDERS = new Set(["glm", "zai"]);
+
 // Returns budget_tokens for an effort level, or undefined if unknown.
 // 0 means "no thinking"; undefined means "effort not recognized".
 export function effortToBudget(effort) {

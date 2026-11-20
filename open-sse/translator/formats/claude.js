@@ -11,6 +11,7 @@ import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
 import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
+import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../concerns/thinking.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
 const CACHE_CONTROL_1H = { type: "ephemeral", ttl: "1h" };
@@ -446,19 +447,62 @@ function buildThinkingPlaceholder(provider) {
   return block;
 }
 
+/** Room kept for the answer above a derived thinking budget, as in the reconcile step below. */
+const GLM_THINKING_RESPONSE_ROOM = 1024;
+
+/**
+ * Z.ai's Anthropic endpoint rejects an enabled thinking block that has no
+ * budget_tokens (HTTP 400 "missing field budget_tokens") or one below the
+ * lowest level budget. A valid explicit budget is kept. A missing or too-small
+ * one comes from the local level map: the effort already on the wire, else
+ * medium. A derived budget is clamped to the model's thinkingRange and to
+ * max_tokens minus answer room; when max_tokens cannot hold the floor, thinking
+ * is dropped instead of sending an invalid request. An explicit budget that
+ * does not fit max_tokens is left to the raise-then-fit step in
+ * reconcileClaudeThinkingBudget. Adaptive, disabled and absent thinking are untouched.
+ */
+function ensureGlmAnthropicThinkingBudget(body, provider) {
+  const thinking = body.thinking;
+  if (!isObject(thinking) || thinking.type !== "enabled") return;
+  const range = getCapabilitiesForModel(provider, body.model).thinkingRange;
+  const floor = Math.max(effortToBudget("low"), range?.min ?? 0);
+  const explicit = Number(thinking.budget_tokens);
+  if (Number.isFinite(explicit) && explicit >= floor) return;
+  if (Number.isFinite(explicit) && explicit > 0) {
+    thinking.budget_tokens = floor;
+    return;
+  }
+  const effort = String(body.reasoning_effort ?? "").toLowerCase();
+  let budget = effortToBudget(EFFORT_LEVELS.includes(effort) ? effort : "medium");
+  if (range?.max != null && budget > range.max) budget = range.max;
+  const maxTokens = Number(body.max_tokens);
+  if (Number.isFinite(maxTokens) && maxTokens > 0) {
+    budget = Math.min(budget, Math.floor(maxTokens) - GLM_THINKING_RESPONSE_ROOM);
+  }
+  if (budget < floor) {
+    delete body.thinking;
+    return;
+  }
+  body.thinking = { ...thinking, budget_tokens: budget };
+}
+
 /**
  * Keep Anthropic's strict token contract valid after unified thinking has
  * applied a budget. Shared by translated requests and native Claude
  * passthrough so neither path can send `budget_tokens >= max_tokens`.
  */
 export function reconcileClaudeThinkingBudget(body, provider = "claude", customMaxOutput = null) {
-  if (!body || !isObject(body) || !body.max_tokens) return body;
+  if (!body || !isObject(body)) return body;
+  const glmAnthropic = GLM_ANTHROPIC_PROVIDERS.has(provider);
+  if (!body.max_tokens && !glmAnthropic) return body;
 
   // Custom-model maxOutput overrides the static catalog ceiling; the thinking
   // budget is then fitted inside the already-clamped cap.
   const ceiling = (Number.isFinite(customMaxOutput) && customMaxOutput > 0 ? customMaxOutput : null) ?? (
   getCapabilitiesForModel(provider, body.model).maxOutput || DEFAULT_MAX_TOKENS);
   if (body.max_tokens > ceiling) body.max_tokens = ceiling;
+  if (glmAnthropic) ensureGlmAnthropicThinkingBudget(body, provider);
+  if (!body.max_tokens) return body;
 
   if (
   body.thinking?.type === "enabled" &&

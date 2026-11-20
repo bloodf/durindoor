@@ -472,7 +472,30 @@ const PROVIDERS = {
         throw new Error(`Grok CLI device code request failed: ${error}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      // OmniRoute #7358 validates device authorization data before presenting links.
+      if (typeof data?.device_code !== "string" || typeof data?.user_code !== "string" ||
+          typeof data?.verification_uri !== "string") {
+        throw new Error("Grok device authorization response is incomplete");
+      }
+      if (!/^[A-Za-z0-9-]+$/.test(data.user_code)) {
+        throw new Error("Grok returned an invalid device code");
+      }
+      for (const value of [data.verification_uri, data.verification_uri_complete]) {
+        if (value === undefined) continue;
+        if (typeof value !== "string" || /[\x00-\x1f\x7f]/.test(value)) {
+          throw new Error("Grok returned an invalid verification URL");
+        }
+        let url;
+        try { url = new URL(value); } catch {
+          throw new Error("Grok returned an invalid verification URL");
+        }
+        if (url.protocol !== "https:" && !(url.protocol === "http:" &&
+            (url.hostname === "localhost" || url.hostname === "127.0.0.1"))) {
+          throw new Error("Grok returned an unsupported verification URL");
+        }
+      }
+      return data;
     },
     pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
       const response = await fetch(config.tokenUrl, {

@@ -11,7 +11,8 @@ import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
+import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias, LIVE_CATALOG_PROVIDERS } from "@/shared/constants/providers";
+import { mergeLiveCatalogs, liveCatalogModelEntries } from "@/shared/utils/liveCatalogModels";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 import { isString } from "../utils/typeChecks.js";
@@ -215,31 +216,69 @@ export default function ModelSelectModal({
     }
   };
 
+  // Fetch a provider's account-scoped live catalog for every active connection
+  // and merge the results. Entries collapse by model id: two connections of the
+  // same provider expose the same catalog, so the first one wins.
+  const fetchLiveCatalogModels = async (providerId) => {
+    const connections = activeProviders.filter((p) => p.provider === providerId && p.id);
+    if (connections.length === 0) return [];
+
+    const catalogs = await Promise.all(connections.map(async (connection) => {
+      try {
+        const res = await fetch(`/api/providers/${connection.id}/models`);
+        if (!res.ok) {
+          console.log(`Failed to fetch live models for ${providerId}:`, res.status);
+          return [];
+        }
+        const data = await res.json();
+        return Array.isArray(data.models) ? data.models : [];
+      } catch (error) {
+        console.error(`Error fetching live models for ${providerId}:`, error);
+        return [];
+      }
+    }));
+
+    return mergeLiveCatalogs(catalogs);
+  };
+
   // Fetch models for all custom providers when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    let ignore = false;
 
-    const loadCustomProviderModels = async () => {
+    const loadProviderModels = async () => {
       const customProviderIds = activeProviders.
       filter((p) => isOpenAICompatibleProvider(p.provider) || isAnthropicCompatibleProvider(p.provider) || p.provider === "hcnsec").
       map((p) => p.provider);
+      // Providers that publish a per-account live catalog (claude, commandcode):
+      // a passthrough provider has no static list at all, and an account's
+      // catalog is not the static registry either.
+      const liveCatalogProviderIds = [...new Set(activeProviders.
+        map((p) => p.provider).
+        filter((providerId) => LIVE_CATALOG_PROVIDERS.includes(providerId)))];
 
-      if (customProviderIds.length === 0) return;
+      if (customProviderIds.length === 0 && liveCatalogProviderIds.length === 0) return;
 
       const fetched = {};
-      await Promise.all(
-        customProviderIds.map(async (providerId) => {
+      await Promise.all([
+        ...customProviderIds.map(async (providerId) => {
           const models = await fetchProviderModels(providerId);
           if (models && models.length > 0) {
             fetched[providerId] = models;
           }
-        })
-      );
+        }),
+        ...liveCatalogProviderIds.map(async (providerId) => {
+          const models = await fetchLiveCatalogModels(providerId);
+          if (models.length > 0) fetched[providerId] = models;
+        }),
+      ]);
 
+      if (ignore) return;
       setFetchedModels(fetched);
     };
 
-    loadCustomProviderModels();
+    loadProviderModels();
+    return () => { ignore = true; };
   }, [isOpen, activeProviders]);
 
   const fetchDisabledModels = async () => {
@@ -542,7 +581,12 @@ export default function ModelSelectModal({
         const merged = [
         ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m), capabilities: m.capabilities })),
         ...customAliasModels,
-        ...customRegisteredModels];
+        ...customRegisteredModels,
+        // The account's live catalog is offered next to the static registry: a
+        // model the connected account can actually use must be selectable even
+        // when the registry does not list it.
+        ...liveCatalogModelEntries(alias, fetchedModels[providerId] || []).
+        filter((m) => !hardcodedIds.has(m.id) && !customAliasIds.has(m.id))];
 
         // Dedupe by value (alias may equal hardcoded id, causing React key collision)
         const seen = new Set();

@@ -1,3 +1,5 @@
+import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
+import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
@@ -16,6 +18,7 @@ import { logToolSemantics } from "../../utils/toolSemanticsTrace.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { restoreClaudeToolNames, restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
+import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
@@ -417,7 +420,7 @@ function withNativeClaudeFields(projected, message, claudeCompat) {
  * Handle case: provider forced streaming but client wants JSON.
  * Supports both Codex/Responses API SSE and standard Chat Completions SSE.
  */
-export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
+export async function handleForcedSSEToJson({ providerResponse, sourceFormat, targetFormat, provider, model, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, trackDone, appendLog, toolNameMap, customToolNames, reqTag, log, usageEventId, claudeClassifierCompat, terminalProvenance = null, signal = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null, onEmptyStream = null }) {
   const contentType = providerResponse.headers.get("content-type") || "";
   const isSSE = contentType.includes("text/event-stream") || contentType === "" && isResponsesProvider(provider);
   if (!isSSE) return null; // not handled here
@@ -454,7 +457,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         }
         const usage = jsonResponse.usage || {};
         appendLog({ tokens: usage, status: "200 OK" });
-        saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+        saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
         if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
         // Responses usage is already cache-inclusive after stream conversion.
@@ -483,7 +486,10 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           toolNameMap
         });
         const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
-        const finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+        let finalResp = projectCompletionToClientFormat(openAICompletion, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet });
+        if (provider === "codex" && sourceFormat === FORMATS.CLAUDE && hasClaudeSearch(body)) {
+          finalResp = responsesSearchToClaudeMessage(jsonResponse, finalResp, true);
+        }
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
         if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
         if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
@@ -550,6 +556,20 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const inlineThinking = normalizeInlineThinkingResponse(parsed, { provider, model, targetFormat });
       parsed = inlineThinking.responseBody;
 
+      /**
+       * DeepSeek encodes tool calls as DSML text. The streaming path decodes
+       * those frames chunk by chunk (translator/concerns/dsml.js); this buffered
+       * path joins the very same frames into plain text first, so decode them
+       * here — before the client-format projection — or the client receives the
+       * raw markup instead of a structured tool call. Frames the parser does
+       * not recognize stay literal text, and non-DeepSeek models are untouched.
+       */
+      const dsmlModel = finalBody?.model || model;
+      parsed = normalizeDsmlCompletion(parsed, dsmlModel, provider);
+      // The native Claude message overlays the projection, so its own text
+      // blocks need the same decode (DeepSeek also serves a Claude transport).
+      if (claudeSSE?.message) normalizeDsmlClaudeMessage(claudeSSE.message, dsmlModel, provider);
+
       const maskedGatewayError = classifyMaskedGatewayError(parsed);
       if (maskedGatewayError) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -571,7 +591,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const emptyOutput = claudeSSE && isEmptyClaudeCompletion(parsed, claudeSSE.stopReason);
       const usage = parsed.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+      saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       const totalLatency = Date.now() - requestStartTime;

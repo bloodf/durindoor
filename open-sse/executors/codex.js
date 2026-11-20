@@ -575,6 +575,37 @@ function removeInvalidEncryptedReasoning(body) {
   return removed;
 }
 
+// Grok Build reasoning items carry UUID-shaped ids (`rs_<uuid>`); OpenAI's own
+// are `rs_<hex>` without dashes. A UUID-shaped id is therefore local format
+// evidence that another provider sealed the item. Codex cannot decrypt a
+// foreign blob and rejects the whole request with 400 invalid_encrypted_content,
+// so a combo that fell back to Grok keeps falling back on every later turn.
+// Upstream provenance: decolua/9router#5141.
+//
+// Only the id shape is inspected. The blob is opaque ciphertext, so reasoning
+// whose provenance cannot be established locally (no id, or an id this fork
+// does not recognize) is preserved, and the one-shot invalid_encrypted_content
+// recovery below still handles a stale OpenAI-sealed blob.
+const FOREIGN_REASONING_ID = /^rs_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Drop reasoning items another provider sealed, before the replayed item ids
+ * are normalized away. Messages, tool calls, and reasoning of unknown
+ * provenance are untouched. Returns the number of dropped items.
+ */
+export function dropForeignReasoningItems(body) {
+  if (!Array.isArray(body?.input)) return 0;
+  const before = body.input.length;
+  body.input = body.input.filter((item) => !(
+    isObject(item) &&
+    !Array.isArray(item) &&
+    item.type === "reasoning" &&
+    isString(item.id) &&
+    FOREIGN_REASONING_ID.test(item.id)
+  ));
+  return before - body.input.length;
+}
+
 // Report the *effective* service tier — the transformed body may have been
 // normalized (fast→priority) or stripped entirely for long contexts, so the
 // tier the client requested is not necessarily what upstream received (#3316).
@@ -947,6 +978,11 @@ export class CodexExecutor extends BaseExecutor {
     convertSystemToDeveloperRole(body);
     // Rewrite replayed assistant history input_text/text parts → output_text (#6932)
     normalizeCodexAssistantHistory(body);
+    // Drop reasoning another provider sealed (Grok Build) before the replayed
+    // item ids are normalized away (#5141). Reasoning of unknown provenance is
+    // kept here and still covered by the one-shot invalid_encrypted_content
+    // recovery in execute().
+    dropForeignReasoningItems(body);
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
     body.input = normalizeStatelessResponseInput(body.input);
     // Apply Codex OAuth fingerprint identity to body.client_metadata (post-allowlist).
@@ -1037,7 +1073,7 @@ export class CodexExecutor extends BaseExecutor {
     // Include reasoning encrypted content (required by Codex backend for reasoning models);
     // compact requests omit the include field entirely.
     if (!isCompact && body.reasoning && body.reasoning.effort && body.reasoning.effort !== 'none') {
-      body.include = ["reasoning.encrypted_content"];
+      body.include = ["reasoning.encrypted_content", ...(body.include?.includes("web_search_call.action.sources") && body.tools?.some(tool => tool.type === "web_search") ? ["web_search_call.action.sources"] : [])];
     } else if (isCompact) {
       delete body.include;
     }

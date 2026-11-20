@@ -82,7 +82,7 @@ export function filterUsageForFormat(usage, targetFormat) {
   const formatFields = {
     [FORMATS.CLAUDE]: [
     'input_tokens', 'output_tokens',
-    'cache_read_input_tokens', 'cache_creation_input_tokens',
+    'cache_read_input_tokens', 'cache_creation_input_tokens', 'server_tool_use',
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.GEMINI]: [

@@ -53,7 +53,8 @@ export function isModelAllowed(policy, modelStr) {
  * fills in a missing epoch or retries upstream work after a fence rejection.
  *
  * @param {string|null} apiKey Resolved caller credential, never a provider key.
- * @param {object} usage Normalized event; see saveRequestUsage.
+ * @param {object} usage Normalized event; see saveRequestUsage. It may carry
+ *   `apiKeyId`, the stable id of the key admitted for the event.
  */
 export async function recordApiKeyUsage(apiKey, usage) {
   try {
@@ -69,6 +70,9 @@ export async function recordApiKeyUsage(apiKey, usage) {
     if (usage.cost === undefined || !["known", "estimated", "unknown"].includes(usage.costStatus)) {
       throw new TypeError("Usage event requires cost and costStatus");
     }
+    // The admitted key id travels with the event inside `usage`. It is
+    // authoritative over the secret, so a request that started before a secret
+    // change is still charged to the key it was admitted for.
     const committed = await saveRequestUsage({ ...usage, apiKey, status: usage.status ?? "ok", strict: true });
     if (committed === false) throw new Error("Usage accounting was not committed");
   } catch (cause) {

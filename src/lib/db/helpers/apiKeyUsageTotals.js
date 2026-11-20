@@ -1,5 +1,9 @@
 import { getCommittedTokenCount } from "./committedTokens.js";
 import { parseJson } from "./jsonCol.js";
+import { tableColumnNames } from "./tableColumns.js";
+import { apiKeyUsageScope } from "./apiKeyAttribution.js";
+
+export { tableColumnNames };
 
 export function ensureApiKeyUsageTotalsTable(db) {
   db.exec(`
@@ -11,17 +15,6 @@ export function ensureApiKeyUsageTotalsTable(db) {
       updatedAt TEXT
     )
   `);
-}
-
-/**
- * Column names of one table, engine aware. SQLite reflects with PRAGMA,
- * PostgreSQL with information_schema for the current schema.
- */
-export function tableColumnNames(db, table) {
-  const rows = db.driver === "pg"
-    ? db.all("SELECT column_name AS name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ?", [table])
-    : db.all(`PRAGMA table_info(${table})`);
-  return new Set(rows.map((row) => row.name));
 }
 
 /**
@@ -85,9 +78,14 @@ export function backfillApiKeyUsageTotals(db, { overwrite = false } = {}) {
   const withUnknownCost = hasUnknownCostColumn(db);
   const keys = db.all(`SELECT id, key FROM apiKeys`);
   for (const key of keys) {
+    // The rebuild reads the key's rows, not its secret's rows: rows carrying
+    // the stable id match directly, legacy rows without one keep their
+    // existing scoped association through the secret they stored. The two
+    // branches are disjoint, so no row is counted twice.
+    const scope = apiKeyUsageScope(db, { apiKeyId: key.id, apiKey: key.key });
     const history = db.all(
-      `SELECT ${selected.join(", ")} FROM usageHistory WHERE apiKey = ? ${eligibility}`,
-      [key.key],
+      `SELECT ${selected.join(", ")} FROM usageHistory WHERE ${scope.clause} ${eligibility}`,
+      scope.params,
     );
     const totals = history.reduce((sum, row) => {
       let tokens = {};

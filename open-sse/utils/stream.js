@@ -226,7 +226,7 @@ export function createSSEStream(options = {}) {
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
   const state = mode === STREAM_MODE.TRANSLATE ?
-  { ...initState(sourceFormat, body || providerBody), provider, toolNameMap, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
+  { ...initState(sourceFormat, body || providerBody), searchEnabled: provider === "codex" && sourceFormat === FORMATS.CLAUDE && body?.tools?.some(tool => tool?.type === "web_search_20250305"), provider, toolNameMap, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
   null;
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.
@@ -1671,6 +1671,13 @@ export function createSSEStream(options = {}) {
     }
   });
   transformStream.getStreamSnapshot = getStreamSnapshot;
+  // Keep interruption snapshots stable; terminal classification also needs
+  // tool and error state that is not part of the accounting snapshot contract.
+  transformStream.getEmptyStreamSnapshot = () => ({
+    ...getStreamSnapshot(),
+    hadToolCalls,
+    upstreamError: streamErrorPayload
+  });
   return transformStream;
 }
 

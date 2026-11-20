@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 326 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 327 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -13,7 +13,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | AgentRouter | `agentrouter` | apikey | 4 | [site](https://agentrouter.org) |
 | Agnes | `agnes` | apikey | 3 |  |
 | Agnes (China) | `agnes-cn` | apikey | 3 |  |
-| Antigravity CLI | `agy` | oauth | 37 | [site](https://antigravity.google) |
+| Antigravity CLI | `agy` | oauth | 43 | [site](https://antigravity.google) |
 | AI21 Labs | `ai21` | apikey | 2 | [site](https://www.ai21.com) |
 | AI Horde | `aihorde` | apikey | 0 | [site](https://aihorde.net) |
 | AI/ML API | `aimlapi` | apikey | 6 | [site](https://aimlapi.com) |
@@ -28,7 +28,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Amazon Q | `amazon-q` | oauth | 47 | [site](https://aws.amazon.com/q/developer/) |
 | Ant Ling / Ring (inclusionAI) | `ant-ling` | apikey | 3 | [site](https://developer.ant-ling.com/en/docs/) |
 | Anthropic | `anthropic` | apikey | 20 | [site](https://console.anthropic.com) |
-| Antigravity | `antigravity` | oauth | 37 | [site](https://antigravity.google) |
+| Antigravity | `antigravity` | oauth | 43 | [site](https://antigravity.google) |
 | AnyAPI | `anyapi` | apikey | 0 |  |
 | AnySearch | `anysearch` | apikey | 0 | [site](https://anysearch.com) |
 | Api.airforce | `api-airforce` | apikey | 7 | [site](https://api.airforce) |
@@ -110,7 +110,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | DXNT | `dxnt` | apikey | 0 |  |
 | Edge TTS | `edge-tts` | none | 11 |  |
 | Electron Hub | `electronhub` | apikey | 0 |  |
-| ElevenLabs | `elevenlabs` | apikey | 4 | [site](https://elevenlabs.io) |
+| ElevenLabs | `elevenlabs` | apikey | 6 | [site](https://elevenlabs.io) |
 | Empower | `empower` | apikey | 0 | [site](https://docs.empower.dev) |
 | EUrouter | `eurouter` | apikey | 0 |  |
 | Exa | `exa` | apikey | 0 | [site](https://exa.ai) |
@@ -156,6 +156,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Huancheng Public API | `hcnsec` | apikey | 0 | [site](https://api.hcnsec.cn) |
 | HelixMind | `helixmind` | apikey | 0 |  |
 | Heroku Inference | `heroku` | apikey | 12 | [site](https://www.heroku.com/ai) |
+| Hetzner Inference | `hetzner` | apikey | 0 | [site](https://www.hetzner.com) |
 | HuggingChat | `huggingchat` | cookie | 24 | [site](https://huggingface.co/chat) |
 | HuggingFace | `huggingface` | apikey | 25 | [site](https://huggingface.co) |
 | Hyperbolic | `hyperbolic` | apikey | 8 | [site](https://hyperbolic.xyz) |

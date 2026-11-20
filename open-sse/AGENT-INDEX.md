@@ -227,6 +227,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `hcnsec` | openai | apikey | `https://api.hcnsec.cn/v1/chat/completions` |
 | `helixmind` |  | apikey | `https://helixmind.online/v1/chat/completions` |
 | `heroku` |  | apikey | `https://us.inference.heroku.com/v1/chat/completions` |
+| `hetzner` | openai | apikey | `https://inference.hetzner.com/api/v1/chat/completions` |
 | `huggingchat` | openai | webCookie | `https://huggingface.co/chat/conversation` |
 | `huggingface` |  | apikey | `` |
 | `hyperbolic` |  | apikey | `https://api.hyperbolic.xyz/v1/chat/completions` |

@@ -111,9 +111,9 @@ export class OllamaLocalExecutor extends DefaultExecutor {
       // try/catch: malformed/relative/empty baseUrl falls back to verbatim like the parent
       // (default.js:122 uses rt.baseUrl as-is, never parses). WR-01/02/03.
       let url = rt.baseUrl;
+      const configured = new URL(resolveOllamaLocalHost(credentials));
       try {
         const u = new URL(rt.baseUrl);
-        const configured = new URL(resolveOllamaLocalHost(credentials));
         // Stored local values may be origins or complete Ollama endpoints.
         // Runtime transport owns the endpoint path, so retain only the configured origin.
         url = configured.origin + u.pathname + u.search;

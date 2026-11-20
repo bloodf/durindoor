@@ -35,6 +35,8 @@ Save. Send `ollama-local/<model>` or `lmstudio/<model>` (or the alias the catalo
 
 If DurinDoor is in Docker, `localhost` is the container. Point `baseUrl` at `host.docker.internal` or a compose service name.
 
+The same steps work for a server on your network instead of the local machine. See [Network LLM servers](./network-llm-servers.mdx) for network Ollama hosts, LAN OpenAI-compatible servers such as llama.cpp, vLLM, LM Studio, LocalAI, and another DurinDoor instance, running several of them with failover, and the opt-in LAN discovery panel.
+
 Other self-hosted OpenAI-compatible ids (`vllm`, `llama-cpp`, `docker-model-runner`, and the rest) are listed on [Local router providers](./local-router-providers.mdx). Those executors omit `Authorization` when no API key or access token is saved.
 
 ## No-auth providers

@@ -348,7 +348,9 @@ export function resolveOpenAiEffort(level, provider, model, caps = null) {
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, model = null, provider = null, requestedDisplay = undefined, requestedThinkingType = undefined) {
+// `targetFormat` is the wire format the body is dispatched on: the native
+// thinking shape alone does not tell whether the marker is valid there.
+function applyFormat(fmt, body, cfg, caps, model = null, provider = null, requestedDisplay = undefined, requestedThinkingType = undefined, targetFormat = null) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -457,7 +459,10 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
     case "zai":{
         // Z.ai ignores thinking.disabled → must use enable_thinking:false to turn off.
         if (none && canDisable) {body.enable_thinking = false;delete body.thinking;break;}
-        body.thinking = { type: "enabled" };
+        // Always-on models reason without an enable marker. Anthropic-wire
+        // upstreams require budget_tokens on a thinking block, so the redundant
+        // marker is rejected there — omit it and keep the reasoning effort.
+        if (canDisable || targetFormat !== FORMATS.CLAUDE) body.thinking = { type: "enabled" };
         // Z.ai reads scalar high|max; Ark-compatible wires read reasoning.effort.
         const level = toLevel(eff);
         const objectEffort = ["minimal", "low", "medium", "high"].includes(level) ?
@@ -613,7 +618,7 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   const requestedDisplay = isString(body.thinking?.display) ? body.thinking.display : undefined;
   const requestedThinkingType = body.thinking?.type || cfg.thinkingType;
   stripAll(body, targetFormat === FORMATS.CLAUDE, targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE);
-  applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType);
+  applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType, targetFormat);
   // A compatible DeepSeek gateway can validate the explicit source budget.
   if (targetFormat === FORMATS.OPENAI && provider?.startsWith("openai-compatible-") &&
     caps.thinkingFormat === "deepseek" && ["openai", "deepseek"].includes(fmt) &&

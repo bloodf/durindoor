@@ -41,7 +41,7 @@ function partsText(value) {
  */
 export function normalizeArrayContentDelta(delta) {
   if (!isRecord(delta)) return false;
-  if (typeof delta.content === "number" && Number.isFinite(delta.content)) {
+  if (Number.isFinite(delta.content)) {
     delta.content = String(delta.content);
     return true;
   }
